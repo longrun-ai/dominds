@@ -62,35 +62,36 @@ async function runMainDialogScenario(): Promise<void> {
   const root = await createMainDialog('tester');
   root.disableDiligencePush = true;
 
-  const pendingSideDialog = await root.createSideDialog(
+  const activeCalleeDispatch = await root.createSideDialog(
     'pangu',
     ['@pangu'],
-    'Background side dialog work is still pending.',
+    'Background side dialog work remains active.',
     {
       callName: 'tellaskSessionless',
       originMemberId: 'tester',
       askerDialogId: root.id.selfId,
-      callId: 'root-pending-sideDialog-call',
+      callId: 'root-active-callee-call',
       callSiteCourse: 1,
       callSiteGenseq: 1,
       collectiveTargets: ['pangu'],
     },
   );
-  await DialogPersistence.appendPendingSideDialog(root.id, {
-    sideDialogId: pendingSideDialog.id.selfId,
+  await DialogPersistence.appendActiveCalleeDispatch(root.id, {
+    calleeDialogId: activeCalleeDispatch.id.selfId,
     createdAt: formatUnifiedTimestamp(new Date()),
+    batchId: 'root-active-callee-batch',
     callName: 'tellaskSessionless',
     mentionList: ['@pangu'],
-    tellaskContent: 'Background side dialog work is still pending.',
+    tellaskContent: 'Background side dialog work remains active.',
     targetAgentId: 'pangu',
-    callId: 'root-pending-sideDialog-call',
+    callId: 'root-active-callee-call',
     callSiteCourse: 1,
     callSiteGenseq: 1,
     callType: 'C',
   });
 
   await root.persistUserMessage(
-    'Runtime ask-back is still pending.',
+    'Runtime ask-back remains active.',
     'root-runtime-reply-directive',
     'markdown',
     'runtime',
@@ -99,14 +100,14 @@ async function runMainDialogScenario(): Promise<void> {
     {
       expectedReplyCallName: 'replyTellaskBack',
       targetCallId: 'reply-back-target',
-      targetDialogId: pendingSideDialog.id.selfId,
+      targetDialogId: activeCalleeDispatch.id.selfId,
       tellaskContent: 'Please confirm the side dialog result.',
     },
   );
 
   await driveDialogStream(
     root,
-    makeUserPrompt(interjectPrompt, 'root-user-interject-while-pending-sideDialog', {
+    makeUserPrompt(interjectPrompt, 'root-user-interject-while-active-callee', {
       userLanguageCode: 'en',
     }),
     true,
@@ -122,7 +123,7 @@ async function runMainDialogScenario(): Promise<void> {
       event.type === 'human_text_record',
   );
   const interjectRecord = humanTextRecords.find(
-    (event) => event.msgId === 'root-user-interject-while-pending-sideDialog',
+    (event) => event.msgId === 'root-user-interject-while-active-callee',
   );
   assert.ok(interjectRecord, 'expected persisted user interjection record for main dialog');
   assert.equal(interjectRecord?.content, interjectPrompt);
@@ -133,8 +134,8 @@ async function runMainDialogScenario(): Promise<void> {
   );
   assertNoInjectedReplyGuidance(humanTextRecords.map((event) => event.content));
 
-  const pending = await DialogPersistence.loadPendingSideDialogs(root.id, root.status);
-  assert.equal(pending.length, 1, 'root should keep waiting on the original pending sideDialog');
+  const pending = await DialogPersistence.loadActiveCalleeDispatches(root.id, root.status);
+  assert.equal(pending.length, 1, 'root should retain the original active callee dispatch');
 }
 
 async function runSideDialogScenario(): Promise<void> {
@@ -179,9 +180,10 @@ async function runSideDialogScenario(): Promise<void> {
       collectiveTargets: ['nuwa'],
     },
   );
-  await DialogPersistence.appendPendingSideDialog(sideDialog.id, {
-    sideDialogId: nestedSideDialog.id.selfId,
+  await DialogPersistence.appendActiveCalleeDispatch(sideDialog.id, {
+    calleeDialogId: nestedSideDialog.id.selfId,
     createdAt: formatUnifiedTimestamp(new Date()),
+    batchId: 'pangu-to-nuwa-call-batch',
     callName: 'tellaskSessionless',
     mentionList: ['@nuwa'],
     tellaskContent: 'Investigate a nested side dialog.',
@@ -209,7 +211,7 @@ async function runSideDialogScenario(): Promise<void> {
 
   await driveDialogStream(
     sideDialog,
-    makeUserPrompt(interjectPrompt, 'sideDialog-user-interject-while-pending-sideDialog', {
+    makeUserPrompt(interjectPrompt, 'sideDialog-user-interject-while-active-callee', {
       userLanguageCode: 'en',
     }),
     true,
@@ -229,7 +231,7 @@ async function runSideDialogScenario(): Promise<void> {
       event.type === 'human_text_record',
   );
   const interjectRecord = humanTextRecords.find(
-    (event) => event.msgId === 'sideDialog-user-interject-while-pending-sideDialog',
+    (event) => event.msgId === 'sideDialog-user-interject-while-active-callee',
   );
   assert.ok(interjectRecord, 'expected persisted user interjection record for sideDialog');
   assert.equal(interjectRecord?.content, interjectPrompt);
@@ -240,17 +242,16 @@ async function runSideDialogScenario(): Promise<void> {
   );
   assertNoInjectedReplyGuidance(humanTextRecords.map((event) => event.content));
 
-  const pending = await DialogPersistence.loadPendingSideDialogs(sideDialog.id, sideDialog.status);
-  assert.equal(
-    pending.length,
-    1,
-    'sideDialog should keep waiting on its nested pending sideDialog',
+  const pending = await DialogPersistence.loadActiveCalleeDispatches(
+    sideDialog.id,
+    sideDialog.status,
   );
+  assert.equal(pending.length, 1, 'sideDialog should retain its nested active callee dispatch');
 }
 
 async function runRepeatedRootInterjectionScenario(): Promise<void> {
-  const firstPrompt = 'First interruption while the side dialog is still pending.';
-  const secondPrompt = 'Second interruption while the same side dialog is still pending.';
+  const firstPrompt = 'First interruption while the side dialog remains active.';
+  const secondPrompt = 'Second interruption while the same side dialog remains active.';
   const firstResponse = 'Handled the first interruption.';
   const secondResponse =
     'Handled the second interruption while keeping the previously recorded long-line suppression notice in context.';
@@ -272,35 +273,36 @@ async function runRepeatedRootInterjectionScenario(): Promise<void> {
   const root = await createMainDialog('tester');
   root.disableDiligencePush = true;
 
-  const pendingSideDialog = await root.createSideDialog(
+  const activeCalleeDispatch = await root.createSideDialog(
     'pangu',
     ['@pangu'],
-    'Background side dialog work is still pending.',
+    'Background side dialog work remains active.',
     {
       callName: 'tellaskSessionless',
       originMemberId: 'tester',
       askerDialogId: root.id.selfId,
-      callId: 'root-pending-sideDialog-call-repeated',
+      callId: 'root-active-callee-call-repeated',
       callSiteCourse: 1,
       callSiteGenseq: 1,
       collectiveTargets: ['pangu'],
     },
   );
-  await DialogPersistence.appendPendingSideDialog(root.id, {
-    sideDialogId: pendingSideDialog.id.selfId,
+  await DialogPersistence.appendActiveCalleeDispatch(root.id, {
+    calleeDialogId: activeCalleeDispatch.id.selfId,
     createdAt: formatUnifiedTimestamp(new Date()),
+    batchId: 'root-active-callee-repeated-batch',
     callName: 'tellaskSessionless',
     mentionList: ['@pangu'],
-    tellaskContent: 'Background side dialog work is still pending.',
+    tellaskContent: 'Background side dialog work remains active.',
     targetAgentId: 'pangu',
-    callId: 'root-pending-sideDialog-call-repeated',
+    callId: 'root-active-callee-call-repeated',
     callSiteCourse: 1,
     callSiteGenseq: 1,
     callType: 'C',
   });
 
   await root.persistUserMessage(
-    'Runtime ask-back is still pending.',
+    'Runtime ask-back remains active.',
     'root-runtime-reply-directive-repeated',
     'markdown',
     'runtime',
@@ -309,14 +311,14 @@ async function runRepeatedRootInterjectionScenario(): Promise<void> {
     {
       expectedReplyCallName: 'replyTellaskBack',
       targetCallId: 'reply-back-target-repeated',
-      targetDialogId: pendingSideDialog.id.selfId,
+      targetDialogId: activeCalleeDispatch.id.selfId,
       tellaskContent: 'Please confirm the side dialog result.',
     },
   );
 
   await driveDialogStream(
     root,
-    makeUserPrompt(firstPrompt, 'root-user-interject-pending-sideDialog-first', {
+    makeUserPrompt(firstPrompt, 'root-user-interject-active-callee-first', {
       userLanguageCode: 'en',
     }),
     true,
@@ -327,7 +329,7 @@ async function runRepeatedRootInterjectionScenario(): Promise<void> {
 
   await driveDialogStream(
     root,
-    makeUserPrompt(secondPrompt, 'root-user-interject-pending-sideDialog-second', {
+    makeUserPrompt(secondPrompt, 'root-user-interject-active-callee-second', {
       userLanguageCode: 'en',
     }),
     true,
@@ -447,7 +449,7 @@ async function runQ4HAnswerNeverCountsAsInterjectionScenario(): Promise<void> {
   root.disableDiligencePush = true;
 
   await root.persistUserMessage(
-    'A tellasker reply is still pending after this askHuman round.',
+    'A tellasker reply remains active after this askHuman round.',
     'root-runtime-reply-directive-q4h',
     'markdown',
     'runtime',
@@ -537,16 +539,13 @@ async function main(): Promise<void> {
     await runQ4HAnswerNeverCountsAsInterjectionScenario();
   });
 
-  console.log(
-    'kernel-driver user-interject-while-pending-sideDialog-suppresses-reply-guidance: PASS',
-  );
+  console.log('kernel-driver user-interject-while-active-callee-suppresses-reply-guidance: PASS');
 }
 
 void main().catch((err: unknown) => {
   const message = err instanceof Error ? (err.stack ?? err.message) : String(err);
   console.error(
-    'kernel-driver user-interject-while-pending-sideDialog-suppresses-reply-guidance: FAIL\n' +
-      message,
+    'kernel-driver user-interject-while-active-callee-suppresses-reply-guidance: FAIL\n' + message,
   );
   process.exit(1);
 });

@@ -79,12 +79,12 @@ async function main(): Promise<void> {
       'new-course prompt must carry the latest assignment tellask content',
     );
     assert.equal(
-      queuedPrompt.sideDialogReplyTarget?.callType,
+      queuedPrompt.calleeDialogReplyTarget?.callType,
       'B',
       'sessioned tellask new-course prompt must target the Type-B parent pending record',
     );
     assert.equal(
-      queuedPrompt.sideDialogReplyTarget?.callId,
+      queuedPrompt.calleeDialogReplyTarget?.callId,
       'call-new',
       'new-course prompt must target the latest parent pending callId',
     );
@@ -100,7 +100,7 @@ async function main(): Promise<void> {
         q4hAnswerCallId: queuedPrompt.q4hAnswerCallId,
         tellaskReplyDirective: queuedPrompt.tellaskReplyDirective,
         skipTaskdoc: queuedPrompt.skipTaskdoc,
-        sideDialogReplyTarget: queuedPrompt.sideDialogReplyTarget,
+        calleeDialogReplyTarget: queuedPrompt.calleeDialogReplyTarget,
         runControl: queuedPrompt.runControl,
       },
       language: 'en',

@@ -318,7 +318,7 @@ status: 'active' # 当前对话状态
   - 记录某个支线对话何时在 root 时间线上已“存在”，供 fork 时判断是否应纳入新树
 - `reminders_reconciled_record`
 - `questions4human_reconciled_record`
-- `pending_sideDialogs_reconciled_record`
+- `active_callees_reconciled_record`
 - `sideDialog_registry_reconciled_record`
 - `sideDialog_responses_reconciled_record`
 
@@ -326,7 +326,7 @@ status: 'active' # 当前对话状态
 
 - 这些对账记录是状态快照，不属于 LLM transcript 内容；重建消息上下文时应跳过
 - 支线对话 transcript 中凡是需要参与 root fork 边界裁剪的记录，都必须带 `rootCourse/rootGenseq`
-- fork 写入新主线对话时，会在 `course-1` 追加一组 baseline 对账记录，用来把 reminders / Q4H / pending sideDialogs / registry / responses 恢复到切点前状态
+- fork 写入新主线对话时，会在 `course-1` 追加一组 baseline 对账记录，用来把 reminders / Q4H / active callee dispatch / registry / responses 恢复到切点前状态
 
 ---
 

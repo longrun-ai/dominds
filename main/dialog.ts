@@ -23,6 +23,7 @@ import type {
   WebSearchCallSource,
 } from '@longrun-ai/kernel/types/dialog';
 import type {
+  DialogCalleeReplyTarget,
   DialogQueuedDeferredQ4HAnswerState,
   DialogQueuedNewCourseRuntimeReplyState,
   DialogQueuedNewCourseRuntimeSideDialogState,
@@ -34,7 +35,6 @@ import type {
   DialogRuntimePrompt,
   DialogRuntimeReplyPrompt,
   DialogRuntimeSideDialogPrompt,
-  DialogSideDialogReplyTarget,
   DialogUserPrompt,
   DriveIntent,
 } from '@longrun-ai/kernel/types/drive-intent';
@@ -154,11 +154,11 @@ export class DialogID {
 }
 
 /**
- * Phase 6: Pending sideDialog record for Type A sideDialog supply mechanism.
- * Tracks a sideDialog that was created but not yet completed.
+ * Phase 6: Active callee dispatch record.
+ * Tracks a sideDialog that has been dispatched but not yet completed.
  */
-export interface PendingSideDialog {
-  sideDialogId: DialogID;
+export interface ActiveCalleeDispatch {
+  calleeDialogId: DialogID;
   createdAt: string;
   mentionList?: string[];
   tellaskContent: string;
@@ -290,7 +290,7 @@ function getSideDialogAskerStackCurrentAssignment(
 
 function buildSideDialogAssignmentPromptMeta(
   sideDialog: SideDialog,
-): Pick<DialogRuntimeSideDialogPrompt, 'tellaskReplyDirective' | 'sideDialogReplyTarget'> {
+): Pick<DialogRuntimeSideDialogPrompt, 'tellaskReplyDirective' | 'calleeDialogReplyTarget'> {
   const assignment = sideDialog.assignmentFromAsker;
   switch (assignment.callName) {
     case 'tellask':
@@ -301,8 +301,8 @@ function buildSideDialogAssignmentPromptMeta(
           targetCallId: assignment.callId,
           tellaskContent: assignment.tellaskContent,
         },
-        sideDialogReplyTarget: {
-          ownerDialogId: assignment.askerDialogId,
+        calleeDialogReplyTarget: {
+          callerDialogId: assignment.askerDialogId,
           callType: 'B',
           callId: assignment.callId,
           callSiteCourse: assignment.callSiteCourse,
@@ -318,8 +318,8 @@ function buildSideDialogAssignmentPromptMeta(
           targetCallId: assignment.callId,
           tellaskContent: assignment.tellaskContent,
         },
-        sideDialogReplyTarget: {
-          ownerDialogId: assignment.askerDialogId,
+        calleeDialogReplyTarget: {
+          callerDialogId: assignment.askerDialogId,
           callType: 'C',
           callId: assignment.callId,
           callSiteCourse: assignment.callSiteCourse,
@@ -376,7 +376,7 @@ export abstract class Dialog {
   protected _generationStartedGenseq: number = 0;
 
   // Pending sideDialog IDs (for auto-revive tracking)
-  protected _pendingSideDialogIds: DialogID[] = [];
+  protected _activeCalleeDialogIds: DialogID[] = [];
 
   // Phase 11: Suspension state for Type A sideDialog mechanism
   // Tracks whether this dialog is in normal state, suspended, or resuming from suspension
@@ -590,16 +590,16 @@ export abstract class Dialog {
   }
 
   /**
-   * Check if dialog has pending sideDialogs.
+   * Check if dialog has active callee dispatches.
    */
-  public async hasPendingSideDialogs(): Promise<boolean> {
+  public async hasActiveCalleeDispatches(): Promise<boolean> {
     try {
       const activeCallees = await this.dlgStore.loadActiveCallees(this.id, this.status);
       return activeCallees.batches.some((batch) =>
         batch.callees.some((callee) => callee.status === 'pending'),
       );
     } catch (err) {
-      log.warn('Failed to load active callees for pending check', undefined, {
+      log.warn('Failed to load active callees for dispatch check', undefined, {
         dialogId: this.id.selfId,
         error: err,
       });
@@ -610,7 +610,7 @@ export abstract class Dialog {
   /**
    * Check if dialog can be driven.
    *
-   * Pending tellask sideDialogs are background callee work: they are observable, but they must not
+   * Active callee dispatches are background callee work: they are observable, but they must not
    * block the caller dialog from continuing when some other concrete drive source exists.
    */
   public async canDrive(): Promise<boolean> {
@@ -627,7 +627,7 @@ export abstract class Dialog {
     canDrive: boolean;
   }> {
     const hasQ4H = await this.hasPendingQ4H();
-    const hasBackgroundCalleeDialogs = await this.hasPendingSideDialogs();
+    const hasBackgroundCalleeDialogs = await this.hasActiveCalleeDispatches();
     return {
       q4h: hasQ4H,
       backgroundCalleeDialogs: hasBackgroundCalleeDialogs,
@@ -635,35 +635,37 @@ export abstract class Dialog {
     };
   }
 
-  public get pendingSideDialogIds(): ReadonlyArray<DialogID> {
-    return this._pendingSideDialogIds;
+  public get activeCalleeDialogIds(): ReadonlyArray<DialogID> {
+    return this._activeCalleeDialogIds;
   }
 
-  public addPendingSideDialogs(ids: DialogID[]): void {
-    this._pendingSideDialogIds.push(...ids);
+  public addActiveCalleeDialogs(ids: DialogID[]): void {
+    this._activeCalleeDialogIds.push(...ids);
   }
 
-  public removePendingSideDialog(id: DialogID): void {
-    this._pendingSideDialogIds = this._pendingSideDialogIds.filter(
-      (pending) => pending.selfId !== id.selfId,
+  public removeActiveCalleeDispatch(id: DialogID): void {
+    this._activeCalleeDialogIds = this._activeCalleeDialogIds.filter(
+      (activeCallee) => activeCallee.selfId !== id.selfId,
     );
   }
 
-  public clearPendingSideDialogs(): void {
-    this._pendingSideDialogIds = [];
+  public clearActiveCalleeDialogs(): void {
+    this._activeCalleeDialogIds = [];
   }
 
   /**
-   * Load pending sideDialogs from persistence into memory.
-   * Used during crash recovery to restore suspension state.
+   * Load active callee dispatches from persistence into memory.
    */
-  public async loadPendingSideDialogsFromPersistence(): Promise<void> {
+  public async loadActiveCalleeDispatchesFromPersistence(): Promise<void> {
     try {
-      const pending = await this.dlgStore.loadPendingSideDialogs(this.id, this.status);
-      this.clearPendingSideDialogs();
-      this.addPendingSideDialogs(pending.map((record) => record.sideDialogId));
+      const activeCalleeDispatches = await this.dlgStore.loadActiveCalleeDispatches(
+        this.id,
+        this.status,
+      );
+      this.clearActiveCalleeDialogs();
+      this.addActiveCalleeDialogs(activeCalleeDispatches.map((record) => record.calleeDialogId));
     } catch (err) {
-      log.warn('Failed to load pending sideDialogs from persistence', undefined, {
+      log.warn('Failed to load active callee dispatches from persistence', undefined, {
         dialogId: this.id.selfId,
         error: err,
       });
@@ -1066,7 +1068,7 @@ export abstract class Dialog {
                   ? {}
                   : { skipTaskdoc: nextPrompt.skipTaskdoc }),
                 tellaskReplyDirective: nextPrompt.tellaskReplyDirective,
-                sideDialogReplyTarget: nextPrompt.sideDialogReplyTarget,
+                calleeDialogReplyTarget: nextPrompt.calleeDialogReplyTarget,
               };
               return prompt;
             }
@@ -1133,12 +1135,12 @@ export abstract class Dialog {
       ...(prepared.skipTaskdoc === undefined ? {} : { skipTaskdoc: prepared.skipTaskdoc }),
     };
     const normalized: DialogRuntimePrompt =
-      prepared.sideDialogReplyTarget !== undefined
+      prepared.calleeDialogReplyTarget !== undefined
         ? (() => {
             const prompt: DialogRuntimeSideDialogPrompt = {
               ...runtimeCommon,
               tellaskReplyDirective: prepared.tellaskReplyDirective,
-              sideDialogReplyTarget: prepared.sideDialogReplyTarget,
+              calleeDialogReplyTarget: prepared.calleeDialogReplyTarget,
             };
             return prompt;
           })()
@@ -1155,7 +1157,7 @@ export abstract class Dialog {
               return prompt;
             })();
     this._upNextQueue = [
-      normalized.sideDialogReplyTarget !== undefined
+      normalized.calleeDialogReplyTarget !== undefined
         ? {
             kind: 'new_course_runtime_sideDialog',
             prompt: normalized.content,
@@ -1165,7 +1167,7 @@ export abstract class Dialog {
             origin: 'runtime',
             tellaskReplyDirective: normalized.tellaskReplyDirective,
             skipTaskdoc: normalized.skipTaskdoc,
-            sideDialogReplyTarget: normalized.sideDialogReplyTarget,
+            calleeDialogReplyTarget: normalized.calleeDialogReplyTarget,
           }
         : normalized.tellaskReplyDirective !== undefined
           ? {
@@ -1243,7 +1245,7 @@ export abstract class Dialog {
               origin: 'runtime',
               ...(state.skipTaskdoc === undefined ? {} : { skipTaskdoc: state.skipTaskdoc }),
               tellaskReplyDirective: state.tellaskReplyDirective,
-              sideDialogReplyTarget: state.sideDialogReplyTarget,
+              calleeDialogReplyTarget: state.calleeDialogReplyTarget,
             };
             return prompt;
           }
@@ -1367,7 +1369,7 @@ export abstract class Dialog {
     userLanguageCode?: LanguageCode;
     tellaskReplyDirective: TellaskReplyDirective;
     skipTaskdoc?: boolean;
-    sideDialogReplyTarget: DialogSideDialogReplyTarget;
+    calleeDialogReplyTarget: DialogCalleeReplyTarget;
   }): DialogQueuedPromptState {
     const existing = this.peekLatestUpNext();
     const trimmed = options.prompt.trim();
@@ -1389,7 +1391,7 @@ export abstract class Dialog {
         origin: 'runtime',
         tellaskReplyDirective: options.tellaskReplyDirective,
         skipTaskdoc: options.skipTaskdoc,
-        sideDialogReplyTarget: options.sideDialogReplyTarget,
+        calleeDialogReplyTarget: options.calleeDialogReplyTarget,
         runControl: undefined,
       };
       this.enqueueQueuedPromptState(created);
@@ -1405,7 +1407,7 @@ export abstract class Dialog {
         options.userLanguageCode ?? existing.userLanguageCode ?? this._lastUserLanguageCode,
       tellaskReplyDirective: options.tellaskReplyDirective,
       skipTaskdoc: options.skipTaskdoc ?? existing.skipTaskdoc,
-      sideDialogReplyTarget: options.sideDialogReplyTarget,
+      calleeDialogReplyTarget: options.calleeDialogReplyTarget,
       runControl: undefined,
     };
     this.replaceQueuedPromptState(existing.msgId, merged);
@@ -1479,7 +1481,7 @@ export abstract class Dialog {
     userLanguageCode?: LanguageCode;
     tellaskReplyDirective: TellaskReplyDirective;
     skipTaskdoc?: boolean;
-    sideDialogReplyTarget: DialogSideDialogReplyTarget;
+    calleeDialogReplyTarget: DialogCalleeReplyTarget;
   }): Promise<DialogQueuedPromptState> {
     const common = this.runtimePromptCommon(options);
     const created: DialogQueuedNewCourseRuntimeSideDialogState = {
@@ -1487,7 +1489,7 @@ export abstract class Dialog {
       kind: 'new_course_runtime_sideDialog',
       tellaskReplyDirective: options.tellaskReplyDirective,
       skipTaskdoc: options.skipTaskdoc,
-      sideDialogReplyTarget: options.sideDialogReplyTarget,
+      calleeDialogReplyTarget: options.calleeDialogReplyTarget,
     };
     this.enqueueQueuedPromptState(created);
     await this.persistPendingRuntimePrompt({
@@ -1498,7 +1500,7 @@ export abstract class Dialog {
       origin: 'runtime',
       tellaskReplyDirective: created.tellaskReplyDirective,
       skipTaskdoc: created.skipTaskdoc,
-      sideDialogReplyTarget: created.sideDialogReplyTarget,
+      calleeDialogReplyTarget: created.calleeDialogReplyTarget,
     });
     return created;
   }
@@ -2690,10 +2692,10 @@ export abstract class DialogStore {
     return null;
   }
 
-  public async loadPendingSideDialogs(
+  public async loadActiveCalleeDispatches(
     _dialogId: DialogID,
     _status: 'running' | 'completed' | 'archived',
-  ): Promise<PendingSideDialog[]> {
+  ): Promise<ActiveCalleeDispatch[]> {
     return [];
   }
 

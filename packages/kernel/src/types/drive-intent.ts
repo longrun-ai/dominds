@@ -1,10 +1,10 @@
 import type { LanguageCode } from './language';
 import type {
-  DialogSideDialogReplyTarget,
+  DialogCalleeReplyTarget,
   FuncResultContentItem,
   TellaskReplyDirective,
 } from './storage';
-export type { DialogSideDialogReplyTarget } from './storage';
+export type { DialogCalleeReplyTarget } from './storage';
 
 export type DialogRunControlSource =
   | 'drive_dlg_by_user_msg'
@@ -46,7 +46,7 @@ export type DialogUserPrompt = DialogUserPromptCommon &
   Readonly<{
     tellaskReplyDirective?: undefined;
     skipTaskdoc?: undefined;
-    sideDialogReplyTarget?: undefined;
+    calleeDialogReplyTarget?: undefined;
   }>;
 
 export type DialogDiligencePrompt = DialogPromptBase &
@@ -55,28 +55,28 @@ export type DialogDiligencePrompt = DialogPromptBase &
     q4hAnswerCallId?: undefined;
     tellaskReplyDirective?: undefined;
     skipTaskdoc?: undefined;
-    sideDialogReplyTarget?: undefined;
+    calleeDialogReplyTarget?: undefined;
   }>;
 
 export type DialogRuntimeGuidePrompt = DialogRuntimePromptCommon &
   Readonly<{
     q4hAnswerCallId?: undefined;
     tellaskReplyDirective?: undefined;
-    sideDialogReplyTarget?: undefined;
+    calleeDialogReplyTarget?: undefined;
   }>;
 
 export type DialogRuntimeReplyPrompt = DialogRuntimePromptCommon &
   Readonly<{
     q4hAnswerCallId?: undefined;
     tellaskReplyDirective: TellaskReplyDirective;
-    sideDialogReplyTarget?: undefined;
+    calleeDialogReplyTarget?: undefined;
   }>;
 
 export type DialogRuntimeSideDialogPrompt = DialogRuntimePromptCommon &
   Readonly<{
     q4hAnswerCallId?: undefined;
     tellaskReplyDirective: TellaskReplyDirective;
-    sideDialogReplyTarget: DialogSideDialogReplyTarget;
+    calleeDialogReplyTarget: DialogCalleeReplyTarget;
   }>;
 
 export type DialogRuntimePrompt =
@@ -115,7 +115,7 @@ export type DialogQueuedRegisteredAssignmentUpdateState = DialogQueuedPromptStat
     origin: 'runtime';
     tellaskReplyDirective: DialogRuntimeSideDialogPrompt['tellaskReplyDirective'];
     skipTaskdoc?: boolean;
-    sideDialogReplyTarget: DialogRuntimeSideDialogPrompt['sideDialogReplyTarget'];
+    calleeDialogReplyTarget: DialogRuntimeSideDialogPrompt['calleeDialogReplyTarget'];
   }>;
 
 export type DialogQueuedNewCourseRuntimeGuideState = DialogQueuedPromptStateCommon &
@@ -139,7 +139,7 @@ export type DialogQueuedNewCourseRuntimeSideDialogState = DialogQueuedPromptStat
     origin: 'runtime';
     tellaskReplyDirective: DialogRuntimeSideDialogPrompt['tellaskReplyDirective'];
     skipTaskdoc?: boolean;
-    sideDialogReplyTarget: DialogRuntimeSideDialogPrompt['sideDialogReplyTarget'];
+    calleeDialogReplyTarget: DialogRuntimeSideDialogPrompt['calleeDialogReplyTarget'];
   }>;
 
 export type DialogQueuedPromptState =

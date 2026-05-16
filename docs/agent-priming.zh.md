@@ -19,7 +19,7 @@
   - transcript / tool / tellask 等历史 record
   - 当前 reminder 快照
 - 会明确丢弃：
-  - pending sideDialogs
+  - active callee dispatches
   - questions4human
   - sideDialog registry / sideDialog responses
   - 其它依赖运行中协程、阻塞关系、等待关系的 runtime state

@@ -407,7 +407,7 @@ async function main(): Promise<void> {
       firstThinkingOnlyCallId,
     );
     assert.equal(
-      firstThinkingOnlyQueuedReminder.sideDialogReplyTarget.callId,
+      firstThinkingOnlyQueuedReminder.calleeDialogReplyTarget.callId,
       firstThinkingOnlyCallId,
     );
     const firstThinkingOnlyLatest = await DialogPersistence.loadDialogLatest(
@@ -424,7 +424,7 @@ async function main(): Promise<void> {
       firstThinkingOnlyReplyReminder,
     );
     assert.equal(
-      firstThinkingOnlyLatest.pendingRuntimePrompt?.sideDialogReplyTarget?.callId,
+      firstThinkingOnlyLatest.pendingRuntimePrompt?.calleeDialogReplyTarget?.callId,
       firstThinkingOnlyCallId,
     );
     globalDialogRegistry.unregister(root.id.rootId);
@@ -672,7 +672,7 @@ async function main(): Promise<void> {
       undefined,
       'thinking plus same-round tellask must not queue a reply reminder while delegated work is pending',
     );
-    const pendingNested = await DialogPersistence.loadPendingSideDialogs(
+    const pendingNested = await DialogPersistence.loadActiveCalleeDispatches(
       thinkingThenTellaskSideDialog.id,
       thinkingThenTellaskSideDialog.status,
     );

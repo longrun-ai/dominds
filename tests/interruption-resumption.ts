@@ -114,9 +114,9 @@ async function main(): Promise<void> {
       })}\n`,
       'utf-8',
     );
-    await DialogPersistence.savePendingSideDialogs(new DialogID(aRoot), [
+    await DialogPersistence.saveActiveCalleeDispatches(new DialogID(aRoot), [
       {
-        sideDialogId: 'sub-a',
+        calleeDialogId: 'sub-a',
         createdAt: new Date().toISOString(),
         batchId: `dispatch:${aRoot}:${aRoot}:c1:g1`,
         callName: 'tellask',
@@ -315,30 +315,22 @@ async function main(): Promise<void> {
         reason: { kind: 'system_stop', detail: 'upstream failed' },
       },
     });
-    await fs.writeFile(
-      path.join(tmpRoot, '.dialogs', 'run', eRoot, 'pending-sideDialogs.json'),
-      JSON.stringify(
-        [
-          {
-            sideDialogId: 'sub-e',
-            createdAt: new Date().toISOString(),
-            batchId: `dispatch:${eRoot}:${eRoot}:c1:g1`,
-            callName: 'tellask',
-            mentionList: ['@worker'],
-            tellaskContent: 'Keep going',
-            targetAgentId: 'worker',
-            callId: 'call-sub-e',
-            callSiteCourse: 1,
-            callSiteGenseq: 1,
-            callType: 'B',
-            sessionSlug: 'session-e',
-          },
-        ],
-        null,
-        2,
-      ),
-      'utf-8',
-    );
+    await DialogPersistence.saveActiveCalleeDispatches(new DialogID(eRoot), [
+      {
+        calleeDialogId: 'sub-e',
+        createdAt: new Date().toISOString(),
+        batchId: `dispatch:${eRoot}:${eRoot}:c1:g1`,
+        callName: 'tellask',
+        mentionList: ['@worker'],
+        tellaskContent: 'Keep going',
+        targetAgentId: 'worker',
+        callId: 'call-sub-e',
+        callSiteCourse: 1,
+        callSiteGenseq: 1,
+        callType: 'B',
+        sessionSlug: 'session-e',
+      },
+    ]);
 
     // Dialog F: stale Q4H projection should self-heal back to stopped when interruption remains
     // but the underlying Q4H suspension is already gone.
@@ -730,7 +722,7 @@ async function main(): Promise<void> {
         lastAssistantSaying(recoveredA) ===
         'Restart recovery drove the in-progress root generation.',
       3_000,
-      'backend loop to resume in-progress generation even while pending sideDialogs remain',
+      'backend loop to resume in-progress generation even while active callee dispatches remain',
     );
     await waitForAllDialogsUnlocked(recoveredA, 3_000);
     const latestAAfterDrive = await DialogPersistence.loadDialogLatest(

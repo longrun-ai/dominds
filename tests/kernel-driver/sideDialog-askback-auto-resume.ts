@@ -145,7 +145,7 @@ async function main(): Promise<void> {
 
     await waitFor(
       async () => {
-        const pending = await DialogPersistence.loadPendingSideDialogs(root.id, root.status);
+        const pending = await DialogPersistence.loadActiveCalleeDispatches(root.id, root.status);
         return pending.length === 0;
       },
       3_000,
@@ -153,7 +153,7 @@ async function main(): Promise<void> {
     );
     await waitForAllDialogsUnlocked(root, 3_000);
 
-    const pending = await DialogPersistence.loadPendingSideDialogs(root.id, root.status);
+    const pending = await DialogPersistence.loadActiveCalleeDispatches(root.id, root.status);
     assert.equal(pending.length, 0, 'expected ask-back side dialog to clear the root pending list');
 
     const sideDialog = root.lookupSideDialog('pangu', sessionSlug);

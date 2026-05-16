@@ -36,10 +36,11 @@ async function main(): Promise<void> {
       collectiveTargets: ['pangu'],
     });
     sideDialog.disableDiligencePush = true;
-    await DialogPersistence.savePendingSideDialogs(root.id, [
+    await DialogPersistence.saveActiveCalleeDispatches(root.id, [
       {
-        sideDialogId: sideDialog.id.selfId,
+        calleeDialogId: sideDialog.id.selfId,
         createdAt: '2026-04-15 00:00:00',
+        batchId: 'stale-pending-runtime-prompt-batch',
         callName: 'tellask',
         mentionList: ['@pangu'],
         tellaskContent,
@@ -89,9 +90,9 @@ async function main(): Promise<void> {
           ...(queuedPrompt.skipTaskdoc === undefined
             ? {}
             : { skipTaskdoc: queuedPrompt.skipTaskdoc }),
-          ...(queuedPrompt.sideDialogReplyTarget === undefined
+          ...(queuedPrompt.calleeDialogReplyTarget === undefined
             ? {}
-            : { sideDialogReplyTarget: queuedPrompt.sideDialogReplyTarget }),
+            : { calleeDialogReplyTarget: queuedPrompt.calleeDialogReplyTarget }),
         },
         lastModified: previous.lastModified,
       },

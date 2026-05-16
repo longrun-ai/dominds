@@ -218,7 +218,10 @@ async function main(): Promise<void> {
       'expected updated assignment anchor to be persisted for the replacement round',
     );
 
-    const pendingAfterUpdate = await DialogPersistence.loadPendingSideDialogs(root.id, root.status);
+    const pendingAfterUpdate = await DialogPersistence.loadActiveCalleeDispatches(
+      root.id,
+      root.status,
+    );
     assert.equal(
       pendingAfterUpdate.length,
       1,
@@ -314,7 +317,7 @@ async function main(): Promise<void> {
       'expected stale reply to stay local until the updated assignment is rendered',
     );
 
-    const pendingAfterBlockedReply = await DialogPersistence.loadPendingSideDialogs(
+    const pendingAfterBlockedReply = await DialogPersistence.loadActiveCalleeDispatches(
       root.id,
       root.status,
     );

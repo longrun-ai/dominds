@@ -4,6 +4,7 @@ import * as os from 'node:os';
 import * as path from 'node:path';
 
 import type { SideDialogAssignmentFromAsker } from '@longrun-ai/kernel/types/storage';
+import YAML from 'yaml';
 import { DialogID } from '../../main/dialog';
 import { DialogPersistence } from '../../main/persistence';
 import { materializeReminder } from '../../main/tool';
@@ -12,6 +13,11 @@ import {
   syncPendingTellaskReminderState,
 } from '../../main/tools/pending-tellask-reminder';
 import { createMainDialog } from '../kernel-driver/helpers';
+
+async function writeYaml(filePath: string, value: unknown): Promise<void> {
+  await fs.mkdir(path.dirname(filePath), { recursive: true });
+  await fs.writeFile(filePath, YAML.stringify(value), 'utf-8');
+}
 
 async function withTempCwd<T>(fn: () => Promise<T>): Promise<T> {
   const sandboxDir = await fs.mkdtemp(path.join(os.tmpdir(), 'dominds-pending-reminder-order-'));
@@ -25,7 +31,7 @@ async function withTempCwd<T>(fn: () => Promise<T>): Promise<T> {
   }
 }
 
-async function persistPendingSideDialog(args: {
+async function persistActiveCalleeDispatch(args: {
   rootId: string;
   selfId: string;
   createdAt: string;
@@ -40,6 +46,9 @@ async function persistPendingSideDialog(args: {
     originMemberId: 'tester',
     askerDialogId: args.rootId,
     callId: args.callId,
+    callSiteCourse: 1,
+    callSiteGenseq: 1,
+    collectiveTargets: ['worker'],
   };
   await DialogPersistence.ensureSideDialogDirectory(sideDialogId, 'running');
   await DialogPersistence.saveSideDialogAskerStackState(
@@ -71,9 +80,9 @@ async function persistPendingSideDialog(args: {
     },
     'running',
   );
-  await DialogPersistence.mutateDialogLatest(sideDialogId, () => ({
-    kind: 'patch',
-    patch: {
+  await writeYaml(
+    path.join(DialogPersistence.getDialogEventsPath(sideDialogId, 'running'), 'latest.yaml'),
+    {
       currentCourse: 1,
       lastModified: args.lastModified,
       status: 'active',
@@ -84,14 +93,14 @@ async function persistPendingSideDialog(args: {
       disableDiligencePush: false,
       diligencePushRemainingBudget: 0,
     },
-  }));
+  );
 }
 
 async function main(): Promise<void> {
   await withTempCwd(async () => {
     const root = await createMainDialog('tester');
     const pendingReminderCreatedAt = '2026-04-16 10:00:00';
-    const firstPendingActivityAt = '2026-04-16 10:05:00';
+    const firstPendingActivityAt = '2026-04-16 10:04:00';
     const daemonCreatedAt = '2026-04-16 10:06:00';
     const secondPendingActivityAt = '2026-04-16 10:07:00';
 
@@ -119,14 +128,14 @@ async function main(): Promise<void> {
       }),
     );
 
-    await persistPendingSideDialog({
+    await persistActiveCalleeDispatch({
       rootId: root.id.rootId,
       selfId: 'sub001',
       createdAt: '2026-04-16 10:01:00',
       lastModified: '2026-04-16 10:03:00',
       callId: 'call-sub001',
     });
-    await persistPendingSideDialog({
+    await persistActiveCalleeDispatch({
       rootId: root.id.rootId,
       selfId: 'sub002',
       createdAt: '2026-04-16 10:02:00',
@@ -134,12 +143,13 @@ async function main(): Promise<void> {
       callId: 'call-sub002',
     });
 
-    await DialogPersistence.savePendingSideDialogs(
+    await DialogPersistence.saveActiveCalleeDispatches(
       root.id,
       [
         {
-          sideDialogId: 'sub001',
+          calleeDialogId: 'sub001',
           createdAt: '2026-04-16 10:01:00',
+          batchId: 'call-sub001-batch',
           callName: 'tellask',
           mentionList: ['@worker'],
           tellaskContent: 'Follow the current assignment',
@@ -150,8 +160,9 @@ async function main(): Promise<void> {
           callType: 'B',
         },
         {
-          sideDialogId: 'sub002',
+          calleeDialogId: 'sub002',
           createdAt: '2026-04-16 10:02:00',
+          batchId: 'call-sub002-batch',
           callName: 'tellask',
           mentionList: ['@worker'],
           tellaskContent: 'Follow the current assignment',
@@ -174,7 +185,7 @@ async function main(): Promise<void> {
       'Expected newer daemon reminder to sort first initially',
     );
 
-    await persistPendingSideDialog({
+    await persistActiveCalleeDispatch({
       rootId: root.id.rootId,
       selfId: 'sub002',
       createdAt: '2026-04-16 10:02:00',
@@ -187,7 +198,7 @@ async function main(): Promise<void> {
     assert.equal(
       visible[0]?.id,
       'pending001',
-      'Expected pending-tellask reminder to sort ahead after a pending sideDialog becomes newer',
+      'Expected pending-tellask reminder to sort ahead after an active callee dispatch becomes newer',
     );
 
     const pendingReminder = visible[0];
@@ -207,12 +218,13 @@ async function main(): Promise<void> {
   await withTempCwd(async () => {
     const root = await createMainDialog('tester');
     await assert.rejects(
-      DialogPersistence.savePendingSideDialogs(
+      DialogPersistence.saveActiveCalleeDispatches(
         root.id,
         [
           {
-            sideDialogId: 'sub-old',
+            calleeDialogId: 'sub-old',
             createdAt: '2026-04-16 11:01:00',
+            batchId: 'call-old-batch',
             callName: 'tellask',
             mentionList: ['@worker'],
             tellaskContent: 'Old assignment',
@@ -224,8 +236,9 @@ async function main(): Promise<void> {
             sessionSlug: 'same-session',
           },
           {
-            sideDialogId: 'sub-new',
+            calleeDialogId: 'sub-new',
             createdAt: '2026-04-16 11:02:00',
+            batchId: 'call-new-batch',
             callName: 'tellask',
             mentionList: ['@worker'],
             tellaskContent: 'New assignment',

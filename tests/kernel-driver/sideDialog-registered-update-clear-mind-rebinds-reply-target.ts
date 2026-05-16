@@ -82,10 +82,11 @@ async function main(): Promise<void> {
     };
     sideDialog.assignmentFromAsker = updatedAssignment;
     await DialogPersistence.updateSideDialogAssignment(sideDialog.id, updatedAssignment);
-    await DialogPersistence.savePendingSideDialogs(root.id, [
+    await DialogPersistence.saveActiveCalleeDispatches(root.id, [
       {
-        sideDialogId: sideDialog.id.selfId,
+        calleeDialogId: sideDialog.id.selfId,
         createdAt: '2026-04-15 00:00:00',
+        batchId: 'registered-clear-mind-rebind-batch',
         callName: 'tellask',
         mentionList: ['@pangu'],
         tellaskContent: newBody,
@@ -147,11 +148,14 @@ async function main(): Promise<void> {
       'updated registered clear-mind reply to land on the tellasker',
     );
 
-    const pendingAfterReply = await DialogPersistence.loadPendingSideDialogs(root.id, root.status);
+    const pendingAfterReply = await DialogPersistence.loadActiveCalleeDispatches(
+      root.id,
+      root.status,
+    );
     assert.equal(
       pendingAfterReply.length,
       0,
-      'asker pending-sideDialogs should clear after the rebound clear-mind reply lands',
+      'asker active-callees should clear after the rebound clear-mind reply lands',
     );
 
     const courseTwoEvents = await DialogPersistence.loadCourseEvents(

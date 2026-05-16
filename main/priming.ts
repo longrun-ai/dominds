@@ -69,7 +69,7 @@ type PrimingUnsupportedRecord = Extract<
       | 'sideDialog_created_record'
       | 'reminders_reconciled_record'
       | 'questions4human_reconciled_record'
-      | 'pending_sideDialogs_reconciled_record'
+      | 'active_callees_reconciled_record'
       | 'sideDialog_registry_reconciled_record'
       | 'sideDialog_responses_reconciled_record';
   }
@@ -2792,7 +2792,7 @@ function stripTimestampFromRecord(event: PersistedDialogRecord): PrimingReplayRe
     case 'sideDialog_created_record':
     case 'reminders_reconciled_record':
     case 'questions4human_reconciled_record':
-    case 'pending_sideDialogs_reconciled_record':
+    case 'active_callees_reconciled_record':
     case 'sideDialog_registry_reconciled_record':
     case 'sideDialog_responses_reconciled_record':
     case 'tellask_reply_resolution_record':
@@ -2810,7 +2810,7 @@ function extractPrimingRecordsFromEvents(events: PersistedDialogRecord[]): Primi
       case 'sideDialog_created_record':
       case 'reminders_reconciled_record':
       case 'questions4human_reconciled_record':
-      case 'pending_sideDialogs_reconciled_record':
+      case 'active_callees_reconciled_record':
       case 'sideDialog_registry_reconciled_record':
       case 'sideDialog_responses_reconciled_record':
         return [];

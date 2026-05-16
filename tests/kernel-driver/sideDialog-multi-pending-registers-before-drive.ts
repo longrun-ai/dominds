@@ -72,7 +72,7 @@ async function main(): Promise<void> {
       'sideDialog drive scheduling must start only after all same-round sideDialogs are created',
     );
 
-    const pending = await DialogPersistence.loadPendingSideDialogs(root.id, root.status);
+    const pending = await DialogPersistence.loadActiveCalleeDispatches(root.id, root.status);
     assert.equal(pending.length, 2, 'expected both same-round pending records to be registered');
     assert.deepEqual(pending.map((record) => record.callId).sort(), [
       'call-nuwa-same-round',

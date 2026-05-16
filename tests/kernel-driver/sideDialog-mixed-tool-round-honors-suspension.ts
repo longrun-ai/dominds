@@ -27,7 +27,7 @@ async function main(): Promise<void> {
     const sessionSlug = 'mixed-tool-suspend';
     const tellaskBody = 'Please ask the human a blocker question before you finish.';
     const language = getWorkLanguage();
-    const followUpAnswer = 'I finished the local env check while @pangu is still pending.';
+    const followUpAnswer = 'I finished the local env check while @pangu remains active.';
 
     const expectedSideDialogPrompt = wrapPromptWithExpectedReplyTool({
       prompt: formatAssignmentFromAskerDialog({
@@ -137,9 +137,12 @@ async function main(): Promise<void> {
       'follow-up assistant round should complete while the pending tellask remains background work',
     );
 
-    const pendingSideDialogs = await DialogPersistence.loadPendingSideDialogs(root.id, root.status);
+    const activeCalleeDispatches = await DialogPersistence.loadActiveCalleeDispatches(
+      root.id,
+      root.status,
+    );
     assert.equal(
-      pendingSideDialogs.length,
+      activeCalleeDispatches.length,
       1,
       'expected the tellask-created sideDialog to remain pending after the follow-up round',
     );

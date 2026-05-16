@@ -46,14 +46,17 @@ import { isLanguageCode } from '@longrun-ai/kernel/types/language';
 import type {
   ActiveCalleeBatch,
   ActiveCalleeCompletion,
+  ActiveCalleeDispatchRecord,
   ActiveCalleeRecord,
   ActiveCalleesFile,
+  ActiveCalleesReconciledRecord,
   AgentThoughtRecord,
   AgentWordsRecord,
   AskerDialogStackFrame,
   CallSiteCourseNo,
   CallSiteGenseqNo,
   DialogAskerStackState,
+  DialogCalleeReplyTarget,
   DialogDeferredReplyReassertion,
   DialogFbrState,
   DialogFollowupReason,
@@ -66,7 +69,6 @@ import type {
   DialogPendingRuntimePrompt,
   DialogReplyDeliveryState,
   DialogSideDialogFinalResponseState,
-  DialogSideDialogReplyTarget,
   DialogUserWaitState,
   FuncCallRecord,
   FuncResultRecord,
@@ -74,8 +76,6 @@ import type {
   HumanTextRecord,
   MainDialogMetadataFile,
   NativeToolCallRecord,
-  PendingSideDialogsReconciledRecord,
-  PendingSideDialogStateRecord,
   PersistedDialogRecord,
   ProviderData,
   Questions4HumanFile,
@@ -123,7 +123,7 @@ import { randomUUID } from 'node:crypto';
 import * as path from 'path';
 import { WebSocket } from 'ws';
 import * as yaml from 'yaml';
-import type { PendingSideDialog } from './dialog';
+import type { ActiveCalleeDispatch } from './dialog';
 import {
   buildSideDialogAskerStack,
   Dialog,
@@ -220,9 +220,9 @@ function summarizeLatestProjectionState(latest: DialogLatestFile): Record<string
     pendingRuntimePromptUserLanguageCode: latest.pendingRuntimePrompt?.userLanguageCode ?? null,
     pendingRuntimePromptContentLength: latest.pendingRuntimePrompt?.content.length ?? null,
     pendingRuntimePromptReplyTargetCallId:
-      latest.pendingRuntimePrompt?.sideDialogReplyTarget?.callId ?? null,
-    pendingRuntimePromptReplyTargetOwnerDialogId:
-      latest.pendingRuntimePrompt?.sideDialogReplyTarget?.ownerDialogId ?? null,
+      latest.pendingRuntimePrompt?.calleeDialogReplyTarget?.callId ?? null,
+    pendingRuntimePromptReplyTargetCallerDialogId:
+      latest.pendingRuntimePrompt?.calleeDialogReplyTarget?.callerDialogId ?? null,
     pendingRuntimePromptExpectedReplyCallName:
       latest.pendingRuntimePrompt?.tellaskReplyDirective?.expectedReplyCallName ?? null,
     pendingRuntimePromptTargetCallId:
@@ -262,10 +262,10 @@ function summarizeLatestMutationPatch(
     pendingRuntimePromptGrammar: patch.pendingRuntimePrompt?.grammar ?? null,
     pendingRuntimePromptUserLanguageCode: patch.pendingRuntimePrompt?.userLanguageCode ?? null,
     pendingRuntimePromptContentLength: patch.pendingRuntimePrompt?.content.length ?? null,
-    pendingRuntimePromptReplyTargetOwnerDialogId:
-      patch.pendingRuntimePrompt?.sideDialogReplyTarget?.ownerDialogId ?? null,
+    pendingRuntimePromptReplyTargetCallerDialogId:
+      patch.pendingRuntimePrompt?.calleeDialogReplyTarget?.callerDialogId ?? null,
     pendingRuntimePromptReplyTargetCallId:
-      patch.pendingRuntimePrompt?.sideDialogReplyTarget?.callId ?? null,
+      patch.pendingRuntimePrompt?.calleeDialogReplyTarget?.callId ?? null,
     pendingRuntimePromptExpectedReplyCallName:
       patch.pendingRuntimePrompt?.tellaskReplyDirective?.expectedReplyCallName ?? null,
     pendingRuntimePromptTargetCallId:
@@ -1588,12 +1588,12 @@ type DialogAskerStackJsonlRow = Readonly<{
   endOffset: number;
 }>;
 
-function parseDialogSideDialogReplyTarget(value: unknown): DialogSideDialogReplyTarget | null {
+function parseDialogCalleeReplyTarget(value: unknown): DialogCalleeReplyTarget | null {
   if (!isRecord(value)) return null;
-  const ownerDialogId = value.ownerDialogId;
+  const callerDialogId = value.callerDialogId;
   const callType = value.callType;
   const callId = value.callId;
-  if (typeof ownerDialogId !== 'string' || typeof callId !== 'string') {
+  if (typeof callerDialogId !== 'string' || typeof callId !== 'string') {
     return null;
   }
   if (callType !== 'A' && callType !== 'B' && callType !== 'C') {
@@ -1606,7 +1606,7 @@ function parseDialogSideDialogReplyTarget(value: unknown): DialogSideDialogReply
   if (typeof callSiteGenseq !== 'number' || !Number.isInteger(callSiteGenseq)) return null;
   if (callSiteGenseq <= 0) return null;
   return {
-    ownerDialogId,
+    callerDialogId,
     callType,
     callId,
     callSiteCourse: toCallSiteCourseNo(callSiteCourse),
@@ -1640,28 +1640,28 @@ function parseDialogPendingRuntimePrompt(value: unknown): DialogPendingRuntimePr
   if (value.tellaskReplyDirective !== undefined && tellaskReplyDirective === null) {
     return null;
   }
-  const sideDialogReplyTarget =
-    value.sideDialogReplyTarget === undefined
+  const calleeDialogReplyTarget =
+    value.calleeDialogReplyTarget === undefined
       ? undefined
-      : parseDialogSideDialogReplyTarget(value.sideDialogReplyTarget);
-  if (value.sideDialogReplyTarget !== undefined && sideDialogReplyTarget === null) {
+      : parseDialogCalleeReplyTarget(value.calleeDialogReplyTarget);
+  if (value.calleeDialogReplyTarget !== undefined && calleeDialogReplyTarget === null) {
     return null;
   }
   const userLanguageCode = userLanguageCodeRaw;
   const skipTaskdoc = skipTaskdocRaw;
   const normalizedTellaskReplyDirective =
     tellaskReplyDirective === null ? undefined : tellaskReplyDirective;
-  const normalizedSideDialogReplyTarget =
-    sideDialogReplyTarget === null ? undefined : sideDialogReplyTarget;
+  const normalizedCalleeDialogReplyTarget =
+    calleeDialogReplyTarget === null ? undefined : calleeDialogReplyTarget;
   if (
-    normalizedSideDialogReplyTarget !== undefined &&
+    normalizedCalleeDialogReplyTarget !== undefined &&
     normalizedTellaskReplyDirective === undefined
   ) {
     return null;
   }
   if (
     normalizedTellaskReplyDirective !== undefined &&
-    normalizedSideDialogReplyTarget !== undefined
+    normalizedCalleeDialogReplyTarget !== undefined
   ) {
     return {
       content: value.content,
@@ -1671,7 +1671,7 @@ function parseDialogPendingRuntimePrompt(value: unknown): DialogPendingRuntimePr
       ...(userLanguageCode === undefined ? {} : { userLanguageCode }),
       ...(skipTaskdoc === undefined ? {} : { skipTaskdoc }),
       tellaskReplyDirective: normalizedTellaskReplyDirective,
-      sideDialogReplyTarget: normalizedSideDialogReplyTarget,
+      calleeDialogReplyTarget: normalizedCalleeDialogReplyTarget,
     };
   }
   if (normalizedTellaskReplyDirective !== undefined) {
@@ -2678,7 +2678,7 @@ export class DiskFileDialogStore extends DialogStore {
       mainDialog.id,
       rootStatus,
     );
-    const parentBackgroundCalleeDialogs = await DialogPersistence.loadPendingSideDialogs(
+    const parentBackgroundCalleeDialogs = await DialogPersistence.loadActiveCalleeDispatches(
       askerDialog.id,
       askerDialog.status,
     );
@@ -4140,13 +4140,13 @@ export class DiskFileDialogStore extends DialogStore {
     return await DialogPersistence.loadSideDialogAssignmentFromAsker(dialogId, status);
   }
 
-  public async loadPendingSideDialogs(
+  public async loadActiveCalleeDispatches(
     mainDialogId: DialogID,
     status: DialogStatusKind,
-  ): Promise<PendingSideDialog[]> {
-    const records = await DialogPersistence.loadPendingSideDialogs(mainDialogId, status);
+  ): Promise<ActiveCalleeDispatch[]> {
+    const records = await DialogPersistence.loadActiveCalleeDispatches(mainDialogId, status);
     return records.map((record) => ({
-      sideDialogId: new DialogID(record.sideDialogId, mainDialogId.rootId),
+      calleeDialogId: new DialogID(record.calleeDialogId, mainDialogId.rootId),
       createdAt: record.createdAt,
       mentionList: record.mentionList,
       tellaskContent: record.tellaskContent,
@@ -5229,7 +5229,7 @@ export class DiskFileDialogStore extends DialogStore {
           persistedStatus,
         );
         const parentDialogId = new DialogID(dialog.id.selfId, dialog.id.rootId);
-        const parentBackgroundCalleeDialogs = await DialogPersistence.loadPendingSideDialogs(
+        const parentBackgroundCalleeDialogs = await DialogPersistence.loadActiveCalleeDispatches(
           parentDialogId,
           persistedStatus,
         );
@@ -5237,7 +5237,7 @@ export class DiskFileDialogStore extends DialogStore {
         const parentBackgroundFreshBootsReasoningCalleeCount = parentBackgroundCalleeDialogs.filter(
           (entry) => entry.callName === 'freshBootsReasoning',
         ).length;
-        const sideBackgroundCalleeDialogs = await DialogPersistence.loadPendingSideDialogs(
+        const sideBackgroundCalleeDialogs = await DialogPersistence.loadActiveCalleeDispatches(
           sideDialogId,
           persistedStatus,
         );
@@ -5318,7 +5318,7 @@ export class DiskFileDialogStore extends DialogStore {
       case 'sideDialog_created_record':
       case 'reminders_reconciled_record':
       case 'questions4human_reconciled_record':
-      case 'pending_sideDialogs_reconciled_record':
+      case 'active_callees_reconciled_record':
       case 'sideDialog_registry_reconciled_record':
       case 'sideDialog_responses_reconciled_record':
       case 'tellask_anchor_record':
@@ -5442,27 +5442,6 @@ type Q4HWriteBackEntry =
       inFlight: Promise<void>;
     };
 
-type PendingSideDialogsWriteBackState =
-  | { kind: 'file'; records: PendingSideDialogStateRecord[] }
-  | { kind: 'deleted' };
-
-type PendingSideDialogsWriteBackEntry =
-  | {
-      kind: 'scheduled';
-      dialogId: DialogID;
-      status: DialogStatusKind;
-      state: PendingSideDialogsWriteBackState;
-      timer: NodeJS.Timeout;
-    }
-  | {
-      kind: 'flushing';
-      dialogId: DialogID;
-      status: DialogStatusKind;
-      state: PendingSideDialogsWriteBackState;
-      dirty: boolean;
-      inFlight: Promise<void>;
-    };
-
 type Q4HMutation =
   | { kind: 'noop' }
   | { kind: 'append'; question: HumanQuestion }
@@ -5474,20 +5453,6 @@ type Q4HMutateOutcome = {
   previousQuestions: HumanQuestion[];
   questions: HumanQuestion[];
   removedQuestion?: HumanQuestion;
-};
-
-type PendingSideDialogsMutation =
-  | { kind: 'noop' }
-  | { kind: 'append'; record: PendingSideDialogStateRecord }
-  | { kind: 'removeBySideDialogId'; sideDialogId: string }
-  | { kind: 'removeBySideDialogIds'; sideDialogIds: string[] }
-  | { kind: 'replace'; records: PendingSideDialogStateRecord[] }
-  | { kind: 'clear' };
-
-type PendingSideDialogsMutateOutcome = {
-  previousRecords: PendingSideDialogStateRecord[];
-  records: PendingSideDialogStateRecord[];
-  removedRecords: PendingSideDialogStateRecord[];
 };
 
 type ActiveCalleeResolveOutcome = Readonly<{
@@ -5619,20 +5584,12 @@ export class DialogPersistence {
 
   private static readonly LATEST_WRITEBACK_WINDOW_MS = 300;
   private static readonly Q4H_WRITEBACK_WINDOW_MS = 300;
-  private static readonly PENDING_SIDE_DIALOGS_WRITEBACK_WINDOW_MS = 300;
 
   private static readonly latestWriteBackMutexes: Map<string, AsyncFifoMutex> = new Map();
   private static readonly latestWriteBack: Map<string, LatestWriteBackEntry> = new Map();
 
   private static readonly q4hWriteBackMutexes: Map<string, AsyncFifoMutex> = new Map();
   private static readonly q4hWriteBack: Map<string, Q4HWriteBackEntry> = new Map();
-
-  private static readonly pendingSideDialogsWriteBackMutexes: Map<string, AsyncFifoMutex> =
-    new Map();
-  private static readonly pendingSideDialogsWriteBack: Map<
-    string,
-    PendingSideDialogsWriteBackEntry
-  > = new Map();
 
   private static readonly activeCalleesMutexes: Map<string, AsyncFifoMutex> = new Map();
 
@@ -5671,14 +5628,6 @@ export class DialogPersistence {
     return `${this.getDialogsRootDir()}|${status}|${dialogId.valueOf()}|course:${course}`;
   }
 
-  private static getPendingSideDialogsWriteBackMutex(key: string): AsyncFifoMutex {
-    const existing = this.pendingSideDialogsWriteBackMutexes.get(key);
-    if (existing) return existing;
-    const created = new AsyncFifoMutex();
-    this.pendingSideDialogsWriteBackMutexes.set(key, created);
-    return created;
-  }
-
   private static getActiveCalleesMutex(key: string): AsyncFifoMutex {
     const existing = this.activeCalleesMutexes.get(key);
     if (existing) return existing;
@@ -5695,13 +5644,6 @@ export class DialogPersistence {
   private static getQ4HWriteBackKey(dialogId: DialogID, status: DialogStatusKind): string {
     // Include dialogs root dir to avoid cross-test/process.cwd collisions.
     return `${this.getDialogsRootDir()}|${status}|${dialogId.valueOf()}|q4h`;
-  }
-
-  private static getPendingSideDialogsWriteBackKey(
-    mainDialogId: DialogID,
-    status: DialogStatusKind,
-  ): string {
-    return `${this.getDialogsRootDir()}|${status}|${mainDialogId.valueOf()}|pending-sideDialogs`;
   }
 
   private static getActiveCalleesKey(dialogId: DialogID, status: DialogStatusKind): string {
@@ -5818,9 +5760,9 @@ export class DialogPersistence {
     await fs.promises.rm(rootPath, { recursive: true, force: true });
   }
 
-  private static clonePendingSideDialogRecords(
-    records: readonly PendingSideDialogStateRecord[],
-  ): PendingSideDialogStateRecord[] {
+  private static cloneActiveCalleeDispatchRecords(
+    records: readonly ActiveCalleeDispatchRecord[],
+  ): ActiveCalleeDispatchRecord[] {
     return records.map((record) => ({
       ...record,
       mentionList: record.mentionList ? [...record.mentionList] : undefined,
@@ -5891,17 +5833,17 @@ export class DialogPersistence {
     );
   }
 
-  static async appendPendingSideDialogsReconciledRecord(
+  static async appendActiveCalleesReconciledRecord(
     dialogId: DialogID,
-    pendingSideDialogs: readonly PendingSideDialogStateRecord[],
+    activeCalleeDispatches: readonly ActiveCalleeDispatchRecord[],
     writeTarget: ReconciledRecordWriteTarget,
     status: DialogStatusKind,
   ): Promise<void> {
-    const record: PendingSideDialogsReconciledRecord = {
+    const record: ActiveCalleesReconciledRecord = {
       ts: formatUnifiedTimestamp(new Date()),
-      type: 'pending_sideDialogs_reconciled_record',
+      type: 'active_callees_reconciled_record',
       ...cloneRootGenerationAnchor(writeTarget.rootAnchor),
-      pendingSideDialogs: this.clonePendingSideDialogRecords(pendingSideDialogs),
+      activeCalleeDispatches: this.cloneActiveCalleeDispatchRecords(activeCalleeDispatches),
     };
     await this.appendEvent(
       dialogId,
@@ -6148,18 +6090,6 @@ export class DialogPersistence {
       }
     }
 
-    for (const [key, entry] of this.pendingSideDialogsWriteBack.entries()) {
-      if (!matchesMainDialogKey(key)) continue;
-      if (entry.kind === 'scheduled') {
-        clearTimeout(entry.timer);
-      }
-      this.pendingSideDialogsWriteBack.delete(key);
-    }
-    for (const key of this.pendingSideDialogsWriteBackMutexes.keys()) {
-      if (matchesMainDialogKey(key)) {
-        this.pendingSideDialogsWriteBackMutexes.delete(key);
-      }
-    }
     for (const key of this.activeCalleesMutexes.keys()) {
       if (matchesMainDialogKey(key)) {
         this.activeCalleesMutexes.delete(key);
@@ -7588,55 +7518,33 @@ export class DialogPersistence {
     }
   }
 
-  // === PHASE 6: SIDE DIALOG PENDING PERSISTENCE ===
+  // === ACTIVE CALLEE DISPATCH PERSISTENCE ===
 
   /**
-   * Save pending sideDialogs that have an outstanding tellask/reply delivery.
+   * Load active callee dispatches projected from active-callees.json.
    */
-  static async savePendingSideDialogs(
-    mainDialogId: DialogID,
-    pendingSideDialogs: PendingSideDialogStateRecord[],
-    rootAnchor?: RootGenerationAnchor,
-    status: DialogStatusKind = 'running',
-  ): Promise<void> {
-    const next = pendingSideDialogs.map((r) => ({ ...r }));
-    await this.mutatePendingSideDialogs(
-      mainDialogId,
-      () => ({ kind: 'replace', records: next }),
-      rootAnchor,
-      status,
-    );
-  }
-
-  /**
-   * Load pending sideDialogs that have an outstanding tellask/reply delivery.
-   */
-  static async loadPendingSideDialogs(
+  static async loadActiveCalleeDispatches(
     mainDialogId: DialogID,
     status: DialogStatusKind = 'running',
-  ): Promise<PendingSideDialogStateRecord[]> {
-    const key = this.getPendingSideDialogsWriteBackKey(mainDialogId, status);
-    const staged = this.pendingSideDialogsWriteBack.get(key);
-    if (staged) {
-      return staged.state.kind === 'deleted' ? [] : staged.state.records;
-    }
-
+  ): Promise<ActiveCalleeDispatchRecord[]> {
     try {
-      return await this.loadPendingSideDialogsFromDisk(mainDialogId, status);
+      const activeCallees = await this.loadActiveCallees(mainDialogId, status);
+      return this.projectActiveCalleeDispatches(activeCallees);
     } catch (error: unknown) {
       await this.rethrowAfterQuarantiningDialogPersistenceProblem(
         mainDialogId,
         status,
-        'loadPendingSideDialogs',
+        'loadActiveCalleeDispatches',
         error,
       );
-      throw new Error('unreachable after loadPendingSideDialogs persistence rethrow');
+      throw new Error('unreachable after loadActiveCalleeDispatches persistence rethrow');
     }
   }
 
-  private static isPendingSideDialogRecord(value: unknown): value is PendingSideDialogStateRecord {
+  private static isActiveCalleeDispatchRecord(value: unknown): value is ActiveCalleeDispatchRecord {
     if (!isRecord(value)) return false;
-    if (typeof value.sideDialogId !== 'string') return false;
+    if (typeof value.calleeDialogId !== 'string') return false;
+    if (value.calleeDialogId.trim() === '') return false;
     if (typeof value.createdAt !== 'string') return false;
     if (typeof value.batchId !== 'string') return false;
     if (value.batchId.trim() === '') return false;
@@ -7675,6 +7583,17 @@ export class DialogPersistence {
     return true;
   }
 
+  private static activeCalleeDispatchCalleeDialogId(record: ActiveCalleeDispatchRecord): string {
+    const calleeDialogId = record.calleeDialogId;
+    if (calleeDialogId.trim() === '') {
+      throw new Error(
+        `active-callee dispatch invariant violation: empty callee dialog id ` +
+          `(batchId=${record.batchId}, callId=${record.callId})`,
+      );
+    }
+    return calleeDialogId;
+  }
+
   private static isActiveCalleeCompletion(value: unknown): value is ActiveCalleeCompletion {
     if (!isRecord(value)) return false;
     if (value.kind === 'reply_tool') {
@@ -7694,7 +7613,8 @@ export class DialogPersistence {
   private static isActiveCalleeRecord(value: unknown): value is ActiveCalleeRecord {
     if (!isRecord(value)) return false;
     if (typeof value.callId !== 'string' || value.callId.trim() === '') return false;
-    if (typeof value.dialogId !== 'string' || value.dialogId.trim() === '') return false;
+    if (typeof value.calleeDialogId !== 'string' || value.calleeDialogId.trim() === '')
+      return false;
     if (
       value.callName !== 'tellask' &&
       value.callName !== 'tellaskSessionless' &&
@@ -7708,6 +7628,23 @@ export class DialogPersistence {
     }
     if (typeof value.createdAt !== 'string' || value.createdAt.trim() === '') return false;
     if (value.resolvedAt !== undefined && typeof value.resolvedAt !== 'string') return false;
+    if (typeof value.targetAgentId !== 'string' || value.targetAgentId.trim() === '') return false;
+    if (typeof value.tellaskContent !== 'string') return false;
+    if (value.callType !== 'A' && value.callType !== 'B' && value.callType !== 'C') return false;
+    if ('mentionList' in value) {
+      if (!Array.isArray(value.mentionList)) return false;
+      if (!value.mentionList.every((item) => typeof item === 'string')) return false;
+      if (
+        value.mentionList.length < 1 &&
+        (value.callName === 'tellask' || value.callName === 'tellaskSessionless')
+      ) {
+        return false;
+      }
+    }
+    if ('sessionSlug' in value) {
+      const sessionSlug = value.sessionSlug;
+      if (sessionSlug !== undefined && typeof sessionSlug !== 'string') return false;
+    }
     if (value.completion !== undefined && !this.isActiveCalleeCompletion(value.completion)) {
       return false;
     }
@@ -7757,14 +7694,14 @@ export class DialogPersistence {
   }
 
   private static assertNoDuplicateSessionedTellaskPendingRecords(
-    records: readonly PendingSideDialogStateRecord[],
+    records: readonly ActiveCalleeDispatchRecord[],
     context: Readonly<{
       rootId: string;
       selfId: string;
       status: DialogStatusKind;
     }>,
   ): void {
-    const seen = new Map<string, PendingSideDialogStateRecord>();
+    const seen = new Map<string, ActiveCalleeDispatchRecord>();
     for (const record of records) {
       if (record.callType !== 'B') continue;
       if (record.callName !== 'tellask') continue;
@@ -7775,191 +7712,208 @@ export class DialogPersistence {
       const previous = seen.get(key);
       if (previous) {
         throw new Error(
-          `pending-sideDialogs invariant violation: duplicate sessioned tellask pending record ` +
+          `active-callees invariant violation: duplicate sessioned tellask pending record ` +
             `(rootId=${context.rootId}, selfId=${context.selfId}, status=${context.status}, ` +
             `targetAgentId=${record.targetAgentId}, sessionSlug=${sessionSlug}, ` +
-            `previousSideDialogId=${previous.sideDialogId}, previousCallId=${previous.callId}, ` +
-            `duplicateSideDialogId=${record.sideDialogId}, duplicateCallId=${record.callId})`,
+            `previousCalleeDialogId=${previous.calleeDialogId}, previousCallId=${previous.callId}, ` +
+            `duplicateCalleeDialogId=${record.calleeDialogId}, duplicateCallId=${record.callId})`,
         );
       }
       seen.set(key, record);
     }
   }
 
-  private static async loadPendingSideDialogsFromDisk(
+  private static async loadActiveCalleeDispatchesFromDisk(
     mainDialogId: DialogID,
     status: DialogStatusKind,
-  ): Promise<PendingSideDialogStateRecord[]> {
-    const dialogPath = this.getDialogResponsesPath(mainDialogId, status);
-    const filePath = path.join(dialogPath, 'pending-sideDialogs.json');
-    try {
-      const content = await readPersistenceTextFile({
-        filePath,
-        source: 'pending_sideDialogs',
-        format: 'json',
-      });
-      const parsed: unknown = parsePersistenceJson({
-        content,
-        filePath,
-        source: 'pending_sideDialogs',
-      });
-      if (!Array.isArray(parsed) || !parsed.every((item) => this.isPendingSideDialogRecord(item))) {
-        throw buildInvalidPersistenceFileError({
-          source: 'pending_sideDialogs',
-          format: 'json',
-          filePath,
-        });
-      }
-      this.assertNoDuplicateSessionedTellaskPendingRecords(parsed, {
-        rootId: mainDialogId.rootId,
-        selfId: mainDialogId.selfId,
-        status,
-      });
-      return parsed;
-    } catch (error: unknown) {
-      if (getErrorCode(error) === 'ENOENT') return [];
-      throw error;
-    }
+  ): Promise<ActiveCalleeDispatchRecord[]> {
+    const activeCallees = await this.loadActiveCalleesFromDisk(mainDialogId, status);
+    return this.projectActiveCalleeDispatches(activeCallees);
   }
 
-  static async mutatePendingSideDialogs(
-    mainDialogId: DialogID,
-    mutator: (previous: PendingSideDialogStateRecord[]) => PendingSideDialogsMutation,
-    rootAnchor?: RootGenerationAnchor,
-    status: DialogStatusKind = 'running',
-  ): Promise<PendingSideDialogsMutateOutcome> {
-    const key = this.getPendingSideDialogsWriteBackKey(mainDialogId, status);
-    const mutex = this.getPendingSideDialogsWriteBackMutex(key);
-
-    const release = await mutex.acquire();
-    try {
-      const staged = this.pendingSideDialogsWriteBack.get(key);
-      const previousRecords =
-        staged && staged.state.kind === 'file'
-          ? staged.state.records
-          : staged && staged.state.kind === 'deleted'
-            ? []
-            : await this.loadPendingSideDialogsFromDisk(mainDialogId, status);
-
-      const mutation = mutator(previousRecords);
-      let nextRecords: PendingSideDialogStateRecord[] = previousRecords;
-      const removedRecords: PendingSideDialogStateRecord[] = [];
-
-      if (mutation.kind === 'noop') {
-        return { previousRecords, records: previousRecords, removedRecords: [] };
-      } else if (mutation.kind === 'append') {
-        nextRecords = [...previousRecords, mutation.record];
-      } else if (mutation.kind === 'removeBySideDialogId') {
-        for (const r of previousRecords) {
-          if (r.sideDialogId === mutation.sideDialogId) removedRecords.push(r);
+  private static projectActiveCalleeDispatches(
+    activeCallees: ActiveCalleesFile,
+  ): ActiveCalleeDispatchRecord[] {
+    const dispatches: ActiveCalleeDispatchRecord[] = [];
+    for (const batch of activeCallees.batches) {
+      for (const callee of batch.callees) {
+        if (callee.status !== 'pending') {
+          continue;
         }
-        nextRecords = previousRecords.filter((r) => r.sideDialogId !== mutation.sideDialogId);
-      } else if (mutation.kind === 'removeBySideDialogIds') {
-        const remove = new Set(mutation.sideDialogIds);
-        for (const r of previousRecords) {
-          if (remove.has(r.sideDialogId)) removedRecords.push(r);
-        }
-        nextRecords = previousRecords.filter((r) => !remove.has(r.sideDialogId));
-      } else if (mutation.kind === 'replace') {
-        nextRecords = [...mutation.records];
-      } else if (mutation.kind === 'clear') {
-        nextRecords = [];
-        removedRecords.push(...previousRecords);
-      } else {
-        const _exhaustive: never = mutation;
-        throw new Error(`Unhandled pending-sideDialogs mutation: ${String(_exhaustive)}`);
-      }
-
-      for (let index = 0; index < nextRecords.length; index += 1) {
-        if (!this.isPendingSideDialogRecord(nextRecords[index])) {
-          throw new Error(
-            `pending-sideDialogs write invariant violation: malformed record at index ${index} ` +
-              `(rootId=${mainDialogId.rootId}, selfId=${mainDialogId.selfId}, status=${status})`,
-          );
-        }
-      }
-      this.assertNoDuplicateSessionedTellaskPendingRecords(nextRecords, {
-        rootId: mainDialogId.rootId,
-        selfId: mainDialogId.selfId,
-        status,
-      });
-
-      const nextState: PendingSideDialogsWriteBackState =
-        nextRecords.length === 0 ? { kind: 'deleted' } : { kind: 'file', records: nextRecords };
-
-      const pending = this.pendingSideDialogsWriteBack.get(key);
-      if (!pending) {
-        const timer = setTimeout(() => {
-          void this.flushPendingSideDialogsWriteBack(key);
-        }, this.PENDING_SIDE_DIALOGS_WRITEBACK_WINDOW_MS);
-
-        this.pendingSideDialogsWriteBack.set(key, {
-          kind: 'scheduled',
-          dialogId: mainDialogId,
-          status,
-          state: nextState,
-          timer,
+        dispatches.push({
+          calleeDialogId: callee.calleeDialogId,
+          createdAt: callee.createdAt,
+          batchId: batch.batchId,
+          callName: callee.callName === 'tellaskBack' ? 'tellask' : callee.callName,
+          mentionList: callee.mentionList,
+          tellaskContent: callee.tellaskContent,
+          targetAgentId: callee.targetAgentId,
+          callId: callee.callId,
+          callSiteCourse: batch.callSite.course,
+          callSiteGenseq: batch.callSite.genseq,
+          callType: callee.callType,
+          sessionSlug: callee.sessionSlug,
         });
-      } else {
-        pending.state = nextState;
-        if (pending.kind === 'flushing') pending.dirty = true;
       }
+    }
+    return dispatches;
+  }
 
-      if (rootAnchor) {
-        await this.appendPendingSideDialogsReconciledRecord(
-          mainDialogId,
-          nextRecords,
-          rootAnchorWriteTarget(rootAnchor),
-          status,
+  private static buildActiveCalleesFileFromDispatches(
+    dispatches: readonly ActiveCalleeDispatchRecord[],
+  ): ActiveCalleesFile {
+    const batchesById = new Map<string, ActiveCalleeBatch>();
+    for (const dispatch of dispatches) {
+      const existingBatch = batchesById.get(dispatch.batchId);
+      const calleeDialogId = this.activeCalleeDispatchCalleeDialogId(dispatch);
+      const callee: ActiveCalleeRecord = {
+        callId: dispatch.callId,
+        calleeDialogId,
+        callName: dispatch.callName,
+        status: 'pending',
+        targetAgentId: dispatch.targetAgentId,
+        tellaskContent: dispatch.tellaskContent,
+        callType: dispatch.callType,
+        mentionList: dispatch.mentionList,
+        sessionSlug: dispatch.sessionSlug,
+        createdAt: dispatch.createdAt,
+      };
+      if (!existingBatch) {
+        batchesById.set(dispatch.batchId, {
+          batchId: dispatch.batchId,
+          callSite: {
+            course: dispatch.callSiteCourse,
+            genseq: dispatch.callSiteGenseq,
+          },
+          status: 'open',
+          callees: [callee],
+          createdAt: dispatch.createdAt,
+        });
+        continue;
+      }
+      if (
+        existingBatch.callSite.course !== dispatch.callSiteCourse ||
+        existingBatch.callSite.genseq !== dispatch.callSiteGenseq
+      ) {
+        throw new Error(
+          `active-callees dispatch invariant violation: batch call-site mismatch ` +
+            `(calleeDialogId=${dispatch.calleeDialogId}, batchId=${dispatch.batchId})`,
         );
       }
-
-      return { previousRecords, records: nextRecords, removedRecords };
-    } finally {
-      release();
+      if (existingBatch.callees.some((entry) => entry.callId === dispatch.callId)) {
+        continue;
+      }
+      batchesById.set(dispatch.batchId, {
+        ...existingBatch,
+        callees: [...existingBatch.callees, callee],
+      });
     }
+    return {
+      batches: [...batchesById.values()],
+    };
   }
 
-  static async appendPendingSideDialog(
+  static async appendActiveCalleeDispatch(
     mainDialogId: DialogID,
-    record: PendingSideDialogStateRecord,
+    record: ActiveCalleeDispatchRecord,
     rootAnchor?: RootGenerationAnchor,
     status: DialogStatusKind = 'running',
   ): Promise<void> {
     await this.upsertActiveCalleeFromPendingRecord(mainDialogId, record, status);
-    await this.mutatePendingSideDialogs(
-      mainDialogId,
-      () => ({ kind: 'append', record }),
-      rootAnchor,
-      status,
-    );
+    if (rootAnchor) {
+      await this.appendActiveCalleesReconciledRecord(
+        mainDialogId,
+        await this.loadActiveCalleeDispatches(mainDialogId, status),
+        rootAnchorWriteTarget(rootAnchor),
+        status,
+      );
+    }
   }
 
-  static async removePendingSideDialog(
+  static async saveActiveCalleeDispatches(
     mainDialogId: DialogID,
-    sideDialogId: string,
+    dispatches: ActiveCalleeDispatchRecord[],
     rootAnchor?: RootGenerationAnchor,
     status: DialogStatusKind = 'running',
   ): Promise<void> {
-    await this.mutatePendingSideDialogs(
+    await this.mutateActiveCallees(
       mainDialogId,
-      () => ({ kind: 'removeBySideDialogId', sideDialogId }),
-      rootAnchor,
+      () => this.buildActiveCalleesFileFromDispatches(dispatches),
       status,
     );
+    if (rootAnchor) {
+      await this.appendActiveCalleesReconciledRecord(
+        mainDialogId,
+        dispatches,
+        rootAnchorWriteTarget(rootAnchor),
+        status,
+      );
+    }
   }
 
-  static async clearPendingSideDialogs(
+  static async mutateActiveCalleeDispatches(
+    mainDialogId: DialogID,
+    mutator: (previous: ActiveCalleeDispatchRecord[]) => ActiveCalleeDispatchRecord[],
+    rootAnchor?: RootGenerationAnchor,
+    status: DialogStatusKind = 'running',
+  ): Promise<ActiveCalleeDispatchRecord[]> {
+    const previous = await this.loadActiveCalleeDispatches(mainDialogId, status);
+    const next = mutator(previous);
+    const activeCallees = this.buildActiveCalleesFileFromDispatches(next);
+    await this.mutateActiveCallees(mainDialogId, () => activeCallees, status);
+    if (rootAnchor) {
+      await this.appendActiveCalleesReconciledRecord(
+        mainDialogId,
+        next,
+        rootAnchorWriteTarget(rootAnchor),
+        status,
+      );
+    }
+    return next;
+  }
+
+  static async removeActiveCalleeDispatch(
+    mainDialogId: DialogID,
+    calleeDialogId: string,
+    rootAnchor?: RootGenerationAnchor,
+    status: DialogStatusKind = 'running',
+  ): Promise<void> {
+    await this.mutateActiveCallees(
+      mainDialogId,
+      (previous) => ({
+        batches: previous.batches
+          .map((batch) => ({
+            ...batch,
+            callees: batch.callees.filter((callee) => callee.calleeDialogId !== calleeDialogId),
+          }))
+          .filter((batch) => batch.callees.length > 0),
+      }),
+      status,
+    );
+    if (rootAnchor) {
+      await this.appendActiveCalleesReconciledRecord(
+        mainDialogId,
+        await this.loadActiveCalleeDispatches(mainDialogId, status),
+        rootAnchorWriteTarget(rootAnchor),
+        status,
+      );
+    }
+  }
+
+  static async clearActiveCalleeDispatches(
     mainDialogId: DialogID,
     rootAnchor?: RootGenerationAnchor,
     status: DialogStatusKind = 'running',
   ): Promise<void> {
-    await this.mutatePendingSideDialogs(
-      mainDialogId,
-      () => ({ kind: 'clear' }),
-      rootAnchor,
-      status,
-    );
+    await this.mutateActiveCallees(mainDialogId, () => ({ batches: [] }), status);
+    if (rootAnchor) {
+      await this.appendActiveCalleesReconciledRecord(
+        mainDialogId,
+        [],
+        rootAnchorWriteTarget(rootAnchor),
+        status,
+      );
+    }
   }
 
   private static async loadActiveCalleesFromDisk(
@@ -8048,6 +8002,14 @@ export class DialogPersistence {
             `(rootId=${dialogId.rootId}, selfId=${dialogId.selfId}, status=${status})`,
         );
       }
+      this.assertNoDuplicateSessionedTellaskPendingRecords(
+        this.projectActiveCalleeDispatches(next),
+        {
+          rootId: dialogId.rootId,
+          selfId: dialogId.selfId,
+          status,
+        },
+      );
       await this.writeActiveCalleesToDisk(dialogId, next, status);
       return next;
     } finally {
@@ -8057,18 +8019,24 @@ export class DialogPersistence {
 
   static async upsertActiveCalleeFromPendingRecord(
     dialogId: DialogID,
-    record: PendingSideDialogStateRecord,
+    record: ActiveCalleeDispatchRecord,
     status: DialogStatusKind = 'running',
   ): Promise<void> {
     await this.mutateActiveCallees(
       dialogId,
       (previous) => {
         const existingBatch = previous.batches.find((batch) => batch.batchId === record.batchId);
+        const calleeDialogId = this.activeCalleeDispatchCalleeDialogId(record);
         const callee: ActiveCalleeRecord = {
           callId: record.callId,
-          dialogId: record.sideDialogId,
+          calleeDialogId,
           callName: record.callName,
           status: 'pending',
+          targetAgentId: record.targetAgentId,
+          tellaskContent: record.tellaskContent,
+          callType: record.callType,
+          mentionList: record.mentionList,
+          sessionSlug: record.sessionSlug,
           createdAt: record.createdAt,
         };
         if (existingBatch === undefined) {
@@ -8108,7 +8076,7 @@ export class DialogPersistence {
         );
         if (existingCallee !== undefined) {
           if (
-            existingCallee.dialogId !== record.sideDialogId ||
+            existingCallee.calleeDialogId !== calleeDialogId ||
             existingCallee.callName !== record.callName
           ) {
             throw new Error(
@@ -8160,10 +8128,10 @@ export class DialogPersistence {
               `(rootId=${dialogId.rootId}, selfId=${dialogId.selfId}, batchId=${args.batchId}, callId=${args.callId})`,
           );
         }
-        if (callee.dialogId !== args.sideDialogId) {
+        if (callee.calleeDialogId !== args.sideDialogId) {
           throw new Error(
             `active-callees resolve invariant violation: callee dialog mismatch ` +
-              `(rootId=${dialogId.rootId}, selfId=${dialogId.selfId}, batchId=${args.batchId}, callId=${args.callId}, expected=${callee.dialogId}, actual=${args.sideDialogId})`,
+              `(rootId=${dialogId.rootId}, selfId=${dialogId.selfId}, batchId=${args.batchId}, callId=${args.callId}, expected=${callee.calleeDialogId}, actual=${args.sideDialogId})`,
           );
         }
         const completion: ActiveCalleeCompletion =
@@ -8249,155 +8217,6 @@ export class DialogPersistence {
       }),
       status,
     );
-  }
-
-  private static async flushPendingSideDialogsWriteBack(key: string): Promise<void> {
-    const mutex = this.getPendingSideDialogsWriteBackMutex(key);
-
-    let captured:
-      | {
-          dialogId: DialogID;
-          status: DialogStatusKind;
-          stateToWrite: PendingSideDialogsWriteBackState;
-          inFlight: Promise<void>;
-        }
-      | undefined;
-
-    {
-      const release = await mutex.acquire();
-      try {
-        const entry = this.pendingSideDialogsWriteBack.get(key);
-        if (!entry) return;
-        if (entry.kind === 'flushing') return;
-        if (entry.kind !== 'scheduled') return;
-        clearTimeout(entry.timer);
-
-        const cancellationToken = this.createMainDialogWriteBackCancellationToken(
-          entry.dialogId,
-          entry.status,
-        );
-        const inFlight = this.writePendingSideDialogsToDisk(
-          entry.dialogId,
-          entry.state,
-          entry.status,
-          cancellationToken,
-        );
-        captured = {
-          dialogId: entry.dialogId,
-          status: entry.status,
-          stateToWrite: entry.state,
-          inFlight,
-        };
-        this.pendingSideDialogsWriteBack.set(key, {
-          kind: 'flushing',
-          dialogId: entry.dialogId,
-          status: entry.status,
-          state: entry.state,
-          dirty: false,
-          inFlight,
-        });
-      } finally {
-        release();
-      }
-    }
-
-    if (!captured) return;
-
-    try {
-      await captured.inFlight;
-    } catch (error) {
-      const release = await mutex.acquire();
-      try {
-        const entry = this.pendingSideDialogsWriteBack.get(key);
-        if (!entry) return;
-        if (entry.kind !== 'flushing') return;
-        if (entry.inFlight !== captured.inFlight) return;
-        if (isDialogWriteBackCanceledError(error)) {
-          this.pendingSideDialogsWriteBack.delete(key);
-          return;
-        }
-
-        const timer = setTimeout(() => {
-          void this.flushPendingSideDialogsWriteBack(key);
-        }, this.PENDING_SIDE_DIALOGS_WRITEBACK_WINDOW_MS);
-
-        this.pendingSideDialogsWriteBack.set(key, {
-          kind: 'scheduled',
-          dialogId: entry.dialogId,
-          status: entry.status,
-          state: entry.state,
-          timer,
-        });
-      } finally {
-        release();
-      }
-      return;
-    }
-
-    const release = await mutex.acquire();
-    try {
-      const entry = this.pendingSideDialogsWriteBack.get(key);
-      if (!entry) return;
-      if (entry.kind !== 'flushing') return;
-      if (entry.inFlight !== captured.inFlight) return;
-
-      if (!entry.dirty) {
-        this.pendingSideDialogsWriteBack.delete(key);
-        return;
-      }
-
-      const timer = setTimeout(() => {
-        void this.flushPendingSideDialogsWriteBack(key);
-      }, this.PENDING_SIDE_DIALOGS_WRITEBACK_WINDOW_MS);
-      this.pendingSideDialogsWriteBack.set(key, {
-        kind: 'scheduled',
-        dialogId: entry.dialogId,
-        status: entry.status,
-        state: entry.state,
-        timer,
-      });
-    } finally {
-      release();
-    }
-  }
-
-  private static async writePendingSideDialogsToDisk(
-    mainDialogId: DialogID,
-    state: PendingSideDialogsWriteBackState,
-    status: DialogStatusKind,
-    cancellationToken?: MainDialogWriteBackCancellationToken,
-  ): Promise<void> {
-    if (cancellationToken) {
-      this.assertMainDialogWriteBackNotCanceled(
-        cancellationToken,
-        'writePendingSideDialogsToDisk:start',
-      );
-    }
-    const dialogPath = this.getDialogResponsesPath(mainDialogId, status);
-    const filePath = path.join(dialogPath, 'pending-sideDialogs.json');
-
-    if (state.kind === 'deleted') {
-      await fs.promises.rm(filePath, { force: true });
-      return;
-    }
-
-    const jsonContent = JSON.stringify(state.records, null, 2);
-    const tempFile = path.join(
-      dialogPath,
-      `.${path.basename(filePath)}.${process.pid}.${randomUUID()}.tmp`,
-    );
-    try {
-      await fs.promises.writeFile(tempFile, jsonContent, 'utf-8');
-    } catch (error: unknown) {
-      await this.rethrowWriteBackPathMissingAsCanceled(
-        error,
-        dialogPath,
-        cancellationToken,
-        'writePendingSideDialogsToDisk:write-temp',
-      );
-      throw error;
-    }
-    await this.renameWithRetry(tempFile, filePath, 5, cancellationToken);
   }
 
   /**
@@ -10358,7 +10177,7 @@ export class DialogPersistence {
         case 'sideDialog_created_record':
         case 'reminders_reconciled_record':
         case 'questions4human_reconciled_record':
-        case 'pending_sideDialogs_reconciled_record':
+        case 'active_callees_reconciled_record':
         case 'sideDialog_registry_reconciled_record':
         case 'sideDialog_responses_reconciled_record':
           break;

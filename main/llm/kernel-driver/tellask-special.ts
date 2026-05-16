@@ -5,11 +5,11 @@ import {
   toCallSiteCourseNo,
   toCallSiteGenseqNo,
   toRootGenerationAnchor,
+  type ActiveCalleeDispatchRecord,
   type CallSiteCourseNo,
   type CallSiteGenseqNo,
   type DialogReplyDeliveryState,
   type HumanQuestion,
-  type PendingSideDialogStateRecord,
   type TellaskCalleeRecord,
   type TellaskReplyDirective,
 } from '@longrun-ai/kernel/types/storage';
@@ -1228,13 +1228,13 @@ async function resolveDialogWithinRoot(
 // a same-slug update must later leave a same-callId historical fact for its caller.
 // A mismatched callId means we are about to strand the original call-site, so fail loud.
 function findReplacedRegisteredTellaskPendingRound(args: {
-  records: readonly PendingSideDialogStateRecord[];
-  expectedSideDialogId: string;
+  records: readonly ActiveCalleeDispatchRecord[];
+  expectedCalleeDialogId: string;
   targetAgentId: string;
   sessionSlug: string;
   expectedCallId: string;
-  ownerDialogId: string;
-}): PendingSideDialogStateRecord | undefined {
+  callerDialogId: string;
+}): ActiveCalleeDispatchRecord | undefined {
   const matches = args.records.filter(
     (record) =>
       record.callType === 'B' &&
@@ -1245,24 +1245,24 @@ function findReplacedRegisteredTellaskPendingRound(args: {
   if (matches.length > 1) {
     throw new Error(
       `registered tellask pending invariant violation: duplicate pending rounds ` +
-        `(ownerDialogId=${args.ownerDialogId}, targetAgentId=${args.targetAgentId}, ` +
+        `(callerDialogId=${args.callerDialogId}, targetAgentId=${args.targetAgentId}, ` +
         `sessionSlug=${args.sessionSlug})`,
     );
   }
   const match = matches[0];
   if (match !== undefined) {
-    if (match.sideDialogId !== args.expectedSideDialogId) {
+    if (match.calleeDialogId !== args.expectedCalleeDialogId) {
       throw new Error(
-        `registered tellask pending invariant violation: pending sideDialogId does not match ` +
-          `current registry sideDialogId (ownerDialogId=${args.ownerDialogId}, ` +
+        `registered tellask active-callee invariant violation: calleeDialogId does not match ` +
+          `current registry calleeDialogId (callerDialogId=${args.callerDialogId}, ` +
           `targetAgentId=${args.targetAgentId}, sessionSlug=${args.sessionSlug}, ` +
-          `pendingSideDialogId=${match.sideDialogId}, registrySideDialogId=${args.expectedSideDialogId})`,
+          `calleeDialogId=${match.calleeDialogId}, registryCalleeDialogId=${args.expectedCalleeDialogId})`,
       );
     }
     if (match.callId !== args.expectedCallId) {
       throw new Error(
         `registered tellask pending invariant violation: pending callId does not match ` +
-          `current assignment callId (ownerDialogId=${args.ownerDialogId}, ` +
+          `current assignment callId (callerDialogId=${args.callerDialogId}, ` +
           `targetAgentId=${args.targetAgentId}, sessionSlug=${args.sessionSlug}, ` +
           `pendingCallId=${match.callId}, assignmentCallId=${args.expectedCallId})`,
       );
@@ -1274,22 +1274,22 @@ function findReplacedRegisteredTellaskPendingRound(args: {
 // Materialize the superseded round as the caller-visible same-callId terminal fact.
 // This is part of the tellask contract, not merely a UI notification.
 async function finishRegisteredTellaskReplacement(args: {
-  ownerDialog: Dialog;
+  callerDialog: Dialog;
   sideDialog: SideDialog;
-  pendingRecord: PendingSideDialogStateRecord;
+  pendingRecord: ActiveCalleeDispatchRecord;
   responseBody: string;
 }): Promise<void> {
-  const { ownerDialog, sideDialog, pendingRecord, responseBody } = args;
+  const { callerDialog, sideDialog, pendingRecord, responseBody } = args;
   if (pendingRecord.callName !== 'tellask') {
     throw new Error(
       `registered tellask replacement invariant violation: unexpected callName ` +
-        `${pendingRecord.callName} (ownerDialogId=${ownerDialog.id.selfId}, ` +
+        `${pendingRecord.callName} (callerDialogId=${callerDialog.id.selfId}, ` +
         `sideDialogId=${sideDialog.id.selfId}, callId=${pendingRecord.callId})`,
     );
   }
 
   const language = getWorkLanguage();
-  const tellaskerId = ownerDialog.agentId;
+  const tellaskerId = callerDialog.agentId;
   const response = formatTellaskReplacementNoticeContent({
     responderId: sideDialog.agentId,
     tellaskerId,
@@ -1301,7 +1301,7 @@ async function finishRegisteredTellaskReplacement(args: {
   });
   const carryoverCallSiteCourse = pendingRecord.callSiteCourse;
   const carryoverContent =
-    carryoverCallSiteCourse !== undefined && carryoverCallSiteCourse !== ownerDialog.currentCourse
+    carryoverCallSiteCourse !== undefined && carryoverCallSiteCourse !== callerDialog.currentCourse
       ? formatTellaskCarryoverResultContent({
           callSiteCourse: carryoverCallSiteCourse,
           callName: pendingRecord.callName,
@@ -1315,7 +1315,7 @@ async function finishRegisteredTellaskReplacement(args: {
           language,
         })
       : undefined;
-  const result = await ownerDialog.receiveTellaskResponse(
+  const result = await callerDialog.receiveTellaskResponse(
     sideDialog.agentId,
     pendingRecord.callName,
     pendingRecord.mentionList,
@@ -1333,7 +1333,7 @@ async function finishRegisteredTellaskReplacement(args: {
       sessionSlug: pendingRecord.sessionSlug,
     },
   );
-  await ownerDialog.addChatMessages(result);
+  await callerDialog.addChatMessages(result);
 }
 
 async function reviveDialogIfUnblocked(
@@ -1357,7 +1357,7 @@ async function reviveDialogIfUnblocked(
       noPromptSideDialogResumeEntitlement:
         dialog instanceof SideDialog
           ? {
-              ownerDialogId: dialog.id.selfId,
+              callerDialogId: dialog.id.selfId,
               reason,
             }
           : undefined,
@@ -1702,8 +1702,8 @@ async function executeTellaskCall(
         effectiveFbrEffort: fbrEffort,
       });
       sub.setFbrConclusionToolsEnabled(false);
-      const pendingRecord: PendingSideDialogStateRecord = {
-        sideDialogId: sub.id.selfId,
+      const pendingRecord: ActiveCalleeDispatchRecord = {
+        calleeDialogId: sub.id.selfId,
         createdAt: formatUnifiedTimestamp(new Date()),
         batchId,
         callName: sideDialogCallName,
@@ -1716,7 +1716,7 @@ async function executeTellaskCall(
         callType: 'C',
       };
       await withSideDialogTxnLock(dlg.id, async () => {
-        await DialogPersistence.appendPendingSideDialog(
+        await DialogPersistence.appendActiveCalleeDispatch(
           dlg.id,
           pendingRecord,
           toRootGenerationAnchor({
@@ -2046,7 +2046,7 @@ async function executeTellaskCall(
           collectiveTargets: options?.collectiveTargets ?? [parseResult.agentId],
         };
         const pendingOwner = askerDialog;
-        const isSameRegisteredSessionPending = (record: PendingSideDialogStateRecord): boolean =>
+        const isSameRegisteredSessionPending = (record: ActiveCalleeDispatchRecord): boolean =>
           record.callType === 'B' &&
           record.callName === 'tellask' &&
           record.targetAgentId === parseResult.agentId &&
@@ -2060,7 +2060,7 @@ async function executeTellaskCall(
               kind: 'existing';
               sideDialog: SideDialog;
               previousPendingOwnerId: string;
-              replacedPending: PendingSideDialogStateRecord | undefined;
+              replacedPending: ActiveCalleeDispatchRecord | undefined;
             }
         > => {
           for (let attempt = 0; attempt < 4; attempt += 1) {
@@ -2089,8 +2089,8 @@ async function executeTellaskCall(
                   return { kind: 'retry' as const };
                 }
                 const previousAssignment = existing.assignmentFromAsker;
-                const pendingRecord: PendingSideDialogStateRecord = {
-                  sideDialogId: existing.id.selfId,
+                const pendingRecord: ActiveCalleeDispatchRecord = {
+                  calleeDialogId: existing.id.selfId,
                   createdAt: formatUnifiedTimestamp(new Date()),
                   batchId,
                   callName: sideDialogCallName,
@@ -2103,54 +2103,48 @@ async function executeTellaskCall(
                   callType: 'B',
                   sessionSlug: parseResult.sessionSlug,
                 };
-                let replacedPending: PendingSideDialogStateRecord | undefined;
+                let replacedPending: ActiveCalleeDispatchRecord | undefined;
                 try {
                   if (previousAssignment.askerDialogId !== pendingOwner.id.selfId) {
-                    await DialogPersistence.mutatePendingSideDialogs(
+                    await DialogPersistence.mutateActiveCalleeDispatches(
                       new DialogID(previousAssignment.askerDialogId, mainDialog.id.rootId),
                       (previousPending) => {
                         replacedPending = findReplacedRegisteredTellaskPendingRound({
                           records: previousPending,
-                          expectedSideDialogId: existing.id.selfId,
+                          expectedCalleeDialogId: existing.id.selfId,
                           targetAgentId: parseResult.agentId,
                           sessionSlug: parseResult.sessionSlug,
                           expectedCallId: previousAssignment.callId,
-                          ownerDialogId: previousAssignment.askerDialogId,
+                          callerDialogId: previousAssignment.askerDialogId,
                         });
-                        return {
-                          kind: 'replace',
-                          records: previousPending.filter(
-                            (record) => !isSameRegisteredSessionPending(record),
-                          ),
-                        };
+                        return previousPending.filter(
+                          (record) => !isSameRegisteredSessionPending(record),
+                        );
                       },
                       undefined,
                       pendingOwner.status,
                     );
                   }
 
-                  await DialogPersistence.mutatePendingSideDialogs(
+                  await DialogPersistence.mutateActiveCalleeDispatches(
                     pendingOwner.id,
                     (previousPending) => {
                       if (previousAssignment.askerDialogId === pendingOwner.id.selfId) {
                         replacedPending = findReplacedRegisteredTellaskPendingRound({
                           records: previousPending,
-                          expectedSideDialogId: existing.id.selfId,
+                          expectedCalleeDialogId: existing.id.selfId,
                           targetAgentId: parseResult.agentId,
                           sessionSlug: parseResult.sessionSlug,
                           expectedCallId: previousAssignment.callId,
-                          ownerDialogId: pendingOwner.id.selfId,
+                          callerDialogId: pendingOwner.id.selfId,
                         });
                       }
-                      return {
-                        kind: 'replace',
-                        records: [
-                          ...previousPending.filter(
-                            (record) => !isSameRegisteredSessionPending(record),
-                          ),
-                          pendingRecord,
-                        ],
-                      };
+                      return [
+                        ...previousPending.filter(
+                          (record) => !isSameRegisteredSessionPending(record),
+                        ),
+                        pendingRecord,
+                      ];
                     },
                     undefined,
                     pendingOwner.status,
@@ -2188,8 +2182,8 @@ async function executeTellaskCall(
                 } catch (err) {
                   log.error('Failed to update registered sideDialog assignment', err, {
                     rootId: mainDialog.id.rootId,
-                    sideDialogId: existing.id.selfId,
-                    ownerDialogId: pendingOwner.id.selfId,
+                    calleeDialogId: existing.id.selfId,
+                    callerDialogId: pendingOwner.id.selfId,
                     callId,
                     sessionSlug: parseResult.sessionSlug,
                   });
@@ -2219,8 +2213,8 @@ async function executeTellaskCall(
               );
               mainDialog.registerSideDialog(created);
               await mainDialog.saveSideDialogRegistry();
-              const pendingRecord: PendingSideDialogStateRecord = {
-                sideDialogId: created.id.selfId,
+              const pendingRecord: ActiveCalleeDispatchRecord = {
+                calleeDialogId: created.id.selfId,
                 createdAt: formatUnifiedTimestamp(new Date()),
                 batchId,
                 callName: sideDialogCallName,
@@ -2233,7 +2227,7 @@ async function executeTellaskCall(
                 callType: 'B',
                 sessionSlug: parseResult.sessionSlug,
               };
-              await DialogPersistence.appendPendingSideDialog(
+              await DialogPersistence.appendActiveCalleeDispatch(
                 pendingOwner.id,
                 pendingRecord,
                 undefined,
@@ -2298,7 +2292,7 @@ async function executeTellaskCall(
           // registered instead. The up-next prompt remains runtime scheduling state, not a durable
           // redo log.
           await finishRegisteredTellaskReplacement({
-            ownerDialog: previousPendingOwner,
+            callerDialog: previousPendingOwner,
             sideDialog: result.sideDialog,
             pendingRecord: result.replacedPending,
             responseBody: formatRegisteredTellaskTellaskerUpdateNotice(getWorkLanguage()),
@@ -2337,8 +2331,8 @@ async function executeTellaskCall(
               targetCallId: callId,
               tellaskContent: body,
             }),
-            sideDialogReplyTarget: {
-              ownerDialogId: pendingOwner.id.selfId,
+            calleeDialogReplyTarget: {
+              callerDialogId: pendingOwner.id.selfId,
               callType: 'B',
               callId,
               callSiteCourse,
@@ -2359,13 +2353,13 @@ async function executeTellaskCall(
               userLanguageCode: resumePrompt.userLanguageCode,
               tellaskReplyDirective: resumePrompt.tellaskReplyDirective,
               skipTaskdoc: resumePrompt.skipTaskdoc,
-              sideDialogReplyTarget: resumePrompt.sideDialogReplyTarget,
+              calleeDialogReplyTarget: resumePrompt.calleeDialogReplyTarget,
             });
             queuedRuntimePrompt = true;
             queuedIntoActiveLoop = result.sideDialog.isLocked();
           } catch (err) {
             log.warn('Failed to queue registered sideDialog update into active loop', err, {
-              sideDialogId: result.sideDialog.id.valueOf(),
+              calleeDialogId: result.sideDialog.id.valueOf(),
               sessionSlug: parseResult.sessionSlug,
               callId,
             });
@@ -2409,8 +2403,8 @@ async function executeTellaskCall(
               targetCallId: callId,
               tellaskContent: body,
             }),
-            sideDialogReplyTarget: {
-              ownerDialogId: pendingOwner.id.selfId,
+            calleeDialogReplyTarget: {
+              callerDialogId: pendingOwner.id.selfId,
               callType: 'B',
               callId,
               callSiteCourse,
@@ -2440,8 +2434,8 @@ async function executeTellaskCall(
           callSiteGenseq,
           collectiveTargets: options?.collectiveTargets ?? [parseResult.agentId],
         });
-        const pendingRecord: PendingSideDialogStateRecord = {
-          sideDialogId: sub.id.selfId,
+        const pendingRecord: ActiveCalleeDispatchRecord = {
+          calleeDialogId: sub.id.selfId,
           createdAt: formatUnifiedTimestamp(new Date()),
           batchId,
           callName: sideDialogCallName,
@@ -2454,7 +2448,7 @@ async function executeTellaskCall(
           callType: 'C',
         };
         await withSideDialogTxnLock(dlg.id, async () => {
-          await DialogPersistence.appendPendingSideDialog(
+          await DialogPersistence.appendActiveCalleeDispatch(
             dlg.id,
             pendingRecord,
             toRootGenerationAnchor({
@@ -2491,8 +2485,8 @@ async function executeTellaskCall(
             targetCallId: callId,
             tellaskContent: body,
           }),
-          sideDialogReplyTarget: {
-            ownerDialogId: dlg.id.selfId,
+          calleeDialogReplyTarget: {
+            callerDialogId: dlg.id.selfId,
             callType: 'C',
             callId,
             callSiteCourse,

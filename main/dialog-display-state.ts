@@ -7,7 +7,7 @@
  * Design constraints:
  * - `displayState` is a UI/diagnostic projection, not a business source of truth.
  * - Primary control flow must rely on underlying facts (active runs, stop requests,
- *   pending Q4H, pending sideDialogs, queued prompts, persisted status, explicit
+ *   pending Q4H, active callee dispatches, queued prompts, persisted status, explicit
  *   interruption/death markers).
  * - The projection is persisted to latest.yaml (`DialogLatestFile.displayState`) so it survives
  *   restarts and multi-tab views can converge quickly.
@@ -767,7 +767,7 @@ export async function refreshRunControlProjectionFromPersistenceFacts(
     | 'resume_dialog'
     | 'resume_all'
     | 'run_control_snapshot'
-    | 'pending_sideDialogs_changed'
+    | 'active_callee_dispatches_changed'
     | 'q4h_changed',
 ): Promise<DialogLatestFile | null> {
   let latest = await DialogPersistence.loadDialogLatest(dialogId, 'running');

@@ -53,7 +53,7 @@ import {
   resolvePromptReplyGuidance,
   resolveReplyTargetAgentId,
 } from './reply-guidance';
-import type { ScheduleDriveFn, SideDialogReplyTarget } from './sideDialog';
+import type { CalleeReplyTarget, ScheduleDriveFn } from './sideDialog';
 import {
   supplySideDialogResponseToAssignedAskerIfPendingV2,
   supplySideDialogResponseToSpecificAskerIfPendingV2,
@@ -100,7 +100,7 @@ type RuntimeSideDialogReplyReminderPrompt = Readonly<{
   origin: 'runtime';
   tellaskReplyDirective: KernelDriverRuntimeSideDialogPrompt['tellaskReplyDirective'];
   skipTaskdoc?: undefined;
-  sideDialogReplyTarget: KernelDriverRuntimeSideDialogPrompt['sideDialogReplyTarget'];
+  calleeDialogReplyTarget: KernelDriverRuntimeSideDialogPrompt['calleeDialogReplyTarget'];
 }>;
 
 type UpNextPrompt = DialogQueuedPromptState;
@@ -114,7 +114,7 @@ function buildRuntimeReplyReminderFollowUp(args: {
   directive: NonNullable<KernelDriverPrompt['tellaskReplyDirective']>;
   prompt: string;
   language: 'zh' | 'en';
-  sideDialogReplyTarget?: SideDialogReplyTarget;
+  calleeDialogReplyTarget?: CalleeReplyTarget;
 }): RuntimeReplyReminderPrompt | RuntimeSideDialogReplyReminderPrompt {
   const common = {
     prompt: args.prompt,
@@ -124,7 +124,7 @@ function buildRuntimeReplyReminderFollowUp(args: {
     userLanguageCode: args.language,
     tellaskReplyDirective: args.directive,
   };
-  return args.sideDialogReplyTarget === undefined
+  return args.calleeDialogReplyTarget === undefined
     ? {
         kind: 'runtime_reply_reminder',
         ...common,
@@ -132,7 +132,7 @@ function buildRuntimeReplyReminderFollowUp(args: {
     : {
         kind: 'runtime_sideDialog_reply_reminder',
         ...common,
-        sideDialogReplyTarget: args.sideDialogReplyTarget,
+        calleeDialogReplyTarget: args.calleeDialogReplyTarget,
       };
 }
 
@@ -148,7 +148,7 @@ async function queueReplyReminderFollowUp(args: {
       userLanguageCode: args.followUp.userLanguageCode,
       tellaskReplyDirective: args.followUp.tellaskReplyDirective,
       skipTaskdoc: args.followUp.skipTaskdoc,
-      sideDialogReplyTarget: args.followUp.sideDialogReplyTarget,
+      calleeDialogReplyTarget: args.followUp.calleeDialogReplyTarget,
     });
     return;
   }
@@ -303,7 +303,7 @@ function buildDisplayStateFromSuspensionStatus(args: {
 type PendingDiagnosticsSnapshot =
   | {
       kind: 'loaded';
-      ownerDialogId: string;
+      callerDialogId: string;
       status: 'running' | 'completed' | 'archived';
       totalCount: number;
       matchedSideDialogIds: string[];
@@ -318,31 +318,34 @@ type PendingDiagnosticsSnapshot =
     }
   | {
       kind: 'error';
-      ownerDialogId: string;
+      callerDialogId: string;
       status: 'running' | 'completed' | 'archived';
       error: string;
     };
 
 async function loadPendingDiagnosticsSnapshot(args: {
   rootId: string;
-  ownerDialogId: string;
+  callerDialogId: string;
   expectedSideDialogId: string;
   status: 'running' | 'completed' | 'archived';
 }): Promise<PendingDiagnosticsSnapshot> {
-  const ownerDialogIdObj = new DialogID(args.ownerDialogId, args.rootId);
+  const callerDialogIdObj = new DialogID(args.callerDialogId, args.rootId);
   try {
-    const pending = await DialogPersistence.loadPendingSideDialogs(ownerDialogIdObj, args.status);
-    const matchedSideDialogIds = pending
-      .filter((record) => record.sideDialogId === args.expectedSideDialogId)
-      .map((record) => record.sideDialogId);
+    const activeCalleeDispatches = await DialogPersistence.loadActiveCalleeDispatches(
+      callerDialogIdObj,
+      args.status,
+    );
+    const matchedSideDialogIds = activeCalleeDispatches
+      .filter((record) => record.calleeDialogId === args.expectedSideDialogId)
+      .map((record) => record.calleeDialogId);
     return {
       kind: 'loaded',
-      ownerDialogId: args.ownerDialogId,
+      callerDialogId: args.callerDialogId,
       status: args.status,
-      totalCount: pending.length,
+      totalCount: activeCalleeDispatches.length,
       matchedSideDialogIds,
-      records: pending.map((record) => ({
-        sideDialogId: record.sideDialogId,
+      records: activeCalleeDispatches.map((record) => ({
+        sideDialogId: record.calleeDialogId,
         callType: record.callType,
         targetAgentId: record.targetAgentId,
         sessionSlug: record.sessionSlug,
@@ -355,7 +358,7 @@ async function loadPendingDiagnosticsSnapshot(args: {
   } catch (err) {
     return {
       kind: 'error',
-      ownerDialogId: args.ownerDialogId,
+      callerDialogId: args.callerDialogId,
       status: args.status,
       error: err instanceof Error ? err.message : String(err),
     };
@@ -451,7 +454,7 @@ function hasNoPromptSideDialogResumeEntitlement(
   if (!entitlement) {
     return false;
   }
-  return entitlement.ownerDialogId === dialog.id.selfId;
+  return entitlement.callerDialogId === dialog.id.selfId;
 }
 
 function hasParentReviveEntitlement(
@@ -464,7 +467,7 @@ function hasParentReviveEntitlement(
   }
   if (
     driveOptions?.source !== 'kernel_driver_supply_response_parent_revive' ||
-    entitlement.ownerDialogId !== dialog.id.selfId
+    entitlement.callerDialogId !== dialog.id.selfId
   ) {
     return false;
   }
@@ -803,7 +806,7 @@ async function resolveEffectivePrompt(
             const prompt: KernelDriverRuntimeSideDialogPrompt = {
               ...runtimeCommon,
               tellaskReplyDirective: upNext.tellaskReplyDirective,
-              sideDialogReplyTarget: upNext.sideDialogReplyTarget,
+              calleeDialogReplyTarget: upNext.calleeDialogReplyTarget,
             };
             return prompt;
           }
@@ -841,7 +844,7 @@ export async function executeDriveRound(args: {
   let shouldRefreshDisplayStateAfterActiveRunCleared = false;
   let followUp: FollowUpPrompt | undefined;
   let driveResult: KernelDriverCoreResult | undefined;
-  let sideDialogReplyTarget: SideDialogReplyTarget | undefined;
+  let calleeDialogReplyTarget: CalleeReplyTarget | undefined;
   let activeTellaskReplyDirective: KernelDriverPrompt['tellaskReplyDirective'] | undefined;
   let activePromptWasReplyToolReminder = false;
   let shouldPauseAfterLocalUserInterjection = false;
@@ -1171,7 +1174,7 @@ export async function executeDriveRound(args: {
         );
       }
     }
-    sideDialogReplyTarget = effectivePrompt?.sideDialogReplyTarget;
+    calleeDialogReplyTarget = effectivePrompt?.calleeDialogReplyTarget;
     const replyGuidance = await resolvePromptReplyGuidance({
       dlg: dialog,
       prompt: effectivePrompt,
@@ -1213,7 +1216,7 @@ export async function executeDriveRound(args: {
       effectivePrompt,
       coreDriveOptions,
     );
-    sideDialogReplyTarget = driveResult.lastAssistantReplyTarget ?? sideDialogReplyTarget;
+    calleeDialogReplyTarget = driveResult.lastAssistantReplyTarget ?? calleeDialogReplyTarget;
     interruptedBySignal = getActiveRunSignal(dialog.id)?.aborted === true;
     if (!interruptedBySignal) {
       followUp = dialog.takeUpNext();
@@ -1310,7 +1313,7 @@ export async function executeDriveRound(args: {
                       language,
                     }),
                     language,
-                    sideDialogReplyTarget,
+                    calleeDialogReplyTarget,
                   });
                   log.debug(
                     'kernel-driver queued sideDialog replyTellask reminder after plain reply',
@@ -1318,18 +1321,18 @@ export async function executeDriveRound(args: {
                     {
                       dialogId: dialog.id.valueOf(),
                       targetCallId: activeTellaskReplyDirective.targetCallId,
-                      targetOwnerDialogId: sideDialogReplyTarget?.ownerDialogId,
+                      targetCallerDialogId: calleeDialogReplyTarget?.callerDialogId,
                     },
                   );
                 } else {
                   const directFallbackCallId = `direct-fallback-${generateShortId()}`;
                   let supplied = false;
-                  if (sideDialogReplyTarget) {
+                  if (calleeDialogReplyTarget) {
                     supplied = await supplySideDialogResponseToSpecificAskerIfPendingV2({
                       sideDialog: dialog,
                       responseText: directFallbackResponse.responseText,
                       responseGenseq: directFallbackResponse.responseGenseq,
-                      target: sideDialogReplyTarget,
+                      target: calleeDialogReplyTarget,
                       deliveryMode: 'direct_fallback',
                       directFallbackSource: directFallbackResponse.source,
                       replyResolution: {
@@ -1367,10 +1370,10 @@ export async function executeDriveRound(args: {
                     });
                   }
 
-                  if (!supplied && sideDialogReplyTarget) {
+                  if (!supplied && calleeDialogReplyTarget) {
                     const diagnostics = await loadPendingDiagnosticsSnapshot({
                       rootId: dialog.id.rootId,
-                      ownerDialogId: sideDialogReplyTarget.ownerDialogId,
+                      callerDialogId: calleeDialogReplyTarget.callerDialogId,
                       expectedSideDialogId: dialog.id.selfId,
                       status: dialog.status,
                     });
@@ -1379,9 +1382,9 @@ export async function executeDriveRound(args: {
                       undefined,
                       {
                         calleeId: dialog.id.valueOf(),
-                        targetOwnerDialogId: sideDialogReplyTarget.ownerDialogId,
-                        targetCallType: sideDialogReplyTarget.callType,
-                        targetCallId: sideDialogReplyTarget.callId,
+                        targetCallerDialogId: calleeDialogReplyTarget.callerDialogId,
+                        targetCallType: calleeDialogReplyTarget.callType,
+                        targetCallId: calleeDialogReplyTarget.callId,
                         diagnostics,
                       },
                     );
@@ -1522,7 +1525,7 @@ export async function executeDriveRound(args: {
                   const prompt: KernelDriverRuntimeSideDialogPrompt = {
                     ...runtimeCommon,
                     tellaskReplyDirective: followUp.tellaskReplyDirective,
-                    sideDialogReplyTarget: followUp.sideDialogReplyTarget,
+                    calleeDialogReplyTarget: followUp.calleeDialogReplyTarget,
                   };
                   return prompt;
                 }

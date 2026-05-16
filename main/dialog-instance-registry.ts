@@ -57,7 +57,7 @@ export async function getOrRestoreMainDialog(
   if (existing) {
     existing.setPersistenceStatus(status);
     await existing.loadSideDialogRegistry();
-    await existing.loadPendingSideDialogsFromPersistence();
+    await existing.loadActiveCalleeDispatchesFromPersistence();
     return existing;
   }
 
@@ -122,7 +122,7 @@ export async function getOrRestoreMainDialog(
   // Keep the in-memory main dialog fully hydrated regardless of persistence status
   // (running/completed/archived) so sideDialog lookup is stable across UI navigation.
   await mainDialog.loadSideDialogRegistry();
-  await mainDialog.loadPendingSideDialogsFromPersistence();
+  await mainDialog.loadActiveCalleeDispatchesFromPersistence();
   return mainDialog;
 }
 

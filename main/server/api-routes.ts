@@ -219,12 +219,12 @@ type BackgroundCalleeDialogSummary = Readonly<{
 function summarizeBackgroundCalleeDialogs(
   activeCallees: Awaited<ReturnType<typeof DialogPersistence.loadActiveCallees>>,
 ): BackgroundCalleeDialogSummary {
-  const pendingCallees = activeCallees.batches.flatMap((batch) =>
+  const activePendingCallees = activeCallees.batches.flatMap((batch) =>
     batch.callees.filter((callee) => callee.status === 'pending'),
   );
   return {
-    backgroundCalleeDialogCount: pendingCallees.length,
-    backgroundFreshBootsReasoningCalleeCount: pendingCallees.filter(
+    backgroundCalleeDialogCount: activePendingCallees.length,
+    backgroundFreshBootsReasoningCalleeCount: activePendingCallees.filter(
       (entry) => entry.callName === 'freshBootsReasoning',
     ).length,
   };

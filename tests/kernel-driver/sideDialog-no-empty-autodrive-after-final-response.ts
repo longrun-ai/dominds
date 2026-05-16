@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 
+import { formatUnifiedTimestamp } from '@longrun-ai/kernel/utils/time';
 import { refreshRunControlProjectionFromPersistenceFacts } from '../../main/dialog-display-state';
 import { driveDialogStream } from '../../main/llm/kernel-driver';
 import { executeDriveRound } from '../../main/llm/kernel-driver/flow';
@@ -338,10 +339,11 @@ async function main(): Promise<void> {
         collectiveTargets: ['pangu'],
       },
     );
-    await DialogPersistence.savePendingSideDialogs(sessionlessRoot.id, [
+    await DialogPersistence.saveActiveCalleeDispatches(sessionlessRoot.id, [
       {
-        sideDialogId: sessionlessSideDialog.id.selfId,
-        createdAt: new Date().toISOString(),
+        calleeDialogId: sessionlessSideDialog.id.selfId,
+        createdAt: formatUnifiedTimestamp(new Date()),
+        batchId: 'sessionless-cleanup-call-batch',
         callName: 'tellaskSessionless',
         mentionList: ['@pangu'],
         tellaskContent: sessionlessRequest,
@@ -403,8 +405,8 @@ async function main(): Promise<void> {
             targetCallId: 'sessionless-cleanup-call',
             tellaskContent: sessionlessRequest,
           },
-          sideDialogReplyTarget: {
-            ownerDialogId: sessionlessRoot.id.selfId,
+          calleeDialogReplyTarget: {
+            callerDialogId: sessionlessRoot.id.selfId,
             callType: 'C',
             callId: 'sessionless-cleanup-call',
             callSiteCourse: 1,
@@ -454,7 +456,7 @@ async function main(): Promise<void> {
       'queued reply reminder should carry the active reply obligation',
     );
     assert.equal(
-      queuedReplyReminder?.sideDialogReplyTarget.callId,
+      queuedReplyReminder?.calleeDialogReplyTarget.callId,
       'sessionless-cleanup-call',
       'queued reply reminder should target the pending tellask call',
     );

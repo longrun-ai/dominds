@@ -144,7 +144,7 @@ async function main(): Promise<void> {
 
     await waitFor(
       async () => {
-        const pending = await DialogPersistence.loadPendingSideDialogs(root.id, root.status);
+        const pending = await DialogPersistence.loadActiveCalleeDispatches(root.id, root.status);
         return pending.length === 0;
       },
       3_000,

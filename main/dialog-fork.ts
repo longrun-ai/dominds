@@ -3,13 +3,13 @@ import path from 'node:path';
 
 import type { DialogDisplayState } from '@longrun-ai/kernel/types/display-state';
 import type {
+  ActiveCalleeDispatchRecord,
+  ActiveCalleesReconciledRecord,
   DialogAskerStackState,
   DialogMetadataFile,
   FuncResultContentItem,
   HumanQuestion,
   MainDialogMetadataFile,
-  PendingSideDialogStateRecord,
-  PendingSideDialogsReconciledRecord,
   PersistedDialogRecord,
   Questions4HumanReconciledRecord,
   ReminderSnapshotItem,
@@ -66,7 +66,7 @@ type ForkDialogPlan = Readonly<{
   currentCourse: number;
   reminders: ReadonlyArray<Reminder>;
   questions: ReadonlyArray<HumanQuestion>;
-  pendingSideDialogs: ReadonlyArray<PendingSideDialogStateRecord>;
+  activeCalleeDispatches: ReadonlyArray<ActiveCalleeDispatchRecord>;
   registryEntries: ReadonlyArray<SideDialogRegistryStateRecord>;
   sideDialogResponses: ReadonlyArray<SideDialogResponseStateRecord>;
   childCount: number;
@@ -75,7 +75,7 @@ type ForkDialogPlan = Readonly<{
 type ForkSnapshot = Readonly<{
   reminders: ReadonlyArray<Reminder>;
   questions: ReadonlyArray<HumanQuestion>;
-  pendingSideDialogs: ReadonlyArray<PendingSideDialogStateRecord>;
+  activeCalleeDispatches: ReadonlyArray<ActiveCalleeDispatchRecord>;
   registryEntries: ReadonlyArray<SideDialogRegistryStateRecord>;
   sideDialogResponses: ReadonlyArray<SideDialogResponseStateRecord>;
 }>;
@@ -125,10 +125,10 @@ function cloneQuestions(questions: readonly HumanQuestion[]): HumanQuestion[] {
   }));
 }
 
-function clonePendingSideDialogs(
-  pendingSideDialogs: readonly PendingSideDialogStateRecord[],
-): PendingSideDialogStateRecord[] {
-  return pendingSideDialogs.map((entry) => ({
+function cloneActiveCalleeDispatches(
+  activeCalleeDispatches: readonly ActiveCalleeDispatchRecord[],
+): ActiveCalleeDispatchRecord[] {
+  return activeCalleeDispatches.map((entry) => ({
     ...entry,
     mentionList: entry.mentionList ? [...entry.mentionList] : undefined,
   }));
@@ -235,7 +235,7 @@ function isForkStateRecord(
 ):
   | RemindersReconciledRecord
   | Questions4HumanReconciledRecord
-  | PendingSideDialogsReconciledRecord
+  | ActiveCalleesReconciledRecord
   | SideDialogRegistryReconciledRecord
   | SideDialogResponsesReconciledRecord
   | SideDialogCreatedRecord
@@ -244,7 +244,7 @@ function isForkStateRecord(
     case 'sideDialog_created_record':
     case 'reminders_reconciled_record':
     case 'questions4human_reconciled_record':
-    case 'pending_sideDialogs_reconciled_record':
+    case 'active_callees_reconciled_record':
     case 'sideDialog_registry_reconciled_record':
     case 'sideDialog_responses_reconciled_record':
       return record;
@@ -281,7 +281,7 @@ function isPersistedMessageRecord(record: PersistedDialogRecord): boolean {
     case 'sideDialog_created_record':
     case 'reminders_reconciled_record':
     case 'questions4human_reconciled_record':
-    case 'pending_sideDialogs_reconciled_record':
+    case 'active_callees_reconciled_record':
     case 'sideDialog_registry_reconciled_record':
     case 'sideDialog_responses_reconciled_record':
       return false;
@@ -392,7 +392,7 @@ function rewriteRecordForFork(
     case 'sideDialog_created_record':
     case 'reminders_reconciled_record':
     case 'questions4human_reconciled_record':
-    case 'pending_sideDialogs_reconciled_record':
+    case 'active_callees_reconciled_record':
     case 'sideDialog_registry_reconciled_record':
     case 'sideDialog_responses_reconciled_record':
       throw new Error(`Fork transcript copy must not include state record ${record.type}`);
@@ -497,7 +497,7 @@ async function collectForkSnapshot(
   const courseNumbers = await listDialogCourseNumbers(dialogId, status);
   let latestReminders: ReminderSnapshotItem[] | null = null;
   let latestQuestions: HumanQuestion[] | null = null;
-  let latestPending: PendingSideDialogStateRecord[] | null = null;
+  let latestActiveCalleeDispatches: ActiveCalleeDispatchRecord[] | null = null;
   let latestRegistry: SideDialogRegistryStateRecord[] | null = null;
   let latestResponses: SideDialogResponseStateRecord[] | null = null;
 
@@ -514,8 +514,10 @@ async function collectForkSnapshot(
         case 'questions4human_reconciled_record':
           latestQuestions = cloneQuestions(stateRecord.questions);
           break;
-        case 'pending_sideDialogs_reconciled_record':
-          latestPending = clonePendingSideDialogs(stateRecord.pendingSideDialogs);
+        case 'active_callees_reconciled_record':
+          latestActiveCalleeDispatches = cloneActiveCalleeDispatches(
+            stateRecord.activeCalleeDispatches,
+          );
           break;
         case 'sideDialog_registry_reconciled_record':
           latestRegistry = cloneRegistryEntries(stateRecord.entries);
@@ -537,7 +539,7 @@ async function collectForkSnapshot(
     reminders:
       latestReminders !== null ? latestReminders.map((item) => cloneReminderSnapshot(item)) : [],
     questions: latestQuestions ?? [],
-    pendingSideDialogs: latestPending ?? [],
+    activeCalleeDispatches: latestActiveCalleeDispatches ?? [],
     registryEntries: latestRegistry ?? [],
     sideDialogResponses: latestResponses ?? [],
   };
@@ -554,15 +556,15 @@ async function collectIncludedSideDialogs(args: {
   const included = new Map<string, IncludedSideDialog>();
 
   while (queue.length > 0) {
-    const ownerDialogId = queue.shift();
-    if (!ownerDialogId) break;
-    if (scannedDialogSelfIds.has(ownerDialogId.selfId)) continue;
-    scannedDialogSelfIds.add(ownerDialogId.selfId);
+    const sourceDialogId = queue.shift();
+    if (!sourceDialogId) break;
+    if (scannedDialogSelfIds.has(sourceDialogId.selfId)) continue;
+    scannedDialogSelfIds.add(sourceDialogId.selfId);
 
-    const courseNumbers = await listDialogCourseNumbers(ownerDialogId, args.sourceStatus);
+    const courseNumbers = await listDialogCourseNumbers(sourceDialogId, args.sourceStatus);
     for (const course of courseNumbers) {
       const events = await DialogPersistence.readCourseEvents(
-        ownerDialogId,
+        sourceDialogId,
         course,
         args.sourceStatus,
       );
@@ -660,7 +662,7 @@ async function buildDialogForkPlan(args: {
     currentCourse: retainedCurrentCourse,
     reminders: snapshot.reminders,
     questions: snapshot.questions,
-    pendingSideDialogs: snapshot.pendingSideDialogs,
+    activeCalleeDispatches: snapshot.activeCalleeDispatches,
     registryEntries: snapshot.registryEntries,
     sideDialogResponses: snapshot.sideDialogResponses,
     childCount: args.childCount,
@@ -696,11 +698,11 @@ async function appendForkBaselineState(
     ...FORK_BASELINE_ANCHOR,
     questions: cloneQuestions(plan.questions),
   };
-  const pendingRecord: PendingSideDialogsReconciledRecord = {
+  const activeCalleesRecord: ActiveCalleesReconciledRecord = {
     ts: baselineTs,
-    type: 'pending_sideDialogs_reconciled_record',
+    type: 'active_callees_reconciled_record',
     ...FORK_BASELINE_ANCHOR,
-    pendingSideDialogs: clonePendingSideDialogs(plan.pendingSideDialogs),
+    activeCalleeDispatches: cloneActiveCalleeDispatches(plan.activeCalleeDispatches),
   };
   const registryRecord: SideDialogRegistryReconciledRecord = {
     ts: baselineTs,
@@ -716,7 +718,7 @@ async function appendForkBaselineState(
   };
   await DialogPersistence.appendEvent(plan.targetId, 1, remindersRecord, 'running');
   await DialogPersistence.appendEvent(plan.targetId, 1, q4hRecord, 'running');
-  await DialogPersistence.appendEvent(plan.targetId, 1, pendingRecord, 'running');
+  await DialogPersistence.appendEvent(plan.targetId, 1, activeCalleesRecord, 'running');
   await DialogPersistence.appendEvent(plan.targetId, 1, registryRecord, 'running');
   await DialogPersistence.appendEvent(plan.targetId, 1, responsesRecord, 'running');
 }
@@ -798,12 +800,9 @@ async function persistForkPlan(args: {
 
   await DialogPersistence._saveReminderState(plan.targetId, [...plan.reminders], 'running');
   await DialogPersistence._saveQuestions4HumanState(plan.targetId, [...plan.questions], 'running');
-  await DialogPersistence.savePendingSideDialogs(
-    plan.targetId,
-    [...plan.pendingSideDialogs],
-    undefined,
-    'running',
-  );
+  for (const record of plan.activeCalleeDispatches) {
+    await DialogPersistence.appendActiveCalleeDispatch(plan.targetId, record, undefined, 'running');
+  }
   await DialogPersistence.saveSideDialogRegistry(
     plan.targetId,
     plan.registryEntries.map((entry) => ({

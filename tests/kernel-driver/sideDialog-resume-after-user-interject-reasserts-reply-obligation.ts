@@ -40,7 +40,7 @@ async function main(): Promise<void> {
       targetCallId: 'root-to-pangu-call',
       tellaskContent: 'Finish the parent side dialog after the nested work returns.',
     };
-    const interjectPrompt = 'Handle this local interruption first while nuwa is still pending.';
+    const interjectPrompt = 'Handle this local interruption first while nuwa remains active.';
     const interjectResponse = 'Handled the local interruption only.';
     const followupInterjectPrompt = 'One more temporary question before we resume the main task.';
     const followupInterjectResponse = 'Handled the follow-up interruption locally as well.';
@@ -99,9 +99,10 @@ async function main(): Promise<void> {
       },
     ]);
 
-    await DialogPersistence.appendPendingSideDialog(root.id, {
-      sideDialogId: sideDialog.id.selfId,
+    await DialogPersistence.appendActiveCalleeDispatch(root.id, {
+      calleeDialogId: sideDialog.id.selfId,
       createdAt: formatUnifiedTimestamp(new Date()),
+      batchId: 'root-to-pangu-call-batch',
       callName: 'tellaskSessionless',
       mentionList: ['@pangu'],
       tellaskContent: assignmentDirective.tellaskContent,
@@ -126,9 +127,10 @@ async function main(): Promise<void> {
         collectiveTargets: ['nuwa'],
       },
     );
-    await DialogPersistence.appendPendingSideDialog(sideDialog.id, {
-      sideDialogId: nestedSideDialog.id.selfId,
+    await DialogPersistence.appendActiveCalleeDispatch(sideDialog.id, {
+      calleeDialogId: nestedSideDialog.id.selfId,
       createdAt: formatUnifiedTimestamp(new Date()),
+      batchId: 'pangu-to-nuwa-call-batch',
       callName: 'tellaskSessionless',
       mentionList: ['@nuwa'],
       tellaskContent: 'Wait for nested side dialog work to return.',
@@ -208,7 +210,7 @@ async function main(): Promise<void> {
     );
     const refreshedWhileNestedPending = await refreshRunControlProjectionFromPersistenceFacts(
       sideDialog.id,
-      'pending_sideDialogs_changed',
+      'active_callee_dispatches_changed',
     );
     assert.deepEqual(
       refreshedWhileNestedPending?.displayState,
@@ -344,13 +346,13 @@ async function main(): Promise<void> {
       'replyTellask reminder must be persisted before the direct fallback response anchor',
     );
 
-    const pendingAtRoot = await DialogPersistence.loadPendingSideDialogs(root.id, root.status);
+    const pendingAtRoot = await DialogPersistence.loadActiveCalleeDispatches(root.id, root.status);
     assert.equal(
       pendingAtRoot.length,
       0,
       'resumed reply should clear the parent pending side dialog',
     );
-    const pendingAtSideDialog = await DialogPersistence.loadPendingSideDialogs(
+    const pendingAtSideDialog = await DialogPersistence.loadActiveCalleeDispatches(
       sideDialog.id,
       sideDialog.status,
     );

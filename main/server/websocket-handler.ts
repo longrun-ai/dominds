@@ -780,8 +780,8 @@ async function handleDeclareSideDialogDead(
   });
   await setDialogDisplayState(dialogIdObj, { kind: 'dead', reason: { kind: 'declared_by_user' } });
 
-  // If an askerDialog is waiting on this sideDialog (pending-sideDialogs.json), supply a system-style
-  // response so the askerDialog can unblock and the model sees the failure reason.
+  // If an askerDialog still has an active callee dispatch for this dialog, supply a system-style
+  // response so the askerDialog can handle the failure reason.
   const metadata = await DialogPersistence.loadDialogMetadata(dialogIdObj, requestedStatus);
   if (!metadata) return;
 
@@ -804,9 +804,14 @@ async function handleDeclareSideDialogDead(
   if (typeof askerDialogId !== 'string' || askerDialogId.trim() === '') return;
 
   const askerDialogIdObj = new DialogID(askerDialogId, dialogIdObj.rootId);
-  const pending = await DialogPersistence.loadPendingSideDialogs(askerDialogIdObj, requestedStatus);
-  const pendingRecord = pending.find((p) => p.sideDialogId === dialogIdObj.selfId);
-  if (!pendingRecord) {
+  const activeCalleeDispatches = await DialogPersistence.loadActiveCalleeDispatches(
+    askerDialogIdObj,
+    requestedStatus,
+  );
+  const activeCalleeDispatch = activeCalleeDispatches.find(
+    (dispatch) => dispatch.calleeDialogId === dialogIdObj.selfId,
+  );
+  if (!activeCalleeDispatch) {
     // Asker is not waiting on this sideDialog anymore; do not auto-revive.
     return;
   }
@@ -829,7 +834,7 @@ async function handleDeclareSideDialogDead(
     parentDialog,
     dialogIdObj,
     responseTextWithNote,
-    pendingRecord.callType,
+    activeCalleeDispatch.callType,
     assignmentFromAsker.callId,
     'failed',
   );
@@ -1747,7 +1752,7 @@ async function handleUserMsg2Dlg(ws: WebSocket, packet: DriveDialogRequest): Pro
 
     // If the dialog is already active for this WebSocket, runnable (status === 'running'),
     // and has an event forwarder (subChan),
-    // drive it directly to preserve in-memory state (pending sideDialogs, teammate tellask tracking, etc).
+    // drive it directly to preserve in-memory state (active callee dispatches, teammate tellask tracking, etc).
     //
     // IMPORTANT: do not drive a view-only dialog instance here. When users browse a completed/archived
     // dialog, handleDisplayDialog restores it with dialog.status set to completed/archived. If that

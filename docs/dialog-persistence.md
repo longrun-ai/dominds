@@ -321,7 +321,7 @@ To support main dialog fork, persistence now records which root-generation viewp
   - marks when a sideDialog already exists on the root timeline, so fork can decide whether to include it
 - `reminders_reconciled_record`
 - `questions4human_reconciled_record`
-- `pending_sideDialogs_reconciled_record`
+- `active_callees_reconciled_record`
 - `sideDialog_registry_reconciled_record`
 - `sideDialog_responses_reconciled_record`
 
@@ -329,7 +329,7 @@ To support main dialog fork, persistence now records which root-generation viewp
 
 - These reconciliation records are state snapshots, not LLM transcript content; message reconstruction must skip them
 - Any sideDialog transcript record that participates in root-fork cutoff trimming must carry `rootCourse/rootGenseq`
-- When writing a forked main dialog, persistence appends a baseline reconciliation set into `course-1` so reminders / Q4H / pending sideDialogs / registry / responses are restored to the pre-cutoff state
+- When writing a forked main dialog, persistence appends a baseline reconciliation set into `course-1` so reminders / Q4H / active callee dispatches / registry / responses are restored to the pre-cutoff state
 
 ---
 

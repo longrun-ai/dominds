@@ -20,7 +20,7 @@ reminder snapshot.
   - transcript / tool / tellask history records
   - current reminder snapshot
 - Explicitly dropped:
-  - pending sideDialogs
+  - active callee dispatches
   - questions4human
   - sideDialog registry / sideDialog responses
   - other runtime-only waiting / blocking / orchestration state

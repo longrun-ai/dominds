@@ -34,7 +34,7 @@ async function main(): Promise<void> {
       targetCallId: 'root-to-pangu-call',
       tellaskContent: 'Finish the parent side dialog after the nested work returns.',
     };
-    const interjectPrompt = 'Handle this local interruption first while nuwa is still pending.';
+    const interjectPrompt = 'Handle this local interruption first while nuwa remains active.';
     const interjectResponse = 'Handled the local interruption only.';
     const finalResponse = 'Nested work is back, and I am now replying to the tellasker.';
 
@@ -86,9 +86,10 @@ async function main(): Promise<void> {
       },
     ]);
 
-    await DialogPersistence.appendPendingSideDialog(root.id, {
-      sideDialogId: sideDialog.id.selfId,
+    await DialogPersistence.appendActiveCalleeDispatch(root.id, {
+      calleeDialogId: sideDialog.id.selfId,
       createdAt: formatUnifiedTimestamp(new Date()),
+      batchId: 'root-to-pangu-call-batch',
       callName: 'tellaskSessionless',
       mentionList: ['@pangu'],
       tellaskContent: assignmentDirective.tellaskContent,
@@ -113,9 +114,10 @@ async function main(): Promise<void> {
         collectiveTargets: ['nuwa'],
       },
     );
-    await DialogPersistence.appendPendingSideDialog(sideDialog.id, {
-      sideDialogId: nestedSideDialog.id.selfId,
+    await DialogPersistence.appendActiveCalleeDispatch(sideDialog.id, {
+      calleeDialogId: nestedSideDialog.id.selfId,
       createdAt: formatUnifiedTimestamp(new Date()),
+      batchId: 'pangu-to-nuwa-call-batch',
       callName: 'tellaskSessionless',
       mentionList: ['@nuwa'],
       tellaskContent: 'Wait for nested side dialog work to return.',
@@ -157,7 +159,7 @@ async function main(): Promise<void> {
       'interjection should park the original task in the dedicated stopped state',
     );
 
-    await DialogPersistence.removePendingSideDialog(
+    await DialogPersistence.removeActiveCalleeDispatch(
       sideDialog.id,
       nestedSideDialog.id.selfId,
       undefined,
@@ -212,7 +214,7 @@ async function main(): Promise<void> {
     );
     assert.ok(reassertionRecord, 'expected runtime reply reassertion prompt during resumed drive');
 
-    const pendingAtRoot = await DialogPersistence.loadPendingSideDialogs(root.id, root.status);
+    const pendingAtRoot = await DialogPersistence.loadActiveCalleeDispatches(root.id, root.status);
     assert.equal(
       pendingAtRoot.length,
       0,

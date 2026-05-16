@@ -5,10 +5,10 @@ import {
   toCallSiteGenseqNo,
   toDialogCourseNumber,
   toRootGenerationAnchor,
+  type ActiveCalleeDispatchRecord,
   type AskerCourseNumber,
   type AssignmentCourseNumber,
   type AssignmentGenerationSeqNumber,
-  type PendingSideDialogStateRecord,
   type TellaskAnchorRecord,
   type TellaskReplyResolutionRecord,
 } from '@longrun-ai/kernel/types/storage';
@@ -26,9 +26,9 @@ import { getWorkLanguage } from '../../runtime/work-language';
 import { syncPendingTellaskReminderState } from '../../tools/pending-tellask-reminder';
 import type { ChatMessage } from '../client';
 import { withSideDialogTxnLock } from './sideDialog-txn';
-import type { KernelDriverDriveCallOptions, KernelDriverSideDialogReplyTarget } from './types';
+import type { KernelDriverCalleeReplyTarget, KernelDriverDriveCallOptions } from './types';
 
-export type SideDialogReplyTarget = KernelDriverSideDialogReplyTarget;
+export type CalleeReplyTarget = KernelDriverCalleeReplyTarget;
 
 export type ScheduleDriveFn = (dialog: Dialog, options: KernelDriverDriveCallOptions) => void;
 
@@ -47,33 +47,33 @@ async function syncPendingTellaskReminderBestEffort(dlg: Dialog, where: string):
   }
 }
 
-async function resolveOwnerDialogBySelfId(
+async function resolveCallerDialogBySelfId(
   sideDialog: SideDialog,
-  ownerDialogId: string,
+  callerDialogId: string,
 ): Promise<Dialog | undefined> {
   const mainDialog = sideDialog.mainDialog;
-  if (!(await ensureDialogFreshOrDiscard(mainDialog, 'resolveOwnerDialogBySelfId:root'))) {
+  if (!(await ensureDialogFreshOrDiscard(mainDialog, 'resolveCallerDialogBySelfId:root'))) {
     return undefined;
   }
-  if (ownerDialogId === mainDialog.id.selfId) {
+  if (callerDialogId === mainDialog.id.selfId) {
     return mainDialog;
   }
-  const existing = mainDialog.lookupDialog(ownerDialogId);
+  const existing = mainDialog.lookupDialog(callerDialogId);
   if (existing) {
-    if (!(await ensureDialogFreshOrDiscard(existing, 'resolveOwnerDialogBySelfId:lookup'))) {
+    if (!(await ensureDialogFreshOrDiscard(existing, 'resolveCallerDialogBySelfId:lookup'))) {
       return undefined;
     }
     return existing;
   }
   const restored = await ensureDialogLoaded(
     mainDialog,
-    new DialogID(ownerDialogId, mainDialog.id.rootId),
+    new DialogID(callerDialogId, mainDialog.id.rootId),
     mainDialog.status,
   );
   if (!restored) {
     return undefined;
   }
-  if (!(await ensureDialogFreshOrDiscard(restored, 'resolveOwnerDialogBySelfId:restore'))) {
+  if (!(await ensureDialogFreshOrDiscard(restored, 'resolveCallerDialogBySelfId:restore'))) {
     return undefined;
   }
   return restored;
@@ -220,22 +220,19 @@ export async function supplyResponseToAskerDialog(args: {
   } = args;
   try {
     const result = await withSideDialogTxnLock(parentDialog.id, async () => {
-      const pendingSideDialogs = await DialogPersistence.loadPendingSideDialogs(
+      const activeCalleeDispatches = await DialogPersistence.loadActiveCalleeDispatches(
         parentDialog.id,
         parentDialog.status,
       );
-      let pendingRecord: PendingSideDialogStateRecord | undefined;
-      const filteredPending: typeof pendingSideDialogs = [];
+      let activeCalleeDispatch: ActiveCalleeDispatchRecord | undefined;
       const requestedCallId = typeof callId === 'string' ? callId.trim() : '';
-      for (const pending of pendingSideDialogs) {
+      for (const dispatch of activeCalleeDispatches) {
         if (
-          pending.sideDialogId === sideDialogId.selfId &&
-          (requestedCallId === '' || pending.callId === requestedCallId) &&
-          pendingRecord === undefined
+          dispatch.calleeDialogId === sideDialogId.selfId &&
+          (requestedCallId === '' || dispatch.callId === requestedCallId) &&
+          activeCalleeDispatch === undefined
         ) {
-          pendingRecord = pending;
-        } else {
-          filteredPending.push(pending);
+          activeCalleeDispatch = dispatch;
         }
       }
 
@@ -259,12 +256,12 @@ export async function supplyResponseToAskerDialog(args: {
             parentDialog.status,
           );
           originMemberId = assignmentFromAsker.originMemberId;
-          if (!pendingRecord) {
+          if (!activeCalleeDispatch) {
             callName = assignmentFromAsker.callName;
             mentionList = assignmentFromAsker.mentionList;
             tellaskContent = assignmentFromAsker.tellaskContent;
           }
-          if (!pendingRecord && metadata.agentId.trim() !== '') {
+          if (!activeCalleeDispatch && metadata.agentId.trim() !== '') {
             responderId = metadata.agentId;
             responderAgentId = metadata.agentId;
           }
@@ -281,13 +278,13 @@ export async function supplyResponseToAskerDialog(args: {
         originMemberId = parentDialog.agentId;
       }
 
-      if (pendingRecord) {
-        callName = pendingRecord.callName;
-        responderId = pendingRecord.targetAgentId;
-        responderAgentId = pendingRecord.targetAgentId;
-        mentionList = pendingRecord.mentionList;
-        tellaskContent = pendingRecord.tellaskContent;
-        sessionSlug = pendingRecord.sessionSlug;
+      if (activeCalleeDispatch) {
+        callName = activeCalleeDispatch.callName;
+        responderId = activeCalleeDispatch.targetAgentId;
+        responderAgentId = activeCalleeDispatch.targetAgentId;
+        mentionList = activeCalleeDispatch.mentionList;
+        tellaskContent = activeCalleeDispatch.tellaskContent;
+        sessionSlug = activeCalleeDispatch.sessionSlug;
       }
 
       if (
@@ -297,30 +294,14 @@ export async function supplyResponseToAskerDialog(args: {
         mentionList = [`@${responderId}`];
       }
 
-      await DialogPersistence.savePendingSideDialogs(
-        parentDialog.id,
-        filteredPending,
-        toRootGenerationAnchor({
-          rootCourse:
-            parentDialog instanceof SideDialog
-              ? parentDialog.mainDialog.currentCourse
-              : parentDialog.currentCourse,
-          rootGenseq:
-            parentDialog instanceof SideDialog
-              ? (parentDialog.mainDialog.activeGenSeqOrUndefined ?? 0)
-              : (parentDialog.activeGenSeqOrUndefined ?? 0),
-        }),
-        parentDialog.status,
-      );
-
       const activeCalleeOutcome =
-        pendingRecord === undefined
+        activeCalleeDispatch === undefined
           ? undefined
           : await DialogPersistence.resolveActiveCallee(
               parentDialog.id,
               {
-                batchId: pendingRecord.batchId,
-                callId: pendingRecord.callId,
+                batchId: activeCalleeDispatch.batchId,
+                callId: activeCalleeDispatch.callId,
                 sideDialogId: sideDialogId.selfId,
                 deliveryMode,
                 directFallbackSource,
@@ -349,14 +330,14 @@ export async function supplyResponseToAskerDialog(args: {
         tellaskContent,
         originMemberId,
         sessionSlug,
-        callId: pendingRecord?.callId,
-        callSiteCourse: activeCalleeOutcome?.callSiteCourse ?? pendingRecord?.callSiteCourse,
-        callSiteGenseq: activeCalleeOutcome?.callSiteGenseq ?? pendingRecord?.callSiteGenseq,
-        batchId: activeCalleeOutcome?.batchId ?? pendingRecord?.batchId,
+        callId: activeCalleeDispatch?.callId,
+        callSiteCourse: activeCalleeOutcome?.callSiteCourse ?? activeCalleeDispatch?.callSiteCourse,
+        callSiteGenseq: activeCalleeOutcome?.callSiteGenseq ?? activeCalleeDispatch?.callSiteGenseq,
+        batchId: activeCalleeOutcome?.batchId ?? activeCalleeDispatch?.batchId,
         resolvedCallIds: activeCalleeOutcome?.resolvedCallIds ?? [],
         askerCourse:
-          pendingRecord?.callSiteCourse !== undefined
-            ? toAskerCourseNumber(pendingRecord.callSiteCourse)
+          activeCalleeDispatch?.callSiteCourse !== undefined
+            ? toAskerCourseNumber(activeCalleeDispatch.callSiteCourse)
             : askerCourseOverride,
         shouldRevive,
       };
@@ -691,7 +672,7 @@ export async function supplyResponseToAskerDialog(args: {
       if (isRoot) {
         globalDialogRegistry.markNeedsDrive(parentDialog.id.rootId, {
           source: 'kernel_driver_supply_response',
-          reason: `all_pending_sideDialogs_resolved:type_${callType}`,
+          reason: `all_active_callees_resolved:type_${callType}`,
         });
       }
 
@@ -712,7 +693,7 @@ export async function supplyResponseToAskerDialog(args: {
         driveOptions: {
           suppressDiligencePush: parentDialog.disableDiligencePush,
           noPromptSideDialogResumeEntitlement: {
-            ownerDialogId: parentDialog.id.selfId,
+            callerDialogId: parentDialog.id.selfId,
             reason: 'resolved_pending_sideDialog_reply',
             sideDialogId: sideDialogId.selfId,
             callType,
@@ -741,7 +722,7 @@ export async function supplySideDialogResponseToSpecificAskerIfPendingV2(args: {
   sideDialog: SideDialog;
   responseText: string;
   responseGenseq: number;
-  target: SideDialogReplyTarget;
+  target: CalleeReplyTarget;
   deliveryMode?: 'reply_tool' | 'direct_fallback';
   directFallbackSource?: 'saying' | 'thinking_only';
   replyResolution?: {
@@ -756,47 +737,48 @@ export async function supplySideDialogResponseToSpecificAskerIfPendingV2(args: {
     return false;
   }
 
-  const ownerDialog = await resolveOwnerDialogBySelfId(sideDialog, target.ownerDialogId);
-  if (!ownerDialog) {
+  const callerDialog = await resolveCallerDialogBySelfId(sideDialog, target.callerDialogId);
+  if (!callerDialog) {
     return false;
   }
   if (
     !(await ensureDialogFreshOrDiscard(
-      ownerDialog,
-      'supplySideDialogResponseToSpecificAskerIfPendingV2:owner',
+      callerDialog,
+      'supplySideDialogResponseToSpecificAskerIfPendingV2:caller',
     ))
   ) {
     return false;
   }
 
-  const pending = await DialogPersistence.loadPendingSideDialogs(
-    ownerDialog.id,
-    ownerDialog.status,
+  const activeCalleeDispatches = await DialogPersistence.loadActiveCalleeDispatches(
+    callerDialog.id,
+    callerDialog.status,
   );
-  const pendingRecord = pending.find(
-    (p) => p.sideDialogId === sideDialog.id.selfId && p.callId === target.callId,
+  const activeCalleeDispatch = activeCalleeDispatches.find(
+    (dispatch) =>
+      dispatch.calleeDialogId === sideDialog.id.selfId && dispatch.callId === target.callId,
   );
-  if (!pendingRecord) {
+  if (!activeCalleeDispatch) {
     return false;
   }
-  if (pendingRecord.callType !== target.callType) {
+  if (activeCalleeDispatch.callType !== target.callType) {
     log.warn(
       'Reply target callType does not match pending callType; skipping stale reply target',
       undefined,
       {
         rootId: sideDialog.mainDialog.id.rootId,
         sideDialogId: sideDialog.id.selfId,
-        ownerDialogId: ownerDialog.id.selfId,
+        callerDialogId: callerDialog.id.selfId,
         targetCallType: target.callType,
-        pendingCallType: pendingRecord.callType,
+        activeCalleeCallType: activeCalleeDispatch.callType,
       },
     );
     return false;
   }
-  if (pendingRecord.callType === 'B') {
+  if (activeCalleeDispatch.callType === 'B') {
     const assignmentAnchorRef = await resolveLatestAssignmentAnchorRef({
       calleeDialogId: sideDialog.id,
-      callId: pendingRecord.callId,
+      callId: activeCalleeDispatch.callId,
       status: sideDialog.status,
     });
     if (!assignmentAnchorRef) {
@@ -806,8 +788,8 @@ export async function supplySideDialogResponseToSpecificAskerIfPendingV2(args: {
         {
           rootId: sideDialog.mainDialog.id.rootId,
           sideDialogId: sideDialog.id.selfId,
-          ownerDialogId: ownerDialog.id.selfId,
-          callId: pendingRecord.callId,
+          callerDialogId: callerDialog.id.selfId,
+          callId: activeCalleeDispatch.callId,
           responseGenseq,
         },
       );
@@ -824,8 +806,8 @@ export async function supplySideDialogResponseToSpecificAskerIfPendingV2(args: {
         {
           rootId: sideDialog.mainDialog.id.rootId,
           sideDialogId: sideDialog.id.selfId,
-          ownerDialogId: ownerDialog.id.selfId,
-          callId: pendingRecord.callId,
+          callerDialogId: callerDialog.id.selfId,
+          callId: activeCalleeDispatch.callId,
           responseCourse: sideDialog.currentCourse,
           responseGenseq,
           assignmentCourse: assignmentAnchorRef.course,
@@ -837,11 +819,11 @@ export async function supplySideDialogResponseToSpecificAskerIfPendingV2(args: {
   }
 
   await supplyResponseToAskerDialog({
-    parentDialog: ownerDialog,
+    parentDialog: callerDialog,
     sideDialogId: sideDialog.id,
     responseText,
     sideDialog,
-    callType: pendingRecord.callType,
+    callType: activeCalleeDispatch.callType,
     callId: target.callId,
     status: 'completed',
     deliveryMode: args.deliveryMode,
@@ -871,7 +853,7 @@ export async function supplySideDialogResponseToAssignedAskerIfPendingV2(args: {
     return false;
   }
 
-  const askerDialog = await resolveOwnerDialogBySelfId(sideDialog, assignment.askerDialogId);
+  const askerDialog = await resolveCallerDialogBySelfId(sideDialog, assignment.askerDialogId);
   if (!askerDialog) {
     log.warn('Missing tellasker for sideDialog response supply', undefined, {
       rootId: sideDialog.mainDialog.id.rootId,
@@ -889,20 +871,21 @@ export async function supplySideDialogResponseToAssignedAskerIfPendingV2(args: {
     return false;
   }
 
-  const pending = await DialogPersistence.loadPendingSideDialogs(
+  const activeCalleeDispatches = await DialogPersistence.loadActiveCalleeDispatches(
     askerDialog.id,
     askerDialog.status,
   );
-  const pendingRecord = pending.find(
-    (p) => p.sideDialogId === sideDialog.id.selfId && p.callId === assignment.callId,
+  const activeCalleeDispatch = activeCalleeDispatches.find(
+    (dispatch) =>
+      dispatch.calleeDialogId === sideDialog.id.selfId && dispatch.callId === assignment.callId,
   );
-  if (!pendingRecord) {
+  if (!activeCalleeDispatch) {
     return false;
   }
-  if (pendingRecord.callType === 'B') {
+  if (activeCalleeDispatch.callType === 'B') {
     const assignmentAnchorRef = await resolveLatestAssignmentAnchorRef({
       calleeDialogId: sideDialog.id,
-      callId: pendingRecord.callId,
+      callId: activeCalleeDispatch.callId,
       status: sideDialog.status,
     });
     if (!assignmentAnchorRef) {
@@ -913,7 +896,7 @@ export async function supplySideDialogResponseToAssignedAskerIfPendingV2(args: {
           rootId: sideDialog.mainDialog.id.rootId,
           sideDialogId: sideDialog.id.selfId,
           askerDialogId: askerDialog.id.selfId,
-          callId: pendingRecord.callId,
+          callId: activeCalleeDispatch.callId,
           responseGenseq,
         },
       );
@@ -931,7 +914,7 @@ export async function supplySideDialogResponseToAssignedAskerIfPendingV2(args: {
           rootId: sideDialog.mainDialog.id.rootId,
           sideDialogId: sideDialog.id.selfId,
           askerDialogId: askerDialog.id.selfId,
-          callId: pendingRecord.callId,
+          callId: activeCalleeDispatch.callId,
           responseCourse: sideDialog.currentCourse,
           responseGenseq,
           assignmentCourse: assignmentAnchorRef.course,
@@ -947,7 +930,7 @@ export async function supplySideDialogResponseToAssignedAskerIfPendingV2(args: {
     sideDialogId: sideDialog.id,
     responseText,
     sideDialog,
-    callType: pendingRecord.callType,
+    callType: activeCalleeDispatch.callType,
     callId: assignment.callId,
     status: 'completed',
     deliveryMode: args.deliveryMode,

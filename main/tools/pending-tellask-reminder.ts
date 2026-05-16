@@ -11,7 +11,7 @@ import { getTellaskKindLabel } from '../runtime/tellask-labels';
 import { getWorkLanguage } from '../runtime/work-language';
 import type { Reminder, ReminderOwner, ReminderUpdateResult } from '../tool';
 
-type PendingSideDialogView = Readonly<{
+type ActiveCalleeDispatchView = Readonly<{
   sideDialogId: string;
   latestActivityAt: string;
   mentionList?: string[];
@@ -72,7 +72,7 @@ function getPendingTellaskDeleteAltInstruction(language: LanguageCode): string {
     : 'This system reminder is not deletable. The change rule is simple: to change a sessioned task, send another `tellask` with the same `sessionSlug`; `tellaskSessionless` is another one-shot independent task, so it cannot change or stop an earlier task. Otherwise wait for system refresh from real tellask state.';
 }
 
-function callKindLabel(language: LanguageCode, view: PendingSideDialogView): string {
+function callKindLabel(language: LanguageCode, view: ActiveCalleeDispatchView): string {
   if (view.callType === 'A') {
     return getTellaskKindLabel({ language, name: 'tellaskBack' });
   }
@@ -80,7 +80,7 @@ function callKindLabel(language: LanguageCode, view: PendingSideDialogView): str
   return getTellaskKindLabel({ language, name: view.callName });
 }
 
-function pendingTargetLabel(language: LanguageCode, view: PendingSideDialogView): string {
+function activeCalleeTargetLabel(language: LanguageCode, view: ActiveCalleeDispatchView): string {
   if (view.callType === 'A') {
     return language === 'zh' ? `诉请者 @${view.targetAgentId}` : `tellasker @${view.targetAgentId}`;
   }
@@ -94,7 +94,7 @@ function pendingTargetLabel(language: LanguageCode, view: PendingSideDialogView)
   }
 }
 
-function summarizeTellask(view: PendingSideDialogView): string {
+function summarizeTellask(view: ActiveCalleeDispatchView): string {
   const mentionPrefix = Array.isArray(view.mentionList) ? view.mentionList.join(' ') : '';
   const normalized = `${mentionPrefix} ${view.tellaskContent}`.replace(/\s+/g, ' ').trim();
   if (!normalized) return '(empty tellask)';
@@ -103,7 +103,7 @@ function summarizeTellask(view: PendingSideDialogView): string {
   return `${normalized.slice(0, max).trimEnd()}...`;
 }
 
-function makePendingSignature(pending: ReadonlyArray<PendingSideDialogView>): string {
+function makePendingSignature(pending: ReadonlyArray<ActiveCalleeDispatchView>): string {
   return pending
     .map((p) =>
       [
@@ -120,7 +120,7 @@ function makePendingSignature(pending: ReadonlyArray<PendingSideDialogView>): st
 }
 
 function buildReminderMeta(
-  pending: ReadonlyArray<PendingSideDialogView>,
+  pending: ReadonlyArray<ActiveCalleeDispatchView>,
   previousMeta?: PendingTellaskReminderMeta,
 ): PendingTellaskReminderMeta {
   const language = getWorkLanguage();
@@ -155,7 +155,7 @@ function buildReminderMeta(
 
 function buildReminderContent(
   language: LanguageCode,
-  pending: ReadonlyArray<PendingSideDialogView>,
+  pending: ReadonlyArray<ActiveCalleeDispatchView>,
 ): string {
   const heading =
     language === 'zh'
@@ -178,8 +178,8 @@ function buildReminderContent(
   const lines = pending.map((p, idx) => {
     const base =
       language === 'zh'
-        ? `${idx + 1}. ${pendingTargetLabel(language, p)} | ${callKindLabel(language, p)} | ${summarizeTellask(p)}`
-        : `${idx + 1}. ${pendingTargetLabel(language, p)} | ${callKindLabel(language, p)} | ${summarizeTellask(p)}`;
+        ? `${idx + 1}. ${activeCalleeTargetLabel(language, p)} | ${callKindLabel(language, p)} | ${summarizeTellask(p)}`
+        : `${idx + 1}. ${activeCalleeTargetLabel(language, p)} | ${callKindLabel(language, p)} | ${summarizeTellask(p)}`;
     if (!p.sessionSlug) return base;
     return language === 'zh'
       ? `${base} | 会话: ${p.sessionSlug}`
@@ -209,14 +209,14 @@ function assertSingleOwnedReminder(dlg: Dialog): number | null {
   );
 }
 
-async function loadPendingSideDialogView(dlg: Dialog): Promise<PendingSideDialogView[]> {
-  const pending = await DialogPersistence.loadPendingSideDialogs(dlg.id, dlg.status);
+async function loadActiveCalleeDispatchView(dlg: Dialog): Promise<ActiveCalleeDispatchView[]> {
+  const pending = await DialogPersistence.loadActiveCalleeDispatches(dlg.id, dlg.status);
   return await Promise.all(
     pending.map(async (p) => {
-      const sideDialogId = new DialogID(p.sideDialogId, dlg.id.rootId);
+      const sideDialogId = new DialogID(p.calleeDialogId, dlg.id.rootId);
       const latest = await DialogPersistence.loadDialogLatest(sideDialogId, dlg.status);
       return {
-        sideDialogId: p.sideDialogId,
+        sideDialogId: p.calleeDialogId,
         latestActivityAt: latest?.lastModified ?? p.createdAt,
         mentionList: p.mentionList,
         tellaskContent: p.tellaskContent,
@@ -238,7 +238,7 @@ async function withDialogLockIfNeeded<T>(dlg: Dialog, fn: () => Promise<T>): Pro
 }
 
 export async function syncPendingTellaskReminderState(dlg: Dialog): Promise<boolean> {
-  const pending = await loadPendingSideDialogView(dlg);
+  const pending = await loadActiveCalleeDispatchView(dlg);
   return await withDialogLockIfNeeded(dlg, async () => {
     const reminderIndex = assertSingleOwnedReminder(dlg);
     const language = getWorkLanguage();
@@ -282,7 +282,7 @@ export const pendingTellaskReminderOwner: ReminderOwner = {
       return { treatment: 'keep' };
     }
 
-    const pending = await loadPendingSideDialogView(dlg);
+    const pending = await loadActiveCalleeDispatchView(dlg);
 
     const language = getWorkLanguage();
     const updatedContent = buildReminderContent(language, pending);

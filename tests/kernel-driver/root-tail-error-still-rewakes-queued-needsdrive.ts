@@ -46,28 +46,29 @@ async function main(): Promise<void> {
     root.disableDiligencePush = true;
     globalDialogRegistry.register(root);
 
-    const pendingSideDialog = await root.createSideDialog(
+    const activeCalleeDispatch = await root.createSideDialog(
       'pangu',
       ['@pangu'],
-      'Background side dialog work is still pending.',
+      'Background side dialog work remains active.',
       {
         callName: 'tellaskSessionless',
         originMemberId: 'tester',
         askerDialogId: root.id.selfId,
-        callId: 'root-pending-sideDialog-call',
+        callId: 'root-active-callee-call',
         callSiteCourse: 1,
         callSiteGenseq: 1,
         collectiveTargets: ['pangu'],
       },
     );
-    await DialogPersistence.appendPendingSideDialog(root.id, {
-      sideDialogId: pendingSideDialog.id.selfId,
+    await DialogPersistence.appendActiveCalleeDispatch(root.id, {
+      calleeDialogId: activeCalleeDispatch.id.selfId,
       createdAt: formatUnifiedTimestamp(new Date()),
+      batchId: 'root-active-callee-batch',
       callName: 'tellaskSessionless',
       mentionList: ['@pangu'],
-      tellaskContent: 'Background side dialog work is still pending.',
+      tellaskContent: 'Background side dialog work remains active.',
       targetAgentId: 'pangu',
-      callId: 'root-pending-sideDialog-call',
+      callId: 'root-active-callee-call',
       callSiteCourse: 1,
       callSiteGenseq: 1,
       callType: 'C',
@@ -92,7 +93,7 @@ async function main(): Promise<void> {
           tellaskReplyDirective: {
             expectedReplyCallName: 'replyTellaskBack',
             targetCallId: 'reply-back-target',
-            targetDialogId: pendingSideDialog.id.selfId,
+            targetDialogId: activeCalleeDispatch.id.selfId,
             tellaskContent: 'Please confirm the side dialog result.',
           },
         },

@@ -104,7 +104,7 @@ driver 不应在第一个 wake event 到达后立刻 drive。它应：
 - display state 仍是 `idle_waiting_user`
 - execution marker 不是 dead，也不是需要人工 resume 的 interrupted
 - 没有 pending Q4H
-- 没有 blocking pending sideDialog
+- 没有 blocking active callee dispatch
 - 当前没有 active run
 
 只有这些条件都满足，才允许以 wake prompt 继续驱动。否则丢弃本次 wake，并只保留 owner 的幂等/状态更新。

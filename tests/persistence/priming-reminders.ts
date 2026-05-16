@@ -6,9 +6,9 @@ import * as path from 'node:path';
 import YAML from 'yaml';
 
 import type {
+  ActiveCalleeDispatchRecord,
   DialogLatestFile,
   MainDialogMetadataFile,
-  PendingSideDialogStateRecord,
 } from '@longrun-ai/kernel/types/storage';
 import { toRootGenerationAnchor } from '@longrun-ai/kernel/types/storage';
 import { formatUnifiedTimestamp } from '@longrun-ai/kernel/utils/time';
@@ -108,9 +108,10 @@ async function main(): Promise<void> {
     });
     await DialogPersistence._saveReminderState(sourceId, [sourceReminder], 'running');
 
-    const pendingRecord: PendingSideDialogStateRecord = {
-      sideDialogId: 'sub-pending-1',
+    const activeCalleeDispatch: ActiveCalleeDispatchRecord = {
+      calleeDialogId: 'sub-pending-1',
       createdAt: ts,
+      batchId: 'call-pending-1-batch',
       callName: 'tellaskSessionless',
       mentionList: ['@scribe'],
       tellaskContent: 'Investigate the environment',
@@ -120,9 +121,9 @@ async function main(): Promise<void> {
       callSiteGenseq: 1,
       callType: 'B',
     };
-    await DialogPersistence.savePendingSideDialogs(
+    await DialogPersistence.saveActiveCalleeDispatches(
       sourceId,
-      [pendingRecord],
+      [activeCalleeDispatch],
       toRootGenerationAnchor({ rootCourse: 1, rootGenseq: 1 }),
       'running',
     );
@@ -138,7 +139,7 @@ async function main(): Promise<void> {
     const frontmatter = parseTopLevelFrontmatter(savedMarkdown);
     assert.ok(Array.isArray(frontmatter['reminders']), 'priming frontmatter must export reminders');
     assert.equal(
-      savedMarkdown.includes('pendingSideDialogs'),
+      savedMarkdown.includes('activeCalleeDispatches'),
       false,
       'priming markdown must not export pending runtime state',
     );
@@ -180,7 +181,10 @@ async function main(): Promise<void> {
     assert.deepEqual(persistedReminders[0]?.meta, sourceReminder.meta);
     assert.equal(persistedReminders[0]?.echoback, false);
 
-    const persistedPending = await DialogPersistence.loadPendingSideDialogs(replayId, 'running');
+    const persistedPending = await DialogPersistence.loadActiveCalleeDispatches(
+      replayId,
+      'running',
+    );
     assert.deepEqual(
       persistedPending,
       [],
@@ -190,7 +194,7 @@ async function main(): Promise<void> {
     const replayedEvents = await DialogPersistence.readCourseEvents(replayId, 1, 'running');
     assert.equal(replayedEvents[0]?.type, 'reminders_reconciled_record');
     assert.equal(
-      replayedEvents.some((event) => event.type === 'pending_sideDialogs_reconciled_record'),
+      replayedEvents.some((event) => event.type === 'active_callees_reconciled_record'),
       false,
       'replayed priming must not append pending runtime state records',
     );

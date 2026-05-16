@@ -307,7 +307,7 @@ headline text is ignored for tellaskSession parsing.
 1. Check registry for existing sideDialog with key `agentId!sessionSlug`
 2. **If exists**: Resume the registered sideDialog
 3. **If not exists**: Create NEW sideDialog AND register it with key `agentId!sessionSlug`
-4. Tellasker records a background callee fact; pending sideDialogs do not suspend the tellasker by themselves
+4. Tellasker records a background callee fact; active callee dispatches do not suspend the tellasker by themselves
 5. SideDialog response flows back to the tellasker as a result-arrival fact
 6. The tellasker may continue from result arrival, a queued prompt, user input, Diligence Push, or another explicit driving source
 
@@ -382,7 +382,7 @@ Result (second call):
 
 **Behavior**:
 
-1. Current dialog records a background callee fact; pending sideDialogs do not suspend it by themselves
+1. Current dialog records a background callee fact; active callee dispatches do not suspend it by themselves
 2. Create **NEW sideDialog** with the specified agentId
 3. Drive the new sideDialog:
    - For general Type C, the sideDialog is full-fledged (TellaskBack, teammate Tellasks, tools per config).
@@ -740,7 +740,7 @@ When a sideDialog has raised Q4H and is waiting for human input, the tellasker's
 ```typescript
 // Tellasker checks callee completion status
 async function checkCalleeResultArrival(tellasker: Dialog): Promise<void> {
-  const pending = await loadPendingSideDialogs(tellasker.id);
+  const pending = await loadActiveCalleeDispatches(tellasker.id);
 
   for (const p of pending) {
     // Check if callee has unresolved Q4H
@@ -1086,7 +1086,7 @@ An entire main dialog tree can be forked at the start of a chosen root generatio
 **Post-fork actions** (returned by backend to UI):
 
 - `draft_user_text`: if the target generation is a user message, prefill that text into the new dialog input and wait for user confirmation
-- `restore_pending`: if there was pending Q4H before the cutoff, restore that user-wait state in the new main dialog; pending sideDialogs are copied as background callee facts, not blockers
+- `restore_pending`: if there was pending Q4H before the cutoff, restore that user-wait state in the new main dialog; active callee dispatches are copied as background callee facts, not blockers
 - `auto_continue`: if there is no pending Q4H or other user-wait fact before the cutoff, initialize the new main dialog as `interrupted(system_stop: fork_dialog_continue)` and have UI immediately send `resume_dialog`
 
 **Consistency requirements**:
@@ -1209,7 +1209,7 @@ Additionally, some providers (especially Anthropic-compatible endpoints) enforce
 
 **Tool Invocation**: Mental clarity tools are invoked through CLI commands or agent actions.
 
-**Status Monitoring**: Dialog status, pending sideDialogs, Q4H count, and registered sideDialogs can be inspected through CLI tools.
+**Status Monitoring**: Dialog status, active callee dispatches, Q4H count, and registered sideDialogs can be inspected through CLI tools.
 
 ### Agent Integration
 
@@ -1232,7 +1232,7 @@ driven is derived from persisted facts:
 
 - Persisted status (API/index): `running | completed | archived`
 - Persisted `latest.yaml`: `status`, `needsDrive`, `generating`
-- Derived gates: `hasPendingQ4H()`; pending sideDialogs are background callee facts, not a drive gate
+- Derived gates: `hasPendingQ4H()`; active callee dispatches are background callee facts, not a drive gate
 
 **Persisted status lifecycle:**
 

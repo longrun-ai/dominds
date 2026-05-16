@@ -104,7 +104,7 @@ After the aggregation window, the driver must re-read persistence and verify:
 - display state is still `idle_waiting_user`
 - execution marker is not dead and not an interrupted state requiring human resume
 - no pending Q4H exists
-- no blocking pending sideDialog exists
+- no blocking active callee dispatch exists
 - no active run exists
 
 Only then may the driver continue with the wake prompt. Otherwise the wake is dropped, while owner idempotence/state updates may still be retained.

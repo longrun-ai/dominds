@@ -30,7 +30,7 @@ async function main(): Promise<void> {
     const language = getWorkLanguage();
     const initialPrompt = 'Start a background tellask and wait for @pangu.';
     const tellaskBody = 'Please investigate in the background and report back later.';
-    const pendingSideDialogPrompt = wrapPromptWithExpectedReplyTool({
+    const activeCalleeDispatchPrompt = wrapPromptWithExpectedReplyTool({
       prompt: formatAssignmentFromAskerDialog({
         callName: 'tellaskSessionless',
         fromAgentId: 'tester',
@@ -44,16 +44,16 @@ async function main(): Promise<void> {
       language,
     });
     const interjectPrompt = 'While waiting for @pangu, inspect one local env value.';
-    const interjectFollowUp = 'I finished the local env check while @pangu is still pending.';
-    const delayedSideDialogResponse = 'Background investigation is complete.';
-    const mirroredSideDialogResponse = formatTellaskResponseContent({
+    const interjectFollowUp = 'I finished the local env check while @pangu remains active.';
+    const delayedCalleeResponse = 'Background investigation is complete.';
+    const mirroredCalleeResponse = formatTellaskResponseContent({
       callName: 'tellaskSessionless',
       callId: 'call-root-background-tellask',
       responderId: 'pangu',
       tellaskerId: 'tester',
       mentionList: ['@pangu'],
       tellaskContent: tellaskBody,
-      responseBody: delayedSideDialogResponse,
+      responseBody: delayedCalleeResponse,
       status: 'completed',
       deliveryMode: 'reply_tool',
       language,
@@ -77,13 +77,13 @@ async function main(): Promise<void> {
       {
         message: interjectPrompt,
         role: 'user',
-        response: 'I will inspect one env value before we keep waiting.',
+        response: 'I will inspect one env value before continuing local work.',
         funcCalls: [
           {
             id: 'call-root-interject-env-get',
             name: 'env_get',
             arguments: {
-              key: 'DOMINDS_TEST_PENDING_SUBDIALOG_INTERJECTION',
+              key: 'DOMINDS_TEST_ACTIVE_CALLEE_INTERJECTION',
             },
           },
         ],
@@ -92,16 +92,16 @@ async function main(): Promise<void> {
         message: '(unset)',
         role: 'tool',
         response: interjectFollowUp,
-        contextContains: ['I will inspect one env value before we keep waiting.'],
+        contextContains: ['I will inspect one env value before continuing local work.'],
       },
       {
-        message: pendingSideDialogPrompt,
+        message: activeCalleeDispatchPrompt,
         role: 'user',
-        response: delayedSideDialogResponse,
+        response: delayedCalleeResponse,
         delayMs: 2_000,
       },
       {
-        message: mirroredSideDialogResponse,
+        message: mirroredCalleeResponse,
         role: 'tool',
         response: 'Acknowledged. I have the background result now.',
       },
@@ -112,23 +112,23 @@ async function main(): Promise<void> {
 
     await driveDialogStream(
       root,
-      makeUserPrompt(initialPrompt, 'kernel-driver-user-interject-pending-sideDialog-initial'),
+      makeUserPrompt(initialPrompt, 'kernel-driver-user-interject-active-callee-initial'),
       true,
       makeDriveOptions({ suppressDiligencePush: true }),
     );
 
     await waitFor(
       async () => {
-        const pending = await DialogPersistence.loadPendingSideDialogs(root.id, root.status);
+        const pending = await DialogPersistence.loadActiveCalleeDispatches(root.id, root.status);
         return pending.length === 1;
       },
       3_000,
-      'main dialog to enter pending-sideDialog wait state',
+      'main dialog to record one active callee dispatch',
     );
 
     await driveDialogStream(
       root,
-      makeUserPrompt(interjectPrompt, 'kernel-driver-user-interject-pending-sideDialog-followup'),
+      makeUserPrompt(interjectPrompt, 'kernel-driver-user-interject-active-callee-followup'),
       true,
       makeDriveOptions({ suppressDiligencePush: true }),
     );
@@ -142,7 +142,7 @@ async function main(): Promise<void> {
     assert.equal(
       genStartCount,
       3,
-      'user interjection should get one tool round plus one post-tool follow-up generation while the sideDialog is still pending',
+      'user interjection should get one tool round plus one post-tool follow-up generation while the active callee dispatch remains recorded',
     );
 
     const assistantSayings = root.msgs.filter(
@@ -154,27 +154,27 @@ async function main(): Promise<void> {
     assert.equal(
       assistantSayings[assistantSayings.length - 1]?.content,
       interjectFollowUp,
-      'interjection drive should finish its post-tool follow-up before suspending again on the pending sideDialog',
+      'interjection drive should finish its post-tool follow-up before suspending again on the active callee dispatch',
     );
 
-    const pendingAfterInterjection = await DialogPersistence.loadPendingSideDialogs(
+    const pendingAfterInterjection = await DialogPersistence.loadActiveCalleeDispatches(
       root.id,
       root.status,
     );
     assert.equal(
       pendingAfterInterjection.length,
       1,
-      'the original tellask sideDialog should still be pending after the interjection follow-up completes',
+      'the original tellask callee should remain active after the interjection follow-up completes',
     );
 
     await waitForAllDialogsUnlocked(root, 6_000);
   });
 
-  console.log('kernel-driver user-interject-pending-sideDialog-tool-followup: PASS');
+  console.log('kernel-driver user-interject-active-callee-tool-followup: PASS');
 }
 
 void main().catch((err: unknown) => {
   const message = err instanceof Error ? err.message : String(err);
-  console.error(`kernel-driver user-interject-pending-sideDialog-tool-followup: FAIL\n${message}`);
+  console.error(`kernel-driver user-interject-active-callee-tool-followup: FAIL\n${message}`);
   process.exit(1);
 });

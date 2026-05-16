@@ -210,7 +210,7 @@ type UserWaitState = {
 
 ### 规约句
 
-`pendingSideDialogs` is an observability fact and, for mainline dialogs only, a Diligence Push input. It must not decide whether the dialog can keep working.
+`active-callees` is an observability fact and, for mainline dialogs only, a Diligence Push input. It must not decide whether the caller dialog can keep working.
 
 中文表达：
 
@@ -224,8 +224,8 @@ type UserWaitState = {
 
 路径：
 
-1. `tellask-special.ts` 创建/更新 Side Dialog，并把 pending sideDialog 写入 `pending-sideDialogs.json`。
-2. 如果没有立即获得回贴，`processTellaskFunctionRound` 会为 callId 生成 pending `func_result_msg`。
+1. `tellask-special.ts` 创建/更新 Side Dialog，并把后台 callee dispatch 写入 `active-callees.json`。
+2. 如果没有立即获得回贴，`processTellaskFunctionRound` 会为 callId 生成 background `func_result_msg`。
 3. `drive.ts` 在工具轮结束后执行：
 
 ```ts
@@ -238,7 +238,7 @@ if (!suspensionAfterToolRound.canDrive) {
 }
 ```
 
-4. `Dialog.getSuspensionStatus()` 当前把 pending sideDialogs 当成不能继续驱动的原因：
+4. `Dialog.getSuspensionStatus()` 当前把后台 callee dispatch 当成不能继续驱动的原因：
 
 ```ts
 const blockingSideDialogs = hasSideDialogs && options?.allowPendingSideDialogs !== true;
@@ -350,7 +350,7 @@ allowPendingSideDialogs: driveOptions?.resumeInProgressGeneration === true,
 - 同一 dispatch batch 内任意单个 callee 回贴，只更新该 call 的结果事实和 pending 状态。
 - 只有该批次所有 callee 都已有最终结果，caller 才获得 result-arrival trigger。
 - 单个 `tellask` 是 dispatch batch size = 1 的特殊情况，因此看起来像“单个回贴即触发”，但实现上仍应走同一批次收口规则。
-- 如果同一 generation 里同时有多组不同语义的 dispatch，需要 durable batch identity 区分；不能只靠“当前 pendingSideDialogs 为空/非空”粗判。
+- 如果同一 generation 里同时有多组不同语义的 dispatch，需要 durable batch identity 区分；不能只靠“当前是否有 active callee”粗判。
 
 目标态不再沿用 `pending-sideDialogs.json` 作为运行判定源，也不改名续命为 `pending-calleeDialogs.json`。caller 对话目录下使用 `active-callees.json` 承载还未被消费的 callee 派发批次：
 
@@ -365,9 +365,14 @@ type ActiveCalleeBatch = {
   status: 'open' | 'resolved';
   callees: Array<{
     callId: string;
-    dialogId: string;
+    calleeDialogId: string;
     callName: 'tellask' | 'tellaskSessionless' | 'tellaskBack' | 'freshBootsReasoning';
     status: 'pending' | 'resolved' | 'final';
+    targetAgentId: string;
+    tellaskContent: string;
+    callType: 'A' | 'B' | 'C';
+    mentionList?: string[];
+    sessionSlug?: string;
     completion?: ActiveCalleeCompletion;
     createdAt: string;
     resolvedAt?: string;
@@ -383,7 +388,7 @@ type ActiveCalleeCompletion =
 
 原则：
 
-- 文件所在目录已经表达 caller，不在文件内容重复记录自身 `callerDialogId` / `ownerDialogId`。这也让 fork dialog 时少一类路径与内容不一致的问题。
+- 文件所在目录已经表达 caller，不在文件内容重复记录自身 `callerDialogId`。这也让 fork dialog 时少一类路径与内容不一致的问题。
 - `batchId` 必须保留，用于 result-arrival trigger、日志、崩溃恢复、去重和并发写入稳定引用；不使用数组下标或 `{ course, genseq }` 作为隐式 identity。
 - 同一 caller 可以同时存在多个 active batch。最重要的业务场景是用户插话：前一批 callee 还在后台运行时，用户可能继续补充要求，caller 因用户输入再次推进并派发新的 callee batch。
 - 每个 batch 独立 open/resolved/consumed；某个 batch complete 只生成该 batch 的 `result_arrival` trigger，不等待其它 batch，也不被其它 batch pending 投影成“caller 正在等待”。
@@ -731,7 +736,7 @@ closed-generation projection 清掉 stale `generating` 后，要同步处理 `ne
 - 将 `canDrive()` 收敛为“当前是否有先决事实要求先停在边界”，例如 Q4H 等待用户回答；pending course start 转为 `queued_prompt` trigger，不再作为先决等待事实。
 - 新增/拆出 completion obligation 查询，用于读取 active reply obligation；不要让它参与“是否可以开始下一步”的判定。
 - `getSuspensionStatus()` 若保留，应只暴露 `backgroundCalleeDialogs` 这类观测字段，避免 `sideDialogs` 与 `blockingSideDialogs` 被调用方误解为同一件事。
-- `hasPendingSideDialogs()` 保留为 background observability helper，不参与是否继续驱动的判断。
+- 后台被诉请者观测统一读取 `active-callees.json` / `loadActiveCalleeDispatches()`；不再保留 `hasPendingSideDialogs()` 这类旧语义 helper。
 - 避免新增主线专属 next-step 判定；主线/支线差异只应由编排、差遣牒权限、归档生命周期层表达。
 
 ### `main/dialog-display-state.ts`
@@ -774,14 +779,14 @@ closed-generation projection 清掉 stale `generating` 后，要同步处理 `ne
 
 ### `main/persistence.ts`
 
-- 移除 `PendingSideDialogStateRecord` 作为运行判定源；若仍需 UI/background observability，也从 `active-callees.json` 投影。
-- `removePendingSideDialog()` / pending-sideDialogs reconciliation 收敛为 active-callee batch member transition，返回 batch completion outcome。
+- `active-callees.json` 是后台 callee dispatch 的 durable 运行源；`ActiveCalleeDispatchRecord` 只作为从 batch 结构投影出来的局部视图，供 UI/background observability 和回贴匹配使用。
+- 旧 `removePendingSideDialog()` / pending-sideDialogs reconciliation 已收敛为 active-callee batch member transition，返回 batch completion outcome。
 - crash recovery 从 `active-callees.json` 读取每个 batch 的 pending/resolved/final 状态；从 durable events 重建只允许出现在一次性迁移/repair 工具中。
 
 ### `main/dialog-fork.ts`
 
-- fork 时继续复制 pending sideDialogs 作为 background facts。
-- fork 目标 display/run-control 不再因为 copied pending sideDialogs 进入等待被诉请者状态。
+- fork 时继续复制 active callee dispatches 作为 background facts。
+- fork 目标 display/run-control 不再因为 copied active callees 进入等待被诉请者状态。
 
 ### WebUI / run-control
 
@@ -937,15 +942,15 @@ UI 业务状态投影结论：
 - `interruption-resumption.ts` 中依赖 `waiting_for_sideDialogs` 的断言需要按新语义拆分 caller background work / callee completion obligation。
 - `sideDialog-mixed-tool-round-honors-suspension` 重命名为正向业务语义测试：pending sideDialog 不让 caller dialog 暂停，active reply obligation 仍参与完成/恢复判定。
 - run-control visual / counts 需要更新 pending tellask 不计入暂停/可恢复计数。
-- fork snapshot 中 pending sideDialogs 仍要复制为 background facts，但不投影为等待被诉请者状态。
+- fork snapshot 中 active callee dispatches 仍要复制为 background facts，但不投影为等待被诉请者状态。
 
 ## WIP 状态（阶段性提交标记）
 
-本提交已进入第三阶段状态机落地，但仍不是完整终态。WIP 标记保留到下一次完整状态机提交完成后再移除。
+本次提交已把后台 callee dispatch 收敛到 `active-callees.json`，并把旧 `pending-sideDialogs.json` 从运行源里移除；WIP 只保留未收尾的状态机和文案调整。
 
 第一阶段已落地：
 
-- pending tellask / pending sideDialog 不再作为 caller 的暂停条件；`getSuspensionStatus()` 只把 Q4H 视为 `canDrive=false` 的用户等待事实。
+- pending tellask / active callee dispatch 不再作为 caller 的暂停条件；`getSuspensionStatus()` 只把 Q4H 视为 `canDrive=false` 的用户等待事实。
 - pending tellask 不再投影为 `waiting_for_sideDialogs`；UI 以后台被诉请者数量 / FBR 被诉请者数量表达可观测状态。
 - post-tool continuation 排除纯后台 dispatch ack；普通工具结果、invalid tool call、queued prompt、reply recovery 仍按各自语义续推。
 - Diligence Push 收敛为主线编排保活机制；支线不再有 sideDialog diligence recovery prompt。
@@ -956,7 +961,7 @@ UI 业务状态投影结论：
 
 - `generationRunState` 已写入 `latest.yaml`：generation start 标记 `open`，generation finish 标记 `closed`；restart open-generation recovery 开始写入 `open_generation_recovery` trigger。
 - `NextStepTriggerState` 已开始落地：`queued_prompt`、`backend_queue`、`result_arrival`、`open_generation_recovery`、`reply_delivery_recovery` 已有 durable trigger 形态；`needsDrive` 正在收敛为 trigger projection。
-- durable `batchId` 已写入 pending sideDialog record；callee 回贴后按同一派发批次是否全部完成生成 `result_arrival` trigger。目标态已更新为 `active-callees.json` + `batchId`，并移除 pending-sideDialogs 作为运行判定源。
+- durable `batchId` 已写入 `active-callees.json` batch；callee 回贴后按同一派发批次是否全部完成生成 `result_arrival` trigger。目标态已更新为 `active-callees.json` + `batchId`，并移除 pending-sideDialogs 作为运行判定源。
 - `replyDelivery` 已落地：有效的 `replyTellask*` 工具调用会记录 pending delivery 的 reply callId、genseq、content、target dialog/callId；成功交付后标记 delivered，工具结果回写后标记 `toolResultStatus=recorded` 并移除 recovery trigger。
 - `reply-special` restart recovery 已改为读取 `latest.replyDelivery`，不再扫描当前 course events 查找 call-without-result。
 
@@ -966,10 +971,10 @@ UI 业务状态投影结论：
 - `DialogUserWaitState` 已落地；Q4H append/remove/clear 会同步 `latest.userWait`，driver/display 的常态等待判断开始读取状态快照。Q4H 详细问题载荷仍由 `q4h.yaml` 承载。
 - `followup` trigger 已落地为 `nextStep` 变体：普通 immediate tool result、invalid tool recovery、有效 tellask/reply 结果会写入最小原因集合，不另开 `followup.json`；下一轮 gen start durable handoff 后消费。
 - `mainline_diligence` trigger 已在 Diligence prompt 注入前写入；Diligence 仍只作用于主线，触发条件只看预算，pending tellask 只作为 prompt context 数量。
-- `active-callees.json` 已开始作为运行判定源：tellask 派发时写入 batch/callee，callee 回贴时按 batch 完整性生成 `result_arrival` trigger；direct-fallback 作为 callee completion memo 进入同一 batch，不新增独立 trigger。后台 callee 数量、Diligence pending 计数和 `hasPendingSideDialogs()` 已改读 active-callees；pending-sideDialogs 仍暂存 UI/reminder 细节和部分回贴展示字段，后续需继续收敛为完全从 active-callees/background projection 派生。
+- `active-callees.json` 已作为运行判定源：tellask 派发时写入 batch/callee，callee 回贴时按 batch 完整性生成 `result_arrival` trigger；direct-fallback 作为 callee completion memo 进入同一 batch，不新增独立 trigger。后台 callee 数量、Diligence pending 计数和 pending-tellask reminder 已改读 active-callees；运行时代码已移除 pending-sideDialogs 持久化源和旧 `hasPendingSideDialogs()` helper，后续主要收尾测试/文档命名。
 - `generationRunState` 已记录 open/closed 的 course/genseq/timestamp、open phase 与 `acceptedTriggerIds`；`finishRecordId` 和 last-tool-round 分类不进入 `generationRunState`，由 event log 与 `followup` trigger 分别承载。
 - restart 顺序已调整为 reply recovery 先于 proceeding/open-generation recovery；open-generation recovery 已不再从 `generating=true` 兜底。`generating=true` 但缺少 `generationRunState` 的 dialog 已进入 `malformed/`，不再静默停成 server_restart；generation recovery decision 仍需补齐结构化诊断返回。
-- runtime reason / error 已收敛到 result-arrival / dispatch-batch 语义；旧 `tellask-revive-context-refactor` 文档仍保留 wait-group 历史表述，后续应单独刷新或标记为 superseded。
+- runtime reason / error 已收敛到 result-arrival / dispatch-batch 语义；旧 `tellask-revive-context-refactor` 历史设计文档已删除，当前文档是本轮重构的唯一设计源。
 - runtime 读路径仍存在少量历史事件读取；后续必须把常态业务判定改为只读状态快照和显式 pending records。缺少必要元信息或结构不合法时转移到 `malformed/`，不在 runtime 或自动 repair 中回扫历史补齐。
 
 移除 WIP 标记的条件：

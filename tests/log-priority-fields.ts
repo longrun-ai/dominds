@@ -24,7 +24,7 @@ try {
       totalTokens: 141384,
     },
     _mutex: { locked: true, waiters: [] },
-    _pendingSideDialogIds: [],
+    _activeCalleeDialogIds: [],
     _upNextQueue: [],
     agentId: 'fullstack',
     askerStack: { askerStack: [] },

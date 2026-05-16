@@ -287,12 +287,13 @@ async function main(): Promise<void> {
       undefined,
       deferredDirective,
     );
-    await DialogPersistence.savePendingSideDialogs(
+    await DialogPersistence.saveActiveCalleeDispatches(
       root.id,
       [
         {
-          sideDialogId: deferredSideDialog.id.selfId,
+          calleeDialogId: deferredSideDialog.id.selfId,
           createdAt: formatUnifiedTimestamp(new Date()),
+          batchId: 'deferred-reply-guidance-batch',
           callName: 'tellask',
           mentionList: ['@pangu'],
           tellaskContent: deferredTellaskContent,

@@ -123,14 +123,14 @@ async function main(): Promise<void> {
     );
     await waitForAllDialogsUnlocked(mainDialog, 3_000);
 
-    const pending = await DialogPersistence.loadPendingSideDialogs(
+    const pending = await DialogPersistence.loadActiveCalleeDispatches(
       mainDialog.id,
       mainDialog.status,
     );
     assert.equal(
       pending.length,
       0,
-      'asker pending-sideDialogs should clear only after the continued reply arrives',
+      'asker active-callees should clear only after the continued reply arrives',
     );
 
     const tellaskResults = listTellaskResultContents(mainDialog.msgs);

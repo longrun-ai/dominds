@@ -100,7 +100,7 @@ async function ensureMainDialogLoaded(rootId: string): Promise<MainDialog | unde
   const existing = globalDialogRegistry.get(rootId);
   if (existing) {
     await existing.loadSideDialogRegistry();
-    await existing.loadPendingSideDialogsFromPersistence();
+    await existing.loadActiveCalleeDispatchesFromPersistence();
     return existing;
   }
   return await getOrRestoreMainDialog(rootId, 'running');
@@ -179,7 +179,7 @@ async function resolveTargetDialog(
   }
 
   await targetRoot.loadSideDialogRegistry();
-  await targetRoot.loadPendingSideDialogsFromPersistence();
+  await targetRoot.loadActiveCalleeDispatchesFromPersistence();
 
   if (target.sessionSlug) {
     const sideDialog = targetRoot.lookupSideDialog(target.agentId, target.sessionSlug);

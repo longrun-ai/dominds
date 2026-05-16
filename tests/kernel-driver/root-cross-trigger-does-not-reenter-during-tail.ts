@@ -48,15 +48,15 @@ async function main(): Promise<void> {
     globalDialogRegistry.register(root);
     void runBackendDriver();
 
-    const pendingSideDialog = await root.createSideDialog(
+    const activeCalleeDispatch = await root.createSideDialog(
       'pangu',
       ['@pangu'],
-      'Background side dialog work is still pending.',
+      'Background side dialog work remains active.',
       {
         callName: 'tellaskSessionless',
         originMemberId: 'tester',
         askerDialogId: root.id.selfId,
-        callId: 'root-cross-trigger-pending-sideDialog',
+        callId: 'root-cross-trigger-active-callee',
         callSiteCourse: 1,
         callSiteGenseq: 1,
         collectiveTargets: ['pangu'],
@@ -83,7 +83,7 @@ async function main(): Promise<void> {
           tellaskReplyDirective: {
             expectedReplyCallName: 'replyTellaskBack',
             targetCallId: 'reply-back-target',
-            targetDialogId: pendingSideDialog.id.selfId,
+            targetDialogId: activeCalleeDispatch.id.selfId,
             tellaskContent: 'Please confirm the side dialog result.',
           },
         },

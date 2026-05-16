@@ -32,10 +32,11 @@ async function main(): Promise<void> {
       },
     );
 
-    await DialogPersistence.savePendingSideDialogs(root.id, [
+    await DialogPersistence.saveActiveCalleeDispatches(root.id, [
       {
-        sideDialogId: sideDialog.id.selfId,
+        calleeDialogId: sideDialog.id.selfId,
         createdAt: '2026-04-15 00:00:00',
+        batchId: 'pending-runtime-prompt-resume-batch',
         callName: 'tellask',
         mentionList: ['@pangu'],
         tellaskContent: 'Resume me after restart.',

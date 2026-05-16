@@ -46,9 +46,10 @@ async function main(): Promise<void> {
     root.disableDiligencePush = true;
     pangu.disableDiligencePush = true;
 
-    await DialogPersistence.appendPendingSideDialog(root.id, {
-      sideDialogId: pangu.id.selfId,
+    await DialogPersistence.appendActiveCalleeDispatch(root.id, {
+      calleeDialogId: pangu.id.selfId,
       createdAt: formatUnifiedTimestamp(new Date()),
+      batchId: 'root-call-pangu-main-batch',
       callName: 'tellask',
       mentionList: ['@pangu'],
       tellaskContent: parentTellaskBody,
@@ -86,9 +87,10 @@ async function main(): Promise<void> {
       collectiveTargets: ['nuwa'],
     });
     nested.disableDiligencePush = true;
-    await DialogPersistence.appendPendingSideDialog(pangu.id, {
-      sideDialogId: nested.id.selfId,
+    await DialogPersistence.appendActiveCalleeDispatch(pangu.id, {
+      calleeDialogId: nested.id.selfId,
       createdAt: formatUnifiedTimestamp(new Date()),
+      batchId: 'pangu-call-nuwa-registered-batch',
       callName: 'tellask',
       mentionList: ['@nuwa'],
       tellaskContent: nestedTellaskBody,
@@ -187,7 +189,7 @@ async function main(): Promise<void> {
     );
     await waitForAllDialogsUnlocked(root, 3_000);
 
-    const pending = await DialogPersistence.loadPendingSideDialogs(pangu.id, pangu.status);
+    const pending = await DialogPersistence.loadActiveCalleeDispatches(pangu.id, pangu.status);
     assert.equal(
       pending.length,
       1,

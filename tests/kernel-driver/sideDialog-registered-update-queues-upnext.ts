@@ -161,7 +161,10 @@ async function main(): Promise<void> {
       true,
     );
 
-    const pendingAfterUpdate = await DialogPersistence.loadPendingSideDialogs(root.id, root.status);
+    const pendingAfterUpdate = await DialogPersistence.loadActiveCalleeDispatches(
+      root.id,
+      root.status,
+    );
     assert.equal(pendingAfterUpdate.length, 1, 'expected updated tellask to replace pending');
     assert.deepEqual(
       pendingAfterUpdate.map((record) => record.callId),
@@ -201,7 +204,7 @@ async function main(): Promise<void> {
         event.type === 'tellask_result_record' && event.callId === 'call-updated-round',
     );
     assert.ok(updatedRoundResponse, 'expected updated round to receive the completed result');
-    const pendingAfterUpdatedReply = await DialogPersistence.loadPendingSideDialogs(
+    const pendingAfterUpdatedReply = await DialogPersistence.loadActiveCalleeDispatches(
       root.id,
       root.status,
     );

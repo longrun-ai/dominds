@@ -448,9 +448,10 @@ async function main(): Promise<void> {
         collectiveTargets: ['pangu'],
       },
     );
-    await DialogPersistence.appendPendingSideDialog(multiReplyRoot.id, {
-      sideDialogId: multiReplySideDialog.id.selfId,
+    await DialogPersistence.appendActiveCalleeDispatch(multiReplyRoot.id, {
+      calleeDialogId: multiReplySideDialog.id.selfId,
       createdAt: formatUnifiedTimestamp(new Date()),
+      batchId: 'root-multi-reply-batch',
       callName: 'tellaskSessionless',
       mentionList: ['@pangu'],
       tellaskContent: 'Finish the assigned work exactly once.',
@@ -513,14 +514,14 @@ async function main(): Promise<void> {
       [multiReplyError, multiReplyError],
       'every replyTellask* call in a multi-reply round should fail',
     );
-    const stillPending = await DialogPersistence.loadPendingSideDialogs(
+    const stillPending = await DialogPersistence.loadActiveCalleeDispatches(
       multiReplyRoot.id,
       multiReplyRoot.status,
     );
     assert.equal(
       stillPending.length,
       1,
-      'multi replyTellask* failure must not clear pending sideDialog delivery',
+      'multi replyTellask* failure must not clear active callee dispatch',
     );
     const multiReplyRootEvents = await DialogPersistence.loadCourseEvents(
       multiReplyRoot.id,
@@ -590,10 +591,10 @@ async function main(): Promise<void> {
       'mixed replyTellask* violation must not stop as a successful reply delivery',
     );
     assert.equal(
-      (await DialogPersistence.loadPendingSideDialogs(multiReplyRoot.id, multiReplyRoot.status))
+      (await DialogPersistence.loadActiveCalleeDispatches(multiReplyRoot.id, multiReplyRoot.status))
         .length,
       1,
-      'mixed replyTellask* failure must not clear pending sideDialog delivery',
+      'mixed replyTellask* failure must not clear active callee dispatch',
     );
     assert.equal(
       (await DialogPersistence.loadCourseEvents(multiReplyRoot.id, 1, multiReplyRoot.status)).some(

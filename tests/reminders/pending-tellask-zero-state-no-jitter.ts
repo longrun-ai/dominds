@@ -4,6 +4,7 @@ import * as os from 'node:os';
 import * as path from 'node:path';
 
 import type { SideDialogAssignmentFromAsker } from '@longrun-ai/kernel/types/storage';
+import YAML from 'yaml';
 import { DialogID } from '../../main/dialog';
 import { DialogPersistence } from '../../main/persistence';
 import {
@@ -11,6 +12,11 @@ import {
   syncPendingTellaskReminderState,
 } from '../../main/tools/pending-tellask-reminder';
 import { createMainDialog } from '../kernel-driver/helpers';
+
+async function writeYaml(filePath: string, value: unknown): Promise<void> {
+  await fs.mkdir(path.dirname(filePath), { recursive: true });
+  await fs.writeFile(filePath, YAML.stringify(value), 'utf-8');
+}
 
 async function withTempCwd<T>(fn: () => Promise<T>): Promise<T> {
   const sandboxDir = await fs.mkdtemp(
@@ -26,7 +32,7 @@ async function withTempCwd<T>(fn: () => Promise<T>): Promise<T> {
   }
 }
 
-async function persistPendingSideDialog(args: {
+async function persistActiveCalleeDispatch(args: {
   rootId: string;
   selfId: string;
   createdAt: string;
@@ -41,6 +47,9 @@ async function persistPendingSideDialog(args: {
     originMemberId: 'tester',
     askerDialogId: args.rootId,
     callId: args.callId,
+    callSiteCourse: 1,
+    callSiteGenseq: 1,
+    collectiveTargets: ['worker'],
   };
   await DialogPersistence.ensureSideDialogDirectory(sideDialogId, 'running');
   await DialogPersistence.saveSideDialogAskerStackState(
@@ -72,9 +81,9 @@ async function persistPendingSideDialog(args: {
     },
     'running',
   );
-  await DialogPersistence.mutateDialogLatest(sideDialogId, () => ({
-    kind: 'patch',
-    patch: {
+  await writeYaml(
+    path.join(DialogPersistence.getDialogEventsPath(sideDialogId, 'running'), 'latest.yaml'),
+    {
       currentCourse: 1,
       lastModified: args.lastModified,
       status: 'active',
@@ -85,7 +94,7 @@ async function persistPendingSideDialog(args: {
       disableDiligencePush: false,
       diligencePushRemainingBudget: 0,
     },
-  }));
+  );
 }
 
 function requirePendingReminder(root: Awaited<ReturnType<typeof createMainDialog>>) {
@@ -96,19 +105,20 @@ async function main(): Promise<void> {
   await withTempCwd(async () => {
     const root = await createMainDialog('tester');
 
-    await persistPendingSideDialog({
+    await persistActiveCalleeDispatch({
       rootId: root.id.rootId,
       selfId: 'sub001',
       createdAt: '2026-04-16 10:01:00',
       lastModified: '2026-04-16 10:03:00',
       callId: 'call-sub001',
     });
-    await DialogPersistence.savePendingSideDialogs(
+    await DialogPersistence.saveActiveCalleeDispatches(
       root.id,
       [
         {
-          sideDialogId: 'sub001',
+          calleeDialogId: 'sub001',
           createdAt: '2026-04-16 10:01:00',
+          batchId: 'call-sub001-batch',
           callName: 'tellask',
           mentionList: ['@worker'],
           tellaskContent: 'Follow the current assignment',
@@ -125,7 +135,7 @@ async function main(): Promise<void> {
 
     await syncPendingTellaskReminderState(root);
 
-    await DialogPersistence.savePendingSideDialogs(root.id, [], undefined, root.status);
+    await DialogPersistence.saveActiveCalleeDispatches(root.id, [], undefined, root.status);
     await syncPendingTellaskReminderState(root);
 
     const zeroStateReminder = requirePendingReminder(root);

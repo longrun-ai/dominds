@@ -280,7 +280,7 @@ async function shouldSuppressInterDialogReplyGuidanceForUserInterjection(args: {
   // 3. manual Continue later decides from fresh persistence facts whether the dialog should stay
   //    blocked or resume real driving.
   //
-  // Do not "simplify" this into a pure display-state check or a pure pending-sideDialog check.
+  // Do not "simplify" this into a pure display-state check or a pure active-callee check.
   // Proceeding dialogs with a still-active reply obligation are part of the same rule: a fresh
   // user interjection should still suppress the live reply obligation and answer locally first.
   // The business anchor is the deferred reply reassertion, while the paused execution marker keeps

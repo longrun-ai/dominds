@@ -40,21 +40,21 @@ export type KernelDriverDriveOptions = Readonly<{
   criticalUserInterjectionRuntimeGuide?: string;
   noPromptSideDialogResumeEntitlement?:
     | Readonly<{
-        ownerDialogId: string;
+        callerDialogId: string;
         reason: 'reply_tellask_back_delivered';
         sideDialogId?: string;
         callType?: 'A' | 'B' | 'C';
         callId?: string;
       }>
     | Readonly<{
-        ownerDialogId: string;
+        callerDialogId: string;
         reason: 'replaced_pending_sideDialog_reply';
         sideDialogId?: string;
         callType?: 'A' | 'B' | 'C';
         callId?: string;
       }>
     | Readonly<{
-        ownerDialogId: string;
+        callerDialogId: string;
         reason: 'resolved_pending_sideDialog_reply';
         sideDialogId?: string;
         callType?: 'A' | 'B' | 'C';
@@ -70,8 +70,8 @@ export type KernelDriverDriveOptions = Readonly<{
   reason: string;
 }>;
 
-export type KernelDriverSideDialogReplyTarget = {
-  ownerDialogId: string;
+export type KernelDriverCalleeReplyTarget = {
+  callerDialogId: string;
   callType: 'A' | 'B' | 'C';
   callId: string;
   callSiteCourse: CallSiteCourseNo;
@@ -168,7 +168,7 @@ export type KernelDriverCoreResult = {
   lastAssistantThinkingContent: string | null;
   lastAssistantThinkingGenseq: number | null;
   lastFunctionCallGenseq: number | null;
-  lastAssistantReplyTarget?: KernelDriverSideDialogReplyTarget;
+  lastAssistantReplyTarget?: KernelDriverCalleeReplyTarget;
   fbrConclusion?: {
     responseText: string;
     responseGenseq: number;

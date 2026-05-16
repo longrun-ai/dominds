@@ -69,7 +69,7 @@ This is the "controlled convergence" path. The diligence-push mechanism should *
 Some provider/API quirk handlers may request a one-time Diligence Push recovery after Dominds stops
 same-context retries for a known deadlock pattern. This is not the ordinary "dialog is about to go
 idle" path. Diligence recovery injection is still main-dialog-only. Pending sideDialogs do not veto
-the single Diligence Push injection; ordinary Diligence also treats pending sideDialogs as context,
+the single Diligence Push injection; ordinary Diligence also treats active callee dispatches as context,
 not as a veto. Side Dialog retry-stopped recovery does not inject a Diligence prompt; ordinary
 business facts, direct-reply fallback, or the caller's next judgment decide how work proceeds.
 

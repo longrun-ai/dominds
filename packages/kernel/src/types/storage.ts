@@ -121,8 +121,8 @@ export type DialogDeferredReplyReassertion = Readonly<{
   resumeGuideSurfaced?: boolean;
 }>;
 
-export type DialogSideDialogReplyTarget = Readonly<{
-  ownerDialogId: string;
+export type DialogCalleeReplyTarget = Readonly<{
+  callerDialogId: string;
   callType: 'A' | 'B' | 'C';
   callId: string;
   callSiteCourse: CallSiteCourseNo;
@@ -431,8 +431,8 @@ export interface ReminderSnapshotItem {
   priority: 'high' | 'medium' | 'low';
 }
 
-export interface PendingSideDialogStateRecord {
-  sideDialogId: string;
+export interface ActiveCalleeDispatchRecord {
+  calleeDialogId: string;
   createdAt: string;
   batchId: string;
   callName: 'tellask' | 'tellaskSessionless' | 'freshBootsReasoning';
@@ -453,9 +453,14 @@ export type ActiveCalleeCompletion = Readonly<
 
 export interface ActiveCalleeRecord {
   callId: string;
-  dialogId: string;
+  calleeDialogId: string;
   callName: 'tellask' | 'tellaskSessionless' | 'tellaskBack' | 'freshBootsReasoning';
   status: 'pending' | 'resolved' | 'final';
+  targetAgentId: string;
+  tellaskContent: string;
+  callType: 'A' | 'B' | 'C';
+  mentionList?: string[];
+  sessionSlug?: string;
   completion?: ActiveCalleeCompletion;
   createdAt: string;
   resolvedAt?: string;
@@ -997,10 +1002,10 @@ export interface Questions4HumanReconciledRecord extends RootGenerationAnchor {
   questions: HumanQuestion[];
 }
 
-export interface PendingSideDialogsReconciledRecord extends RootGenerationAnchor {
+export interface ActiveCalleesReconciledRecord extends RootGenerationAnchor {
   ts: string;
-  type: 'pending_sideDialogs_reconciled_record';
-  pendingSideDialogs: PendingSideDialogStateRecord[];
+  type: 'active_callees_reconciled_record';
+  activeCalleeDispatches: ActiveCalleeDispatchRecord[];
 }
 
 export interface SideDialogRegistryReconciledRecord extends RootGenerationAnchor {
@@ -1105,6 +1110,6 @@ export type PersistedDialogRecord =
   | SideDialogCreatedRecord
   | RemindersReconciledRecord
   | Questions4HumanReconciledRecord
-  | PendingSideDialogsReconciledRecord
+  | ActiveCalleesReconciledRecord
   | SideDialogRegistryReconciledRecord
   | SideDialogResponsesReconciledRecord;

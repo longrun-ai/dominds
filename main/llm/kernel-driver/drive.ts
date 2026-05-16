@@ -917,7 +917,7 @@ function resolveUpNextPrompt(dlg: Dialog): KernelDriverPrompt | undefined {
         const prompt: KernelDriverRuntimeSideDialogPrompt = {
           ...runtimeCommon,
           tellaskReplyDirective: upNext.tellaskReplyDirective,
-          sideDialogReplyTarget: upNext.sideDialogReplyTarget,
+          calleeDialogReplyTarget: upNext.calleeDialogReplyTarget,
         };
         return prompt;
       }
@@ -1016,18 +1016,18 @@ async function loadPendingTellaskSpecialStates(
 ): Promise<ReadonlyMap<string, PendingTellaskSpecialState>> {
   const pendingByCallId = new Map<string, PendingTellaskSpecialState>();
 
-  const pendingSideDialogs = await DialogPersistence.loadPendingSideDialogs(
+  const activeCalleeDispatches = await DialogPersistence.loadActiveCalleeDispatches(
     dialog.id,
     dialog.status,
   );
-  for (const pending of pendingSideDialogs) {
-    const callId = pending.callId.trim();
+  for (const dispatch of activeCalleeDispatches) {
+    const callId = dispatch.callId.trim();
     if (callId === '') {
       continue;
     }
     pendingByCallId.set(callId, {
-      callName: pending.callName,
-      startedAtMs: parseUnifiedTimestampMs(pending.createdAt),
+      callName: dispatch.callName,
+      startedAtMs: parseUnifiedTimestampMs(dispatch.createdAt),
     });
   }
 
@@ -2100,7 +2100,7 @@ export async function driveDialogStreamCore(
   let lastAssistantThinkingContent: string | null = null;
   let lastAssistantThinkingGenseq: number | null = null;
   let lastFunctionCallGenseq: number | null = null;
-  let lastAssistantReplyTarget: KernelDriverPrompt['sideDialogReplyTarget'] | undefined;
+  let lastAssistantReplyTarget: KernelDriverPrompt['calleeDialogReplyTarget'] | undefined;
   let fbrConclusion:
     | {
         responseText: string;
@@ -2351,7 +2351,7 @@ export async function driveDialogStreamCore(
         let contextHealthForGen: ContextHealthSnapshot | undefined;
         let llmGenModelForGen: string = model;
         const currentPrompt = pendingPrompt;
-        const currentReplyTarget = currentPrompt?.sideDialogReplyTarget;
+        const currentReplyTarget = currentPrompt?.calleeDialogReplyTarget;
         const currentFbrState = await loadDialogFbrState(dlg);
         let currentRuntimeGuideMsg:
           | Extract<ChatMessage, { type: 'transient_guide_msg' }>
@@ -2554,7 +2554,7 @@ export async function driveDialogStreamCore(
             // Ideal: provider SDKs should support a dedicated role='environment' for runtime
             // metadata. Today, most providers only accept user/assistant (and tool as a special
             // case), so Dominds must project environment/system-like content as role='user'.
-            const replyTarget = currentPrompt.sideDialogReplyTarget;
+            const replyTarget = currentPrompt.calleeDialogReplyTarget;
             if (replyTarget) {
               const normalizedCallId = replyTarget.callId.trim();
               if (normalizedCallId === '') {
@@ -2591,9 +2591,9 @@ export async function driveDialogStreamCore(
                 dlg.status,
               );
               if (dlg instanceof SideDialog) {
-                const ownerDialogId = new DialogID(replyTarget.ownerDialogId, dlg.id.rootId);
-                const ownerDialogStatus =
-                  ownerDialogId.selfId === dlg.mainDialog.id.selfId
+                const callerDialogId = new DialogID(replyTarget.callerDialogId, dlg.id.rootId);
+                const callerDialogStatus =
+                  callerDialogId.selfId === dlg.mainDialog.id.selfId
                     ? dlg.mainDialog.status
                     : dlg.status;
                 const calleeCourse = toCalleeCourseNumber(course);
@@ -2612,12 +2612,12 @@ export async function driveDialogStreamCore(
                   calleeGenseq,
                 };
                 await DialogPersistence.appendEvent(
-                  ownerDialogId,
+                  callerDialogId,
                   replyTarget.callSiteCourse,
                   calleeRecord,
-                  ownerDialogStatus,
+                  callerDialogStatus,
                 );
-                postDialogEventById(ownerDialogId, {
+                postDialogEventById(callerDialogId, {
                   type: 'tellask_callee_evt',
                   course: replyTarget.callSiteCourse,
                   genseq: replyTarget.callSiteGenseq,

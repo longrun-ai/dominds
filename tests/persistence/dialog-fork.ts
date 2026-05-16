@@ -4,10 +4,11 @@ import * as os from 'node:os';
 import * as path from 'node:path';
 
 import type {
+  ActiveCalleesReconciledRecord,
   DialogLatestFile,
   MainDialogMetadataFile,
-  PendingSideDialogsReconciledRecord,
   RemindersReconciledRecord,
+  SideDialogAssignmentFromAsker,
   SideDialogCreatedRecord,
   SideDialogMetadataFile,
 } from '@longrun-ai/kernel/types/storage';
@@ -68,13 +69,16 @@ async function main(): Promise<void> {
       taskDocPath: 'plans/demo.tsk',
       createdAt,
     };
-    const subAssignment = {
+    const subAssignment: SideDialogAssignmentFromAsker = {
       callName: 'tellaskSessionless' as const,
       mentionList: ['@scribe'],
       tellaskContent: 'Investigate',
       originMemberId: 'rtws',
       askerDialogId: rootId.selfId,
       callId: 'call-sub-1',
+      callSiteCourse: 1,
+      callSiteGenseq: 1,
+      collectiveTargets: ['scribe'],
     };
     await DialogPersistence.ensureSideDialogDirectory(subId, 'running');
     await DialogPersistence.saveSideDialogAskerStackState(subId, {
@@ -101,12 +105,14 @@ async function main(): Promise<void> {
       taskDocPath: 'plans/demo.tsk',
       createdAt,
     };
-    const nestedSubAssignment = {
+    const nestedSubAssignment: SideDialogAssignmentFromAsker = {
       callName: 'freshBootsReasoning' as const,
       tellaskContent: 'Challenge the parent side dialog.',
       originMemberId: 'scribe',
       askerDialogId: subId.selfId,
       callId: 'call-nested-1',
+      callSiteCourse: 1,
+      callSiteGenseq: 1,
       effectiveFbrEffort: 1,
     };
     await DialogPersistence.ensureSideDialogDirectory(nestedSubId, 'running');
@@ -239,14 +245,15 @@ async function main(): Promise<void> {
       ],
     };
     await DialogPersistence.appendEvent(rootId, 1, postSecondReminderRecord);
-    const postSecondPendingRecord: PendingSideDialogsReconciledRecord = {
+    const postSecondPendingRecord: ActiveCalleesReconciledRecord = {
       ts: secondTs,
-      type: 'pending_sideDialogs_reconciled_record',
+      type: 'active_callees_reconciled_record',
       ...toRootGenerationAnchor({ rootCourse: 1, rootGenseq: 2 }),
-      pendingSideDialogs: [
+      activeCalleeDispatches: [
         {
-          sideDialogId: subId.selfId,
+          calleeDialogId: subId.selfId,
           createdAt: secondTs,
+          batchId: 'call-sub-1-batch',
           callName: 'tellaskSessionless',
           mentionList: ['@scribe'],
           tellaskContent: 'Investigate',
