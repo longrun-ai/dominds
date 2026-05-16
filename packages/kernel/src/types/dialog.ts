@@ -555,6 +555,7 @@ export interface DialogEventBase {
     rootId: string;
   };
   timestamp: string;
+  replay?: true;
 }
 
 export interface LlmGenDlgEvent {

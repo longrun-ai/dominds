@@ -122,7 +122,7 @@
     "reminder-delete-round-snapshot": "tsx reminders/delete-reminder-round-snapshot.ts",
     "reminder-stale-target-message": "tsx reminders/stale-target-message.ts",
     "reminder-daemon-exit-wake-event": "tsx reminders/daemon-exit-wake-event.ts",
-    "webapp-last-modified": "tsx webapp/dialog-last-modified.ts",
+    "kernel-unified-timestamp-ordering": "tsx kernel/unified-timestamp-ordering.ts",
     "webapp-run-control-visual": "tsx webapp/run-control-visual.ts",
     "context-health-critical-countdown": "tsx context-health/critical-countdown.ts",
     "context-health-critical-user-interjection": "tsx context-health/critical-user-interjection.ts",

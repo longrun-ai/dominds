@@ -163,7 +163,13 @@ export class RunningDialogList extends HTMLElement {
     }
     const key = targetKey;
     const entry = this.dialogIndex.get(key);
-    if (!entry) return false;
+    if (!entry) {
+      if (cacheIndex >= 0 && patch.lastModified !== undefined) {
+        this.applySnapshot(this.snapshotDialogs);
+        return this.dialogIndex.has(key);
+      }
+      return false;
+    }
     const existing = this.findDialogInSnapshot(rootId, targetSelf);
     if (!existing) return false;
     const next: ApiMainDialogResponse = { ...existing, ...patch };

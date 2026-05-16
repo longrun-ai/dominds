@@ -53,7 +53,11 @@ import type {
   WelcomeMessage,
 } from '@longrun-ai/kernel/types/wire';
 import { escapeHtml } from '@longrun-ai/kernel/utils/html';
-import { formatUnifiedTimestamp, parseUnifiedTimestampMs } from '@longrun-ai/kernel/utils/time';
+import {
+  formatUnifiedTimestamp,
+  isUnifiedTimestampAfter,
+  pickNewerUnifiedTimestamp,
+} from '@longrun-ai/kernel/utils/time';
 import faviconUrl from '../assets/favicon.svg';
 import {
   formatContextUsageTitle,
@@ -2855,8 +2859,6 @@ export class DomindsApp extends HTMLElement {
 
       const mainDialog = this.getMainDialog(rootId);
       if (mainDialog) {
-        const nodeUpdatedAtMs = parseUnifiedTimestampMs(node.lastModified);
-        const rootUpdatedAtMs = parseUnifiedTimestampMs(mainDialog.lastModified);
         const visibleCountFloor = existing.length + 1;
         if (node.rootSideDialogCount < visibleCountFloor) {
           throw new Error(
@@ -2871,11 +2873,10 @@ export class DomindsApp extends HTMLElement {
         ) {
           throw new Error(`Main dialog ${rootId} has invalid backend sideDialogCount`);
         }
-        const nextLastModified =
-          nodeUpdatedAtMs !== null &&
-          (rootUpdatedAtMs === null || nodeUpdatedAtMs > rootUpdatedAtMs)
-            ? node.lastModified
-            : mainDialog.lastModified;
+        const nextLastModified = pickNewerUnifiedTimestamp(
+          mainDialog.lastModified,
+          node.lastModified,
+        );
         if (
           nextSideDialogCount !== mainDialog.sideDialogCount ||
           nextLastModified !== mainDialog.lastModified
@@ -11580,26 +11581,7 @@ export class DomindsApp extends HTMLElement {
         return true;
       }
       case 'dlg_touched_evt': {
-        const status = this.lookupVisibleDialogStatusByIds(
-          message.dialog.rootId,
-          message.dialog.selfId,
-        );
-        this.bumpDialogLastModified(
-          { rootId: message.dialog.rootId, selfId: message.dialog.selfId },
-          message.timestamp,
-          status === 'running' ? { suppressRender: true } : undefined,
-        );
-        if (
-          status &&
-          message.dialog.selfId !== message.dialog.rootId &&
-          !this.findDisplayedDialogByIds(message.dialog.rootId, message.dialog.selfId)
-        ) {
-          this.requestDialogListSideDialogNodeBackfill(
-            message.dialog.rootId,
-            message.dialog.selfId,
-            status,
-          );
-        }
+        this.updateDialogListActivityFromTouchedEvent(message);
         return true;
       }
       default: {
@@ -11665,12 +11647,6 @@ export class DomindsApp extends HTMLElement {
           if (dc && typeof dc.resetForCourse === 'function') {
             dc.resetForCourse(message.course);
           }
-          const status = this.lookupVisibleDialogStatusByIds(dialog.rootId, dialog.selfId);
-          this.bumpDialogLastModified(
-            { rootId: dialog.rootId, selfId: dialog.selfId },
-            (message as TypedDialogEvent).timestamp,
-            status === 'running' ? { suppressRender: true } : undefined,
-          );
           break;
         }
 
@@ -11699,6 +11675,16 @@ export class DomindsApp extends HTMLElement {
             node.displayState ?? this.dialogDisplayStatesByKey.get(sideDialogKey);
           if (effectiveDisplayState) {
             this.dialogDisplayStatesByKey.set(sideDialogKey, effectiveDisplayState);
+          }
+
+          if (sideDialogEvent.replay === true) {
+            const dialogContainer = this.shadowRoot?.querySelector(
+              '#dialog-container',
+            ) as DomindsDialogContainer | null;
+            if (dialogContainer) {
+              await dialogContainer.handleDialogEvent(message as TypedDialogEvent);
+            }
+            break;
           }
 
           const incomingSideDialog: ApiMainDialogResponse = {
@@ -11759,10 +11745,14 @@ export class DomindsApp extends HTMLElement {
             );
           }
           const nextCount = sideDialogEvent.rootSideDialogCount;
+          const nextRootLastModified = pickNewerUnifiedTimestamp(
+            mainDialog.lastModified,
+            node.lastModified,
+          );
           this.upsertMainDialogSnapshot({
             ...mainDialog,
             sideDialogCount: nextCount,
-            lastModified: node.lastModified || mainDialog.lastModified,
+            lastModified: nextRootLastModified,
           });
 
           if (hadLoadedSideDialogs || rootExpandedInDom) {
@@ -11789,16 +11779,10 @@ export class DomindsApp extends HTMLElement {
               { rootId: node.rootId, selfId: node.rootId },
               {
                 sideDialogCount: nextCount,
-                lastModified: node.lastModified || mainDialog.lastModified,
+                lastModified: nextRootLastModified,
               },
             );
           }
-          this.bumpDialogLastModified(
-            { rootId: node.rootId, selfId: node.selfId },
-            node.lastModified || (message as TypedDialogEvent).timestamp,
-            node.status === 'running' ? { suppressRender: true } : undefined,
-          );
-
           const dialogContainer = this.shadowRoot?.querySelector(
             '#dialog-container',
           ) as DomindsDialogContainer | null;
@@ -11846,13 +11830,6 @@ export class DomindsApp extends HTMLElement {
             this.updateContextHealthUi();
           }
 
-          const ts = (message as TypedDialogEvent).timestamp;
-          const status = this.lookupVisibleDialogStatusByIds(dialog.rootId, dialog.selfId);
-          this.bumpDialogLastModified(
-            { rootId: dialog.rootId, selfId: dialog.selfId },
-            typeof ts === 'string' ? ts : undefined,
-            status === 'running' ? { suppressRender: true } : undefined,
-          );
           break;
         }
 
@@ -11869,13 +11846,6 @@ export class DomindsApp extends HTMLElement {
             await routedDialogContainer.handleDialogEvent(message as TypedDialogEvent);
           }
 
-          const ts = (message as TypedDialogEvent).timestamp;
-          const status = this.lookupVisibleDialogStatusByIds(dialog.rootId, dialog.selfId);
-          this.bumpDialogLastModified(
-            { rootId: dialog.rootId, selfId: dialog.selfId },
-            typeof ts === 'string' ? ts : undefined,
-            status === 'running' ? { suppressRender: true } : undefined,
-          );
           break;
         }
 
@@ -11893,18 +11863,12 @@ export class DomindsApp extends HTMLElement {
           const tellaskOwnerBackgroundFreshBootsReasoningCalleeCount =
             this.getDialogBackgroundFreshBootsReasoningCalleeCount(dialog.rootId, dialog.selfId);
           if (
+            (message as TypedDialogEvent).replay !== true &&
             tellaskOwnerBackgroundFreshBootsReasoningCalleeCount > 0 &&
             this.lookupVisibleDialogStatusByIds(dialog.rootId, dialog.selfId) === 'running'
           ) {
             this.refreshMainHierarchyAfterTellask(dialog.rootId);
           }
-          const ts = (message as TypedDialogEvent).timestamp;
-          const status = this.lookupVisibleDialogStatusByIds(dialog.rootId, dialog.selfId);
-          this.bumpDialogLastModified(
-            { rootId: dialog.rootId, selfId: dialog.selfId },
-            typeof ts === 'string' ? ts : undefined,
-            status === 'running' ? { suppressRender: true } : undefined,
-          );
           break;
         }
 
@@ -11973,13 +11937,6 @@ export class DomindsApp extends HTMLElement {
               runningList.updateDialogEntry(rootId, selfId, { displayState: typedDisplayState });
             }
           }
-          const ts = (message as TypedDialogEvent).timestamp;
-          this.bumpDialogLastModified(
-            { rootId: dialog.rootId, selfId: dialog.selfId },
-            typeof ts === 'string' ? ts : undefined,
-            { suppressRender: true },
-          );
-
           // Forward to dialog container if this event targets it
           const dialogContainer = this.getDialogContainerForEvent(message);
           if (dialogContainer) {
@@ -12040,13 +11997,6 @@ export class DomindsApp extends HTMLElement {
           if (dialogContainer) {
             await dialogContainer.handleDialogEvent(message as TypedDialogEvent);
           }
-          const ts = (message as TypedDialogEvent).timestamp;
-          this.bumpDialogLastModified(
-            { rootId: dialog.rootId, selfId: dialog.selfId },
-            typeof ts === 'string' ? ts : undefined,
-            { suppressRender: true },
-          );
-
           // Marker events are broadcast to all connected clients by backend display-state broadcaster.
           // Keep a delayed refresh so counters converge from persisted index even after transient hiccups.
           if (message.kind === 'resumed') {
@@ -12089,13 +12039,6 @@ export class DomindsApp extends HTMLElement {
           } catch (err) {
             console.warn('Failed to forward dialog event to container:', err);
           }
-          const ts = (message as TypedDialogEvent).timestamp;
-          const status = this.lookupVisibleDialogStatusByIds(dialog.rootId, dialog.selfId);
-          this.bumpDialogLastModified(
-            { rootId: dialog.rootId, selfId: dialog.selfId },
-            typeof ts === 'string' ? ts : undefined,
-            status === 'running' ? { suppressRender: true } : undefined,
-          );
           break;
       }
     } catch (error) {
@@ -12128,39 +12071,69 @@ export class DomindsApp extends HTMLElement {
     options?: { suppressRender?: boolean },
   ): void {
     if (!isoTs) return;
-    let changed = false;
+    let changedRoot = false;
+    let changedSide = false;
 
     const root = this.getMainDialog(dialogId.rootId);
-    if (root && root.lastModified !== isoTs) {
+    if (root && isUnifiedTimestampAfter(isoTs, root.lastModified)) {
       this.upsertMainDialogSnapshot({ ...root, lastModified: isoTs });
-      changed = true;
+      changedRoot = true;
     }
 
     if (dialogId.selfId !== dialogId.rootId && this.visibleSideDialogsByRoot.has(dialogId.rootId)) {
       const subs = this.getVisibleSideDialogsForRoot(dialogId.rootId);
       const updated = subs.map((sub) => {
         if (sub.selfId !== dialogId.selfId) return sub;
-        if (sub.lastModified === isoTs) return sub;
-        changed = true;
+        if (!isUnifiedTimestampAfter(isoTs, sub.lastModified)) return sub;
+        changedSide = true;
         return { ...sub, lastModified: isoTs };
       });
-      this.setVisibleSideDialogsForRoot(dialogId.rootId, updated);
+      if (changedSide) {
+        this.setVisibleSideDialogsForRoot(dialogId.rootId, updated);
+      }
     }
 
-    if (!changed) return;
+    if (!changedRoot && !changedSide) return;
     const status = this.lookupVisibleDialogStatusByIds(dialogId.rootId, dialogId.selfId);
     if (!status) return;
-    let patched = this.patchDialogListEntry(status, dialogId, { lastModified: isoTs });
-    if (dialogId.selfId !== dialogId.rootId) {
-      const patchedRoot = this.patchDialogListEntry(
-        status,
-        { rootId: dialogId.rootId, selfId: dialogId.rootId },
-        { lastModified: isoTs },
-      );
-      patched = patched || patchedRoot;
-    }
-    if (patched && options?.suppressRender) return;
+
+    const patchedSide = changedSide
+      ? this.patchDialogListEntry(status, dialogId, { lastModified: isoTs })
+      : true;
+    const patchedRoot = changedRoot
+      ? this.patchDialogListEntry(
+          status,
+          { rootId: dialogId.rootId, selfId: dialogId.rootId },
+          { lastModified: isoTs },
+        )
+      : true;
+    if (patchedSide && patchedRoot && options?.suppressRender) return;
     this.syncDialogListByStatus(status);
+  }
+
+  private updateDialogListActivityFromTouchedEvent(
+    message: Extract<TypedDialogEvent, { type: 'dlg_touched_evt' }>,
+  ): void {
+    const status = this.lookupVisibleDialogStatusByIds(
+      message.dialog.rootId,
+      message.dialog.selfId,
+    );
+    this.bumpDialogLastModified(
+      { rootId: message.dialog.rootId, selfId: message.dialog.selfId },
+      message.timestamp,
+      status === 'running' ? { suppressRender: true } : undefined,
+    );
+    if (
+      status &&
+      message.dialog.selfId !== message.dialog.rootId &&
+      !this.findDisplayedDialogByIds(message.dialog.rootId, message.dialog.selfId)
+    ) {
+      this.requestDialogListSideDialogNodeBackfill(
+        message.dialog.rootId,
+        message.dialog.selfId,
+        status,
+      );
+    }
   }
 
   /**

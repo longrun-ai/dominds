@@ -25,7 +25,7 @@ import type {
 } from '@longrun-ai/kernel/types/taskdoc';
 import type { DialogIdent, DialogStatusKind } from '@longrun-ai/kernel/types/wire';
 import { escapeHtml } from '@longrun-ai/kernel/utils/html';
-import { formatUnifiedTimestamp } from '@longrun-ai/kernel/utils/time';
+import { formatUnifiedTimestamp, pickNewerUnifiedTimestamp } from '@longrun-ai/kernel/utils/time';
 import fsPromises from 'fs/promises';
 import { IncomingMessage, ServerResponse } from 'http';
 import * as path from 'path';
@@ -2401,12 +2401,35 @@ async function handleGetDialogs(
 
     const allDialogIds = await DialogPersistence.listAllDialogIds(status);
     const sideDialogCountByRootId = new Map<string, number>();
+    const sideDialogLastModifiedByRootId = new Map<string, string>();
     for (const dialogId of allDialogIds) {
       if (dialogId.selfId === dialogId.rootId) continue;
       sideDialogCountByRootId.set(
         dialogId.rootId,
         (sideDialogCountByRootId.get(dialogId.rootId) ?? 0) + 1,
       );
+      const sideLatest = await loadDialogLatestForLookup(
+        dialogId,
+        status,
+        'handleListDialogs:sideDialogLastModified',
+      );
+      const sideMeta = sideLatest
+        ? null
+        : await loadDialogMetadataForLookup(
+            dialogId,
+            status,
+            'handleListDialogs:sideDialogLastModifiedFallback',
+          );
+      const sideLastModified = sideLatest?.lastModified || sideMeta?.createdAt;
+      if (sideLastModified) {
+        sideDialogLastModifiedByRootId.set(
+          dialogId.rootId,
+          pickNewerUnifiedTimestamp(
+            sideDialogLastModifiedByRootId.get(dialogId.rootId) ?? sideLastModified,
+            sideLastModified,
+          ),
+        );
+      }
     }
 
     const ids = await DialogPersistence.listDialogs(status);
@@ -2426,9 +2449,10 @@ async function handleGetDialogs(
       const backgroundSummary = await loadBackgroundCalleeDialogSummary(dialogId, status);
 
       const sideDialogCount = sideDialogCountByRootId.get(meta.id) ?? 0;
-      if (!(await pathStillExistsForLookup(rootPath))) {
-        continue;
-      }
+      const lastModified = pickNewerUnifiedTimestamp(
+        latest?.lastModified || meta.createdAt,
+        sideDialogLastModifiedByRootId.get(meta.id),
+      );
 
       mainDialogs.push({
         rootId: meta.id,
@@ -2437,7 +2461,7 @@ async function handleGetDialogs(
         status,
         currentCourse: latest?.currentCourse || 1,
         createdAt: meta.createdAt,
-        lastModified: latest?.lastModified || meta.createdAt,
+        lastModified,
         displayState: latest?.displayState,
         ...backgroundSummary,
         sideDialogCount,
@@ -2509,6 +2533,8 @@ async function handleGetDialogHierarchy(
       return true;
     }
 
+    let rootLastModified = rootLatest?.lastModified || rootMeta.createdAt;
+
     const rootInfo = {
       id: rootMeta.id,
       agentId: rootMeta.agentId,
@@ -2516,17 +2542,10 @@ async function handleGetDialogHierarchy(
       status,
       currentCourse: rootLatest?.currentCourse || 1,
       createdAt: rootMeta.createdAt,
-      lastModified: rootLatest?.lastModified || rootMeta.createdAt,
+      lastModified: rootLastModified,
       displayState: rootLatest?.displayState,
       ...(await loadBackgroundCalleeDialogSummary(new DialogID(rootId), status)),
     };
-    if (!(await pathStillExistsForLookup(rootPath))) {
-      respondJson(res, 404, {
-        success: false,
-        error: `Main dialog ${rootId} was quarantined as malformed`,
-      });
-      return true;
-    }
 
     let sideDialogs: Array<{
       selfId: string;
@@ -2602,12 +2621,16 @@ async function handleGetDialogHierarchy(
         assignmentFromAsker,
         ...backgroundSummary,
       });
+      rootLastModified = pickNewerUnifiedTimestamp(
+        rootLastModified,
+        subLatest?.lastModified || meta.createdAt,
+      );
     }
 
     respondJson(res, 200, {
       success: true,
       hierarchy: {
-        root: { ...rootInfo, sideDialogCount: sideDialogs.length },
+        root: { ...rootInfo, lastModified: rootLastModified, sideDialogCount: sideDialogs.length },
         sideDialogs,
       },
     });

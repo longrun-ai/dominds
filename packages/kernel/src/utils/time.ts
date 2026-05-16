@@ -30,3 +30,22 @@ export function parseUnifiedTimestampMs(value: string): number | null {
   const parsed = Date.parse(trimmed);
   return Number.isNaN(parsed) ? null : parsed;
 }
+
+export function compareUnifiedTimestamps(a: string, b: string): number {
+  if (a === b) return 0;
+  const aMs = parseUnifiedTimestampMs(a);
+  const bMs = parseUnifiedTimestampMs(b);
+  if (aMs !== null && bMs !== null) return aMs - bMs;
+  if (aMs !== null) return 1;
+  if (bMs !== null) return -1;
+  return a.localeCompare(b);
+}
+
+export function isUnifiedTimestampAfter(candidate: string, current: string): boolean {
+  return compareUnifiedTimestamps(candidate, current) > 0;
+}
+
+export function pickNewerUnifiedTimestamp(current: string, candidate: string | undefined): string {
+  if (candidate === undefined) return current;
+  return isUnifiedTimestampAfter(candidate, current) ? candidate : current;
+}

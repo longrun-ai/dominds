@@ -3672,7 +3672,7 @@ export class DomindsDialogContainer extends HTMLElement {
       }
     }
 
-    if (event.status === 'failed' && !isSupersededNotice) {
+    if (event.status === 'failed' && !isSupersededNotice && event.replay !== true) {
       const host = (this.getRootNode() as ShadowRoot)?.host as HTMLElement | null;
       const t = getUiStrings(this.uiLanguage);
       if (host) {
@@ -3805,6 +3805,9 @@ export class DomindsDialogContainer extends HTMLElement {
       rootId: sideDialog.rootId,
       selfId: calleeDialogId,
     });
+    if (sideDialogEvent.replay === true) {
+      return;
+    }
 
     // Dispatch event for dialog list to update tellaskee dialog count
     const host = (this.getRootNode() as ShadowRoot)?.host as HTMLElement | null;

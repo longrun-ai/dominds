@@ -2693,7 +2693,7 @@ export class DiskFileDialogStore extends DialogStore {
         selfId: sideDialogId.selfId,
         rootId: sideDialogId.rootId,
       },
-      timestamp: new Date().toISOString(),
+      timestamp: nowTs,
       course: parentCourse,
       parentDialog: {
         selfId: askerDialog.id.selfId,
@@ -5148,6 +5148,7 @@ export class DiskFileDialogStore extends DialogStore {
       case 'tellask_result_record': {
         const base = {
           type: 'tellask_result_evt' as const,
+          replay: true as const,
           course,
           callId: event.callId,
           status: event.status,
@@ -5248,6 +5249,7 @@ export class DiskFileDialogStore extends DialogStore {
 
         const sideDialogCreatedEvent: SideDialogEvent = {
           type: 'sideDialog_created_evt',
+          replay: true,
           course,
           dialog: {
             // Add dialog field for proper event routing
@@ -5327,6 +5329,7 @@ export class DiskFileDialogStore extends DialogStore {
       case 'tellask_carryover_record': {
         const base = {
           type: 'tellask_carryover_evt' as const,
+          replay: true as const,
           course,
           genseq: event.genseq,
           callSiteCourse: event.callSiteCourse,

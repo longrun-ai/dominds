@@ -133,7 +133,13 @@ export class ArchivedDialogList extends HTMLElement {
       this.refreshFromDom();
     }
     const entry = this.dialogIndex.get(targetKey);
-    if (!entry) return false;
+    if (!entry) {
+      if (cacheIndex >= 0 && patch.lastModified !== undefined) {
+        this.applySnapshot(this.snapshotDialogs);
+        return this.dialogIndex.has(targetKey);
+      }
+      return false;
+    }
     const existing = this.findDialogInSnapshot(rootId, targetSelf);
     if (!existing) return false;
     const next: ApiMainDialogResponse = { ...existing, ...patch };
