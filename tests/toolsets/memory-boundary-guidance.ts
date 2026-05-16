@@ -46,7 +46,29 @@ async function renderToolsetTopic(
   });
 }
 
+function assertPersonalMemoryRecommendationsIncludeCompanionToolsets(
+  manual: string,
+  label: string,
+): void {
+  const personalMemoryLines = manual
+    .split('\n')
+    .filter((line) => line.includes('`personal_memory`'));
+  assert.ok(personalMemoryLines.length > 0, `${label} should mention personal_memory`);
+  for (const line of personalMemoryLines) {
+    assert.ok(
+      line.includes('`skills`') && line.includes('`resources`'),
+      `${label} personal_memory recommendation should also mention skills/resources: ${line}`,
+    );
+  }
+}
+
 async function main(): Promise<void> {
+  const zhTeamManual = await renderManual('zh', 'team_mgmt', ['team']);
+  assertPersonalMemoryRecommendationsIncludeCompanionToolsets(
+    zhTeamManual,
+    'zh team_mgmt team manual',
+  );
+
   const zhMinds = await renderManual('zh', 'team_mgmt', ['minds']);
   assert.ok(
     zhMinds.includes('角色级长期定义资产'),
@@ -56,6 +78,7 @@ async function main(): Promise<void> {
     zhMinds.includes('成员个人长期可复用经验与个人工作索引 -> `personal_memory`'),
     'zh team_mgmt minds manual should route personal reusable experience to personal_memory',
   );
+  assertPersonalMemoryRecommendationsIncludeCompanionToolsets(zhMinds, 'zh team_mgmt minds manual');
   assert.ok(
     zhMinds.includes('Taskdoc `progress`（准实时任务公告牌）'),
     'zh team_mgmt minds manual should define Taskdoc progress as the quasi-real-time task bulletin board',
@@ -101,11 +124,18 @@ async function main(): Promise<void> {
     'zh control manual should describe progress as the current effective-state snapshot',
   );
 
+  const enTeamManual = await renderManual('en', 'team_mgmt', ['team']);
+  assertPersonalMemoryRecommendationsIncludeCompanionToolsets(
+    enTeamManual,
+    'en team_mgmt team manual',
+  );
+
   const enMinds = await renderManual('en', 'team_mgmt', ['minds']);
   assert.ok(
     enMinds.includes('role-level long-lived definition assets'),
     'en team_mgmt minds manual should define persona/knowhow/pitfalls as role-level long-lived assets',
   );
+  assertPersonalMemoryRecommendationsIncludeCompanionToolsets(enMinds, 'en team_mgmt minds manual');
   assert.ok(
     enMinds.includes('quasi-real-time task bulletin board'),
     'en team_mgmt minds manual should define Taskdoc progress as the quasi-real-time task bulletin board',
