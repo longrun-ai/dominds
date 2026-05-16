@@ -9,6 +9,7 @@ import { setWorkLanguage } from '../../main/runtime/work-language';
 
 import {
   createMainDialog,
+  hasPendingNextStepTriggers,
   waitForAllDialogsUnlocked,
   withTempRtws,
   writeMockDb,
@@ -75,7 +76,19 @@ async function main(): Promise<void> {
     await DialogPersistence.mutateDialogLatest(sideDialog.id, (previous) => ({
       kind: 'patch',
       patch: {
-        needsDrive: true,
+        nextStep: {
+          nextSeq: 2,
+          triggers: [
+            {
+              triggerId: `queued-prompt:${queuedPrompt.msgId}`,
+              kind: 'queued_prompt',
+              promptId: queuedPrompt.msgId,
+              course: sideDialog.currentCourse,
+              createdAt: new Date().toISOString(),
+              seq: 1,
+            },
+          ],
+        },
         pendingRuntimePrompt: {
           content: queuedPrompt.prompt,
           msgId: queuedPrompt.msgId,
@@ -119,9 +132,9 @@ async function main(): Promise<void> {
       'restore should clear the stale pending runtime prompt from latest.yaml',
     );
     assert.equal(
-      latestAfterRestore?.needsDrive,
+      hasPendingNextStepTriggers(latestAfterRestore),
       false,
-      'restore should clear stale needsDrive when the pending runtime prompt is already persisted',
+      'restore should clear stale pending next-step triggers when the pending runtime prompt is already persisted',
     );
     assert.equal(
       latestAfterRestore?.executionMarker,

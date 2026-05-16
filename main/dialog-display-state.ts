@@ -113,6 +113,10 @@ function isNonIdleDisplayProjection(state: DialogDisplayState | undefined): bool
   return state !== undefined && state.kind !== 'idle_waiting_user';
 }
 
+function hasPendingNextStepTriggers(latest: DialogLatestFile | null | undefined): boolean {
+  return (latest?.nextStep?.triggers.length ?? 0) > 0;
+}
+
 function q4hSuspensionDisplayState(hasQ4H: boolean): DialogDisplayState | undefined {
   if (hasQ4H) {
     return { kind: 'blocked', reason: { kind: 'needs_human_input' } };
@@ -640,7 +644,7 @@ async function healStaleSideDialogRunControlAfterFinalResponse(args: {
 }): Promise<DialogLatestFile | null> {
   if (
     args.dialogId.selfId === args.dialogId.rootId ||
-    (args.latest.needsDrive !== true &&
+    (!hasPendingNextStepTriggers(args.latest) &&
       args.latest.generating !== true &&
       args.latest.executionMarker?.kind !== 'interrupted' &&
       !isNonIdleDisplayProjection(args.latest.displayState))
@@ -680,7 +684,7 @@ async function healStaleSideDialogRunControlAfterFinalResponse(args: {
     responseCallId: finalResponseClosure.callId,
     clearedReplyObligation,
     previousGenerating: args.latest.generating ?? null,
-    previousWakeQueued: args.latest.needsDrive ?? null,
+    previousNextStepTriggerCount: args.latest.nextStep?.triggers.length ?? 0,
     previousDisplayState: args.latest.displayState ?? null,
     previousExecutionMarker: args.latest.executionMarker ?? null,
   });
@@ -688,7 +692,7 @@ async function healStaleSideDialogRunControlAfterFinalResponse(args: {
     kind: 'patch',
     patch: {
       generating: false,
-      needsDrive: false,
+      nextStep: undefined,
       displayState: { kind: 'idle_waiting_user' },
       executionMarker: undefined,
     },
@@ -914,7 +918,7 @@ export async function reconcileDisplayStatesAfterRestart(): Promise<void> {
     if (
       dialogId.selfId !== dialogId.rootId &&
       (latest.generating === true ||
-        latest.needsDrive === true ||
+        hasPendingNextStepTriggers(latest) ||
         latest.executionMarker?.kind === 'interrupted' ||
         isNonIdleDisplayProjection(latest.displayState))
     ) {
@@ -929,7 +933,7 @@ export async function reconcileDisplayStatesAfterRestart(): Promise<void> {
         continue;
       }
       latest = healedStaleSideDialogRunControl;
-      if (latest.generating !== true && latest.needsDrive !== true) {
+      if (latest.generating !== true && !hasPendingNextStepTriggers(latest)) {
         continue;
       }
     }
@@ -951,7 +955,6 @@ export async function reconcileDisplayStatesAfterRestart(): Promise<void> {
         await DialogPersistence.mutateDialogLatest(dialogId, () => ({
           kind: 'patch',
           patch: {
-            needsDrive: true,
             displayState: { kind: 'proceeding' },
             executionMarker:
               existingMarker?.kind === 'interrupted' &&
@@ -969,7 +972,7 @@ export async function reconcileDisplayStatesAfterRestart(): Promise<void> {
       continue;
     }
 
-    if (latest.generating === true || latest.needsDrive === true) {
+    if (latest.generating === true || hasPendingNextStepTriggers(latest)) {
       const nextIdle = await computeIdleDisplayStateForReconciliation(dialogId);
       if (!nextIdle) {
         continue;

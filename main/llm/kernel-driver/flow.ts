@@ -183,6 +183,12 @@ function isNonIdleDisplayProjection(state: DialogDisplayState | undefined): bool
   return state !== undefined && state.kind !== 'idle_waiting_user';
 }
 
+function hasPendingNextStepTriggers(
+  latest: Awaited<ReturnType<typeof DialogPersistence.loadDialogLatest>>,
+): boolean {
+  return (latest?.nextStep?.triggers.length ?? 0) > 0;
+}
+
 type DirectFallbackResponse = Readonly<{
   responseText: string;
   responseGenseq: number;
@@ -462,12 +468,12 @@ async function clearStaleSideDialogRunControlForFinalResponse(args: {
 }): Promise<{
   cleared: boolean;
   previousGenerating: boolean | null;
-  previousWakeQueued: boolean | null;
+  previousNextStepTriggerCount: number | null;
 }> {
   const latest = await DialogPersistence.loadDialogLatest(args.dialog.id, args.dialog.status);
   if (
     !latest ||
-    (latest.needsDrive !== true &&
+    (!hasPendingNextStepTriggers(latest) &&
       latest.generating !== true &&
       latest.executionMarker?.kind !== 'interrupted' &&
       !isNonIdleDisplayProjection(latest.displayState)) ||
@@ -477,7 +483,7 @@ async function clearStaleSideDialogRunControlForFinalResponse(args: {
     return {
       cleared: false,
       previousGenerating: latest?.generating ?? null,
-      previousWakeQueued: latest?.needsDrive ?? null,
+      previousNextStepTriggerCount: latest?.nextStep?.triggers.length ?? null,
     };
   }
 
@@ -487,7 +493,7 @@ async function clearStaleSideDialogRunControlForFinalResponse(args: {
       kind: 'patch',
       patch: {
         generating: false,
-        needsDrive: false,
+        nextStep: undefined,
         displayState: { kind: 'idle_waiting_user' } as const,
         executionMarker: undefined,
       },
@@ -497,7 +503,7 @@ async function clearStaleSideDialogRunControlForFinalResponse(args: {
   return {
     cleared: true,
     previousGenerating: latest.generating ?? null,
-    previousWakeQueued: latest.needsDrive ?? null,
+    previousNextStepTriggerCount: latest.nextStep?.triggers.length ?? 0,
   };
 }
 
@@ -955,7 +961,7 @@ export async function executeDriveRound(args: {
               sideDialogFinalResponseCallId: inspection.sideDialogFinalResponseCallId ?? null,
               clearedStaleRunControl: cleanup.cleared,
               previousGenerating: cleanup.previousGenerating,
-              previousWakeQueued: cleanup.previousWakeQueued,
+              previousNextStepTriggerCount: cleanup.previousNextStepTriggerCount,
               waitInQue,
             },
           );

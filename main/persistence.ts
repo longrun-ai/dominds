@@ -203,7 +203,6 @@ function summarizeLatestProjectionState(latest: DialogLatestFile): Record<string
     functionCallCount: latest.functionCallCount ?? null,
     sideDialogCount: latest.sideDialogCount ?? null,
     generating: latest.generating ?? false,
-    needsDrive: latest.needsDrive ?? false,
     disableDiligencePush: latest.disableDiligencePush ?? false,
     diligencePushRemainingBudget: latest.diligencePushRemainingBudget ?? null,
     displayState: latest.displayState ?? null,
@@ -246,7 +245,6 @@ function summarizeLatestMutationPatch(
     functionCallCount: patch.functionCallCount ?? null,
     sideDialogCount: patch.sideDialogCount ?? null,
     generating: patch.generating ?? null,
-    needsDrive: patch.needsDrive ?? null,
     disableDiligencePush: patch.disableDiligencePush ?? null,
     diligencePushRemainingBudget: patch.diligencePushRemainingBudget ?? null,
     displayState: patch.displayState ?? null,
@@ -2001,8 +1999,6 @@ function parseDialogLatestFile(value: unknown): DialogLatestFile | null {
     return null;
   if (value.sideDialogCount !== undefined && typeof value.sideDialogCount !== 'number') return null;
   if (value.generating !== undefined && typeof value.generating !== 'boolean') return null;
-  if (value.needsDrive !== undefined && typeof value.needsDrive !== 'boolean') return null;
-
   const displayStateRaw = (value as Record<string, unknown>).displayState;
   const displayState: DialogLatestFile['displayState'] | null = (() => {
     if (displayStateRaw === undefined) return undefined;
@@ -2226,7 +2222,6 @@ function parseDialogLatestFile(value: unknown): DialogLatestFile | null {
     sideDialogCount: value.sideDialogCount,
     status: value.status,
     generating: value.generating,
-    needsDrive: value.needsDrive,
     displayState,
     executionMarker,
     generationRunState,
@@ -3017,7 +3012,6 @@ export class DiskFileDialogStore extends DialogStore {
           kind: 'patch',
           patch: {
             generating: true,
-            needsDrive: nextStepHasTriggers(nextStep),
             nextStep,
             generationRunState: {
               kind: 'open',
@@ -3695,7 +3689,6 @@ export class DiskFileDialogStore extends DialogStore {
       kind: 'patch',
       patch: {
         currentCourse: newCourse,
-        needsDrive: true,
         nextStep: upsertNextStepTrigger(previous.nextStep, {
           triggerId: `queued-prompt:${newCoursePrompt.msgId}`,
           kind: 'queued_prompt',
@@ -3742,7 +3735,6 @@ export class DiskFileDialogStore extends DialogStore {
       (previous) => ({
         kind: 'patch',
         patch: {
-          needsDrive: true,
           nextStep: upsertNextStepTrigger(previous.nextStep, {
             triggerId: `queued-prompt:${prompt.msgId}`,
             kind: 'queued_prompt',
@@ -8986,7 +8978,6 @@ export class DialogPersistence {
               deliveredAt,
             },
             nextStep,
-            needsDrive: nextStepHasTriggers(nextStep),
           },
         };
       },
@@ -9640,7 +9631,6 @@ export class DialogPersistence {
         return {
           kind: 'patch',
           patch: {
-            needsDrive: true,
             nextStep,
           },
         };
@@ -9661,7 +9651,6 @@ export class DialogPersistence {
         return {
           kind: 'patch',
           patch: {
-            needsDrive: nextStepHasTriggers(nextStep),
             nextStep,
           },
         };
@@ -9716,7 +9705,6 @@ export class DialogPersistence {
                     previous: summarizeLatestProjectionState(previous),
                     intendedPatch: summarizeLatestMutationPatch({
                       pendingRuntimePrompt: undefined,
-                      needsDrive: nextStepHasTriggers(nextStep),
                       nextStep,
                       displayState: { kind: 'proceeding' },
                       executionMarker:
@@ -9739,7 +9727,6 @@ export class DialogPersistence {
           kind: 'patch',
           patch: {
             pendingRuntimePrompt: undefined,
-            needsDrive: nextStepHasTriggers(nextStep),
             nextStep,
             displayState,
             executionMarker:

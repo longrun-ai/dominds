@@ -13,6 +13,7 @@ import { getWorkLanguage } from '../../main/runtime/work-language';
 
 import {
   createMainDialog,
+  hasPendingNextStepTriggers,
   lastAssistantSaying,
   makeDriveOptions,
   makeUserPrompt,
@@ -116,7 +117,7 @@ async function main(): Promise<void> {
     await waitFor(
       async () => {
         const latest = await DialogPersistence.loadDialogLatest(root.id, root.status);
-        return latest?.needsDrive === true;
+        return hasPendingNextStepTriggers(latest) === true;
       },
       3_000,
       'root revive to queue while the synthetic active run is still present',
@@ -144,7 +145,7 @@ async function main(): Promise<void> {
 
     const latest = await DialogPersistence.loadDialogLatest(root.id, root.status);
     assert.equal(
-      latest?.needsDrive,
+      hasPendingNextStepTriggers(latest),
       false,
       'queued root revive should be fully consumed after backend-loop retry',
     );

@@ -1,4 +1,5 @@
 import type { DialogLatestFile } from '@longrun-ai/kernel/types/storage';
+import { toDialogCourseNumber } from '@longrun-ai/kernel/types/storage';
 import type { DialogsQuarantinedMessage } from '@longrun-ai/kernel/types/wire';
 import assert from 'node:assert/strict';
 import * as fs from 'node:fs/promises';
@@ -224,7 +225,24 @@ async function main(): Promise<void> {
         try {
           await DialogPersistence.mutateDialogLatest(
             dialogId,
-            () => ({ kind: 'patch', patch: { needsDrive: true } }),
+            () => ({
+              kind: 'patch',
+              patch: {
+                nextStep: {
+                  nextSeq: 2,
+                  triggers: [
+                    {
+                      triggerId: `backend-queue:${dialogId.selfId}`,
+                      kind: 'backend_queue',
+                      reason: 'test_writeback_blocker',
+                      course: toDialogCourseNumber(1),
+                      createdAt: new Date().toISOString(),
+                      seq: 1,
+                    },
+                  ],
+                },
+              },
+            }),
             'running',
           );
           const latestWriteBackKey = internals.getLatestWriteBackKey(dialogId, 'running');

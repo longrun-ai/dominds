@@ -967,10 +967,10 @@ UI 业务状态投影结论：
 - restart open-generation recovery 已收敛为读取 `generationRunState.kind === 'open'`；`generating=true` 但缺少 `generationRunState` 的 dialog 会进入 `malformed/`，不再静默停成 `server_restart` 或回扫历史补猜。
 - backend loop 已改为扫描 live root dialog 的 durable `nextStep.triggers` / open `generationRunState`；`globalDialogRegistry` 的 `needsDrive` 语义降级为 wake signal，不再决定“哪些 dialog 需要驱动”。pending runtime prompt / new course 写入 durable trigger 后会主动发 wake；root backend_queue 若在 generation start 被 accepted 后遇到 core/tail failure，会重新写回 durable queue，避免失败收尾误清队列。
 - `globalDialogRegistry` API 已重命名为 `wakeDrive` / `clearDriveWake` / `isDriveWakeQueued`；`setNeedsDrive()` legacy bridge 已删除，测试与 runtime 种子改为显式写 `backend_queue` trigger。registry 只承载 live dialog registry 与 wake signal，不再作为独立 queue source。
+- latest.yaml 的 `needsDrive` boolean 投影已从 storage schema / parser / runtime 写入 / tests 移除；旧 latest 文件里的同名字段会被忽略。业务判定统一读取 `nextStep.triggers.length > 0` 或具体 trigger variant。
 
 仍属 WIP，不能视为本重构完成：
 
-- `needsDrive` 仍保留 latest.yaml boolean 投影，用于旧 latest 文件和少量 run-control 清理判定；后续仍需把这些读点替换为 `nextStep.triggers.length > 0` 投影，最终从 storage schema 中移除该字段。
 - `DialogUserWaitState` 已落地；Q4H append/remove/clear 会同步 `latest.userWait`，driver/display 的常态等待判断开始读取状态快照。Q4H 详细问题载荷仍由 `q4h.yaml` 承载。
 - malformed 边界仍未覆盖所有目标状态机元信息：已覆盖 malformed persistence、`generating=true` 且缺少 `generationRunState` 等高风险恢复路径；但 `nextStep` 缺失仍会按需要初始化，`backend_queue` bridge 仍会为旧调用补 trigger，因此“缺少必要状态机元信息一律转 malformed”尚未完全成立。
 - runtime 读路径仍存在少量历史事件读取（例如普通上下文/去重/回贴指导等）。这些不再是 active callee 或 reply recovery 的运行源，但后续仍应继续把常态业务判定压到状态快照和显式 pending records。
@@ -978,7 +978,7 @@ UI 业务状态投影结论：
 
 移除 WIP 标记的条件：
 
-1. `needsDrive=true` 仅作为 `NextStepTriggerState.triggers.length > 0` 的投影存在，`setNeedsDrive()` / `backend_queue` bridge / `globalDialogRegistry` 不再能作为独立运行源。
+1. `needsDrive` storage/runtime projection 已删除；`backend_queue` bridge 仍需继续收敛为显式 next-step API，不再带旧术语。
 2. 缺少必要状态机元信息或结构不合法时转移到 `malformed/`，记录 warning / structured diagnostic，之后不再自动处理；不再为目标状态机字段做运行时历史补猜。
 3. 常态业务判定不再读取 course JSONL 补猜运行事实；course JSONL 只保留为 transcript/context/审计输入，或一次性迁移/repair 工具输入。
 

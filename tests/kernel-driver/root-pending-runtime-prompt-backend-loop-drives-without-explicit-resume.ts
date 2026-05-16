@@ -7,6 +7,7 @@ import { formatNewCourseStartPrompt } from '../../main/runtime/driver-messages';
 
 import {
   createMainDialog,
+  hasPendingNextStepTriggers,
   lastAssistantSaying,
   waitFor,
   waitForAllDialogsUnlocked,
@@ -43,7 +44,7 @@ async function main(): Promise<void> {
     await waitFor(
       async () => lastAssistantSaying(root) === finalReply,
       3_000,
-      'backend loop to drive the durable root pending runtime prompt without registry needsDrive',
+      'backend loop to drive the durable root pending runtime prompt without registry pending next-step triggers',
     );
     await waitForAllDialogsUnlocked(root, 3_000);
 
@@ -54,9 +55,9 @@ async function main(): Promise<void> {
       'backend loop should consume the durable pending root runtime prompt',
     );
     assert.equal(
-      latest?.needsDrive,
+      hasPendingNextStepTriggers(latest),
       false,
-      'backend loop should clear needsDrive after consuming the root pending runtime prompt',
+      'backend loop should clear pending next-step triggers after consuming the root pending runtime prompt',
     );
   });
 

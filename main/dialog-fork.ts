@@ -842,7 +842,6 @@ async function persistForkPlan(args: {
       functionCallCount: countFunctionCalls(currentCourseEvents),
       sideDialogCount: plan.childCount,
       generating: false,
-      needsDrive: false,
       displayState,
       disableDiligencePush:
         plan.targetId.selfId === plan.targetId.rootId ? args.latestDisableDiligencePush : false,

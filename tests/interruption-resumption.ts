@@ -36,6 +36,41 @@ async function writeYaml(filePath: string, value: unknown): Promise<void> {
   await fs.writeFile(filePath, yaml.stringify(value), 'utf-8');
 }
 
+function hasPendingNextStepTriggers(
+  latest: Awaited<ReturnType<typeof DialogPersistence.loadDialogLatest>>,
+): boolean {
+  return (latest?.nextStep?.triggers.length ?? 0) > 0;
+}
+
+function backendQueueNextStep(
+  selfId: string,
+  reason: string,
+): {
+  nextSeq: number;
+  triggers: Array<{
+    triggerId: string;
+    kind: 'backend_queue';
+    reason: string;
+    course: number;
+    createdAt: string;
+    seq: number;
+  }>;
+} {
+  return {
+    nextSeq: 2,
+    triggers: [
+      {
+        triggerId: `backend-queue:${selfId}`,
+        kind: 'backend_queue',
+        reason,
+        course: 1,
+        createdAt: new Date().toISOString(),
+        seq: 1,
+      },
+    ],
+  };
+}
+
 async function writeSideDialogAskerStack(args: {
   sideDialogId: DialogID;
   assignment: SideDialogAssignmentFromAsker;
@@ -217,7 +252,7 @@ async function main(): Promise<void> {
       lastModified: new Date().toISOString(),
       status: 'active',
       generating: false,
-      needsDrive: true,
+      nextStep: backendQueueNextStep(bRoot, 'test_restart_fixture'),
       displayState: { kind: 'proceeding' },
       userWait: {
         kind: 'awaiting_user_answer',
@@ -277,7 +312,7 @@ async function main(): Promise<void> {
       lastModified: new Date().toISOString(),
       status: 'active',
       generating: false,
-      needsDrive: true,
+      nextStep: backendQueueNextStep(cRoot, 'test_restart_fixture'),
       displayState: { kind: 'idle_waiting_user' },
     });
     await fs.writeFile(
@@ -357,7 +392,7 @@ async function main(): Promise<void> {
       lastModified: new Date().toISOString(),
       status: 'active',
       generating: false,
-      needsDrive: true,
+      nextStep: backendQueueNextStep(gRoot, 'test_restart_fixture'),
       displayState: { kind: 'idle_waiting_user' },
     });
 
@@ -420,7 +455,7 @@ async function main(): Promise<void> {
       lastModified: new Date().toISOString(),
       status: 'active',
       generating: true,
-      needsDrive: true,
+      nextStep: backendQueueNextStep(jSide, 'test_restart_fixture'),
       displayState: {
         kind: 'stopped',
         reason: { kind: 'server_restart' },
@@ -485,7 +520,6 @@ async function main(): Promise<void> {
       lastModified: new Date().toISOString(),
       status: 'active',
       generating: false,
-      needsDrive: false,
       displayState: {
         kind: 'stopped',
         reason: { kind: 'server_restart' },
@@ -540,7 +574,6 @@ async function main(): Promise<void> {
       lastModified: new Date().toISOString(),
       status: 'active',
       generating: false,
-      needsDrive: false,
       displayState: { kind: 'blocked', reason: { kind: 'needs_human_input' } },
       sideDialogFinalResponse: {
         callId: 'call-side-j-q4h-projection',
@@ -687,7 +720,7 @@ async function main(): Promise<void> {
     const latestA = await DialogPersistence.loadDialogLatest(new DialogID(aRoot), 'running');
     assert.ok(latestA, 'latest.yaml for dlg-a should exist');
     assert.equal(latestA.generating, true);
-    assert.equal(latestA.needsDrive, true);
+    assert.equal(hasPendingNextStepTriggers(latestA), true);
     assert.ok(latestA.displayState);
     assert.equal(latestA.displayState.kind, 'proceeding');
     assert.equal(latestA.executionMarker, undefined);
@@ -701,7 +734,7 @@ async function main(): Promise<void> {
       'pending_reply_obligation interrupted generation should remain recoverable after restart',
     );
     assert.equal(
-      latestK.needsDrive,
+      hasPendingNextStepTriggers(latestK),
       true,
       'pending_reply_obligation interrupted generation should be queued for recovery',
     );
@@ -819,14 +852,14 @@ async function main(): Promise<void> {
       'restart reconciliation should clear stale sideDialog generating after final response anchor',
     );
     assert.equal(
-      latestJ.needsDrive,
+      hasPendingNextStepTriggers(latestJ),
       false,
-      'restart reconciliation should clear stale sideDialog needsDrive after final response anchor',
+      'restart reconciliation should clear stale sideDialog pending next-step triggers after final response anchor',
     );
     assert.deepEqual(
       latestJ.displayState,
       { kind: 'idle_waiting_user' },
-      'stale sideDialog needsDrive must not become a false server_restart interruption',
+      'stale sideDialog pending next-step triggers must not become a false server_restart interruption',
     );
     assert.equal(latestJ.executionMarker, undefined);
     const latestJProjectionOnly = await DialogPersistence.loadDialogLatest(
@@ -838,14 +871,14 @@ async function main(): Promise<void> {
       'latest.yaml for dlg-j projection-only sideDialog should exist',
     );
     assert.equal(
-      latestJProjectionOnly.needsDrive,
+      hasPendingNextStepTriggers(latestJProjectionOnly),
       false,
       'restart reconciliation should not requeue projection-only stale sideDialog state',
     );
     assert.deepEqual(
       latestJProjectionOnly.displayState,
       { kind: 'idle_waiting_user' },
-      'stale sideDialog interruption projection should clear even when needsDrive is already false',
+      'stale sideDialog interruption projection should clear even when pending next-step triggers is already false',
     );
     assert.equal(latestJProjectionOnly.executionMarker, undefined);
 

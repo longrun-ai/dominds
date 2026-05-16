@@ -10,6 +10,7 @@ import { getWorkLanguage, setWorkLanguage } from '../../main/runtime/work-langua
 
 import {
   createMainDialog,
+  hasPendingNextStepTriggers,
   listTellaskResultContents,
   waitFor,
   waitForAllDialogsUnlocked,
@@ -73,9 +74,9 @@ async function main(): Promise<void> {
       'latest.yaml should durably remember the rebound reply target before restore',
     );
     assert.equal(
-      latestBeforeRestore.needsDrive,
+      hasPendingNextStepTriggers(latestBeforeRestore),
       true,
-      'startNewCourse should keep needsDrive true while the new-course prompt is pending',
+      'startNewCourse should keep pending next-step triggers true while the new-course prompt is pending',
     );
     assert.deepEqual(
       latestBeforeRestore.displayState,
@@ -164,9 +165,11 @@ async function main(): Promise<void> {
       'pending new-course prompt should clear once the restored round is persisted',
     );
     assert.equal(
-      latestAfterDrive.needsDrive,
+      (latestAfterDrive.nextStep?.triggers ?? []).some(
+        (trigger) => trigger.kind === 'queued_prompt',
+      ),
       false,
-      'sideDialog latest.yaml should clear needsDrive once the restored pending runtime prompt is consumed',
+      'sideDialog latest.yaml should clear the queued prompt trigger once the restored pending runtime prompt is consumed',
     );
     assert.equal(
       latestAfterDrive.executionMarker,

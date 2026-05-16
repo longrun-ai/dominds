@@ -168,9 +168,11 @@ async function main(): Promise<void> {
       sideDialog.status,
     );
     assert.equal(
-      latestAfterDrive?.needsDrive,
+      (latestAfterDrive?.nextStep?.triggers ?? []).some(
+        (trigger) => trigger.kind === 'queued_prompt',
+      ),
       false,
-      'sideDialog latest.yaml should clear needsDrive after the rebound clear-mind prompt is consumed',
+      'sideDialog latest.yaml should clear the queued prompt trigger after the rebound clear-mind prompt is consumed',
     );
     const latestPromptRecord = courseTwoEvents.find(
       (event): event is Extract<(typeof courseTwoEvents)[number], { type: 'human_text_record' }> =>

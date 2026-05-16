@@ -16,6 +16,7 @@ import { getWorkLanguage } from '../../main/runtime/work-language';
 
 import {
   createMainDialog,
+  hasPendingNextStepTriggers,
   lastAssistantSaying,
   makeDriveOptions,
   makeUserPrompt,
@@ -173,7 +174,19 @@ async function main(): Promise<void> {
       kind: 'patch',
       patch: {
         generating: true,
-        needsDrive: true,
+        nextStep: {
+          nextSeq: 2,
+          triggers: [
+            {
+              triggerId: `backend-queue:${sideDialog.id.selfId}`,
+              kind: 'backend_queue',
+              reason: 'stale_final_response_autodrive_test',
+              course: sideDialog.currentCourse,
+              createdAt: new Date().toISOString(),
+              seq: 1,
+            },
+          ],
+        },
         displayState: { kind: 'proceeding' },
         executionMarker: undefined,
       },
@@ -218,9 +231,9 @@ async function main(): Promise<void> {
       'stale queued auto-drive should clear stale sideDialog generating after final response anchor',
     );
     assert.equal(
-      latestAfter?.needsDrive,
+      hasPendingNextStepTriggers(latestAfter),
       false,
-      'stale queued auto-drive should clear stale sideDialog needsDrive after final response anchor',
+      'stale queued auto-drive should clear stale sideDialog pending next-step triggers after final response anchor',
     );
     assert.deepEqual(
       latestAfter?.displayState,

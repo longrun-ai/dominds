@@ -8,6 +8,7 @@ import { DialogPersistence } from '../../main/persistence';
 import { REPLY_TOOL_REMINDER_PREFIX_EN } from '../../main/runtime/reply-prompt-copy';
 import {
   createMainDialog,
+  hasPendingNextStepTriggers,
   waitFor,
   waitForAllDialogsUnlocked,
   withTempRtws,
@@ -134,7 +135,7 @@ async function main(): Promise<void> {
 
     const latest = await DialogPersistence.loadDialogLatest(root.id, root.status);
     assert.equal(
-      latest?.needsDrive,
+      hasPendingNextStepTriggers(latest),
       false,
       'foreground round should clear the stale queued revive',
     );

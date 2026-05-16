@@ -8,6 +8,7 @@ import { DialogPersistence } from '../../main/persistence';
 import { REPLY_TOOL_REMINDER_PREFIX_EN } from '../../main/runtime/reply-prompt-copy';
 import {
   createMainDialog,
+  hasPendingNextStepTriggers,
   makeDriveOptions,
   withTempRtws,
   writeMockDb,
@@ -129,7 +130,7 @@ async function main(): Promise<void> {
       'stopped state should retain the surfaced tail failure detail',
     );
     assert.equal(
-      latest?.needsDrive,
+      hasPendingNextStepTriggers(latest),
       true,
       'deferred queued root revive should remain persisted after tail failure',
     );

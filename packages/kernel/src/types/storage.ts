@@ -241,7 +241,6 @@ export interface DialogLatestFile {
   sideDialogCount?: number;
   status: 'active' | 'completed' | 'archived';
   generating?: boolean;
-  needsDrive?: boolean;
   displayState?: DialogDisplayState;
   executionMarker?: DialogExecutionMarker;
   generationRunState?: DialogGenerationRunState;

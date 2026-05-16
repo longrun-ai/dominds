@@ -53,6 +53,12 @@ export async function withTempRtws(fn: (tmpRoot: string) => Promise<void>): Prom
   await fn(tmpRoot);
 }
 
+export function hasPendingNextStepTriggers(
+  latest: Awaited<ReturnType<typeof DialogPersistence.loadDialogLatest>>,
+): boolean {
+  return (latest?.nextStep?.triggers.length ?? 0) > 0;
+}
+
 export async function writeStandardMinds(
   tmpRoot: string,
   options?: {

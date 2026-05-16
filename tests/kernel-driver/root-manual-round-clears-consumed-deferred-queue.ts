@@ -6,6 +6,7 @@ import { createKernelDriverRuntimeState } from '../../main/llm/kernel-driver/typ
 import { DialogPersistence } from '../../main/persistence';
 import {
   createMainDialog,
+  hasPendingNextStepTriggers,
   makeDriveOptions,
   withTempRtws,
   writeMockDb,
@@ -70,7 +71,7 @@ async function main(): Promise<void> {
 
     const latest = await DialogPersistence.loadDialogLatest(root.id, root.status);
     assert.equal(
-      latest?.needsDrive,
+      hasPendingNextStepTriggers(latest),
       false,
       'idle foreground root round should clear the consumed deferred queue from persistence',
     );
