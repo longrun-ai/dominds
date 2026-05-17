@@ -58,6 +58,8 @@ Reminders are temporary working-set information for:
 - Recording blocking issues
 - Holding continuation-package bridge notes before `clear_mind`
 
+Reminders are not for manually copying Dominds runtime-maintained environment state, such as background process status, in-flight background asks/collaboration, or browser/session attachment state. Runtime-managed reminders, panels, and tool outputs are the single source of truth; manual notes go stale easily and create cognitive noise.
+
 Scope rule:
 
 - `dialog`: current-dialog working set

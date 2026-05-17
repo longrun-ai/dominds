@@ -661,10 +661,10 @@ export const addReminderTool: FuncTool = {
   type: 'func',
   name: 'add_reminder',
   description:
-    'Add a reminder, optionally inserting at a 1-based position and choosing dialog or personal scope.',
+    'Add a manually maintained working-set reminder, optionally inserting at a 1-based position and choosing dialog or personal scope. Do not manually record runtime-maintained environment state such as background process status or in-flight background asks.',
   descriptionI18n: {
-    en: 'Add a reminder, optionally inserting at a 1-based position and choosing dialog or personal scope.',
-    zh: '添加提醒，可选指定 1-based 插入位置，并可选择对话或个人范围。',
+    en: 'Add a manually maintained working-set reminder, optionally inserting at a 1-based position and choosing dialog or personal scope. Do not manually record runtime-maintained environment state such as background process status or in-flight background asks.',
+    zh: '添加手工维护的工作集提醒，可选指定 1-based 插入位置，并可选择对话或个人范围。不要手工记录后台进程状态、后台进行中诉请等 runtime 会自动维护的环境状态。',
   },
   parameters: {
     type: 'object',
@@ -770,10 +770,11 @@ export const addReminderTool: FuncTool = {
 export const updateReminderTool: FuncTool = {
   type: 'func',
   name: 'update_reminder',
-  description: 'Update an existing reminder by its reminder_id.',
+  description:
+    'Update a manually maintained reminder by its reminder_id. Do not manually record runtime-maintained environment state such as background process status or in-flight background asks.',
   descriptionI18n: {
-    en: 'Update an existing reminder by its reminder_id.',
-    zh: '按 reminder_id 更新提醒内容。',
+    en: 'Update a manually maintained reminder by its reminder_id. Do not manually record runtime-maintained environment state such as background process status or in-flight background asks.',
+    zh: '按 reminder_id 更新手工维护的提醒内容。不要手工记录后台进程状态、后台进行中诉请等 runtime 会自动维护的环境状态。',
   },
   parameters: {
     type: 'object',

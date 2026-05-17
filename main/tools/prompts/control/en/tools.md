@@ -46,6 +46,7 @@ Use when:
 
 - Adding a new temporary working-set item
 - Before `clear_mind`, the Main Dialog first records undocumented discussion details the next course needs to know into Taskdoc, then creates continuation-package notes; a Side Dialog directly maintains sufficiently detailed continuation-package reminders. When the current course is already under caution/critical remediation, Side Dialog reminder length has no technical limit and rough bridge notes are acceptable
+- Record only manually maintained working-set / continuation details; do not put runtime-maintained environment state such as background process status, in-flight background asks, or session attachment state into manual reminders
 
 **Parameters:**
 
@@ -92,6 +93,7 @@ Use when:
 - Compressing / merging existing reminders
 - Rewriting pre-clear resume info into continuation-package notes
 - Removing details that have already been promoted into Taskdoc
+- Removing or rewriting system environment state that was mistakenly captured in a manual reminder; runtime-managed reminders, panels, and tool outputs are the single source of truth for that state
 
 **Parameters:**
 
@@ -362,4 +364,5 @@ message: <error message>
 - For a continuation package, use structured notes by default: next step, key pointers, run/verify, easy-to-lose volatile details
 - If the current course is already under caution/critical remediation: the Main Dialog first records undocumented discussion details the next course needs to know into the appropriate Taskdoc sections, then keeps necessary continuation-package reminders; a Side Dialog must not maintain Taskdoc or draft Taskdoc update proposals, and should directly maintain sufficiently detailed continuation-package reminders with no technical length limit. Rough multi-reminder bridge notes are acceptable and should be reconciled as the first step only after the system actually starts the new course
 - Keep only details still not covered by Taskdoc; do not repeat team-shared status. If the team needs “where we are now / which decisions are in effect / what is next / which blockers still hold”, write it back to Taskdoc `progress`
+- Do not manually record Dominds runtime-maintained environment state, such as whether background processes are still running, in-flight background asks/collaboration, or browser/session attachment state. Manual copies go stale easily and conflict with the runtime-maintained single source of truth, creating cognitive noise
 - Do not paste long logs, large tool outputs, or raw material into reminders
