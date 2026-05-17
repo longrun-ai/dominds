@@ -1118,6 +1118,7 @@ export class RunningDialogList extends HTMLElement {
           <button class="toggle root-toggle" data-action="toggle-root" data-root-id="${dialog.rootId}" type="button" aria-label="${this.formatToggleAriaLabel(this.collapsedRoots.has(dialog.rootId))}">${toggleIcon}</button>
           <span class="dialog-title">@${dialog.agentId}</span>
           <span class="dialog-meta-right">
+            <span class="dialog-count">${sideDialogCount}</span>
             ${badges}
             <button class="action icon-button" data-action="root-create-dialog" data-root-id="${dialog.rootId}" type="button" title="${t.createNewDialogTitle}" aria-label="${t.createNewDialogTitle}">
               ${this.renderCreateIcon()}
@@ -1134,7 +1135,6 @@ export class RunningDialogList extends HTMLElement {
             <button class="action icon-button" data-action="dialog-open-external" data-root-id="${dialog.rootId}" data-self-id="${dialog.rootId}" type="button" title="${t.q4hOpenInNewTabTitle}" aria-label="${t.q4hOpenInNewTabTitle}">
               ${this.renderOpenExternalIcon()}
             </button>
-            <span class="dialog-count">${sideDialogCount}</span>
           </span>
         </div>
         <div class="dialog-row dialog-submeta">
