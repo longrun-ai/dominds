@@ -1,7 +1,3 @@
-import { createLogger } from '../log';
-
-const log = createLogger('mcp/tool-names');
-
 export const TOOL_NAME_VALIDITY_RULE = '^[a-zA-Z0-9_-]{1,64}$';
 const TOOL_NAME_VALIDITY_RE = /^[a-zA-Z0-9_-]{1,64}$/;
 
@@ -9,16 +5,16 @@ export function isValidProviderToolName(name: string): boolean {
   return TOOL_NAME_VALIDITY_RE.test(name);
 }
 
-export type ToolNameTransform =
+export type McpIdTransform =
   | { kind: 'prefix_add'; add: string }
   | { kind: 'prefix_replace'; remove: string; add: string }
   | { kind: 'suffix_add'; add: string };
 
-export function applyToolNameTransforms(
-  originalMcpToolName: string,
-  transforms: readonly ToolNameTransform[],
+export function applyMcpIdTransforms(
+  originalMcpId: string,
+  transforms: readonly McpIdTransform[],
 ): string {
-  let out = originalMcpToolName;
+  let out = originalMcpId;
   for (const t of transforms) {
     switch (t.kind) {
       case 'prefix_add':
@@ -32,8 +28,7 @@ export function applyToolNameTransforms(
         break;
       default: {
         const _exhaustive: never = t;
-        log.warn('Unknown transform kind (exhaustiveness failure)', undefined, _exhaustive);
-        break;
+        throw new Error(`Unknown MCP ID transform kind: ${String(_exhaustive)}`);
       }
     }
   }

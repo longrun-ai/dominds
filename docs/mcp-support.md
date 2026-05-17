@@ -208,7 +208,7 @@ into Dominds’ tool system, and therefore can never be presented to agents for 
 
 - Patterns use simple wildcard matching with `*` (match any substring).
 - Matching is evaluated against the **original MCP tool name** (before rename transforms). This
-  keeps filters stable even if naming transforms change.
+  keeps filters stable even if ID transforms change.
 
 ### Semantics
 
@@ -224,15 +224,16 @@ into Dominds’ tool system, and therefore can never be presented to agents for 
   - Tools that match neither `whitelist` nor `blacklist` are registered (i.e. whitelist does not
     restrict the universe when a blacklist is present).
 
-## Tool Name Transforms
+## ID Transforms
 
-Transforms are applied to the MCP tool name to produce a Dominds tool name.
+Transforms are applied to MCP-derived IDs to produce Dominds-local IDs.
 
 ### Why transforms exist
 
-- MCP servers frequently expose short/common tool names (`open`, `search`, `list`, …) that can
-  collide across servers and with built-ins.
-- Dominds tool names are global, so names must be made unique and recognizable.
+- MCP servers frequently expose short/common IDs (`open`, `search`, `list`, handbook URIs, prompt
+  names, …) that can collide across servers and with built-ins.
+- Dominds tool names, prompt IDs, resource IDs, and virtual skill IDs are global within their
+  registries, so IDs must be made unique and recognizable.
 
 ### Supported transforms
 
@@ -257,6 +258,11 @@ Notes:
 - `prefix: "x_"` always adds `x_` in front of the current name.
 - `prefix: { remove, add }` removes the specified leading substring if present, then adds `add`.
 - `suffix: "_x"` always appends `"_x"` to the current name.
+- `servers.<serverId>.transform` is the default transform for every MCP-derived Dominds ID from
+  that server: tools, prompts, resources/resource templates, and resource skills.
+- Nested `tools.transform`, `prompts.transform`, `resources.transform`, and
+  `resources.skills.transform` override the enclosing transform for that surface. They do not stack
+  with it. An explicit `transform: []` means “no transform for this surface”.
 
 ## Tool Name Validity (Reject Invalid Names)
 
@@ -441,13 +447,16 @@ servers:
     # headers: {} # optional (supports literal, { env: NAME }, or { prefix, env } values)
     # sessionId: '' # optional
 
+    # Default ID transforms for all MCP-derived Dominds IDs from this server (optional).
+    # Nested transforms under tools/prompts/resources/resources.skills override this default.
+    transform: []
+
     # Tool exposure controls
     tools:
       whitelist: [] # optional
       blacklist: [] # optional
-
-    # Tool name transforms (optional)
-    transform: []
+      # Optional tool-only override; explicit [] disables the top-level transform for tools.
+      # transform: []
 
     # Optional enhanced manual information; omitting it is allowed but emits a Problems warning.
     # - contentFile: formal runtime manual for man({ "toolsetId": "<serverId>" });

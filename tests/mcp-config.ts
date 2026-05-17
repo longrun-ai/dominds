@@ -1,7 +1,16 @@
 import assert from 'node:assert/strict';
 
-import { parseMcpYaml } from '../main/mcp/config';
+import { parseMcpYaml, resolveMcpScopedTransforms } from '../main/mcp/config';
+import {
+  clearMcpPromptResourceCatalog,
+  listMcpPrompts,
+  listMcpResources,
+  listMcpVirtualSkills,
+  type McpPromptResourceCatalogClient,
+  refreshMcpPromptResourceCatalog,
+} from '../main/mcp/resources';
 import { buildHttpHeaders } from '../main/mcp/supervisor';
+import { applyMcpIdTransforms } from '../main/mcp/tool-names';
 
 const AUTH_ENV = 'DOMINDS_TEST_MCP_AUTH_TOKEN';
 const RAW_ENV = 'DOMINDS_TEST_MCP_RAW_HEADER';
@@ -31,7 +40,49 @@ function withEnv<T>(updates: Record<string, string | undefined>, fn: () => T): T
   }
 }
 
-function main(): void {
+function makeCatalogClient(): McpPromptResourceCatalogClient {
+  return {
+    async listPrompts() {
+      return [{ name: 'prompt_alpha' }];
+    },
+    async listResources() {
+      return [
+        {
+          uri: 'resource://plain',
+          name: 'plain',
+          mimeType: 'text/plain',
+        },
+        {
+          uri: 'skill://guide',
+          name: 'guide',
+          mimeType: 'text/markdown',
+        },
+      ];
+    },
+    async listResourceTemplates() {
+      return [{ uriTemplate: 'template://item/{id}', name: 'templated' }];
+    },
+    async readResource(uri: string) {
+      assert.equal(uri, 'skill://guide');
+      return [
+        {
+          uri,
+          mimeType: 'text/markdown',
+          text: [
+            '---',
+            'name: Guide',
+            'description: Guide skill',
+            '---',
+            '',
+            'Use the guide.',
+          ].join('\n'),
+        },
+      ];
+    },
+  };
+}
+
+async function main(): Promise<void> {
   const parsed = parseMcpYaml(`
 version: 1
 servers:
@@ -170,7 +221,163 @@ servers:
     sections: [{ title: 'UseCases', content: 'Use when needed' }],
   });
 
+  const transforms = parseMcpYaml(`
+version: 1
+servers:
+  scoped:
+    transport: streamable_http
+    url: http://127.0.0.1:3000/mcp
+    transform:
+      - prefix: global_
+    tools:
+      transform:
+        - prefix: tool_
+    prompts: {}
+    resources:
+      transform: []
+      skills:
+        enabled: true
+        whitelist:
+          - skill://*
+        transform:
+          - prefix: skill_
+`);
+  assert.equal(transforms.ok, true);
+  if (!transforms.ok) return;
+  const scopedCfg = transforms.config.servers.scoped;
+  assert.ok(scopedCfg);
+  assert.deepEqual(scopedCfg.transform, [{ kind: 'prefix_add', add: 'global_' }]);
+  assert.deepEqual(scopedCfg.tools.transform, {
+    kind: 'override',
+    transform: [{ kind: 'prefix_add', add: 'tool_' }],
+  });
+  assert.deepEqual(scopedCfg.prompts.transform, { kind: 'inherit' });
+  assert.deepEqual(scopedCfg.resources.transform, { kind: 'override', transform: [] });
+  assert.deepEqual(scopedCfg.resources.skills.transform, {
+    kind: 'override',
+    transform: [{ kind: 'prefix_add', add: 'skill_' }],
+  });
+  assert.equal(
+    applyMcpIdTransforms(
+      'open',
+      resolveMcpScopedTransforms(scopedCfg.transform, scopedCfg.tools.transform),
+    ),
+    'tool_open',
+  );
+  assert.equal(
+    applyMcpIdTransforms(
+      'prompt',
+      resolveMcpScopedTransforms(scopedCfg.transform, scopedCfg.prompts.transform),
+    ),
+    'global_prompt',
+  );
+  assert.equal(
+    applyMcpIdTransforms(
+      'resource',
+      resolveMcpScopedTransforms(scopedCfg.transform, scopedCfg.resources.transform),
+    ),
+    'resource',
+  );
+  assert.equal(
+    applyMcpIdTransforms(
+      'resource_skill',
+      resolveMcpScopedTransforms(scopedCfg.transform, scopedCfg.resources.skills.transform),
+    ),
+    'skill_resource_skill',
+  );
+
+  const nestedSkillInheritsResource = parseMcpYaml(`
+version: 1
+servers:
+  nested_skill:
+    transport: streamable_http
+    url: http://127.0.0.1:3000/mcp
+    transform:
+      - prefix: global_
+    resources:
+      transform:
+        - prefix: resource_
+      skills:
+        enabled: true
+`);
+  assert.equal(nestedSkillInheritsResource.ok, true);
+  if (!nestedSkillInheritsResource.ok) return;
+  const nestedSkillCfg = nestedSkillInheritsResource.config.servers.nested_skill;
+  assert.ok(nestedSkillCfg);
+  const resourceTransforms = resolveMcpScopedTransforms(
+    nestedSkillCfg.transform,
+    nestedSkillCfg.resources.transform,
+  );
+  assert.equal(applyMcpIdTransforms('uri', resourceTransforms), 'resource_uri');
+  assert.equal(
+    applyMcpIdTransforms(
+      'uri',
+      resolveMcpScopedTransforms(resourceTransforms, nestedSkillCfg.resources.skills.transform),
+    ),
+    'resource_uri',
+  );
+
+  const invalidNestedTransform = parseMcpYaml(`
+version: 1
+servers:
+  bad_nested:
+    transport: streamable_http
+    url: http://127.0.0.1:3000/mcp
+    prompts:
+      transform:
+        - suffix: 42
+`);
+  assert.equal(invalidNestedTransform.ok, true);
+  if (!invalidNestedTransform.ok) return;
+  assert.match(
+    invalidNestedTransform.invalidServers[0]?.errorText ?? '',
+    /servers\.bad_nested\.prompts\.transform\[0\]\.suffix/,
+  );
+
+  const unknownTransformEntry = parseMcpYaml(`
+version: 1
+servers:
+  bad_transform_entry:
+    transport: streamable_http
+    url: http://127.0.0.1:3000/mcp
+    transform:
+      - replace: nope
+`);
+  assert.equal(unknownTransformEntry.ok, true);
+  if (!unknownTransformEntry.ok) return;
+  assert.match(
+    unknownTransformEntry.invalidServers[0]?.errorText ?? '',
+    /servers\.bad_transform_entry\.transform\[0\] must contain 'prefix' or 'suffix'/,
+  );
+
+  await refreshMcpPromptResourceCatalog({
+    serverId: 'scoped',
+    client: makeCatalogClient(),
+    transform: scopedCfg.transform,
+    prompts: scopedCfg.prompts,
+    resources: scopedCfg.resources,
+  });
+  try {
+    assert.deepEqual(
+      listMcpPrompts().map((prompt) => prompt.id),
+      ['global_prompt_alpha'],
+    );
+    assert.deepEqual(
+      listMcpResources().map((resource) => resource.id),
+      ['resource_plain', 'skill_guide', 'template_item_id'].sort(),
+    );
+    assert.deepEqual(
+      listMcpVirtualSkills().map((skill) => skill.id),
+      ['skill_skill_guide'],
+    );
+  } finally {
+    clearMcpPromptResourceCatalog();
+  }
+
   console.log('mcp config tests: ok');
 }
 
-main();
+main().catch((err: unknown) => {
+  console.error(err instanceof Error ? err.stack : String(err));
+  process.exitCode = 1;
+});

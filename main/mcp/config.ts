@@ -1,6 +1,6 @@
 import YAML from 'yaml';
 import { createLogger } from '../log';
-import type { ToolNameTransform } from './tool-names';
+import type { McpIdTransform } from './tool-names';
 
 const log = createLogger('mcp/config');
 
@@ -23,23 +23,43 @@ export type McpManualConfig = {
   sections: readonly McpManualSectionConfig[];
 };
 
+export type McpScopedTransformConfig =
+  | { kind: 'inherit' }
+  | { kind: 'override'; transform: McpIdTransform[] };
+
+export function resolveMcpScopedTransforms(
+  globalTransforms: readonly McpIdTransform[],
+  scopedTransform: McpScopedTransformConfig,
+): readonly McpIdTransform[] {
+  switch (scopedTransform.kind) {
+    case 'inherit':
+      return globalTransforms;
+    case 'override':
+      return scopedTransform.transform;
+    default: {
+      const _exhaustive: never = scopedTransform;
+      throw new Error(`Invalid MCP scoped transform config: ${String(_exhaustive)}`);
+    }
+  }
+}
+
 export type McpPromptConfig = {
   whitelist: string[];
   blacklist: string[];
-  transform: ToolNameTransform[];
+  transform: McpScopedTransformConfig;
 };
 
 export type McpResourceSkillsConfig = {
   enabled: boolean;
   whitelist: string[];
   blacklist: string[];
-  transform: ToolNameTransform[];
+  transform: McpScopedTransformConfig;
 };
 
 export type McpResourceConfig = {
   whitelist: string[];
   blacklist: string[];
-  transform: ToolNameTransform[];
+  transform: McpScopedTransformConfig;
   mimeTypes: string[];
   maxBytes?: number;
   skills: McpResourceSkillsConfig;
@@ -51,8 +71,9 @@ type McpServerConfigBase = {
   tools: {
     whitelist: string[];
     blacklist: string[];
+    transform: McpScopedTransformConfig;
   };
-  transform: ToolNameTransform[];
+  transform: McpIdTransform[];
   /**
    * Optional manual metadata for this MCP server.
    * Missing manual is valid for standard Raw MCP toolsets: tool names,
@@ -220,9 +241,14 @@ function parseServerConfig(serverId: string, value: unknown): McpServerConfig {
     toolsObj.blacklist,
     `servers.${serverId}.tools.blacklist`,
   );
+  const toolTransformVal = toolsObj.transform;
+  const toolTransform = parseScopedTransformConfig(serverId, 'tools', toolTransformVal);
 
   const transformVal = obj.transform;
-  const transform = transformVal === undefined ? [] : parseTransformArray(transformVal, serverId);
+  const transform =
+    transformVal === undefined
+      ? []
+      : parseTransformArray(transformVal, `servers.${serverId}.transform`);
 
   const manualVal = obj.manual;
   const manual = manualVal === undefined ? undefined : parseManualConfigLenient(manualVal);
@@ -283,7 +309,7 @@ function parseServerConfig(serverId: string, value: unknown): McpServerConfig {
       args,
       cwd,
       env,
-      tools: { whitelist, blacklist },
+      tools: { whitelist, blacklist, transform: toolTransform },
       transform,
       manual,
       prompts,
@@ -341,7 +367,7 @@ function parseServerConfig(serverId: string, value: unknown): McpServerConfig {
     url: parsedUrl.toString(),
     headers,
     sessionId,
-    tools: { whitelist, blacklist },
+    tools: { whitelist, blacklist, transform: toolTransform },
     transform,
     manual,
     prompts,
@@ -360,8 +386,7 @@ function parsePromptConfig(serverId: string, value: unknown): McpPromptConfig {
     `servers.${serverId}.prompts.blacklist`,
   );
   const transformVal = obj.transform;
-  const transform =
-    transformVal === undefined ? [] : parseTransformArrayForPath(transformVal, serverId, 'prompts');
+  const transform = parseScopedTransformConfig(serverId, 'prompts', transformVal);
   return { whitelist, blacklist, transform };
 }
 
@@ -376,10 +401,7 @@ function parseResourceConfig(serverId: string, value: unknown): McpResourceConfi
     `servers.${serverId}.resources.blacklist`,
   );
   const transformVal = obj.transform;
-  const transform =
-    transformVal === undefined
-      ? []
-      : parseTransformArrayForPath(transformVal, serverId, 'resources');
+  const transform = parseScopedTransformConfig(serverId, 'resources', transformVal);
   const mimeTypes = parseStringArrayOptional(
     obj.mimeTypes,
     `servers.${serverId}.resources.mimeTypes`,
@@ -419,10 +441,11 @@ function parseResourceConfig(serverId: string, value: unknown): McpResourceConfi
     `servers.${serverId}.resources.skills.blacklist`,
   );
   const skillTransformVal = skillsObj.transform;
-  const skillTransform =
-    skillTransformVal === undefined
-      ? []
-      : parseTransformArrayForPath(skillTransformVal, serverId, 'resources.skills');
+  const skillTransform = parseScopedTransformConfig(
+    serverId,
+    'resources.skills',
+    skillTransformVal,
+  );
 
   return {
     whitelist,
@@ -443,15 +466,17 @@ function parseTransformArrayForPath(
   value: unknown,
   serverId: string,
   configPath: string,
-): ToolNameTransform[] {
-  try {
-    return parseTransformArray(value, serverId);
-  } catch (err: unknown) {
-    const msg = err instanceof Error ? err.message : String(err);
-    throw new Error(
-      msg.replace(`servers.${serverId}.transform`, `servers.${serverId}.${configPath}.transform`),
-    );
-  }
+): McpIdTransform[] {
+  return parseTransformArray(value, `servers.${serverId}.${configPath}.transform`);
+}
+
+function parseScopedTransformConfig(
+  serverId: string,
+  configPath: string,
+  value: unknown,
+): McpScopedTransformConfig {
+  if (value === undefined) return { kind: 'inherit' };
+  return { kind: 'override', transform: parseTransformArrayForPath(value, serverId, configPath) };
 }
 
 function parseManualConfigLenient(value: unknown): McpManualConfig | undefined {
@@ -512,26 +537,25 @@ function parseManualConfigLenient(value: unknown): McpManualConfig | undefined {
   };
 }
 
-function parseTransformArray(value: unknown, serverId: string): ToolNameTransform[] {
+function parseTransformArray(value: unknown, pathLabel: string): McpIdTransform[] {
   if (!Array.isArray(value)) {
-    throw new Error(`Invalid mcp.yaml: servers.${serverId}.transform must be an array`);
+    throw new Error(`Invalid mcp.yaml: ${pathLabel} must be an array`);
   }
-  const out: ToolNameTransform[] = [];
+  const out: McpIdTransform[] = [];
   for (let i = 0; i < value.length; i++) {
-    const item = asRecord(value[i], `servers.${serverId}.transform[${i}]`);
+    const itemPath = `${pathLabel}[${i}]`;
+    const item = asRecord(value[i], itemPath);
     if ('prefix' in item) {
       const p = item.prefix;
       if (typeof p === 'string') {
         out.push({ kind: 'prefix_add', add: p });
         continue;
       }
-      const po = asRecord(p, `servers.${serverId}.transform[${i}].prefix`);
+      const po = asRecord(p, `${itemPath}.prefix`);
       const remove = po.remove;
       const add = po.add;
       if (typeof remove !== 'string' || typeof add !== 'string') {
-        throw new Error(
-          `Invalid mcp.yaml: servers.${serverId}.transform[${i}].prefix must be string or { remove, add }`,
-        );
+        throw new Error(`Invalid mcp.yaml: ${itemPath}.prefix must be string or { remove, add }`);
       }
       out.push({ kind: 'prefix_replace', remove, add });
       continue;
@@ -539,14 +563,14 @@ function parseTransformArray(value: unknown, serverId: string): ToolNameTransfor
     if ('suffix' in item) {
       const s = item.suffix;
       if (typeof s !== 'string') {
-        throw new Error(
-          `Invalid mcp.yaml: servers.${serverId}.transform[${i}].suffix must be a string`,
-        );
+        throw new Error(`Invalid mcp.yaml: ${itemPath}.suffix must be a string`);
       }
       out.push({ kind: 'suffix_add', add: s });
       continue;
     }
-    log.warn(`Unknown transform entry ignored in servers.${serverId}.transform[${i}]`);
+    throw new Error(
+      `Invalid mcp.yaml: ${itemPath} must contain 'prefix' or 'suffix' transform entry`,
+    );
   }
   return out;
 }

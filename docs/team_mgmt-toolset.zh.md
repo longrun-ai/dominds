@@ -141,7 +141,7 @@
 - `man({ "toolsetId": "team_mgmt", "topics": ["llm"] })` → 如何管理 `.minds/llm.yaml`（+ 模板）
 - `man({ "toolsetId": "team_mgmt", "topics": ["llm", "builtin-defaults"] })` → 显示内置提供商/模型（来自默认值）
 - `man({ "toolsetId": "team_mgmt", "topics": ["mcp"] })` → 如何管理 `.minds/mcp.yaml`（+ 模板）
-- `man({ "toolsetId": "team_mgmt", "topics": ["mcp"] })` → 如何管理 `.minds/mcp.yaml`（传输、env/headers、工具白名单/黑名单、命名转换、热重载、租赁）
+- `man({ "toolsetId": "team_mgmt", "topics": ["mcp"] })` → 如何管理 `.minds/mcp.yaml`（传输、env/headers、工具白名单/黑名单、ID 转换、热重载、租赁）
 - `man({ "toolsetId": "team_mgmt", "topics": ["mcp", "troubleshooting"] })` → 常见 MCP 故障模式及如何恢复
 - `man({ "toolsetId": "team_mgmt", "topics": ["team"] })` → 如何管理 `.minds/team.yaml`（+ 模板）
 - `man({ "toolsetId": "team_mgmt", "topics": ["team", "member-properties"] })` → 列出支持的成员字段及其含义
@@ -173,7 +173,7 @@
 - `!mcp`：
   - 解释 `.minds/mcp.yaml` 作为动态 MCP 工具集的来源
   - 解释 MCP 服务器如何映射到工具集（`<serverId>`）以及如何通过 `.minds/team.yaml` 授予这些工具集
-  - 解释工具暴露控制（白名单/黑名单）和命名转换（前缀/后缀）
+  - 解释工具暴露控制（白名单/黑名单）和 ID 转换（前缀/后缀）
   - 解释密钥/env 接线模式和问题排查（问题 + 日志、重启、热重载语义）
 - `!skills`：
   - 解释 `.minds/skills/*` 属于可复用的团队技能资产
@@ -357,13 +357,15 @@ servers:
     # headers: {}
     # sessionId: '' # 可选
 
+    # tools/prompts/resources/resource skills 的默认 ID 转换
+    transform: [] # 可选
+
     # 工具暴露控制
     tools:
       whitelist: [] # 可选
       blacklist: [] # 可选
-
-    # 工具名称转换
-    transform: [] # 可选
+      # 可选：仅 tools 的覆盖转换；显式 [] 表示 tools 不使用顶层 transform。
+      # transform: []
 
     # 可选：手册相关信息
     manual:
@@ -378,17 +380,23 @@ servers:
 
 ### 工具暴露控制（白名单 / 黑名单）
 
-使用 `tools.whitelist` / `tools.blacklist` 来减少暴露的工具表面并避免 UI 混乱。模式使用 `*` 通配符并应用于**原始 MCP 工具名称**（在转换之前），因此过滤器即使以后命名转换更改也保持稳定。
+使用 `tools.whitelist` / `tools.blacklist` 来减少暴露的工具表面并避免 UI 混乱。模式使用 `*` 通配符并应用于**原始 MCP 工具名称**（在转换之前），因此过滤器即使以后 ID 转换更改也保持稳定。
 
-### 命名转换（前缀 / 后缀）
+### ID 转换（前缀 / 后缀）
 
-MCP 服务器通常导出简短/常见的工具名称（`open`、`search`、`list`，……）。使用转换来避免全局冲突并使工具名称可识别：
+MCP 服务器通常导出简短/常见的 ID（`open`、`search`、`list`、prompt 名称、resource URI……）。使用转换来避免全局冲突并使 Dominds ID 可识别：
 
 ```yaml
 transform:
   - prefix: 'playwright_'
   - suffix: '_mcp'
 ```
+
+顶层 `servers.<serverId>.transform` 是该 server 派生出的所有 Dominds ID 的默认转换：
+tools、prompts、resources/resource templates、resource skills 默认都使用它。内层
+`tools.transform`、`prompts.transform`、`resources.transform`、`resources.skills.transform`
+会覆盖外层转换，不会与外层叠加。若某个 surface 要保持不转换，在该 surface 内显式写
+`transform: []`。
 
 ### Env 和 headers 接线
 

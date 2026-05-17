@@ -1,14 +1,16 @@
 import { createLogger } from '../log';
 import { parseMarkdownFrontmatter } from '../markdown/frontmatter';
-import type { McpPromptConfig, McpResourceConfig } from './config';
+import type { McpPromptConfig, McpResourceConfig, McpScopedTransformConfig } from './config';
+import { resolveMcpScopedTransforms } from './config';
 import type {
   McpListedPrompt,
+  McpListedResource,
+  McpListedResourceTemplate,
   McpPromptContent,
   McpReadResourceContent,
-  McpSdkClient,
 } from './sdk-client';
-import type { ToolNameTransform } from './tool-names';
-import { applyToolNameTransforms } from './tool-names';
+import type { McpIdTransform } from './tool-names';
+import { applyMcpIdTransforms } from './tool-names';
 
 const log = createLogger('mcp/resources');
 
@@ -17,6 +19,17 @@ const DEFAULT_RESOURCE_MAX_BYTES = 64_000;
 type ExposureRules = Readonly<{
   whitelist: readonly string[];
   blacklist: readonly string[];
+}>;
+
+export type McpPromptResourceCatalogClient = Readonly<{
+  listPrompts(): Promise<McpListedPrompt[]>;
+  listResources(): Promise<McpListedResource[]>;
+  listResourceTemplates(): Promise<McpListedResourceTemplate[]>;
+  readResource(uri: string): Promise<McpReadResourceContent[]>;
+}>;
+
+export type McpPromptRenderClient = Readonly<{
+  getPrompt(name: string, args: Record<string, string> | undefined): Promise<McpPromptContent>;
 }>;
 
 export type McpPromptCatalogEntry = Readonly<{
@@ -102,7 +115,8 @@ export function clearMcpPromptResourceCatalog(): void {
 
 export async function refreshMcpPromptResourceCatalog(params: {
   serverId: string;
-  client: McpSdkClient;
+  client: McpPromptResourceCatalogClient;
+  transform: readonly McpIdTransform[];
   prompts: McpPromptConfig;
   resources: McpResourceConfig;
 }): Promise<void> {
@@ -113,6 +127,7 @@ export async function refreshMcpPromptResourceCatalog(params: {
   const skills = await loadResourceSkills({
     serverId: params.serverId,
     client: params.client,
+    transform: params.transform,
     cfg: params.resources,
     resources,
   });
@@ -208,7 +223,7 @@ export function expandResourceTemplate(
 
 export async function renderMcpPrompt(params: {
   serverId: string;
-  client: McpSdkClient;
+  client: McpPromptRenderClient;
   promptName: string;
   arguments?: Record<string, string>;
 }): Promise<string> {
@@ -252,7 +267,8 @@ export function renderResourceContent(contents: readonly McpReadResourceContent[
 
 async function listPromptsBestEffort(params: {
   serverId: string;
-  client: McpSdkClient;
+  client: Pick<McpPromptResourceCatalogClient, 'listPrompts'>;
+  transform: readonly McpIdTransform[];
   prompts: McpPromptConfig;
 }): Promise<McpPromptCatalogEntry[]> {
   let listed: McpListedPrompt[];
@@ -265,7 +281,7 @@ async function listPromptsBestEffort(params: {
   const out: McpPromptCatalogEntry[] = [];
   for (const prompt of listed) {
     if (!isExposed(prompt.name, params.prompts)) continue;
-    const id = toStableId(applyTransforms(prompt.name, params.prompts.transform));
+    const id = toStableId(applyTransforms(prompt.name, params.transform, params.prompts.transform));
     out.push({
       id,
       serverId: params.serverId,
@@ -280,7 +296,8 @@ async function listPromptsBestEffort(params: {
 
 async function listResourcesBestEffort(params: {
   serverId: string;
-  client: McpSdkClient;
+  client: Pick<McpPromptResourceCatalogClient, 'listResources' | 'listResourceTemplates'>;
+  transform: readonly McpIdTransform[];
   resources: McpResourceConfig;
 }): Promise<McpResourceCatalogEntry[]> {
   const out: McpResourceCatalogEntry[] = [];
@@ -288,7 +305,9 @@ async function listResourcesBestEffort(params: {
     const listed = await params.client.listResources();
     for (const resource of listed) {
       if (!isResourceAllowed(resource.uri, resource.mimeType, params.resources)) continue;
-      const id = toStableId(applyTransforms(resource.uri, params.resources.transform));
+      const id = toStableId(
+        applyTransforms(resource.uri, params.transform, params.resources.transform),
+      );
       out.push({
         kind: 'resource',
         id,
@@ -307,7 +326,9 @@ async function listResourcesBestEffort(params: {
     const templates = await params.client.listResourceTemplates();
     for (const template of templates) {
       if (!isResourceAllowed(template.uriTemplate, template.mimeType, params.resources)) continue;
-      const id = toStableId(applyTransforms(template.uriTemplate, params.resources.transform));
+      const id = toStableId(
+        applyTransforms(template.uriTemplate, params.transform, params.resources.transform),
+      );
       out.push({
         kind: 'resource_template',
         id,
@@ -327,7 +348,8 @@ async function listResourcesBestEffort(params: {
 
 async function loadResourceSkills(params: {
   serverId: string;
-  client: McpSdkClient;
+  client: Pick<McpPromptResourceCatalogClient, 'readResource'>;
+  transform: readonly McpIdTransform[];
   cfg: McpResourceConfig;
   resources: readonly McpResourceCatalogEntry[];
 }): Promise<McpVirtualSkill[]> {
@@ -341,7 +363,10 @@ async function loadResourceSkills(params: {
     const text = renderResourceContent(contents);
     enforceMaxBytes(text, params.cfg.maxBytes, resource.uri);
     const parsed = parseVirtualSkill(text, resource.uri);
-    const skillId = toStableId(applyTransforms(resource.uri, params.cfg.skills.transform));
+    const resourceTransforms = resolveMcpScopedTransforms(params.transform, params.cfg.transform);
+    const skillId = toStableId(
+      applyTransforms(resource.uri, resourceTransforms, params.cfg.skills.transform),
+    );
     out.push({
       id: skillId,
       title: parsed.name,
@@ -494,8 +519,12 @@ function wildcardMatch(pattern: string, value: string): boolean {
   return new RegExp(`^${escaped}$`).test(value);
 }
 
-function applyTransforms(value: string, transforms: readonly ToolNameTransform[]): string {
-  return applyToolNameTransforms(value, transforms);
+function applyTransforms(
+  value: string,
+  globalTransforms: readonly McpIdTransform[],
+  scopedTransform: McpScopedTransformConfig,
+): string {
+  return applyMcpIdTransforms(value, resolveMcpScopedTransforms(globalTransforms, scopedTransform));
 }
 
 function toStableId(value: string): string {

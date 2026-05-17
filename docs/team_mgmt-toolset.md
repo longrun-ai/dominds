@@ -175,7 +175,7 @@ reading source code.
 - `man({ "toolsetId": "team_mgmt", "topics": ["llm"] })` → how to manage `.minds/llm.yaml` (+ templates).
 - `man({ "toolsetId": "team_mgmt", "topics": ["llm", "builtin-defaults"] })` → show builtin providers/models (from defaults).
 - `man({ "toolsetId": "team_mgmt", "topics": ["mcp"] })` → how to manage `.minds/mcp.yaml` (+ templates).
-- `man({ "toolsetId": "team_mgmt", "topics": ["mcp"] })` → how to manage `.minds/mcp.yaml` (transports, env/headers, tools whitelist/blacklist, naming transforms, hot reload, leasing).
+- `man({ "toolsetId": "team_mgmt", "topics": ["mcp"] })` → how to manage `.minds/mcp.yaml` (transports, env/headers, tools whitelist/blacklist, ID transforms, hot reload, leasing).
 - `man({ "toolsetId": "team_mgmt", "topics": ["mcp", "troubleshooting"] })` → common MCP failure modes and how to recover.
 - `man({ "toolsetId": "team_mgmt", "topics": ["team"] })` → how to manage `.minds/team.yaml` (+ templates).
 - `man({ "toolsetId": "team_mgmt", "topics": ["team", "member-properties"] })` → list supported member fields and meanings.
@@ -214,7 +214,7 @@ must cover (at minimum) the information that used to live there:
   - Explain `.minds/mcp.yaml` as the source of dynamic MCP toolsets.
   - Explain how MCP servers map to toolsets (`<serverId>`) and how those toolsets are granted via
     `.minds/team.yaml`.
-  - Explain tool exposure controls (whitelist/blacklist) and naming transforms (prefix/suffix).
+  - Explain tool exposure controls (whitelist/blacklist) and ID transforms (prefix/suffix).
   - Explain secret/env wiring patterns and operational troubleshooting (Problems + logs, restart,
     hot reload semantics).
 - `!skills`:
@@ -432,13 +432,15 @@ servers:
     # headers: {}
     # sessionId: '' # optional
 
+    # Default ID transforms for tools/prompts/resources/resource skills
+    transform: [] # optional
+
     # Tool exposure controls
     tools:
       whitelist: [] # optional
       blacklist: [] # optional
-
-    # Tool name transforms
-    transform: [] # optional
+      # Optional tool-only override; explicit [] disables the top-level transform for tools.
+      # transform: []
 
     # Optional manual information
     manual:
@@ -455,18 +457,24 @@ servers:
 
 Use `tools.whitelist` / `tools.blacklist` to reduce the exposed tool surface and avoid UI clutter.
 Patterns use `*` wildcards and apply to the **original MCP tool name** (before transforms), so
-filters remain stable even if naming transforms change later.
+filters remain stable even if ID transforms change later.
 
-### Naming transforms (prefix / suffix)
+### ID transforms (prefix / suffix)
 
-MCP servers often export short/common tool names (`open`, `search`, `list`, …). Use transforms to
-avoid global collisions and make tool names recognizable:
+MCP servers often export short/common IDs (`open`, `search`, `list`, prompt names, resource URIs,
+…). Use transforms to avoid global collisions and make Dominds IDs recognizable:
 
 ```yaml
 transform:
   - prefix: 'playwright_'
   - suffix: '_mcp'
 ```
+
+Top-level `servers.<serverId>.transform` is the default for all MCP-derived Dominds IDs from that
+server: tools, prompts, resources/resource templates, and resource skills. Nested
+`tools.transform`, `prompts.transform`, `resources.transform`, and `resources.skills.transform`
+override the enclosing transform for that surface; they do not stack with it. Use an explicit
+`transform: []` inside a surface to keep that surface untransformed.
 
 ### Env and headers wiring
 

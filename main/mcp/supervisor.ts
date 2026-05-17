@@ -28,7 +28,7 @@ import {
 } from '../tools/registry';
 import { measureRenderedTeamMgmtMcpTopicRawChars } from '../tools/team_mgmt-mcp-manual';
 import type { McpServerConfig, McpStreamableHttpServerConfig, McpWorkspaceConfig } from './config';
-import { parseMcpYaml } from './config';
+import { parseMcpYaml, resolveMcpScopedTransforms } from './config';
 import {
   emptyMcpToolsetManualByServer,
   parseMcpManualByServer,
@@ -49,7 +49,7 @@ import {
 } from './sdk-client';
 import { McpServerRuntime } from './server-runtime';
 import {
-  applyToolNameTransforms,
+  applyMcpIdTransforms,
   decideToolExposure,
   isValidProviderToolName,
   TOOL_NAME_VALIDITY_RULE,
@@ -1635,6 +1635,7 @@ async function tryBuildServerState(
     await refreshMcpPromptResourceCatalog({
       serverId,
       client,
+      transform: cfg.transform,
       prompts: cfg.prompts,
       resources: cfg.resources,
     });
@@ -1745,7 +1746,10 @@ function buildToolsForServer(
       continue;
     }
 
-    const domindsName = applyToolNameTransforms(originalName, cfg.transform);
+    const domindsName = applyMcpIdTransforms(
+      originalName,
+      resolveMcpScopedTransforms(cfg.transform, cfg.tools.transform),
+    );
     if (!isValidProviderToolName(domindsName)) {
       log.warn(`Rejecting MCP tool after transforms due to invalid Dominds tool name`, undefined, {
         serverId,
@@ -1886,6 +1890,8 @@ function fingerprintServerConfig(cfg: McpServerConfig): string {
           env: sortedEntries(cfg.env),
           tools: cfg.tools,
           transform: cfg.transform,
+          prompts: cfg.prompts,
+          resources: cfg.resources,
         }
       : {
           truelyStateless: cfg.truelyStateless,
@@ -1895,6 +1901,8 @@ function fingerprintServerConfig(cfg: McpServerConfig): string {
           sessionId: cfg.sessionId ?? null,
           tools: cfg.tools,
           transform: cfg.transform,
+          prompts: cfg.prompts,
+          resources: cfg.resources,
         };
   return JSON.stringify(obj);
 }

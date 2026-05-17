@@ -26,6 +26,7 @@ Expected behavior:
 - Prompt arguments are collected by the UI before insertion when the prompt declares arguments.
 - MCP prompt snippets cannot be edited or saved back through Dominds.
 - Prompt IDs are Dominds-local stable IDs derived from server ID plus transformed MCP prompt name.
+- Prompt IDs use the server-level transform unless `prompts.transform` overrides it.
 
 This keeps prompts user-selected while reusing the existing Dominds snippet workflow.
 
@@ -40,6 +41,7 @@ Resource entries:
 - Static resource IDs are derived from the resource URI after configured transforms.
 - Template resource IDs are derived from the URI template after configured transforms.
 - The original URI or URI template remains the source of truth used for MCP requests.
+- Resource IDs use the server-level transform unless `resources.transform` overrides it.
 
 The resource registry is intentionally separate from Dominds files, docs, and memory. Those
 domains keep their existing dedicated concepts. The resource registry is the generic MCP-shaped
@@ -67,6 +69,8 @@ Rules:
 - The frontmatter must pass the same validation as local Dominds skills.
 - Resource skills are read-only and keep MCP provenance.
 - Invalid or duplicate resource skills are reported loudly through Problems/logs.
+- Resource skill IDs use the nearest enclosing transform: `resources.skills.transform` overrides
+  `resources.transform`, which overrides the server-level default.
 
 Dominds skills are loaded as an index in the system prompt. Skill bodies are read on demand with
 `read_skill`, so resource skills do not inflate every generation by default.
@@ -84,11 +88,14 @@ servers:
     headers:
       Authorization: Bearer dw
 
+    transform:
+      - prefix: 'workstation_'
+
     prompts:
       whitelist:
         - 'workstation.*'
-      transform:
-        - prefix: 'workstation_'
+      # transform:
+      #   - prefix: 'prompt_'
 
     resources:
       whitelist:
@@ -96,8 +103,8 @@ servers:
         - 'workstation-skill://*'
       blacklist:
         - '*secret*'
-      transform:
-        - prefix: 'workstation_'
+      # transform:
+      #   - prefix: 'resource_'
       mimeTypes:
         - text/markdown
         - text/plain
@@ -106,8 +113,8 @@ servers:
         enabled: true
         whitelist:
           - 'workstation-skill://*'
-        transform:
-          - prefix: 'workstation_skill_'
+        # transform:
+        #   - prefix: 'skill_'
 ```
 
 Filtering matches original MCP names/URIs/templates. Transforms only produce Dominds-local IDs.

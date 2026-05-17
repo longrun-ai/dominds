@@ -605,8 +605,8 @@ export function renderMcpToolsetSetupGuideSection(
           '    truely-stateless: false',
           '    transport: streamable_http',
           '    url: http://127.0.0.1:3000/mcp',
-          '    tools: { whitelist: [], blacklist: [] }',
           '    transform: []',
+          '    tools: { whitelist: [], blacklist: [] }',
         ])
       : fmtCodeBlock('yaml', [
           '# .minds/mcp.yaml',
@@ -617,8 +617,8 @@ export function renderMcpToolsetSetupGuideSection(
           '    transport: stdio',
           '    command: npx',
           "    args: ['-y', '@some/mcp-server@latest']",
-          '    tools: { whitelist: [], blacklist: [] }',
           '    transform: []',
+          '    tools: { whitelist: [], blacklist: [] }',
         ]);
 
   const teamExample = fmtCodeBlock('yaml', [
@@ -647,7 +647,7 @@ export async function renderMcpManual(language: LanguageCode): Promise<string> {
         '默认按“每个对话租用一个 MCP 运行时实例”运行（更安全）：某个对话首次使用该 server 时，可能为它启动/持有一个运行时实例（HTTP 连接或 stdio 进程），并添加 sticky reminder。确认当前对话不再需要该运行时实例后，用 `mcp_release` 释放。租约只表达运行时资源归属，不决定该 server 的全局工具注册/可见性；如确实是无状态服务器，可配置 `truely-stateless: true` 允许跨对话共享。若需停用某 server，用 `mcp_disable` 写入 `enabled: false`；禁用后仍会保留 0 工具 toolset 与 Raw MCP 基线/手册可见性。',
         'stdio 配置格式：`command` 必须是字符串（可执行命令），参数放在 `args`（string[]，可省略，默认空数组）。`cwd` 可选（字符串）：用于固定相对路径解析目录。',
         'HTTP headers 支持三种值：字面量字符串、`{ env: NAME }`、`{ prefix: "Bearer ", env: NAME }`；认证 token 建议从环境变量读取，不要写死在 YAML。',
-        '用 `tools.whitelist/blacklist` 控制暴露的工具，用 `transform` 做命名变换。',
+        '用 `tools.whitelist/blacklist` 控制暴露的工具。顶层 `transform` 是 tools/prompts/resources/resource skills 的默认 ID 转换；内层 `tools.transform`、`prompts.transform`、`resources.transform`、`resources.skills.transform` 会覆盖外层转换，不会叠加；显式 `transform: []` 表示该层不转换。',
         '常见坑：stdio transport 需要可执行命令路径正确，且受成员权限（目录 + 扩展名：`*_dirs/no_*_dirs/*_file_ext_names/no_*_file_ext_names`）约束；HTTP transport 需要服务可达（url/端口/网络）。',
         '高频坑（stdio 路径）：若未设置 `cwd`，相对路径按 Dominds 进程工作目录（通常 rtws 根目录）解析；建议显式配置 `cwd` 或直接使用绝对路径。`cwd` 必须存在且是目录。',
         '可选手册字段：`servers.<serverId>.manual` 是增强说明，不是标准 MCP 接入的必填项。',
@@ -671,8 +671,8 @@ export async function renderMcpManual(language: LanguageCode): Promise<string> {
         "    args: ['-y', '@some/mcp-server@latest']",
         '    cwd: "."',
         '    env: {}',
-        '    tools: { whitelist: [], blacklist: [] }',
         '    transform: []',
+        '    tools: { whitelist: [], blacklist: [] }',
       ]) +
       fmtCodeBlock('yaml', [
         '# stdio 路径示例（最小）',
@@ -697,8 +697,8 @@ export async function renderMcpManual(language: LanguageCode): Promise<string> {
         '    #   Authorization:',
         '    #     prefix: "Bearer "',
         '    #     env: MCP_AUTH_TOKEN',
-        '    tools: { whitelist: [], blacklist: [] }',
         '    transform: []',
+        '    tools: { whitelist: [], blacklist: [] }',
       ]) +
       fmtCodeBlock('yaml', [
         '# 可选 manual 增强示例（放在 servers.<serverId> 下；不是 MCP 接入必填项）',
@@ -737,7 +737,7 @@ export async function renderMcpManual(language: LanguageCode): Promise<string> {
       "Default is per-dialog MCP runtime leasing (safer): a dialog's first use may start/hold one runtime instance for that server (an HTTP connection or stdio process), and first use adds a sticky reminder. Call `mcp_release` when you're sure the current dialog no longer needs that runtime instance. This lease is about runtime resource ownership only; tool registration/visibility still follows the latest global server instance. If the server is truly stateless, set `truely-stateless: true` to allow cross-dialog sharing. To disable a server, use `mcp_disable` to write `enabled: false`; disabled servers remain visible as zero-tool toolsets with Raw MCP baseline/manual visibility.",
       'Stdio shape: `command` must be a string executable; parameters go in `args` (string[], optional, defaults to empty). Optional `cwd` (string) fixes the working directory used for relative paths.',
       'HTTP headers support three value forms: literal strings, `{ env: NAME }`, and `{ prefix: "Bearer ", env: NAME }`; keep auth tokens in env instead of hardcoding them in YAML.',
-      'Use `tools.whitelist/blacklist` for exposure control and `transform` for naming transforms.',
+      'Use `tools.whitelist/blacklist` for exposure control. Top-level `transform` is the default ID transform for tools/prompts/resources/resource skills; nested `tools.transform`, `prompts.transform`, `resources.transform`, and `resources.skills.transform` override the enclosing transform instead of stacking with it. Explicit `transform: []` means no transform for that layer.',
       'Common pitfalls: stdio transport needs a correct executable/command path, and is subject to member permissions (directory + extension: `*_dirs/no_*_dirs/*_file_ext_names/no_*_file_ext_names`); HTTP transport requires the server URL to be reachable.',
       'High-frequency pitfall (stdio paths): if `cwd` is omitted, relative paths are resolved from Dominds process cwd (usually rtws root). Prefer setting `cwd` explicitly or use absolute paths. `cwd` must exist and be a directory.',
       'Optional manual field: `servers.<serverId>.manual` is enhancement guidance, not required for standard MCP use.',
@@ -761,8 +761,8 @@ export async function renderMcpManual(language: LanguageCode): Promise<string> {
       "    args: ['-y', '@some/mcp-server@latest']",
       '    cwd: "."',
       '    env: {}',
-      '    tools: { whitelist: [], blacklist: [] }',
       '    transform: []',
+      '    tools: { whitelist: [], blacklist: [] }',
     ]) +
     fmtCodeBlock('yaml', [
       '# stdio path example (minimal)',
@@ -787,8 +787,8 @@ export async function renderMcpManual(language: LanguageCode): Promise<string> {
       '    #   Authorization:',
       '    #     prefix: "Bearer "',
       '    #     env: MCP_AUTH_TOKEN',
-      '    tools: { whitelist: [], blacklist: [] }',
       '    transform: []',
+      '    tools: { whitelist: [], blacklist: [] }',
     ]) +
     fmtCodeBlock('yaml', [
       '# Optional manual enhancement example (place under servers.<serverId>; not required for MCP integration)',
