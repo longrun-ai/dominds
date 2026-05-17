@@ -190,6 +190,7 @@ export interface SideDialogResponse {
 }
 
 const globalDialogMutexes: Map<string, AsyncFifoMutex> = new Map();
+const pendingGlobalDialogMutexCleanupRootIds = new Set<string>();
 
 function getGlobalDialogMutex(dialogId: DialogID): AsyncFifoMutex {
   const key = dialogId.key();
@@ -198,6 +199,38 @@ function getGlobalDialogMutex(dialogId: DialogID): AsyncFifoMutex {
   const created = new AsyncFifoMutex();
   globalDialogMutexes.set(key, created);
   return created;
+}
+
+function clearIdleGlobalDialogMutexesForRoot(rootId: string): boolean {
+  const sideDialogPrefix = `${rootId}#`;
+  let hasRemainingMutex = false;
+  for (const [key, mutex] of globalDialogMutexes.entries()) {
+    if (key !== rootId && !key.startsWith(sideDialogPrefix)) {
+      continue;
+    }
+    if (!mutex.isLocked()) {
+      globalDialogMutexes.delete(key);
+    } else {
+      hasRemainingMutex = true;
+    }
+  }
+  return hasRemainingMutex;
+}
+
+export function scheduleGlobalDialogMutexCleanupForRoot(rootId: string): void {
+  pendingGlobalDialogMutexCleanupRootIds.add(rootId);
+  if (!clearIdleGlobalDialogMutexesForRoot(rootId)) {
+    pendingGlobalDialogMutexCleanupRootIds.delete(rootId);
+  }
+}
+
+function cleanupPendingGlobalDialogMutexesForRoot(rootId: string): void {
+  if (!pendingGlobalDialogMutexCleanupRootIds.has(rootId)) {
+    return;
+  }
+  if (!clearIdleGlobalDialogMutexesForRoot(rootId)) {
+    pendingGlobalDialogMutexCleanupRootIds.delete(rootId);
+  }
 }
 
 /**
@@ -558,7 +591,11 @@ export abstract class Dialog {
    * FIFO queue ensures fairness when multiple callers wait.
    */
   public async acquire(): Promise<() => void> {
-    return await this._mutex.acquire();
+    const release = await this._mutex.acquire();
+    return () => {
+      release();
+      cleanupPendingGlobalDialogMutexesForRoot(this.id.rootId);
+    };
   }
 
   /**

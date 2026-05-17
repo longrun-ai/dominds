@@ -5,7 +5,7 @@ import {
   type PubChan,
   type SubChan,
 } from '@longrun-ai/kernel/evt';
-import type { MainDialog } from './dialog';
+import { scheduleGlobalDialogMutexCleanupForRoot, type MainDialog } from './dialog';
 import { createLogger } from './log';
 import { DialogPersistence } from './persistence';
 
@@ -93,6 +93,8 @@ class GlobalDialogRegistry {
 
   unregister(rootId: string): void {
     this.entries.delete(rootId);
+    this.lastDriveTriggerByRootId.delete(rootId);
+    scheduleGlobalDialogMutexCleanupForRoot(rootId);
   }
 
   private publishDriveTrigger(args: {

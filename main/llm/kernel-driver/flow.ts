@@ -548,6 +548,20 @@ function hasCallerReviveEntitlement(
   );
 }
 
+function hasResolvedPendingSideDialogReplyEntitlement(
+  dialog: Dialog,
+  driveOptions: KernelDriverDriveOptions | undefined,
+): boolean {
+  const entitlement = driveOptions?.noPromptSideDialogResumeEntitlement;
+  return (
+    driveOptions?.source === 'kernel_driver_supply_response_caller_revive' &&
+    entitlement?.callerDialogId === dialog.id.selfId &&
+    entitlement.reason === 'resolved_pending_sideDialog_reply' &&
+    isPositiveInteger(entitlement.callSiteCourse) &&
+    isPositiveInteger(entitlement.callSiteGenseq)
+  );
+}
+
 function resolveDriveRequestSource(
   humanPrompt: KernelDriverPrompt | undefined,
   driveOptions: KernelDriverDriveOptions | undefined,
@@ -668,11 +682,16 @@ async function inspectNoPromptSideDialogDrive(args: {
     args.driveOptions?.allowResumeFromInterrupted === true &&
     latest?.executionMarker?.kind === 'interrupted';
   const inProgressGenerationResumeAllowed = args.driveOptions?.resumeInProgressGeneration === true;
+  const resolvedPendingSideDialogReplyEntitlement = hasResolvedPendingSideDialogReplyEntitlement(
+    args.dialog,
+    args.driveOptions,
+  );
+  const resultArrivalTriggerPresent = hasResultArrivalTrigger(latest);
   const supplyResponseCallerReviveAllowed =
-    source === 'kernel_driver_supply_response_caller_revive' &&
-    hasNoPromptSideDialogResumeEntitlement(args.dialog, args.driveOptions);
+    hasCallerReviveEntitlement(args.dialog, args.driveOptions) &&
+    (!resolvedPendingSideDialogReplyEntitlement || resultArrivalTriggerPresent);
   const backendLoopDurableWorkAllowed =
-    source === 'kernel_driver_backend_loop' && hasResultArrivalTrigger(latest);
+    source === 'kernel_driver_backend_loop' && resultArrivalTriggerPresent;
   const replyObligationFollowUpAllowed =
     source === 'kernel_driver_follow_up' &&
     args.driveOptions?.noPromptSideDialogResumeEntitlement?.reason ===
@@ -680,7 +699,8 @@ async function inspectNoPromptSideDialogDrive(args: {
     hasNoPromptSideDialogResumeEntitlement(args.dialog, args.driveOptions);
   const finalResponseResultArrivalReviveAllowed =
     sideDialogFinalResponseCallId !== undefined &&
-    (supplyResponseCallerReviveAllowed || backendLoopDurableWorkAllowed);
+    ((resolvedPendingSideDialogReplyEntitlement && resultArrivalTriggerPresent) ||
+      backendLoopDurableWorkAllowed);
   if (sideDialogFinalResponseCallId !== undefined && !finalResponseResultArrivalReviveAllowed) {
     return {
       shouldReject: true,

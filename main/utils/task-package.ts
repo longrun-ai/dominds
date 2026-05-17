@@ -106,12 +106,21 @@ function getTaskPackageFileLock(filePath: string): AsyncFifoMutex {
   return created;
 }
 
+function clearTaskPackageFileLockIfIdle(filePath: string, lock: AsyncFifoMutex): void {
+  const key = path.resolve(filePath);
+  if (taskPackageFileLocks.get(key) === lock && !lock.isLocked()) {
+    taskPackageFileLocks.delete(key);
+  }
+}
+
 async function withTaskPackageFileLock<T>(filePath: string, fn: () => Promise<T>): Promise<T> {
-  const release = await getTaskPackageFileLock(filePath).acquire();
+  const lock = getTaskPackageFileLock(filePath);
+  const release = await lock.acquire();
   try {
     return await fn();
   } finally {
     release();
+    clearTaskPackageFileLockIfIdle(filePath, lock);
   }
 }
 

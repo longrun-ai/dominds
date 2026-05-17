@@ -22,6 +22,12 @@ function getSharedReminderLock(agentId: string): AsyncFifoMutex {
   return created;
 }
 
+function clearSharedReminderLockIfIdle(agentId: string, lock: AsyncFifoMutex): void {
+  if (sharedReminderLocks.get(agentId) === lock && !lock.isLocked()) {
+    sharedReminderLocks.delete(agentId);
+  }
+}
+
 function getSharedReminderDirPath(agentId: string): string {
   return path.resolve(process.cwd(), '.dialogs', 'reminders', agentId);
 }
@@ -153,11 +159,13 @@ async function writeSharedRemindersUnlocked(
 }
 
 export async function loadAgentSharedReminders(agentId: string): Promise<Reminder[]> {
-  const release = await getSharedReminderLock(agentId).acquire();
+  const lock = getSharedReminderLock(agentId);
+  const release = await lock.acquire();
   try {
     return cloneReminderList(await readSharedRemindersUnlocked(agentId));
   } finally {
     release();
+    clearSharedReminderLockIfIdle(agentId, lock);
   }
 }
 
@@ -165,11 +173,13 @@ export async function replaceAgentSharedReminders(
   agentId: string,
   reminders: readonly Reminder[],
 ): Promise<void> {
-  const release = await getSharedReminderLock(agentId).acquire();
+  const lock = getSharedReminderLock(agentId);
+  const release = await lock.acquire();
   try {
     await writeSharedRemindersUnlocked(agentId, reminders);
   } finally {
     release();
+    clearSharedReminderLockIfIdle(agentId, lock);
   }
 }
 
@@ -177,7 +187,8 @@ export async function mutateAgentSharedReminders<T>(
   agentId: string,
   mutate: (reminders: Reminder[]) => Promise<T> | T,
 ): Promise<T> {
-  const release = await getSharedReminderLock(agentId).acquire();
+  const lock = getSharedReminderLock(agentId);
+  const release = await lock.acquire();
   try {
     const reminders = await readSharedRemindersUnlocked(agentId);
     const result = await mutate(reminders);
@@ -185,5 +196,6 @@ export async function mutateAgentSharedReminders<T>(
     return result;
   } finally {
     release();
+    clearSharedReminderLockIfIdle(agentId, lock);
   }
 }

@@ -20,6 +20,9 @@ async function withSuspensionStateLock<T>(dialogId: DialogID, fn: () => Promise<
     return await fn();
   } finally {
     release();
+    if (suspensionStateMutexes.get(key) === mutex && !mutex.isLocked()) {
+      suspensionStateMutexes.delete(key);
+    }
   }
 }
 

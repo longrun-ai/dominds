@@ -4,6 +4,7 @@ import { toCallSiteCourseNo, toCallSiteGenseqNo } from '@longrun-ai/kernel/types
 import { formatUnifiedTimestamp } from '@longrun-ai/kernel/utils/time';
 import type { SideDialog } from '../../main/dialog';
 import { globalDialogRegistry } from '../../main/dialog-global-registry';
+import { driveDialogStream } from '../../main/llm/kernel-driver';
 import { driveQueuedDialogsOnce } from '../../main/llm/kernel-driver/loop';
 import { supplyResponseToAskerDialog } from '../../main/llm/kernel-driver/sideDialog';
 import { DialogPersistence } from '../../main/persistence';
@@ -142,6 +143,48 @@ async function main(): Promise<void> {
       hasPendingNextStepTriggers(callerLatestAfterDrive),
       false,
       'backend watch revive should consume side-dialog caller result_arrival trigger',
+    );
+
+    const callerEventsAfterDrive = await DialogPersistence.loadCourseEvents(
+      caller.id,
+      caller.currentCourse,
+      caller.status,
+    );
+    const genStartCountAfterDrive = callerEventsAfterDrive.filter(
+      (event) => event.type === 'gen_start_record',
+    ).length;
+
+    await driveDialogStream(caller, undefined, true, {
+      source: 'kernel_driver_supply_response_caller_revive',
+      reason: 'late_direct_revive_after_backend_watch_consumed_result_arrival',
+      suppressDiligencePush: true,
+      noPromptSideDialogResumeEntitlement: {
+        callerDialogId: caller.id.selfId,
+        reason: 'resolved_pending_sideDialog_reply',
+        sideDialogId: callee.id.selfId,
+        callType: 'C',
+        callId: 'caller-to-callee',
+        callSiteCourse: 1,
+        callSiteGenseq: 2,
+        batchId: 'dispatch:test:caller:c1:g2',
+        resolvedCallIds: ['caller-to-callee'],
+        triggerCallId: 'caller-to-callee',
+      },
+    });
+    await waitForAllDialogsUnlocked(root, 3_000);
+
+    const callerEventsAfterLateDirectRevive = await DialogPersistence.loadCourseEvents(
+      caller.id,
+      caller.currentCourse,
+      caller.status,
+    );
+    const genStartCountAfterLateDirectRevive = callerEventsAfterLateDirectRevive.filter(
+      (event) => event.type === 'gen_start_record',
+    ).length;
+    assert.equal(
+      genStartCountAfterLateDirectRevive,
+      genStartCountAfterDrive,
+      'late direct caller revive after consumed result_arrival must not open an empty generation',
     );
   });
 

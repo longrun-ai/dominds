@@ -6244,6 +6244,12 @@ export class DialogPersistence {
         this.courseAppendMutexes.delete(key);
       }
     }
+
+    for (const key of this.driveWatchMutexes.keys()) {
+      if (matchesMainDialogKey(key)) {
+        this.driveWatchMutexes.delete(key);
+      }
+    }
   }
 
   private static async quarantineMalformedDialog(
