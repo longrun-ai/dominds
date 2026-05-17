@@ -98,57 +98,64 @@ async function main(): Promise<void> {
     const root = await createMainDialog('tester');
     root.disableDiligencePush = true;
     globalDialogRegistry.register(root);
-    void runBackendDriver();
+    const abortController = new AbortController();
+    const backendDriver = runBackendDriver({ abortSignal: abortController.signal });
 
-    await driveDialogStream(
-      root,
-      makeUserPrompt(trigger, 'kernel-driver-sideDialog-backend-loop-active-run-blocker'),
-      true,
-      makeDriveOptions({ suppressDiligencePush: true }),
-    );
+    try {
+      await driveDialogStream(
+        root,
+        makeUserPrompt(trigger, 'kernel-driver-sideDialog-backend-loop-active-run-blocker'),
+        true,
+        makeDriveOptions({ suppressDiligencePush: true }),
+      );
 
-    await waitFor(
-      async () => root.lookupSideDialog('pangu', sessionSlug) !== undefined,
-      3_000,
-      'registered side dialog to exist before simulating the active-run blocker',
-    );
-    createActiveRun(root.id);
+      await waitFor(
+        async () => root.lookupSideDialog('pangu', sessionSlug) !== undefined,
+        3_000,
+        'registered side dialog to exist before simulating the active-run blocker',
+      );
+      createActiveRun(root.id);
 
-    await waitFor(
-      async () => {
-        const latest = await DialogPersistence.loadDialogLatest(root.id, root.status);
-        return hasPendingNextStepTriggers(latest) === true;
-      },
-      3_000,
-      'root revive to queue while the synthetic active run is still present',
-    );
-    await waitFor(
-      async () => globalDialogRegistry.hasPendingActiveRunClearedWake(root.id.rootId),
-      3_000,
-      'backend loop to record that the queued root revive was deferred by the synthetic active run',
-    );
-    clearActiveRun(root.id);
+      await waitFor(
+        async () => {
+          const latest = await DialogPersistence.loadDialogLatest(root.id, root.status);
+          return hasPendingNextStepTriggers(latest) === true;
+        },
+        3_000,
+        'root revive to queue while the synthetic active run is still present',
+      );
+      await waitFor(
+        async () => globalDialogRegistry.hasPendingActiveRunClearedWake(root.id.rootId),
+        3_000,
+        'backend loop to record that the queued root revive was deferred by the synthetic active run',
+      );
+      clearActiveRun(root.id);
 
-    await waitFor(
-      async () =>
-        globalDialogRegistry.getLastDriveTrigger(root.id.rootId)?.action === 'active_run_cleared',
-      3_000,
-      'clearing the synthetic blocker to emit an active_run_cleared wake event',
-    );
+      await waitFor(
+        async () =>
+          globalDialogRegistry.getLastDriveTrigger(root.id.rootId)?.action === 'active_run_cleared',
+        3_000,
+        'clearing the synthetic blocker to emit an active_run_cleared wake event',
+      );
 
-    await waitFor(
-      async () => lastAssistantSaying(root) === rootFinalResponse,
-      3_000,
-      'backend loop to retry the queued root revive after the active-run blocker clears',
-    );
-    await waitForAllDialogsUnlocked(root, 3_000);
+      await waitFor(
+        async () => lastAssistantSaying(root) === rootFinalResponse,
+        3_000,
+        'backend loop to retry the queued root revive after the active-run blocker clears',
+      );
+      await waitForAllDialogsUnlocked(root, 3_000);
 
-    const latest = await DialogPersistence.loadDialogLatest(root.id, root.status);
-    assert.equal(
-      hasPendingNextStepTriggers(latest),
-      false,
-      'queued root revive should be fully consumed after backend-loop retry',
-    );
+      const latest = await DialogPersistence.loadDialogLatest(root.id, root.status);
+      assert.equal(
+        hasPendingNextStepTriggers(latest),
+        false,
+        'queued root revive should be fully consumed after backend-loop retry',
+      );
+    } finally {
+      clearActiveRun(root.id);
+      abortController.abort();
+      await backendDriver;
+    }
   });
 
   console.log('kernel-driver sideDialog-backend-loop-retries-after-active-run-blocker: PASS');

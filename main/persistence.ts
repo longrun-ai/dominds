@@ -7834,6 +7834,23 @@ export class DialogPersistence {
     return calleeDialogId;
   }
 
+  private static buildActiveCalleeRecordFromDispatch(
+    record: ActiveCalleeDispatchRecord,
+  ): ActiveCalleeRecord {
+    return {
+      callId: record.callId,
+      calleeDialogId: this.activeCalleeDispatchCalleeDialogId(record),
+      callName: record.callName,
+      status: 'pending',
+      targetAgentId: record.targetAgentId,
+      tellaskContent: record.tellaskContent,
+      callType: record.callType,
+      ...(record.mentionList !== undefined ? { mentionList: record.mentionList } : {}),
+      ...(record.sessionSlug !== undefined ? { sessionSlug: record.sessionSlug } : {}),
+      createdAt: record.createdAt,
+    };
+  }
+
   private static isActiveCalleeCompletion(value: unknown): value is ActiveCalleeCompletion {
     if (!isRecord(value)) return false;
     if (value.kind === 'reply_tool') {
@@ -8005,19 +8022,7 @@ export class DialogPersistence {
     const batchesById = new Map<string, ActiveCalleeBatch>();
     for (const dispatch of dispatches) {
       const existingBatch = batchesById.get(dispatch.batchId);
-      const calleeDialogId = this.activeCalleeDispatchCalleeDialogId(dispatch);
-      const callee: ActiveCalleeRecord = {
-        callId: dispatch.callId,
-        calleeDialogId,
-        callName: dispatch.callName,
-        status: 'pending',
-        targetAgentId: dispatch.targetAgentId,
-        tellaskContent: dispatch.tellaskContent,
-        callType: dispatch.callType,
-        mentionList: dispatch.mentionList,
-        sessionSlug: dispatch.sessionSlug,
-        createdAt: dispatch.createdAt,
-      };
+      const callee = this.buildActiveCalleeRecordFromDispatch(dispatch);
       if (!existingBatch) {
         batchesById.set(dispatch.batchId, {
           batchId: dispatch.batchId,
@@ -8414,19 +8419,7 @@ export class DialogPersistence {
       dialogId,
       (previous) => {
         const existingBatch = previous.batches.find((batch) => batch.batchId === record.batchId);
-        const calleeDialogId = this.activeCalleeDispatchCalleeDialogId(record);
-        const callee: ActiveCalleeRecord = {
-          callId: record.callId,
-          calleeDialogId,
-          callName: record.callName,
-          status: 'pending',
-          targetAgentId: record.targetAgentId,
-          tellaskContent: record.tellaskContent,
-          callType: record.callType,
-          mentionList: record.mentionList,
-          sessionSlug: record.sessionSlug,
-          createdAt: record.createdAt,
-        };
+        const callee = this.buildActiveCalleeRecordFromDispatch(record);
         if (existingBatch === undefined) {
           return {
             batches: [
@@ -8464,7 +8457,7 @@ export class DialogPersistence {
         );
         if (existingCallee !== undefined) {
           if (
-            existingCallee.calleeDialogId !== calleeDialogId ||
+            existingCallee.calleeDialogId !== callee.calleeDialogId ||
             existingCallee.callName !== record.callName
           ) {
             throw new Error(
@@ -9576,6 +9569,17 @@ export class DialogPersistence {
         appendFrame: nextAssignmentFrame,
       });
     }
+    await this.mutateDialogLatest(
+      dialogId,
+      () => ({
+        kind: 'patch',
+        patch: {
+          sideDialogFinalResponse: undefined,
+          latestAssignmentAnchor: undefined,
+        },
+      }),
+      status,
+    );
   }
 
   /**

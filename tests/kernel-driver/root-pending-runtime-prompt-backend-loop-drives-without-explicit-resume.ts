@@ -37,28 +37,34 @@ async function main(): Promise<void> {
     const root = await createMainDialog('tester');
     root.disableDiligencePush = true;
     globalDialogRegistry.register(root);
-    void runBackendDriver();
+    const abortController = new AbortController();
+    const backendDriver = runBackendDriver({ abortSignal: abortController.signal });
 
-    await root.startNewCourse(queuedPrompt);
+    try {
+      await root.startNewCourse(queuedPrompt);
 
-    await waitFor(
-      async () => lastAssistantSaying(root) === finalReply,
-      3_000,
-      'backend loop to drive the durable root pending runtime prompt without registry pending next-step triggers',
-    );
-    await waitForAllDialogsUnlocked(root, 3_000);
+      await waitFor(
+        async () => lastAssistantSaying(root) === finalReply,
+        3_000,
+        'backend loop to drive the durable root pending runtime prompt without registry pending next-step triggers',
+      );
+      await waitForAllDialogsUnlocked(root, 3_000);
 
-    const latest = await DialogPersistence.loadDialogLatest(root.id, root.status);
-    assert.equal(
-      latest?.pendingRuntimePrompt,
-      undefined,
-      'backend loop should consume the durable pending root runtime prompt',
-    );
-    assert.equal(
-      hasPendingNextStepTriggers(latest),
-      false,
-      'backend loop should clear pending next-step triggers after consuming the root pending runtime prompt',
-    );
+      const latest = await DialogPersistence.loadDialogLatest(root.id, root.status);
+      assert.equal(
+        latest?.pendingRuntimePrompt,
+        undefined,
+        'backend loop should consume the durable pending root runtime prompt',
+      );
+      assert.equal(
+        hasPendingNextStepTriggers(latest),
+        false,
+        'backend loop should clear pending next-step triggers after consuming the root pending runtime prompt',
+      );
+    } finally {
+      abortController.abort();
+      await backendDriver;
+    }
   });
 
   console.log(

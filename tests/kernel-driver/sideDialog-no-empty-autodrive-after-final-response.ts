@@ -334,6 +334,151 @@ async function main(): Promise<void> {
       'mismatched active reply obligation should remain completion state without keeping the sideDialog resumable',
     );
 
+    await DialogPersistence.updateSideDialogAssignment(sideDialog.id, {
+      ...sideDialog.assignmentFromAsker,
+      tellaskContent: 'Please answer the follow-up with exactly `4`.',
+      callId: 'root-call-pangu-sticky-follow-up',
+      callSiteGenseq: 2,
+    });
+    const latestAfterRegisteredUpdate = await DialogPersistence.loadDialogLatest(
+      sideDialog.id,
+      sideDialog.status,
+    );
+    assert.equal(
+      latestAfterRegisteredUpdate?.sideDialogFinalResponse,
+      undefined,
+      'registered assignment update should clear the old final-response projection',
+    );
+    assert.equal(
+      latestAfterRegisteredUpdate?.latestAssignmentAnchor,
+      undefined,
+      'registered assignment update should clear the old assignment anchor projection until the new prompt is consumed',
+    );
+
+    const recoveryOpenedAt = formatUnifiedTimestamp(new Date());
+    await DialogPersistence.mutateDialogLatest(sideDialog.id, () => ({
+      kind: 'patch',
+      patch: {
+        generating: true,
+        displayState: { kind: 'proceeding' },
+        generationRunState: {
+          kind: 'open',
+          course: sideDialog.currentCourse,
+          genseq: 27,
+          phase: 'streaming',
+          acceptedTriggerIds: [],
+          openedAt: recoveryOpenedAt,
+        },
+        nextStep: {
+          nextSeq: 28,
+          triggers: [
+            {
+              triggerId: `open-generation-recovery:${sideDialog.id.selfId}:${sideDialog.currentCourse}:27`,
+              kind: 'open_generation_recovery',
+              course: sideDialog.currentCourse,
+              genseq: 27,
+              createdAt: recoveryOpenedAt,
+              seq: 27,
+            },
+          ],
+        },
+        latestAssignmentAnchor: {
+          callId: 'root-call-pangu-sticky-follow-up',
+          assignmentCourse: sideDialog.currentCourse,
+          assignmentGenseq: 20,
+        },
+        sideDialogFinalResponse: {
+          callId: 'root-call-pangu-sticky',
+          responseCourse: sideDialog.currentCourse,
+          responseGenseq: 1,
+          askerDialogId: dlg.id.selfId,
+          askerCourse: dlg.currentCourse,
+        },
+      },
+    }));
+    const watchedDuringLegacyRecovery = await DialogPersistence.loadDriveWatchedDialogIds(
+      dlg.id,
+      dlg.status,
+    );
+    assert.ok(
+      watchedDuringLegacyRecovery.some((dialogId) => dialogId.selfId === sideDialog.id.selfId),
+      'open generation recovery must keep a reused registered sideDialog watched even with an old final-response projection',
+    );
+    await DialogPersistence.mutateDialogLatest(sideDialog.id, () => ({
+      kind: 'patch',
+      patch: {
+        generating: false,
+        generationRunState: undefined,
+        nextStep: { nextSeq: 1, triggers: [] },
+        sideDialogFinalResponse: undefined,
+        displayState: { kind: 'idle_waiting_user' },
+      },
+    }));
+    await DialogPersistence.removeDriveWatchForDialog(sideDialog.id, sideDialog.status);
+
+    await DialogPersistence.mutateDialogLatest(sideDialog.id, () => ({
+      kind: 'patch',
+      patch: {
+        generating: true,
+        displayState: { kind: 'proceeding' },
+        generationRunState: {
+          kind: 'open',
+          course: sideDialog.currentCourse,
+          genseq: 28,
+          phase: 'streaming',
+          acceptedTriggerIds: [],
+          openedAt: recoveryOpenedAt,
+        },
+        nextStep: {
+          nextSeq: 29,
+          triggers: [
+            {
+              triggerId: `open-generation-recovery:${sideDialog.id.selfId}:${sideDialog.currentCourse}:28`,
+              kind: 'open_generation_recovery',
+              course: sideDialog.currentCourse,
+              genseq: 28,
+              createdAt: recoveryOpenedAt,
+              seq: 28,
+            },
+          ],
+        },
+        latestAssignmentAnchor: {
+          callId: 'root-call-pangu-sticky',
+          assignmentCourse: sideDialog.currentCourse,
+          assignmentGenseq: 1,
+        },
+        sideDialogFinalResponse: {
+          callId: 'root-call-pangu-sticky',
+          responseCourse: sideDialog.currentCourse,
+          responseGenseq: 1,
+          askerDialogId: dlg.id.selfId,
+          askerCourse: dlg.currentCourse,
+        },
+      },
+    }));
+    const watchedDuringSameCallStaleRecovery = await DialogPersistence.loadDriveWatchedDialogIds(
+      dlg.id,
+      dlg.status,
+    );
+    assert.equal(
+      watchedDuringSameCallStaleRecovery.some(
+        (dialogId) => dialogId.selfId === sideDialog.id.selfId,
+      ),
+      false,
+      'open generation recovery must not revive a same-call finalized sideDialog projection',
+    );
+    await DialogPersistence.mutateDialogLatest(sideDialog.id, () => ({
+      kind: 'patch',
+      patch: {
+        generating: false,
+        generationRunState: undefined,
+        nextStep: { nextSeq: 1, triggers: [] },
+        latestAssignmentAnchor: undefined,
+        sideDialogFinalResponse: undefined,
+        displayState: { kind: 'idle_waiting_user' },
+      },
+    }));
+
     const sessionlessRoot = await createMainDialog('tester');
     sessionlessRoot.disableDiligencePush = true;
     const sessionlessRequest = 'Clean up duplicate source files and continue validation.';

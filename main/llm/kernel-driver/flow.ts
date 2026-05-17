@@ -16,6 +16,7 @@ import {
   hasActiveRun,
   setDialogDisplayState,
 } from '../../dialog-display-state';
+import { hasRecoverableGenerationBeyondFinalResponse } from '../../dialog-drive-work';
 import { globalDialogRegistry } from '../../dialog-global-registry';
 import { doesInterruptionReasonRequireExplicitResume } from '../../dialog-interruption';
 import { createEmptyDialogNextStepState } from '../../dialog-latest-state';
@@ -681,7 +682,11 @@ async function inspectNoPromptSideDialogDrive(args: {
   const explicitInterruptedResumeAllowed =
     args.driveOptions?.allowResumeFromInterrupted === true &&
     latest?.executionMarker?.kind === 'interrupted';
-  const inProgressGenerationResumeAllowed = args.driveOptions?.resumeInProgressGeneration === true;
+  const inProgressGenerationResumeAllowed =
+    args.driveOptions?.resumeInProgressGeneration === true &&
+    latest !== null &&
+    latest !== undefined &&
+    hasRecoverableGenerationBeyondFinalResponse(latest);
   const resolvedPendingSideDialogReplyEntitlement = hasResolvedPendingSideDialogReplyEntitlement(
     args.dialog,
     args.driveOptions,
@@ -700,7 +705,8 @@ async function inspectNoPromptSideDialogDrive(args: {
   const finalResponseResultArrivalReviveAllowed =
     sideDialogFinalResponseCallId !== undefined &&
     ((resolvedPendingSideDialogReplyEntitlement && resultArrivalTriggerPresent) ||
-      backendLoopDurableWorkAllowed);
+      backendLoopDurableWorkAllowed ||
+      inProgressGenerationResumeAllowed);
   if (sideDialogFinalResponseCallId !== undefined && !finalResponseResultArrivalReviveAllowed) {
     return {
       shouldReject: true,

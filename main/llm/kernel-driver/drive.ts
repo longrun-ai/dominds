@@ -1630,7 +1630,9 @@ function reserveKnownFunctionCallId(
   }
 }
 
-function collectKnownFunctionCallIdsForCurrentCourse(dialog: Dialog): ReadonlySet<string> {
+async function collectKnownFunctionCallIdsForCurrentCourse(
+  dialog: Dialog,
+): Promise<ReadonlySet<string>> {
   const known = new Set<string>();
   const addKnown = (callId: string | undefined): void => {
     const normalized = trimOptionalCallId(callId);
@@ -1652,6 +1654,33 @@ function collectKnownFunctionCallIdsForCurrentCourse(dialog: Dialog): ReadonlySe
     addKnown(msg.id);
     addKnown(msg.rawId);
     addKnown(msg.effectiveId);
+  }
+  const persistedEvents = await DialogPersistence.loadCourseEvents(
+    dialog.id,
+    course,
+    dialog.status,
+  );
+  for (const event of persistedEvents) {
+    switch (event.type) {
+      case 'func_call_record': {
+        addKnown(event.id);
+        addKnown(event.rawId);
+        addKnown(event.effectiveId);
+        break;
+      }
+      case 'func_result_record': {
+        addKnown(event.id);
+        addKnown(event.rawId);
+        addKnown(event.effectiveId);
+        break;
+      }
+      case 'tellask_call_record': {
+        addKnown(event.id);
+        break;
+      }
+      default:
+        break;
+    }
   }
   return known;
 }
@@ -1718,7 +1747,7 @@ async function normalizeGeneratedFunctionCallIds(args: {
   dialog: Dialog;
 }): Promise<FuncCallMsg[]> {
   const reservation: FunctionCallIdReservation = {
-    knownCallIds: new Set(collectKnownFunctionCallIdsForCurrentCourse(args.dialog)),
+    knownCallIds: new Set(await collectKnownFunctionCallIdsForCurrentCourse(args.dialog)),
     seenRawIdsThisRound: new Set<string>(),
     nextDuplicateSuffixByRawId: new Map<string, number>(),
   };
