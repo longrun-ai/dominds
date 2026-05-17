@@ -15,6 +15,7 @@ import {
   toRootGenerationAnchor,
   type DialogFbrState,
   type DialogFollowupReason,
+  type FuncResultRecord,
   type TellaskAnchorRecord,
   type TellaskCalleeRecord,
 } from '@longrun-ai/kernel/types/storage';
@@ -92,6 +93,7 @@ import { getLlmGenerator } from '../gen/registry';
 import {
   formatToolCallAdjacencyViolation,
   sanitizeToolContextForProvider,
+  type ToolCallAdjacencyViolation,
 } from '../gen/tool-call-context';
 import { buildHumanSystemStopReasonTextI18n } from '../stop-reason-i18n';
 import { projectFuncToolsForProvider } from '../tools-projection';
@@ -267,6 +269,28 @@ function throwIfAborted(abortSignal: AbortSignal | undefined, dlg: Dialog): void
     throw new KernelDriverInterruptedError({ kind: 'user_stop' });
   }
   throw new KernelDriverInterruptedError(buildAbortedSystemStopReason());
+}
+
+function buildInterruptedFuncResult(args: {
+  func: FuncCallMsg;
+  callGenseq: number;
+  err: unknown;
+}): FuncResultMsg {
+  const errText =
+    args.err instanceof Error
+      ? `${args.err.name}: ${args.err.message}`
+      : extractErrorDetails(args.err).message;
+  return {
+    type: 'func_result_msg',
+    id: args.func.id,
+    rawId: args.func.rawId,
+    effectiveId: args.func.effectiveId,
+    name: args.func.name,
+    content: toolFailure(`Function '${args.func.name}' interrupted before completion: ${errText}`)
+      .content,
+    role: 'tool',
+    genseq: args.callGenseq,
+  };
 }
 
 function isFbrSideDialog(dlg: Dialog): dlg is SideDialog {
@@ -1180,6 +1204,165 @@ async function buildActiveReplyObligationContext(dlg: Dialog): Promise<ChatMessa
   ];
 }
 
+function formatRecoveredUnresolvedToolCallResult(call: FuncCallMsg): string {
+  return (
+    `[kernel_driver_unpaired_tool_call_recovered] ` +
+    `A persisted tool call was found without a matching tool result. ` +
+    `The previous ${call.name} invocation did not produce a durable result record ` +
+    `(callId=${call.id}). Treat that invocation as failed and retry the tool call if the task still needs it.`
+  );
+}
+
+async function persistRecoveredToolCallResult(args: {
+  dlg: Dialog;
+  call: FuncCallMsg;
+  violation: Extract<ToolCallAdjacencyViolation, { kind: 'unresolved_call' }>;
+  detail: string;
+}): Promise<FuncResultMsg> {
+  const result: FuncResultMsg = {
+    type: 'func_result_msg',
+    role: 'tool',
+    genseq: args.call.genseq,
+    id: args.call.id,
+    ...(args.call.rawId !== undefined ? { rawId: args.call.rawId } : {}),
+    ...(args.call.effectiveId !== undefined ? { effectiveId: args.call.effectiveId } : {}),
+    name: args.call.name,
+    content: formatRecoveredUnresolvedToolCallResult(args.call),
+  };
+  const record: FuncResultRecord = {
+    ts: formatUnifiedTimestamp(new Date()),
+    type: 'func_result_record',
+    ...toRootGenerationAnchor({
+      rootCourse: (args.dlg instanceof SideDialog ? args.dlg.mainDialog : args.dlg).currentCourse,
+      rootGenseq:
+        (args.dlg instanceof SideDialog ? args.dlg.mainDialog : args.dlg).activeGenSeqOrUndefined ??
+        0,
+    }),
+    genseq: result.genseq,
+    id: result.id,
+    ...(result.rawId !== undefined ? { rawId: result.rawId } : {}),
+    ...(result.effectiveId !== undefined ? { effectiveId: result.effectiveId } : {}),
+    name: result.name,
+    content: result.content,
+  };
+  const course = args.dlg.activeGenCourseOrUndefined ?? args.dlg.currentCourse;
+  await DialogPersistence.appendEvent(args.dlg.id, course, record, args.dlg.status);
+  await args.dlg.addChatMessages(result);
+  log.error(
+    'kernel-driver repaired unpaired persisted tool call with synthetic failure result',
+    new Error('kernel_driver_repaired_unpaired_persisted_tool_call'),
+    {
+      rootId: args.dlg.id.rootId,
+      selfId: args.dlg.id.selfId,
+      course,
+      callGenseq: args.call.genseq,
+      callId: args.call.id,
+      toolName: args.call.name,
+      violationIndex: args.violation.index,
+      detail: args.detail,
+    },
+  );
+  return result;
+}
+
+function findLaterMatchingToolResultIndex(
+  messages: readonly ChatMessage[],
+  callIndex: number,
+  call: FuncCallMsg,
+): number {
+  for (let index = callIndex + 1; index < messages.length; index += 1) {
+    const msg = messages[index];
+    if (msg?.type === 'func_result_msg' && msg.id === call.id && msg.name === call.name) {
+      return index;
+    }
+  }
+  return -1;
+}
+
+function alignLaterMatchingToolResultsForProviderContext(
+  messages: readonly ChatMessage[],
+): ChatMessage[] {
+  const aligned: ChatMessage[] = [...messages];
+  for (let index = 0; index < aligned.length; index += 1) {
+    const msg = aligned[index];
+    if (msg?.type !== 'func_call_msg') continue;
+    const next = aligned[index + 1];
+    if (next?.type === 'func_result_msg' && next.id === msg.id && next.name === msg.name) {
+      continue;
+    }
+    const resultIndex = findLaterMatchingToolResultIndex(aligned, index, msg);
+    if (resultIndex < 0) continue;
+    const result = aligned[resultIndex];
+    if (result?.type !== 'func_result_msg') {
+      throw new Error(
+        `kernel-driver tool-context alignment invariant violation: matching result disappeared ` +
+          `(callId=${msg.id}, index=${resultIndex})`,
+      );
+    }
+    aligned.splice(resultIndex, 1);
+    aligned.splice(index + 1, 0, result);
+  }
+  return aligned;
+}
+
+async function repairUnresolvedToolCallsForProviderContext(args: {
+  dlg: Dialog;
+  messages: readonly ChatMessage[];
+  violations: readonly ToolCallAdjacencyViolation[];
+  details: readonly string[];
+}): Promise<ChatMessage[] | null> {
+  const repairedMessages: ChatMessage[] = [...args.messages];
+  let repairedCount = 0;
+
+  for (let violationIndex = args.violations.length - 1; violationIndex >= 0; violationIndex -= 1) {
+    const violation = args.violations[violationIndex];
+    if (!violation || violation.kind !== 'unresolved_call') continue;
+    const call = repairedMessages[violation.index];
+    if (call?.type !== 'func_call_msg') {
+      throw new Error(
+        `kernel-driver tool-context repair invariant violation: missing func_call_msg at violation index ` +
+          `(dialog=${args.dlg.id.valueOf()}, callId=${violation.callId}, index=${violation.index})`,
+      );
+    }
+    if (call.id !== violation.callId || call.name !== violation.toolName) {
+      throw new Error(
+        `kernel-driver tool-context repair invariant violation: mismatched unresolved call ` +
+          `(dialog=${args.dlg.id.valueOf()}, expectedCallId=${violation.callId}, actualCallId=${call.id}, ` +
+          `expectedTool=${violation.toolName}, actualTool=${call.name}, index=${violation.index})`,
+      );
+    }
+    const existingResultIndex = findLaterMatchingToolResultIndex(
+      repairedMessages,
+      violation.index,
+      call,
+    );
+    const result =
+      existingResultIndex >= 0
+        ? (() => {
+            const existing = repairedMessages[existingResultIndex];
+            if (existing?.type !== 'func_result_msg') {
+              throw new Error(
+                `kernel-driver tool-context repair invariant violation: matching result disappeared ` +
+                  `(dialog=${args.dlg.id.valueOf()}, callId=${call.id}, index=${existingResultIndex})`,
+              );
+            }
+            repairedMessages.splice(existingResultIndex, 1);
+            return existing;
+          })()
+        : await persistRecoveredToolCallResult({
+            dlg: args.dlg,
+            call,
+            violation,
+            detail:
+              args.details[violationIndex] ?? args.details[0] ?? 'unresolved persisted tool call',
+          });
+    repairedMessages.splice(violation.index + 1, 0, result);
+    repairedCount += 1;
+  }
+
+  return repairedCount === 0 ? null : repairedMessages;
+}
+
 async function buildDialogMsgsForContext(dlg: Dialog): Promise<ChatMessage[]> {
   const rawDialogMsgsForContext: ChatMessage[] = dlg.msgs.filter((m) => !!m);
   const projected = await projectTellaskFuncResultsForContext({
@@ -1189,7 +1372,8 @@ async function buildDialogMsgsForContext(dlg: Dialog): Promise<ChatMessage[]> {
   const businessFiltered = projected.messages.filter((msg) => {
     return msg.type !== 'tellask_result_msg' || msg.content.trim() !== '';
   });
-  const sanitized = sanitizeToolContextForProvider(businessFiltered);
+  const providerAligned = alignLaterMatchingToolResultsForProviderContext(businessFiltered);
+  const sanitized = sanitizeToolContextForProvider(providerAligned);
   if (sanitized.droppedViolations.length > 0) {
     const details = sanitized.droppedViolations.map((violation) =>
       formatToolCallAdjacencyViolation(violation, 'kernel-driver provider context sanitization'),
@@ -1216,6 +1400,25 @@ async function buildDialogMsgsForContext(dlg: Dialog): Promise<ChatMessage[]> {
         rootId: dlg.id.rootId,
         selfId: dlg.id.selfId,
       });
+    }
+    const repaired = await repairUnresolvedToolCallsForProviderContext({
+      dlg,
+      messages: providerAligned,
+      violations: sanitized.droppedViolations,
+      details,
+    });
+    if (repaired !== null) {
+      const repairedSanitized = sanitizeToolContextForProvider(repaired);
+      if (
+        repairedSanitized.droppedViolations.some(
+          (violation) => violation.kind === 'unresolved_call',
+        )
+      ) {
+        throw new Error(
+          `kernel-driver tool-context repair failed to pair unresolved calls for dialog=${dlg.id.valueOf()}`,
+        );
+      }
+      return repairedSanitized.messages;
     }
   }
   return sanitized.messages;
@@ -1613,8 +1816,6 @@ async function executeFunctionCalls(args: {
       tool,
       preparedInvocationArgs,
     }): Promise<ExecutedFuncCallResult> => {
-      throwIfAborted(args.abortSignal, args.dlg);
-
       let result: FuncResultMsg;
       let outcome: ToolOutcome = 'success';
       let rethrowError: unknown;
@@ -1691,19 +1892,7 @@ async function executeFunctionCalls(args: {
               genseq: callGenseq,
             };
             if (args.abortSignal?.aborted || err instanceof KernelDriverInterruptedError) {
-              const interruptedOutput = toolFailure(
-                `Function '${func.name}' interrupted before completion: ${errText}`,
-              );
-              result = {
-                type: 'func_result_msg',
-                id: func.id,
-                rawId: func.rawId,
-                effectiveId: func.effectiveId,
-                name: func.name,
-                content: interruptedOutput.content,
-                role: 'tool',
-                genseq: callGenseq,
-              };
+              result = buildInterruptedFuncResult({ func, callGenseq, err });
               rethrowError = err;
             }
           }

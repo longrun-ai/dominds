@@ -4,6 +4,10 @@ import { getRecoverableGenerationRunState } from './dialog-generation-run';
 
 export type DialogLatestSnapshot = DialogLatestFile | null;
 
+function hasResultArrivalTrigger(latest: DialogLatestFile): boolean {
+  return latest.nextStep.triggers.some((trigger) => trigger.kind === 'result_arrival');
+}
+
 export function hasDurableDriveWork(latest: DialogLatestSnapshot): boolean {
   if (!latest) {
     return false;
@@ -16,7 +20,7 @@ export function hasDurableDriveWork(latest: DialogLatestSnapshot): boolean {
     return true;
   }
   if (latest.sideDialogFinalResponse !== undefined) {
-    return false;
+    return hasResultArrivalTrigger(latest);
   }
   return (
     latest.nextStep.triggers.length > 0 || getRecoverableGenerationRunState(latest) !== undefined

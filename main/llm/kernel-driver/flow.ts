@@ -515,6 +515,12 @@ function hasNoPromptSideDialogResumeEntitlement(
   return entitlement.callerDialogId === dialog.id.selfId;
 }
 
+function hasResultArrivalTrigger(
+  latest: Awaited<ReturnType<typeof DialogPersistence.loadDialogLatest>>,
+): boolean {
+  return latest?.nextStep.triggers.some((trigger) => trigger.kind === 'result_arrival') === true;
+}
+
 function hasCallerReviveEntitlement(
   dialog: Dialog,
   driveOptions: KernelDriverDriveOptions | undefined,
@@ -666,13 +672,16 @@ async function inspectNoPromptSideDialogDrive(args: {
     source === 'kernel_driver_supply_response_caller_revive' &&
     hasNoPromptSideDialogResumeEntitlement(args.dialog, args.driveOptions);
   const backendLoopDurableWorkAllowed =
-    source === 'kernel_driver_backend_loop' && (latest?.nextStep.triggers.length ?? 0) > 0;
+    source === 'kernel_driver_backend_loop' && hasResultArrivalTrigger(latest);
   const replyObligationFollowUpAllowed =
     source === 'kernel_driver_follow_up' &&
     args.driveOptions?.noPromptSideDialogResumeEntitlement?.reason ===
       'reply_obligation_follow_up' &&
     hasNoPromptSideDialogResumeEntitlement(args.dialog, args.driveOptions);
-  if (sideDialogFinalResponseCallId !== undefined) {
+  const finalResponseResultArrivalReviveAllowed =
+    sideDialogFinalResponseCallId !== undefined &&
+    (supplyResponseCallerReviveAllowed || backendLoopDurableWorkAllowed);
+  if (sideDialogFinalResponseCallId !== undefined && !finalResponseResultArrivalReviveAllowed) {
     return {
       shouldReject: true,
       source,

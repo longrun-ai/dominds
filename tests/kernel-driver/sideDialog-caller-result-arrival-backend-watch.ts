@@ -88,6 +88,18 @@ async function main(): Promise<void> {
       targetAgentId: 'mentor',
       tellaskContent: 'Please finish the nested task.',
     });
+    await DialogPersistence.mutateDialogLatest(caller.id, () => ({
+      kind: 'patch',
+      patch: {
+        sideDialogFinalResponse: {
+          callId: 'root-to-caller',
+          responseCourse: 1,
+          responseGenseq: 1,
+          askerDialogId: root.id.selfId,
+          askerCourse: 1,
+        },
+      },
+    }));
 
     await supplyResponseToAskerDialog({
       callerDialog: caller,
@@ -112,7 +124,7 @@ async function main(): Promise<void> {
     const watched = await DialogPersistence.loadDriveWatchedDialogIds(root.id, root.status);
     assert.ok(
       watched.some((dialogId) => dialogId.selfId === caller.id.selfId),
-      'side-dialog caller with durable result_arrival must be in root drive watch index',
+      'side-dialog caller with durable result_arrival must stay watched even after a final response anchor',
     );
 
     await driveQueuedDialogsOnce();
