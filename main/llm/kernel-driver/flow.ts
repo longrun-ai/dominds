@@ -666,6 +666,7 @@ async function inspectNoPromptSideDialogDrive(args: {
       source: KernelDriverDriveSource;
       rejection:
         | 'finalized_after_response_anchor'
+        | 'stale_consumed_result_arrival'
         | 'missing_explicit_interrupted_resume_entitlement';
       displayState: DialogDisplayState | undefined;
       currentCourse: number;
@@ -712,6 +713,16 @@ async function inspectNoPromptSideDialogDrive(args: {
       shouldReject: true,
       source,
       rejection: 'finalized_after_response_anchor',
+      displayState,
+      currentCourse,
+      sideDialogFinalResponseCallId,
+    };
+  }
+  if (resolvedPendingSideDialogReplyEntitlement && !resultArrivalTriggerPresent) {
+    return {
+      shouldReject: true,
+      source,
+      rejection: 'stale_consumed_result_arrival',
       displayState,
       currentCourse,
       sideDialogFinalResponseCallId,
@@ -1058,6 +1069,26 @@ export async function executeDriveRound(args: {
         try {
           const inspection = await inspectNoPromptSideDialogDrive({ dialog, driveOptions });
           if (inspection.shouldReject) {
+            if (inspection.rejection === 'stale_consumed_result_arrival') {
+              log.warn(
+                'Dropped stale no-prompt sideDialog caller revive after result arrival',
+                undefined,
+                {
+                  dialogId: dialog.id.valueOf(),
+                  rootId: dialog.id.rootId,
+                  selfId: dialog.id.selfId,
+                  source: inspection.source,
+                  reason: driveOptions?.reason ?? null,
+                  rejection: inspection.rejection,
+                  allowResumeFromInterrupted: driveOptions?.allowResumeFromInterrupted === true,
+                  displayState: inspection.displayState ?? null,
+                  currentCourse: inspection.currentCourse,
+                  sideDialogFinalResponseCallId: inspection.sideDialogFinalResponseCallId ?? null,
+                  waitInQue,
+                },
+              );
+              return;
+            }
             log.error('Rejected unexpected no-prompt sideDialog drive request', undefined, {
               dialogId: dialog.id.valueOf(),
               rootId: dialog.id.rootId,

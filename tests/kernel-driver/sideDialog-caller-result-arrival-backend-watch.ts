@@ -186,6 +186,106 @@ async function main(): Promise<void> {
       genStartCountAfterDrive,
       'late direct caller revive after consumed result_arrival must not open an empty generation',
     );
+
+    const callerWithoutFinalResponse = await root.createSideDialog(
+      'fullstack',
+      ['@fullstack'],
+      'Please coordinate another nested work item.',
+      {
+        callName: 'tellask',
+        originMemberId: 'tester',
+        askerDialogId: root.id.selfId,
+        callId: 'root-to-caller-without-final',
+        callSiteCourse: toCallSiteCourseNo(1),
+        callSiteGenseq: toCallSiteGenseqNo(3),
+        sessionSlug: 'watched-caller-without-final',
+        collectiveTargets: ['fullstack'],
+      },
+    );
+    const calleeWithoutFinalResponse = await callerWithoutFinalResponse.createSideDialog(
+      'mentor',
+      ['@mentor'],
+      'Please finish the other nested task.',
+      {
+        callName: 'tellaskSessionless',
+        originMemberId: 'fullstack',
+        askerDialogId: callerWithoutFinalResponse.id.selfId,
+        callId: 'caller-without-final-to-callee',
+        callSiteCourse: toCallSiteCourseNo(1),
+        callSiteGenseq: toCallSiteGenseqNo(4),
+        collectiveTargets: ['mentor'],
+      },
+    );
+
+    await DialogPersistence.appendActiveCalleeDispatch(callerWithoutFinalResponse.id, {
+      batchId: 'dispatch:test:caller-without-final:c1:g4',
+      calleeDialogId: calleeWithoutFinalResponse.id.selfId,
+      callId: 'caller-without-final-to-callee',
+      callName: 'tellaskSessionless',
+      callSiteCourse: toCallSiteCourseNo(1),
+      callSiteGenseq: toCallSiteGenseqNo(4),
+      callType: 'C',
+      createdAt: formatUnifiedTimestamp(new Date()),
+      mentionList: ['@mentor'],
+      targetAgentId: 'mentor',
+      tellaskContent: 'Please finish the other nested task.',
+    });
+    await supplyResponseToAskerDialog({
+      callerDialog: callerWithoutFinalResponse,
+      sideDialogId: calleeWithoutFinalResponse.id,
+      responseText: 'mentor finished the other nested task',
+      callType: 'C',
+      callId: 'caller-without-final-to-callee',
+      calleeResponseRef: { course: 1, genseq: 1 },
+      scheduleDrive: () => {},
+    });
+    await DialogPersistence.removeNextStepTriggers(
+      callerWithoutFinalResponse.id,
+      (trigger) => trigger.kind === 'result_arrival',
+      callerWithoutFinalResponse.status,
+    );
+
+    const callerWithoutFinalEventsBeforeLateRevive = await DialogPersistence.loadCourseEvents(
+      callerWithoutFinalResponse.id,
+      callerWithoutFinalResponse.currentCourse,
+      callerWithoutFinalResponse.status,
+    );
+    const genStartCountBeforeLateRevive = callerWithoutFinalEventsBeforeLateRevive.filter(
+      (event) => event.type === 'gen_start_record',
+    ).length;
+
+    await driveDialogStream(callerWithoutFinalResponse, undefined, true, {
+      source: 'kernel_driver_supply_response_caller_revive',
+      reason: 'late_direct_revive_after_consumed_result_arrival_without_final_response',
+      suppressDiligencePush: true,
+      noPromptSideDialogResumeEntitlement: {
+        callerDialogId: callerWithoutFinalResponse.id.selfId,
+        reason: 'resolved_pending_sideDialog_reply',
+        sideDialogId: calleeWithoutFinalResponse.id.selfId,
+        callType: 'C',
+        callId: 'caller-without-final-to-callee',
+        callSiteCourse: 1,
+        callSiteGenseq: 4,
+        batchId: 'dispatch:test:caller-without-final:c1:g4',
+        resolvedCallIds: ['caller-without-final-to-callee'],
+        triggerCallId: 'caller-without-final-to-callee',
+      },
+    });
+    await waitForAllDialogsUnlocked(root, 3_000);
+
+    const callerWithoutFinalEventsAfterLateRevive = await DialogPersistence.loadCourseEvents(
+      callerWithoutFinalResponse.id,
+      callerWithoutFinalResponse.currentCourse,
+      callerWithoutFinalResponse.status,
+    );
+    const genStartCountAfterLateReviveWithoutFinal = callerWithoutFinalEventsAfterLateRevive.filter(
+      (event) => event.type === 'gen_start_record',
+    ).length;
+    assert.equal(
+      genStartCountAfterLateReviveWithoutFinal,
+      genStartCountBeforeLateRevive,
+      'late direct caller revive after consumed result_arrival and no final response must not open an empty generation',
+    );
   });
 
   console.log('kernel-driver sideDialog-caller-result-arrival-backend-watch: PASS');

@@ -19,7 +19,9 @@ async function main(): Promise<void> {
     await writeStandardMinds(tmpRoot, { includePangu: true });
 
     const prompt = 'Ask @pangu to investigate in the background.';
+    const registeredUpdatePrompt = 'Update the existing @pangu background investigation.';
     const tellaskContent = 'Please investigate in the background and reply later.';
+    const registeredUpdateContent = 'Please continue the same background investigation.';
 
     await writeMockDb(tmpRoot, [
       {
@@ -34,6 +36,22 @@ async function main(): Promise<void> {
               targetAgentId: 'pangu',
               sessionSlug: 'background-dispatch-only',
               tellaskContent,
+            },
+          },
+        ],
+      },
+      {
+        message: registeredUpdatePrompt,
+        role: 'user',
+        response: 'I will update the existing background tellask now.',
+        funcCalls: [
+          {
+            id: 'registered-background-update-only',
+            name: 'tellask',
+            arguments: {
+              targetAgentId: 'pangu',
+              sessionSlug: 'background-dispatch-only',
+              tellaskContent: registeredUpdateContent,
             },
           },
         ],
@@ -107,6 +125,70 @@ async function main(): Promise<void> {
       ),
       false,
       'pending active callee dispatch must not insert a Diligence Push prompt',
+    );
+
+    const firstCalleeId = activeCallees.batches[0]?.callees[0]?.calleeDialogId;
+    assert.ok(firstCalleeId, 'expected the initial tellask to register a callee dialog id');
+    await DialogPersistence.removeActiveCalleeDispatch(
+      root.id,
+      firstCalleeId,
+      undefined,
+      root.status,
+    );
+    root.diligencePushRemainingBudget = 1;
+    await DialogPersistence.mutateDialogLatest(root.id, () => ({
+      kind: 'patch',
+      patch: {
+        diligencePushRemainingBudget: 1,
+      },
+    }));
+
+    await driveDialogStream(
+      root,
+      makeUserPrompt(
+        registeredUpdatePrompt,
+        'kernel-driver-tellask-background-dispatch-registered-update',
+      ),
+      true,
+      makeDriveOptions(),
+    );
+
+    const activeAfterRegisteredUpdate = await DialogPersistence.loadActiveCallees(
+      root.id,
+      root.status,
+    );
+    assert.equal(
+      activeAfterRegisteredUpdate.batches.length,
+      1,
+      'registered tellask update should create one active batch',
+    );
+    assert.equal(
+      activeAfterRegisteredUpdate.batches[0]?.callees[0]?.callId,
+      'registered-background-update-only',
+      'registered tellask update should preserve the new call id',
+    );
+
+    const eventsAfterRegisteredUpdate = await DialogPersistence.loadCourseEvents(
+      root.id,
+      root.currentCourse,
+      root.status,
+    );
+    assert.equal(
+      eventsAfterRegisteredUpdate.filter((event) => event.type === 'gen_start_record').length,
+      2,
+      'registered pending tellask update must not start an immediate follow-up or Diligence Push generation',
+    );
+    assert.equal(
+      root.diligencePushRemainingBudget,
+      1,
+      'registered pending active callee update must not consume Diligence Push budget',
+    );
+    assert.equal(
+      eventsAfterRegisteredUpdate.filter(
+        (event) => event.type === 'prompting_msg_record' && event.origin === 'diligence_push',
+      ).length,
+      0,
+      'registered pending active callee update must not insert a Diligence Push prompt',
     );
 
     await DialogPersistence.mutateDialogLatest(root.id, () => ({

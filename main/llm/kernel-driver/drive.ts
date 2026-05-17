@@ -1524,6 +1524,7 @@ type RoutedFunctionResult = {
   immediateFollowupCallIds: readonly string[];
   immediateTellaskOutputCallIds: readonly string[];
   shouldStopAfterReplyTool: boolean;
+  shouldStopAfterPendingTellaskWait: boolean;
   pairedMessages: ChatMessage[];
   tellaskToolOutputs: ChatMessage[];
 };
@@ -1956,6 +1957,7 @@ async function executeFunctionRound(args: {
       immediateFollowupCallIds: [],
       immediateTellaskOutputCallIds: [],
       shouldStopAfterReplyTool: false,
+      shouldStopAfterPendingTellaskWait: false,
       pairedMessages: [],
       tellaskToolOutputs: [],
     };
@@ -2088,6 +2090,7 @@ async function executeFunctionRound(args: {
     immediateFollowupCallIds,
     immediateTellaskOutputCallIds: tellaskRound.immediateTellaskOutputCallIds,
     shouldStopAfterReplyTool: tellaskRound.shouldStopAfterReplyTool,
+    shouldStopAfterPendingTellaskWait: tellaskRound.shouldStopAfterPendingTellaskWait,
     pairedMessages,
     tellaskToolOutputs: [...tellaskRound.toolOutputs],
   };
@@ -3638,6 +3641,14 @@ export async function driveDialogStreamCore(
             routed.hasImmediateTellaskOutputs ||
             invalidFuncCallCount > 0;
           if (!shouldStartImmediatePostToolGeneration) {
+            if (routed.shouldStopAfterPendingTellaskWait) {
+              log.debug('kernel-driver stop round after pending tellask wait boundary', undefined, {
+                dialogId: dlg.id.valueOf(),
+                rootId: dlg.id.rootId,
+                selfId: dlg.id.selfId,
+              });
+              break;
+            }
             const healthFirst = await maybeContinueWithHealthPromptBeforeDiligence({
               dlg,
               providerCfg,
