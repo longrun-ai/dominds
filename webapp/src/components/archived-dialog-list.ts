@@ -500,13 +500,13 @@ export class ArchivedDialogList extends HTMLElement {
           <span>${group.taskDocPath}</span>
         </div>
         <div class="task-title-right">
+          <span class="dialog-count">${group.roots.length}</span>
           <button class="action icon-button" data-action="task-create-dialog" data-task-path="${group.taskDocPath}" type="button" title="${t.createNewDialogTitle}" aria-label="${t.createNewDialogTitle}">
             ${this.renderCreateIcon()}
           </button>
           <button class="action icon-button" data-action="task-revive" data-task-path="${group.taskDocPath}" type="button" title="${t.dialogActionReviveAll}" aria-label="${t.dialogActionReviveAll}">
             ${this.renderReviveIcon()}
           </button>
-          <span class="dialog-count">${group.roots.length}</span>
         </div>
       </div>
     `;

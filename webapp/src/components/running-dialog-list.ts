@@ -650,6 +650,7 @@ export class RunningDialogList extends HTMLElement {
           <span>${group.taskDocPath}</span>
         </div>
         <div class="task-title-right">
+          <span class="dialog-count">${group.roots.length}</span>
           <button class="action icon-button" data-action="task-create-dialog" data-task-path="${group.taskDocPath}" type="button" title="${t.createNewDialogTitle}" aria-label="${t.createNewDialogTitle}">
             ${this.renderCreateIcon()}
           </button>
@@ -659,7 +660,6 @@ export class RunningDialogList extends HTMLElement {
           <button class="action icon-button" data-action="task-archive" data-task-path="${group.taskDocPath}" type="button" title="${t.dialogActionArchiveAll}" aria-label="${t.dialogActionArchiveAll}">
             ${this.renderArchiveIcon()}
           </button>
-          <span class="dialog-count">${group.roots.length}</span>
         </div>
       </div>
     `;
@@ -1118,8 +1118,8 @@ export class RunningDialogList extends HTMLElement {
           <button class="toggle root-toggle" data-action="toggle-root" data-root-id="${dialog.rootId}" type="button" aria-label="${this.formatToggleAriaLabel(this.collapsedRoots.has(dialog.rootId))}">${toggleIcon}</button>
           <span class="dialog-title">@${dialog.agentId}</span>
           <span class="dialog-meta-right">
-            <span class="dialog-count">${sideDialogCount}</span>
             ${badges}
+            <span class="dialog-count">${sideDialogCount}</span>
             <button class="action icon-button" data-action="root-create-dialog" data-root-id="${dialog.rootId}" type="button" title="${t.createNewDialogTitle}" aria-label="${t.createNewDialogTitle}">
               ${this.renderCreateIcon()}
             </button>

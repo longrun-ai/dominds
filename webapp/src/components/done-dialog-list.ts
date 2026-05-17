@@ -500,6 +500,7 @@ export class DoneDialogList extends HTMLElement {
           <span>${group.taskDocPath}</span>
         </div>
         <div class="task-title-right">
+          <span class="dialog-count">${group.roots.length}</span>
           <button class="action icon-button" data-action="task-create-dialog" data-task-path="${group.taskDocPath}" type="button" title="${t.createNewDialogTitle}" aria-label="${t.createNewDialogTitle}">
             ${this.renderCreateIcon()}
           </button>
@@ -509,7 +510,6 @@ export class DoneDialogList extends HTMLElement {
           <button class="action icon-button" data-action="task-archive" data-task-path="${group.taskDocPath}" type="button" title="${t.dialogActionArchiveAll}" aria-label="${t.dialogActionArchiveAll}">
             ${this.renderArchiveIcon()}
           </button>
-          <span class="dialog-count">${group.roots.length}</span>
         </div>
       </div>
     `;
