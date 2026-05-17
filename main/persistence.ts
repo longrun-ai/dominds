@@ -666,6 +666,19 @@ function getErrorCode(error: unknown): string | undefined {
   return typeof maybeCode === 'string' ? maybeCode : undefined;
 }
 
+const RETRYABLE_FILESYSTEM_ERROR_CODES = new Set(['ENOENT', 'EPERM', 'EACCES', 'EBUSY']);
+const FILESYSTEM_RETRY_BASE_DELAY_MS = 20;
+const FILESYSTEM_RETRY_MAX_DELAY_MS = 250;
+
+function getFilesystemRetryDelayMs(attempt: number): number {
+  const delayMs = FILESYSTEM_RETRY_BASE_DELAY_MS * 2 ** (attempt - 1);
+  return Math.min(FILESYSTEM_RETRY_MAX_DELAY_MS, delayMs);
+}
+
+async function sleepForFilesystemRetry(attempt: number): Promise<void> {
+  await new Promise((resolve) => setTimeout(resolve, getFilesystemRetryDelayMs(attempt)));
+}
+
 function isGenericUnexpectedEofLikeError(error: unknown): boolean {
   const message =
     error instanceof Error ? error.message.toLowerCase() : String(error).toLowerCase();
@@ -8286,7 +8299,7 @@ export class DialogPersistence {
     const normalized = this.normalizeDriveWatchFile(file);
     const filePath = this.getDriveWatchFilePath(rootDialogId, status);
     if (normalized.dialogs.length === 0) {
-      await fs.promises.rm(filePath, { force: true });
+      await this.removeWithRetry(filePath);
       return;
     }
     const dialogPath = this.getMainDialogPath(rootDialogId, status);
@@ -8316,6 +8329,25 @@ export class DialogPersistence {
     } finally {
       release();
     }
+  }
+
+  private static async removeWithRetry(filePath: string, maxRetries: number = 5): Promise<void> {
+    let lastError: Error | undefined;
+
+    for (let attempt = 1; attempt <= maxRetries; attempt++) {
+      try {
+        await fs.promises.rm(filePath, { force: true });
+        return;
+      } catch (error: unknown) {
+        lastError = error instanceof Error ? error : new Error(String(error));
+        const errorCode = getErrorCode(error);
+        if (!RETRYABLE_FILESYSTEM_ERROR_CODES.has(errorCode ?? '') || attempt === maxRetries) {
+          throw error;
+        }
+        await sleepForFilesystemRetry(attempt);
+      }
+    }
+    throw lastError;
   }
 
   static async loadDriveWatchedDialogIds(
@@ -9781,11 +9813,12 @@ export class DialogPersistence {
           throw error;
         }
         lastError = error instanceof Error ? error : new Error(String(error));
-        if (getErrorCode(error) !== 'ENOENT' || attempt === maxRetries) {
+        const errorCode = getErrorCode(error);
+        if (!RETRYABLE_FILESYSTEM_ERROR_CODES.has(errorCode ?? '') || attempt === maxRetries) {
           throw error;
         }
-        // Exponential backoff for ENOENT (race condition or sync issue)
-        await new Promise((resolve) => setTimeout(resolve, 20 * attempt));
+        // Exponential backoff for transient filesystem contention.
+        await sleepForFilesystemRetry(attempt);
       }
     }
     throw lastError;

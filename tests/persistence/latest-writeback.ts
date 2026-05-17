@@ -12,6 +12,7 @@
 import type { MainDialogMetadataFile } from '@longrun-ai/kernel/types/storage';
 import { formatUnifiedTimestamp } from '@longrun-ai/kernel/utils/time';
 import assert from 'node:assert/strict';
+import * as fsNode from 'node:fs';
 import * as fs from 'node:fs/promises';
 import * as os from 'node:os';
 import * as path from 'node:path';
@@ -327,6 +328,91 @@ async function main(): Promise<void> {
       latestAfterSettledGeneration.pendingRuntimePrompt?.msgId,
       'pending-settled-runtime-prompt-msg',
     );
+
+    // Invariant 9: transient Windows-style filesystem failures must be retried for drive-watch.
+    const driveRootId = new DialogID('73/6d/da1d0177');
+    const driveSideId = new DialogID('74/6d/da1d0177', driveRootId.selfId);
+    const driveLatest = {
+      currentCourse: 1,
+      lastModified: formatUnifiedTimestamp(new Date('2026-04-12T00:06:00.000Z')),
+      status: 'active',
+      nextStep: {
+        nextSeq: 1,
+        triggers: [
+          {
+            triggerId: 'drive-watch-trigger',
+            kind: 'result_arrival',
+            batchId: 'drive-watch-batch',
+            createdAt: formatUnifiedTimestamp(new Date('2026-04-12T00:06:00.000Z')),
+            seq: 1,
+          },
+        ],
+      },
+      tellaskCalls: createEmptyDialogTellaskCallState(),
+      tellaskResults: createEmptyDialogTellaskResultState(),
+      displayState: { kind: 'proceeding' },
+      messageCount: 0,
+      functionCallCount: 0,
+      sideDialogCount: 0,
+      disableDiligencePush: false,
+      diligencePushRemainingBudget: 0,
+    } satisfies Parameters<typeof DialogPersistence.syncDriveWatchForDialogLatest>[1];
+    const noDriveLatest = {
+      ...driveLatest,
+      nextStep: createEmptyDialogNextStepState(),
+    } satisfies Parameters<typeof DialogPersistence.syncDriveWatchForDialogLatest>[1];
+    const fsForPatch = fsNode.promises as unknown as {
+      rename: typeof fsNode.promises.rename;
+      rm: typeof fsNode.promises.rm;
+    };
+    const originalRename = fsForPatch.rename;
+    const originalRm = fsForPatch.rm;
+    let driveWatchRenameAttempts = 0;
+    let driveWatchRmAttempts = 0;
+    try {
+      fsForPatch.rename = async (source, destination) => {
+        if (path.basename(destination) === 'drive-watch.json') {
+          driveWatchRenameAttempts += 1;
+          if (driveWatchRenameAttempts === 1) {
+            const error = new Error('simulated transient EPERM for drive-watch');
+            (error as NodeJS.ErrnoException).code = 'EPERM';
+            throw error;
+          }
+        }
+        return originalRename(source, destination);
+      };
+
+      await DialogPersistence.syncDriveWatchForDialogLatest(driveSideId, driveLatest, 'running');
+      const watchedIds = await DialogPersistence.loadDriveWatchedDialogIds(driveRootId, 'running');
+      assert.deepEqual(
+        watchedIds.map((dialogId) => dialogId.selfId),
+        [driveSideId.selfId],
+      );
+      assert.equal(driveWatchRenameAttempts, 2);
+
+      fsForPatch.rm = async (target) => {
+        if (path.basename(target) === 'drive-watch.json') {
+          driveWatchRmAttempts += 1;
+          if (driveWatchRmAttempts === 1) {
+            const error = new Error('simulated transient EPERM for drive-watch removal');
+            (error as NodeJS.ErrnoException).code = 'EPERM';
+            throw error;
+          }
+        }
+        return originalRm(target);
+      };
+
+      await DialogPersistence.syncDriveWatchForDialogLatest(driveSideId, noDriveLatest, 'running');
+      const clearedWatchedIds = await DialogPersistence.loadDriveWatchedDialogIds(
+        driveRootId,
+        'running',
+      );
+      assert.deepEqual(clearedWatchedIds, []);
+      assert.equal(driveWatchRmAttempts, 2);
+    } finally {
+      fsForPatch.rename = originalRename;
+      fsForPatch.rm = originalRm;
+    }
   });
 }
 
