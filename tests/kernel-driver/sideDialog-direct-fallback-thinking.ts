@@ -664,6 +664,16 @@ async function main(): Promise<void> {
       undefined,
       'thinking plus same-round tellask must not queue a reply reminder while delegated work is pending',
     );
+    const thinkingThenTellaskEvents = await DialogPersistence.loadCourseEvents(
+      thinkingThenTellaskSideDialog.id,
+      thinkingThenTellaskSideDialog.currentCourse,
+      thinkingThenTellaskSideDialog.status,
+    );
+    assert.equal(
+      thinkingThenTellaskEvents.filter((event) => event.type === 'gen_start_record').length,
+      1,
+      'nested pending tellask ack must not auto-drive the side dialog before the callee replies',
+    );
     const pendingNested = await DialogPersistence.loadActiveCalleeDispatches(
       thinkingThenTellaskSideDialog.id,
       thinkingThenTellaskSideDialog.status,

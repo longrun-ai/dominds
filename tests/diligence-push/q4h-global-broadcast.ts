@@ -105,10 +105,19 @@ async function main(): Promise<void> {
       },
     });
 
+    postDialogEvent(dlg, {
+      type: 'dlg_background_callee_summary_evt',
+      backgroundCalleeDialogCount: 0,
+      backgroundFreshBootsReasoningCalleeCount: 0,
+    });
+
     const received: readonly TypedDialogEvent[] = recorder.snapshot();
     const q4hAskedEvents = received.filter((evt) => evt.type === 'new_q4h_asked');
     const q4hAnsweredEvents = received.filter((evt) => evt.type === 'q4h_answered');
     const sideDialogCreatedEvents = received.filter((evt) => evt.type === 'sideDialog_created_evt');
+    const backgroundCalleeSummaryEvents = received.filter(
+      (evt) => evt.type === 'dlg_background_callee_summary_evt',
+    );
     const touchedEvents = received.filter((evt) => evt.type === 'dlg_touched_evt');
 
     if (q4hAskedEvents.length !== 1) {
@@ -122,17 +131,31 @@ async function main(): Promise<void> {
         `Expected 1 sideDialog_created_evt event, got ${sideDialogCreatedEvents.length}`,
       );
     }
-    if (touchedEvents.length !== 4) {
-      throw new Error(`Expected 4 dlg_touched_evt events, got ${touchedEvents.length}`);
+    if (backgroundCalleeSummaryEvents.length !== 1) {
+      throw new Error(
+        `Expected 1 dlg_background_callee_summary_evt event, got ${backgroundCalleeSummaryEvents.length}`,
+      );
+    }
+    if (touchedEvents.length !== 5) {
+      throw new Error(`Expected 5 dlg_touched_evt events, got ${touchedEvents.length}`);
     }
 
     const asked = q4hAskedEvents[0]!;
     const subCreated = sideDialogCreatedEvents[0]!;
+    const backgroundCalleeSummary = backgroundCalleeSummaryEvents[0]!;
     if (asked.dialog.selfId !== dlgId.selfId || asked.dialog.rootId !== dlgId.rootId) {
       throw new Error('Expected typed dialog context on new_q4h_asked broadcast');
     }
     if (subCreated.dialog.selfId !== dlgId.selfId || subCreated.dialog.rootId !== dlgId.rootId) {
       throw new Error('Expected typed dialog context on sideDialog_created_evt broadcast');
+    }
+    if (
+      backgroundCalleeSummary.dialog.selfId !== dlgId.selfId ||
+      backgroundCalleeSummary.dialog.rootId !== dlgId.rootId
+    ) {
+      throw new Error(
+        'Expected typed dialog context on dlg_background_callee_summary_evt broadcast',
+      );
     }
 
     const touchedSourceTypes = new Set(
@@ -143,6 +166,7 @@ async function main(): Promise<void> {
       'new_q4h_asked',
       'q4h_answered',
       'sideDialog_created_evt',
+      'dlg_background_callee_summary_evt',
     ]);
     if (touchedSourceTypes.size !== expectedTouchedSources.size) {
       throw new Error(

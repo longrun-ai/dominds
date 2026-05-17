@@ -68,6 +68,7 @@ class DialogEventRegistryImpl implements DialogEventRegistry {
       case 'new_q4h_asked':
       case 'q4h_answered':
       case 'sideDialog_created_evt':
+      case 'dlg_background_callee_summary_evt':
       case 'dlg_touched_evt':
         break;
       default:

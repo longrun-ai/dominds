@@ -1,33 +1,21 @@
 import assert from 'node:assert/strict';
 
-import { EndOfStream } from '@longrun-ai/kernel/evt';
 import type { TypedDialogEvent } from '@longrun-ai/kernel/types/dialog';
 import type { DeclareSideDialogDeadRequest } from '@longrun-ai/kernel/types/wire';
 import { formatUnifiedTimestamp } from '@longrun-ai/kernel/utils/time';
+import {
+  requireRecordingGlobalDialogEventRecorder,
+  type GlobalDialogEventRecorder,
+} from '../../main/bootstrap/global-dialog-event-broadcaster';
 import { setDialogDisplayState, setDialogExecutionMarker } from '../../main/dialog-display-state';
-import { dialogEventRegistry } from '../../main/evt-registry';
 import { supplyResponseToAskerDialog } from '../../main/llm/kernel-driver';
 import { processTellaskFunctionRound } from '../../main/llm/kernel-driver/tellask-special';
 import { DialogPersistence } from '../../main/persistence';
 import { handleWebSocketMessage } from '../../main/server/websocket-handler';
 import { createMainDialog, withTempRtws, writeStandardMinds } from './helpers';
 
-async function readNextEventWithTimeout(
-  ch: ReturnType<typeof dialogEventRegistry.createSubChan>,
-  timeoutMs: number,
-): Promise<TypedDialogEvent | null> {
-  const ev = await Promise.race([
-    ch.read(),
-    new Promise<null>((resolve) => setTimeout(() => resolve(null), timeoutMs)),
-  ]);
-  if (ev === null || ev === EndOfStream) {
-    return null;
-  }
-  return ev;
-}
-
 async function waitForBackgroundSummary(
-  ch: ReturnType<typeof dialogEventRegistry.createSubChan>,
+  recorder: GlobalDialogEventRecorder,
   predicate: (
     event: Extract<TypedDialogEvent, { type: 'dlg_background_callee_summary_evt' }>,
   ) => boolean,
@@ -36,12 +24,13 @@ async function waitForBackgroundSummary(
   const deadline = Date.now() + 2_000;
   const seenTypes: string[] = [];
   while (Date.now() < deadline) {
-    const ev = await readNextEventWithTimeout(ch, 50);
-    if (!ev) continue;
-    seenTypes.push(ev.type);
-    if (ev.type === 'dlg_background_callee_summary_evt' && predicate(ev)) {
-      return ev;
+    for (const ev of recorder.snapshot()) {
+      seenTypes.push(ev.type);
+      if (ev.type === 'dlg_background_callee_summary_evt' && predicate(ev)) {
+        return ev;
+      }
     }
+    await new Promise((resolve) => setTimeout(resolve, 10));
   }
   throw new Error(`${label}; seen event types: ${seenTypes.join(', ')}`);
 }
@@ -51,7 +40,10 @@ async function main(): Promise<void> {
     await writeStandardMinds(tmpRoot, { includePangu: true });
 
     const root = await createMainDialog('tester');
-    const ch = dialogEventRegistry.createSubChan(root.id);
+    const recorder = requireRecordingGlobalDialogEventRecorder(
+      'root-tellask-background-callee-badge-event',
+    );
+    recorder.clear();
 
     await root.notifyGeneratingStart();
     await processTellaskFunctionRound({
@@ -86,7 +78,7 @@ async function main(): Promise<void> {
     );
 
     const summary = await waitForBackgroundSummary(
-      ch,
+      recorder,
       (event) => event.backgroundCalleeDialogCount === 1,
       'root tellask should broadcast background callee badge summary',
     );
@@ -106,13 +98,13 @@ async function main(): Promise<void> {
     );
 
     await waitForBackgroundSummary(
-      ch,
+      recorder,
       (event) => event.backgroundCalleeDialogCount === 0,
       'resolving or declaring a callee dead should broadcast cleared background callee badge summary',
     );
 
     const deadRoot = await createMainDialog('tester');
-    const deadCh = dialogEventRegistry.createSubChan(deadRoot.id);
+    recorder.clear();
     const deadCallId = 'already-dead-background-callee';
     const alreadyDeadSideDialog = await deadRoot.createSideDialog(
       'pangu',
@@ -176,7 +168,7 @@ async function main(): Promise<void> {
       'retrying declare-dead for an already-dead sideDialog should still clear caller active callee state',
     );
     await waitForBackgroundSummary(
-      deadCh,
+      recorder,
       (event) => event.backgroundCalleeDialogCount === 0,
       'retrying declare-dead for an already-dead sideDialog should broadcast cleared badge summary',
     );
