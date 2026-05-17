@@ -118,12 +118,7 @@ async function listLiveDialogsWithDurableDriveWork(): Promise<
         source: 'kernel_driver_backend_loop',
         reason: 'no_durable_drive_work',
       });
-      await DialogPersistence.setBackendQueueDrive(
-        mainDialog.id,
-        false,
-        'no_durable_drive_work',
-        mainDialog.status,
-      );
+      await DialogPersistence.removeRootDriveWakeTrigger(mainDialog.id, mainDialog.status);
     }
   }
 
@@ -168,8 +163,7 @@ export async function driveQueuedDialogsOnce(): Promise<void> {
         await DialogPersistence.removeDriveWatchForDialog(dialog.id, dialog.status);
         continue;
       }
-      const currentHasPendingNextStepTriggers =
-        (latestForDrive?.nextStep?.triggers.length ?? 0) > 0;
+      const currentHasPendingNextStepTriggers = (latestForDrive?.nextStep.triggers.length ?? 0) > 0;
       const currentResumeInProgressGeneration =
         getRecoverableGenerationRunState(latestForDrive) !== undefined;
       const currentHasBackendDurableWork = hasDurableDriveWork(latestForDrive);
@@ -187,14 +181,9 @@ export async function driveQueuedDialogsOnce(): Promise<void> {
               : `stop_requested:${stopRequested}`,
           });
         }
-        await DialogPersistence.setBackendQueueDrive(
-          dialog.id,
-          false,
-          interruptedRequiresExplicitResume
-            ? 'execution_marker_blocked_interrupted'
-            : `stop_requested_${stopRequested}`,
-          dialog.status,
-        );
+        if (dialog.id.selfId === dialog.id.rootId) {
+          await DialogPersistence.removeRootDriveWakeTrigger(dialog.id, dialog.status);
+        }
         await DialogPersistence.removeDriveWatchForDialog(dialog.id, dialog.status);
         continue;
       }
@@ -220,12 +209,9 @@ export async function driveQueuedDialogsOnce(): Promise<void> {
             reason: 'missing_durable_drive_work',
           });
         }
-        await DialogPersistence.setBackendQueueDrive(
-          dialog.id,
-          false,
-          'missing_durable_drive_work',
-          dialog.status,
-        );
+        if (dialog.id.selfId === dialog.id.rootId) {
+          await DialogPersistence.removeRootDriveWakeTrigger(dialog.id, dialog.status);
+        }
         await DialogPersistence.removeDriveWatchForDialog(dialog.id, dialog.status);
         continue;
       }
@@ -235,10 +221,7 @@ export async function driveQueuedDialogsOnce(): Promise<void> {
 
       await driveDialogStream(dialog, undefined, true, {
         source: 'kernel_driver_backend_loop',
-        reason:
-          dialog.id.selfId === dialog.id.rootId
-            ? 'global_dialog_registry_needs_drive'
-            : 'drive_watch_index_needs_drive',
+        reason: dialog.id.selfId === dialog.id.rootId ? 'root_drive_wake' : 'drive_watch_index',
         ...(currentResumeInProgressGeneration ? { resumeInProgressGeneration: true } : {}),
       });
 
@@ -263,9 +246,8 @@ export async function driveQueuedDialogsOnce(): Promise<void> {
               : 'post_drive_suspended',
         });
         if (dialog.id.selfId === dialog.id.rootId) {
-          await DialogPersistence.setBackendQueueDrive(
+          await DialogPersistence.upsertRootDriveWakeTrigger(
             dialog.id,
-            true,
             dialog.hasUpNext()
               ? 'post_drive_upnext_pending'
               : stillHasDurableWork
@@ -280,12 +262,7 @@ export async function driveQueuedDialogsOnce(): Promise<void> {
             source: 'kernel_driver_backend_loop',
             reason: 'post_drive_idle',
           });
-          await DialogPersistence.setBackendQueueDrive(
-            dialog.id,
-            false,
-            'post_drive_idle',
-            dialog.status,
-          );
+          await DialogPersistence.removeRootDriveWakeTrigger(dialog.id, dialog.status);
         }
         await DialogPersistence.removeDriveWatchForDialog(dialog.id, dialog.status);
       }
@@ -341,10 +318,7 @@ export async function driveQueuedDialogsOnce(): Promise<void> {
         selfId: dialog.id.selfId,
       });
       try {
-        const latestAfterError = await DialogPersistence.loadDialogLatest(
-          dialog.id,
-          dialog.status,
-        );
+        const latestAfterError = await DialogPersistence.loadDialogLatest(dialog.id, dialog.status);
         if (latestAfterError) {
           await DialogPersistence.syncDriveWatchForDialogLatest(
             dialog.id,
@@ -379,20 +353,43 @@ export async function driveQueuedDialogsOnce(): Promise<void> {
   await reassertLiveRootWakeForDurableWork();
 }
 
-export function runBackendDriver(): KernelDriverRunBackendResult {
-  return (async () => {
-    while (true) {
-      try {
-        await driveQueuedDialogsOnce();
+function isBackendDriverAborted(options: { abortSignal?: AbortSignal } | undefined): boolean {
+  return options?.abortSignal?.aborted === true;
+}
 
-        const trigger = await globalDialogRegistry.waitForDriveTrigger();
-        log.debug('Backend driver woke from drive trigger event', undefined, {
-          trigger: formatDriveTriggerForLog(trigger),
-        });
-      } catch (loopErr) {
-        log.error('Error in backend driver loop:', loopErr);
-        await new Promise((resolve) => setTimeout(resolve, 1000));
+export function runBackendDriver(options?: {
+  abortSignal?: AbortSignal;
+}): KernelDriverRunBackendResult {
+  return (async () => {
+    const abortListener = (): void => {
+      globalDialogRegistry.wakeDrive('__kernel_driver_abort__', {
+        source: 'kernel_driver_backend_loop',
+        reason: 'abort_signal',
+      });
+    };
+    options?.abortSignal?.addEventListener('abort', abortListener, { once: true });
+    try {
+      while (!isBackendDriverAborted(options)) {
+        try {
+          await driveQueuedDialogsOnce();
+          if (isBackendDriverAborted(options)) {
+            break;
+          }
+
+          const trigger = await globalDialogRegistry.waitForDriveTrigger();
+          log.debug('Backend driver woke from drive trigger event', undefined, {
+            trigger: formatDriveTriggerForLog(trigger),
+          });
+        } catch (loopErr) {
+          if (isBackendDriverAborted(options)) {
+            break;
+          }
+          log.error('Error in backend driver loop:', loopErr);
+          await new Promise((resolve) => setTimeout(resolve, 1000));
+        }
       }
+    } finally {
+      options?.abortSignal?.removeEventListener('abort', abortListener);
     }
   })();
 }

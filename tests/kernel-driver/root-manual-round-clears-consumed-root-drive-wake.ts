@@ -32,9 +32,8 @@ async function main(): Promise<void> {
     root.disableDiligencePush = true;
     globalDialogRegistry.register(root);
 
-    await DialogPersistence.setBackendQueueDrive(
+    await DialogPersistence.upsertRootDriveWakeTrigger(
       root.id,
-      true,
       'seed_root_queue_before_foreground_consumption_without_blocked_wake_marker',
       root.status,
     );
@@ -54,14 +53,14 @@ async function main(): Promise<void> {
         root,
         {
           content: prompt,
-          msgId: 'root-manual-round-clears-consumed-deferred-queue',
+          msgId: 'root-manual-round-clears-consumed-root-drive-wake',
           grammar: 'markdown',
           origin: 'runtime',
         },
         true,
         makeDriveOptions({
           source: 'ws_resume_dialog',
-          reason: 'test_foreground_consumes_deferred_queue',
+          reason: 'test_foreground_consumes_root_drive_wake',
           suppressDiligencePush: true,
         }),
       ],
@@ -73,7 +72,7 @@ async function main(): Promise<void> {
     assert.equal(
       hasPendingNextStepTriggers(latest),
       false,
-      'idle foreground root round should clear the consumed deferred queue from persistence',
+      'idle foreground root round should clear the consumed root drive wake from persistence',
     );
     assert.equal(
       globalDialogRegistry.hasPendingActiveRunClearedWake(root.id.rootId),
@@ -83,15 +82,17 @@ async function main(): Promise<void> {
     assert.equal(
       globalDialogRegistry.hasPendingActiveRunClearedWake(root.id.rootId),
       false,
-      'idle foreground root round should not leave a deferred wake marker behind after durable queue cleanup',
+      'idle foreground root round should not leave a deferred wake marker behind after durable root drive wake cleanup',
     );
   });
 
-  console.log('kernel-driver root-manual-round-clears-consumed-deferred-queue: PASS');
+  console.log('kernel-driver root-manual-round-clears-consumed-root-drive-wake: PASS');
 }
 
 void main().catch((err: unknown) => {
   const message = err instanceof Error ? err.message : String(err);
-  console.error(`kernel-driver root-manual-round-clears-consumed-deferred-queue: FAIL\n${message}`);
+  console.error(
+    `kernel-driver root-manual-round-clears-consumed-root-drive-wake: FAIL\n${message}`,
+  );
   process.exit(1);
 });

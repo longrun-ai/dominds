@@ -62,6 +62,29 @@ async function assertPersistenceFailure(promise: Promise<unknown>): Promise<void
   );
 }
 
+async function seedLatestYaml(sourceRoot: string, dialogId: DialogID): Promise<void> {
+  await writeYaml(path.join(sourceRoot, 'latest.yaml'), {
+    currentCourse: 1,
+    lastModified: '2026/04/10-02:40:29',
+    status: 'active',
+    nextStep: {
+      nextSeq: 1,
+      triggers: [],
+    },
+    tellaskCalls: {
+      calls: [],
+    },
+    tellaskResults: {
+      results: [],
+    },
+    displayState: {
+      kind: 'idle_waiting_user',
+    },
+  } satisfies DialogLatestFile);
+  const loaded = await DialogPersistence.loadDialogLatest(dialogId, 'running');
+  assert.ok(loaded, 'seeded latest.yaml should be valid');
+}
+
 type DialogPersistencePrivate = typeof DialogPersistence & {
   getLatestWriteBackKey(dialogId: DialogID, status: 'running' | 'completed' | 'archived'): string;
   flushLatestWriteBack(key: string): Promise<void>;
@@ -194,6 +217,7 @@ async function main(): Promise<void> {
           dialogId,
           statusDir: 'run',
         });
+        await seedLatestYaml(sourceRoot, dialogId);
         const internals = DialogPersistence as unknown as DialogPersistencePrivate;
         const originalWriteDialogLatestToDisk =
           internals.writeDialogLatestToDisk.bind(DialogPersistence);
@@ -232,14 +256,20 @@ async function main(): Promise<void> {
                   nextSeq: 2,
                   triggers: [
                     {
-                      triggerId: `backend-queue:${dialogId.selfId}`,
-                      kind: 'backend_queue',
+                      triggerId: `root-drive-wake:${dialogId.selfId}`,
+                      kind: 'root_drive_wake',
                       reason: 'test_writeback_blocker',
                       course: toDialogCourseNumber(1),
                       createdAt: new Date().toISOString(),
                       seq: 1,
                     },
                   ],
+                },
+                tellaskCalls: {
+                  calls: [],
+                },
+                tellaskResults: {
+                  results: [],
                 },
               },
             }),
@@ -263,6 +293,25 @@ async function main(): Promise<void> {
           internals.writeDialogLatestToDisk = originalWriteDialogLatestToDisk;
         }
 
+        await assertQuarantined({ sourceRoot, malformedRoot });
+      }
+
+      {
+        const dialogId = new DialogID('9f/22/missinglatest01');
+        const { sourceRoot, malformedRoot } = await seedMainDialog({
+          sandboxDir,
+          dialogId,
+          statusDir: 'run',
+        });
+
+        await assert.rejects(
+          DialogPersistence.upsertRootDriveWakeTrigger(
+            dialogId,
+            'test_missing_latest_patch_quarantine',
+            'running',
+          ),
+          /Missing latest\.yaml for non-initial latest mutation/,
+        );
         await assertQuarantined({ sourceRoot, malformedRoot });
       }
     } finally {

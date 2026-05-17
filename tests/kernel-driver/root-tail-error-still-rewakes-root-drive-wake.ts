@@ -75,9 +75,8 @@ async function main(): Promise<void> {
       callType: 'C',
     });
 
-    await DialogPersistence.setBackendQueueDrive(
+    await DialogPersistence.upsertRootDriveWakeTrigger(
       root.id,
-      true,
       'seed_preexisting_root_queue_before_tail_failure',
       root.status,
     );
@@ -153,11 +152,11 @@ async function main(): Promise<void> {
     );
   });
 
-  console.log('kernel-driver root-tail-error-still-rewakes-queued-needsdrive: PASS');
+  console.log('kernel-driver root-tail-error-still-rewakes-root-drive-wake: PASS');
 }
 
 void main().catch((err: unknown) => {
   const message = err instanceof Error ? err.message : String(err);
-  console.error(`kernel-driver root-tail-error-still-rewakes-queued-needsdrive: FAIL\n${message}`);
+  console.error(`kernel-driver root-tail-error-still-rewakes-root-drive-wake: FAIL\n${message}`);
   process.exit(1);
 });

@@ -28,6 +28,11 @@ import { toRootGenerationAnchor } from '@longrun-ai/kernel/types/storage';
 import type { DialogStatusKind } from '@longrun-ai/kernel/types/wire';
 import { formatUnifiedTimestamp } from '@longrun-ai/kernel/utils/time';
 import { DialogID } from './dialog';
+import {
+  createEmptyDialogNextStepState,
+  createEmptyDialogTellaskCallState,
+  createEmptyDialogTellaskResultState,
+} from './dialog-latest-state';
 import { DialogPersistence } from './persistence';
 import { materializeReminder, type Reminder } from './tool';
 import { generateDialogID } from './utils/id';
@@ -842,6 +847,9 @@ async function persistForkPlan(args: {
       functionCallCount: countFunctionCalls(currentCourseEvents),
       sideDialogCount: plan.childCount,
       generating: false,
+      nextStep: createEmptyDialogNextStepState(),
+      tellaskCalls: createEmptyDialogTellaskCallState(),
+      tellaskResults: createEmptyDialogTellaskResultState(),
       displayState,
       disableDiligencePush:
         plan.targetId.selfId === plan.targetId.rootId ? args.latestDisableDiligencePush : false,

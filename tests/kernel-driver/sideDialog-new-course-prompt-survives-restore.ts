@@ -165,9 +165,7 @@ async function main(): Promise<void> {
       'pending new-course prompt should clear once the restored round is persisted',
     );
     assert.equal(
-      (latestAfterDrive.nextStep?.triggers ?? []).some(
-        (trigger) => trigger.kind === 'queued_prompt',
-      ),
+      latestAfterDrive.nextStep.triggers.some((trigger) => trigger.kind === 'queued_prompt'),
       false,
       'sideDialog latest.yaml should clear the queued prompt trigger once the restored pending runtime prompt is consumed',
     );

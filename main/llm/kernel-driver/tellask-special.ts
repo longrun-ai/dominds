@@ -1334,7 +1334,7 @@ async function reviveDialogIfUnblocked(
     return;
   }
   if (dialog instanceof MainDialog) {
-    await DialogPersistence.setBackendQueueDrive(dialog.id, true, reason, dialog.status);
+    await DialogPersistence.upsertRootDriveWakeTrigger(dialog.id, reason, dialog.status);
   }
   callbacks.scheduleDrive(dialog, {
     waitInQue: true,

@@ -1,7 +1,4 @@
-import type {
-  DialogGenerationRunState,
-  DialogLatestFile,
-} from '@longrun-ai/kernel/types/storage';
+import type { DialogGenerationRunState, DialogLatestFile } from '@longrun-ai/kernel/types/storage';
 
 export function getRecoverableGenerationRunState(
   latest: DialogLatestFile | null | undefined,

@@ -6,6 +6,11 @@ import type { LanguageCode } from '@longrun-ai/kernel/types/language';
 import { formatUnifiedTimestamp } from '@longrun-ai/kernel/utils/time';
 import { assertGlobalDialogEventBroadcasterInstalled } from '../../main/bootstrap/global-dialog-event-broadcaster';
 import { DialogID, MainDialog } from '../../main/dialog';
+import {
+  createEmptyDialogNextStepState,
+  createEmptyDialogTellaskCallState,
+  createEmptyDialogTellaskResultState,
+} from '../../main/dialog-latest-state';
 import type { ChatMessage } from '../../main/llm/client';
 import type { LlmInvalidFuncCall } from '../../main/llm/gen';
 import type {
@@ -56,7 +61,7 @@ export async function withTempRtws(fn: (tmpRoot: string) => Promise<void>): Prom
 export function hasPendingNextStepTriggers(
   latest: Awaited<ReturnType<typeof DialogPersistence.loadDialogLatest>>,
 ): boolean {
-  return (latest?.nextStep?.triggers.length ?? 0) > 0;
+  return (latest?.nextStep.triggers.length ?? 0) > 0;
 }
 
 export async function writeStandardMinds(
@@ -167,6 +172,9 @@ export async function createMainDialog(agentId: string = 'tester'): Promise<Main
       messageCount: 0,
       functionCallCount: 0,
       sideDialogCount: 0,
+      nextStep: createEmptyDialogNextStepState(),
+      tellaskCalls: createEmptyDialogTellaskCallState(),
+      tellaskResults: createEmptyDialogTellaskResultState(),
       displayState: { kind: 'idle_waiting_user' },
       disableDiligencePush: false,
       diligencePushRemainingBudget: 0,

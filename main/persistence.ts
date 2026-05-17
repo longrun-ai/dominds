@@ -69,6 +69,7 @@ import type {
   DialogPendingRuntimePrompt,
   DialogReplyDeliveryState,
   DialogSideDialogFinalResponseState,
+  DialogTellaskCallState,
   DialogTellaskResultState,
   DialogUserWaitState,
   FuncCallRecord,
@@ -135,6 +136,11 @@ import {
 } from './dialog';
 import { hasDurableDriveWork } from './dialog-drive-work';
 import { isInterruptionReasonManualResumeEligible } from './dialog-interruption';
+import {
+  createEmptyDialogNextStepState,
+  createEmptyDialogTellaskCallState,
+  createEmptyDialogTellaskResultState,
+} from './dialog-latest-state';
 import { postDialogEvent, postDialogEventById } from './evt-registry';
 import { ChatMessage, FuncResultMsg, TellaskCarryoverMsg, TellaskResultMsg } from './llm/client';
 import type { ToolResultImageIngest, UserImageIngest } from './llm/gen';
@@ -210,10 +216,11 @@ function summarizeLatestProjectionState(latest: DialogLatestFile): Record<string
     displayState: latest.displayState ?? null,
     executionMarker: latest.executionMarker ?? null,
     generationRunState: latest.generationRunState ?? null,
-    nextStepTriggerCount: latest.nextStep?.triggers.length ?? 0,
+    nextStepTriggerCount: latest.nextStep.triggers.length,
     userWait: latest.userWait ?? null,
     replyDelivery: latest.replyDelivery ?? null,
-    tellaskResultCount: latest.tellaskResults?.results.length ?? 0,
+    tellaskCallCount: latest.tellaskCalls.calls.length,
+    tellaskResultCount: latest.tellaskResults.results.length,
     latestAssignmentAnchor: latest.latestAssignmentAnchor ?? null,
     sideDialogFinalResponse: latest.sideDialogFinalResponse ?? null,
     pendingRuntimePromptMsgId: latest.pendingRuntimePrompt?.msgId ?? null,
@@ -256,6 +263,7 @@ function summarizeLatestMutationPatch(
     nextStepTriggerCount: patch.nextStep?.triggers.length ?? null,
     userWait: patch.userWait ?? null,
     replyDelivery: patch.replyDelivery ?? null,
+    tellaskCallCount: patch.tellaskCalls?.calls.length ?? null,
     tellaskResultCount: patch.tellaskResults?.results.length ?? null,
     latestAssignmentAnchor: patch.latestAssignmentAnchor ?? null,
     sideDialogFinalResponse: patch.sideDialogFinalResponse ?? null,
@@ -1815,14 +1823,14 @@ function parseDialogNextStepTrigger(value: unknown): DialogNextStepTrigger | nul
         course: toDialogCourseNumber(course),
       };
     }
-    case 'backend_queue': {
+    case 'root_drive_wake': {
       const course = parsePositiveIntegerField(value.course);
       if (course === null || typeof value.reason !== 'string' || value.reason.trim() === '') {
         return null;
       }
       return {
         ...base,
-        kind: 'backend_queue',
+        kind: 'root_drive_wake',
         reason: value.reason,
         course: toDialogCourseNumber(course),
       };
@@ -1994,6 +2002,61 @@ function isTellaskBusinessResultCallName(
   );
 }
 
+function isTellaskCallIndexCallName(
+  value: unknown,
+): value is DialogTellaskCallState['calls'][number]['callName'] {
+  return (
+    value === 'tellask' ||
+    value === 'tellaskSessionless' ||
+    value === 'tellaskBack' ||
+    value === 'replyTellask' ||
+    value === 'replyTellaskSessionless' ||
+    value === 'replyTellaskBack' ||
+    value === 'askHuman' ||
+    value === 'freshBootsReasoning'
+  );
+}
+
+function parseDialogTellaskCallState(value: unknown): DialogTellaskCallState | null {
+  if (!isRecord(value)) return null;
+  if (!Array.isArray(value.calls)) return null;
+  const calls: DialogTellaskCallState['calls'][number][] = [];
+  const seen = new Set<string>();
+  for (const raw of value.calls) {
+    if (!isRecord(raw)) return null;
+    const callId = raw.callId;
+    const callName = raw.callName;
+    const course = parsePositiveIntegerField(raw.course);
+    const genseq = parseNonNegativeIntegerField(raw.genseq);
+    const recordedAt = raw.recordedAt;
+    const callRecordId = raw.callRecordId;
+    if (
+      typeof callId !== 'string' ||
+      callId.trim() === '' ||
+      !isTellaskCallIndexCallName(callName) ||
+      course === null ||
+      genseq === null ||
+      typeof recordedAt !== 'string' ||
+      recordedAt.trim() === '' ||
+      typeof callRecordId !== 'string' ||
+      callRecordId.trim() === ''
+    ) {
+      return null;
+    }
+    if (seen.has(callId)) return null;
+    seen.add(callId);
+    calls.push({
+      callId,
+      callName,
+      course: toDialogCourseNumber(course),
+      genseq: toCallSiteGenseqNo(genseq),
+      recordedAt,
+      callRecordId,
+    });
+  }
+  return { calls };
+}
+
 function parseDialogTellaskResultState(value: unknown): DialogTellaskResultState | null {
   if (!isRecord(value)) return null;
   if (!Array.isArray(value.results)) return null;
@@ -2142,8 +2205,8 @@ function parseDialogLatestFile(value: unknown): DialogLatestFile | null {
   if (generationRunState === null) return null;
 
   const nextStepRaw = (value as Record<string, unknown>).nextStep;
-  const nextStep: DialogNextStepTriggerState | null | undefined =
-    nextStepRaw === undefined ? undefined : parseDialogNextStepTriggerState(nextStepRaw);
+  if (nextStepRaw === undefined) return null;
+  const nextStep: DialogNextStepTriggerState | null = parseDialogNextStepTriggerState(nextStepRaw);
   if (nextStep === null) return null;
 
   const userWaitRaw = (value as Record<string, unknown>).userWait;
@@ -2156,9 +2219,15 @@ function parseDialogLatestFile(value: unknown): DialogLatestFile | null {
     replyDeliveryRaw === undefined ? undefined : parseDialogReplyDeliveryState(replyDeliveryRaw);
   if (replyDelivery === null) return null;
 
+  const tellaskCallsRaw = (value as Record<string, unknown>).tellaskCalls;
+  if (tellaskCallsRaw === undefined) return null;
+  const tellaskCalls: DialogTellaskCallState | null = parseDialogTellaskCallState(tellaskCallsRaw);
+  if (tellaskCalls === null) return null;
+
   const tellaskResultsRaw = (value as Record<string, unknown>).tellaskResults;
-  const tellaskResults: DialogTellaskResultState | null | undefined =
-    tellaskResultsRaw === undefined ? undefined : parseDialogTellaskResultState(tellaskResultsRaw);
+  if (tellaskResultsRaw === undefined) return null;
+  const tellaskResults: DialogTellaskResultState | null =
+    parseDialogTellaskResultState(tellaskResultsRaw);
   if (tellaskResults === null) return null;
 
   const sideDialogFinalResponseRaw = (value as Record<string, unknown>).sideDialogFinalResponse;
@@ -2286,6 +2355,7 @@ function parseDialogLatestFile(value: unknown): DialogLatestFile | null {
     nextStep,
     userWait,
     replyDelivery,
+    tellaskCalls,
     tellaskResults,
     latestAssignmentAnchor,
     sideDialogFinalResponse,
@@ -2708,6 +2778,9 @@ export class DiskFileDialogStore extends DialogStore {
         messageCount: 0,
         functionCallCount: 0,
         sideDialogCount: 0,
+        nextStep: createEmptyDialogNextStepState(),
+        tellaskCalls: createEmptyDialogTellaskCallState(),
+        tellaskResults: createEmptyDialogTellaskResultState(),
         displayState: initialSideDialogDisplayState,
         disableDiligencePush: false,
       },
@@ -2871,24 +2944,6 @@ export class DiskFileDialogStore extends DialogStore {
     return await DialogPersistence.ensureSideDialogDirectory(dialogId);
   }
 
-  private async findExistingTellaskCallRecord(
-    dialog: Dialog,
-    course: number,
-    callId: string,
-  ): Promise<TellaskCallRecord | undefined> {
-    const events = await DialogPersistence.loadCourseEvents(dialog.id, course, dialog.status);
-    for (const event of events) {
-      if (event.type !== 'tellask_call_record') {
-        continue;
-      }
-      if (event.id !== callId) {
-        continue;
-      }
-      return event;
-    }
-    return undefined;
-  }
-
   private async raiseDuplicateCallInvariantViolation(args: {
     dialog: Dialog;
     kind: 'func_call' | 'tellask_call';
@@ -3037,7 +3092,7 @@ export class DiskFileDialogStore extends DialogStore {
 
       // Update generating flag in latest.yaml
       await DialogPersistence.mutateDialogLatest(this.dialogId, (previous) => {
-        acceptedTriggers = sortNextStepTriggersForConsumption(previous.nextStep?.triggers ?? []);
+        acceptedTriggers = sortNextStepTriggersForConsumption(previous.nextStep.triggers);
         const acceptedTriggerIds = acceptedTriggers.map((trigger) => trigger.triggerId);
         const nextStep =
           acceptedTriggerIds.length === 0
@@ -4011,7 +4066,11 @@ export class DiskFileDialogStore extends DialogStore {
         `persistTellaskCall invariant violation: missing valid genseq for tellask call ${id}`,
       );
     }
-    const existingCall = await this.findExistingTellaskCallRecord(dialog, course, id);
+    const existingCall = await DialogPersistence.lookupRecordedTellaskCall(
+      dialog.id,
+      id,
+      dialog.status,
+    );
     if (existingCall) {
       await this.raiseDuplicateCallInvariantViolation({
         dialog,
@@ -4020,9 +4079,9 @@ export class DiskFileDialogStore extends DialogStore {
         callName: name,
         incomingCourse: course,
         incomingGenseq: genseq,
-        existingCourse: course,
+        existingCourse: existingCall.course,
         existingGenseq: existingCall.genseq,
-        existingName: existingCall.name,
+        existingName: existingCall.callName,
       });
     }
     const tellaskCallEvent = buildTellaskCallRecord({
@@ -4035,6 +4094,29 @@ export class DiskFileDialogStore extends DialogStore {
         (isReplyTellaskCallRecordName(name) ? 'func_call_requested' : 'tellask_call_start'),
     });
 
+    try {
+      await DialogPersistence.recordTellaskCall(dialog.id, tellaskCallEvent, course, dialog.status);
+    } catch (error: unknown) {
+      const latestDuplicate = await DialogPersistence.lookupRecordedTellaskCall(
+        dialog.id,
+        id,
+        dialog.status,
+      );
+      if (latestDuplicate !== undefined) {
+        await this.raiseDuplicateCallInvariantViolation({
+          dialog,
+          kind: 'tellask_call',
+          callId: id,
+          callName: name,
+          incomingCourse: course,
+          incomingGenseq: genseq,
+          existingCourse: latestDuplicate.course,
+          existingGenseq: latestDuplicate.genseq,
+          existingName: latestDuplicate.callName,
+        });
+      }
+      throw error;
+    }
     await this.appendEvent(dialog, course, tellaskCallEvent);
 
     if (isReplyTellaskCallRecordName(name)) {
@@ -5505,22 +5587,21 @@ type ActiveCalleeResolveOutcome = Readonly<{
 }>;
 
 function removeNextStepTrigger(
-  state: DialogNextStepTriggerState | undefined,
+  state: DialogNextStepTriggerState,
   predicate: (trigger: DialogNextStepTrigger) => boolean,
-): DialogNextStepTriggerState | undefined {
-  const previous = state?.triggers ?? [];
+): DialogNextStepTriggerState {
+  const previous = state.triggers;
   const triggers = previous.filter((trigger) => !predicate(trigger));
-  if (state === undefined && triggers.length === 0) return undefined;
-  return { nextSeq: state?.nextSeq ?? 1, triggers };
+  return { nextSeq: state.nextSeq, triggers };
 }
 
 function upsertNextStepTrigger(
-  state: DialogNextStepTriggerState | undefined,
+  state: DialogNextStepTriggerState,
   trigger: DialogNextStepTriggerDraft,
 ): DialogNextStepTriggerState {
-  const previous = state?.triggers ?? [];
+  const previous = state.triggers;
   const existing = previous.find((entry) => entry.triggerId === trigger.triggerId);
-  const nextSeq = state?.nextSeq ?? 1;
+  const nextSeq = state.nextSeq;
   const normalizedTrigger: DialogNextStepTrigger =
     existing === undefined
       ? {
@@ -5543,8 +5624,8 @@ function upsertNextStepTrigger(
   };
 }
 
-function nextStepHasTriggers(state: DialogNextStepTriggerState | undefined): boolean {
-  return (state?.triggers.length ?? 0) > 0;
+function nextStepHasTriggers(state: DialogNextStepTriggerState): boolean {
+  return state.triggers.length > 0;
 }
 
 function sortNextStepTriggersForConsumption(
@@ -6468,11 +6549,7 @@ export class DialogPersistence {
     );
     const result: DialogID[] = [];
 
-    const visit = async (
-      dirPath: string,
-      relativePath: string,
-      depth: number,
-    ): Promise<void> => {
+    const visit = async (dirPath: string, relativePath: string, depth: number): Promise<void> => {
       let entries: fs.Dirent[];
       try {
         entries = await fs.promises.readdir(dirPath, { withFileTypes: true });
@@ -9335,6 +9412,58 @@ export class DialogPersistence {
     );
   }
 
+  static async lookupRecordedTellaskCall(
+    dialogId: DialogID,
+    callId: string,
+    status: DialogStatusKind = 'running',
+  ): Promise<DialogTellaskCallState['calls'][number] | undefined> {
+    const normalizedCallId = callId.trim();
+    if (normalizedCallId === '') {
+      return undefined;
+    }
+    const latest = await this.loadDialogLatest(dialogId, status);
+    return latest?.tellaskCalls.calls.find((entry) => entry.callId.trim() === normalizedCallId);
+  }
+
+  static async recordTellaskCall(
+    dialogId: DialogID,
+    record: TellaskCallRecord,
+    course: number,
+    status: DialogStatusKind = 'running',
+  ): Promise<void> {
+    await this.mutateDialogLatest(
+      dialogId,
+      (previous) => {
+        const previousCalls = previous.tellaskCalls.calls;
+        if (previousCalls.some((entry) => entry.callId.trim() === record.id.trim())) {
+          throw new Error(
+            `tellask call index invariant violation: duplicate call ` +
+              `(rootId=${dialogId.rootId}, selfId=${dialogId.selfId}, callId=${record.id})`,
+          );
+        }
+        return {
+          kind: 'patch',
+          patch: {
+            tellaskCalls: {
+              calls: [
+                ...previousCalls,
+                {
+                  callId: record.id,
+                  callName: record.name,
+                  course: toDialogCourseNumber(course),
+                  genseq: toCallSiteGenseqNo(record.genseq),
+                  recordedAt: record.ts,
+                  callRecordId: `tellask-call:${record.id}`,
+                },
+              ],
+            },
+          },
+        };
+      },
+      status,
+    );
+  }
+
   static async hasRecordedTellaskResult(
     dialogId: DialogID,
     callId: string,
@@ -9346,7 +9475,7 @@ export class DialogPersistence {
     }
     const latest = await this.loadDialogLatest(dialogId, status);
     return (
-      latest?.tellaskResults?.results.some((entry) => entry.callId.trim() === normalizedCallId) ??
+      latest?.tellaskResults.results.some((entry) => entry.callId.trim() === normalizedCallId) ??
       false
     );
   }
@@ -9360,7 +9489,7 @@ export class DialogPersistence {
     await this.mutateDialogLatest(
       dialogId,
       (previous) => {
-        const previousResults = previous.tellaskResults?.results ?? [];
+        const previousResults = previous.tellaskResults.results;
         if (previousResults.some((entry) => entry.callId.trim() === record.callId.trim())) {
           throw new Error(
             `tellask result index invariant violation: duplicate result ` +
@@ -9711,16 +9840,36 @@ export class DialogPersistence {
       this.assertMainDialogWriteBackNotCanceled(effectiveCancellationToken, 'mutateDialogLatest');
       const staged = this.latestWriteBack.get(key);
       const latestFromDisk = staged ? null : await this.loadDialogLatestFromDisk(dialogId, status);
-      const existing = (staged ? staged.latest : latestFromDisk) || {
+      const bootstrapLatest: DialogLatestFile = {
         currentCourse: 1,
         lastModified: formatUnifiedTimestamp(new Date()),
         status: 'active',
+        nextStep: createEmptyDialogNextStepState(),
+        tellaskCalls: createEmptyDialogTellaskCallState(),
+        tellaskResults: createEmptyDialogTellaskResultState(),
       };
+      const latestMissing = !staged && latestFromDisk === null;
+      const existing = staged ? staged.latest : (latestFromDisk ?? bootstrapLatest);
       const askerStackState =
         status === 'running' && dialogId.selfId !== dialogId.rootId
           ? await this.loadSideDialogAskerStackState(dialogId, status)
           : null;
       const mutation = mutator(existing);
+      if (latestMissing && mutation.kind !== 'replace') {
+        const dialogPath = this.getDialogEventsPath(dialogId, status);
+        const latestFilePath = path.join(dialogPath, 'latest.yaml');
+        const detail =
+          `Missing latest.yaml for non-initial latest mutation ` +
+          `(dialogId=${dialogId.valueOf()}, status=${status}, mutationKind=${mutation.kind}, ` +
+          `filePath=${latestFilePath})`;
+        await this.quarantineMalformedRuntimeState(
+          dialogId,
+          status,
+          'mutateDialogLatest:missingLatest',
+          detail,
+        );
+        throw new Error(detail);
+      }
       const mutationContext = {
         trigger: 'mutateDialogLatest',
         mutationKind: mutation.kind,
@@ -9958,37 +10107,53 @@ export class DialogPersistence {
     }
   }
 
-  static async setBackendQueueDrive(
+  static async upsertRootDriveWakeTrigger(
     dialogId: DialogID,
-    queued: boolean,
     reason: string,
     status: DialogStatusKind = 'running',
   ): Promise<void> {
+    if (dialogId.selfId !== dialogId.rootId) {
+      throw new Error(
+        `upsertRootDriveWakeTrigger invariant violation: non-root dialog=${dialogId.valueOf()}`,
+      );
+    }
     const normalizedReason = reason.trim();
     if (normalizedReason === '') {
       throw new Error(
-        `setBackendQueueDrive invariant violation: empty reason for dialog=${dialogId.valueOf()}`,
+        `upsertRootDriveWakeTrigger invariant violation: empty reason for dialog=${dialogId.valueOf()}`,
       );
     }
-    const triggerId = `backend-queue:${dialogId.selfId}`;
-    if (queued) {
-      await this.upsertNextStepTrigger(
-        dialogId,
-        {
-          triggerId,
-          kind: 'backend_queue',
-          reason: normalizedReason,
-          course: toDialogCourseNumber(1),
+    const triggerId = `root-drive-wake:${dialogId.selfId}`;
+    await this.mutateDialogLatest(
+      dialogId,
+      (previous) => ({
+        kind: 'patch',
+        patch: {
+          nextStep: upsertNextStepTrigger(previous.nextStep, {
+            triggerId,
+            kind: 'root_drive_wake',
+            reason: normalizedReason,
+            course: toDialogCourseNumber(previous.currentCourse),
+          }),
         },
-        status,
+      }),
+      status,
+    );
+  }
+
+  static async removeRootDriveWakeTrigger(
+    dialogId: DialogID,
+    status: DialogStatusKind = 'running',
+  ): Promise<void> {
+    if (dialogId.selfId !== dialogId.rootId) {
+      throw new Error(
+        `removeRootDriveWakeTrigger invariant violation: non-root dialog=${dialogId.valueOf()}`,
       );
-      return;
     }
+    const triggerId = `root-drive-wake:${dialogId.selfId}`;
     await this.removeNextStepTriggers(
       dialogId,
-      (trigger) =>
-        (trigger.kind === 'backend_queue' && trigger.triggerId === triggerId) ||
-        (trigger.kind === 'queued_prompt' && trigger.promptId === 'legacy-needs-drive'),
+      (trigger) => trigger.kind === 'root_drive_wake' && trigger.triggerId === triggerId,
       status,
     );
   }
@@ -10001,14 +10166,7 @@ export class DialogPersistence {
     await this.mutateDialogLatest(
       dialogId,
       (previous) => {
-        const normalizedTrigger =
-          trigger.kind === 'backend_queue'
-            ? {
-                ...trigger,
-                course: toDialogCourseNumber(previous.currentCourse),
-              }
-            : trigger;
-        const nextStep = upsertNextStepTrigger(previous.nextStep, normalizedTrigger);
+        const nextStep = upsertNextStepTrigger(previous.nextStep, trigger);
         return {
           kind: 'patch',
           patch: {
@@ -10045,7 +10203,7 @@ export class DialogPersistence {
     status: DialogStatusKind = 'running',
   ): Promise<boolean> {
     const latest = await this.loadDialogLatest(dialogId, status);
-    return (latest?.nextStep?.triggers.length ?? 0) > 0;
+    return (latest?.nextStep.triggers.length ?? 0) > 0;
   }
 
   static async clearPendingRuntimePrompt(

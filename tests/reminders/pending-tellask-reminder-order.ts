@@ -6,6 +6,11 @@ import * as path from 'node:path';
 import type { SideDialogAssignmentFromAsker } from '@longrun-ai/kernel/types/storage';
 import YAML from 'yaml';
 import { DialogID } from '../../main/dialog';
+import {
+  createEmptyDialogNextStepState,
+  createEmptyDialogTellaskCallState,
+  createEmptyDialogTellaskResultState,
+} from '../../main/dialog-latest-state';
 import { DialogPersistence } from '../../main/persistence';
 import { materializeReminder } from '../../main/tool';
 import {
@@ -89,6 +94,9 @@ async function persistActiveCalleeDispatch(args: {
       messageCount: 0,
       functionCallCount: 0,
       sideDialogCount: 0,
+      nextStep: createEmptyDialogNextStepState(),
+      tellaskCalls: createEmptyDialogTellaskCallState(),
+      tellaskResults: createEmptyDialogTellaskResultState(),
       displayState: { kind: 'idle_waiting_user' },
       disableDiligencePush: false,
       diligencePushRemainingBudget: 0,

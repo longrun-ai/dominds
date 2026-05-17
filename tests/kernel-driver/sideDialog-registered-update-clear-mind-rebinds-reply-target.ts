@@ -168,7 +168,7 @@ async function main(): Promise<void> {
       sideDialog.status,
     );
     assert.equal(
-      (latestAfterDrive?.nextStep?.triggers ?? []).some(
+      (latestAfterDrive?.nextStep.triggers ?? []).some(
         (trigger) => trigger.kind === 'queued_prompt',
       ),
       false,

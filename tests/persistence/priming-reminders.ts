@@ -13,6 +13,11 @@ import type {
 import { toRootGenerationAnchor } from '@longrun-ai/kernel/types/storage';
 import { formatUnifiedTimestamp } from '@longrun-ai/kernel/utils/time';
 import { DialogID, type DialogStore, MainDialog } from '../../main/dialog';
+import {
+  createEmptyDialogNextStepState,
+  createEmptyDialogTellaskCallState,
+  createEmptyDialogTellaskResultState,
+} from '../../main/dialog-latest-state';
 import { DialogPersistence, DiskFileDialogStore } from '../../main/persistence';
 import {
   applyPrimingScriptsToDialog,
@@ -37,6 +42,9 @@ async function writeLatest(dialogId: DialogID, currentCourse: number): Promise<v
     currentCourse,
     lastModified: formatUnifiedTimestamp(new Date()),
     status: 'active',
+    nextStep: createEmptyDialogNextStepState(),
+    tellaskCalls: createEmptyDialogTellaskCallState(),
+    tellaskResults: createEmptyDialogTellaskResultState(),
     displayState: { kind: 'idle_waiting_user' },
   };
   await DialogPersistence.mutateDialogLatest(dialogId, () => ({ kind: 'replace', next: latest }));

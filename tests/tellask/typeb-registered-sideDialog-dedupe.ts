@@ -11,6 +11,11 @@ import {
 } from '../../main/bootstrap/global-dialog-event-broadcaster';
 import { DialogID, MainDialog } from '../../main/dialog';
 import { setDialogDisplayState } from '../../main/dialog-display-state';
+import {
+  createEmptyDialogNextStepState,
+  createEmptyDialogTellaskCallState,
+  createEmptyDialogTellaskResultState,
+} from '../../main/dialog-latest-state';
 import { driveDialogStream } from '../../main/llm/kernel-driver';
 import { DialogPersistence, DiskFileDialogStore } from '../../main/persistence';
 import { generateDialogID } from '../../main/utils/id';
@@ -190,6 +195,9 @@ async function main(): Promise<void> {
         messageCount: 0,
         functionCallCount: 0,
         sideDialogCount: 0,
+        nextStep: createEmptyDialogNextStepState(),
+        tellaskCalls: createEmptyDialogTellaskCallState(),
+        tellaskResults: createEmptyDialogTellaskResultState(),
         displayState: { kind: 'idle_waiting_user' },
         disableDiligencePush: false,
         diligencePushRemainingBudget: 0,

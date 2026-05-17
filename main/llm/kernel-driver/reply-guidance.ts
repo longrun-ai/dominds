@@ -169,9 +169,7 @@ async function resolveFreshCurrentSideDialogAssignmentDirective(args: {
     return undefined;
   }
   const targetCallId = currentAssignmentDirective.targetCallId.trim();
-  if (
-    latest.tellaskResults?.results.some((entry) => entry.callId.trim() === targetCallId) === true
-  ) {
+  if (latest.tellaskResults.results.some((entry) => entry.callId.trim() === targetCallId)) {
     return undefined;
   }
   return currentAssignmentDirective;
@@ -210,7 +208,7 @@ async function resolveFreshPendingAskBackReplyDirective(args: {
     return undefined;
   }
   const targetCallId = prompt.tellaskReplyDirective.targetCallId.trim();
-  if (latest.tellaskResults?.results.some((entry) => entry.callId.trim() === targetCallId)) {
+  if (latest.tellaskResults.results.some((entry) => entry.callId.trim() === targetCallId)) {
     return undefined;
   }
   const activeObligation = await DialogPersistence.loadActiveTellaskReplyObligation(

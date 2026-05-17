@@ -17,6 +17,11 @@ import * as os from 'node:os';
 import * as path from 'node:path';
 import * as yaml from 'yaml';
 import { DialogID, MainDialog } from '../../main/dialog';
+import {
+  createEmptyDialogNextStepState,
+  createEmptyDialogTellaskCallState,
+  createEmptyDialogTellaskResultState,
+} from '../../main/dialog-latest-state';
 import { DialogPersistence, DiskFileDialogStore } from '../../main/persistence';
 
 const sleep = async (ms: number): Promise<void> =>
@@ -59,6 +64,17 @@ async function main(): Promise<void> {
       createdAt: formatUnifiedTimestamp(new Date('2026-04-12T00:00:00.000Z')),
     };
     await DialogPersistence.saveMainDialogMetadata(dialogId, metadata, 'running');
+    await DialogPersistence.mutateDialogLatest(dialogId, () => ({
+      kind: 'replace',
+      next: {
+        currentCourse: 1,
+        lastModified: formatUnifiedTimestamp(new Date('2026-04-12T00:00:01.000Z')),
+        status: 'active',
+        nextStep: createEmptyDialogNextStepState(),
+        tellaskCalls: createEmptyDialogTellaskCallState(),
+        tellaskResults: createEmptyDialogTellaskResultState(),
+      },
+    }));
 
     // Invariant 1: concurrent patch mutations must merge (no lost fields).
     await Promise.all([
@@ -117,6 +133,9 @@ async function main(): Promise<void> {
         lastModified: formatUnifiedTimestamp(new Date('2026-04-12T00:01:00.000Z')),
         status: 'active',
         generating: true,
+        nextStep: createEmptyDialogNextStepState(),
+        tellaskCalls: createEmptyDialogTellaskCallState(),
+        tellaskResults: createEmptyDialogTellaskResultState(),
         displayState: { kind: 'idle_waiting_user' },
         executionMarker: { kind: 'interrupted', reason: { kind: 'pending_runtime_prompt' } },
       },
@@ -135,6 +154,9 @@ async function main(): Promise<void> {
         lastModified: formatUnifiedTimestamp(new Date('2026-04-12T00:02:00.000Z')),
         status: 'active',
         generating: true,
+        nextStep: createEmptyDialogNextStepState(),
+        tellaskCalls: createEmptyDialogTellaskCallState(),
+        tellaskResults: createEmptyDialogTellaskResultState(),
         displayState: { kind: 'dead', reason: { kind: 'declared_by_user' } },
         executionMarker: { kind: 'dead', reason: { kind: 'declared_by_user' } },
       },
@@ -160,6 +182,9 @@ async function main(): Promise<void> {
         lastModified: formatUnifiedTimestamp(new Date('2026-04-12T00:03:00.000Z')),
         status: 'active',
         generating: true,
+        nextStep: createEmptyDialogNextStepState(),
+        tellaskCalls: createEmptyDialogTellaskCallState(),
+        tellaskResults: createEmptyDialogTellaskResultState(),
         displayState: {
           kind: 'stopped',
           reason: { kind: 'pending_runtime_prompt' },
@@ -199,6 +224,9 @@ async function main(): Promise<void> {
         lastModified: formatUnifiedTimestamp(new Date('2026-04-12T00:04:01.000Z')),
         status: 'active',
         generating: false,
+        nextStep: createEmptyDialogNextStepState(),
+        tellaskCalls: createEmptyDialogTellaskCallState(),
+        tellaskResults: createEmptyDialogTellaskResultState(),
         displayState: { kind: 'proceeding' },
         messageCount: 0,
         functionCallCount: 0,
@@ -253,6 +281,9 @@ async function main(): Promise<void> {
         lastModified: formatUnifiedTimestamp(new Date('2026-04-12T00:05:01.000Z')),
         status: 'active',
         generating: false,
+        nextStep: createEmptyDialogNextStepState(),
+        tellaskCalls: createEmptyDialogTellaskCallState(),
+        tellaskResults: createEmptyDialogTellaskResultState(),
         displayState: { kind: 'proceeding' },
         messageCount: 0,
         functionCallCount: 0,

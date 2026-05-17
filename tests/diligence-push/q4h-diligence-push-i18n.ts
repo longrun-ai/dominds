@@ -9,6 +9,11 @@ import * as path from 'path';
 import type { UiOnlyMarkdownRecord } from '@longrun-ai/kernel/types/storage';
 import { formatUnifiedTimestamp } from '@longrun-ai/kernel/utils/time';
 import { DialogID, MainDialog } from '../../main/dialog';
+import {
+  createEmptyDialogNextStepState,
+  createEmptyDialogTellaskCallState,
+  createEmptyDialogTellaskResultState,
+} from '../../main/dialog-latest-state';
 import { driveDialogStream } from '../../main/llm/kernel-driver';
 import { DialogPersistence, DiskFileDialogStore } from '../../main/persistence';
 
@@ -83,6 +88,9 @@ async function driveToDiligencePushBudgetExhaustedNotice(options: {
       messageCount: 0,
       functionCallCount: 0,
       sideDialogCount: 0,
+      nextStep: createEmptyDialogNextStepState(),
+      tellaskCalls: createEmptyDialogTellaskCallState(),
+      tellaskResults: createEmptyDialogTellaskResultState(),
       displayState: { kind: 'idle_waiting_user' },
       disableDiligencePush: false,
       diligencePushRemainingBudget: 0,

@@ -178,10 +178,13 @@ async function main(): Promise<void> {
           nextSeq: 2,
           triggers: [
             {
-              triggerId: `backend-queue:${sideDialog.id.selfId}`,
-              kind: 'backend_queue',
-              reason: 'stale_final_response_autodrive_test',
-              course: sideDialog.currentCourse,
+              triggerId: 'stale-final-response-followup',
+              kind: 'followup',
+              sourceGeneration: {
+                course: sideDialog.currentCourse,
+                genseq: 1,
+              },
+              reasons: [{ kind: 'runtime_guidance', msgId: 'stale-final-response-guidance' }],
               createdAt: new Date().toISOString(),
               seq: 1,
             },

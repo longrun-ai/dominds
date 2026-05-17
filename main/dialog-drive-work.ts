@@ -19,7 +19,6 @@ export function hasDurableDriveWork(latest: DialogLatestSnapshot): boolean {
     return false;
   }
   return (
-    (latest.nextStep?.triggers.length ?? 0) > 0 ||
-    getRecoverableGenerationRunState(latest) !== undefined
+    latest.nextStep.triggers.length > 0 || getRecoverableGenerationRunState(latest) !== undefined
   );
 }

@@ -3,6 +3,11 @@ import assert from 'node:assert/strict';
 import type { DialogRetryDisplay } from '@longrun-ai/kernel/types/display-state';
 import type { DialogLatestFile } from '@longrun-ai/kernel/types/storage';
 import { isDialogLatestResumable, isStoppedReasonResumable } from '../main/dialog-display-state';
+import {
+  createEmptyDialogNextStepState,
+  createEmptyDialogTellaskCallState,
+  createEmptyDialogTellaskResultState,
+} from '../main/dialog-latest-state';
 
 const display: DialogRetryDisplay = {
   titleTextI18n: {
@@ -26,6 +31,9 @@ const resumableLatest: DialogLatestFile = {
   currentCourse: 1,
   lastModified: new Date().toISOString(),
   status: 'active',
+  nextStep: createEmptyDialogNextStepState(),
+  tellaskCalls: createEmptyDialogTellaskCallState(),
+  tellaskResults: createEmptyDialogTellaskResultState(),
   displayState: {
     kind: 'stopped',
     reason,
@@ -41,6 +49,9 @@ const transientLatest: DialogLatestFile = {
   currentCourse: 1,
   lastModified: new Date().toISOString(),
   status: 'active',
+  nextStep: createEmptyDialogNextStepState(),
+  tellaskCalls: createEmptyDialogTellaskCallState(),
+  tellaskResults: createEmptyDialogTellaskResultState(),
   displayState: {
     kind: 'stopped',
     reason,

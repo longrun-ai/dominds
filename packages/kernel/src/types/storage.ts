@@ -166,7 +166,7 @@ export type DialogFollowupReason = Readonly<
 export type DialogNextStepTriggerPayload = Readonly<
   | { triggerId: string; kind: 'user_input'; course: DialogCourseNumber; genseq: CallSiteGenseqNo }
   | { triggerId: string; kind: 'queued_prompt'; promptId: string; course: DialogCourseNumber }
-  | { triggerId: string; kind: 'backend_queue'; reason: string; course: DialogCourseNumber }
+  | { triggerId: string; kind: 'root_drive_wake'; reason: string; course: DialogCourseNumber }
   | {
       triggerId: string;
       kind: 'followup';
@@ -245,6 +245,27 @@ export type DialogTellaskResultState = Readonly<{
   results: readonly DialogTellaskResultIndexEntry[];
 }>;
 
+export type DialogTellaskCallIndexEntry = Readonly<{
+  callId: string;
+  callName:
+    | 'tellask'
+    | 'tellaskSessionless'
+    | 'tellaskBack'
+    | 'replyTellask'
+    | 'replyTellaskSessionless'
+    | 'replyTellaskBack'
+    | 'askHuman'
+    | 'freshBootsReasoning';
+  course: DialogCourseNumber;
+  genseq: CallSiteGenseqNo;
+  recordedAt: string;
+  callRecordId: string;
+}>;
+
+export type DialogTellaskCallState = Readonly<{
+  calls: readonly DialogTellaskCallIndexEntry[];
+}>;
+
 export interface DialogLatestFile {
   currentCourse: number;
   lastModified: string;
@@ -256,10 +277,11 @@ export interface DialogLatestFile {
   displayState?: DialogDisplayState;
   executionMarker?: DialogExecutionMarker;
   generationRunState?: DialogGenerationRunState;
-  nextStep?: DialogNextStepTriggerState;
+  nextStep: DialogNextStepTriggerState;
   userWait?: DialogUserWaitState;
   replyDelivery?: DialogReplyDeliveryState;
-  tellaskResults?: DialogTellaskResultState;
+  tellaskCalls: DialogTellaskCallState;
+  tellaskResults: DialogTellaskResultState;
   latestAssignmentAnchor?: DialogLatestAssignmentAnchorState;
   sideDialogFinalResponse?: DialogSideDialogFinalResponseState;
   fbrState?: DialogFbrState;

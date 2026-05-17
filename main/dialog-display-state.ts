@@ -31,6 +31,7 @@ import { DialogID, type Dialog } from './dialog';
 import { getRecoverableGenerationRunState } from './dialog-generation-run';
 import { globalDialogRegistry } from './dialog-global-registry';
 import { isInterruptionReasonManualResumeEligible } from './dialog-interruption';
+import { createEmptyDialogNextStepState } from './dialog-latest-state';
 import { dialogEventRegistry } from './evt-registry';
 import { createLogger } from './log';
 import { DialogPersistence } from './persistence';
@@ -114,7 +115,7 @@ function isNonIdleDisplayProjection(state: DialogDisplayState | undefined): bool
 }
 
 function hasPendingNextStepTriggers(latest: DialogLatestFile | null | undefined): boolean {
-  return (latest?.nextStep?.triggers.length ?? 0) > 0;
+  return (latest?.nextStep.triggers.length ?? 0) > 0;
 }
 
 function q4hSuspensionDisplayState(hasQ4H: boolean): DialogDisplayState | undefined {
@@ -684,7 +685,7 @@ async function healStaleSideDialogRunControlAfterFinalResponse(args: {
     responseCallId: finalResponseClosure.callId,
     clearedReplyObligation,
     previousGenerating: args.latest.generating ?? null,
-    previousNextStepTriggerCount: args.latest.nextStep?.triggers.length ?? 0,
+    previousNextStepTriggerCount: args.latest.nextStep.triggers.length,
     previousDisplayState: args.latest.displayState ?? null,
     previousExecutionMarker: args.latest.executionMarker ?? null,
   });
@@ -692,7 +693,7 @@ async function healStaleSideDialogRunControlAfterFinalResponse(args: {
     kind: 'patch',
     patch: {
       generating: false,
-      nextStep: undefined,
+      nextStep: createEmptyDialogNextStepState(),
       displayState: { kind: 'idle_waiting_user' },
       executionMarker: undefined,
     },

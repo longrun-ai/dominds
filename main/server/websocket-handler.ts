@@ -80,6 +80,11 @@ import {
   getOrRestoreMainDialog,
   type DialogPersistenceStatus,
 } from '../dialog-instance-registry';
+import {
+  createEmptyDialogNextStepState,
+  createEmptyDialogTellaskCallState,
+  createEmptyDialogTellaskResultState,
+} from '../dialog-latest-state';
 import { dialogEventRegistry, postDialogEvent } from '../evt-registry';
 import { driveDialogStream, supplyResponseToAskerDialog } from '../llm/kernel-driver';
 import {
@@ -1221,6 +1226,9 @@ async function handleCreateDialog(ws: WebSocket, packet: CreateDialogRequest): P
         messageCount: 0,
         functionCallCount: 0,
         sideDialogCount: 0,
+        nextStep: createEmptyDialogNextStepState(),
+        tellaskCalls: createEmptyDialogTellaskCallState(),
+        tellaskResults: createEmptyDialogTellaskResultState(),
         displayState: { kind: 'idle_waiting_user' },
         disableDiligencePush: defaultDisableDiligencePush,
         diligencePushRemainingBudget: dialog.diligencePushRemainingBudget,

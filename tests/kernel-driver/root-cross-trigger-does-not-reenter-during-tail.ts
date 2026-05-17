@@ -47,7 +47,8 @@ async function main(): Promise<void> {
     const root = await createMainDialog('tester');
     root.disableDiligencePush = true;
     globalDialogRegistry.register(root);
-    void runBackendDriver();
+    const backendAbort = new AbortController();
+    const backendDriver = runBackendDriver({ abortSignal: backendAbort.signal });
 
     const activeCalleeDispatch = await root.createSideDialog(
       'pangu',
@@ -64,9 +65,8 @@ async function main(): Promise<void> {
       },
     );
 
-    await DialogPersistence.setBackendQueueDrive(
+    await DialogPersistence.upsertRootDriveWakeTrigger(
       root.id,
-      true,
       'seed_deferred_root_queue_before_cross_trigger_tail_test',
       root.status,
     );
@@ -139,6 +139,8 @@ async function main(): Promise<void> {
       false,
       'foreground round should clear the stale queued revive',
     );
+    backendAbort.abort();
+    await backendDriver;
   });
 
   console.log('kernel-driver root-cross-trigger-does-not-reenter-during-tail: PASS');

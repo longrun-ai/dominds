@@ -13,6 +13,11 @@ import {
   refreshRunControlProjectionFromPersistenceFacts,
 } from '../main/dialog-display-state';
 import { globalDialogRegistry } from '../main/dialog-global-registry';
+import {
+  createEmptyDialogNextStepState,
+  createEmptyDialogTellaskCallState,
+  createEmptyDialogTellaskResultState,
+} from '../main/dialog-latest-state';
 import { driveDialogStream } from '../main/llm/kernel-driver';
 import { driveQueuedDialogsOnce } from '../main/llm/kernel-driver/loop';
 import { DialogPersistence } from '../main/persistence';
@@ -36,20 +41,30 @@ async function writeYaml(filePath: string, value: unknown): Promise<void> {
   await fs.writeFile(filePath, yaml.stringify(value), 'utf-8');
 }
 
+function emptyTellaskIndexes(): {
+  tellaskCalls: ReturnType<typeof createEmptyDialogTellaskCallState>;
+  tellaskResults: ReturnType<typeof createEmptyDialogTellaskResultState>;
+} {
+  return {
+    tellaskCalls: createEmptyDialogTellaskCallState(),
+    tellaskResults: createEmptyDialogTellaskResultState(),
+  };
+}
+
 function hasPendingNextStepTriggers(
   latest: Awaited<ReturnType<typeof DialogPersistence.loadDialogLatest>>,
 ): boolean {
-  return (latest?.nextStep?.triggers.length ?? 0) > 0;
+  return (latest?.nextStep.triggers.length ?? 0) > 0;
 }
 
-function backendQueueNextStep(
+function rootDriveWakeNextStep(
   selfId: string,
   reason: string,
 ): {
   nextSeq: number;
   triggers: Array<{
     triggerId: string;
-    kind: 'backend_queue';
+    kind: 'root_drive_wake';
     reason: string;
     course: number;
     createdAt: string;
@@ -60,8 +75,8 @@ function backendQueueNextStep(
     nextSeq: 2,
     triggers: [
       {
-        triggerId: `backend-queue:${selfId}`,
-        kind: 'backend_queue',
+        triggerId: `root-drive-wake:${selfId}`,
+        kind: 'root_drive_wake',
         reason,
         course: 1,
         createdAt: new Date().toISOString(),
@@ -252,7 +267,8 @@ async function main(): Promise<void> {
       lastModified: new Date().toISOString(),
       status: 'active',
       generating: false,
-      nextStep: backendQueueNextStep(bRoot, 'test_restart_fixture'),
+      nextStep: rootDriveWakeNextStep(bRoot, 'test_restart_fixture'),
+      ...emptyTellaskIndexes(),
       displayState: { kind: 'proceeding' },
       userWait: {
         kind: 'awaiting_user_answer',
@@ -284,6 +300,8 @@ async function main(): Promise<void> {
       lastModified: new Date().toISOString(),
       status: 'active',
       generating: true,
+      nextStep: createEmptyDialogNextStepState(),
+      ...emptyTellaskIndexes(),
       displayState: { kind: 'proceeding' },
       executionMarker: {
         kind: 'interrupted',
@@ -300,6 +318,8 @@ async function main(): Promise<void> {
       lastModified: new Date().toISOString(),
       status: 'active',
       generating: true,
+      nextStep: createEmptyDialogNextStepState(),
+      ...emptyTellaskIndexes(),
       displayState: { kind: 'proceeding' },
     });
 
@@ -312,7 +332,8 @@ async function main(): Promise<void> {
       lastModified: new Date().toISOString(),
       status: 'active',
       generating: false,
-      nextStep: backendQueueNextStep(cRoot, 'test_restart_fixture'),
+      nextStep: rootDriveWakeNextStep(cRoot, 'test_restart_fixture'),
+      ...emptyTellaskIndexes(),
       displayState: { kind: 'idle_waiting_user' },
     });
     await fs.writeFile(
@@ -329,6 +350,8 @@ async function main(): Promise<void> {
       lastModified: new Date().toISOString(),
       status: 'active',
       generating: false,
+      nextStep: createEmptyDialogNextStepState(),
+      ...emptyTellaskIndexes(),
     });
 
     // Dialog E: stale stopped projection should keep the explicit interruption when only
@@ -340,6 +363,8 @@ async function main(): Promise<void> {
       lastModified: new Date().toISOString(),
       status: 'active',
       generating: false,
+      nextStep: createEmptyDialogNextStepState(),
+      ...emptyTellaskIndexes(),
       displayState: {
         kind: 'stopped',
         reason: { kind: 'system_stop', detail: 'upstream failed' },
@@ -376,6 +401,8 @@ async function main(): Promise<void> {
       lastModified: new Date().toISOString(),
       status: 'active',
       generating: false,
+      nextStep: createEmptyDialogNextStepState(),
+      ...emptyTellaskIndexes(),
       displayState: { kind: 'blocked', reason: { kind: 'needs_human_input' } },
       executionMarker: {
         kind: 'interrupted',
@@ -392,7 +419,8 @@ async function main(): Promise<void> {
       lastModified: new Date().toISOString(),
       status: 'active',
       generating: false,
-      nextStep: backendQueueNextStep(gRoot, 'test_restart_fixture'),
+      nextStep: rootDriveWakeNextStep(gRoot, 'test_restart_fixture'),
+      ...emptyTellaskIndexes(),
       displayState: { kind: 'idle_waiting_user' },
     });
 
@@ -442,6 +470,8 @@ async function main(): Promise<void> {
       lastModified: new Date().toISOString(),
       status: 'active',
       generating: false,
+      nextStep: createEmptyDialogNextStepState(),
+      ...emptyTellaskIndexes(),
       displayState: { kind: 'idle_waiting_user' },
     });
     const jSideDir = path.join(tmpRoot, '.dialogs', 'run', jRoot, 'sideDialogs', jSide);
@@ -455,7 +485,20 @@ async function main(): Promise<void> {
       lastModified: new Date().toISOString(),
       status: 'active',
       generating: true,
-      nextStep: backendQueueNextStep(jSide, 'test_restart_fixture'),
+      nextStep: {
+        nextSeq: 2,
+        triggers: [
+          {
+            triggerId: 'stale-side-final-response-followup',
+            kind: 'followup',
+            sourceGeneration: { course: 1, genseq: 3 },
+            reasons: [{ kind: 'runtime_guidance', msgId: 'stale-side-final-response-guidance' }],
+            createdAt: new Date().toISOString(),
+            seq: 1,
+          },
+        ],
+      },
+      ...emptyTellaskIndexes(),
       displayState: {
         kind: 'stopped',
         reason: { kind: 'server_restart' },
@@ -520,6 +563,8 @@ async function main(): Promise<void> {
       lastModified: new Date().toISOString(),
       status: 'active',
       generating: false,
+      nextStep: createEmptyDialogNextStepState(),
+      ...emptyTellaskIndexes(),
       displayState: {
         kind: 'stopped',
         reason: { kind: 'server_restart' },
@@ -574,6 +619,8 @@ async function main(): Promise<void> {
       lastModified: new Date().toISOString(),
       status: 'active',
       generating: false,
+      nextStep: createEmptyDialogNextStepState(),
+      ...emptyTellaskIndexes(),
       displayState: { kind: 'blocked', reason: { kind: 'needs_human_input' } },
       sideDialogFinalResponse: {
         callId: 'call-side-j-q4h-projection',
@@ -638,6 +685,8 @@ async function main(): Promise<void> {
         lastModified: kCreatedAt,
         status: 'active',
         generating: false,
+        nextStep: createEmptyDialogNextStepState(),
+        ...emptyTellaskIndexes(),
         displayState: { kind: 'idle_waiting_user' },
       },
     }));
@@ -678,6 +727,8 @@ async function main(): Promise<void> {
         lastModified: kCreatedAt,
         status: 'active',
         generating: true,
+        nextStep: createEmptyDialogNextStepState(),
+        ...emptyTellaskIndexes(),
         generationRunState: {
           kind: 'open',
           course: 1,
@@ -935,6 +986,8 @@ async function main(): Promise<void> {
       lastModified: new Date().toISOString(),
       status: 'active',
       generating: false,
+      nextStep: createEmptyDialogNextStepState(),
+      ...emptyTellaskIndexes(),
       displayState: { kind: 'proceeding' },
     });
 

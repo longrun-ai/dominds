@@ -35,6 +35,11 @@ import { DialogID, DialogStore, MainDialog } from '../dialog';
 import { getRunControlCountsSnapshot } from '../dialog-display-state';
 import { forkMainDialogTreeAtGeneration } from '../dialog-fork';
 import { globalDialogRegistry } from '../dialog-global-registry';
+import {
+  createEmptyDialogNextStepState,
+  createEmptyDialogTellaskCallState,
+  createEmptyDialogTellaskResultState,
+} from '../dialog-latest-state';
 import { createLogger } from '../log';
 import { DialogPersistence, DiskFileDialogStore } from '../persistence';
 import { findDomindsPersistenceFileError } from '../persistence-errors';
@@ -2814,6 +2819,9 @@ async function handleCreateDialog(
         messageCount: 0,
         functionCallCount: 0,
         sideDialogCount: 0,
+        nextStep: createEmptyDialogNextStepState(),
+        tellaskCalls: createEmptyDialogTellaskCallState(),
+        tellaskResults: createEmptyDialogTellaskResultState(),
         displayState: { kind: 'idle_waiting_user' },
         disableDiligencePush: defaultDisableDiligencePush,
         diligencePushRemainingBudget: dialog.diligencePushRemainingBudget,
