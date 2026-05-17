@@ -218,9 +218,6 @@ export type UiStrings = {
   thinkingEncryptedSizeLabel: string;
   thinkingEncryptedCharsUnit: string;
   thinkingEncryptedBytesUnit: string;
-  thinkingEncryptedSummaryItemsLabel: string;
-  thinkingEncryptedContentItemsLabel: string;
-  thinkingEncryptedStatusLabel: string;
   teamMgmtManualTabTitle: string;
   snippetsTabTitle: string;
   domindsDocsTabTitle: string;
@@ -638,9 +635,6 @@ export function getUiStrings(language: LanguageCode): UiStrings {
       thinkingEncryptedSizeLabel: '加密',
       thinkingEncryptedCharsUnit: '字符',
       thinkingEncryptedBytesUnit: '字节',
-      thinkingEncryptedSummaryItemsLabel: '摘要',
-      thinkingEncryptedContentItemsLabel: '明文',
-      thinkingEncryptedStatusLabel: '状态',
       teamMgmtManualTabTitle: '团队管理手册',
       snippetsTabTitle: '提示词模板',
       domindsDocsTabTitle: 'Dominds 文档',
@@ -1070,13 +1064,10 @@ export function getUiStrings(language: LanguageCode): UiStrings {
     toastHistoryClearTitle: 'Clear notification history',
     toastHistoryEmpty: 'No notifications yet.',
     thinkingSectionTitle: 'Thinking',
-    thinkingDetailsTitle: 'Reasoning details',
+    thinkingDetailsTitle: 'Thinking details',
     thinkingEncryptedSizeLabel: 'Encrypted',
     thinkingEncryptedCharsUnit: 'chars',
     thinkingEncryptedBytesUnit: 'bytes',
-    thinkingEncryptedSummaryItemsLabel: 'Summary',
-    thinkingEncryptedContentItemsLabel: 'Plain',
-    thinkingEncryptedStatusLabel: 'Status',
     teamMgmtManualTabTitle: 'Team Manual',
     snippetsTabTitle: 'Snippets',
     domindsDocsTabTitle: 'Dominds Docs',

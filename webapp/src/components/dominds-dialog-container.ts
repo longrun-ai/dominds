@@ -1346,7 +1346,7 @@ export class DomindsDialogContainer extends HTMLElement {
     if (this.pendingThinkingChunkBuffer.length < 1) return false;
     this.clearPendingThinkingChunkFlushRaf();
     this.flushPendingThinkingChunks();
-    this.appendReasoningPayloadPanel(genseq, reasoning);
+    this.insertThinkingReasoningPanel(genseq, reasoning);
     this.completeThinkingSection(genseq);
     return true;
   }
@@ -1359,73 +1359,113 @@ export class DomindsDialogContainer extends HTMLElement {
     return contentEl;
   }
 
-  private appendReasoningPayloadPanel(
+  private formatThinkingReasoningSummaryCount(count: number): string {
+    if (this.uiLanguage === 'zh') {
+      return `${count} 条摘要`;
+    }
+    return `${count} ${count === 1 ? 'summary' : 'summaries'}`;
+  }
+
+  private formatThinkingReasoningContentCount(count: number): string {
+    if (this.uiLanguage === 'zh') {
+      return `${count} 条明文`;
+    }
+    return `${count} ${count === 1 ? 'plain item' : 'plain items'}`;
+  }
+
+  private formatThinkingReasoningStatus(status: string): string {
+    if (this.uiLanguage === 'zh') {
+      return status === 'in_progress' ? '进行中' : status === 'incomplete' ? '未完成' : status;
+    }
+    return status === 'in_progress'
+      ? 'In progress'
+      : status === 'incomplete'
+        ? 'Incomplete'
+        : status;
+  }
+
+  private cleanupThinkingSectionProgressiveExpand(thinkingSection: HTMLElement): void {
+    const contentEl = thinkingSection.querySelector('.thinking-content');
+    if (!(contentEl instanceof HTMLElement)) return;
+    const cleanup = this.progressiveExpandCleanupByTarget.get(contentEl);
+    if (cleanup === undefined) return;
+    cleanup();
+    this.progressiveExpandCleanupByTarget.delete(contentEl);
+  }
+
+  private insertThinkingReasoningPanel(
     genseq: number,
     reasoning: ReasoningPayload | undefined,
-  ): void {
-    const encryptedContent = reasoning?.encrypted_content;
+  ): boolean {
+    if (reasoning === undefined) {
+      return false;
+    }
+    const encryptedContent = reasoning.encrypted_content;
     const hasEncryptedContent = typeof encryptedContent === 'string' && encryptedContent.length > 0;
-    const metadataStatus = reasoning?.metadata?.status;
+    const metadata = reasoning.metadata;
+    const metadataStatus = metadata === undefined ? undefined : metadata.status;
     const visibleMetadataStatus =
       metadataStatus !== undefined && metadataStatus !== 'completed' ? metadataStatus : undefined;
     const hasVisibleMetadata = visibleMetadataStatus !== undefined;
-    if (!hasEncryptedContent && !hasVisibleMetadata) {
-      return;
-    }
     const thinkingSection = this.thinkingSection;
     if (!thinkingSection || thinkingSection.getAttribute('data-genseq') !== String(genseq)) {
-      return;
+      return false;
     }
-    if (thinkingSection.querySelector('.thinking-reasoning-panel')) {
-      return;
+    const summaryCount = reasoning.summary.length;
+    const content = reasoning.content;
+    const contentCount = content === undefined ? 0 : content.length;
+    if (!hasEncryptedContent && !hasVisibleMetadata && contentCount < 1) {
+      return false;
     }
-
-    const contentEl = this.getThinkingContentElement(thinkingSection);
+    const parent = thinkingSection.parentElement;
+    if (!(parent instanceof HTMLElement)) {
+      return false;
+    }
+    if (parent.querySelector(`.thinking-reasoning-panel[data-genseq="${String(genseq)}"]`)) {
+      return true;
+    }
     const t = getUiStrings(this.uiLanguage);
-    const summaryCount = reasoning?.summary.length ?? 0;
-    const contentCount = reasoning?.content?.length ?? 0;
     const byteCount = hasEncryptedContent ? new TextEncoder().encode(encryptedContent).length : 0;
-    const rows: Array<[string, string]> = [];
+    const metaItems: string[] = [];
     if (hasEncryptedContent) {
-      rows.push([
-        t.thinkingEncryptedSizeLabel,
+      metaItems.push(
         `${encryptedContent.length} ${t.thinkingEncryptedCharsUnit} / ${byteCount} ${t.thinkingEncryptedBytesUnit}`,
-      ]);
+      );
     }
     if (summaryCount > 0) {
-      rows.push([t.thinkingEncryptedSummaryItemsLabel, String(summaryCount)]);
+      metaItems.push(this.formatThinkingReasoningSummaryCount(summaryCount));
     }
     if (contentCount > 0) {
-      rows.push([t.thinkingEncryptedContentItemsLabel, String(contentCount)]);
+      metaItems.push(this.formatThinkingReasoningContentCount(contentCount));
     }
     if (visibleMetadataStatus !== undefined) {
-      rows.push([t.thinkingEncryptedStatusLabel, visibleMetadataStatus]);
+      metaItems.push(
+        this.uiLanguage === 'zh'
+          ? `状态：${this.formatThinkingReasoningStatus(visibleMetadataStatus)}`
+          : `Status: ${this.formatThinkingReasoningStatus(visibleMetadataStatus)}`,
+      );
     }
 
     const panel = document.createElement('div');
     panel.className = 'thinking-reasoning-panel';
+    panel.setAttribute('data-genseq', String(genseq));
     panel.innerHTML = `
       <div class="thinking-reasoning-header">
         <span class="thinking-reasoning-icon icon-mask" aria-hidden="true"></span>
         <span class="thinking-reasoning-title">${this.escapeHtml(t.thinkingDetailsTitle)}</span>
       </div>
-      <dl class="thinking-reasoning-meta">
-        ${rows
-          .map(
-            ([label, value]) => `
-              <div class="thinking-reasoning-meta-row">
-                <dt>${this.escapeHtml(label)}</dt>
-                <dd>${this.escapeHtml(value)}</dd>
-              </div>
-            `,
-          )
-          .join('')}
-      </dl>
+      <div class="thinking-reasoning-meta">
+        ${
+          hasEncryptedContent
+            ? `<span class="thinking-reasoning-meta-label">${this.escapeHtml(t.thinkingEncryptedSizeLabel)}</span>`
+            : ''
+        }
+        ${metaItems.map((item) => `<span>${this.escapeHtml(item)}</span>`).join('')}
+      </div>
     `;
-    contentEl.appendChild(panel);
-    this.activeThinkingHasVisibleContent = true;
-    this.emitProgressiveExpandContentGrowth(contentEl);
+    parent.insertBefore(panel, thinkingSection.nextSibling);
     this.scrollToBottom();
+    return true;
   }
 
   private cleanupAllProgressiveExpands(): void {
@@ -2372,7 +2412,16 @@ export class DomindsDialogContainer extends HTMLElement {
       return;
     }
     if (this.requestImmediateThinkingChunkFlushForFinish(genseq, reasoning)) return;
-    this.appendReasoningPayloadPanel(genseq, reasoning);
+    const insertedReasoning = this.insertThinkingReasoningPanel(genseq, reasoning);
+    if (insertedReasoning && !this.activeThinkingHasVisibleContent && this.thinkingSection) {
+      const emptyThinkingSection = this.thinkingSection;
+      this.cleanupThinkingSectionProgressiveExpand(emptyThinkingSection);
+      emptyThinkingSection.remove();
+      this.thinkingSection = undefined;
+      this.activeThinkingMarkdownSegment = undefined;
+      this.activeThinkingHasVisibleContent = false;
+      return;
+    }
     this.completeThinkingSection(genseq);
   }
 
@@ -5033,7 +5082,7 @@ export class DomindsDialogContainer extends HTMLElement {
     // If assistant-only nodes already exist when this optional event arrives, report it loudly and
     // still append the divider at the current position (arrival order).
     const assistantOnlyAlreadyStarted = body.querySelector(
-      '.thinking-section, .func-call-section, .web-search-section, .native-tool-section',
+      '.thinking-section, .thinking-reasoning-panel, .func-call-section, .web-search-section, .native-tool-section',
     );
     if (assistantOnlyAlreadyStarted) {
       this.handleProtocolError(
@@ -6182,10 +6231,13 @@ export class DomindsDialogContainer extends HTMLElement {
         flex-wrap: wrap;
         align-items: baseline;
         gap: 4px 10px;
-        padding: 5px 7px;
+        width: 100%;
+        max-width: 100%;
+        box-sizing: border-box;
+        padding: 2px 3px 2px 6px;
         border-radius: 6px;
-        border: 1px solid color-mix(in srgb, var(--dominds-primary, #007acc) 28%, transparent);
-        background: color-mix(in srgb, var(--dominds-thinking-bg, #f1f5f9) 82%, var(--dominds-bg, #ffffff) 18%);
+        border-left: 3px solid var(--dominds-primary, var(--color-accent-primary, #007acc));
+        background: color-mix(in srgb, var(--dominds-thinking-bg, #f1f5f9) 72%, var(--dominds-bg, #ffffff) 28%);
         color: var(--dominds-fg, #475569);
         min-width: 0;
       }
@@ -6222,25 +6274,13 @@ export class DomindsDialogContainer extends HTMLElement {
         min-width: 0;
       }
 
-      .thinking-reasoning-meta-row {
-        display: inline-flex;
-        gap: 4px;
-        align-items: baseline;
-        min-width: 0;
-        max-width: 100%;
-      }
-
-      .thinking-reasoning-meta dt {
+      .thinking-reasoning-meta-label {
         color: var(--dominds-fg-muted, #64748b);
         font-weight: 500;
       }
 
-      .thinking-reasoning-meta dd {
-        margin: 0;
-        min-width: 0;
+      .thinking-reasoning-meta span {
         overflow-wrap: anywhere;
-        font-family: var(--font-mono, ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace);
-        color: var(--dominds-fg, #475569);
       }
 
       .markdown-content,
