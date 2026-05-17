@@ -50,10 +50,16 @@ export interface DialogDisplayStateMarkerEvent {
   reason?: DialogInterruptionReason;
 }
 
+export interface DialogBackgroundCalleeSummaryEvent {
+  type: 'dlg_background_callee_summary_evt';
+  backgroundCalleeDialogCount: number;
+  backgroundFreshBootsReasoningCalleeCount: number;
+}
+
 export interface SideDialogEvent extends DialogEventBase {
   type: 'sideDialog_created_evt';
   course: number;
-  parentDialog: {
+  callerDialog: {
     selfId: string;
     rootId: string;
   };
@@ -66,8 +72,8 @@ export interface SideDialogEvent extends DialogEventBase {
   mentionList?: string[];
   tellaskContent: string;
   rootSideDialogCount: number;
-  parentBackgroundCalleeDialogCount: number;
-  parentBackgroundFreshBootsReasoningCalleeCount: number;
+  callerBackgroundCalleeDialogCount: number;
+  callerBackgroundFreshBootsReasoningCalleeCount: number;
   sideDialogNode: {
     selfId: string;
     rootId: string;
@@ -572,6 +578,7 @@ export type DialogEvent =
   | ContextHealthEvent
   | DialogDisplayStateEvent
   | DialogDisplayStateMarkerEvent
+  | DialogBackgroundCalleeSummaryEvent
   | DiligenceBudgetEvent
   | ThinkingStartEvent
   | ThinkingChunkEvent

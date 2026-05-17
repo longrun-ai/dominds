@@ -18,6 +18,7 @@ import { globalDialogRegistry } from '../../dialog-global-registry';
 import { ensureDialogLoaded, type DialogPersistenceStatus } from '../../dialog-instance-registry';
 import { log } from '../../log';
 import { DialogPersistence } from '../../persistence';
+import { broadcastBackgroundCalleeSummary } from '../../runtime/background-callee-summary';
 import {
   formatTellaskCarryoverResultContent,
   formatTellaskResponseContent,
@@ -187,7 +188,7 @@ async function resolveLatestAssignmentAnchorRef(args: {
 }
 
 export async function supplyResponseToAskerDialog(args: {
-  parentDialog: Dialog;
+  callerDialog: Dialog;
   sideDialogId: DialogID;
   responseText: string;
   callType: 'A' | 'B' | 'C';
@@ -205,7 +206,7 @@ export async function supplyResponseToAskerDialog(args: {
   sideDialog?: SideDialog;
 }): Promise<void> {
   const {
-    parentDialog,
+    callerDialog,
     sideDialogId,
     responseText,
     callType,
@@ -219,10 +220,10 @@ export async function supplyResponseToAskerDialog(args: {
     sideDialog: maybeSideDialog,
   } = args;
   try {
-    const result = await withSideDialogTxnLock(parentDialog.id, async () => {
+    const result = await withSideDialogTxnLock(callerDialog.id, async () => {
       const activeCalleeDispatches = await DialogPersistence.loadActiveCalleeDispatches(
-        parentDialog.id,
-        parentDialog.status,
+        callerDialog.id,
+        callerDialog.status,
       );
       let activeCalleeDispatch: ActiveCalleeDispatchRecord | undefined;
       const requestedCallId = typeof callId === 'string' ? callId.trim() : '';
@@ -248,12 +249,12 @@ export async function supplyResponseToAskerDialog(args: {
       try {
         const metadata = await DialogPersistence.loadDialogMetadata(
           sideDialogId,
-          parentDialog.status,
+          callerDialog.status,
         );
         if (metadata) {
           const assignmentFromAsker = await DialogPersistence.loadSideDialogAssignmentFromAsker(
             sideDialogId,
-            parentDialog.status,
+            callerDialog.status,
           );
           originMemberId = assignmentFromAsker.originMemberId;
           if (!activeCalleeDispatch) {
@@ -268,14 +269,14 @@ export async function supplyResponseToAskerDialog(args: {
         }
       } catch (err) {
         log.warn('Failed to load sideDialog metadata for response record', undefined, {
-          parentId: parentDialog.id.selfId,
+          callerId: callerDialog.id.selfId,
           sideDialogId: sideDialogId.selfId,
           error: err,
         });
       }
 
       if (!originMemberId) {
-        originMemberId = parentDialog.agentId;
+        originMemberId = callerDialog.agentId;
       }
 
       if (activeCalleeDispatch) {
@@ -298,7 +299,7 @@ export async function supplyResponseToAskerDialog(args: {
         activeCalleeDispatch === undefined
           ? undefined
           : await DialogPersistence.resolveActiveCallee(
-              parentDialog.id,
+              callerDialog.id,
               {
                 batchId: activeCalleeDispatch.batchId,
                 callId: activeCalleeDispatch.callId,
@@ -306,21 +307,28 @@ export async function supplyResponseToAskerDialog(args: {
                 deliveryMode,
                 directFallbackSource,
               },
-              parentDialog.status,
+              callerDialog.status,
             );
-      const hasQ4H = await parentDialog.hasPendingQ4H();
+      const hasQ4H = await callerDialog.hasPendingQ4H();
       const batchCompleted = activeCalleeOutcome?.batchCompleted === true;
       const shouldRevive = batchCompleted && !hasQ4H;
       if (batchCompleted && activeCalleeOutcome !== undefined) {
         await DialogPersistence.upsertNextStepTrigger(
-          parentDialog.id,
+          callerDialog.id,
           {
             triggerId: `result-arrival:${activeCalleeOutcome.batchId}`,
             kind: 'result_arrival',
             batchId: activeCalleeOutcome.batchId,
           },
-          parentDialog.status,
+          callerDialog.status,
         );
+        globalDialogRegistry.wakeDrive(callerDialog.id.rootId, {
+          source: 'kernel_driver_supply_response',
+          reason: `result_arrival_triggered:type_${callType}`,
+        });
+      }
+      if (activeCalleeOutcome !== undefined) {
+        await broadcastBackgroundCalleeSummary(callerDialog);
       }
       return {
         responderId,
@@ -347,17 +355,17 @@ export async function supplyResponseToAskerDialog(args: {
     const fallbackCallId = typeof result.callId === 'string' ? result.callId.trim() : '';
     const resolvedCallId = normalizedCallId !== '' ? normalizedCallId : fallbackCallId;
     const rootForLookup =
-      parentDialog instanceof MainDialog
-        ? parentDialog
-        : parentDialog instanceof SideDialog
-          ? parentDialog.mainDialog
+      callerDialog instanceof MainDialog
+        ? callerDialog
+        : callerDialog instanceof SideDialog
+          ? callerDialog.mainDialog
           : undefined;
     const lookedUpSideDialog = rootForLookup?.lookupDialog(sideDialogId.selfId);
     const resolvedSideDialog =
       maybeSideDialog ??
       (lookedUpSideDialog instanceof SideDialog ? lookedUpSideDialog : undefined);
     const tellaskerResponseBody = responseText;
-    const tellaskerId = result.originMemberId ?? parentDialog.agentId;
+    const tellaskerId = result.originMemberId ?? callerDialog.agentId;
     const tellaskerResponseText = formatTellaskResponseContent({
       callName: result.callName,
       callId: resolvedCallId,
@@ -381,7 +389,7 @@ export async function supplyResponseToAskerDialog(args: {
       | undefined;
     const carryoverContent =
       carryoverCallSiteCourse !== undefined &&
-      carryoverCallSiteCourse !== parentDialog.currentCourse
+      carryoverCallSiteCourse !== callerDialog.currentCourse
         ? formatTellaskCarryoverResultContent({
             callSiteCourse: carryoverCallSiteCourse,
             callName: result.callName,
@@ -400,13 +408,13 @@ export async function supplyResponseToAskerDialog(args: {
       if (askerCourse === undefined) {
         throw new Error(
           `tellask response anchor invariant violation: missing askerCourse ` +
-            `(parentId=${parentDialog.id.selfId}, sideDialogId=${sideDialogId.selfId}, callId=${resolvedCallId})`,
+            `(callerId=${callerDialog.id.selfId}, sideDialogId=${sideDialogId.selfId}, callId=${resolvedCallId})`,
         );
       }
       assignmentRef = await resolveLatestAssignmentAnchorRef({
         calleeDialogId: sideDialogId,
         callId: resolvedCallId,
-        status: parentDialog.status,
+        status: callerDialog.status,
       });
       if (!assignmentRef) {
         // A Side Dialog can legitimately finish a pending tellask before the queued assignment
@@ -414,7 +422,7 @@ export async function supplyResponseToAskerDialog(args: {
         // the Side Dialog. Keep the asker deep-link anchor, but do not treat the missing
         // local assignment bubble as an invariant violation.
         log.debug('Tellask response anchor has no local assignment anchor', undefined, {
-          parentId: parentDialog.id.selfId,
+          callerId: callerDialog.id.selfId,
           sideDialogId: sideDialogId.selfId,
           callId: resolvedCallId,
           responseCourse: calleeResponseRef.course,
@@ -431,41 +439,47 @@ export async function supplyResponseToAskerDialog(args: {
           targetCallId: resolvedCallId,
           ...toRootGenerationAnchor({
             rootCourse:
-              parentDialog instanceof SideDialog
-                ? parentDialog.mainDialog.currentCourse
-                : parentDialog.currentCourse,
+              callerDialog instanceof SideDialog
+                ? callerDialog.mainDialog.currentCourse
+                : callerDialog.currentCourse,
             rootGenseq:
-              parentDialog instanceof SideDialog
-                ? (parentDialog.mainDialog.activeGenSeqOrUndefined ?? 0)
-                : (parentDialog.activeGenSeqOrUndefined ?? 0),
+              callerDialog instanceof SideDialog
+                ? (callerDialog.mainDialog.activeGenSeqOrUndefined ?? 0)
+                : (callerDialog.activeGenSeqOrUndefined ?? 0),
           }),
         };
         await DialogPersistence.appendEvent(
           sideDialogId,
           calleeResponseRef.course,
           replyResolutionRecord,
-          parentDialog.status,
+          callerDialog.status,
+        );
+        await DialogPersistence.markReplyDeliveryDelivered(
+          sideDialogId,
+          args.replyResolution.callId,
+          replyResolutionRecord.ts,
+          callerDialog.status,
         );
         const deferredReplyReassertion = await DialogPersistence.getDeferredReplyReassertion(
           sideDialogId,
-          parentDialog.status,
+          callerDialog.status,
         );
         if (deferredReplyReassertion?.directive.targetCallId === resolvedCallId) {
           await DialogPersistence.setDeferredReplyReassertion(
             sideDialogId,
             undefined,
-            parentDialog.status,
+            callerDialog.status,
           );
         }
         const activeReplyObligation = await DialogPersistence.loadActiveTellaskReplyObligation(
           sideDialogId,
-          parentDialog.status,
+          callerDialog.status,
         );
         if (activeReplyObligation?.targetCallId === resolvedCallId) {
           await DialogPersistence.setActiveTellaskReplyObligation(
             sideDialogId,
             undefined,
-            parentDialog.status,
+            callerDialog.status,
           );
           if (maybeSideDialog) {
             const nextAskerStackState = await DialogPersistence.loadSideDialogAskerStackState(
@@ -489,24 +503,24 @@ export async function supplyResponseToAskerDialog(args: {
         genseq: calleeResponseRef.genseq,
         ...toRootGenerationAnchor({
           rootCourse:
-            parentDialog instanceof SideDialog
-              ? parentDialog.mainDialog.currentCourse
-              : parentDialog.currentCourse,
+            callerDialog instanceof SideDialog
+              ? callerDialog.mainDialog.currentCourse
+              : callerDialog.currentCourse,
           rootGenseq:
-            parentDialog instanceof SideDialog
-              ? (parentDialog.mainDialog.activeGenSeqOrUndefined ?? 0)
-              : (parentDialog.activeGenSeqOrUndefined ?? 0),
+            callerDialog instanceof SideDialog
+              ? (callerDialog.mainDialog.activeGenSeqOrUndefined ?? 0)
+              : (callerDialog.activeGenSeqOrUndefined ?? 0),
         }),
         assignmentCourse: assignmentRef?.course,
         assignmentGenseq: assignmentRef?.genseq,
-        askerDialogId: parentDialog.id.selfId,
+        askerDialogId: callerDialog.id.selfId,
         askerCourse,
       };
       await DialogPersistence.appendEvent(
         sideDialogId,
         calleeResponseRef.course,
         anchorRecord,
-        parentDialog.status,
+        callerDialog.status,
       );
       await DialogPersistence.mutateDialogLatest(
         sideDialogId,
@@ -517,23 +531,23 @@ export async function supplyResponseToAskerDialog(args: {
               callId: resolvedCallId,
               responseCourse: toDialogCourseNumber(calleeResponseRef.course),
               responseGenseq: toCalleeGenerationSeqNumber(calleeResponseRef.genseq),
-              askerDialogId: parentDialog.id.selfId,
+              askerDialogId: callerDialog.id.selfId,
               askerCourse,
             },
           },
         }),
-        parentDialog.status,
+        callerDialog.status,
       );
     }
 
     await syncPendingTellaskReminderBestEffort(
-      parentDialog,
+      callerDialog,
       'kernel-driver:supplyResponseToAskerDialog',
     );
 
     const responseRouteRef = calleeResponseRef;
 
-    await parentDialog.receiveTellaskResponse(
+    await callerDialog.receiveTellaskResponse(
       result.responderId,
       result.callName,
       result.mentionList,
@@ -570,10 +584,10 @@ export async function supplyResponseToAskerDialog(args: {
         ? {
             type: 'tellask_carryover_msg',
             role: 'user',
-            genseq: parentDialog.activeGenSeqOrUndefined ?? 1,
+            genseq: callerDialog.activeGenSeqOrUndefined ?? 1,
             content: carryoverContent,
             callSiteCourse: carryoverCallSiteCourse!,
-            carryoverCourse: parentDialog.currentCourse,
+            carryoverCourse: callerDialog.currentCourse,
             responderId: result.responderId,
             callName: result.callName,
             tellaskContent: result.tellaskContent,
@@ -647,20 +661,20 @@ export async function supplyResponseToAskerDialog(args: {
                 : {}),
             },
           };
-    await parentDialog.addChatMessages(immediateMirror);
+    await callerDialog.addChatMessages(immediateMirror);
 
     if (result.shouldRevive) {
-      const isRoot = parentDialog instanceof MainDialog;
+      const isRoot = callerDialog instanceof MainDialog;
       const hasRegistryEntry = isRoot
-        ? globalDialogRegistry.get(parentDialog.id.rootId) !== undefined
+        ? globalDialogRegistry.get(callerDialog.id.rootId) !== undefined
         : false;
 
       log.debug(
-        `All Type ${callType} sideDialogs complete, parent ${parentDialog.id.selfId} scheduling auto-revive`,
+        `All Type ${callType} sideDialogs complete, caller ${callerDialog.id.selfId} scheduling auto-revive`,
         undefined,
         {
-          rootId: parentDialog.id.rootId,
-          selfId: parentDialog.id.selfId,
+          rootId: callerDialog.id.rootId,
+          selfId: callerDialog.id.selfId,
           callSiteCourse: result.callSiteCourse,
           callSiteGenseq: result.callSiteGenseq,
           via: isRoot && hasRegistryEntry ? 'backend_loop_trigger' : 'direct_schedule_drive',
@@ -669,31 +683,24 @@ export async function supplyResponseToAskerDialog(args: {
         },
       );
 
-      if (isRoot) {
-        globalDialogRegistry.wakeDrive(parentDialog.id.rootId, {
-          source: 'kernel_driver_supply_response',
-          reason: `all_active_callees_resolved:type_${callType}`,
-        });
-      }
-
       if (result.callSiteCourse === undefined || result.callSiteGenseq === undefined) {
         throw new Error(
           `sideDialog result-arrival invariant violation: missing dispatch batch coordinates ` +
-            `(rootId=${parentDialog.id.rootId}, selfId=${parentDialog.id.selfId}, callId=${resolvedCallId})`,
+            `(rootId=${callerDialog.id.rootId}, selfId=${callerDialog.id.selfId}, callId=${resolvedCallId})`,
         );
       }
       if (result.batchId === undefined) {
         throw new Error(
           `sideDialog result-arrival invariant violation: missing batchId ` +
-            `(rootId=${parentDialog.id.rootId}, selfId=${parentDialog.id.selfId}, callId=${resolvedCallId})`,
+            `(rootId=${callerDialog.id.rootId}, selfId=${callerDialog.id.selfId}, callId=${resolvedCallId})`,
         );
       }
-      scheduleDrive(parentDialog, {
+      scheduleDrive(callerDialog, {
         waitInQue: true,
         driveOptions: {
-          suppressDiligencePush: parentDialog.disableDiligencePush,
+          suppressDiligencePush: callerDialog.disableDiligencePush,
           noPromptSideDialogResumeEntitlement: {
-            callerDialogId: parentDialog.id.selfId,
+            callerDialogId: callerDialog.id.selfId,
             reason: 'resolved_pending_sideDialog_reply',
             sideDialogId: sideDialogId.selfId,
             callType,
@@ -704,14 +711,14 @@ export async function supplyResponseToAskerDialog(args: {
             resolvedCallIds: result.resolvedCallIds,
             triggerCallId: resolvedCallId,
           },
-          source: 'kernel_driver_supply_response_parent_revive',
+          source: 'kernel_driver_supply_response_caller_revive',
           reason: `dispatch_batch_resolved:type_${callType}:c${result.callSiteCourse}:g${result.callSiteGenseq}`,
         },
       });
     }
   } catch (error) {
     log.error('kernel-driver failed to supply sideDialog response', error, {
-      parentId: parentDialog.id.selfId,
+      callerId: callerDialog.id.selfId,
       sideDialogId: sideDialogId.selfId,
     });
     throw error;
@@ -819,7 +826,7 @@ export async function supplySideDialogResponseToSpecificAskerIfPendingV2(args: {
   }
 
   await supplyResponseToAskerDialog({
-    parentDialog: callerDialog,
+    callerDialog: callerDialog,
     sideDialogId: sideDialog.id,
     responseText,
     sideDialog,
@@ -926,7 +933,7 @@ export async function supplySideDialogResponseToAssignedAskerIfPendingV2(args: {
   }
 
   await supplyResponseToAskerDialog({
-    parentDialog: askerDialog,
+    callerDialog: askerDialog,
     sideDialogId: sideDialog.id,
     responseText,
     sideDialog,

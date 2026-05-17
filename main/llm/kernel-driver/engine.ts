@@ -53,7 +53,7 @@ export async function supplyResponseToAskerDialog(
   ...args: KernelDriverSupplyResponseArgs
 ): KernelDriverSupplyResponseResult {
   const [
-    parentDialog,
+    callerDialog,
     sideDialogId,
     responseText,
     callType,
@@ -63,7 +63,7 @@ export async function supplyResponseToAskerDialog(
     directFallbackSource,
   ] = args;
   return await supplyResponseToAskerDialogInternal({
-    parentDialog,
+    callerDialog,
     sideDialogId,
     responseText,
     callType,
@@ -87,7 +87,7 @@ export async function driveDialogStreamCore(
 }
 
 export async function supplyResponseToSideDialogBridge(
-  parentDialog: Dialog,
+  callerDialog: Dialog,
   sideDialogId: DialogID,
   responseText: string,
   callType: 'A' | 'B' | 'C',
@@ -97,7 +97,7 @@ export async function supplyResponseToSideDialogBridge(
   directFallbackSource?: 'saying' | 'thinking_only',
 ): Promise<void> {
   await supplyResponseToAskerDialogInternal({
-    parentDialog,
+    callerDialog,
     sideDialogId,
     responseText,
     callType,

@@ -67,7 +67,7 @@ async function main(): Promise<void> {
       },
       timestamp: createdAt,
       course: 1,
-      parentDialog: {
+      callerDialog: {
         selfId: dlgId.selfId,
         rootId: dlgId.rootId,
       },
@@ -80,6 +80,8 @@ async function main(): Promise<void> {
       mentionList: ['@coder'],
       tellaskContent: 'Please investigate.',
       rootSideDialogCount: 1,
+      callerBackgroundCalleeDialogCount: 0,
+      callerBackgroundFreshBootsReasoningCalleeCount: 0,
       sideDialogNode: {
         selfId: 'sub-1',
         rootId: dlgId.rootId,

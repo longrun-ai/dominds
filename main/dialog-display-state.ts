@@ -22,13 +22,13 @@ import type {
 } from '@longrun-ai/kernel/types/display-state';
 import type {
   DialogExecutionMarker,
-  DialogGenerationRunState,
   DialogLatestFile,
   TellaskReplyDirective,
 } from '@longrun-ai/kernel/types/storage';
 import type { WebSocketMessage } from '@longrun-ai/kernel/types/wire';
 import { formatUnifiedTimestamp } from '@longrun-ai/kernel/utils/time';
 import { DialogID, type Dialog } from './dialog';
+import { getRecoverableGenerationRunState } from './dialog-generation-run';
 import { globalDialogRegistry } from './dialog-global-registry';
 import { isInterruptionReasonManualResumeEligible } from './dialog-interruption';
 import { dialogEventRegistry } from './evt-registry';
@@ -834,32 +834,6 @@ async function computeIdleDisplayStateForReconciliation(
     });
     return null;
   }
-}
-
-export function getRecoverableGenerationRunState(
-  latest: DialogLatestFile | null,
-): Extract<DialogGenerationRunState, { kind: 'open' }> | undefined {
-  if (!latest) {
-    return undefined;
-  }
-  if (latest.generationRunState?.kind !== 'open') {
-    return undefined;
-  }
-  const marker = latest.executionMarker;
-  if (!marker) {
-    return latest.generationRunState;
-  }
-  if (marker.kind === 'dead') {
-    return undefined;
-  }
-  if (
-    marker.kind !== 'interrupted' ||
-    marker.reason.kind === 'pending_runtime_prompt' ||
-    marker.reason.kind === 'pending_reply_obligation'
-  ) {
-    return latest.generationRunState;
-  }
-  return undefined;
 }
 
 export async function reconcileDisplayStatesAfterRestart(): Promise<void> {

@@ -1427,9 +1427,7 @@ function reserveKnownFunctionCallId(
   }
 }
 
-async function loadKnownFunctionCallIdsForCurrentCourse(
-  dialog: Dialog,
-): Promise<ReadonlySet<string>> {
+function collectKnownFunctionCallIdsForCurrentCourse(dialog: Dialog): ReadonlySet<string> {
   const known = new Set<string>();
   const addKnown = (callId: string | undefined): void => {
     const normalized = trimOptionalCallId(callId);
@@ -1438,15 +1436,19 @@ async function loadKnownFunctionCallIdsForCurrentCourse(
     }
   };
   const course = dialog.activeGenCourseOrUndefined ?? dialog.currentCourse;
-  const events = await DialogPersistence.loadCourseEvents(dialog.id, course, dialog.status);
-  for (const event of events) {
-    if (event.type === 'func_call_record' || event.type === 'tellask_call_record') {
-      addKnown(event.id);
-      if (event.type === 'func_call_record') {
-        addKnown(event.rawId);
-        addKnown(event.effectiveId);
-      }
+  for (const msg of dialog.msgs) {
+    if (msg.type !== 'func_call_msg') {
+      continue;
     }
+    if (msg.genseq <= 0) {
+      throw new Error(
+        `kernel-driver function call id invariant violation: invalid func_call_msg genseq ` +
+          `(rootId=${dialog.id.rootId}, selfId=${dialog.id.selfId}, course=${course}, callId=${msg.id})`,
+      );
+    }
+    addKnown(msg.id);
+    addKnown(msg.rawId);
+    addKnown(msg.effectiveId);
   }
   return known;
 }
@@ -1513,7 +1515,7 @@ async function normalizeGeneratedFunctionCallIds(args: {
   dialog: Dialog;
 }): Promise<FuncCallMsg[]> {
   const reservation: FunctionCallIdReservation = {
-    knownCallIds: new Set(await loadKnownFunctionCallIdsForCurrentCourse(args.dialog)),
+    knownCallIds: new Set(collectKnownFunctionCallIdsForCurrentCourse(args.dialog)),
     seenRawIdsThisRound: new Set<string>(),
     nextDuplicateSuffixByRawId: new Map<string, number>(),
   };
@@ -1971,6 +1973,27 @@ async function maybeContinueWithDiligencePrompt(args: {
   return { kind: 'break' };
 }
 
+async function shouldSkipDiligencePromptBeforeGeneration(args: {
+  dlg: Dialog;
+  prompt: KernelDriverPrompt;
+  suppressDiligencePushForDrive: boolean;
+}): Promise<string | undefined> {
+  if (args.prompt.origin !== 'diligence_push') {
+    return undefined;
+  }
+  if (args.dlg.disableDiligencePush) {
+    return 'disabled_on_dialog';
+  }
+  if (args.suppressDiligencePushForDrive) {
+    return 'suppressed_for_drive';
+  }
+  const gate = await evaluateDiligenceAutoContinueGate({
+    dlg: args.dlg,
+    requireIdleRunSlot: false,
+  });
+  return gate.kind === 'blocked' ? gate.reason : undefined;
+}
+
 async function maybePrepareRetryStoppedRecoveryPrompt(args: {
   dlg: Dialog;
   team: Team;
@@ -2366,6 +2389,22 @@ export async function driveDialogStreamCore(
           currentFbrState.promptDelivered !== true;
         pendingPrompt = undefined;
 
+        if (currentPrompt) {
+          const diligenceSkipReason = await shouldSkipDiligencePromptBeforeGeneration({
+            dlg,
+            prompt: currentPrompt,
+            suppressDiligencePushForDrive,
+          });
+          if (diligenceSkipReason !== undefined) {
+            log.debug('kernel-driver skip diligence prompt before generation', undefined, {
+              dialogId: dlg.id.valueOf(),
+              msgId: currentPrompt.msgId,
+              reason: diligenceSkipReason,
+            });
+            break;
+          }
+        }
+
         await dlg.notifyGeneratingStart(currentPrompt?.msgId);
         try {
           if (criticalUserInterjectionRuntimeGuide !== undefined) {
@@ -2373,18 +2412,6 @@ export async function driveDialogStreamCore(
             criticalUserInterjectionRuntimeGuide = undefined;
           }
           if (currentPrompt) {
-            const origin = currentPrompt.origin;
-            if (
-              origin === 'diligence_push' &&
-              (dlg.disableDiligencePush || suppressDiligencePushForDrive)
-            ) {
-              log.debug('kernel-driver skip diligence prompt after disable toggle', undefined, {
-                dialogId: dlg.id.valueOf(),
-                msgId: currentPrompt.msgId,
-              });
-              break;
-            }
-
             if (currentPrompt.skipTaskdoc === true) {
               skipTaskdocForThisDrive = true;
             }
@@ -2471,7 +2498,7 @@ export async function driveDialogStreamCore(
               );
             }
             const renderPromptAsRuntimeGuideBubble =
-              origin === 'runtime' &&
+              currentPrompt.origin === 'runtime' &&
               isStandaloneRuntimeGuidePromptContent(replyGuidance.promptContent);
 
             if (currentRuntimeGuideMsg) {
@@ -2512,7 +2539,7 @@ export async function driveDialogStreamCore(
                 replyGuidance.promptContent,
                 currentPrompt.msgId,
                 'markdown',
-                origin,
+                currentPrompt.origin,
                 persistedUserLanguageCode,
                 q4hAnswerCallId,
                 replyGuidance.persistedTellaskReplyDirective,
@@ -2545,7 +2572,7 @@ export async function driveDialogStreamCore(
                   ? {}
                   : { contentItems: currentPrompt.contentItems }),
                 grammar: 'markdown',
-                origin,
+                origin: currentPrompt.origin,
                 userLanguageCode: persistedUserLanguageCode,
                 q4hAnswerCallId,
               });

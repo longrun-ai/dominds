@@ -1,6 +1,14 @@
 import assert from 'node:assert/strict';
 
 import type { TellaskReplyDirective } from '@longrun-ai/kernel/types/storage';
+import {
+  toAskerCourseNumber,
+  toCalleeGenerationSeqNumber,
+  toCallSiteCourseNo,
+  toCallSiteGenseqNo,
+  toDialogCourseNumber,
+} from '@longrun-ai/kernel/types/storage';
+import { formatUnifiedTimestamp } from '@longrun-ai/kernel/utils/time';
 import { deliverTellaskBackReplyFromDirective } from '../../main/llm/kernel-driver/tellask-special';
 import { DialogPersistence } from '../../main/persistence';
 import {
@@ -23,7 +31,7 @@ function requirePersistedContent(
 async function main(): Promise<void> {
   await withTempRtws(async (tmpRoot) => {
     setWorkLanguage('en');
-    await writeStandardMinds(tmpRoot);
+    await writeStandardMinds(tmpRoot, { includePangu: true });
 
     const liveRoot = await createMainDialog('tester');
     await deliverTellaskBackReplyFromDirective({
@@ -104,6 +112,74 @@ async function main(): Promise<void> {
     assert(
       deliveredResponse,
       'expected restart recovery to deliver tellask result to the tellasker',
+    );
+
+    const sideRoot = await createMainDialog('tester');
+    const sideTargetCallId = 'side-tellask-target';
+    const sideDialog = await sideRoot.createSideDialog(
+      'pangu',
+      ['@pangu'],
+      'Need a side reply tool result after crash.',
+      {
+        callName: 'tellask',
+        originMemberId: 'tester',
+        askerDialogId: sideRoot.id.selfId,
+        callId: sideTargetCallId,
+        callSiteCourse: toCallSiteCourseNo(1),
+        callSiteGenseq: toCallSiteGenseqNo(1),
+        sessionSlug: 'reply-special-side-recovery',
+        collectiveTargets: ['pangu'],
+      },
+    );
+    const sideReplyCallId = 'side-reply-call-after-delivery';
+    const sideReplyTs = formatUnifiedTimestamp(new Date());
+    await DialogPersistence.mutateDialogLatest(
+      sideDialog.id,
+      () => ({
+        kind: 'patch',
+        patch: {
+          replyDelivery: {
+            replyDeliveryId: `${sideDialog.id.selfId}:${sideReplyCallId}`,
+            status: 'delivered',
+            toolResultStatus: 'pending',
+            expectedReplyCallName: 'replyTellask',
+            targetDialogId: sideRoot.id.selfId,
+            targetCallId: sideTargetCallId,
+            replyCallId: sideReplyCallId,
+            replyGenseq: toCallSiteGenseqNo(3),
+            replyContent: 'Side reply already delivered before crash.',
+            createdAt: sideReplyTs,
+            deliveredAt: sideReplyTs,
+          },
+          sideDialogFinalResponse: {
+            callId: sideTargetCallId,
+            responseCourse: toDialogCourseNumber(1),
+            responseGenseq: toCalleeGenerationSeqNumber(3),
+            askerDialogId: sideRoot.id.selfId,
+            askerCourse: toAskerCourseNumber(1),
+          },
+        },
+      }),
+      sideDialog.status,
+    );
+    const watchedSideDialogs = await DialogPersistence.loadDriveWatchedDialogIds(
+      sideRoot.id,
+      sideRoot.status,
+    );
+    assert(
+      watchedSideDialogs.some((dialogId) => dialogId.selfId === sideDialog.id.selfId),
+      'sideDialog with pending reply tool-result recovery must remain in root drive-watch',
+    );
+
+    await recoverPendingReplyTellaskCallsAfterRestart();
+
+    const sideEvents = await DialogPersistence.loadCourseEvents(sideDialog.id, 1, 'running');
+    const sideReplyFuncResult = sideEvents.find(
+      (event) => event.type === 'func_result_record' && event.id === sideReplyCallId,
+    );
+    assert(
+      sideReplyFuncResult,
+      'expected restart recovery to record pending sideDialog reply tool result via drive-watch',
     );
 
     const resolutionOnlyRoot = await createMainDialog('tester');

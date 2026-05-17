@@ -74,8 +74,34 @@ async function dialogNeedsReplyRecovery(dialogId: DialogID): Promise<boolean> {
   );
 }
 
+async function listReplyRecoveryCandidateDialogIds(): Promise<readonly DialogID[]> {
+  const rootDialogIds = await DialogPersistence.listMainDialogIds('running');
+  const candidates: DialogID[] = [];
+  const seen = new Set<string>();
+  for (const rootDialogId of rootDialogIds) {
+    const rootKey = rootDialogId.key();
+    if (!seen.has(rootKey)) {
+      seen.add(rootKey);
+      candidates.push(rootDialogId);
+    }
+    const watchedDialogIds = await DialogPersistence.loadDriveWatchedDialogIds(
+      rootDialogId,
+      'running',
+    );
+    for (const watchedDialogId of watchedDialogIds) {
+      const watchedKey = watchedDialogId.key();
+      if (seen.has(watchedKey)) {
+        continue;
+      }
+      seen.add(watchedKey);
+      candidates.push(watchedDialogId);
+    }
+  }
+  return candidates;
+}
+
 export async function recoverPendingReplyTellaskCallsAfterRestart(): Promise<void> {
-  const dialogIds = await DialogPersistence.listAllDialogIds('running');
+  const dialogIds = await listReplyRecoveryCandidateDialogIds();
   for (const dialogId of dialogIds) {
     try {
       // Startup recovery is also execution-oriented: if a persisted replyTellask* was left

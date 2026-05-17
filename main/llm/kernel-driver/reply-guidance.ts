@@ -169,16 +169,10 @@ async function resolveFreshCurrentSideDialogAssignmentDirective(args: {
     return undefined;
   }
   const targetCallId = currentAssignmentDirective.targetCallId.trim();
-  for (let course = latest.currentCourse; course >= 1; course -= 1) {
-    const events = await DialogPersistence.loadCourseEvents(args.dlg.id, course, args.dlg.status);
-    for (const event of events) {
-      if (
-        event.type === 'tellask_reply_resolution_record' &&
-        event.targetCallId.trim() === targetCallId
-      ) {
-        return undefined;
-      }
-    }
+  if (
+    latest.tellaskResults?.results.some((entry) => entry.callId.trim() === targetCallId) === true
+  ) {
+    return undefined;
   }
   return currentAssignmentDirective;
 }
@@ -216,27 +210,20 @@ async function resolveFreshPendingAskBackReplyDirective(args: {
     return undefined;
   }
   const targetCallId = prompt.tellaskReplyDirective.targetCallId.trim();
-  let sawAskBackCall = false;
-  for (let course = latest.currentCourse; course >= 1; course -= 1) {
-    const events = await DialogPersistence.loadCourseEvents(
-      askBackAskerDialogId,
-      course,
-      mainDialog.status,
-    );
-    for (const event of events) {
-      if (event.type === 'tellask_result_record' && event.callId.trim() === targetCallId) {
-        return undefined;
-      }
-      if (
-        event.type === 'tellask_call_record' &&
-        event.id.trim() === targetCallId &&
-        event.name === 'tellaskBack'
-      ) {
-        sawAskBackCall = true;
-      }
-    }
+  if (latest.tellaskResults?.results.some((entry) => entry.callId.trim() === targetCallId)) {
+    return undefined;
   }
-  return sawAskBackCall ? prompt.tellaskReplyDirective : undefined;
+  const activeObligation = await DialogPersistence.loadActiveTellaskReplyObligation(
+    args.dlg.id,
+    args.dlg.status,
+  );
+  return activeObligation !== undefined &&
+    activeObligation.expectedReplyCallName === 'replyTellaskBack' &&
+    activeObligation.targetDialogId === prompt.tellaskReplyDirective.targetDialogId &&
+    activeObligation.targetCallId === targetCallId &&
+    activeObligation.tellaskContent === prompt.tellaskReplyDirective.tellaskContent
+    ? prompt.tellaskReplyDirective
+    : undefined;
 }
 
 function resolveFreshReplyDirective(args: {

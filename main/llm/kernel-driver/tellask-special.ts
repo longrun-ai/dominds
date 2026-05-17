@@ -21,6 +21,7 @@ import { ensureDialogLoaded } from '../../dialog-instance-registry';
 import { postDialogEvent } from '../../evt-registry';
 import { log } from '../../log';
 import { DialogPersistence } from '../../persistence';
+import { broadcastBackgroundCalleeSummary } from '../../runtime/background-callee-summary';
 import {
   formatDomindsNoteDirectSelfCall,
   formatDomindsNoteFbrDisabled,
@@ -317,7 +318,11 @@ export async function deliverTellaskBackReplyFromDirective(args: {
     );
   }
   if (
-    await hasPersistedTellaskResultRecord(askBackAskerDialog, args.directive.targetCallId.trim())
+    await DialogPersistence.hasRecordedTellaskResult(
+      askBackAskerDialog.id,
+      args.directive.targetCallId.trim(),
+      askBackAskerDialog.status,
+    )
   ) {
     log.warn('replyTellaskBack target tellaskBack result is already resolved', undefined, {
       rootId: askBackAskerDialog.id.rootId,
@@ -377,23 +382,6 @@ export async function deliverTellaskBackReplyFromDirective(args: {
   askBackAskerDialog.setSuspensionState('resumed');
   await reviveDialogIfUnblocked(askBackAskerDialog, args.callbacks, 'reply_tellask_back_delivered');
   return { kind: 'delivered' };
-}
-
-async function hasPersistedTellaskResultRecord(dialog: Dialog, callId: string): Promise<boolean> {
-  if (callId === '') {
-    return false;
-  }
-  const latest = await DialogPersistence.loadDialogLatest(dialog.id, dialog.status);
-  const maxCourse = latest?.currentCourse ?? dialog.currentCourse;
-  for (let course = 1; course <= maxCourse; course += 1) {
-    const events = await DialogPersistence.loadCourseEvents(dialog.id, course, dialog.status);
-    for (const event of events) {
-      if (event.type === 'tellask_result_record' && event.callId.trim() === callId) {
-        return true;
-      }
-    }
-  }
-  return false;
 }
 
 function formatReplyRecoveryFailureResult(args: {
@@ -1351,7 +1339,7 @@ async function reviveDialogIfUnblocked(
   callbacks.scheduleDrive(dialog, {
     waitInQue: true,
     driveOptions: {
-      source: 'kernel_driver_supply_response_parent_revive',
+      source: 'kernel_driver_supply_response_caller_revive',
       reason,
       suppressDiligencePush: dialog.disableDiligencePush,
       noPromptSideDialogResumeEntitlement:
@@ -1729,6 +1717,7 @@ async function executeTellaskCall(
           }),
         );
       });
+      await broadcastBackgroundCalleeSummary(dlg);
       const initialFbrState = createInitialFbrState(fbrEffort);
       await DialogPersistence.mutateDialogLatest(sub.id, () => ({
         kind: 'patch',
@@ -2162,6 +2151,29 @@ async function executeTellaskCall(
                       },
                       pendingOwner.status,
                     );
+                    if (previousOwnerId.selfId !== pendingOwner.id.selfId) {
+                      const previousOwnerDialog =
+                        mainDialog.lookupDialog(previousOwnerId.selfId) ??
+                        (await ensureDialogLoaded(
+                          mainDialog,
+                          previousOwnerId,
+                          pendingOwner.status,
+                        ));
+                      if (previousOwnerDialog !== undefined) {
+                        await broadcastBackgroundCalleeSummary(previousOwnerDialog);
+                      } else {
+                        log.warn(
+                          'Failed to broadcast background callee summary for previous registered tellask owner',
+                          undefined,
+                          {
+                            rootId: mainDialog.id.rootId,
+                            previousOwnerId: previousOwnerId.selfId,
+                            calleeDialogId: existing.id.selfId,
+                            replacedCallId: replacedPending.callId,
+                          },
+                        );
+                      }
+                    }
                   }
                   await DialogPersistence.upsertActiveCalleeFromPendingRecord(
                     pendingOwner.id,
@@ -2244,6 +2256,7 @@ async function executeTellaskCall(
           );
         })();
 
+        await broadcastBackgroundCalleeSummary(pendingOwner);
         await syncPendingTellaskReminderBestEffort(
           pendingOwner,
           'kernel-driver:executeTellaskCall:TypeB:pushPendingAssignment',
@@ -2461,6 +2474,7 @@ async function executeTellaskCall(
             }),
           );
         });
+        await broadcastBackgroundCalleeSummary(dlg);
         await syncPendingTellaskReminderBestEffort(
           dlg,
           'kernel-driver:executeTellaskCall:TypeC:appendPending',

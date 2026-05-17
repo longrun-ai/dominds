@@ -671,29 +671,43 @@ async function main(): Promise<void> {
       },
       'running',
     );
-    await writeYaml(path.join(kSideDir, 'latest.yaml'), {
-      currentCourse: 1,
-      lastModified: kCreatedAt,
-      status: 'active',
-      generating: true,
-      generationRunState: {
-        kind: 'open',
-        course: 1,
-        genseq: 1,
-        phase: 'streaming',
-        acceptedTriggerIds: [],
-        openedAt: kCreatedAt,
+    await DialogPersistence.mutateDialogLatest(kSideId, () => ({
+      kind: 'replace',
+      next: {
+        currentCourse: 1,
+        lastModified: kCreatedAt,
+        status: 'active',
+        generating: true,
+        generationRunState: {
+          kind: 'open',
+          course: 1,
+          genseq: 1,
+          phase: 'streaming',
+          acceptedTriggerIds: [],
+          openedAt: kCreatedAt,
+        },
+        displayState: {
+          kind: 'stopped',
+          reason: { kind: 'pending_reply_obligation' },
+          continueEnabled: true,
+        },
+        executionMarker: {
+          kind: 'interrupted',
+          reason: { kind: 'pending_reply_obligation' },
+        },
       },
-      displayState: {
-        kind: 'stopped',
-        reason: { kind: 'pending_reply_obligation' },
-        continueEnabled: true,
-      },
-      executionMarker: {
-        kind: 'interrupted',
-        reason: { kind: 'pending_reply_obligation' },
-      },
-    });
+    }));
+    const latestKBeforeRestart = await DialogPersistence.loadDialogLatest(kSideId, 'running');
+    assert.ok(latestKBeforeRestart, 'side-k latest fixture should be readable');
+    await DialogPersistence.syncDriveWatchForDialogLatest(kSideId, latestKBeforeRestart, 'running');
+    const watchedKBeforeRestart = await DialogPersistence.loadDriveWatchedDialogIds(
+      kRootId,
+      'running',
+    );
+    assert.ok(
+      watchedKBeforeRestart.some((dialogId) => dialogId.selfId === kSide),
+      'side-k restart fixture should be present in root drive-watch index',
+    );
 
     await getRunControlCountsSnapshot();
     const latestJAfterSnapshot = await DialogPersistence.loadDialogLatest(
@@ -749,6 +763,32 @@ async function main(): Promise<void> {
       true,
       'restart recovery should enqueue dlg-a for backend drive',
     );
+    const latestKAfterRecovery = await DialogPersistence.loadDialogLatest(kSideId, 'running');
+    assert.equal(
+      latestKAfterRecovery?.generating,
+      true,
+      'watched pending-reply-obligation sideDialog restart recovery should keep unresolved durable work recoverable',
+    );
+    assert.equal(
+      latestKAfterRecovery?.generationRunState?.kind,
+      'open',
+      'watched pending-reply-obligation sideDialog restart recovery should preserve open generation state when not yet complete',
+    );
+    const watchedKAfterRecovery = await DialogPersistence.loadDriveWatchedDialogIds(
+      kRootId,
+      'running',
+    );
+    assert.ok(
+      watchedKAfterRecovery.some((dialogId) => dialogId.selfId === kSide),
+      'unresolved watched sideDialog recovery should keep the root drive-watch entry',
+    );
+    assert.equal(
+      globalDialogRegistry.isDriveWakeQueued(kRoot),
+      true,
+      'unresolved watched sideDialog recovery should keep root backend wake queued for precise watch-index driving',
+    );
+    globalDialogRegistry.unregister(kRoot);
+
     await driveQueuedDialogsOnce();
     await waitFor(
       async () =>
@@ -785,11 +825,6 @@ async function main(): Promise<void> {
       'sideDialog restart recovery should deliver replyTellask back to root',
     );
     await waitForAllDialogsUnlocked(sideRoot, 3_000);
-    await waitFor(
-      () => globalDialogRegistry.isDriveWakeQueued(kRoot) === false,
-      3_000,
-      'pending-reply-obligation sideDialog restart recovery should drain before cwd restore',
-    );
 
     const latestB = await DialogPersistence.loadDialogLatest(new DialogID(bRoot), 'running');
     assert.ok(latestB, 'latest.yaml for dlg-b should exist');

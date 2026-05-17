@@ -1508,7 +1508,7 @@ export class DomindsDialogContainer extends HTMLElement {
     // Also allow events for the previous dialog during navigation race conditions
     if (event.dialog) {
       const eventDialog =
-        event.type === 'sideDialog_created_evt' ? event.parentDialog : event.dialog;
+        event.type === 'sideDialog_created_evt' ? event.callerDialog : event.dialog;
       const isCurrentDialog =
         this.currentDialog &&
         eventDialog.selfId === this.currentDialog.selfId &&

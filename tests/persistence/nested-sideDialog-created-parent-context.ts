@@ -132,9 +132,9 @@ async function main(): Promise<void> {
         'global broadcast should include nested sideDialog_created_evt',
       );
       assert.equal(
-        nestedCreatedEvent?.parentDialog.selfId,
+        nestedCreatedEvent?.callerDialog.selfId,
         parentSideDialog.id.selfId,
-        'nested sideDialog live event must point parentDialog at the actual asker sideDialog',
+        'nested sideDialog live event must point callerDialog at the actual asker sideDialog',
       );
       assert.equal(
         nestedCreatedEvent?.sideDialogNode.askerDialogId,

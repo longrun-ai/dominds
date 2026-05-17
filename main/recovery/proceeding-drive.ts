@@ -1,8 +1,7 @@
 import { Dialog, DialogID } from '../dialog';
-import { getRecoverableGenerationRunState } from '../dialog-display-state';
+import { getRecoverableGenerationRunState } from '../dialog-generation-run';
 import { globalDialogRegistry } from '../dialog-global-registry';
 import { ensureDialogLoaded, getOrRestoreMainDialog } from '../dialog-instance-registry';
-import { driveDialogStream } from '../llm/kernel-driver';
 import { createLogger } from '../log';
 import { DialogPersistence } from '../persistence';
 import { findDomindsPersistenceFileError } from '../persistence-errors';
@@ -47,15 +46,42 @@ async function recoverRootProceedingDrive(dialog: Dialog): Promise<void> {
 }
 
 async function recoverSideDialogProceedingDrive(dialog: Dialog): Promise<void> {
-  await driveDialogStream(dialog, undefined, true, {
-    source: 'kernel_driver_sideDialog_resume',
-    reason: 'restart_recovery:persisted_drive_in_progress',
-    resumeInProgressGeneration: true,
-  });
+  const latest = await DialogPersistence.loadDialogLatest(dialog.id, dialog.status);
+  if (latest) {
+    await DialogPersistence.syncDriveWatchForDialogLatest(dialog.id, latest, dialog.status);
+  } else {
+    await DialogPersistence.removeDriveWatchForDialog(dialog.id, dialog.status);
+  }
+  const rootId = new DialogID(dialog.id.rootId);
+  const rootHasPendingNextStepTriggers = await DialogPersistence.hasPendingNextStepTriggers(
+    rootId,
+    dialog.status,
+  );
+  const watchedDialogIds = await DialogPersistence.loadDriveWatchedDialogIds(rootId, dialog.status);
+  if (rootHasPendingNextStepTriggers || watchedDialogIds.length > 0) {
+    globalDialogRegistry.wakeDrive(dialog.id.rootId, {
+      source: 'restart_recovery',
+      reason: 'sideDialog_proceeding_recovered_more_work',
+    });
+  } else {
+    globalDialogRegistry.clearDriveWake(dialog.id.rootId, {
+      source: 'restart_recovery',
+      reason: 'sideDialog_proceeding_recovered_idle',
+    });
+  }
 }
 
 export async function recoverProceedingDrivesAfterRestart(): Promise<void> {
-  const dialogIds = await DialogPersistence.listAllDialogIds('running');
+  const rootDialogIds = await DialogPersistence.listMainDialogIds('running');
+  const dialogIds: DialogID[] = [];
+  for (const rootDialogId of rootDialogIds) {
+    dialogIds.push(rootDialogId);
+    const watchedDialogIds = await DialogPersistence.loadDriveWatchedDialogIds(
+      rootDialogId,
+      'running',
+    );
+    dialogIds.push(...watchedDialogIds);
+  }
   const recoveredRootIds = new Set<string>();
   const recoveredDialogKeys = new Set<string>();
 

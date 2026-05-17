@@ -1597,21 +1597,21 @@ export class DomindsApp extends HTMLElement {
   }
 
   // Type guard to check if WebSocketMessage has dialog context
-  // Also accepts sideDialog events which have parentDialog/sideDialog instead of dialog
+  // Also accepts sideDialog events which have callerDialog/sideDialog instead of dialog
   private hasDialogContext(
     message: WebSocketMessage,
   ): message is WebSocketMessage & { dialog: { selfId: string; rootId: string } } {
-    const msg = message as unknown as { dialog?: unknown; parentDialog?: unknown };
+    const msg = message as unknown as { dialog?: unknown; callerDialog?: unknown };
     const dialog = msg.dialog;
     if (typeof dialog === 'object' && dialog !== null) {
       const d = dialog as Record<string, unknown>;
       if (typeof d.selfId === 'string' && typeof d.rootId === 'string') return true;
     }
 
-    const parentDialog = msg.parentDialog;
-    if (typeof parentDialog === 'object' && parentDialog !== null) {
-      const pd = parentDialog as Record<string, unknown>;
-      if (typeof pd.selfId === 'string' && typeof pd.rootId === 'string') return true;
+    const callerDialog = msg.callerDialog;
+    if (typeof callerDialog === 'object' && callerDialog !== null) {
+      const cd = callerDialog as Record<string, unknown>;
+      if (typeof cd.selfId === 'string' && typeof cd.rootId === 'string') return true;
     }
 
     return false;
@@ -1625,7 +1625,7 @@ export class DomindsApp extends HTMLElement {
     if ('dialog' in message && message.dialog) {
       return message.dialog.selfId;
     }
-    // SideDialog events (have parentDialog/sideDialog)
+    // SideDialog events (have callerDialog/sideDialog)
     if ('sideDialog' in message && message.sideDialog) {
       return message.sideDialog.selfId;
     }
@@ -10102,24 +10102,23 @@ export class DomindsApp extends HTMLElement {
         agentId: currentDialog.agentId,
       });
 
-      // For sideDialogs, we need to find parent from currently visible hierarchy.
+      // For sideDialogs, find the caller from currently visible hierarchy.
       const currentDialogData = this.findDisplayedDialogByIds(
         currentDialog.rootId,
         currentDialog.selfId,
       );
       if (currentDialogData?.askerDialogId) {
-        // This is a sideDialog, find the parent
-        const parentDialog = this.findDisplayedDialogByIds(
+        const callerDialog = this.findDisplayedDialogByIds(
           currentDialog.rootId,
           currentDialogData.askerDialogId,
         );
-        if (parentDialog) {
+        if (callerDialog) {
           current = {
-            rootId: parentDialog.rootId,
-            selfId: parentDialog.selfId || parentDialog.rootId,
-            agentId: parentDialog.agentId,
+            rootId: callerDialog.rootId,
+            selfId: callerDialog.selfId || callerDialog.rootId,
+            agentId: callerDialog.agentId,
             agentName: '',
-            taskDocPath: parentDialog.taskDocPath || '',
+            taskDocPath: callerDialog.taskDocPath || '',
           };
           continue;
         }
@@ -11704,10 +11703,10 @@ export class DomindsApp extends HTMLElement {
 
           if (sideDialogEvent.callName === 'freshBootsReasoning') {
             this.setDialogBackgroundCalleeCounts(
-              sideDialogEvent.parentDialog.rootId,
-              sideDialogEvent.parentDialog.selfId,
-              sideDialogEvent.parentBackgroundCalleeDialogCount,
-              sideDialogEvent.parentBackgroundFreshBootsReasoningCalleeCount,
+              sideDialogEvent.callerDialog.rootId,
+              sideDialogEvent.callerDialog.selfId,
+              sideDialogEvent.callerBackgroundCalleeDialogCount,
+              sideDialogEvent.callerBackgroundFreshBootsReasoningCalleeCount,
             );
           }
 
@@ -11843,6 +11842,16 @@ export class DomindsApp extends HTMLElement {
             await routedDialogContainer.handleDialogEvent(message as TypedDialogEvent);
           }
 
+          break;
+        }
+
+        case 'dlg_background_callee_summary_evt': {
+          this.setDialogBackgroundCalleeCounts(
+            dialog.rootId,
+            dialog.selfId,
+            message.backgroundCalleeDialogCount,
+            message.backgroundFreshBootsReasoningCalleeCount,
+          );
           break;
         }
 

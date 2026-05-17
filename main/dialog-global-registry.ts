@@ -6,7 +6,10 @@ import {
   type SubChan,
 } from '@longrun-ai/kernel/evt';
 import type { MainDialog } from './dialog';
+import { createLogger } from './log';
 import { DialogPersistence } from './persistence';
+
+const log = createLogger('dialog-global-registry');
 
 type RegistryEntry = {
   mainDialog: MainDialog;
@@ -70,14 +73,20 @@ class GlobalDialogRegistry {
         const hasPendingNextStepTriggers = await DialogPersistence.hasPendingNextStepTriggers(
           mainDialog.id,
         );
-        if (hasPendingNextStepTriggers) {
+        const watchedDialogIds = await DialogPersistence.loadDriveWatchedDialogIds(mainDialog.id);
+        if (hasPendingNextStepTriggers || watchedDialogIds.length > 0) {
           this.wakeDrive(mainDialog.id.rootId, {
             source: 'dialog_registry_hydration',
-            reason: 'persisted_next_step_triggers',
+            reason: hasPendingNextStepTriggers
+              ? 'persisted_next_step_triggers'
+              : 'persisted_drive_watch',
           });
         }
-      } catch {
-        // Best-effort hydration; backend driver will still function for runtime-triggered drives.
+      } catch (error: unknown) {
+        log.warn('Failed to hydrate persisted drive wake for registered main dialog', error, {
+          rootId: mainDialog.id.rootId,
+          selfId: mainDialog.id.selfId,
+        });
       }
     })();
   }

@@ -764,19 +764,19 @@ async function handleDeclareSideDialogDead(
     return;
   }
 
-  if (latest.executionMarker?.kind === 'dead') {
-    // Idempotent
-    return;
+  if (latest.executionMarker?.kind !== 'dead') {
+    // Best-effort abort if the dialog is currently proceeding.
+    await requestInterruptDialog(dialogIdObj, 'emergency_stop');
+
+    await setDialogExecutionMarker(dialogIdObj, {
+      kind: 'dead',
+      reason: { kind: 'declared_by_user' },
+    });
+    await setDialogDisplayState(dialogIdObj, {
+      kind: 'dead',
+      reason: { kind: 'declared_by_user' },
+    });
   }
-
-  // Best-effort abort if the dialog is currently proceeding.
-  await requestInterruptDialog(dialogIdObj, 'emergency_stop');
-
-  await setDialogExecutionMarker(dialogIdObj, {
-    kind: 'dead',
-    reason: { kind: 'declared_by_user' },
-  });
-  await setDialogDisplayState(dialogIdObj, { kind: 'dead', reason: { kind: 'declared_by_user' } });
 
   // If an askerDialog still has an active callee dispatch for this dialog, supply a system-style
   // response so the askerDialog can handle the failure reason.
@@ -814,7 +814,7 @@ async function handleDeclareSideDialogDead(
     return;
   }
 
-  const parentDialog = await restoreDialogForDrive(askerDialogIdObj, 'running');
+  const callerDialog = await restoreDialogForDrive(askerDialogIdObj, 'running');
 
   const responseText = formatDeclaredDeadSideDialogNotice(
     getWorkLanguage(),
@@ -829,7 +829,7 @@ async function handleDeclareSideDialogDead(
         : `${responseText}\n\nHuman user note:\n${note}`;
 
   await supplyResponseToAskerDialog(
-    parentDialog,
+    callerDialog,
     dialogIdObj,
     responseTextWithNote,
     activeCalleeDispatch.callType,

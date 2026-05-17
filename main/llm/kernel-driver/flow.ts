@@ -500,6 +500,7 @@ async function clearStaleSideDialogRunControlForFinalResponse(args: {
     }),
     args.dialog.status,
   );
+  await DialogPersistence.removeDriveWatchForDialog(args.dialog.id, args.dialog.status);
   return {
     cleared: true,
     previousGenerating: latest.generating ?? null,
@@ -518,7 +519,7 @@ function hasNoPromptSideDialogResumeEntitlement(
   return entitlement.callerDialogId === dialog.id.selfId;
 }
 
-function hasParentReviveEntitlement(
+function hasCallerReviveEntitlement(
   dialog: Dialog,
   driveOptions: KernelDriverDriveOptions | undefined,
 ): boolean {
@@ -527,7 +528,7 @@ function hasParentReviveEntitlement(
     return false;
   }
   if (
-    driveOptions?.source !== 'kernel_driver_supply_response_parent_revive' ||
+    driveOptions?.source !== 'kernel_driver_supply_response_caller_revive' ||
     entitlement.callerDialogId !== dialog.id.selfId
   ) {
     return false;
@@ -665,9 +666,11 @@ async function inspectNoPromptSideDialogDrive(args: {
     args.driveOptions?.allowResumeFromInterrupted === true &&
     latest?.executionMarker?.kind === 'interrupted';
   const inProgressGenerationResumeAllowed = args.driveOptions?.resumeInProgressGeneration === true;
-  const supplyResponseParentReviveAllowed =
-    source === 'kernel_driver_supply_response_parent_revive' &&
+  const supplyResponseCallerReviveAllowed =
+    source === 'kernel_driver_supply_response_caller_revive' &&
     hasNoPromptSideDialogResumeEntitlement(args.dialog, args.driveOptions);
+  const backendLoopDurableWorkAllowed =
+    source === 'kernel_driver_backend_loop' && (latest?.nextStep?.triggers.length ?? 0) > 0;
   const replyObligationFollowUpAllowed =
     source === 'kernel_driver_follow_up' &&
     args.driveOptions?.noPromptSideDialogResumeEntitlement?.reason ===
@@ -686,7 +689,8 @@ async function inspectNoPromptSideDialogDrive(args: {
   if (
     !explicitInterruptedResumeAllowed &&
     !inProgressGenerationResumeAllowed &&
-    !supplyResponseParentReviveAllowed &&
+    !supplyResponseCallerReviveAllowed &&
+    !backendLoopDurableWorkAllowed &&
     !replyObligationFollowUpAllowed
   ) {
     return {
@@ -945,6 +949,9 @@ export async function executeDriveRound(args: {
         const inspection = await inspectNoPromptSideDialogDrive({ dialog, driveOptions });
         if (inspection.shouldReject && inspection.rejection === 'finalized_after_response_anchor') {
           const cleanup = await clearStaleSideDialogRunControlForFinalResponse({ dialog });
+          if (!cleanup.cleared) {
+            await DialogPersistence.removeDriveWatchForDialog(dialog.id, dialog.status);
+          }
           log.warn(
             'Dropped stale no-prompt sideDialog drive after final response anchor',
             undefined,
@@ -1061,10 +1068,10 @@ export async function executeDriveRound(args: {
       // Do not refactor this branch using only `displayState` or only the previous interrupted
       // marker. The correct behavior emerges from combining fresh suspension facts, queued prompt
       // state, and the deferred reply reassertion logic elsewhere.
-      const hasEntitledParentRevive = hasParentReviveEntitlement(dialog, driveOptions);
+      const hasEntitledCallerRevive = hasCallerReviveEntitlement(dialog, driveOptions);
       const suspension = resumeFromInterjectionPause
         ? await loadFreshSuspensionStatusFromPersistence(dialog)
-        : hasEntitledParentRevive
+        : hasEntitledCallerRevive
           ? await loadFreshSuspensionStatusFromPersistence(dialog)
           : await dialog.getSuspensionStatus();
       const queuedPrompt: UpNextPrompt | undefined = dialog.peekUpNext();

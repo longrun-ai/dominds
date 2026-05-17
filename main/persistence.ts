@@ -69,6 +69,7 @@ import type {
   DialogPendingRuntimePrompt,
   DialogReplyDeliveryState,
   DialogSideDialogFinalResponseState,
+  DialogTellaskResultState,
   DialogUserWaitState,
   FuncCallRecord,
   FuncResultRecord,
@@ -132,6 +133,7 @@ import {
   MainDialog,
   SideDialog,
 } from './dialog';
+import { hasDurableDriveWork } from './dialog-drive-work';
 import { isInterruptionReasonManualResumeEligible } from './dialog-interruption';
 import { postDialogEvent, postDialogEventById } from './evt-registry';
 import { ChatMessage, FuncResultMsg, TellaskCarryoverMsg, TellaskResultMsg } from './llm/client';
@@ -211,6 +213,7 @@ function summarizeLatestProjectionState(latest: DialogLatestFile): Record<string
     nextStepTriggerCount: latest.nextStep?.triggers.length ?? 0,
     userWait: latest.userWait ?? null,
     replyDelivery: latest.replyDelivery ?? null,
+    tellaskResultCount: latest.tellaskResults?.results.length ?? 0,
     latestAssignmentAnchor: latest.latestAssignmentAnchor ?? null,
     sideDialogFinalResponse: latest.sideDialogFinalResponse ?? null,
     pendingRuntimePromptMsgId: latest.pendingRuntimePrompt?.msgId ?? null,
@@ -253,6 +256,7 @@ function summarizeLatestMutationPatch(
     nextStepTriggerCount: patch.nextStep?.triggers.length ?? null,
     userWait: patch.userWait ?? null,
     replyDelivery: patch.replyDelivery ?? null,
+    tellaskResultCount: patch.tellaskResults?.results.length ?? null,
     latestAssignmentAnchor: patch.latestAssignmentAnchor ?? null,
     sideDialogFinalResponse: patch.sideDialogFinalResponse ?? null,
     pendingRuntimePromptMsgId: patch.pendingRuntimePrompt?.msgId ?? null,
@@ -1978,6 +1982,55 @@ function parseDialogReplyDeliveryState(value: unknown): DialogReplyDeliveryState
   };
 }
 
+function isTellaskBusinessResultCallName(
+  value: unknown,
+): value is DialogTellaskResultState['results'][number]['callName'] {
+  return (
+    value === 'tellask' ||
+    value === 'tellaskSessionless' ||
+    value === 'tellaskBack' ||
+    value === 'askHuman' ||
+    value === 'freshBootsReasoning'
+  );
+}
+
+function parseDialogTellaskResultState(value: unknown): DialogTellaskResultState | null {
+  if (!isRecord(value)) return null;
+  if (!Array.isArray(value.results)) return null;
+  const results: DialogTellaskResultState['results'][number][] = [];
+  const seen = new Set<string>();
+  for (const raw of value.results) {
+    if (!isRecord(raw)) return null;
+    const callId = raw.callId;
+    const callName = raw.callName;
+    const course = parsePositiveIntegerField(raw.course);
+    const recordedAt = raw.recordedAt;
+    const resultRecordId = raw.resultRecordId;
+    if (
+      typeof callId !== 'string' ||
+      callId.trim() === '' ||
+      !isTellaskBusinessResultCallName(callName) ||
+      course === null ||
+      typeof recordedAt !== 'string' ||
+      recordedAt.trim() === '' ||
+      typeof resultRecordId !== 'string' ||
+      resultRecordId.trim() === ''
+    ) {
+      return null;
+    }
+    if (seen.has(callId)) return null;
+    seen.add(callId);
+    results.push({
+      callId,
+      callName,
+      course: toDialogCourseNumber(course),
+      recordedAt,
+      resultRecordId,
+    });
+  }
+  return { results };
+}
+
 function parseDialogLatestFile(value: unknown): DialogLatestFile | null {
   if (!isRecord(value)) return null;
 
@@ -2102,6 +2155,11 @@ function parseDialogLatestFile(value: unknown): DialogLatestFile | null {
   const replyDelivery: DialogReplyDeliveryState | null | undefined =
     replyDeliveryRaw === undefined ? undefined : parseDialogReplyDeliveryState(replyDeliveryRaw);
   if (replyDelivery === null) return null;
+
+  const tellaskResultsRaw = (value as Record<string, unknown>).tellaskResults;
+  const tellaskResults: DialogTellaskResultState | null | undefined =
+    tellaskResultsRaw === undefined ? undefined : parseDialogTellaskResultState(tellaskResultsRaw);
+  if (tellaskResults === null) return null;
 
   const sideDialogFinalResponseRaw = (value as Record<string, unknown>).sideDialogFinalResponse;
   const sideDialogFinalResponse: DialogSideDialogFinalResponseState | null | undefined = (() => {
@@ -2228,6 +2286,7 @@ function parseDialogLatestFile(value: unknown): DialogLatestFile | null {
     nextStep,
     userWait,
     replyDelivery,
+    tellaskResults,
     latestAssignmentAnchor,
     sideDialogFinalResponse,
     fbrState,
@@ -2610,7 +2669,7 @@ export class DiskFileDialogStore extends DialogStore {
     await DialogPersistence.saveSideDialogMetadata(sideDialogId, metadata);
 
     const rootAnchor = resolveRootGenerationAnchor(askerDialog);
-    const parentCourse = askerDialog.activeGenCourseOrUndefined ?? askerDialog.currentCourse;
+    const callerCourse = askerDialog.activeGenCourseOrUndefined ?? askerDialog.currentCourse;
     const sideDialogCreatedRecord: SideDialogCreatedRecord = {
       ts: nowTs,
       type: 'sideDialog_created_record',
@@ -2634,7 +2693,7 @@ export class DiskFileDialogStore extends DialogStore {
         effectiveFbrEffort: options.effectiveFbrEffort,
       },
     };
-    await this.appendEvent(askerDialog, parentCourse, sideDialogCreatedRecord);
+    await this.appendEvent(askerDialog, callerCourse, sideDialogCreatedRecord);
     const initialSideDialogDisplayState = {
       kind: 'idle_waiting_user',
     } satisfies DialogDisplayState;
@@ -2659,12 +2718,12 @@ export class DiskFileDialogStore extends DialogStore {
       mainDialog.id,
       rootStatus,
     );
-    const parentBackgroundCalleeDialogs = await DialogPersistence.loadActiveCalleeDispatches(
+    const callerBackgroundCalleeDialogs = await DialogPersistence.loadActiveCalleeDispatches(
       askerDialog.id,
       askerDialog.status,
     );
-    const parentBackgroundCalleeDialogCount = parentBackgroundCalleeDialogs.length;
-    const parentBackgroundFreshBootsReasoningCalleeCount = parentBackgroundCalleeDialogs.filter(
+    const callerBackgroundCalleeDialogCount = callerBackgroundCalleeDialogs.length;
+    const callerBackgroundFreshBootsReasoningCalleeCount = callerBackgroundCalleeDialogs.filter(
       (entry) => entry.callName === 'freshBootsReasoning',
     ).length;
 
@@ -2675,8 +2734,8 @@ export class DiskFileDialogStore extends DialogStore {
         rootId: sideDialogId.rootId,
       },
       timestamp: nowTs,
-      course: parentCourse,
-      parentDialog: {
+      course: callerCourse,
+      callerDialog: {
         selfId: askerDialog.id.selfId,
         rootId: askerDialog.id.rootId,
       },
@@ -2689,8 +2748,8 @@ export class DiskFileDialogStore extends DialogStore {
       mentionList,
       tellaskContent,
       rootSideDialogCount,
-      parentBackgroundCalleeDialogCount,
-      parentBackgroundFreshBootsReasoningCalleeCount,
+      callerBackgroundCalleeDialogCount,
+      callerBackgroundFreshBootsReasoningCalleeCount,
       sideDialogNode: {
         selfId: sideDialogId.selfId,
         rootId: sideDialogId.rootId,
@@ -2768,12 +2827,7 @@ export class DiskFileDialogStore extends DialogStore {
 
   public async receiveTellaskResult(dialog: Dialog, result: TellaskResultMsg): Promise<void> {
     const course = dialog.activeGenCourseOrUndefined ?? dialog.currentCourse;
-    const existingTellaskResult = await this.findExistingTellaskResultRecord(
-      dialog,
-      course,
-      result.callId,
-    );
-    if (existingTellaskResult) {
+    if (await DialogPersistence.hasRecordedTellaskResult(dialog.id, result.callId, dialog.status)) {
       await this.raiseDuplicateCallResultInvariantViolation({
         dialog,
         kind: 'tellask_result',
@@ -2787,6 +2841,7 @@ export class DiskFileDialogStore extends DialogStore {
     }
     const record = buildTellaskResultRecord(result);
     await this.appendEvent(dialog, course, record);
+    await DialogPersistence.recordTellaskResult(dialog.id, record, course, dialog.status);
     postDialogEvent(dialog, buildTellaskResultEvent(result, course));
   }
 
@@ -2827,24 +2882,6 @@ export class DiskFileDialogStore extends DialogStore {
         continue;
       }
       if (event.id !== callId) {
-        continue;
-      }
-      return event;
-    }
-    return undefined;
-  }
-
-  private async findExistingTellaskResultRecord(
-    dialog: Dialog,
-    course: number,
-    callId: string,
-  ): Promise<TellaskResultRecord | undefined> {
-    const events = await DialogPersistence.loadCourseEvents(dialog.id, course, dialog.status);
-    for (const event of events) {
-      if (event.type !== 'tellask_result_record') {
-        continue;
-      }
-      if (event.callId !== callId) {
         continue;
       }
       return event;
@@ -3012,6 +3049,8 @@ export class DiskFileDialogStore extends DialogStore {
           kind: 'patch',
           patch: {
             generating: true,
+            displayState: { kind: 'proceeding' },
+            executionMarker: undefined,
             nextStep,
             generationRunState: {
               kind: 'open',
@@ -4019,11 +4058,32 @@ export class DiskFileDialogStore extends DialogStore {
               existingPending.status === 'pending' &&
               existingPending.replyCallId !== id
             ) {
-              throw new Error(
-                `persistTellaskCall invariant violation: duplicate pending reply delivery ` +
-                  `(rootId=${dialog.id.rootId}, selfId=${dialog.id.selfId}, existing=${existingPending.replyCallId}, incoming=${id})`,
+              log.warn(
+                'Replacing stale pending reply delivery with current reply tool call',
+                undefined,
+                {
+                  rootId: dialog.id.rootId,
+                  selfId: dialog.id.selfId,
+                  existingReplyDeliveryId: existingPending.replyDeliveryId,
+                  existingReplyCallId: existingPending.replyCallId,
+                  existingTargetDialogId: existingPending.targetDialogId,
+                  existingTargetCallId: existingPending.targetCallId,
+                  incomingReplyDeliveryId: replyDeliveryId,
+                  incomingReplyCallId: id,
+                  incomingTargetDialogId: activeReplyObligation.targetDialogId,
+                  incomingTargetCallId: activeReplyObligation.targetCallId,
+                },
               );
             }
+            const nextStepWithoutStaleReplyDelivery =
+              existingPending === undefined
+                ? previous.nextStep
+                : removeNextStepTrigger(
+                    previous.nextStep,
+                    (trigger) =>
+                      trigger.kind === 'reply_delivery_recovery' &&
+                      trigger.replyDeliveryId === existingPending.replyDeliveryId,
+                  );
             return {
               kind: 'patch',
               patch: {
@@ -4039,7 +4099,7 @@ export class DiskFileDialogStore extends DialogStore {
                   replyContent: parsed.replyContent,
                   createdAt: tellaskCallEvent.ts,
                 },
-                nextStep: upsertNextStepTrigger(previous.nextStep, {
+                nextStep: upsertNextStepTrigger(nextStepWithoutStaleReplyDelivery, {
                   triggerId: buildReplyDeliveryRecoveryTriggerId(replyDeliveryId),
                   kind: 'reply_delivery_recovery',
                   replyDeliveryId,
@@ -4235,39 +4295,39 @@ export class DiskFileDialogStore extends DialogStore {
         }
         const assignmentFromAsker = getDialogAskerStackCurrentAssignment(askerStack);
 
-        const parentIds: string[] = [];
-        const maybePushParentId = (candidate: string | undefined): void => {
+        const callerIds: string[] = [];
+        const maybePushCallerId = (candidate: string | undefined): void => {
           if (!candidate) return;
           if (candidate === mainDialog.id.rootId) return;
           if (candidate === sideDialogId.selfId) return;
-          if (parentIds.includes(candidate)) return;
-          parentIds.push(candidate);
+          if (callerIds.includes(candidate)) return;
+          callerIds.push(candidate);
         };
-        maybePushParentId(assignmentFromAsker.askerDialogId);
+        maybePushCallerId(assignmentFromAsker.askerDialogId);
 
-        for (const parentId of parentIds) {
-          if (mainDialog.lookupDialog(parentId)) {
+        for (const callerId of callerIds) {
+          if (mainDialog.lookupDialog(callerId)) {
             continue;
           }
-          const parentDialogId = new DialogID(parentId, mainDialog.id.rootId);
-          const parentMeta = await DialogPersistence.loadDialogMetadata(parentDialogId, status);
-          if (!parentMeta) {
+          const callerDialogId = new DialogID(callerId, mainDialog.id.rootId);
+          const callerMeta = await DialogPersistence.loadDialogMetadata(callerDialogId, status);
+          if (!callerMeta) {
             throw new Error(
-              `SideDialog registry restore invariant violation: missing parent metadata ` +
-                `(rootId=${mainDialog.id.rootId}, childId=${sideDialogId.selfId}, parentId=${parentId})`,
+              `SideDialog registry restore invariant violation: missing caller metadata ` +
+                `(rootId=${mainDialog.id.rootId}, calleeId=${sideDialogId.selfId}, callerId=${callerId})`,
             );
           }
-          if (!isSideDialogMetadataFile(parentMeta)) {
+          if (!isSideDialogMetadataFile(callerMeta)) {
             throw new Error(
-              `SideDialog registry restore invariant violation: parent is not a sideDialog ` +
-                `(rootId=${mainDialog.id.rootId}, childId=${sideDialogId.selfId}, parentId=${parentId})`,
+              `SideDialog registry restore invariant violation: caller is not a sideDialog ` +
+                `(rootId=${mainDialog.id.rootId}, calleeId=${sideDialogId.selfId}, callerId=${callerId})`,
             );
           }
-          await ensureSideDialogLoaded(parentDialogId, nextAncestry);
-          if (!mainDialog.lookupDialog(parentId)) {
+          await ensureSideDialogLoaded(callerDialogId, nextAncestry);
+          if (!mainDialog.lookupDialog(callerId)) {
             throw new Error(
-              `SideDialog registry restore invariant violation: parent restore failed ` +
-                `(rootId=${mainDialog.id.rootId}, childId=${sideDialogId.selfId}, parentId=${parentId})`,
+              `SideDialog registry restore invariant violation: caller restore failed ` +
+                `(rootId=${mainDialog.id.rootId}, calleeId=${sideDialogId.selfId}, callerId=${callerId})`,
             );
           }
         }
@@ -5207,13 +5267,13 @@ export class DiskFileDialogStore extends DialogStore {
           new DialogID(sideDialogId.rootId),
           persistedStatus,
         );
-        const parentDialogId = new DialogID(dialog.id.selfId, dialog.id.rootId);
-        const parentBackgroundCalleeDialogs = await DialogPersistence.loadActiveCalleeDispatches(
-          parentDialogId,
+        const callerDialogId = new DialogID(dialog.id.selfId, dialog.id.rootId);
+        const callerBackgroundCalleeDialogs = await DialogPersistence.loadActiveCalleeDispatches(
+          callerDialogId,
           persistedStatus,
         );
-        const parentBackgroundCalleeDialogCount = parentBackgroundCalleeDialogs.length;
-        const parentBackgroundFreshBootsReasoningCalleeCount = parentBackgroundCalleeDialogs.filter(
+        const callerBackgroundCalleeDialogCount = callerBackgroundCalleeDialogs.length;
+        const callerBackgroundFreshBootsReasoningCalleeCount = callerBackgroundCalleeDialogs.filter(
           (entry) => entry.callName === 'freshBootsReasoning',
         ).length;
         const sideBackgroundCalleeDialogs = await DialogPersistence.loadActiveCalleeDispatches(
@@ -5234,7 +5294,7 @@ export class DiskFileDialogStore extends DialogStore {
             selfId: sideDialogId.selfId,
             rootId: sideDialogId.rootId,
           },
-          parentDialog: {
+          callerDialog: {
             selfId: dialog.id.selfId,
             rootId: dialog.id.rootId,
           },
@@ -5247,8 +5307,8 @@ export class DiskFileDialogStore extends DialogStore {
           mentionList: event.mentionList,
           tellaskContent: event.tellaskContent,
           rootSideDialogCount,
-          parentBackgroundCalleeDialogCount,
-          parentBackgroundFreshBootsReasoningCalleeCount,
+          callerBackgroundCalleeDialogCount,
+          callerBackgroundFreshBootsReasoningCalleeCount,
           sideDialogNode: {
             selfId: sideMeta.id,
             rootId: sideDialogId.rootId,
@@ -5533,6 +5593,10 @@ type DialogLatestMutation =
   | { kind: 'patch'; patch: DialogLatestPatch }
   | { kind: 'replace'; next: DialogLatestFile };
 
+type DialogDriveWatchFile = Readonly<{
+  dialogs: readonly string[];
+}>;
+
 type MainDialogWriteBackCancellationToken = Readonly<{
   scopeKey: string;
   generation: number;
@@ -5561,6 +5625,10 @@ export class DialogPersistence {
   private static readonly DONE_DIR = 'done';
   private static readonly ARCHIVE_DIR = 'archive';
   private static readonly SIDE_DIALOGS_DIR = 'sideDialogs';
+
+  private static isSideDialogsDirectoryName(name: string): boolean {
+    return name === this.SIDE_DIALOGS_DIR || name.toLowerCase() === 'subdialogs';
+  }
   private static readonly quarantinedMainDialogScopes = new Set<string>();
 
   private static readonly LATEST_WRITEBACK_WINDOW_MS = 300;
@@ -5573,6 +5641,7 @@ export class DialogPersistence {
   private static readonly q4hWriteBack: Map<string, Q4HWriteBackEntry> = new Map();
 
   private static readonly activeCalleesMutexes: Map<string, AsyncFifoMutex> = new Map();
+  private static readonly driveWatchMutexes: Map<string, AsyncFifoMutex> = new Map();
 
   private static readonly courseAppendMutexes: Map<string, AsyncFifoMutex> = new Map();
   private static readonly mainDialogWriteBackCancelGenerations: Map<string, number> = new Map();
@@ -5617,9 +5686,21 @@ export class DialogPersistence {
     return created;
   }
 
+  private static getDriveWatchMutex(key: string): AsyncFifoMutex {
+    const existing = this.driveWatchMutexes.get(key);
+    if (existing) return existing;
+    const created = new AsyncFifoMutex();
+    this.driveWatchMutexes.set(key, created);
+    return created;
+  }
+
   private static getLatestWriteBackKey(dialogId: DialogID, status: DialogStatusKind): string {
     // Include dialogs root dir to avoid cross-test/process.cwd collisions.
     return `${this.getDialogsRootDir()}|${status}|${dialogId.valueOf()}`;
+  }
+
+  private static getDriveWatchKey(rootDialogId: DialogID, status: DialogStatusKind): string {
+    return `${this.getDialogsRootDir()}|${status}|${rootDialogId.rootId}|drive-watch`;
   }
 
   private static getQ4HWriteBackKey(dialogId: DialogID, status: DialogStatusKind): string {
@@ -6377,6 +6458,101 @@ export class DialogPersistence {
       log.error('Failed to list dialogs:', error);
       return [];
     }
+  }
+
+  static async listMainDialogIds(status: DialogStatusKind = 'running'): Promise<DialogID[]> {
+    const statusDir = this.getDialogsRootDir();
+    const specificDir = path.join(
+      statusDir,
+      getPersistableStatusDirName(status, 'DialogPersistence.listMainDialogIds'),
+    );
+    const result: DialogID[] = [];
+
+    const visit = async (
+      dirPath: string,
+      relativePath: string,
+      depth: number,
+    ): Promise<void> => {
+      let entries: fs.Dirent[];
+      try {
+        entries = await fs.promises.readdir(dirPath, { withFileTypes: true });
+      } catch (error: unknown) {
+        log.warn(`listMainDialogIds: Error reading directory ${dirPath}:`, error);
+        return;
+      }
+
+      for (const entry of entries) {
+        const fullPath = path.join(dirPath, entry.name);
+        const entryRelativePath = relativePath ? path.join(relativePath, entry.name) : entry.name;
+        if (entry.isDirectory()) {
+          if (this.isSideDialogsDirectoryName(entry.name)) {
+            continue;
+          }
+          await visit(fullPath, entryRelativePath, depth + 1);
+          continue;
+        }
+        if (entry.name !== 'dialog.yaml') {
+          continue;
+        }
+        try {
+          const content = await readPersistenceTextFile({
+            filePath: fullPath,
+            source: 'dialog_metadata',
+            format: 'yaml',
+          });
+          const parsed: unknown = parsePersistenceYaml({
+            content,
+            filePath: fullPath,
+            source: 'dialog_metadata',
+          });
+          if (!isRecord(parsed) || typeof parsed.id !== 'string' || parsed.id.trim() === '') {
+            throw buildInvalidPersistenceFileError({
+              source: 'dialog_metadata',
+              format: 'yaml',
+              filePath: fullPath,
+            });
+          }
+          const relDir = path.dirname(entryRelativePath);
+          const expectedDialogId = this.inferExpectedDialogIdFromMetadataRelativeDir(relDir);
+          if (expectedDialogId === null || parsed.id !== expectedDialogId) {
+            throw buildInvalidPersistenceFileError({
+              source: 'dialog_metadata',
+              format: 'yaml',
+              filePath: fullPath,
+            });
+          }
+          result.push(new DialogID(parsed.id));
+        } catch (yamlError: unknown) {
+          const persistenceError = findDomindsPersistenceFileError(yamlError);
+          if (persistenceError) {
+            const mainDialogId = this.inferMainDialogIdFromMetadataRelativeDir(
+              path.dirname(entryRelativePath),
+            );
+            if (mainDialogId) {
+              await this.quarantineMalformedDialog(
+                mainDialogId,
+                status,
+                'listMainDialogIds',
+                persistenceError,
+              );
+            }
+          }
+          log.warn(`listMainDialogIds: Failed to parse dialog.yaml at ${fullPath}:`, yamlError);
+        }
+      }
+    };
+
+    try {
+      await fs.promises.stat(specificDir);
+    } catch (error: unknown) {
+      if (getErrorCode(error) === 'ENOENT') {
+        return [];
+      }
+      throw error;
+    }
+
+    await visit(specificDir, '', 0);
+    return result;
   }
 
   /**
@@ -7966,6 +8142,154 @@ export class DialogPersistence {
     await this.renameWithRetry(tempFile, filePath, 5);
   }
 
+  private static getDriveWatchFilePath(rootDialogId: DialogID, status: DialogStatusKind): string {
+    return path.join(this.getMainDialogPath(rootDialogId, status), 'drive-watch.json');
+  }
+
+  private static isDialogDriveWatchFile(value: unknown): value is DialogDriveWatchFile {
+    return (
+      isRecord(value) &&
+      Array.isArray(value.dialogs) &&
+      value.dialogs.every((entry) => typeof entry === 'string' && entry.trim() !== '')
+    );
+  }
+
+  private static normalizeDriveWatchFile(file: DialogDriveWatchFile): DialogDriveWatchFile {
+    return {
+      dialogs: [...new Set(file.dialogs.map((entry) => entry.trim()).filter(Boolean))].sort(),
+    };
+  }
+
+  private static async loadDriveWatchFromDisk(
+    rootDialogId: DialogID,
+    status: DialogStatusKind,
+  ): Promise<DialogDriveWatchFile> {
+    const filePath = this.getDriveWatchFilePath(rootDialogId, status);
+    try {
+      const content = await readPersistenceTextFile({
+        filePath,
+        source: 'drive_watch',
+        format: 'json',
+      });
+      const parsed: unknown = parsePersistenceJson({
+        content,
+        filePath,
+        source: 'drive_watch',
+      });
+      if (!this.isDialogDriveWatchFile(parsed)) {
+        throw buildInvalidPersistenceFileError({
+          source: 'drive_watch',
+          format: 'json',
+          filePath,
+        });
+      }
+      return this.normalizeDriveWatchFile(parsed);
+    } catch (error: unknown) {
+      if (getErrorCode(error) === 'ENOENT') return { dialogs: [] };
+      throw error;
+    }
+  }
+
+  private static async writeDriveWatchToDisk(
+    rootDialogId: DialogID,
+    file: DialogDriveWatchFile,
+    status: DialogStatusKind,
+  ): Promise<void> {
+    const normalized = this.normalizeDriveWatchFile(file);
+    const filePath = this.getDriveWatchFilePath(rootDialogId, status);
+    if (normalized.dialogs.length === 0) {
+      await fs.promises.rm(filePath, { force: true });
+      return;
+    }
+    const dialogPath = this.getMainDialogPath(rootDialogId, status);
+    await fs.promises.mkdir(dialogPath, { recursive: true });
+    const jsonContent = JSON.stringify(normalized, null, 2);
+    const tempFile = path.join(
+      dialogPath,
+      `.${path.basename(filePath)}.${process.pid}.${randomUUID()}.tmp`,
+    );
+    await fs.promises.writeFile(tempFile, jsonContent, 'utf-8');
+    await this.renameWithRetry(tempFile, filePath, 5);
+  }
+
+  private static async mutateDriveWatch(
+    rootDialogId: DialogID,
+    mutator: (previous: DialogDriveWatchFile) => DialogDriveWatchFile,
+    status: DialogStatusKind = 'running',
+  ): Promise<DialogDriveWatchFile> {
+    const key = this.getDriveWatchKey(rootDialogId, status);
+    const mutex = this.getDriveWatchMutex(key);
+    const release = await mutex.acquire();
+    try {
+      const previous = await this.loadDriveWatchFromDisk(rootDialogId, status);
+      const next = this.normalizeDriveWatchFile(mutator(previous));
+      await this.writeDriveWatchToDisk(rootDialogId, next, status);
+      return next;
+    } finally {
+      release();
+    }
+  }
+
+  static async loadDriveWatchedDialogIds(
+    rootDialogId: DialogID,
+    status: DialogStatusKind = 'running',
+  ): Promise<readonly DialogID[]> {
+    try {
+      const file = await this.loadDriveWatchFromDisk(rootDialogId, status);
+      return file.dialogs.map((selfId) => new DialogID(selfId, rootDialogId.rootId));
+    } catch (error: unknown) {
+      await this.rethrowAfterQuarantiningDialogPersistenceProblem(
+        rootDialogId,
+        status,
+        'loadDriveWatchedDialogIds',
+        error,
+      );
+      throw new Error('unreachable after loadDriveWatchedDialogIds persistence rethrow');
+    }
+  }
+
+  private static async setDialogDriveWatched(
+    dialogId: DialogID,
+    watched: boolean,
+    status: DialogStatusKind,
+  ): Promise<void> {
+    if (dialogId.selfId === dialogId.rootId) {
+      return;
+    }
+    const rootDialogId = new DialogID(dialogId.rootId);
+    await this.mutateDriveWatch(
+      rootDialogId,
+      (previous) => {
+        const existing = new Set(previous.dialogs);
+        if (watched) {
+          existing.add(dialogId.selfId);
+        } else {
+          existing.delete(dialogId.selfId);
+        }
+        return { dialogs: [...existing] };
+      },
+      status,
+    );
+  }
+
+  static async syncDriveWatchForDialogLatest(
+    dialogId: DialogID,
+    latest: DialogLatestFile,
+    status: DialogStatusKind = 'running',
+  ): Promise<void> {
+    if (status !== 'running' || dialogId.selfId === dialogId.rootId) {
+      return;
+    }
+    await this.setDialogDriveWatched(dialogId, hasDurableDriveWork(latest), status);
+  }
+
+  static async removeDriveWatchForDialog(
+    dialogId: DialogID,
+    status: DialogStatusKind = 'running',
+  ): Promise<void> {
+    await this.setDialogDriveWatched(dialogId, false, status);
+  }
+
   static async mutateActiveCallees(
     dialogId: DialogID,
     mutator: (previous: ActiveCalleesFile) => ActiveCalleesFile,
@@ -9011,6 +9335,60 @@ export class DialogPersistence {
     );
   }
 
+  static async hasRecordedTellaskResult(
+    dialogId: DialogID,
+    callId: string,
+    status: DialogStatusKind = 'running',
+  ): Promise<boolean> {
+    const normalizedCallId = callId.trim();
+    if (normalizedCallId === '') {
+      return false;
+    }
+    const latest = await this.loadDialogLatest(dialogId, status);
+    return (
+      latest?.tellaskResults?.results.some((entry) => entry.callId.trim() === normalizedCallId) ??
+      false
+    );
+  }
+
+  static async recordTellaskResult(
+    dialogId: DialogID,
+    record: TellaskResultRecord,
+    course: number,
+    status: DialogStatusKind = 'running',
+  ): Promise<void> {
+    await this.mutateDialogLatest(
+      dialogId,
+      (previous) => {
+        const previousResults = previous.tellaskResults?.results ?? [];
+        if (previousResults.some((entry) => entry.callId.trim() === record.callId.trim())) {
+          throw new Error(
+            `tellask result index invariant violation: duplicate result ` +
+              `(rootId=${dialogId.rootId}, selfId=${dialogId.selfId}, callId=${record.callId})`,
+          );
+        }
+        return {
+          kind: 'patch',
+          patch: {
+            tellaskResults: {
+              results: [
+                ...previousResults,
+                {
+                  callId: record.callId,
+                  callName: record.callName,
+                  course: toDialogCourseNumber(course),
+                  recordedAt: record.ts,
+                  resultRecordId: `tellask-result:${record.callId}`,
+                },
+              ],
+            },
+          },
+        };
+      },
+      status,
+    );
+  }
+
   private static async requireSideDialogAskerStackState(
     dialogId: DialogID,
     status: DialogStatusKind,
@@ -9367,6 +9745,7 @@ export class DialogPersistence {
           mutationContext,
         );
         if (updated === existing) {
+          await this.syncDriveWatchForDialogLatest(dialogId, existing, status);
           return existing;
         }
       } else if (mutation.kind === 'replace') {
@@ -9419,6 +9798,7 @@ export class DialogPersistence {
           timer,
         });
 
+        await this.syncDriveWatchForDialogLatest(dialogId, updated, status);
         return updated;
       }
 
@@ -9428,6 +9808,7 @@ export class DialogPersistence {
       }
 
       // Keep the existing timer to ensure a bounded flush window.
+      await this.syncDriveWatchForDialogLatest(dialogId, updated, status);
       return updated;
     } finally {
       release();

@@ -233,6 +233,18 @@ export type DialogReplyDeliveryState = Readonly<{
   deliveredAt?: string;
 }>;
 
+export type DialogTellaskResultIndexEntry = Readonly<{
+  callId: string;
+  callName: 'tellask' | 'tellaskSessionless' | 'tellaskBack' | 'askHuman' | 'freshBootsReasoning';
+  course: DialogCourseNumber;
+  recordedAt: string;
+  resultRecordId: string;
+}>;
+
+export type DialogTellaskResultState = Readonly<{
+  results: readonly DialogTellaskResultIndexEntry[];
+}>;
+
 export interface DialogLatestFile {
   currentCourse: number;
   lastModified: string;
@@ -247,6 +259,7 @@ export interface DialogLatestFile {
   nextStep?: DialogNextStepTriggerState;
   userWait?: DialogUserWaitState;
   replyDelivery?: DialogReplyDeliveryState;
+  tellaskResults?: DialogTellaskResultState;
   latestAssignmentAnchor?: DialogLatestAssignmentAnchorState;
   sideDialogFinalResponse?: DialogSideDialogFinalResponseState;
   fbrState?: DialogFbrState;
