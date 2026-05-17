@@ -2077,6 +2077,10 @@ export class DomindsApp extends HTMLElement {
     const t = getUiStrings(this.uiLanguage);
     const versionText = this.backendVersion ? `v${this.backendVersion}` : '';
     const state = this.getDomindsVersionActionState();
+    const latestVersionText =
+      state.kind !== 'idle' && state.latestVersion !== null && state.latestVersion.trim() !== ''
+        ? `v${state.latestVersion.trim()}`
+        : '';
     let actionLabel = '';
     let showIcon = false;
     switch (state.kind) {
@@ -2101,9 +2105,21 @@ export class DomindsApp extends HTMLElement {
         showIcon = true;
         break;
     }
+    const versionHtml =
+      latestVersionText !== '' && latestVersionText !== versionText
+        ? `
+          <span class="dominds-version-roll" aria-hidden="true">
+            <span class="dominds-version-roll-track">
+              <span class="dominds-version-roll-item dominds-version-roll-latest">${escapeHtml(latestVersionText)}</span>
+              <span class="icon-mask app-icon-arrow-up dominds-version-roll-arrow" aria-hidden="true"></span>
+              <span class="dominds-version-roll-item dominds-version-roll-current">${escapeHtml(versionText)}</span>
+            </span>
+          </span>
+        `
+        : `<span class="dominds-version-text">${escapeHtml(versionText)}</span>`;
 
     return [
-      `<span class="dominds-version-text">${escapeHtml(versionText)}</span>`,
+      versionHtml,
       actionLabel !== ''
         ? `<span class="dominds-version-divider" aria-hidden="true">·</span><span class="dominds-version-action">${escapeHtml(actionLabel)}</span>`
         : '',
@@ -3126,32 +3142,75 @@ export class DomindsApp extends HTMLElement {
         transform-origin: center bottom;
       }
 
+      .dominds-version-roll {
+        --version-roll-step: 14px;
+        position: relative;
+        display: inline-grid;
+        align-items: center;
+        justify-items: center;
+        min-width: max-content;
+        height: var(--version-roll-step);
+        overflow: hidden;
+        line-height: 1;
+      }
+
+      .dominds-version-roll-track {
+        display: grid;
+        grid-template-rows: repeat(3, var(--version-roll-step));
+        align-items: center;
+        justify-items: center;
+        transform: translateY(calc(var(--version-roll-step) * -2));
+        will-change: transform;
+      }
+
+      .dominds-version-roll-item,
+      .dominds-version-roll-arrow {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        height: var(--version-roll-step);
+        line-height: 1;
+      }
+
+      .dominds-version-roll-latest {
+        color: var(--dominds-primary, #007acc);
+      }
+
+      .dominds-version-roll-arrow {
+        color: var(--dominds-muted, #666666);
+      }
+
+      .dominds-version-roll-arrow {
+        width: 10px;
+        height: 10px;
+      }
+
       .dominds-version-icon {
         width: 10px;
         height: 10px;
         opacity: 0.9;
       }
 
-      @keyframes domindsVersionNumberDoubleBounce {
-        0%, 72%, 100% {
-          transform: translateY(0) scale(1);
+      @keyframes domindsVersionTrackRoll {
+        0%, 12% {
+          transform: translateY(calc(var(--version-roll-step) * -2));
         }
-        76% {
-          transform: translateY(-3px) scale(1.06);
+        64%, 71% {
+          transform: translateY(0);
         }
-        80% {
-          transform: translateY(0) scale(1);
-        }
-        84% {
-          transform: translateY(-3px) scale(1.06);
-        }
-        88% {
-          transform: translateY(0) scale(1);
+        81%, 100% {
+          transform: translateY(calc(var(--version-roll-step) * -2));
         }
       }
 
-      .dominds-version[data-attention='true'] .dominds-version-text {
-        animation: domindsVersionNumberDoubleBounce 8s ease-in-out infinite;
+      .dominds-version[data-attention='true'] .dominds-version-roll-track {
+        animation: domindsVersionTrackRoll 3s cubic-bezier(0.28, 0.78, 0.28, 1) infinite;
+      }
+
+      @media (prefers-reduced-motion: reduce) {
+        .dominds-version[data-attention='true'] .dominds-version-roll-track {
+          animation: none;
+        }
       }
 
 	      .rtws-indicator {
@@ -4601,6 +4660,10 @@ export class DomindsApp extends HTMLElement {
 
       .app-icon-refresh {
         --icon-mask: ${ICON_MASK_URLS.refresh};
+      }
+
+      .app-icon-arrow-up {
+        --icon-mask: ${ICON_MASK_URLS.arrowUp};
       }
 
       .app-icon-close {
