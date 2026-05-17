@@ -626,13 +626,57 @@ export class DomindsQ4HInput extends HTMLElement {
 
   private getEnterToggleTitle(mode: 'send' | 'queue_now' | 'stop' | 'stopping'): string {
     const t = getUiStrings(this.uiLanguage);
+    const shortcut = this.getPrimaryActionShortcutTitle();
+    const withPlatformShortcut = (value: string): string =>
+      value.replace(/Cmd\/Ctrl\+Enter/g, shortcut);
     if (mode === 'queue_now') {
-      return this.sendOnEnter ? t.q4hEnterToQueueNowTitle : t.q4hCtrlEnterToQueueNowTitle;
+      return withPlatformShortcut(
+        this.sendOnEnter ? t.q4hEnterToQueueNowTitle : t.q4hCtrlEnterToQueueNowTitle,
+      );
     }
     if (mode === 'stop' || mode === 'stopping') {
-      return this.sendOnEnter ? t.q4hEnterToStopTitle : t.q4hCtrlEnterToStopTitle;
+      return withPlatformShortcut(
+        this.sendOnEnter ? t.q4hEnterToStopTitle : t.q4hCtrlEnterToStopTitle,
+      );
     }
-    return this.sendOnEnter ? t.q4hEnterToSendTitle : t.q4hCtrlEnterToSendTitle;
+    return withPlatformShortcut(
+      this.sendOnEnter ? t.q4hEnterToSendTitle : t.q4hCtrlEnterToSendTitle,
+    );
+  }
+
+  private isApplePlatform(): boolean {
+    const platform = navigator.platform.toLowerCase();
+    const userAgent = navigator.userAgent.toLowerCase();
+    return (
+      platform.includes('mac') ||
+      platform.includes('iphone') ||
+      platform.includes('ipad') ||
+      platform.includes('ipod') ||
+      userAgent.includes('mac os') ||
+      userAgent.includes('iphone') ||
+      userAgent.includes('ipad') ||
+      userAgent.includes('ipod')
+    );
+  }
+
+  private getPrimaryActionShortcutTitle(): string {
+    return this.isApplePlatform() ? 'Cmd+Enter' : 'Ctrl+Enter';
+  }
+
+  private renderEnterToggleShortcut(): string {
+    const enterKey = '<span class="shortcut-key shortcut-enter" aria-hidden="true">↵</span>';
+    if (this.sendOnEnter) {
+      return `<span class="shortcut-combo single">${enterKey}</span>`;
+    }
+
+    const modifier = this.isApplePlatform() ? '⌘' : 'Ctrl';
+    const modifierClass = this.isApplePlatform() ? 'symbol-modifier' : 'text-modifier';
+    return `
+      <span class="shortcut-combo chord">
+        <span class="shortcut-key ${modifierClass}" aria-hidden="true">${modifier}</span>
+        ${enterKey}
+      </span>
+    `;
   }
 
   private updateEnterToggleTitle(mode: 'send' | 'queue_now' | 'stop' | 'stopping'): void {
@@ -1057,11 +1101,11 @@ export class DomindsQ4HInput extends HTMLElement {
           return;
         }
 
-        const hasCtrlOrMeta = e.ctrlKey || e.metaKey;
-        const hasNoModifier = !e.shiftKey && !hasCtrlOrMeta && !e.altKey;
+        const hasPrimaryActionShortcut = this.isApplePlatform() ? e.metaKey : e.ctrlKey;
+        const hasNoModifier = !e.shiftKey && !e.ctrlKey && !e.metaKey && !e.altKey;
 
-        // Cmd/Ctrl+Enter always triggers the same primary action as the send button.
-        if (hasCtrlOrMeta) {
+        // Platform primary shortcut always triggers the same primary action as the send button.
+        if (hasPrimaryActionShortcut) {
           e.preventDefault();
           void this.handlePrimaryAction();
           return;
@@ -1501,6 +1545,11 @@ export class DomindsQ4HInput extends HTMLElement {
         state !== null &&
         state.kind === 'stopped' &&
         state.continueEnabled;
+      const root = this.shadowRoot;
+      const inputActions = root === null ? null : root.querySelector('.input-actions');
+      if (inputActions instanceof HTMLElement) {
+        inputActions.classList.toggle('declare-visible', shouldShow);
+      }
       this.declareDeathButton.hidden = !shouldShow;
       this.declareDeathButton.disabled = this.props.disabled || dialog === null;
 
@@ -1625,23 +1674,26 @@ export class DomindsQ4HInput extends HTMLElement {
               ></textarea>
               ${this.renderAttachmentStrip()}
             </div>
-            <div class="input-actions">
-              <button
-                class="send-on-enter-toggle ${this.sendOnEnter ? 'active' : ''}"
-                type="button"
-                title="${this.getEnterToggleTitle(mode)}"
-              >
-                ${this.sendOnEnter ? '⏎' : '⌘⏎'}
-              </button>
-              <button class="${primaryClass}" type="button" disabled title="${primaryTitle}" aria-label="${primaryTitle}">
-                ${
-                  mode === 'send'
-                    ? '<span class="send-icon icon-mask" aria-hidden="true"></span>'
-                    : mode === 'queue_now'
-                      ? '<span class="queue-icon icon-mask" aria-hidden="true"></span>'
-                      : '<span class="stop-icon icon-mask" aria-hidden="true"></span>'
-                }
-              </button>
+            <div class="input-actions ${showDeclareDeath ? 'declare-visible' : ''}">
+              <div class="primary-action-stack">
+                <button
+                  class="send-on-enter-toggle ${this.sendOnEnter ? 'active' : ''}"
+                  type="button"
+                  title="${DomindsQ4HInput.escapeHtml(this.getEnterToggleTitle(mode))}"
+                  aria-label="${DomindsQ4HInput.escapeHtml(this.getEnterToggleTitle(mode))}"
+                >
+                  ${this.renderEnterToggleShortcut()}
+                </button>
+                <button class="${primaryClass}" type="button" disabled title="${primaryTitle}" aria-label="${primaryTitle}">
+                  ${
+                    mode === 'send'
+                      ? '<span class="send-icon icon-mask" aria-hidden="true"></span>'
+                      : mode === 'queue_now'
+                        ? '<span class="queue-icon icon-mask" aria-hidden="true"></span>'
+                        : '<span class="stop-icon icon-mask" aria-hidden="true"></span>'
+                  }
+                </button>
+              </div>
               <button
                 class="declare-death-button"
                 type="button"
@@ -1753,22 +1805,40 @@ export class DomindsQ4HInput extends HTMLElement {
         align-items: stretch;
         flex: 1;
         min-height: 0;
-        gap: 6px;
+        gap: 1px;
         background: var(--dominds-input-bg, #f8f9fa);
         border: 1px solid var(--dominds-border, #e0e0e0);
         border-radius: 18px;
         transition: all 0.2s ease;
         overflow: hidden;
-        padding-right: 8px;
+        padding-right: 2px;
       }
 
       .input-actions {
         display: flex;
         flex-direction: column;
         align-items: center;
-        gap: 6px;
+        justify-content: flex-end;
+        gap: 4px;
         align-self: flex-end;
-        padding-bottom: 6px;
+        flex: 0 0 28px;
+        width: 28px;
+        box-sizing: border-box;
+        padding: 0 0 4px;
+      }
+
+      .input-actions.declare-visible {
+        flex-basis: 92px;
+        width: 92px;
+      }
+
+      .primary-action-stack {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        width: 100%;
+        gap: 4px;
+        box-sizing: border-box;
       }
 
       .input-body {
@@ -1783,6 +1853,7 @@ export class DomindsQ4HInput extends HTMLElement {
         display: inline-flex;
         align-items: center;
         justify-content: center;
+        align-self: center;
         padding: 3px 8px;
         border-radius: 999px;
         border: 1px solid var(--dominds-danger, #dc3545);
@@ -1792,6 +1863,7 @@ export class DomindsQ4HInput extends HTMLElement {
         font-weight: 600;
         cursor: pointer;
         user-select: none;
+        box-sizing: border-box;
       }
 
       .declare-death-button:hover:not(:disabled) {
@@ -1804,19 +1876,59 @@ export class DomindsQ4HInput extends HTMLElement {
       }
 
       .send-on-enter-toggle {
-        display: flex;
+        display: inline-flex;
         align-items: center;
         justify-content: center;
-        width: 22px;
-        height: 22px;
+        min-width: 20px;
+        height: 21px;
         border: 1px solid transparent;
-        border-radius: 6px;
+        border-radius: 7px;
         background: transparent;
         color: var(--color-fg-tertiary, #64748b);
         cursor: pointer;
-        font-size: 12px;
+        font-size: 11px;
+        line-height: 1;
         transition: all 0.2s ease;
+        padding: 0 1px;
+      }
+
+      .shortcut-combo {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        gap: 1px;
+        white-space: nowrap;
+        font-variant-numeric: tabular-nums;
+      }
+
+      .shortcut-combo.single {
+        width: 18px;
+      }
+
+      .shortcut-key {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        min-width: 11px;
+        height: 14px;
         padding: 0;
+        border: 1px solid color-mix(in srgb, currentColor 22%, transparent);
+        border-radius: 4px;
+        background: color-mix(in srgb, currentColor 8%, transparent);
+        box-sizing: border-box;
+      }
+
+      .shortcut-enter,
+      .symbol-modifier {
+        font-size: 12px;
+        font-weight: 600;
+      }
+
+      .text-modifier {
+        min-width: 16px;
+        font-size: 9px;
+        font-weight: 700;
+        letter-spacing: 0;
       }
 
       .send-on-enter-toggle:hover {
@@ -1826,7 +1938,7 @@ export class DomindsQ4HInput extends HTMLElement {
       }
 
       .send-on-enter-toggle.active {
-        font-weight: bold;
+        color: var(--color-fg-secondary, #334155);
       }
 
       .input-wrapper.q4h-active {
@@ -1869,7 +1981,7 @@ export class DomindsQ4HInput extends HTMLElement {
         border: none;
         outline: none;
         box-sizing: border-box;
-        padding: 9px 12px;
+        padding: 9px 8px 9px 12px;
         font-size: 13px;
         line-height: var(--dominds-line-height-dense, 1.4);
         color: var(--dominds-fg, #333333);
@@ -2004,8 +2116,8 @@ export class DomindsQ4HInput extends HTMLElement {
         align-items: center;
         justify-content: center;
         position: relative;
-        width: 27px;
-        height: 27px;
+        width: 25px;
+        height: 25px;
         border: none;
         border-radius: 50%;
         background: var(--dominds-primary, #007acc);
@@ -2056,8 +2168,8 @@ export class DomindsQ4HInput extends HTMLElement {
         position: absolute;
         left: 50%;
         top: 50%;
-        width: 18px;
-        height: 18px;
+        width: 16px;
+        height: 16px;
         transform: translate(-50%, -50%);
       }
 
@@ -2067,8 +2179,8 @@ export class DomindsQ4HInput extends HTMLElement {
 
       .stop-icon {
         --icon-mask: ${ICON_MASK_URLS.stop};
-        width: 14px;
-        height: 14px;
+        width: 13px;
+        height: 13px;
       }
 
       .queue-icon {
