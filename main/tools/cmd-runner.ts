@@ -14,6 +14,7 @@ import {
   type CmdRunnerStatusPayload,
   type CmdRunnerStreamSnapshot,
 } from './cmd-runner-protocol';
+import { buildCapturedShellEnv } from './shell-capture-env';
 
 const execFileAsync = promisify(execFile);
 
@@ -170,6 +171,7 @@ async function main(): Promise<void> {
   const childProcess: ChildProcess = spawn(init.spawnSpec.command, init.spawnSpec.args, {
     stdio: ['ignore', 'pipe', 'pipe'],
     detached: false,
+    env: buildCapturedShellEnv(),
   });
   const daemonPid = childProcess.pid;
   if (typeof daemonPid !== 'number') {

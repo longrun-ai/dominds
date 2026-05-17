@@ -50,6 +50,7 @@ import {
   type CmdRunnerResponse,
 } from './cmd-runner-protocol';
 import { truncateToolOutputText } from './output-limit';
+import { buildCapturedShellEnv } from './shell-capture-env';
 
 const execFileAsync = promisify(execFile);
 const requireFn = createRequire(__filename);
@@ -2741,6 +2742,7 @@ export const readonlyShellTool: FuncTool = {
       const spawnSpec = resolveReadonlyShellSpawnSpec(command);
       const childProcess = spawn(spawnSpec.command, spawnSpec.args, {
         stdio: ['ignore', 'pipe', 'pipe'],
+        env: buildCapturedShellEnv(),
       });
 
       childProcess.stdout?.on('data', (data: Buffer) => {

@@ -111,6 +111,7 @@
     "man-output-truncation": "tsx toolsets/man-output-truncation.ts",
     "manual-size-guard": "tsx toolsets/manual-size-guard.ts",
     "readonly-shell": "tsx toolsets/readonly-shell.ts",
+    "shell-cmd-capture-env": "tsx toolsets/shell-cmd-capture-env.ts",
     "shell-cmd-fast-completion": "tsx toolsets/shell-cmd-fast-completion.ts",
     "shell-cmd-output-truncation": "tsx toolsets/shell-cmd-output-truncation.ts",
     "list-dir-output-truncation": "tsx toolsets/list-dir-output-truncation.ts",
