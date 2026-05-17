@@ -2,6 +2,8 @@
  * Module: tools/mem
  *
  * Memory management tools for personal and shared memory under `.minds/memory`.
+ * Memory is for workspace-coupled facts, indexes, and consensus; reusable operating
+ * procedures/checklists should be maintained as skills under `.minds/skills/**`.
  * Add, drop, replace, clear operations with strict path validation.
  */
 import type { LanguageCode } from '@longrun-ai/kernel/types/language';

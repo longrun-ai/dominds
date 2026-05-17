@@ -2,12 +2,13 @@
 
 Chinese version: [中文版](./memory-system.zh.md)
 
-Dominds’ “memory system” is really **context engineering**: put information into the right container based on stability and sharing scope, so long‑running work stays fast, correct, and transparent to humans.
+Dominds’ “memory system” is really **context engineering**: put information into the right container based on stability, sharing scope, and execution semantics, so long‑running work stays fast, correct, and transparent to humans.
 
 TL;DR:
 
 - Make dialog history disposable (noise is cheap to drop).
 - Make key artifacts survivable (you can `clear_mind` and still keep moving).
+- Treat skills as first-class context assets: memory stores facts/indexes/consensus, while skills capture reusable “when to do it, how to do it, and where the boundary is” operating guidance.
 - Publicly declare and openly discuss progress in real time (and keep it auditable) to enforce timely coordination: that’s where the real leverage comes from when multiple agents and multiple Main Dialogs work in parallel (Taskdoc / team memory / env notes).
 
 Key rule: **the Taskdoc is the task’s live coordination bulletin board**. Put key decisions/status/next steps in `progress`, hard rules in `constraints`, and don’t leave them only in chat or reminders.
@@ -23,6 +24,8 @@ Related terminology: [dominds-terminology.md](./dominds-terminology.md)
   - [B) Task-term memory: Taskdoc is the single source of truth](#b-task-term-memory-taskdoc-is-the-single-source-of-truth)
   - [C) Short-term memory: dialog history is a buffer, reminders are a working set](#c-short-term-memory-dialog-history-is-a-buffer-reminders-are-a-working-set)
 - [Day-to-day workflow (operational health)](#day-to-day-workflow-operational-health)
+  - [Where to write what (quick rules)](#where-to-write-what-quick-rules)
+  - [Memory vs skills: selection rules](#memory-vs-skills-selection-rules)
 
 ---
 
@@ -33,12 +36,16 @@ The same information can be categorized by “who needs to see it / who maintain
 - **Individual-scope (per-agent / per-dialog)**:
   - `persona` / `knowhow` / `pitfalls` (role definitions assigned per member)
   - individual memory (`personal_memory`)
+  - individual skills (`.minds/skills/individual/<member-id>/...`)
   - dialog history (including tool calls and outputs)
   - reminders (working set / worklog)
 - **Collective-scope (shared by team/task)**:
   - rtws-level “env notes” (`.minds/env*.md`): the workspace’s baseline facts, runtime constraints, and gotchas
   - team memory (`team_memory`)
+  - team-shared skills (`.minds/skills/team_shared/...`; the `linkable` pool is a reusable source maintained by team management)
   - Taskdoc: in a healthy workflow, the same Taskdoc is expected to be progressed by multiple Main Dialogs (different Dialog Responders), so treat it as the collective single source of truth
+
+Skills and memory are both long-lived context assets, but they are not the same thing: **memory is the storage layer for facts, indexes, and consensus; skills are the execution-guidance layer for reusable prompt skills and operating procedures**. At startup, the runtime lists summaries of visible skills and the model can call `read_skill` for the body when needed. Upstream metadata such as `allowed-tools` is advisory for migration only; it does not grant Dominds tool permissions. Team collaboration SOPs should usually be skills: they should describe collaboration roles, inputs/outputs, escalation rules, synchronization cadence, and acceptance policy instead of making current-workspace paths part of the body.
 
 ### Permissions and division of labor
 
@@ -59,6 +66,7 @@ This doc uses three time horizons: long-term / task-term / short-term (dialog). 
   - **Org structure (static definitions)**: `persona` / `knowhow` / `pitfalls`
   - **Team governance (shared)**: team memory
   - **Agent-owned**: individual memory
+  - **Reusable skill assets**: individual / team-shared skills (prompt guidance), plus MCP resource skills
 - **B) Task-term memory (survives dialog courses)**
   - **Auto-injected Taskdoc core**: `goals` / `constraints` / `progress`
   - **Extra Taskdoc sections (on-demand recall)**: the fixed `bearinmind/` set (`contracts` / `acceptance` / `grants` / `runbook` / `decisions` / `risks`), plus any task-specific sections (see [encapsulated-taskdoc.md](./encapsulated-taskdoc.md))
@@ -113,6 +121,31 @@ Key notes:
 - Do not read/write/list `.minds/memory/**` via general file tools (it will be hard-denied). Manage personal memory via the tools above.
 - Personal memory is automatically isolated on disk under `.minds/memory/individual/<member-id>/...`, so your `path` must NOT include your member id (do not write `<member-id>/...`).
 - If you have zero personal memory entries, just call `add_personal_memory` — the directory will be created automatically.
+
+#### 4) Skills: reusable operating capability (prompt skill assets)
+
+Skills are for **procedural thinking**, **reusable operating paths**, and **trigger/boundary guidance**. A skill answers “when this class of task appears, how should I handle it?”, not “what facts are currently true in this workspace?”.
+
+Common forms:
+
+- Individual skill: `.minds/skills/individual/<member-id>/<skill-id>/`
+- Team-shared skill: `.minds/skills/team_shared/<skill-id>/`
+- MCP resource skill: a virtual skill exposed by MCP resources
+
+Good skill content:
+
+- portable debugging/review/design/acceptance routines
+- team collaboration SOPs, responsibility splits, handoff/escalation/synchronization flows, acceptance and rollback policy
+- task-class procedures, checklists, and failure-recovery strategies
+- applicability, non-applicability, and required permissions/tools/inputs
+
+Poor skill content:
+
+- current rtws paths, file indexes, architecture facts, or temporary state: use `personal_memory` / `team_memory` / `.minds/env*.md` / Taskdoc instead
+- quasi-real-time task state, next steps, or blockers: use Taskdoc `progress`
+- content that really needs scripts, privileged tools, MCP, external binaries, or reusable execution capability: elevate it into a Dominds app / toolset / teammate contract instead of leaving it as a Markdown skill
+
+A useful split: **workspace-coupled facts go to memory; workspace-independent operating methods go to skills**. If an experience contains both, split it: put the portable method in a skill, put this repo’s paths, command entrypoints, and local contracts in memory or env notes, and have the skill say to consult those assets first. If an SOP looks path-heavy, first try to abstract it into generic collaboration concepts; keep paths as binding data, not as the SOP body.
 
 ### B) Task-term memory: Taskdoc is the single source of truth
 
@@ -219,8 +252,25 @@ The goal for agents’ day-to-day work is not “write more docs”. It’s a lo
 - **Team memory `team_memory`**: stable team conventions and invariants (worth reusing)
 - **Env notes `.minds/env*.md`**: rtws baseline facts, runtime constraints, gotchas (align humans + all agents to the same environment)
 - **Individual memory `personal_memory`**: personal preferences + responsibility-area rtws index (keep accurate)
+- **Skills**: reusable operating guidance, checklists, triggers, and boundaries (portable procedure, not a fact warehouse)
 - **Reminders**: short-term, high-frequency details (working set / worklog; delete freely)
 - **Dialog history / tool output**: disposable by default; only keep distilled excerpts, not raw dumps
+
+### Memory vs skills: selection rules
+
+Ask four questions first:
+
+1. **Is it strongly tied to the current workspace?** Exact paths, symbols, interface facts, repo conventions, and rtws runtime constraints belong in memory/env; cross-workspace methods belong in skills.
+2. **Is it a fact or a method?** “File X owns Y” is memory. “When reviewing X-class changes, check A/B/C” is a skill.
+3. **Who needs it?** Stable facts everyone must share go to `team_memory`; team collaboration SOPs and team-wide procedures usually go to team-shared skills. A member’s entry map goes to `personal_memory`; that member’s operating preference goes to an individual skill.
+4. **Does it need real execution capability?** If it needs scripts, permissions, MCP, external binaries, or a stable UI/API, do not leave it as a skill only. Design an app/toolset/teammate contract and keep the skill as the usage/judgment guidance.
+
+Additional design considerations:
+
+- **Context budget**: memory should be short, exact, and frequently maintained; skills may be longer, but their summaries must help the model decide whether to call `read_skill`.
+- **Staleness cost**: facts that change with the repo should not be hidden inside skills, or skills become a stale knowledge source.
+- **Auditability**: team-shared skills and team memory are team assets and should be maintained by governance roles; personal assets must still be updated when they go stale.
+- **Language and semantics**: when user-facing semantics are involved, follow the project i18n rules; Chinese remains the semantic baseline.
 
 ### Caution/critical: stop the bleeding first
 

@@ -82,7 +82,8 @@ async function main(): Promise<void> {
 
     const { systemPrompt: afterPersonalAdd } = await loadAgentMinds('alice');
     assert.ok(afterPersonalAdd.includes('Use for repository debugging.'));
-    assert.ok(afterPersonalAdd.includes('Trace the failure to root cause.'));
+    assert.ok(afterPersonalAdd.includes('read_skill({ "skill_id": "repo-debugger" })'));
+    assert.ok(!afterPersonalAdd.includes('Trace the failure to root cause.'));
     assert.ok(
       await fs
         .stat(path.join(tmpRoot, '.minds', 'skills', 'individual', 'alice', 'repo-debugger'))
@@ -326,7 +327,8 @@ async function main(): Promise<void> {
     assert.equal((await fs.lstat(linkedPath)).isSymbolicLink(), true);
     const { systemPrompt: afterLink } = await loadAgentMinds('alice');
     assert.ok(afterLink.includes('Team-managed release guidance.'));
-    assert.ok(afterLink.includes('Check release blockers before handoff.'));
+    assert.ok(afterLink.includes('read_skill({ "skill_id": "release-helper" })'));
+    assert.ok(!afterLink.includes('Check release blockers before handoff.'));
 
     const replacedLinkedSkill = await requireFuncTool('replace_personal_skill').call(
       dlg as never,
@@ -694,7 +696,8 @@ async function main(): Promise<void> {
     );
     const { systemPrompt: withVariantFileSymlink } = await loadAgentMinds('alice');
     assert.ok(withVariantFileSymlink.includes('Variant file symlink loads.'));
-    assert.ok(withVariantFileSymlink.includes('Variant symlink body.'));
+    assert.ok(withVariantFileSymlink.includes('read_skill({ "skill_id": "variant-load-helper" })'));
+    assert.ok(!withVariantFileSymlink.includes('Variant symlink body.'));
 
     await fs.mkdir(
       path.join(tmpRoot, '.minds', 'skills', 'individual', 'alice', 'broken-variant-helper'),
@@ -767,6 +770,8 @@ async function main(): Promise<void> {
     );
     const { systemPrompt: withSymlinkedLinkableRoot } = await loadAgentMinds('alice');
     assert.ok(withSymlinkedLinkableRoot.includes('External helper should not be linkable.'));
+    assert.ok(withSymlinkedLinkableRoot.includes('read_skill({ "skill_id": "external-helper" })'));
+    assert.ok(!withSymlinkedLinkableRoot.includes('No external linkable root.'));
 
     console.log('✅ skills-tools tests: ok');
   } finally {

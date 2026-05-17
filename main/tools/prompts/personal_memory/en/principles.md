@@ -69,7 +69,8 @@ The `personal_memory` toolset uses a **path key-value storage** model:
 - Treat personal memory as a **carry-along stable-facts memo**: enable **0 ripgrep** startup within your scope.
 - Store stable facts only: **anchor points (file/symbol) + 1-line meaning + key contracts/priorities (≤3)**.
 - Fewer memory files is better: group facts that will be updated together into one file; avoid adding extra “directory-of-directory” layers.
-- `personal_memory` should primarily hold knowledge that has **not** been promoted to team-defined role assets yet, but is still worth carrying forward for your own future work: your entry maps, search keywords, debugging methods, and long-lived working preferences.
+- `personal_memory` should primarily hold knowledge that has **not** been promoted to team-defined role assets yet, but is still worth carrying forward for your own future work: your entry maps, search keywords, debugging entrypoints, and long-lived working preferences.
+- Boundary with skills: workspace-coupled facts, paths, local contracts, and responsibility-area indexes belong in `personal_memory`; workspace-independent operating methods, checklists, triggers, and boundaries belong in skills. If both appear in one experience, split them so skills do not hide repo facts that can go stale.
 - Do not store task progress or daily state here:
   - Information that must synchronize the team's current effective state, key decisions, next step, or still-active blockers belongs in Taskdoc `progress`, the quasi-real-time task bulletin board
   - Personal or current-dialog short-term working set details belong in reminders
@@ -78,6 +79,7 @@ The `personal_memory` toolset uses a **path key-value storage** model:
 
 - **Role-level long-lived definition assets**: `persona / knowhow / pitfalls`
 - **A member’s own reusable long-lived experience and working index**: `personal_memory`
+- **Reusable operating guidance / checklists / triggers and boundaries**: `skills`
 - **Taskdoc `progress`**: the team-shared quasi-real-time task bulletin board for current effective state, key decisions, next steps, and still-active blockers
 - **reminders**: personal or current-dialog short-term working set, continuation package, and easy-to-lose volatile details
 - **Team-shared long-lived conventions / invariants / consensus rules**: `team_memory`
@@ -89,6 +91,7 @@ The `personal_memory` toolset uses a **path key-value storage** model:
 ## Relationship with Other Tools
 
 - **team_memory**: Team shared memory, visible to all members
+- **skills**: Reusable prompt skills for “how to do it”; not a workspace fact warehouse and not a permission grant
 - **reminder**: Temporary reminder, session-level
 - **do_mind / mind_more / change_mind / never_mind**: Create, append to, replace, or delete Taskdoc sections
 

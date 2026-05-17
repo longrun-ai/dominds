@@ -180,7 +180,7 @@ reading source code.
 - `man({ "toolsetId": "team_mgmt", "topics": ["team"] })` → how to manage `.minds/team.yaml` (+ templates).
 - `man({ "toolsetId": "team_mgmt", "topics": ["team", "member-properties"] })` → list supported member fields and meanings.
 - `man({ "toolsetId": "team_mgmt", "topics": ["minds"] })` → how to manage `.minds/team/<id>/*.md` (persona/knowhow/pitfalls).
-- `man({ "toolsetId": "team_mgmt", "topics": ["skills"] })` → how to manage `.minds/skills/*` (injection point, tone, heading levels, migration boundaries).
+- `man({ "toolsetId": "team_mgmt", "topics": ["skills"] })` → how to manage `.minds/skills/*` (Skills index / `read_skill` body loading, tone, heading levels, migration boundaries).
 - `man({ "toolsetId": "team_mgmt", "topics": ["priming"] })` → how to manage startup scripts under `.minds/priming/*`.
 - `man({ "toolsetId": "team_mgmt", "topics": ["env"] })` → how to manage `.minds/env.*.md` (runtime-environment injection point, tone, heading levels).
 - `man({ "toolsetId": "team_mgmt", "topics": ["toolsets"] })` → inspect the actually visible toolsets in the current installation/rtws and common grant patterns.
@@ -609,6 +609,15 @@ Design-level positioning:
 - `.minds/skills/*` stores reusable team skill / operating-guidance assets.
 - Its job is to capture “when to use this, how to do it, and where the boundary is”, not to grant
   permissions.
+- Selection rule: workspace-coupled facts, paths, local contracts, and indexes belong in
+  `personal_memory` / `team_memory` / `.minds/env*.md`; workspace-independent operating methods,
+  checklists, triggers, and boundaries belong in skills.
+- Team collaboration SOPs should usually be team-shared skills: abstract responsibilities, stages,
+  inputs/outputs, escalation conditions, and synchronization cadence into portable procedures; keep
+  this workspace's concrete paths, member bindings, and tool bindings as facts in memory/env/team.yaml.
+- If an experience contains both a portable method and current-rtws facts, split it: keep the
+  reusable procedure in the skill and keep this repo's paths, command entrypoints, and local
+  contracts in memory/env so the skill does not become a hidden stale-fact warehouse.
 - If a skill depends on scripts, privileged tools, MCP, external binaries, or reusable execution
   capability, the design should usually elevate it into a Dominds app / toolset / teammate contract
   rather than stopping at Markdown alone.

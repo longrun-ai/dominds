@@ -6,6 +6,13 @@ import type { LanguageCode } from '@longrun-ai/kernel/types/language';
 import { parseMarkdownFrontmatter } from '../markdown/frontmatter';
 import { getMcpVirtualSkill, listMcpVirtualSkills } from '../mcp/resources';
 
+/**
+ * Skills are reusable prompt-guidance assets, not memory records.
+ *
+ * Memory stores workspace-coupled facts, indexes, and consensus under `.minds/memory/**`.
+ * This module loads portable "how to do it" guidance from `.minds/skills/**` and MCP
+ * resource skills, then exposes summaries so the model can decide when to call `read_skill`.
+ */
 export type WorkspaceSkillScope = 'team_shared' | 'individual' | 'mcp_resource';
 
 export type LoadedWorkspaceSkill = Readonly<{

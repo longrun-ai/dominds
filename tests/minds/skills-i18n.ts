@@ -101,12 +101,16 @@ async function main(): Promise<void> {
       const { systemPrompt } = await loadAgentMinds('alice');
       assert.ok(systemPrompt.includes('### Skills（工作技能）'));
       assert.ok(systemPrompt.includes('中文评审技能'));
-      assert.ok(systemPrompt.includes('先梳理改动面，再确认验证路径。'));
+      assert.ok(systemPrompt.includes('read_skill({ "skill_id": "reviewer" })'));
+      assert.ok(!systemPrompt.includes('先梳理改动面，再确认验证路径。'));
       assert.ok(systemPrompt.includes('上游 allowed-tools'));
       assert.ok(systemPrompt.includes('Neutral fallback skill'));
-      assert.ok(systemPrompt.includes('Use neutral fallback instructions.'));
+      assert.ok(systemPrompt.includes('read_skill({ "skill_id": "fallback" })'));
+      assert.ok(!systemPrompt.includes('Use neutral fallback instructions.'));
       assert.ok(systemPrompt.includes('仅 Alice 可见'));
-      assert.ok(systemPrompt.includes('这是 Alice 的个人技能。'));
+      assert.ok(systemPrompt.includes('read_skill({ "skill_id": "private-notes" })'));
+      assert.ok(!systemPrompt.includes('这是 Alice 的个人技能。'));
+      assert.ok(!systemPrompt.includes('English only'));
       assert.ok(!systemPrompt.includes('This skill should only load in English mode.'));
     }
 
@@ -115,11 +119,15 @@ async function main(): Promise<void> {
       const { systemPrompt } = await loadAgentMinds('alice');
       assert.ok(systemPrompt.includes('### Skills'));
       assert.ok(systemPrompt.includes('English review skill'));
-      assert.ok(systemPrompt.includes('Map the change surface before proposing verification.'));
+      assert.ok(systemPrompt.includes('read_skill({ "skill_id": "reviewer" })'));
+      assert.ok(!systemPrompt.includes('Map the change surface before proposing verification.'));
       assert.ok(systemPrompt.includes('Upstream allowed-tools'));
-      assert.ok(systemPrompt.includes('This skill should only load in English mode.'));
+      assert.ok(systemPrompt.includes('English only'));
+      assert.ok(systemPrompt.includes('read_skill({ "skill_id": "en-only" })'));
+      assert.ok(!systemPrompt.includes('This skill should only load in English mode.'));
       assert.ok(systemPrompt.includes('Neutral fallback skill'));
-      assert.ok(systemPrompt.includes('Use neutral fallback instructions.'));
+      assert.ok(systemPrompt.includes('read_skill({ "skill_id": "fallback" })'));
+      assert.ok(!systemPrompt.includes('Use neutral fallback instructions.'));
       assert.ok(!systemPrompt.includes('这是 Alice 的个人技能。'));
     }
 

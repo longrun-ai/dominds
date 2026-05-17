@@ -4105,9 +4105,9 @@ export function renderSkillsManual(language: LanguageCode): string {
         '推荐目录：团队共享技能放在 `.minds/skills/team_shared/<skill-id>/SKILL.cn.md`（英文对齐文件用 `SKILL.en.md`）；个人自管技能放在 `.minds/skills/individual/<member-id>/<skill-id>/SKILL.cn.md`；团队管理智能体可把可分发技能包放到 `.minds/skills/linkable/<skill-id>/SKILL.cn.md`，再用 `team_mgmt_link_skill({ member_id, skill_id })` symlink 给指定队友。',
         '语言选择：Dominds 当前工作语言是 `zh|en`，但 skill 文件后缀采用更通行的 `cn|en`。当工作语言为 `zh` 时优先读取 `SKILL.cn.md`，当工作语言为 `en` 时优先读取 `SKILL.en.md`，两者都可回退到无语言标识的 `SKILL.md`；不会跨语言兜底到另一种语言文件。',
         '可移植优先格式：遵循当前主流 Agent Skills 生态公共子集，使用 `SKILL.md + YAML frontmatter`。最小必备字段是 `name` 与 `description`，正文 markdown 即真正的技能提示词/操作指引。',
-        'Dominds 当前实现会把匹配到的 skill 内容直接注入 agent system prompt；因此这里的技能更接近“指导知识包”。这与部分平台的“先只加载 name/description、命中后再延迟加载正文”不同，请控制体量，把长参考资料拆到同目录其它文件并在正文里按需引用。',
-        '去向与口吻（按当前实现）：`name` 会成为 skills 小节里的标题，`description` 会作为说明文字显示，正文会原样进入 `Prompt` 区块。因此三者都属于写给“当前成员智能体”的系统提示内容。推荐把 `name` 写成稳定技能名，把 `description` 写成“何时用/何时不用”，把正文写成简洁的操作指引（多用祈使句/第二人称），不要写成 marketplace 营销文案、第三人称人物介绍，或对团队管理者的旁白说明。',
-        '标题层级约束：skills 模板已经自动包好 `### Skills（工作技能）` 和每个 skill 的 `#### <name>` 标题。正文通常应从普通 bullet、步骤列表，或至多 `#####` 小节开始；不要在正文里再写 `# <skill-name>` / `## ...` 来重复外层标题结构。',
+        'Dominds 当前实现会把匹配到的 skill 摘要注入 agent system prompt，并提示智能体按需调用 `read_skill({ "skill_id": "..." })` 读取正文；正文不是默认全量注入。请让 `description` 足够清楚地说明触发条件/不适用条件，正文则承载真正的操作步骤。',
+        '去向与口吻（按当前实现）：`name` 会成为 skills 小节里的标题，`description` 会作为说明文字显示，正文由 `read_skill` 按需读取。因此三者都属于写给“当前成员智能体”的提示内容。推荐把 `name` 写成稳定技能名，把 `description` 写成“何时用/何时不用”，把正文写成简洁的操作指引（多用祈使句/第二人称），不要写成 marketplace 营销文案、第三人称人物介绍，或对团队管理者的旁白说明。',
+        '标题层级约束：Skills 索引会显示 skill 标题，`read_skill` 输出也会用 `# <name>` 包装正文。SKILL 正文通常应从普通 bullet、步骤列表，或至多 `#####` 小节开始；不要在正文里再写 `# <skill-name>` / `## ...` 来重复外层标题结构。',
         '为兼容公开来源，可保留 `allowed-tools` / `user-invocable` / `disable-model-invocation` 字段；但在 Dominds 中：这些字段目前只用于迁移/文档语义，不会自动授予工具权限，也不会改变运行时调度逻辑。',
         '最重要的边界：skill 不是权限系统。真正的工具能力仍由 `.minds/team.yaml` 的 `toolsets` / `tools` 与已安装 Dominds apps 决定。',
         '普通成员自管：授予 `skills` toolset 后，成员可用 `add_personal_skill` / `import_personal_skill_from_file` / `replace_personal_skill` / `drop_personal_skill` 管理自己的个人 skill；这些工具不会写入团队共享目录，也不能替别人写。',
@@ -4115,6 +4115,17 @@ export function renderSkillsManual(language: LanguageCode): string {
         'symlink 语义：skills 运行时会跟随合法的 skill 文件/目录 symlink；broken symlink 会 loud fail。普通成员使用 `skills` toolset 编辑 linked personal skill 时会先 copy-on-write 物化为个人副本，避免写穿团队目录或其它非个人目录。',
         '团队管理职责的智能体可以联网搜索公开 skill 定义（优先官方文档/官方仓库/官方 marketplace 条目），也可以直接基于团队真实操作经验自行总结编写。迁移前必须核对 license、适用场景、是否依赖脚本/外部工具、是否夹带与本团队冲突的人设/权限假设。',
         '对于网络公开来源、并且带脚本/工具调用约束的 skills：默认不要只把文案抄进 `.minds/skills/**` 就上线。推荐路径是把执行能力封装成 Dominds app（专属工具 / toolsets / 工具集手册 / teammates contract），再由 skill 只保留软性指导与对 app/toolset 的引用说明。',
+      ]) +
+      fmtHeader('团队协作 SOP 的资产分流最佳实践') +
+      fmtList([
+        '首选判断：团队协作 SOP 通常应优先做成团队共享 skill，而不是 team_memory。SOP 的主体应描述可迁移的协作程序：角色职责、阶段顺序、输入/输出、同步节奏、升级条件、验收口径、失败恢复。',
+        '抽象优先：如果 SOP 里出现大量当前工作区路径、具体成员名、具体工具名，先问“这些是不是只是绑定信息”。通常可以把它们抽象成“任务契约”“验收材料”“实现负责人”“验证负责人”“运行入口”“证据包”等概念。',
+        '绑定外置：当前 rtws 的事实绑定再放到合适资产：路径/入口索引放 `personal_memory` 或 `team_memory`，运行环境约束放 `.minds/env*.md`，成员职责与工具权限放 `.minds/team.yaml` / persona / knowhow / pitfalls。',
+        'skill 里只写如何使用绑定：例如“先读取本 rtws 的运行入口索引”“向具备验证职责的成员发起诉请”“把验收证据写入 Taskdoc progress”，而不是把某个仓库的真实路径硬编码成 SOP 主体。',
+        '例 1：代码评审协作。skill 写“变更面梳理 -> 风险分级 -> 验证计划 -> 回贴格式 -> 需要升级给架构/测试的条件”；team_memory 写当前仓库的长期模块边界索引；personal_memory 写某成员常负责模块的入口路径；team.yaml 绑定谁有测试/浏览器/toolset 权限。',
+        '例 2：WebUI 验收协作。skill 写“产品口径确认 -> 启动/观察应用 -> 截图/交互证据 -> 无障碍/响应式检查 -> 缺陷回流”的通用流程；`.minds/env*.md` 写本 rtws 的 dev server 端口、启动脚本、浏览器测试环境注意事项；Taskdoc progress 写本任务当前验收状态。',
+        '例 3：发布/回滚协作。skill 写“发布前冻结、负责人确认、验证证据、异常升级、回滚判定与沟通节奏”；team_memory 写团队长期发布原则；team.yaml 绑定发布负责人/验证负责人及其工具权限；Taskdoc constraints 写本次发布特有禁令。',
+        '反例：不要把“打开 `packages/foo/src/bar.ts`，让 @alice 改第 20 行，再让 @bob 跑某条命令”写成团队 SOP。更好的拆分是：skill 写“实现负责人修改受影响模块、验证负责人运行已登记验证入口并回传证据”；具体文件、负责人、命令入口进入 memory/env/team.yaml/Taskdoc。',
       ]) +
       fmtHeader('建议采用的 SKILL 文件格式') +
       fmtCodeBlock('markdown', [
@@ -4157,7 +4168,7 @@ export function renderSkillsManual(language: LanguageCode): string {
         '5. 写入 rtws：团队长期共享技能放到 `.minds/skills/team_shared/<skill-id>/SKILL.cn.md`；成员自用技能应让成员用 `skills` toolset 写入个人目录；需要团队管理者定向分发的技能放到 `.minds/skills/linkable/<skill-id>/SKILL.cn.md` 并用 `team_mgmt_link_skill` 发给目标成员。若团队工作语言需要英文对齐，再补 `SKILL.en.md`。',
         '6. 配置权限：根据 skill 真实需要，更新 `.minds/team.yaml` 的成员 `toolsets` / `tools`，必要时安装/启用对应 Dominds app；不要只写 `allowed-tools` 就结束。',
         '7. 本地化：`cn` 文件作为中文语义基准；`en` 追随 `cn`。若公开来源只有英文，先提炼成符合本团队语义的中文基准，再回写英文对齐版。',
-        '8. 验收：用 `dominds read <member-id> --only-prompt` 检查 skill 是否已注入 system prompt，并确认没有把不该暴露的工具/脚本假设写进正文。',
+        '8. 验收：用 `dominds read <member-id> --only-prompt` 检查 skill 摘要是否进入 Skills 索引，并确认 `read_skill({ "skill_id": "<skill-id>" })` 可读取正文；正文里不要声称拥有未授权工具/脚本能力。',
       ]) +
       fmtHeader('从常见官方格式迁移时的判断口诀') +
       fmtList([
@@ -4175,9 +4186,9 @@ export function renderSkillsManual(language: LanguageCode): string {
       'Recommended layout: team-shared skills live at `.minds/skills/team_shared/<skill-id>/SKILL.cn.md` (with `SKILL.en.md` as the English counterpart); self-managed personal skills live at `.minds/skills/individual/<member-id>/<skill-id>/SKILL.cn.md`; team-management agents may place distributable packages under `.minds/skills/linkable/<skill-id>/SKILL.cn.md`, then symlink them to selected teammates with `team_mgmt_link_skill({ member_id, skill_id })`.',
       'Language selection: Dominds work language is currently `zh|en`, but skill filenames use the more portable `cn|en` suffixes. When work language is `zh`, Dominds prefers `SKILL.cn.md`; when it is `en`, Dominds prefers `SKILL.en.md`; both may fall back to `SKILL.md`. There is no cross-language fallback.',
       'Portable-first format: follow the common Agent Skills subset used by GitHub/Codex/Claude/skills.sh style ecosystems: `SKILL.md + YAML frontmatter`. The minimum required fields are `name` and `description`; the Markdown body is the actual skill prompt/operating guidance.',
-      'Current Dominds behavior eagerly injects matched skills into the agent system prompt. That makes a Dominds skill closer to a guidance knowledge pack than to a lazily loaded marketplace artifact. Keep bodies tight, and move long references into sibling files that the body points to.',
-      'Destination and tone (current implementation): `name` is rendered as the skill heading, `description` appears as visible description text, and the body is inserted verbatim into the `Prompt` block inside system prompt. Write all three for the current member agent. Use a stable skill name, trigger-oriented description, and concise operating guidance in the body; avoid marketplace sales copy, third-person biographies, or operator-facing narration.',
-      'Heading rule: the wrapper already provides `### Skills` and `#### <name>` for each skill. Bodies should usually start with plain bullets, numbered steps, or at most `#####` subsections; do not repeat the outer structure with another `# <skill-name>` / `## ...` inside the body.',
+      'Current Dominds behavior injects matched skill summaries into the agent system prompt and tells the agent to call `read_skill({ "skill_id": "..." })` when it needs the body. The body is not injected eagerly. Make `description` clear enough to describe trigger/non-trigger conditions, and keep the body focused on the actual operating procedure.',
+      'Destination and tone (current implementation): `name` is rendered as the skill heading, `description` appears as visible description text, and the body is read on demand through `read_skill`. Write all three for the current member agent. Use a stable skill name, trigger-oriented description, and concise operating guidance in the body; avoid marketplace sales copy, third-person biographies, or operator-facing narration.',
+      'Heading rule: the Skills index shows the skill title, and `read_skill` also wraps the body with `# <name>`. Bodies should usually start with plain bullets, numbered steps, or at most `#####` subsections; do not repeat the outer structure with another `# <skill-name>` / `## ...` inside the body.',
       'For compatibility with public skill sources, Dominds accepts `allowed-tools`, `user-invocable`, and `disable-model-invocation`; however, in Dominds these fields are currently informational only. They do not grant tools and do not change runtime dispatch yet.',
       'The hard boundary: a skill is not a permission system. Real tool access still comes from `.minds/team.yaml` (`toolsets` / `tools`) and installed Dominds apps.',
       'Ordinary member self-management: once a member has the `skills` toolset, it may use `add_personal_skill` / `import_personal_skill_from_file` / `replace_personal_skill` / `drop_personal_skill` for its own personal skills only; these tools do not write team-shared directories and cannot write for other members.',
@@ -4185,6 +4196,17 @@ export function renderSkillsManual(language: LanguageCode): string {
       'Symlink semantics: the skills runtime follows valid skill file/directory symlinks; broken symlinks fail loudly. When an ordinary member uses the `skills` toolset to edit a linked personal skill, Dominds materializes a copy-on-write personal package first, so team directories or other non-personal targets are not modified through the link.',
       'A team-management agent may browse the web for public skill definitions (prefer official docs/repos/marketplace listings), or write skills directly by summarizing the team’s own repeatable operating guidance. Before importing, verify license, applicability, script/tool dependencies, and any hidden persona/permission assumptions.',
       'For public-network skills that rely on scripts or explicit tool contracts: do not ship them by copying Markdown alone. Preferred path: wrap execution capability into a Dominds app (dedicated tools / toolsets / toolset manual / teammate contract), then keep the skill focused on soft guidance and app/toolset references.',
+    ]) +
+    fmtHeader('Best Practices: Splitting Team Collaboration SOP Assets') +
+    fmtList([
+      'Default choice: team collaboration SOPs usually belong in team-shared skills, not team_memory. The SOP body should describe a portable collaboration procedure: roles, phases, inputs/outputs, synchronization cadence, escalation conditions, acceptance policy, and failure recovery.',
+      'Abstract first: if an SOP contains many current-workspace paths, concrete member names, or concrete tool names, ask whether those are only bindings. They can usually become concepts such as “task contract”, “acceptance evidence”, “implementation owner”, “verification owner”, “run entrypoint”, or “evidence package”.',
+      'Keep bindings outside the SOP: current-rtws facts belong in the right asset. Put path/entrypoint indexes in `personal_memory` or `team_memory`, runtime-environment constraints in `.minds/env*.md`, and member responsibilities/tool permissions in `.minds/team.yaml` / persona / knowhow / pitfalls.',
+      'Inside the skill, describe how to use bindings: for example, “read the rtws run-entry index first”, “tellask the member with verification responsibility”, or “write acceptance evidence into Taskdoc progress”, instead of hard-coding this repo’s real paths as the SOP body.',
+      'Example 1: code-review collaboration. The skill owns “change-surface scan -> risk classification -> verification plan -> reply format -> escalation conditions for architecture/testing”. team_memory owns the repo’s long-lived module-boundary index. personal_memory owns one member’s usual entrypoints. team.yaml binds who has test/browser/toolset access.',
+      'Example 2: WebUI acceptance collaboration. The skill owns “confirm product intent -> start/observe app -> screenshot/interaction evidence -> accessibility/responsive checks -> defect feedback loop”. `.minds/env*.md` owns this rtws’s dev-server ports, startup scripts, and browser-test environment notes. Taskdoc progress owns the current task’s acceptance state.',
+      'Example 3: release/rollback collaboration. The skill owns “pre-release freeze, owner confirmation, verification evidence, incident escalation, rollback decision, and communication cadence”. team_memory owns long-lived release principles. team.yaml binds release/verification owners and their tools. Taskdoc constraints owns this release’s one-off prohibitions.',
+      'Anti-example: do not write “open `packages/foo/src/bar.ts`, ask @alice to edit line 20, then ask @bob to run this exact command” as a team SOP. Better split: the skill says “the implementation owner edits the affected module; the verification owner runs the registered validation entrypoint and returns evidence”; concrete files, owners, and commands live in memory/env/team.yaml/Taskdoc.',
     ]) +
     fmtHeader('Recommended SKILL File Format') +
     fmtCodeBlock('markdown', [
@@ -4228,7 +4250,7 @@ export function renderSkillsManual(language: LanguageCode): string {
       '5. Write into the rtws: put long-lived team-shared skills under `.minds/skills/team_shared/<skill-id>/SKILL.cn.md`; let members use the `skills` toolset for self-owned personal skills; put team-managed targeted distributions under `.minds/skills/linkable/<skill-id>/SKILL.cn.md` and assign them with `team_mgmt_link_skill`. Add `SKILL.en.md` when an English counterpart is needed.',
       '6. Configure permissions explicitly: update `.minds/team.yaml` member `toolsets` / `tools`, and install/enable the supporting Dominds app when required. Do not stop at `allowed-tools` metadata.',
       '7. Localize deliberately: use the `cn` file as the Chinese semantic baseline, then align `en` to it. If the public source is English-only, distill it into your team’s Chinese baseline first.',
-      '8. Verify with `dominds read <member-id> --only-prompt` to confirm the skill is injected and does not claim tools/scripts the member does not actually have.',
+      '8. Verify with `dominds read <member-id> --only-prompt` to confirm the skill summary appears in the Skills index, and confirm `read_skill({ "skill_id": "<skill-id>" })` can read the body. The body must not claim tools/scripts the member does not actually have.',
     ]) +
     fmtHeader('Fast Triage Rules When Importing Official Formats') +
     fmtList([

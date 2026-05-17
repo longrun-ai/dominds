@@ -103,6 +103,12 @@ async function main(): Promise<void> {
     zhPersonal.includes('准实时任务公告牌'),
     'zh personal_memory manual should route team-synced current state to Taskdoc progress bulletin board',
   );
+  assert.ok(
+    zhPersonal.includes('与 skills 的边界') &&
+      zhPersonal.includes('工作区关联强的事实、路径、局部契约、职责域索引') &&
+      zhPersonal.includes('独立于工作区内容的操作方法、检查清单、触发条件与边界'),
+    'zh personal_memory manual should route workspace-coupled facts to memory and reusable methods to skills',
+  );
 
   const zhTeam = await renderToolsetTopic('zh', 'team_memory', 'principles');
   assert.ok(
@@ -112,6 +118,12 @@ async function main(): Promise<void> {
   assert.ok(
     zhTeam.includes('准实时任务公告牌'),
     'zh team_memory manual should reject temporary task state in team memory',
+  );
+  assert.ok(
+    zhTeam.includes('不要把通用操作规程、审查清单、调试套路或团队协作 SOP 写成 team memory') &&
+      zhTeam.includes('应写成团队共享 skill') &&
+      zhTeam.includes('路径索引与绑定关系'),
+    'zh team_memory manual should route generic SOPs to team-shared skills and keep rtws bindings in memory',
   );
 
   const zhControl = await renderToolsetTopic('zh', 'control', 'principles');
@@ -139,6 +151,25 @@ async function main(): Promise<void> {
   assert.ok(
     enMinds.includes('quasi-real-time task bulletin board'),
     'en team_mgmt minds manual should define Taskdoc progress as the quasi-real-time task bulletin board',
+  );
+
+  const enPersonal = await renderToolsetTopic('en', 'personal_memory', 'principles');
+  assert.ok(
+    enPersonal.includes('Boundary with skills') &&
+      enPersonal.includes('workspace-coupled facts, paths, local contracts') &&
+      enPersonal.includes(
+        'workspace-independent operating methods, checklists, triggers, and boundaries',
+      ),
+    'en personal_memory manual should route workspace-coupled facts to memory and reusable methods to skills',
+  );
+
+  const enTeam = await renderToolsetTopic('en', 'team_memory', 'principles');
+  assert.ok(
+    enTeam.includes('Do not store generic operating procedures, review checklists') &&
+      enTeam.includes('team collaboration SOPs as team memory') &&
+      enTeam.includes('write a team-shared skill instead') &&
+      enTeam.includes('path indexes, and bindings'),
+    'en team_memory manual should route generic SOPs to team-shared skills and keep rtws bindings in memory',
   );
 
   const enControl = await renderToolsetTopic('en', 'control', 'principles');

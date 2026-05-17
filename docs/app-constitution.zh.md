@@ -374,7 +374,7 @@ Install JSON 是 app 与 Kernel/CLI 之间的**安装/运行握手载荷**。它
 这里必须明确 **app 与 skill 不是同一层概念**，而且两者在现有实现中都已经是正式机制：
 
 - **App** 是 Dominds 的安装/解析/组合单元：它有自己的 `id`、manifest（`.minds/app.yaml`）、团队资产（`.minds/team.yaml`、persona/knowhow/pitfalls）、环境说明（`.minds/env.md`），并可被 `dominds install` 纳入某个 rtws。
-- **Skill** 是 rtws 内的纯 Markdown 技能资产：当前从 `.minds/skills/team_shared/**` 与 `.minds/skills/individual/**` 读取，按工作语言优先选择 `SKILL.cn.md` / `SKILL.en.md` / `SKILL.md`，并把正文直接注入智能体系统提示词。它更适合承载软性的操作指导、检查清单、判断口诀与团队特定方法学，而不是承载需要稳定工具契约的可分发产品能力。
+- **Skill** 是 rtws 内的纯 Markdown 技能资产：当前从 `.minds/skills/team_shared/**` 与 `.minds/skills/individual/**` 读取，按工作语言优先选择 `SKILL.cn.md` / `SKILL.en.md` / `SKILL.md`，并把 skill 索引注入智能体系统提示词，正文按需通过 `read_skill` 读取。它更适合承载软性的操作指导、检查清单、判断口诀与团队特定方法学，而不是承载需要稳定工具契约的可分发产品能力。
 - Skill frontmatter 当前支持 `name`、`description`、`allowed-tools`、`user-invocable`、`disable-model-invocation`；其中后 3 项目前主要用于兼容/迁移语义，不会自动授予工具权限，也不会替代团队 / 工具集调度规则。
 - **工具集操作手册 / 随 App 附带的操作手册** 更适合表达“和工具一起分发的操作指导”：它的性质接近 skill，但会与专属工具、工具集和 App 身份一起打包，更适合像 `web-dev` 这种需要整体分发与安装解析的能力。
 - `playwright-interactive/` 不应被归类为上述“纯 Markdown rtws skill”；更准确地说，它体现的是“内置浏览器能力之上的指导层”。在 Dominds 中，更正交的做法是像 `@longrun-ai/web-dev` 这样，把专属工具、工具集操作手册、推荐智能体队友定义与运行态缓存一起封装成 app。

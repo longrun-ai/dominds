@@ -36,6 +36,7 @@ The team_memory toolset uses a **path key-value storage** model, similar to pers
 - `team_memory`: team-shared long-lived conventions / invariants / consensus rules
 - `personal_memory`: one member’s own reusable long-lived experience and working index
 - `persona / knowhow / pitfalls`: team-defined role-level long-lived prompt assets
+- `skills`: reusable operating guidance, checklists, triggers, and boundaries; a “how to do it” prompt-skill asset, not a fact warehouse or permission system
 
 ## Tool Overview
 
@@ -68,6 +69,7 @@ The team_memory toolset uses a **path key-value storage** model, similar to pers
 - Include update time: Record last update time for tracking
 - Store only stable team-level knowledge: shared conventions, architectural invariants, long-lived maintenance indexes, or judgment rules that multiple members should reuse
 - Do not turn `team_memory` into one member’s personal experience warehouse; that belongs in `personal_memory`
+- Do not store generic operating procedures, review checklists, debugging routines, or team collaboration SOPs as team memory. If it mainly answers “how to do it / who collaborates at which stage”, write a team-shared skill instead. Team memory can hold current rtws facts, path indexes, and bindings that the skill tells agents to consult.
 - Do not put execution-time information here when the team needs it synchronized quasi-real-time, such as current effective state, key decisions, next steps, or still-active blockers; that belongs in Taskdoc `progress`, the quasi-real-time task bulletin board
 
 ### 3. Usage Scenarios
@@ -79,6 +81,7 @@ The team_memory toolset uses a **path key-value storage** model, similar to pers
 ## Relationship with Other Tools
 
 - **personal_memory**: Personal memory, only current agent visible
+- **skills**: Reusable prompt skills for operating methods; `allowed-tools` does not grant Dominds permissions
 - **reminder**: Temporary reminder, session-level
 - **do_mind / mind_more / change_mind / never_mind**: Create, append to, replace, or delete Taskdoc sections
 

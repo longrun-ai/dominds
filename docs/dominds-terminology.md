@@ -280,8 +280,8 @@ Example / 示例（概念）:
 
 ### Skill（技能文档）
 
-- EN: A **Skill** is a pure-Markdown capability asset under `.minds/skills/**` that is injected into prompts as guidance. Skills are best for soft guidance, checklists, heuristics, and team-specific methods.
-- ZH: **Skill（技能文档）**是 `.minds/skills/**` 下的纯 Markdown 能力资产，会作为指导性内容注入提示词。Skill 适合承载软性指导、检查清单、判断口诀与团队特定方法学。
+- EN: A **Skill** is a pure-Markdown capability asset under `.minds/skills/**`. Dominds injects a skill index into prompts, and agents read skill bodies on demand with `read_skill`. Skills are best for soft guidance, checklists, heuristics, and team-specific methods.
+- ZH: **Skill（技能文档）**是 `.minds/skills/**` 下的纯 Markdown 能力资产。Dominds 会把 skill 索引注入提示词，智能体按需通过 `read_skill` 读取正文。Skill 适合承载软性指导、检查清单、判断口诀与团队特定方法学。
 
 - EN: A Skill is **not** an installable App and is **not** the right term for a tool-coupled product capability. Frontmatter such as `allowed-tools` is compatibility metadata, not automatic authorization.
 - ZH: Skill **不是**可安装的 App，也**不是**带稳定工具契约的产品能力包的正确叫法。诸如 `allowed-tools` 的 frontmatter 只是兼容/迁移元数据，不代表自动授权。

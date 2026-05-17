@@ -2,6 +2,8 @@
  * Module: tools/skills
  *
  * Personal skill management tools scoped to `.minds/skills/individual/<member-id>`.
+ * Skills capture reusable prompt guidance (procedures, checklists, triggers, boundaries);
+ * workspace-coupled facts and indexes belong in memory/env instead.
  */
 import fs from 'fs';
 import path from 'path';

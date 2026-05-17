@@ -146,7 +146,7 @@
 - `man({ "toolsetId": "team_mgmt", "topics": ["team"] })` → 如何管理 `.minds/team.yaml`（+ 模板）
 - `man({ "toolsetId": "team_mgmt", "topics": ["team", "member-properties"] })` → 列出支持的成员字段及其含义
 - `man({ "toolsetId": "team_mgmt", "topics": ["minds"] })` → 如何管理 `.minds/team/<id>/*.md`（persona/knowhow/pitfalls）
-- `man({ "toolsetId": "team_mgmt", "topics": ["skills"] })` → 如何管理 `.minds/skills/*`（skills 的注入位置、口吻、标题层级、迁移边界）
+- `man({ "toolsetId": "team_mgmt", "topics": ["skills"] })` → 如何管理 `.minds/skills/*`（Skills 索引 / `read_skill` 读取正文、口吻、标题层级、迁移边界）
 - `man({ "toolsetId": "team_mgmt", "topics": ["priming"] })` → 如何管理 `.minds/priming/*` 启动脚本（格式、维护、复用）
 - `man({ "toolsetId": "team_mgmt", "topics": ["env"] })` → 如何管理 `.minds/env.*.md`（运行环境提示的注入位置、口吻、标题层级）
 - `man({ "toolsetId": "team_mgmt", "topics": ["toolsets"] })` → 查看当前安装/rtws 下实际可见的 toolsets 及常见授权模式
@@ -520,6 +520,9 @@ members:
 
 - `.minds/skills/*` 用来承载可复用的团队技能/操作指导资产。
 - 它的重点是“什么时候用、怎么做、边界是什么”，而不是授予权限。
+- 选型原则：工作区关联强的事实、路径、局部契约与索引应进入 `personal_memory` / `team_memory` / `.minds/env*.md`；独立于工作区内容的操作方法、检查清单、触发条件与边界应进入 skill。
+- 团队协作 SOP 通常应优先做成团队共享 skill：把职责、阶段、输入输出、升级条件和同步节奏抽象成可迁移规程；当前工作区的具体路径、成员绑定、工具绑定只作为 memory/env/team.yaml 里的绑定事实。
+- 若某个经验同时包含通用方法与当前 rtws 事实，应拆开维护：skill 写通用步骤，memory/env 写当前仓库路径、命令入口与局部契约，避免 skill 成为隐蔽的过期事实仓库。
 - 如果某个 skill 需要脚本、专有工具、MCP、外部二进制、或稳定复用的执行能力，那么设计上通常更适合上升为 Dominds app / toolset / teammates contract，而不应只停留在 markdown 文案。
 - 设计文档在这里仅说明边界与迁移方向；具体文件命名、注入位置、标题层级、语言文件选择等，以运行时 `man({ "toolsetId": "team_mgmt", "topics": ["skills"] })` 为准。
 
