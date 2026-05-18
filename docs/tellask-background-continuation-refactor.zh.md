@@ -1076,6 +1076,7 @@ UI 业务状态投影结论：
 - `nextStep` 已成为必要字段，`latest` 缺失它或 trigger 结构不合法就直接进入 `malformed/`，不再自动补猜。
 - `latest.tellaskCalls` 和 `latest.tellaskResults` 都已落地，tellask call/result duplicate 判定读取 latest 索引，不再扫描当前 course JSONL。
 - `replyDelivery`、`latest.userWait`、`latestAssignmentAnchor`、`sideDialogFinalResponse` 等状态字段都已补齐，恢复/尾部判定优先读状态快照。
+- reply obligation follow-up 已经不再依赖创建时绑定的 `noPromptSideDialogResumeEntitlement`；尾部会按最新事实重新认领，并在 `driveDialogStreamCore` 已经先消费更新 bubble 的场景下，按最后一个 assistant output 对应的 reply target 重新回绑到当前业务义务，避免更新诉请竞速把后续回贴继续机会锁死。
 
 调度和唤醒也已收敛：
 
@@ -1083,6 +1084,8 @@ UI 业务状态投影结论：
 - `globalDialogRegistry` 只承载 live registry 与 wake signal，`wakeDrive` / `clearDriveWake` / `isDriveWakeQueued` 是唯一公开语义。
 - backend loop 只扫描 live root dialog 本身 + root-local `drive-watch.json` 中的支线子集；支线只在 `latest.nextStep.triggers`、open `generationRunState`、pending/delivered-but-tool-result-pending `replyDelivery` 等 durable work 存在时进入 watch。
 - `root_drive_wake` 若在 generation start 被 accepted 后遇到 core/tail failure，会重新写回 durable wake，避免失败收尾误清队列。
+- `reply_obligation_follow_up` 第一刀已落地：runtime reply reminder 不再通过 `noPromptSideDialogResumeEntitlement.reason='reply_obligation_follow_up'` 获得无 prompt drive 资格，而是在轮到消费 queued prompt 时读取最新 `sideDialogFinalResponse`、target dialog `tellaskResults`、当前 sideDialog assignment / active reply obligation 后重新 claim。若这次 assistant output 已经在 core 内部消费了更新 bubble，则 tail 会按最后一个 assistant output 的 reply target 重新认领当前义务，再决定是否继续。旧 callId 已完成、回复义务已消失、或当前回复义务换成其它 callId 时，queued reminder 以 `debug` 丢弃；callId 相同但 target/tool/content 不一致时 loud fail。
+- stale reply reminder 被丢弃后，如果最新状态没有其它 durable drive work，driver 直接停止，不进入 core 开空 generation；caller result-arrival 在 final response anchor 后也不再绕一圈旧的 invalid reply-tool detour。
 
 UI 和投影语义也已对齐：
 
@@ -1100,9 +1103,9 @@ UI 和投影语义也已对齐：
 
 ## 迁移步骤
 
-1. 建立业务 continuation 抽象和 claim 原则：调度层只负责叫醒/取下一条 continuation；业务 handler 轮到时重新读取最新持久事实决定 claimed / stale / conflict。
-2. 第一刀迁移 `reply_obligation_follow_up`：让 continuation 携带 `targetCallId`、`targetDialogId`、`expectedReplyCallName`，执行时重新读取 active reply obligation 和 final response anchor；stale 用 `debug` 丢弃，状态冲突 loud fail。
-3. 第二刀迁移 `result_arrival` / caller revive：用 `requested_work_replied(batchId)` continuation 替换 revive entitlement；direct schedule 和 backend watch 都只叫醒，claim 时读取 batch/trigger 最新事实。
+1. 已完成：建立业务 continuation 抽象和 claim 原则。调度层只负责叫醒/取下一条 continuation；业务 handler 轮到时重新读取最新持久事实决定 claimed / stale / conflict。
+2. 已完成第一刀：迁移 `reply_obligation_follow_up`。queued runtime reply reminder 携带 `targetCallId`、`targetDialogId`、`expectedReplyCallName` 和诉请内容，执行时重新读取 active reply obligation、sideDialog assignment、target tellask result 和 final response anchor；若 core 已先消费更新 bubble，则 tail 会按最后一个 assistant output 的 reply target 重新认领当前义务。stale 用 `debug` 丢弃，状态冲突 loud fail。
+3. 下一刀：迁移 `result_arrival` / caller revive，用 `requested_work_replied(batchId)` continuation 替换 revive entitlement；direct schedule 和 backend watch 都只叫醒，claim 时读取 batch/trigger 最新事实。
 4. 新增 generationRunState、DialogUserWaitState、NextStepTriggerState、dispatch batch、reply delivery status 等状态机元信息，并在每次状态转移时同步维护。
 5. 移除 runtime 历史回扫补猜路径；旧 dialog 缺必要元信息时进入 `malformed/`。如确有业务价值，由人类手工分析 `malformed/` 记录并修正后续跑。
 6. 新增 fact helpers：user wait、next-step facts、completion obligations、background pending work，全部读取状态快照。

@@ -602,6 +602,9 @@ async function main(): Promise<void> {
     );
     assert.equal(scheduled.reason, 'follow_up_prompt');
     const queuedReplyReminder = sessionlessSideDialog.peekUpNext();
+    if (queuedReplyReminder?.kind !== 'new_course_runtime_sideDialog') {
+      throw new Error('expected queued sideDialog runtime reply reminder');
+    }
     assert.equal(
       queuedReplyReminder?.kind,
       'new_course_runtime_sideDialog',
@@ -626,6 +629,166 @@ async function main(): Promise<void> {
       sessionlessSideDialog.hasUpNext(),
       true,
       'reply-obligation follow-up should continue the normal business state machine without manual Continue',
+    );
+
+    const queuedReminderPrompt = queuedReplyReminder.prompt;
+    const eventsBeforeStaleContinuation = await DialogPersistence.loadCourseEvents(
+      sessionlessSideDialog.id,
+      sessionlessSideDialog.currentCourse,
+      sessionlessSideDialog.status,
+    );
+    const genStartCountBeforeStaleContinuation = eventsBeforeStaleContinuation.filter(
+      (event) => event.type === 'gen_start_record',
+    ).length;
+
+    sessionlessSideDialog.assignmentFromAsker = {
+      ...sessionlessSideDialog.assignmentFromAsker,
+      callId: 'sessionless-cleanup-call-next',
+      tellaskContent: 'A newer assignment replaced the previous cleanup request.',
+    };
+    await DialogPersistence.setActiveTellaskReplyObligation(
+      sessionlessSideDialog.id,
+      {
+        expectedReplyCallName: 'replyTellaskSessionless',
+        targetDialogId: sessionlessRoot.id.selfId,
+        targetCallId: 'sessionless-cleanup-call-next',
+        tellaskContent: 'A newer assignment replaced the previous cleanup request.',
+      },
+      sessionlessSideDialog.status,
+    );
+
+    await executeDriveRound({
+      runtime: createKernelDriverRuntimeState(),
+      driveArgs: [
+        sessionlessSideDialog,
+        undefined,
+        true,
+        makeDriveOptions({
+          suppressDiligencePush: true,
+          source: 'kernel_driver_follow_up',
+          reason: 'follow_up_prompt',
+        }),
+      ],
+      scheduleDrive: () => {
+        throw new Error('stale reply-obligation continuation must not schedule another drive');
+      },
+      driveDialog: async () => {
+        throw new Error('stale reply-obligation continuation must not invoke nested driveDialog');
+      },
+    });
+
+    const latestAfterReplacedObligation = await DialogPersistence.loadDialogLatest(
+      sessionlessSideDialog.id,
+      sessionlessSideDialog.status,
+    );
+    const eventsAfterReplacedObligation = await DialogPersistence.loadCourseEvents(
+      sessionlessSideDialog.id,
+      sessionlessSideDialog.currentCourse,
+      sessionlessSideDialog.status,
+    );
+    assert.equal(
+      sessionlessSideDialog.hasUpNext(),
+      false,
+      'stale reply reminder should be removed from the in-memory queue after assignment callId changes',
+    );
+    assert.equal(
+      latestAfterReplacedObligation?.pendingRuntimePrompt,
+      undefined,
+      'stale reply reminder should clear the persisted pending runtime prompt after assignment callId changes',
+    );
+    assert.equal(
+      hasPendingNextStepTriggers(latestAfterReplacedObligation),
+      false,
+      'stale reply reminder should clear queued_prompt trigger after assignment callId changes',
+    );
+    assert.equal(
+      eventsAfterReplacedObligation.filter((event) => event.type === 'gen_start_record').length,
+      genStartCountBeforeStaleContinuation,
+      'stale reply reminder must not open a generation after assignment callId changes',
+    );
+
+    const finalResponseStaleMsgId = 'sessionless-final-response-stale-reminder';
+    await sessionlessSideDialog.queueRuntimeSideDialogPrompt({
+      prompt: queuedReminderPrompt,
+      msgId: finalResponseStaleMsgId,
+      grammar: 'markdown',
+      userLanguageCode: language,
+      tellaskReplyDirective: {
+        expectedReplyCallName: 'replyTellaskSessionless',
+        targetDialogId: sessionlessRoot.id.selfId,
+        targetCallId: 'sessionless-cleanup-call-next',
+        tellaskContent: 'A newer assignment replaced the previous cleanup request.',
+      },
+      calleeDialogReplyTarget: {
+        callerDialogId: sessionlessRoot.id.selfId,
+        callType: 'C',
+        callId: 'sessionless-cleanup-call-next',
+        callSiteCourse: 1,
+        callSiteGenseq: 2,
+      },
+    });
+    await DialogPersistence.mutateDialogLatest(sessionlessSideDialog.id, () => ({
+      kind: 'patch',
+      patch: {
+        sideDialogFinalResponse: {
+          callId: 'sessionless-cleanup-call-next',
+          responseCourse: sessionlessSideDialog.currentCourse,
+          responseGenseq: 1,
+          askerDialogId: sessionlessRoot.id.selfId,
+          askerCourse: sessionlessRoot.currentCourse,
+        },
+      },
+    }));
+
+    await executeDriveRound({
+      runtime: createKernelDriverRuntimeState(),
+      driveArgs: [
+        sessionlessSideDialog,
+        undefined,
+        true,
+        makeDriveOptions({
+          suppressDiligencePush: true,
+          source: 'kernel_driver_follow_up',
+          reason: 'follow_up_prompt',
+        }),
+      ],
+      scheduleDrive: () => {
+        throw new Error('finalized stale reply-obligation continuation must not schedule a drive');
+      },
+      driveDialog: async () => {
+        throw new Error(
+          'finalized stale reply-obligation continuation must not invoke nested driveDialog',
+        );
+      },
+    });
+    const latestAfterFinalizedContinuation = await DialogPersistence.loadDialogLatest(
+      sessionlessSideDialog.id,
+      sessionlessSideDialog.status,
+    );
+    const eventsAfterFinalizedContinuation = await DialogPersistence.loadCourseEvents(
+      sessionlessSideDialog.id,
+      sessionlessSideDialog.currentCourse,
+      sessionlessSideDialog.status,
+    );
+    assert.equal(
+      sessionlessSideDialog.hasUpNext(),
+      false,
+      'finalized stale reply reminder should be removed from the in-memory queue',
+    );
+    assert.equal(
+      latestAfterFinalizedContinuation?.pendingRuntimePrompt,
+      undefined,
+      'finalized stale reply reminder should clear the persisted pending runtime prompt',
+    );
+    assert.equal(
+      hasPendingNextStepTriggers(latestAfterFinalizedContinuation),
+      false,
+      'finalized stale reply reminder should clear queued_prompt trigger',
+    );
+    assert.equal(
+      eventsAfterFinalizedContinuation.filter((event) => event.type === 'gen_start_record').length,
+      genStartCountBeforeStaleContinuation,
+      'finalized stale reply reminder must not open a generation',
     );
   });
 

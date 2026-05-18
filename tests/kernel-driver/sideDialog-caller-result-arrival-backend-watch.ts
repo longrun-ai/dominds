@@ -8,6 +8,8 @@ import { driveDialogStream } from '../../main/llm/kernel-driver';
 import { driveQueuedDialogsOnce } from '../../main/llm/kernel-driver/loop';
 import { supplyResponseToAskerDialog } from '../../main/llm/kernel-driver/sideDialog';
 import { DialogPersistence } from '../../main/persistence';
+import { formatTellaskResponseContent } from '../../main/runtime/inter-dialog-format';
+import { getWorkLanguage } from '../../main/runtime/work-language';
 import {
   createMainDialog,
   hasPendingNextStepTriggers,
@@ -32,12 +34,23 @@ async function main(): Promise<void> {
     await writeStandardMinds(tmpRoot, {
       extraMembers: ['fullstack', 'mentor'],
     });
+    const language = getWorkLanguage();
+    const watchedResultMessage = formatTellaskResponseContent({
+      callName: 'tellaskSessionless',
+      callId: 'caller-to-callee',
+      responderId: 'mentor',
+      tellaskerId: 'fullstack',
+      mentionList: ['@mentor'],
+      tellaskContent: 'Please finish the nested task.',
+      responseBody: 'mentor finished the nested task',
+      status: 'completed',
+      deliveryMode: 'reply_tool',
+      language,
+    });
     await writeMockDb(tmpRoot, [
       {
         role: 'tool',
-        message:
-          'Error: there is no longer a pending inter-dialog reply obligation for this dialog (it may already be resolved or no longer valid).\n\nDo not call `replyTellask` again; continue the current local conversation instead.',
-        contextContains: ['mentor finished the nested task'],
+        message: watchedResultMessage,
         response: 'Caller resumed from watched side-dialog result arrival.',
       },
     ]);

@@ -55,10 +55,6 @@ export type KernelDriverDriveOptions = Readonly<{
       }>
     | Readonly<{
         callerDialogId: string;
-        reason: 'reply_obligation_follow_up';
-      }>
-    | Readonly<{
-        callerDialogId: string;
         reason: 'resolved_pending_sideDialog_reply';
         sideDialogId?: string;
         callType?: 'A' | 'B' | 'C';

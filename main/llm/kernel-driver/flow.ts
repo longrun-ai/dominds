@@ -16,7 +16,10 @@ import {
   hasActiveRun,
   setDialogDisplayState,
 } from '../../dialog-display-state';
-import { hasRecoverableGenerationBeyondFinalResponse } from '../../dialog-drive-work';
+import {
+  hasDurableDriveWork,
+  hasRecoverableGenerationBeyondFinalResponse,
+} from '../../dialog-drive-work';
 import { globalDialogRegistry } from '../../dialog-global-registry';
 import { doesInterruptionReasonRequireExplicitResume } from '../../dialog-interruption';
 import { createEmptyDialogNextStepState } from '../../dialog-latest-state';
@@ -167,6 +170,181 @@ async function queueReplyReminderFollowUp(args: {
 
 function isReplyToolReminderPrompt(prompt: KernelDriverPrompt | undefined): boolean {
   return typeof prompt?.content === 'string' && isReplyToolReminderPromptContent(prompt.content);
+}
+
+function hasSameReplyDirective(
+  left: NonNullable<KernelDriverPrompt['tellaskReplyDirective']>,
+  right: NonNullable<KernelDriverPrompt['tellaskReplyDirective']>,
+): boolean {
+  return (
+    left.expectedReplyCallName === right.expectedReplyCallName &&
+    left.targetDialogId === right.targetDialogId &&
+    left.targetCallId === right.targetCallId &&
+    left.tellaskContent === right.tellaskContent
+  );
+}
+
+function buildCurrentSideDialogAssignmentReplyDirective(
+  dialog: SideDialog,
+): NonNullable<KernelDriverPrompt['tellaskReplyDirective']> {
+  switch (dialog.assignmentFromAsker.callName) {
+    case 'tellask':
+      return {
+        expectedReplyCallName: 'replyTellask',
+        targetDialogId: dialog.assignmentFromAsker.askerDialogId,
+        targetCallId: dialog.assignmentFromAsker.callId,
+        tellaskContent: dialog.assignmentFromAsker.tellaskContent,
+      };
+    case 'tellaskSessionless':
+    case 'freshBootsReasoning':
+      return {
+        expectedReplyCallName: 'replyTellaskSessionless',
+        targetDialogId: dialog.assignmentFromAsker.askerDialogId,
+        targetCallId: dialog.assignmentFromAsker.callId,
+        tellaskContent: dialog.assignmentFromAsker.tellaskContent,
+      };
+    default: {
+      const _exhaustive: never = dialog.assignmentFromAsker.callName;
+      throw new Error(`Unsupported sideDialog assignment callName: ${_exhaustive}`);
+    }
+  }
+}
+
+function isQueuedReplyObligationContinuation(
+  prompt: UpNextPrompt,
+): prompt is Extract<
+  UpNextPrompt,
+  { kind: 'new_course_runtime_reply' | 'new_course_runtime_sideDialog' }
+> {
+  return (
+    (prompt.kind === 'new_course_runtime_reply' ||
+      prompt.kind === 'new_course_runtime_sideDialog') &&
+    isReplyToolReminderPromptContent(prompt.prompt)
+  );
+}
+
+function latestHasTellaskResultForCallId(
+  latest: Awaited<ReturnType<typeof DialogPersistence.loadDialogLatest>>,
+  targetCallId: string,
+): boolean {
+  return (
+    latest?.tellaskResults.results.some((entry) => entry.callId.trim() === targetCallId) === true
+  );
+}
+
+async function claimQueuedReplyObligationContinuation(args: {
+  dialog: KernelDriverDriveArgs[0];
+  prompt: Extract<
+    UpNextPrompt,
+    { kind: 'new_course_runtime_reply' | 'new_course_runtime_sideDialog' }
+  >;
+}): Promise<'claimed' | 'stale'> {
+  const directive = args.prompt.tellaskReplyDirective;
+  const targetCallId = directive.targetCallId.trim();
+  const targetDialogId = directive.targetDialogId.trim();
+  if (targetCallId === '' || targetDialogId === '') {
+    throw new Error(
+      `reply obligation continuation invariant violation: empty target identity ` +
+        `(dialog=${args.dialog.id.valueOf()}, targetDialogId=${directive.targetDialogId}, targetCallId=${directive.targetCallId})`,
+    );
+  }
+  const latest = await DialogPersistence.loadDialogLatest(args.dialog.id, args.dialog.status);
+  if (latest?.sideDialogFinalResponse?.callId.trim() === targetCallId) {
+    return 'stale';
+  }
+  if (latestHasTellaskResultForCallId(latest, targetCallId)) {
+    return 'stale';
+  }
+  const targetLatest =
+    targetDialogId === args.dialog.id.selfId
+      ? latest
+      : await DialogPersistence.loadDialogLatest(
+          new DialogID(targetDialogId, args.dialog.id.rootId),
+          args.dialog.status,
+        );
+  if (latestHasTellaskResultForCallId(targetLatest, targetCallId)) {
+    return 'stale';
+  }
+
+  if (args.dialog instanceof SideDialog) {
+    const assignmentDirective = buildCurrentSideDialogAssignmentReplyDirective(args.dialog);
+    if (hasSameReplyDirective(assignmentDirective, directive)) {
+      return 'claimed';
+    }
+  }
+
+  const activeDirective = await loadActiveTellaskReplyDirective(args.dialog);
+  if (!activeDirective) {
+    return 'stale';
+  }
+  if (activeDirective.targetCallId !== directive.targetCallId) {
+    return 'stale';
+  }
+  if (!hasSameReplyDirective(activeDirective, directive)) {
+    throw new Error(
+      `reply obligation continuation invariant violation: active obligation changed for callId=${directive.targetCallId} ` +
+        `(dialog=${args.dialog.id.valueOf()}, expectedReplyCallName=${directive.expectedReplyCallName}, ` +
+        `activeReplyCallName=${activeDirective.expectedReplyCallName}, targetDialogId=${directive.targetDialogId}, ` +
+        `activeTargetDialogId=${activeDirective.targetDialogId})`,
+    );
+  }
+  return 'claimed';
+}
+
+async function resolveSideDialogReplyDirectiveForAssistantOutput(args: {
+  dialog: SideDialog;
+  responseGenseq: number;
+  replyTarget: CalleeReplyTarget | undefined;
+  currentDirective: KernelDriverPrompt['tellaskReplyDirective'];
+}): Promise<KernelDriverPrompt['tellaskReplyDirective']> {
+  const replyTarget = args.replyTarget;
+  const targetCallId = replyTarget?.callId.trim();
+  if (!replyTarget || !targetCallId) {
+    return args.currentDirective;
+  }
+  if (args.currentDirective?.targetCallId === targetCallId) {
+    return args.currentDirective;
+  }
+
+  const latest = await DialogPersistence.loadDialogLatest(args.dialog.id, args.dialog.status);
+  if (!latest) {
+    return args.currentDirective;
+  }
+  if (latest.sideDialogFinalResponse?.callId.trim() === targetCallId) {
+    return args.currentDirective;
+  }
+  if (latestHasTellaskResultForCallId(latest, targetCallId)) {
+    return args.currentDirective;
+  }
+
+  const assignmentDirective = buildCurrentSideDialogAssignmentReplyDirective(args.dialog);
+  if (assignmentDirective.targetCallId !== targetCallId) {
+    return args.currentDirective;
+  }
+  if (
+    assignmentDirective.targetDialogId !== replyTarget.callerDialogId ||
+    assignmentDirective.targetCallId !== replyTarget.callId
+  ) {
+    return args.currentDirective;
+  }
+
+  const latestAssignmentAnchor = latest.latestAssignmentAnchor;
+  if (
+    latestAssignmentAnchor?.callId !== targetCallId ||
+    args.responseGenseq < latestAssignmentAnchor.assignmentGenseq
+  ) {
+    return args.currentDirective;
+  }
+
+  const activeDirective = await loadActiveTellaskReplyDirective(args.dialog);
+  if (activeDirective && !hasSameReplyDirective(activeDirective, assignmentDirective)) {
+    throw new Error(
+      `sideDialog assistant output reply directive invariant violation: active obligation does not match latest assignment ` +
+        `(dialog=${args.dialog.id.valueOf()}, targetCallId=${targetCallId}, ` +
+        `activeTargetCallId=${activeDirective.targetCallId}, assignmentTargetCallId=${assignmentDirective.targetCallId})`,
+    );
+  }
+  return activeDirective ?? assignmentDirective;
 }
 
 function hasQ4HAnswerCallId(callId: string | undefined): boolean {
@@ -505,17 +683,6 @@ async function clearStaleSideDialogRunControlForFinalResponse(args: {
   };
 }
 
-function hasNoPromptSideDialogResumeEntitlement(
-  dialog: SideDialog,
-  driveOptions: KernelDriverDriveOptions | undefined,
-): boolean {
-  const entitlement = driveOptions?.noPromptSideDialogResumeEntitlement;
-  if (!entitlement) {
-    return false;
-  }
-  return entitlement.callerDialogId === dialog.id.selfId;
-}
-
 function hasResultArrivalTrigger(
   latest: Awaited<ReturnType<typeof DialogPersistence.loadDialogLatest>>,
 ): boolean {
@@ -698,11 +865,6 @@ async function inspectNoPromptSideDialogDrive(args: {
     (!resolvedPendingSideDialogReplyEntitlement || resultArrivalTriggerPresent);
   const backendLoopDurableWorkAllowed =
     source === 'kernel_driver_backend_loop' && resultArrivalTriggerPresent;
-  const replyObligationFollowUpAllowed =
-    source === 'kernel_driver_follow_up' &&
-    args.driveOptions?.noPromptSideDialogResumeEntitlement?.reason ===
-      'reply_obligation_follow_up' &&
-    hasNoPromptSideDialogResumeEntitlement(args.dialog, args.driveOptions);
   const finalResponseResultArrivalReviveAllowed =
     sideDialogFinalResponseCallId !== undefined &&
     ((resolvedPendingSideDialogReplyEntitlement && resultArrivalTriggerPresent) ||
@@ -732,8 +894,7 @@ async function inspectNoPromptSideDialogDrive(args: {
     !explicitInterruptedResumeAllowed &&
     !inProgressGenerationResumeAllowed &&
     !supplyResponseCallerReviveAllowed &&
-    !backendLoopDurableWorkAllowed &&
-    !replyObligationFollowUpAllowed
+    !backendLoopDurableWorkAllowed
   ) {
     return {
       shouldReject: true,
@@ -865,77 +1026,107 @@ async function resolveEffectivePrompt(
   Readonly<{
     prompt: KernelDriverPrompt | undefined;
     fromUpNext: boolean;
+    droppedStaleQueuedContinuation: boolean;
   }>
 > {
   if (humanPrompt) {
-    return { prompt: humanPrompt, fromUpNext: false };
+    return { prompt: humanPrompt, fromUpNext: false, droppedStaleQueuedContinuation: false };
   }
-  const upNext: UpNextPrompt | undefined = dialog.peekUpNext();
-  if (!upNext) {
+  let droppedStaleQueuedContinuation = false;
+  for (;;) {
+    const upNext: UpNextPrompt | undefined = dialog.peekUpNext();
+    if (!upNext) {
+      return {
+        prompt: await maybeResolveDeferredReplyReassertionPrompt(dialog),
+        fromUpNext: false,
+        droppedStaleQueuedContinuation,
+      };
+    }
+
+    if (isQueuedReplyObligationContinuation(upNext)) {
+      const claim = await claimQueuedReplyObligationContinuation({ dialog, prompt: upNext });
+      if (claim === 'stale') {
+        const discarded = dialog.takeUpNext();
+        if (!discarded || discarded.msgId !== upNext.msgId) {
+          throw new Error(
+            `reply obligation continuation invariant violation: expected queued prompt ${upNext.msgId} before stale discard`,
+          );
+        }
+        await DialogPersistence.clearPendingRuntimePrompt(dialog.id, upNext.msgId, dialog.status);
+        log.debug('kernel-driver dropped stale reply obligation continuation', undefined, {
+          dialogId: dialog.id.valueOf(),
+          rootId: dialog.id.rootId,
+          selfId: dialog.id.selfId,
+          msgId: upNext.msgId,
+          targetCallId: upNext.tellaskReplyDirective.targetCallId,
+          expectedReplyCallName: upNext.tellaskReplyDirective.expectedReplyCallName,
+        });
+        droppedStaleQueuedContinuation = true;
+        continue;
+      }
+    }
+
     return {
-      prompt: await maybeResolveDeferredReplyReassertionPrompt(dialog),
-      fromUpNext: false,
+      fromUpNext: true,
+      droppedStaleQueuedContinuation,
+      prompt: (() => {
+        const normalizedUserLanguageCode: KernelDriverPrompt['userLanguageCode'] =
+          upNext.userLanguageCode === 'zh' || upNext.userLanguageCode === 'en'
+            ? upNext.userLanguageCode
+            : undefined;
+        const common = {
+          content: upNext.prompt,
+          msgId: upNext.msgId,
+          grammar: upNext.grammar ?? 'markdown',
+          userLanguageCode: normalizedUserLanguageCode,
+          runControl: upNext.runControl,
+        };
+        switch (upNext.kind) {
+          case 'user_generation_boundary':
+          case 'deferred_q4h_answer': {
+            const prompt: KernelDriverUserPrompt = {
+              ...common,
+              origin: 'user',
+              ...(upNext.q4hAnswerCallId === undefined
+                ? {}
+                : { q4hAnswerCallId: upNext.q4hAnswerCallId }),
+            };
+            return prompt;
+          }
+          case 'registered_assignment_update':
+          case 'new_course_runtime_guide':
+          case 'new_course_runtime_reply':
+          case 'new_course_runtime_sideDialog': {
+            const runtimeCommon = {
+              ...common,
+              origin: 'runtime' as const,
+              ...(upNext.skipTaskdoc === undefined ? {} : { skipTaskdoc: upNext.skipTaskdoc }),
+            };
+            if (
+              upNext.kind === 'registered_assignment_update' ||
+              upNext.kind === 'new_course_runtime_sideDialog'
+            ) {
+              const prompt: KernelDriverRuntimeSideDialogPrompt = {
+                ...runtimeCommon,
+                tellaskReplyDirective: upNext.tellaskReplyDirective,
+                calleeDialogReplyTarget: upNext.calleeDialogReplyTarget,
+              };
+              return prompt;
+            }
+            if (upNext.kind === 'new_course_runtime_reply') {
+              const prompt: KernelDriverRuntimeReplyPrompt = {
+                ...runtimeCommon,
+                tellaskReplyDirective: upNext.tellaskReplyDirective,
+              };
+              return prompt;
+            }
+            const prompt: KernelDriverRuntimePrompt = runtimeCommon;
+            return prompt;
+          }
+        }
+      })(),
     };
   }
-  return {
-    fromUpNext: true,
-    prompt: (() => {
-      const normalizedUserLanguageCode: KernelDriverPrompt['userLanguageCode'] =
-        upNext.userLanguageCode === 'zh' || upNext.userLanguageCode === 'en'
-          ? upNext.userLanguageCode
-          : undefined;
-      const common = {
-        content: upNext.prompt,
-        msgId: upNext.msgId,
-        grammar: upNext.grammar ?? 'markdown',
-        userLanguageCode: normalizedUserLanguageCode,
-        runControl: upNext.runControl,
-      };
-      switch (upNext.kind) {
-        case 'user_generation_boundary':
-        case 'deferred_q4h_answer': {
-          const prompt: KernelDriverUserPrompt = {
-            ...common,
-            origin: 'user',
-            ...(upNext.q4hAnswerCallId === undefined
-              ? {}
-              : { q4hAnswerCallId: upNext.q4hAnswerCallId }),
-          };
-          return prompt;
-        }
-        case 'registered_assignment_update':
-        case 'new_course_runtime_guide':
-        case 'new_course_runtime_reply':
-        case 'new_course_runtime_sideDialog': {
-          const runtimeCommon = {
-            ...common,
-            origin: 'runtime' as const,
-            ...(upNext.skipTaskdoc === undefined ? {} : { skipTaskdoc: upNext.skipTaskdoc }),
-          };
-          if (
-            upNext.kind === 'registered_assignment_update' ||
-            upNext.kind === 'new_course_runtime_sideDialog'
-          ) {
-            const prompt: KernelDriverRuntimeSideDialogPrompt = {
-              ...runtimeCommon,
-              tellaskReplyDirective: upNext.tellaskReplyDirective,
-              calleeDialogReplyTarget: upNext.calleeDialogReplyTarget,
-            };
-            return prompt;
-          }
-          if (upNext.kind === 'new_course_runtime_reply') {
-            const prompt: KernelDriverRuntimeReplyPrompt = {
-              ...runtimeCommon,
-              tellaskReplyDirective: upNext.tellaskReplyDirective,
-            };
-            return prompt;
-          }
-          const prompt: KernelDriverRuntimePrompt = runtimeCommon;
-          return prompt;
-        }
-      }
-    })(),
-  };
 }
 
 export async function executeDriveRound(args: {
@@ -994,7 +1185,7 @@ export async function executeDriveRound(args: {
           if (!cleanup.cleared) {
             await DialogPersistence.removeDriveWatchForDialog(dialog.id, dialog.status);
           }
-          log.warn(
+          log.debug(
             'Dropped stale no-prompt sideDialog drive after final response anchor',
             undefined,
             {
@@ -1070,7 +1261,7 @@ export async function executeDriveRound(args: {
           const inspection = await inspectNoPromptSideDialogDrive({ dialog, driveOptions });
           if (inspection.shouldReject) {
             if (inspection.rejection === 'stale_consumed_result_arrival') {
-              log.warn(
+              log.debug(
                 'Dropped stale no-prompt sideDialog caller revive after result arrival',
                 undefined,
                 {
@@ -1303,6 +1494,20 @@ export async function executeDriveRound(args: {
       dialog,
       latest: latestBeforeCore,
     });
+    if (
+      resolvedPrompt.droppedStaleQueuedContinuation &&
+      effectivePrompt === undefined &&
+      !hasDurableDriveWork(latestBeforeCore)
+    ) {
+      log.debug('kernel-driver stopped after dropping stale queued continuation', undefined, {
+        dialogId: dialog.id.valueOf(),
+        rootId: dialog.id.rootId,
+        selfId: dialog.id.selfId,
+        source: driveSource,
+        reason: driveOptions?.reason ?? null,
+      });
+      return;
+    }
     await applyRegisteredDialogRunControlsBeforeDrive({
       dialog,
       humanPrompt,
@@ -1338,7 +1543,7 @@ export async function executeDriveRound(args: {
       replyGuidance.deferredReplyReassertionDirective !== undefined;
     activeTellaskReplyDirective = replyGuidance.activeReplyDirective;
     activePromptWasReplyToolReminder = isReplyToolReminderPrompt(effectivePrompt);
-    const activePromptCarriesReplyDirective =
+    let activePromptCarriesReplyDirective =
       effectivePrompt?.tellaskReplyDirective !== undefined &&
       activeTellaskReplyDirective !== undefined &&
       effectivePrompt.tellaskReplyDirective.targetCallId ===
@@ -1376,7 +1581,37 @@ export async function executeDriveRound(args: {
     calleeDialogReplyTarget = driveResult.lastAssistantReplyTarget ?? calleeDialogReplyTarget;
     interruptedBySignal = getActiveRunSignal(dialog.id)?.aborted === true;
     if (!interruptedBySignal) {
-      followUp = dialog.takeUpNext();
+      const queuedFollowUp = dialog.takeUpNext();
+      if (queuedFollowUp && isQueuedReplyObligationContinuation(queuedFollowUp)) {
+        const claim = await claimQueuedReplyObligationContinuation({
+          dialog,
+          prompt: queuedFollowUp,
+        });
+        if (claim === 'stale') {
+          await DialogPersistence.clearPendingRuntimePrompt(
+            dialog.id,
+            queuedFollowUp.msgId,
+            dialog.status,
+          );
+          log.debug(
+            'kernel-driver dropped stale reply obligation follow-up after core',
+            undefined,
+            {
+              dialogId: dialog.id.valueOf(),
+              rootId: dialog.id.rootId,
+              selfId: dialog.id.selfId,
+              msgId: queuedFollowUp.msgId,
+              targetCallId: queuedFollowUp.tellaskReplyDirective.targetCallId,
+              expectedReplyCallName: queuedFollowUp.tellaskReplyDirective.expectedReplyCallName,
+            },
+          );
+          followUp = undefined;
+        } else {
+          followUp = queuedFollowUp;
+        }
+      } else {
+        followUp = queuedFollowUp;
+      }
     }
 
     let tailError: unknown;
@@ -1434,6 +1669,38 @@ export async function executeDriveRound(args: {
               },
             );
           } else {
+            const replyDirectiveForAssistantOutput =
+              await resolveSideDialogReplyDirectiveForAssistantOutput({
+                dialog,
+                responseGenseq: directFallbackResponse.responseGenseq,
+                replyTarget: driveResult.lastAssistantReplyTarget,
+                currentDirective: activeTellaskReplyDirective,
+              });
+            if (
+              replyDirectiveForAssistantOutput !== undefined &&
+              replyDirectiveForAssistantOutput.targetCallId !==
+                activeTellaskReplyDirective?.targetCallId
+            ) {
+              // `driveDialogStreamCore` may already have consumed a queued assignment-update prompt
+              // inside the same drive, so rebind the tail decision to the assistant output target.
+              log.debug(
+                'kernel-driver rebound sideDialog reply directive to latest assistant output target',
+                undefined,
+                {
+                  dialogId: dialog.id.valueOf(),
+                  previousTargetCallId: activeTellaskReplyDirective?.targetCallId ?? null,
+                  nextTargetCallId: replyDirectiveForAssistantOutput.targetCallId,
+                  responseGenseq: directFallbackResponse.responseGenseq,
+                  replyTargetCallId: driveResult.lastAssistantReplyTarget?.callId ?? null,
+                },
+              );
+            }
+            activeTellaskReplyDirective = replyDirectiveForAssistantOutput;
+            activePromptCarriesReplyDirective =
+              activePromptCarriesReplyDirective ||
+              (activeTellaskReplyDirective !== undefined &&
+                driveResult.lastAssistantReplyTarget?.callId ===
+                  activeTellaskReplyDirective.targetCallId);
             const hasFollowUp = followUp !== undefined;
             const suspension = await dialog.getSuspensionStatus();
             const backgroundCalleeBlocksImplicitReply =
@@ -1635,13 +1902,6 @@ export async function executeDriveRound(args: {
             driveOptions: {
               source: 'kernel_driver_follow_up',
               reason: 'follow_up_prompt',
-              noPromptSideDialogResumeEntitlement:
-                dialog instanceof SideDialog
-                  ? {
-                      callerDialogId: dialog.id.selfId,
-                      reason: 'reply_obligation_follow_up',
-                    }
-                  : undefined,
             },
           });
           return driveResult;

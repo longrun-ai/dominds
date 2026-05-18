@@ -162,9 +162,6 @@ async function resolveFreshCurrentSideDialogAssignmentDirective(args: {
   if (!latest) {
     return undefined;
   }
-  if (latest.pendingRuntimePrompt?.msgId !== args.prompt.msgId) {
-    return undefined;
-  }
   if (latest.sideDialogFinalResponse?.callId === currentAssignmentDirective.targetCallId.trim()) {
     return undefined;
   }
