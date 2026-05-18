@@ -41,11 +41,11 @@ async function main(): Promise<void> {
 
     const seedPrompt = 'Seed critical context before consuming queued user message.';
     const queuedPrompt = 'Queued user interjection after critical context.';
-    const finalAnswer = 'Queued user interjection handled under critical context.';
-    const criticalUserGuide = formatAgentFacingCriticalUserInterjectionRemediationGuide('en', {
+    const wrappedQueuedPrompt = `${formatAgentFacingCriticalUserInterjectionRemediationGuide('en', {
       dialogScope: 'mainDialog',
       promptsRemainingAfterThis: 4,
-    });
+    })}\n\n${queuedPrompt}`;
+    const finalAnswer = 'Queued user interjection handled under critical context.';
 
     await writeMockDb(tmpRoot, [
       {
@@ -56,10 +56,9 @@ async function main(): Promise<void> {
         usage: { promptTokens: 190_000, completionTokens: 100 },
       },
       {
-        message: queuedPrompt,
+        message: wrappedQueuedPrompt,
         role: 'user',
         response: finalAnswer,
-        contextContains: [criticalUserGuide],
         usage: { promptTokens: 190_200, completionTokens: 80 },
       },
     ]);
@@ -78,7 +77,7 @@ async function main(): Promise<void> {
       setTimeout(resolve, 10);
     });
     dlg.queueUserPromptAtGenerationBoundary({
-      prompt: queuedPrompt,
+      prompt: wrappedQueuedPrompt,
       msgId: 'kernel-driver-critical-queued-user-interjection',
       grammar: 'markdown',
       userLanguageCode: 'en',
@@ -87,27 +86,42 @@ async function main(): Promise<void> {
     await seedDrive;
     assert.equal(dlg.hasUpNext(), false, 'queued user interjection should be consumed by drive');
 
-    const runtimeGuides = dlg.msgs.filter(
-      (msg) => msg.type === 'transient_guide_msg' && msg.content === criticalUserGuide,
-    );
+    const runtimeGuides = dlg.msgs.filter((msg) => msg.type === 'transient_guide_msg');
     assert.equal(
       runtimeGuides.length,
-      1,
-      'queued critical user interjection should surface exactly one remediation guide',
+      0,
+      'kernel driver must not surface critical queued user interjection remediation as a separate runtime guide',
     );
 
     const promptingMessages = dlg.msgs.filter(
       (msg) => msg.type === 'prompting_msg' && msg.role === 'user',
     );
+    const promptedQueuedInterjection = promptingMessages.find(
+      (msg) => msg.msgId === 'kernel-driver-critical-queued-user-interjection',
+    );
     assert.ok(
-      promptingMessages.some((msg) => msg.content === queuedPrompt),
-      'queued user interjection must remain an effective prompt instead of being replaced by remediation copy',
+      promptedQueuedInterjection,
+      'queued user interjection should be persisted as a user prompt',
+    );
+    assert.equal(promptedQueuedInterjection.content, wrappedQueuedPrompt);
+    assert.ok(
+      promptingMessages.some((msg) => msg.content === wrappedQueuedPrompt),
+      'queued user interjection must remain an effective prompt',
     );
     assert.equal(
-      promptingMessages.findIndex((msg) => msg.content === queuedPrompt) >
+      promptingMessages.findIndex((msg) => msg.msgId === promptedQueuedInterjection.msgId) >
         promptingMessages.findIndex((msg) => msg.content === seedPrompt),
       true,
       'queued user interjection should be prompted after the seed user message',
+    );
+    const courseJsonl = await fs.readFile(
+      path.join(tmpRoot, '.dialogs', 'run', dlg.id.rootId, 'course-001.jsonl'),
+      'utf-8',
+    );
+    assert.equal(
+      courseJsonl.includes('"type":"runtime_guide_record"'),
+      false,
+      'queued critical user interjection guide should not be persisted as a standalone runtime guide record',
     );
     assert.ok(
       dlg.msgs.some(

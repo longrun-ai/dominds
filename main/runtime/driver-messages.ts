@@ -4,6 +4,17 @@ export function formatSystemNoticePrefix(language: LanguageCode): string {
   return language === 'zh' ? '【系统提示】' : '[System notice]';
 }
 
+export function isAgentFacingCriticalUserInterjectionRemediationGuideContent(
+  content: string,
+): boolean {
+  return (
+    content.startsWith(`${formatSystemNoticePrefix('zh')} 上下文状态：🔴 告急；收到用户插话`) ||
+    content.startsWith(
+      `${formatSystemNoticePrefix('en')} Context state: 🔴 critical; user interjection received`,
+    )
+  );
+}
+
 export function formatAutoMaintainedReminderManualMirrorBan(language: LanguageCode): string {
   return language === 'zh'
     ? '这条状态由系统维护；禁止把它抄进、改写进、或同步维护到你手工创建的提醒项里。'
@@ -669,7 +680,7 @@ export function formatAgentFacingCriticalUserInterjectionRemediationGuide(
     return [
       `${formatSystemNoticePrefix(language)} 上下文状态：🔴 告急；收到用户插话`,
       '',
-      '下面紧跟的是一条真实用户消息，不是普通运行时处置提示；必须把它当作有效用户轮次处理，让用户看到你已经接住了这次插话。',
+      '本轮刚收到的用户消息是真实用户插话，不是普通运行时处置提示；必须把它当作有效用户轮次处理，让用户看到你已经接住了这次插话。',
       '',
       `这次用户轮次已计入告急处置倒计数。系统最多再提醒你 ${args.promptsRemainingAfterThis} 次，之后将自动清理头脑开启新一程对话。`,
       '',
@@ -684,7 +695,7 @@ export function formatAgentFacingCriticalUserInterjectionRemediationGuide(
   return [
     `${formatSystemNoticePrefix(language)} Context state: 🔴 critical; user interjection received`,
     '',
-    'The next message is a real user message, not an ordinary runtime remediation notice. Treat it as an effective user turn and make the system reaction visible to the user.',
+    'The user message just received in this turn is a real user interjection, not an ordinary runtime remediation notice. Treat it as an effective user turn and make the system reaction visible to the user.',
     '',
     `This user turn has been counted toward critical remediation. System will remind you ${args.promptsRemainingAfterThis} more time(s), then automatically clear mind.`,
     '',

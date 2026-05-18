@@ -88,6 +88,10 @@ import {
 import { dialogEventRegistry, postDialogEvent } from '../evt-registry';
 import { driveDialogStream, supplyResponseToAskerDialog } from '../llm/kernel-driver';
 import {
+  consumeCriticalCountdown,
+  resolveCriticalCountdownRemaining,
+} from '../llm/kernel-driver/context-health';
+import {
   evaluateDiligenceAutoContinueGate,
   maybePrepareDiligenceAutoContinuePrompt,
   suspendForKeepGoingBudgetExhausted,
@@ -112,7 +116,11 @@ import {
   setProblemsBroadcaster,
 } from '../problems';
 import { recoverPendingReplyTellaskCallsForDialog } from '../recovery/reply-special';
-import { formatSystemNoticePrefix } from '../runtime/driver-messages';
+import {
+  formatAgentFacingCriticalUserInterjectionRemediationGuide,
+  formatSystemNoticePrefix,
+  isAgentFacingCriticalUserInterjectionRemediationGuideContent,
+} from '../runtime/driver-messages';
 import { formatTellaskCarryoverResultContent } from '../runtime/inter-dialog-format';
 import { getWorkLanguage } from '../runtime/work-language';
 import { Team } from '../team';
@@ -456,6 +464,14 @@ function resolveUserLanguageCode(
   return getWorkLanguage();
 }
 
+export function resolveUserMessageLanguageCodeForTest(args: {
+  ws: WebSocket;
+  raw: unknown;
+  fallbackDialog?: Dialog;
+}): LanguageCode {
+  return resolveUserLanguageCode(args.ws, args.raw, args.fallbackDialog);
+}
+
 function syncDialogLanguagePreference(
   dialog: Dialog,
   language: LanguageCode,
@@ -532,6 +548,40 @@ async function queueUserSupplementAtGenerationBoundary(
     inMemoryGenerating,
   });
   return true;
+}
+
+type UserMessageIngressPrompt = {
+  content: string;
+  msgId: string;
+  grammar: 'markdown';
+  userLanguageCode?: LanguageCode;
+};
+
+export function wrapCriticalUserInterjectionPromptAtIngress(
+  dialog: Dialog,
+  prompt: UserMessageIngressPrompt,
+): UserMessageIngressPrompt {
+  if (isAgentFacingCriticalUserInterjectionRemediationGuideContent(prompt.content)) {
+    return prompt;
+  }
+  const snapshot = dialog.getLastContextHealth();
+  if (snapshot?.kind !== 'available' || snapshot.level !== 'critical') {
+    return prompt;
+  }
+  const remaining = resolveCriticalCountdownRemaining(dialog.id.key(), snapshot);
+  if (remaining <= 0) {
+    return prompt;
+  }
+  const language = prompt.userLanguageCode ?? dialog.getLastUserLanguageCode();
+  const dialogScope = dialog instanceof MainDialog ? 'mainDialog' : 'sideDialog';
+  const prefix = formatAgentFacingCriticalUserInterjectionRemediationGuide(language, {
+    dialogScope,
+    promptsRemainingAfterThis: consumeCriticalCountdown(dialog.id.key()),
+  });
+  return {
+    ...prompt,
+    content: `${prefix}\n\n${prompt.content}`,
+  };
 }
 
 /**
@@ -1700,10 +1750,8 @@ async function handleUserMsg2Dlg(ws: WebSocket, packet: DriveDialogRequest): Pro
   try {
     const { dialog: dialogIdent, content, msgId } = packet;
     const attachments = parseUserImageAttachments(packet.attachments);
-    const userLanguageCode = resolveUserLanguageCode(
-      ws,
-      (packet as unknown as { userLanguageCode?: unknown }).userLanguageCode,
-    );
+    const rawUserLanguageCode = (packet as unknown as { userLanguageCode?: unknown })
+      .userLanguageCode;
 
     // Basic validation
     if (!dialogIdent || !content || !msgId) {
@@ -1744,11 +1792,10 @@ async function handleUserMsg2Dlg(ws: WebSocket, packet: DriveDialogRequest): Pro
       return;
     }
 
-    const effectivePrompt = {
+    let effectivePrompt: UserMessageIngressPrompt = {
       content,
       msgId,
       grammar: 'markdown' as const,
-      userLanguageCode,
     };
     const preparedAttachments = prepareUserImageAttachments(attachments);
 
@@ -1771,11 +1818,19 @@ async function handleUserMsg2Dlg(ws: WebSocket, packet: DriveDialogRequest): Pro
       existingSub &&
       existingSub.dialogKey === existingDialog.id.valueOf()
     ) {
+      effectivePrompt = {
+        ...effectivePrompt,
+        userLanguageCode: resolveUserLanguageCode(ws, rawUserLanguageCode, existingDialog),
+      };
       const contentItems = await persistPreparedUserImageAttachments({
         dialog: existingDialog,
         msgId: effectivePrompt.msgId,
         attachments: preparedAttachments,
       });
+      effectivePrompt = wrapCriticalUserInterjectionPromptAtIngress(
+        existingDialog,
+        effectivePrompt,
+      );
       const queuedAtBoundary = await queueUserSupplementAtGenerationBoundary(existingDialog, {
         ...effectivePrompt,
         contentItems,
@@ -1822,11 +1877,16 @@ async function handleUserMsg2Dlg(ws: WebSocket, packet: DriveDialogRequest): Pro
       }
 
       await setupWebSocketSubscription(ws, dialog);
+      effectivePrompt = {
+        ...effectivePrompt,
+        userLanguageCode: resolveUserLanguageCode(ws, rawUserLanguageCode, dialog),
+      };
       const contentItems = await persistPreparedUserImageAttachments({
         dialog,
         msgId: effectivePrompt.msgId,
         attachments: preparedAttachments,
       });
+      effectivePrompt = wrapCriticalUserInterjectionPromptAtIngress(dialog, effectivePrompt);
       const queuedAtBoundary = await queueUserSupplementAtGenerationBoundary(dialog, {
         ...effectivePrompt,
         contentItems,

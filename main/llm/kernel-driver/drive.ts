@@ -43,12 +43,12 @@ import { loadAgentMinds } from '../../minds/load';
 import { DialogPersistence } from '../../persistence';
 import {
   formatAgentFacingContextHealthV3RemediationGuide,
-  formatAgentFacingCriticalUserInterjectionRemediationGuide,
   formatDomindsNoteFbrToollessViolation,
   formatNewCourseStartPrompt,
   formatReminderContextFooter,
   formatReminderContextGuide,
   formatReminderItemGuide,
+  isAgentFacingCriticalUserInterjectionRemediationGuideContent,
   type ReminderContextFollowingDialogState,
 } from '../../runtime/driver-messages';
 import {
@@ -2397,7 +2397,6 @@ export async function driveDialogStreamCore(
   const abortSignal = getActiveRunSignal(dlg.id) ?? createActiveRun(dlg.id);
 
   let finalDisplayState: DialogDisplayState | undefined;
-  let criticalUserInterjectionRuntimeGuide = driveOptions?.criticalUserInterjectionRuntimeGuide;
   let lastAssistantSayingContent: string | null = null;
   let lastAssistantSayingGenseq: number | null = null;
   let lastAssistantThinkingContent: string | null = null;
@@ -2418,8 +2417,8 @@ export async function driveDialogStreamCore(
   let resolvingImmediateToolResultForUserPrompt = false;
   let resolvingImmediateToolResultUserPromptMsgId: string | undefined;
   let criticalRemediationAppliedUserPromptMsgId =
-    driveOptions?.criticalUserInterjectionRuntimeGuide !== undefined &&
-    humanPrompt?.origin === 'user'
+    humanPrompt?.origin === 'user' &&
+    isAgentFacingCriticalUserInterjectionRemediationGuideContent(humanPrompt.content)
       ? humanPrompt.msgId
       : undefined;
   let retryStoppedRecoveryPrompt: KernelDriverPrompt | undefined;
@@ -2589,8 +2588,12 @@ export async function driveDialogStreamCore(
             hadUserPromptThisGen: currentGenerationBelongsToUserPrompt,
             hadUserPromptInImmediateToolChain: currentGenerationBelongsToUserToolChain,
             userPromptCriticalRemediationAlreadyApplied:
-              criticalRemediationAppliedUserPromptMsgId !== undefined &&
-              criticalRemediationAppliedUserPromptMsgId === currentUserPromptMsgId,
+              (criticalRemediationAppliedUserPromptMsgId !== undefined &&
+                criticalRemediationAppliedUserPromptMsgId === currentUserPromptMsgId) ||
+              (currentPendingPrompt?.origin === 'user' &&
+                isAgentFacingCriticalUserInterjectionRemediationGuideContent(
+                  currentPendingPrompt.content,
+                )),
             canInjectPromptThisGen: !hasQueuedUpNext,
             cautionRemediationCadenceGenerations,
             criticalCountdownRemaining,
@@ -2616,13 +2619,21 @@ export async function driveDialogStreamCore(
               pendingPrompt = nextPrompt;
               skipTaskdocForThisDrive = false;
             } else if (healthDecision.reason === 'critical_user_prompt_remediation') {
-              const language = getWorkLanguage();
-              const dialogScope = dlg instanceof SideDialog ? 'sideDialog' : 'mainDialog';
-              criticalUserInterjectionRuntimeGuide =
-                formatAgentFacingCriticalUserInterjectionRemediationGuide(language, {
-                  dialogScope,
-                  promptsRemainingAfterThis: consumeCriticalCountdown(dlg.id.key()),
-                });
+              if (
+                currentPendingPrompt === undefined ||
+                !isAgentFacingCriticalUserInterjectionRemediationGuideContent(
+                  currentPendingPrompt.content,
+                )
+              ) {
+                log.warn(
+                  'kernel-driver observed unwrapped critical user prompt; critical user interjection wrapping must happen at ingress',
+                  undefined,
+                  {
+                    dialogId: dlg.id.valueOf(),
+                    msgId: currentUserPromptMsgId ?? null,
+                  },
+                );
+              }
               criticalRemediationAppliedUserPromptMsgId = currentUserPromptMsgId;
             } else if (!hasQueuedUpNext) {
               const language = getWorkLanguage();
@@ -2711,10 +2722,6 @@ export async function driveDialogStreamCore(
         }
         lastBusinessContinuation = currentBusinessContinuation;
         try {
-          if (criticalUserInterjectionRuntimeGuide !== undefined) {
-            await persistAndEmitRuntimeGuide(dlg, criticalUserInterjectionRuntimeGuide);
-            criticalUserInterjectionRuntimeGuide = undefined;
-          }
           if (currentPrompt) {
             if (currentPrompt.skipTaskdoc === true) {
               skipTaskdocForThisDrive = true;

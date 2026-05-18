@@ -40,14 +40,14 @@ async function main(): Promise<void> {
 
     const trigger = 'Interjection: record this and answer me.';
     const finalAnswer = 'Recorded and answering despite critical context.';
-    const criticalUserGuide = formatAgentFacingCriticalUserInterjectionRemediationGuide('en', {
+    const wrappedTrigger = `${formatAgentFacingCriticalUserInterjectionRemediationGuide('en', {
       dialogScope: 'mainDialog',
       promptsRemainingAfterThis: 4,
-    });
+    })}\n\n${trigger}`;
 
     await writeMockDb(tmpRoot, [
       {
-        message: trigger,
+        message: wrappedTrigger,
         role: 'user',
         response: 'I will inspect one fact.',
         funcCalls: [
@@ -63,7 +63,6 @@ async function main(): Promise<void> {
         message: '(unset)',
         role: 'tool',
         response: finalAnswer,
-        contextContains: [criticalUserGuide],
         usage: { promptTokens: 190_500, completionTokens: 80 },
       },
     ]);
@@ -73,26 +72,36 @@ async function main(): Promise<void> {
 
     await driveDialogStream(
       dlg,
-      makeUserPrompt(trigger, 'kernel-driver-critical-user-tool-followup'),
+      makeUserPrompt(wrappedTrigger, 'kernel-driver-critical-user-tool-followup'),
       true,
     );
 
-    const runtimeGuides = dlg.msgs.filter(
-      (msg) => msg.type === 'transient_guide_msg' && msg.content === criticalUserGuide,
-    );
+    const runtimeGuides = dlg.msgs.filter((msg) => msg.type === 'transient_guide_msg');
     assert.equal(
       runtimeGuides.length,
-      1,
-      'critical user interjection should surface exactly one visible remediation guide when the user turn first becomes known-critical',
+      0,
+      'kernel driver must not surface critical user interjection remediation as a separate runtime guide',
     );
 
     const promptingMessages = dlg.msgs.filter(
       (msg) => msg.type === 'prompting_msg' && msg.role === 'user',
     );
+    const promptedInterjection = promptingMessages.find(
+      (msg) => msg.msgId === 'kernel-driver-critical-user-tool-followup',
+    );
+    assert.ok(
+      promptedInterjection,
+      'critical user interjection should be persisted as a user prompt',
+    );
+    assert.equal(promptedInterjection.content, wrappedTrigger);
+    const courseJsonl = await fs.readFile(
+      path.join(tmpRoot, '.dialogs', 'run', dlg.id.rootId, 'course-001.jsonl'),
+      'utf-8',
+    );
     assert.equal(
-      promptingMessages[0]?.content,
-      trigger,
-      'the real user interjection must stay as the effective user prompt, not be replaced by remediation copy',
+      courseJsonl.includes('"type":"runtime_guide_record"'),
+      false,
+      'critical user interjection guide should not be persisted as a standalone runtime guide record',
     );
 
     assert.ok(

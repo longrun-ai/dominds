@@ -10,6 +10,7 @@
 import assert from 'node:assert/strict';
 import {
   formatAgentFacingContextHealthV3RemediationGuide,
+  formatAgentFacingCriticalUserInterjectionRemediationGuide,
   formatNewCourseStartPrompt,
   formatSystemNoticePrefix,
 } from '../../main/runtime/driver-messages';
@@ -262,6 +263,32 @@ async function main(): Promise<void> {
   assert.ok(
     enNewCoursePrompt.includes('continue the underlying task itself directly'),
     'en critical new-course prompt should tell the agent to continue the underlying task',
+  );
+
+  const zhInterjection = formatAgentFacingCriticalUserInterjectionRemediationGuide('zh', {
+    dialogScope: 'mainDialog',
+    promptsRemainingAfterThis: 4,
+  });
+  assert.ok(
+    zhInterjection.includes('本轮刚收到的用户消息是真实用户插话'),
+    'zh critical user interjection guide should describe current-turn wrapping instead of message adjacency',
+  );
+  assert.ok(
+    !zhInterjection.includes('下面紧跟'),
+    'zh critical user interjection guide should not claim the user message is immediately below',
+  );
+
+  const enInterjection = formatAgentFacingCriticalUserInterjectionRemediationGuide('en', {
+    dialogScope: 'mainDialog',
+    promptsRemainingAfterThis: 4,
+  });
+  assert.ok(
+    enInterjection.includes('The user message just received in this turn'),
+    'en critical user interjection guide should describe current-turn wrapping instead of message adjacency',
+  );
+  assert.ok(
+    !enInterjection.includes('The next message'),
+    'en critical user interjection guide should not claim the user message is next',
   );
 
   console.log('OK');

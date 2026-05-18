@@ -36,6 +36,25 @@ function decideCritical(args: { dialogKey: string; hadUserPromptThisGen: boolean
 }
 
 async function main(): Promise<void> {
+  const alreadyAppliedDialogKey = 'test-critical-user-interjection-already-applied';
+  resetContextHealthRoundState(alreadyAppliedDialogKey);
+  assert.deepEqual(
+    decideKernelDriverContextHealth({
+      dialogKey: alreadyAppliedDialogKey,
+      snapshot: CRITICAL_SNAPSHOT,
+      hadUserPromptThisGen: true,
+      userPromptCriticalRemediationAlreadyApplied: true,
+      canInjectPromptThisGen: true,
+      cautionRemediationCadenceGenerations: 10,
+      criticalCountdownRemaining: resolveCriticalCountdownRemaining(
+        alreadyAppliedDialogKey,
+        CRITICAL_SNAPSHOT,
+      ),
+    }),
+    { kind: 'proceed' },
+    'critical user interjection should not be remediated again after ingress wrapping has already applied it',
+  );
+
   const dialogKey = 'test-critical-user-interjection';
   resetContextHealthRoundState(dialogKey);
 

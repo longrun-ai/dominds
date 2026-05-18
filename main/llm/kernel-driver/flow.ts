@@ -30,8 +30,8 @@ import { loadAgentMinds } from '../../minds/load';
 import { DialogPersistence } from '../../persistence';
 import {
   formatAgentFacingContextHealthV3RemediationGuide,
-  formatAgentFacingCriticalUserInterjectionRemediationGuide,
   formatNewCourseStartPrompt,
+  isAgentFacingCriticalUserInterjectionRemediationGuideContent,
 } from '../../runtime/driver-messages';
 import {
   buildUserInterjectionPauseStopReason,
@@ -1462,19 +1462,26 @@ export async function executeDriveRound(args: {
       );
     }
     const criticalCountdownRemaining = resolveCriticalCountdownRemaining(dialog.id.key(), snapshot);
+    const userPromptContentForHealth =
+      humanPrompt?.origin === 'user'
+        ? humanPrompt.content
+        : queuedUpNextBeforeHealth?.origin === 'user'
+          ? queuedUpNextBeforeHealth.prompt
+          : undefined;
     const healthDecision = decideKernelDriverContextHealth({
       dialogKey: dialog.id.key(),
       snapshot,
       hadUserPromptThisGen:
         isEffectiveUserPromptForContextHealth(humanPrompt) ||
         (humanPrompt === undefined && isQueuedUserPromptForContextHealth(queuedUpNextBeforeHealth)),
-      userPromptCriticalRemediationAlreadyApplied: false,
+      userPromptCriticalRemediationAlreadyApplied:
+        userPromptContentForHealth !== undefined &&
+        isAgentFacingCriticalUserInterjectionRemediationGuideContent(userPromptContentForHealth),
       canInjectPromptThisGen: !hasQueuedUpNext,
       cautionRemediationCadenceGenerations,
       criticalCountdownRemaining,
     });
     let healthPrompt: KernelDriverRuntimePrompt | undefined;
-    let criticalUserInterjectionRuntimeGuide: string | undefined;
     if (healthDecision.kind === 'continue') {
       if (healthDecision.reason === 'critical_force_new_course') {
         const language = getWorkLanguage();
@@ -1486,13 +1493,24 @@ export async function executeDriveRound(args: {
         dialog.setLastContextHealth({ kind: 'unavailable', reason: 'usage_unavailable' });
         resetContextHealthRoundState(dialog.id.key());
       } else if (healthDecision.reason === 'critical_user_prompt_remediation') {
-        const language = getWorkLanguage();
-        const dialogScope = dialog instanceof SideDialog ? 'sideDialog' : 'mainDialog';
-        criticalUserInterjectionRuntimeGuide =
-          formatAgentFacingCriticalUserInterjectionRemediationGuide(language, {
-            dialogScope,
-            promptsRemainingAfterThis: consumeCriticalCountdown(dialog.id.key()),
-          });
+        if (
+          userPromptContentForHealth === undefined ||
+          !isAgentFacingCriticalUserInterjectionRemediationGuideContent(userPromptContentForHealth)
+        ) {
+          log.warn(
+            'kernel-driver observed unwrapped critical user prompt; critical user interjection wrapping must happen at ingress',
+            undefined,
+            {
+              dialogId: dialog.id.valueOf(),
+              msgId:
+                humanPrompt?.origin === 'user'
+                  ? humanPrompt.msgId
+                  : queuedUpNextBeforeHealth?.origin === 'user'
+                    ? queuedUpNextBeforeHealth.msgId
+                    : null,
+            },
+          );
+        }
       } else if (!hasQueuedUpNext) {
         const language = getWorkLanguage();
         const dialogScope = dialog instanceof SideDialog ? 'sideDialog' : 'mainDialog';
@@ -1603,16 +1621,6 @@ export async function executeDriveRound(args: {
     if (effectivePrompt && effectivePrompt.userLanguageCode) {
       dialog.setLastUserLanguageCode(effectivePrompt.userLanguageCode);
     }
-    const coreDriveOptions =
-      criticalUserInterjectionRuntimeGuide === undefined
-        ? driveOptions
-        : {
-            ...(driveOptions ?? {
-              source: driveSource,
-              reason: 'critical_user_prompt_remediation',
-            }),
-            criticalUserInterjectionRuntimeGuide,
-          };
     driveResult = await driveDialogStreamCore(
       dialog,
       {
@@ -1620,7 +1628,7 @@ export async function executeDriveRound(args: {
         driveDialog: args.driveDialog,
       },
       effectivePrompt,
-      coreDriveOptions,
+      driveOptions,
     );
     const latestAfterCore = await DialogPersistence.loadDialogLatest(dialog.id, dialog.status);
     coreEndedInterrupted = latestAfterCore?.executionMarker?.kind === 'interrupted';

@@ -41,7 +41,6 @@ export type KernelDriverDriveOptions = Readonly<{
   suppressDiligencePush?: boolean;
   allowResumeFromInterrupted?: boolean;
   resumeInProgressGeneration?: boolean;
-  criticalUserInterjectionRuntimeGuide?: string;
   /**
    * Business continuation identity for no-prompt driver iterations.
    *

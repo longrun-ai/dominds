@@ -174,6 +174,8 @@ interface CachedDatabase {
 }
 
 const RUNTIME_PROMPT_WRAPPER_PREFIXES = [
+  '[System notice] Context state: 🔴 critical; user interjection received',
+  '【系统提示】 上下文状态：🔴 告急；收到用户插话',
   ACTIVE_REPLY_TOOL_PREFIX_EN,
   ACTIVE_REPLY_TOOL_PREFIX_ZH,
   NO_ACTIVE_REPLY_PREFIX_EN,
