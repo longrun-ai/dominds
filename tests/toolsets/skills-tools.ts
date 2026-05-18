@@ -140,6 +140,91 @@ async function main(): Promise<void> {
     assert.ok(importedCompleteContent.includes('Complete imported skill.'));
     assert.ok(importedCompleteContent.includes('Imported complete body.'));
 
+    const movePersonalSkill = requireFuncTool('move_personal_skill');
+    const moveImportedResult = await movePersonalSkill.call(dlg as never, alice, {
+      from_skill_id: 'imported-complete',
+      to_skill_id: 'renamed-complete',
+    });
+    assert.equal(moveImportedResult.outcome, 'success');
+    assert.ok(moveImportedResult.content.includes('from_skill_id: imported-complete'));
+    assert.ok(moveImportedResult.content.includes('to_skill_id: renamed-complete'));
+    assert.equal(
+      await exists(
+        path.join(tmpRoot, '.minds', 'skills', 'individual', 'alice', 'imported-complete'),
+      ),
+      false,
+      'move_personal_skill should remove the old personal skill id',
+    );
+    assert.equal(
+      await exists(
+        path.join(tmpRoot, '.minds', 'skills', 'individual', 'alice', 'renamed-complete'),
+      ),
+      true,
+      'move_personal_skill should create the new personal skill id',
+    );
+    const movedImportedContent = await fs.readFile(
+      path.join(
+        tmpRoot,
+        '.minds',
+        'skills',
+        'individual',
+        'alice',
+        'renamed-complete',
+        'SKILL.en.md',
+      ),
+      'utf-8',
+    );
+    assert.ok(
+      movedImportedContent.includes('name: imported-complete'),
+      'move_personal_skill should not rewrite frontmatter name',
+    );
+    const { systemPrompt: afterMove } = await loadAgentMinds('alice');
+    assert.ok(afterMove.includes('read_skill({ "skill_id": "renamed-complete" })'));
+    assert.ok(!afterMove.includes('read_skill({ "skill_id": "imported-complete" })'));
+
+    const moveMissingResult = await movePersonalSkill.call(dlg as never, alice, {
+      from_skill_id: 'missing-skill',
+      to_skill_id: 'still-missing',
+    });
+    assert.equal(moveMissingResult.outcome, 'failure');
+    assert.ok(moveMissingResult.content.includes("Personal skill 'missing-skill' does not exist"));
+
+    const moveToExistingResult = await movePersonalSkill.call(dlg as never, alice, {
+      from_skill_id: 'renamed-complete',
+      to_skill_id: 'repo-debugger',
+    });
+    assert.equal(moveToExistingResult.outcome, 'failure');
+    assert.ok(
+      moveToExistingResult.content.includes("Target personal skill 'repo-debugger' already exists"),
+    );
+
+    const moveSameResult = await movePersonalSkill.call(dlg as never, alice, {
+      from_skill_id: 'renamed-complete',
+      to_skill_id: 'renamed-complete',
+    });
+    assert.equal(moveSameResult.outcome, 'failure');
+    assert.ok(moveSameResult.content.includes('must be different'));
+
+    const moveInvalidTargetResult = await movePersonalSkill.call(dlg as never, alice, {
+      from_skill_id: 'renamed-complete',
+      to_skill_id: '../unsafe',
+    });
+    assert.equal(moveInvalidTargetResult.outcome, 'failure');
+    assert.ok(
+      moveInvalidTargetResult.content.includes('skill_id must be one relative path segment'),
+    );
+
+    await writeText(
+      path.join(tmpRoot, '.minds', 'skills', 'individual', 'alice', 'not-a-package'),
+      'not a skill directory package',
+    );
+    const moveNonDirectoryResult = await movePersonalSkill.call(dlg as never, alice, {
+      from_skill_id: 'not-a-package',
+      to_skill_id: 'still-not-a-package',
+    });
+    assert.equal(moveNonDirectoryResult.outcome, 'failure');
+    assert.ok(moveNonDirectoryResult.content.includes('not a directory package'));
+
     await writeText(
       path.join(tmpRoot, 'imports', 'upstream-skill.md'),
       [
@@ -526,6 +611,78 @@ async function main(): Promise<void> {
       'utf-8',
     );
     assert.ok(deleteLinkedTargetContent.includes('Team-managed release guidance.'));
+
+    const moveLinkedPath = path.join(
+      tmpRoot,
+      '.minds',
+      'skills',
+      'individual',
+      'alice',
+      'move-link-helper',
+    );
+    const movedLinkedPath = path.join(
+      tmpRoot,
+      '.minds',
+      'skills',
+      'individual',
+      'alice',
+      'moved-link-helper',
+    );
+    await fs.symlink(
+      path.relative(
+        path.dirname(moveLinkedPath),
+        path.join(tmpRoot, '.minds', 'skills', 'linkable', 'release-helper'),
+      ),
+      moveLinkedPath,
+    );
+    const moveLinkedSkill = await movePersonalSkill.call(dlg as never, alice, {
+      from_skill_id: 'move-link-helper',
+      to_skill_id: 'moved-link-helper',
+    });
+    assert.equal(moveLinkedSkill.outcome, 'success');
+    assert.equal(
+      await exists(moveLinkedPath),
+      false,
+      'move_personal_skill should remove the old personal symlink path',
+    );
+    assert.equal(
+      (await fs.lstat(movedLinkedPath)).isSymbolicLink(),
+      true,
+      'move_personal_skill should move the personal symlink itself',
+    );
+    const movedLinkedTargetContent = await fs.readFile(
+      path.join(tmpRoot, '.minds', 'skills', 'linkable', 'release-helper', 'SKILL.en.md'),
+      'utf-8',
+    );
+    assert.ok(movedLinkedTargetContent.includes('Team-managed release guidance.'));
+    await fs.unlink(movedLinkedPath);
+
+    const brokenMoveLinkedPath = path.join(
+      tmpRoot,
+      '.minds',
+      'skills',
+      'individual',
+      'alice',
+      'broken-move-helper',
+    );
+    const movedBrokenLinkedPath = path.join(
+      tmpRoot,
+      '.minds',
+      'skills',
+      'individual',
+      'alice',
+      'moved-broken-move-helper',
+    );
+    await fs.symlink('../missing-move-helper', brokenMoveLinkedPath);
+    const moveBrokenLinkedSkill = await movePersonalSkill.call(dlg as never, alice, {
+      from_skill_id: 'broken-move-helper',
+      to_skill_id: 'moved-broken-move-helper',
+    });
+    assert.equal(moveBrokenLinkedSkill.outcome, 'success');
+    assert.equal(await exists(brokenMoveLinkedPath), false);
+    assert.equal((await fs.lstat(movedBrokenLinkedPath)).isSymbolicLink(), true);
+    assert.equal(await fs.readlink(movedBrokenLinkedPath), '../missing-move-helper');
+    await fs.unlink(movedBrokenLinkedPath);
 
     const brokenWriteLinkedPath = path.join(
       tmpRoot,

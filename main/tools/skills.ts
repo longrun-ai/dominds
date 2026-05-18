@@ -1057,6 +1057,98 @@ export const dropPersonalSkillTool: FuncTool = {
   },
 };
 
+export const movePersonalSkillTool: FuncTool = {
+  type: 'func',
+  name: 'move_personal_skill',
+  description: 'Move one personal skill package to a new skill_id for the current agent.',
+  descriptionI18n: {
+    en: 'Move one personal skill package to a new skill_id for the current agent.',
+    zh: '把当前智能体的一个个人 skill 包移动到新的 skill_id。',
+  },
+  parameters: {
+    type: 'object',
+    additionalProperties: false,
+    required: ['from_skill_id', 'to_skill_id'],
+    properties: {
+      from_skill_id: {
+        type: 'string',
+        description: 'Existing one-segment personal skill identifier under your own skill store.',
+      },
+      to_skill_id: {
+        type: 'string',
+        description: 'New one-segment personal skill identifier under your own skill store.',
+      },
+    },
+  },
+  argsValidation: 'dominds',
+  async call(_dlg, caller, args: ToolArguments): Promise<ToolCallOutput> {
+    const language = getWorkLanguage();
+    const fromSkillIdValue = args['from_skill_id'];
+    const toSkillIdValue = args['to_skill_id'];
+    const fromSkillId = typeof fromSkillIdValue === 'string' ? fromSkillIdValue : '';
+    const toSkillId = typeof toSkillIdValue === 'string' ? toSkillIdValue : '';
+    const fromTarget = getPersonalSkillPackagePath({ language, caller, skillId: fromSkillId });
+    if (fromTarget.kind === 'invalid_path') return toolFailure(fromTarget.message);
+    const toTarget = getPersonalSkillPackagePath({ language, caller, skillId: toSkillId });
+    if (toTarget.kind === 'invalid_path') return toolFailure(toTarget.message);
+
+    if (fromTarget.skillId === toTarget.skillId) {
+      return toolFailure(
+        language === 'zh'
+          ? `错误：from_skill_id 和 to_skill_id 不能相同。`
+          : `Error: from_skill_id and to_skill_id must be different.`,
+      );
+    }
+
+    const fromPackageState = readPersonalSkillPackageState(fromTarget.abs);
+    if (fromPackageState.kind === 'missing') {
+      return toolFailure(
+        language === 'zh'
+          ? `错误：个人 skill '${fromTarget.skillId}' 不存在。`
+          : `Error: Personal skill '${fromTarget.skillId}' does not exist.`,
+      );
+    }
+    if (fromPackageState.kind === 'not_directory') {
+      return rejectPersonalSkillNonDirectory(language, fromTarget.skillId);
+    }
+
+    const toPackageState = readPersonalSkillPackageState(toTarget.abs);
+    if (toPackageState.kind !== 'missing') {
+      return toolFailure(
+        language === 'zh'
+          ? `错误：目标个人 skill '${toTarget.skillId}' 已存在。`
+          : `Error: Target personal skill '${toTarget.skillId}' already exists.`,
+      );
+    }
+
+    try {
+      fs.renameSync(fromTarget.abs, toTarget.abs);
+    } catch (error: unknown) {
+      const msg = error instanceof Error ? error.message : String(error);
+      return toolFailure(
+        language === 'zh'
+          ? `错误：移动个人 skill '${fromTarget.skillId}' 到 '${toTarget.skillId}' 失败：${msg}`
+          : `Error: Failed to move personal skill '${fromTarget.skillId}' to '${toTarget.skillId}': ${msg}`,
+      );
+    }
+    return toolSuccess(
+      language === 'zh'
+        ? [
+            '已移动',
+            `from_skill_id: ${fromTarget.skillId}`,
+            `to_skill_id: ${toTarget.skillId}`,
+            '提示：skill_id 已改变；SKILL frontmatter name 不会自动修改。',
+          ].join('\n')
+        : [
+            'Moved',
+            `from_skill_id: ${fromTarget.skillId}`,
+            `to_skill_id: ${toTarget.skillId}`,
+            'Note: skill_id changed; SKILL frontmatter name was not modified automatically.',
+          ].join('\n'),
+    );
+  },
+};
+
 export const readSkillTool: FuncTool = {
   type: 'func',
   name: 'read_skill',

@@ -20,6 +20,12 @@
 
 如果目标个人 skill 包当前是 symlink，本工具会先物化成个人副本，再替换内容；原链接目标不会被修改。
 
+### move_personal_skill
+
+把一个已有个人 skill 包移动到新的 `skill_id`。这会改变 Skills 索引和 `read_skill` 使用的 ID。
+
+本工具只移动当前智能体个人目录下的包或 symlink 本身，不会自动修改 SKILL frontmatter 中的 `name`。
+
 ### drop_personal_skill
 
 删除一个个人 skill 包；如果传入 `variant`，只删除对应的 `SKILL.cn.md` / `SKILL.en.md` / `SKILL.md`。

@@ -20,6 +20,12 @@ Replace an existing personal skill variant. The default variant is `neutral`, wh
 
 If the target personal skill package is currently a symlink, the tool materializes a personal copy before replacing content. The original symlink target is not modified.
 
+### move_personal_skill
+
+Move an existing personal skill package to a new `skill_id`. This changes the ID shown in the Skills index and used by `read_skill`.
+
+This tool moves only the package or symlink under the current agent's personal skill directory. It does not automatically edit the SKILL frontmatter `name`.
+
 ### drop_personal_skill
 
 Delete a personal skill package. If `variant` is provided, delete only the matching `SKILL.cn.md` / `SKILL.en.md` / `SKILL.md`.

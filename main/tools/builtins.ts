@@ -63,6 +63,7 @@ import {
   addPersonalSkillTool,
   dropPersonalSkillTool,
   importPersonalSkillFromFileTool,
+  movePersonalSkillTool,
   readSkillTool,
   replacePersonalSkillTool,
 } from './skills';
@@ -164,6 +165,7 @@ registerTool(clearSharedMemoryTool);
 registerTool(addPersonalSkillTool);
 registerTool(importPersonalSkillFromFileTool);
 registerTool(replacePersonalSkillTool);
+registerTool(movePersonalSkillTool);
 registerTool(dropPersonalSkillTool);
 registerTool(readSkillTool);
 
@@ -223,13 +225,14 @@ registerToolset('skills', [
   addPersonalSkillTool,
   importPersonalSkillFromFileTool,
   replacePersonalSkillTool,
+  movePersonalSkillTool,
   dropPersonalSkillTool,
 ]);
 setToolsetMeta('skills', {
   source: 'dominds',
   descriptionI18n: {
-    en: 'Personal skills for this agent: create, update, and delete reusable prompt skills under your own skill store.',
-    zh: '当前智能体的个人 skills：在自己的 skill 仓库中创建、更新、删除可复用提示技能。',
+    en: 'Personal skills for this agent: create, update, move, and delete reusable prompt skills under your own skill store.',
+    zh: '当前智能体的个人 skills：在自己的 skill 仓库中创建、更新、移动、删除可复用提示技能。',
   },
   promptFilesI18n: promptFilesFor('skills'),
   manualSpec: manualSpecFor('skills'),

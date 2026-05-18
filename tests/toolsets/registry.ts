@@ -63,6 +63,13 @@ async function main(): Promise<void> {
     assertTrue(Array.isArray(skillsToolset), 'skills toolset should be an array');
     assertEqual(nonexistentToolset, undefined, 'nonexistent toolset should be undefined');
 
+    if (skillsToolset) {
+      assertTrue(
+        skillsToolset.some((tool) => tool.name === 'move_personal_skill'),
+        'skills toolset should expose move_personal_skill',
+      );
+    }
+
     // Verify tools are actual Tool objects
     if (wsReadToolset) {
       for (const tool of wsReadToolset) {
@@ -81,6 +88,7 @@ async function main(): Promise<void> {
     const addPersonalMemoryTool = getTool('add_personal_memory');
     const addPersonalSkillTool = getTool('add_personal_skill');
     const importPersonalSkillFromFileTool = getTool('import_personal_skill_from_file');
+    const movePersonalSkillTool = getTool('move_personal_skill');
     const readonlyShellTool = getTool('readonly_shell');
     const applyPatchTool = getTool('apply_patch');
     const nonexistentTool = getTool('nonexistent');
@@ -95,6 +103,7 @@ async function main(): Promise<void> {
       !!importPersonalSkillFromFileTool,
       'import_personal_skill_from_file tool should exist',
     );
+    assertTrue(!!movePersonalSkillTool, 'move_personal_skill tool should exist');
     assertTrue(!!readonlyShellTool, 'readonly_shell tool should exist');
     assertTrue(!!applyPatchTool, 'apply_patch tool should exist');
     assertTrue(!!getTool('do_mind'), 'do_mind tool should exist');
