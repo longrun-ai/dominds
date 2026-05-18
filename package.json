@@ -63,7 +63,7 @@
   "homepage": "https://github.com/longrun-ai/dominds#readme",
   "packageManager": "pnpm@10.30.3",
   "engines": {
-    "node": ">=24 <25",
+    "node": ">=24.5 <25",
     "npm": ">=11.9.0",
     "pnpm": ">=10.30.3"
   },

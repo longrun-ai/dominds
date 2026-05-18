@@ -69,7 +69,7 @@ Dominds is an AI-powered DevOps framework that creates autonomous agentic teams 
 
 ### Prerequisites
 
-- **Node.js (with npm bundled)**: Version 24.x LTS
+- **Node.js (with npm bundled)**: Version 24.5+ LTS
 - **npm (if used directly)**: Use the npm bundled with your installed Node.js 24 LTS; current minimum in this repo is `11.9.0`, and newer versions are allowed.
 - **LLM provider configured for your team**: Dominds ships with a built-in provider catalog [main/llm/defaults.yaml](./main/llm/defaults.yaml) including Codex (ChatGPT) and Anthropic, plus several Anthropic-compatible endpoints (e.g. MiniMax, Z.ai, BigModel). You’ll need valid credentials for at least one provider.
 - **pnpm (optional)**: Recommended only if you’re developing Dominds itself. Prefer enabling the pinned CLI once via `npm run setup:pm`. If Corepack shims cannot be enabled in your environment, install `pnpm@10` manually.
@@ -78,6 +78,53 @@ For repo development, initialize the package manager once after `nvm use --lts`:
 
 ```bash
 npm run setup:pm
+```
+
+### Proxy Support
+
+Dominds can use Node's built-in environment proxy handling on Windows, macOS, and Linux.
+
+Default behavior:
+
+- `DOMINDS_USE_ENV_PROXY` is enabled by default.
+- When enabled, Dominds calls Node's runtime env-proxy initializer early in CLI startup.
+- Dominds does not set or clear `NODE_USE_ENV_PROXY`; leave that variable for users who intentionally want Node startup-time or child-process behavior.
+- Set `DOMINDS_USE_ENV_PROXY=0` to stop Dominds from auto-enabling env-proxy support.
+
+Supported proxy variables:
+
+- `HTTP_PROXY`
+- `HTTPS_PROXY`
+- `NO_PROXY`
+- `http_proxy`
+- `https_proxy`
+- `no_proxy`
+
+Practical guidance:
+
+- Set both `HTTP_PROXY` and `HTTPS_PROXY` when your network uses the same proxy for both schemes. Lowercase forms also work.
+- Use `NO_PROXY` for localhost, loopback, and internal domains that should bypass the proxy.
+- Values should be standard proxy URLs, for example `http://proxy.company.com:8080`.
+- If your shell already exports proxy variables, Dominds will read them too; clear unrelated proxy vars if you want a clean test environment.
+
+Examples:
+
+```bash
+# Windows PowerShell
+$env:HTTP_PROXY = "http://proxy.company.com:8080"
+$env:HTTPS_PROXY = "http://proxy.company.com:8080"
+$env:NO_PROXY = "localhost,127.0.0.1,.corp.local"
+dominds
+
+# macOS / Linux shell
+export HTTP_PROXY="http://proxy.company.com:8080"
+export HTTPS_PROXY="http://proxy.company.com:8080"
+export NO_PROXY="localhost,127.0.0.1,.corp.local"
+dominds
+
+# Disable Dominds env-proxy handling
+export DOMINDS_USE_ENV_PROXY=0
+dominds
 ```
 
 ### Install Dominds

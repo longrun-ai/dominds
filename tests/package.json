@@ -21,6 +21,7 @@
     "provider-volcengine-coding-plan-live-smoke": "tsx provider/volcengine-coding-plan-live-smoke.ts",
     "provider-volcengine-coding-plan-reasoning-live": "tsx provider/volcengine-coding-plan-reasoning-live.ts",
     "cli-man-subcommand": "tsx cli/man-subcommand.ts",
+    "cli-env-proxy-support": "tsx cli/env-proxy-support.ts",
     "cli-validate-team-def-subcommand": "tsx cli/validate-team-def-subcommand.ts",
     "mindset-i18n": "tsx minds/mindset-i18n.ts",
     "skills-i18n": "tsx minds/skills-i18n.ts",

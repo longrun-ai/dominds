@@ -23,7 +23,7 @@ Dominds 是一款面向开发运作（DevOps）场景的智能体框架，它将
 
 ### 环境要求
 
-- **Node.js（含 npm）**：版本 24.x LTS
+- **Node.js（含 npm）**：版本 24.5+ LTS
 - **npm（如直接使用）**：使用当前安装的 Node.js 24 LTS 自带 npm；本仓库当前最低要求为 `11.9.0`，更高版本也允许。
 - **至少一个可用的 LLM 服务提供商**：Dominds 内置提供商目录（路径：[main/llm/defaults.yaml](./main/llm/defaults.yaml)），需为其中至少一个提供商配置有效凭证（通过环境变量设置）。
 - **pnpm（可选）**：仅在开发 Dominds 本体时推荐使用。优先执行一次 `npm run setup:pm` 启用并缓存仓库固定的 pnpm；若你的环境无法启用 Corepack shim，再手动安装 `pnpm@10`。
@@ -32,6 +32,53 @@ Dominds 是一款面向开发运作（DevOps）场景的智能体框架，它将
 
 ```bash
 npm run setup:pm
+```
+
+### 代理支持
+
+Dominds 在 Windows、macOS、Linux 上都可以使用 Node 内建的环境变量代理能力。
+
+默认行为：
+
+- `DOMINDS_USE_ENV_PROXY` 默认启用。
+- 启用后，Dominds 会在 CLI 启动早期调用 Node 的运行时环境代理初始化。
+- Dominds 不会设置或清理 `NODE_USE_ENV_PROXY`；这个变量留给确实需要 Node 启动期行为或子进程继承语义的用户自己管理。
+- 若要让 Dominds 不再自动开启环境代理支持，设置 `DOMINDS_USE_ENV_PROXY=0`。
+
+支持的代理变量：
+
+- `HTTP_PROXY`
+- `HTTPS_PROXY`
+- `NO_PROXY`
+- `http_proxy`
+- `https_proxy`
+- `no_proxy`
+
+实践建议：
+
+- 若同一网络对 HTTP/HTTPS 都走同一代理，建议 `HTTP_PROXY` 和 `HTTPS_PROXY` 一起设置。小写变量名同样有效。
+- `NO_PROXY` 用于排除 localhost、回环地址和内网域名。
+- 代理值应使用标准 URL 形式，例如 `http://proxy.company.com:8080`。
+- 如果你的 shell 已经导出了代理变量，Dominds 也会读取它们；想要干净的测试环境时，请清掉无关的代理变量。
+
+示例：
+
+```bash
+# Windows PowerShell
+$env:HTTP_PROXY = "http://proxy.company.com:8080"
+$env:HTTPS_PROXY = "http://proxy.company.com:8080"
+$env:NO_PROXY = "localhost,127.0.0.1,.corp.local"
+dominds
+
+# macOS / Linux shell
+export HTTP_PROXY="http://proxy.company.com:8080"
+export HTTPS_PROXY="http://proxy.company.com:8080"
+export NO_PROXY="localhost,127.0.0.1,.corp.local"
+dominds
+
+# 关闭 Dominds 的环境代理支持
+export DOMINDS_USE_ENV_PROXY=0
+dominds
 ```
 
 ### 安装 Dominds

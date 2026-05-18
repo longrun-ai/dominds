@@ -30,6 +30,7 @@
  */
 
 import * as fs from 'fs';
+import * as http from 'node:http';
 import * as path from 'path';
 
 import { initAppsRuntime, registerEnabledAppsToolProxies } from './apps/runtime';
@@ -48,6 +49,34 @@ import { main as updateMain } from './cli/update';
 import { main as validateTeamDefMain } from './cli/validate-team-def';
 import { main as webuiMain } from './cli/webui';
 import './tools/builtins';
+
+type HttpWithEnvProxy = typeof http & {
+  setGlobalProxyFromEnv(env?: NodeJS.ProcessEnv): void;
+};
+
+export function configureEnvProxySupport(): void {
+  const domindsUseEnvProxy = process.env.DOMINDS_USE_ENV_PROXY?.trim();
+  if (domindsUseEnvProxy === '0') {
+    return;
+  }
+
+  try {
+    const setGlobalProxyFromEnv = (http as Partial<HttpWithEnvProxy>).setGlobalProxyFromEnv;
+    if (typeof setGlobalProxyFromEnv !== 'function') {
+      console.error(
+        'Error: DOMINDS_USE_ENV_PROXY requires Node.js 24.5+ because http.setGlobalProxyFromEnv() is unavailable.',
+      );
+      process.exit(1);
+    }
+    setGlobalProxyFromEnv(process.env);
+  } catch (err) {
+    console.error(
+      'Error: invalid proxy environment configuration:',
+      err instanceof Error ? err.message : String(err),
+    );
+    process.exit(1);
+  }
+}
 
 function printHelp(): void {
   console.log(`
@@ -134,6 +163,7 @@ export async function main(): Promise<void> {
       }
     }
     loadRtwsDotenv({ cwd: process.cwd() });
+    configureEnvProxySupport();
     await runSubcommand('webui', []);
     return;
   }
@@ -191,6 +221,7 @@ export async function main(): Promise<void> {
     // Precedence: `.env` then `.env.local` (later overwrites earlier), and both
     // overwrite any existing process.env values.
     loadRtwsDotenv({ cwd: process.cwd() });
+    configureEnvProxySupport();
   }
 
   const shouldLoadApps =
