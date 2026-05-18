@@ -164,6 +164,56 @@ async function main(): Promise<void> {
     const thinkingThenTellaskText =
       'I need a downstream inspection before I can produce the final reply.';
 
+    const triggerToolThenPlainProgress =
+      'Start side dialog that uses a tool and then emits plain progress.';
+    const toolThenPlainProgressCallId = 'root-call-coder-tool-then-plain-progress';
+    const triggerDurableToolThenPlainProgress =
+      'Start durable side dialog that uses a tool and then emits plain progress.';
+    const durableToolThenPlainProgressCallId = 'root-call-coder-durable-tool-then-plain-progress';
+    const toolThenPlainProgressBody =
+      'Use one local inspection tool, then continue to the next item without calling the reply tool.';
+    const durableToolThenPlainProgressBody =
+      'Use one local inspection tool, then continue durably without calling the reply tool.';
+    const toolThenPlainProgressMentionList = ['@coder'];
+    const toolThenPlainProgressPrompt = wrapPromptWithExpectedReplyTool({
+      prompt: formatAssignmentFromAskerDialog({
+        callName: 'tellaskSessionless',
+        fromAgentId: 'tester',
+        toAgentId: 'coder',
+        mentionList: toolThenPlainProgressMentionList,
+        tellaskContent: toolThenPlainProgressBody,
+        language,
+        collectiveTargets: ['coder'],
+      }),
+      expectedReplyToolName: 'replyTellaskSessionless',
+      language,
+    });
+    const toolThenPlainProgressReplyReminder = buildReplyToolReminderText({
+      language,
+      directive: {
+        expectedReplyCallName: 'replyTellaskSessionless',
+        targetDialogId: '',
+        targetCallId: toolThenPlainProgressCallId,
+        tellaskContent: toolThenPlainProgressBody,
+      },
+      replyTargetAgentId: 'tester',
+    });
+    const durableToolThenPlainProgressReplyReminder = buildReplyToolReminderText({
+      language,
+      directive: {
+        expectedReplyCallName: 'replyTellaskSessionless',
+        targetDialogId: '',
+        targetCallId: durableToolThenPlainProgressCallId,
+        tellaskContent: durableToolThenPlainProgressBody,
+      },
+      replyTargetAgentId: 'tester',
+    });
+    const toolThenPlainProgressProbeResult = '✅ Command completed (exit code: 0)';
+    const toolThenPlainProgressText =
+      'The local probe finished; continuing to the next validation item.';
+    const durableToolThenPlainProgressText =
+      'The restored local probe finished; continuing to the next validation item.';
+
     const triggerFirstThinkingOnly = 'Start first-turn thinking-only reply reminder side dialog.';
     const firstThinkingOnlyCallId = 'root-call-coder-first-thinking-only';
     const firstThinkingOnlyBody =
@@ -323,6 +373,62 @@ async function main(): Promise<void> {
             },
           },
         ],
+      },
+      {
+        message: triggerToolThenPlainProgress,
+        role: 'user',
+        response: 'Starting tool-then-plain-progress side dialog.',
+        funcCalls: [
+          {
+            id: toolThenPlainProgressCallId,
+            name: 'tellaskSessionless',
+            arguments: {
+              targetAgentId: 'coder',
+              tellaskContent: toolThenPlainProgressBody,
+            },
+          },
+        ],
+      },
+      {
+        message: triggerDurableToolThenPlainProgress,
+        role: 'user',
+        response: 'Starting durable tool-then-plain-progress side dialog.',
+        funcCalls: [
+          {
+            id: durableToolThenPlainProgressCallId,
+            name: 'tellaskSessionless',
+            arguments: {
+              targetAgentId: 'coder',
+              tellaskContent: durableToolThenPlainProgressBody,
+            },
+          },
+        ],
+      },
+      {
+        message: toolThenPlainProgressPrompt,
+        role: 'user',
+        response: 'I will inspect locally before final delivery.',
+        funcCalls: [
+          {
+            id: 'coder-readonly-tool-then-plain-progress',
+            name: 'readonly_shell',
+            arguments: {
+              command: 'printf probe',
+            },
+          },
+        ],
+      },
+      {
+        message: toolThenPlainProgressProbeResult,
+        role: 'tool',
+        response: toolThenPlainProgressText,
+        contextContains: [toolThenPlainProgressBody],
+      },
+      {
+        message: toolThenPlainProgressProbeResult,
+        role: 'tool',
+        response: durableToolThenPlainProgressText,
+        contextContains: [durableToolThenPlainProgressBody],
       },
       {
         message: thinkingThenTellaskPrompt,
@@ -684,6 +790,218 @@ async function main(): Promise<void> {
       'thinking plus same-round tellask should leave the side dialog waiting on delegated work',
     );
     assert.equal(pendingNested[0]?.callId, nestedThinkingTellaskCallId);
+
+    const scheduledToolThenPlainProgressDrives: ScheduledDrive[] = [];
+    await executeDriveRound({
+      runtime: createKernelDriverRuntimeState(),
+      driveArgs: [
+        root,
+        makeUserPrompt(
+          triggerToolThenPlainProgress,
+          'kernel-driver-sideDialog-tool-then-plain-progress',
+        ),
+        true,
+        makeDriveOptions({ suppressDiligencePush: true }),
+      ],
+      scheduleDrive: (dialog, options) => {
+        assert.ok(dialog instanceof SideDialog, 'expected sideDialog scheduling');
+        scheduledToolThenPlainProgressDrives.push({ dialog, options });
+      },
+      driveDialog: async () => {},
+    });
+
+    const toolThenPlainProgressSideDialog = root
+      .getAllDialogs()
+      .find(
+        (dialog): dialog is SideDialog =>
+          dialog instanceof SideDialog &&
+          dialog.assignmentFromAsker.callId === toolThenPlainProgressCallId,
+      );
+    assert.ok(
+      toolThenPlainProgressSideDialog,
+      'expected tool-then-plain-progress side dialog to exist',
+    );
+    assert.equal(
+      scheduledToolThenPlainProgressDrives.length,
+      1,
+      'root drive should schedule the tool-then-plain-progress side dialog once',
+    );
+
+    await executeDriveRound({
+      runtime: createKernelDriverRuntimeState(),
+      driveArgs: [
+        toolThenPlainProgressSideDialog,
+        scheduledToolThenPlainProgressDrives[0].options.humanPrompt,
+        scheduledToolThenPlainProgressDrives[0].options.waitInQue,
+        scheduledToolThenPlainProgressDrives[0].options.driveOptions,
+      ],
+      scheduleDrive: (dialog, options) => {
+        assert.equal(
+          dialog,
+          toolThenPlainProgressSideDialog,
+          'plain post-tool sideDialog progress should schedule the same side dialog',
+        );
+        scheduledToolThenPlainProgressDrives.push({
+          dialog: toolThenPlainProgressSideDialog,
+          options,
+        });
+      },
+      driveDialog: async () => {},
+    });
+
+    const queuedToolThenPlainProgressReminder = toolThenPlainProgressSideDialog.peekUpNext();
+    assert.equal(
+      queuedToolThenPlainProgressReminder?.kind,
+      'new_course_runtime_sideDialog',
+      'plain post-tool sideDialog progress must queue a durable reply reminder',
+    );
+    assert.equal(queuedToolThenPlainProgressReminder.prompt, toolThenPlainProgressReplyReminder);
+    assert.equal(
+      queuedToolThenPlainProgressReminder.tellaskReplyDirective.targetCallId,
+      toolThenPlainProgressCallId,
+    );
+    assert.equal(
+      scheduledToolThenPlainProgressDrives.length,
+      2,
+      'plain post-tool sideDialog progress should schedule one reply reminder follow-up',
+    );
+
+    const durableScheduledInitialDrives: ScheduledDrive[] = [];
+    await executeDriveRound({
+      runtime: createKernelDriverRuntimeState(),
+      driveArgs: [
+        root,
+        makeUserPrompt(
+          triggerDurableToolThenPlainProgress,
+          'kernel-driver-sideDialog-durable-tool-then-plain-progress',
+        ),
+        true,
+        makeDriveOptions({ suppressDiligencePush: true }),
+      ],
+      scheduleDrive: (dialog, options) => {
+        assert.ok(dialog instanceof SideDialog, 'expected durable sideDialog scheduling');
+        durableScheduledInitialDrives.push({ dialog, options });
+      },
+      driveDialog: async () => {},
+    });
+    const durableToolThenPlainProgressSideDialog = root
+      .getAllDialogs()
+      .find(
+        (dialog): dialog is SideDialog =>
+          dialog instanceof SideDialog &&
+          dialog.assignmentFromAsker.callId === durableToolThenPlainProgressCallId,
+      );
+    assert.ok(
+      durableToolThenPlainProgressSideDialog,
+      'expected durable tool-then-plain-progress side dialog to exist',
+    );
+    assert.equal(
+      durableScheduledInitialDrives.length,
+      1,
+      'root drive should schedule the durable tool-then-plain-progress side dialog once',
+    );
+
+    await executeDriveRound({
+      runtime: createKernelDriverRuntimeState(),
+      driveArgs: [
+        durableToolThenPlainProgressSideDialog,
+        durableScheduledInitialDrives[0].options.humanPrompt,
+        durableScheduledInitialDrives[0].options.waitInQue,
+        durableScheduledInitialDrives[0].options.driveOptions,
+      ],
+      scheduleDrive: () => {},
+      driveDialog: async () => {},
+    });
+
+    const removedDurableReminder = durableToolThenPlainProgressSideDialog.takeUpNext();
+    assert.equal(
+      removedDurableReminder?.kind,
+      'new_course_runtime_sideDialog',
+      'durable setup should normally queue a reply reminder before simulated restore',
+    );
+    await DialogPersistence.clearPendingRuntimePrompt(
+      durableToolThenPlainProgressSideDialog.id,
+      removedDurableReminder.msgId,
+      durableToolThenPlainProgressSideDialog.status,
+    );
+    const durableContinuationCourse = durableToolThenPlainProgressSideDialog.currentCourse;
+    const durableContinuationGenseq =
+      durableToolThenPlainProgressSideDialog.activeGenSeqOrUndefined;
+    assert.equal(
+      typeof durableContinuationGenseq,
+      'number',
+      'expected durable setup generation sequence',
+    );
+    await DialogPersistence.upsertNextStepTrigger(
+      durableToolThenPlainProgressSideDialog.id,
+      {
+        triggerId: `followup:c${String(durableContinuationCourse)}:g${String(durableContinuationGenseq)}`,
+        kind: 'followup',
+        sourceGeneration: {
+          course: durableContinuationCourse,
+          genseq: durableContinuationGenseq,
+        },
+        reasons: [
+          { kind: 'ordinary_tool_result', callIds: ['coder-readonly-tool-then-plain-progress'] },
+        ],
+        continuation: {
+          kind: 'inter_dialog_reply',
+          tellaskReplyDirective: removedDurableReminder.tellaskReplyDirective,
+          calleeDialogReplyTarget: removedDurableReminder.calleeDialogReplyTarget,
+        },
+      },
+      durableToolThenPlainProgressSideDialog.status,
+    );
+
+    const durableContinuationSideDialog = await ensureDialogLoaded(
+      root,
+      durableToolThenPlainProgressSideDialog.id,
+      durableToolThenPlainProgressSideDialog.status,
+    );
+    assert.ok(
+      durableContinuationSideDialog instanceof SideDialog,
+      'expected restored tool-then-plain-progress side dialog',
+    );
+    const durableScheduledDrives: ScheduledDrive[] = [];
+    await executeDriveRound({
+      runtime: createKernelDriverRuntimeState(),
+      driveArgs: [
+        durableContinuationSideDialog,
+        undefined,
+        true,
+        makeDriveOptions({
+          suppressDiligencePush: true,
+          source: 'kernel_driver_backend_loop',
+          reason: 'durable_followup_next_action',
+        }),
+      ],
+      scheduleDrive: (dialog, options) => {
+        assert.equal(
+          dialog,
+          durableContinuationSideDialog,
+          'durable post-tool continuation should schedule the same side dialog',
+        );
+        durableScheduledDrives.push({ dialog: durableContinuationSideDialog, options });
+      },
+      driveDialog: async () => {},
+    });
+
+    const durableQueuedReminder = durableContinuationSideDialog.peekUpNext();
+    assert.equal(
+      durableQueuedReminder?.kind,
+      'new_course_runtime_sideDialog',
+      'no-prompt post-tool continuation must recover reply obligation from durable trigger continuation',
+    );
+    assert.equal(durableQueuedReminder.prompt, durableToolThenPlainProgressReplyReminder);
+    assert.equal(
+      durableQueuedReminder.tellaskReplyDirective.targetCallId,
+      durableToolThenPlainProgressCallId,
+    );
+    assert.equal(
+      durableScheduledDrives.length,
+      1,
+      'durable post-tool continuation should schedule one reply reminder follow-up',
+    );
   });
 
   console.log('kernel-driver sideDialog-direct-fallback-thinking: PASS');

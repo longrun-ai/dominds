@@ -149,6 +149,15 @@ export type DialogGenerationRunState = Readonly<
     }
 >;
 
+export type DialogBackendDriveStallState = Readonly<{
+  kind: 'backend_drive_error';
+  recordId: string;
+  durableWorkFingerprint: string;
+  failedAt: string;
+  errorName?: string;
+  errorMessage: string;
+}>;
+
 export type DialogLatestAssignmentAnchorState = Readonly<{
   callId: string;
   assignmentCourse: AssignmentCourseNumber;
@@ -163,6 +172,25 @@ export type DialogFollowupReason = Readonly<
   | { kind: 'runtime_guidance'; msgId: string }
 >;
 
+/**
+ * Business continuations must be self-contained.
+ *
+ * A next-step trigger is a durable handoff between driver iterations and often between process
+ * lifetimes. It must carry the business identity needed for the next action. Consumers must not
+ * reconstruct reply routing by scanning transcript history, assignment anchors, or other
+ * opportunistic projections.
+ */
+export type DialogBusinessContinuation = Readonly<
+  | {
+      kind: 'none';
+    }
+  | {
+      kind: 'inter_dialog_reply';
+      tellaskReplyDirective: TellaskReplyDirective;
+      calleeDialogReplyTarget?: DialogCalleeReplyTarget;
+    }
+>;
+
 export type DialogNextStepTriggerPayload = Readonly<
   | { triggerId: string; kind: 'user_input'; course: DialogCourseNumber; genseq: CallSiteGenseqNo }
   | { triggerId: string; kind: 'queued_prompt'; promptId: string; course: DialogCourseNumber }
@@ -172,6 +200,7 @@ export type DialogNextStepTriggerPayload = Readonly<
       kind: 'followup';
       sourceGeneration: { course: DialogCourseNumber; genseq: CallSiteGenseqNo };
       reasons: readonly DialogFollowupReason[];
+      continuation?: DialogBusinessContinuation;
     }
   | {
       triggerId: string;
@@ -277,6 +306,7 @@ export interface DialogLatestFile {
   displayState?: DialogDisplayState;
   executionMarker?: DialogExecutionMarker;
   generationRunState?: DialogGenerationRunState;
+  backendDriveStall?: DialogBackendDriveStallState;
   nextStep: DialogNextStepTriggerState;
   userWait?: DialogUserWaitState;
   replyDelivery?: DialogReplyDeliveryState;

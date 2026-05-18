@@ -155,9 +155,6 @@ async function resolveTargetDialog(
     };
 
     pushMatch(await ensureDialogLoadedBySelfId(sourceRoot, target.dialogId));
-    for (const loadedRoot of globalDialogRegistry.getAll()) {
-      pushMatch(await ensureDialogLoadedBySelfId(loadedRoot, target.dialogId));
-    }
     if (target.dialogId !== sourceRoot.id.rootId) {
       pushMatch(await ensureMainDialogLoaded(target.dialogId));
     }

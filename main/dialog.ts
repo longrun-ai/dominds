@@ -48,6 +48,7 @@ import type {
   DialogAskerStackState,
   DialogLatestFile,
   DialogMetadataFile,
+  DialogNextStepTrigger,
   HumanQuestion,
   ProviderData,
   ReasoningPayload,
@@ -1963,7 +1964,7 @@ export abstract class Dialog {
     return tellaskResult;
   }
 
-  public async notifyGeneratingStart(msgId?: string): Promise<void> {
+  public async notifyGeneratingStart(msgId?: string): Promise<readonly DialogNextStepTrigger[]> {
     // Capture the generation's starting course so any events emitted during this generation
     // remain attributed to the correct course even if a tool mutates dialog.currentCourse
     // mid-generation (e.g., clear_mind).
@@ -1980,7 +1981,7 @@ export abstract class Dialog {
     // This ensures sideDialog_final_response_evt waits for both user_text and generating_start_evt
     this.markGenerationStarted();
 
-    await this.dlgStore.notifyGeneratingStart(this, msgId);
+    return this.dlgStore.notifyGeneratingStart(this, msgId);
   }
 
   public async notifyGeneratingFinish(
@@ -2680,7 +2681,12 @@ export abstract class DialogStore {
   /**
    * Notify start of LLM generation lifecycle (generating_start_evt)
    */
-  public async notifyGeneratingStart(_dialog: Dialog, _msgId?: string): Promise<void> {}
+  public async notifyGeneratingStart(
+    _dialog: Dialog,
+    _msgId?: string,
+  ): Promise<readonly DialogNextStepTrigger[]> {
+    return [];
+  }
 
   /**
    * Notify end of LLM generation lifecycle (generating_finish_evt)

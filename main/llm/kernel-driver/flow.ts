@@ -1,5 +1,6 @@
 import type { DialogDisplayState } from '@longrun-ai/kernel/types/display-state';
 import type { DialogQueuedPromptState } from '@longrun-ai/kernel/types/drive-intent';
+import type { DialogBusinessContinuation } from '@longrun-ai/kernel/types/storage';
 import { generateShortId } from '@longrun-ai/kernel/utils/id';
 import {
   applyRegisteredAppDialogRunControls,
@@ -689,6 +690,12 @@ function hasResultArrivalTrigger(
   return latest?.nextStep.triggers.some((trigger) => trigger.kind === 'result_arrival') === true;
 }
 
+function hasFollowupNextAction(
+  latest: Awaited<ReturnType<typeof DialogPersistence.loadDialogLatest>>,
+): boolean {
+  return latest?.nextStep.triggers.some((trigger) => trigger.kind === 'followup') === true;
+}
+
 function hasCallerReviveEntitlement(
   dialog: Dialog,
   driveOptions: KernelDriverDriveOptions | undefined,
@@ -860,11 +867,13 @@ async function inspectNoPromptSideDialogDrive(args: {
     args.driveOptions,
   );
   const resultArrivalTriggerPresent = hasResultArrivalTrigger(latest);
+  const followupNextActionPresent = hasFollowupNextAction(latest);
   const supplyResponseCallerReviveAllowed =
     hasCallerReviveEntitlement(args.dialog, args.driveOptions) &&
     (!resolvedPendingSideDialogReplyEntitlement || resultArrivalTriggerPresent);
   const backendLoopDurableWorkAllowed =
-    source === 'kernel_driver_backend_loop' && resultArrivalTriggerPresent;
+    source === 'kernel_driver_backend_loop' &&
+    (resultArrivalTriggerPresent || followupNextActionPresent);
   const finalResponseResultArrivalReviveAllowed =
     sideDialogFinalResponseCallId !== undefined &&
     ((resolvedPendingSideDialogReplyEntitlement && resultArrivalTriggerPresent) ||
@@ -1148,8 +1157,40 @@ export async function executeDriveRound(args: {
   let shouldRefreshDisplayStateAfterActiveRunCleared = false;
   let followUp: FollowUpPrompt | undefined;
   let driveResult: KernelDriverCoreResult | undefined;
-  let calleeDialogReplyTarget: CalleeReplyTarget | undefined;
-  let activeTellaskReplyDirective: KernelDriverPrompt['tellaskReplyDirective'] | undefined;
+  let activeBusinessContinuation: DialogBusinessContinuation =
+    driveOptions?.businessContinuation ?? { kind: 'none' };
+  const replyContinuationScope = {
+    refresh(continuation: DialogBusinessContinuation): void {
+      activeBusinessContinuation = continuation;
+    },
+    directive(): KernelDriverPrompt['tellaskReplyDirective'] | undefined {
+      switch (activeBusinessContinuation.kind) {
+        case 'none':
+          return undefined;
+        case 'inter_dialog_reply':
+          return activeBusinessContinuation.tellaskReplyDirective;
+        default: {
+          const _exhaustive: never = activeBusinessContinuation;
+          throw new Error(`Unhandled business continuation kind: ${String(_exhaustive)}`);
+        }
+      }
+    },
+    target(): CalleeReplyTarget | undefined {
+      switch (activeBusinessContinuation.kind) {
+        case 'none':
+          return undefined;
+        case 'inter_dialog_reply':
+          return activeBusinessContinuation.calleeDialogReplyTarget;
+        default: {
+          const _exhaustive: never = activeBusinessContinuation;
+          throw new Error(`Unhandled business continuation kind: ${String(_exhaustive)}`);
+        }
+      }
+    },
+  };
+  let calleeDialogReplyTarget: CalleeReplyTarget | undefined = replyContinuationScope.target();
+  let activeTellaskReplyDirective: KernelDriverPrompt['tellaskReplyDirective'] | undefined =
+    replyContinuationScope.directive();
   let activePromptWasReplyToolReminder = false;
   let shouldPauseAfterLocalUserInterjection = false;
   let resumeFromInterjectionPause = false;
@@ -1523,7 +1564,17 @@ export async function executeDriveRound(args: {
         );
       }
     }
-    calleeDialogReplyTarget = effectivePrompt?.calleeDialogReplyTarget;
+    if (effectivePrompt?.tellaskReplyDirective !== undefined) {
+      replyContinuationScope.refresh({
+        kind: 'inter_dialog_reply',
+        tellaskReplyDirective: effectivePrompt.tellaskReplyDirective,
+        ...(effectivePrompt.calleeDialogReplyTarget === undefined
+          ? {}
+          : { calleeDialogReplyTarget: effectivePrompt.calleeDialogReplyTarget }),
+      });
+    }
+    calleeDialogReplyTarget =
+      effectivePrompt?.calleeDialogReplyTarget ?? replyContinuationScope.target();
     const replyGuidance = await resolvePromptReplyGuidance({
       dlg: dialog,
       prompt: effectivePrompt,
@@ -1541,7 +1592,8 @@ export async function executeDriveRound(args: {
       !replyGuidance.isQ4HAnswerPrompt &&
       replyGuidance.suppressInterDialogReplyGuidance &&
       replyGuidance.deferredReplyReassertionDirective !== undefined;
-    activeTellaskReplyDirective = replyGuidance.activeReplyDirective;
+    activeTellaskReplyDirective =
+      replyGuidance.activeReplyDirective ?? replyContinuationScope.directive();
     activePromptWasReplyToolReminder = isReplyToolReminderPrompt(effectivePrompt);
     let activePromptCarriesReplyDirective =
       effectivePrompt?.tellaskReplyDirective !== undefined &&
@@ -1578,7 +1630,12 @@ export async function executeDriveRound(args: {
       reason: 'core_stopped',
       hadRootDriveWakeBeforeCore,
     });
-    calleeDialogReplyTarget = driveResult.lastAssistantReplyTarget ?? calleeDialogReplyTarget;
+    replyContinuationScope.refresh(driveResult.lastBusinessContinuation);
+    calleeDialogReplyTarget =
+      driveResult.lastAssistantReplyTarget ??
+      replyContinuationScope.target() ??
+      calleeDialogReplyTarget;
+    activeTellaskReplyDirective = activeTellaskReplyDirective ?? replyContinuationScope.directive();
     interruptedBySignal = getActiveRunSignal(dialog.id)?.aborted === true;
     if (!interruptedBySignal) {
       const queuedFollowUp = dialog.takeUpNext();
@@ -1681,8 +1738,10 @@ export async function executeDriveRound(args: {
               replyDirectiveForAssistantOutput.targetCallId !==
                 activeTellaskReplyDirective?.targetCallId
             ) {
-              // `driveDialogStreamCore` may already have consumed a queued assignment-update prompt
-              // inside the same drive, so rebind the tail decision to the assistant output target.
+              // Business continuation identity should already come from the accepted next-step
+              // trigger or the current runtime prompt. This branch only handles an explicit
+              // assistant-output reply target surfaced by the core; do not broaden it into
+              // transcript/assignment-anchor reconstruction.
               log.debug(
                 'kernel-driver rebound sideDialog reply directive to latest assistant output target',
                 undefined,
@@ -1897,11 +1956,20 @@ export async function executeDriveRound(args: {
           followUp.kind === 'runtime_sideDialog_reply_reminder'
         ) {
           await queueReplyReminderFollowUp({ dialog, followUp });
+          const businessContinuation: DialogBusinessContinuation = {
+            kind: 'inter_dialog_reply',
+            tellaskReplyDirective: followUp.tellaskReplyDirective,
+            ...(followUp.kind === 'runtime_sideDialog_reply_reminder' &&
+            followUp.calleeDialogReplyTarget !== undefined
+              ? { calleeDialogReplyTarget: followUp.calleeDialogReplyTarget }
+              : {}),
+          };
           args.scheduleDrive(dialog, {
             waitInQue: true,
             driveOptions: {
               source: 'kernel_driver_follow_up',
               reason: 'follow_up_prompt',
+              businessContinuation,
             },
           });
           return driveResult;

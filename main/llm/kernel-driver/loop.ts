@@ -1,4 +1,4 @@
-import { DialogID, type Dialog } from '../../dialog';
+import { DialogID, type Dialog, type MainDialog } from '../../dialog';
 import { getStopRequestedReason, hasActiveRun } from '../../dialog-display-state';
 import { hasDurableDriveWork } from '../../dialog-drive-work';
 import { getRecoverableGenerationRunState } from '../../dialog-generation-run';
@@ -10,6 +10,19 @@ import { DialogPersistence } from '../../persistence';
 import { findDomindsPersistenceFileError } from '../../persistence-errors';
 import { driveDialogStream } from './engine';
 import type { KernelDriverRunBackendResult } from './types';
+
+function formatDriveError(error: unknown): { name?: string; message: string; stack?: string } {
+  if (error instanceof Error) {
+    return {
+      name: error.name,
+      message: error.message,
+      ...(typeof error.stack === 'string' && error.stack.trim() !== ''
+        ? { stack: error.stack }
+        : {}),
+    };
+  }
+  return { message: String(error) };
+}
 
 function formatDriveTriggerForLog(trigger: DriveTriggerEvent): Record<string, unknown> {
   return {
@@ -26,13 +39,13 @@ function formatDriveTriggerForLog(trigger: DriveTriggerEvent): Record<string, un
 
 async function listLiveDialogsWithDurableDriveWork(): Promise<
   Array<{
-    rootDialog: ReturnType<typeof globalDialogRegistry.getAll>[number];
+    rootDialog: MainDialog;
     dialog: Dialog;
   }>
 > {
-  const liveDialogs = globalDialogRegistry.getAll();
+  const liveDialogs = globalDialogRegistry.consumeQueuedMainDialogs();
   const queued: Array<{
-    rootDialog: ReturnType<typeof globalDialogRegistry.getAll>[number];
+    rootDialog: MainDialog;
     dialog: Dialog;
   }> = [];
 
@@ -52,6 +65,7 @@ async function listLiveDialogsWithDurableDriveWork(): Promise<
     }
     const candidateDialogs: Dialog[] = [mainDialog];
     let hadCandidateInspectionError = false;
+    let hadStalledCandidateForRoot = false;
     for (const watchedDialogId of watchedDialogIds) {
       let watchedDialog: Dialog | undefined;
       try {
@@ -107,13 +121,27 @@ async function listLiveDialogsWithDurableDriveWork(): Promise<
       if (!hasDurableDriveWork(latest)) {
         continue;
       }
+      const durableWorkFingerprint = DialogPersistence.buildBackendDriveDurableWorkFingerprint(
+        latest,
+        dialog.id.selfId === dialog.id.rootId ? watchedDialogIds : [],
+      );
+      if (latest.backendDriveStall?.durableWorkFingerprint === durableWorkFingerprint) {
+        hadStalledCandidateForRoot = true;
+        log.warn('Backend driver skipped stalled durable work pending new facts', undefined, {
+          dialogId: dialog.id.valueOf(),
+          rootId: dialog.id.rootId,
+          selfId: dialog.id.selfId,
+          stallRecordId: latest.backendDriveStall.recordId,
+        });
+        continue;
+      }
       hasQueuedCandidateForRoot = true;
       queued.push({
         rootDialog: mainDialog,
         dialog,
       });
     }
-    if (!hasQueuedCandidateForRoot && !hadCandidateInspectionError) {
+    if (!hasQueuedCandidateForRoot && !hadCandidateInspectionError && !hadStalledCandidateForRoot) {
       globalDialogRegistry.clearDriveWake(mainDialog.id.rootId, {
         source: 'kernel_driver_backend_loop',
         reason: 'no_durable_drive_work',
@@ -125,35 +153,6 @@ async function listLiveDialogsWithDurableDriveWork(): Promise<
   return queued;
 }
 
-async function reassertLiveRootWakeForDurableWork(): Promise<void> {
-  for (const mainDialog of globalDialogRegistry.getAll()) {
-    try {
-      const rootHasPendingNextStepTriggers = await DialogPersistence.hasPendingNextStepTriggers(
-        mainDialog.id,
-        mainDialog.status,
-      );
-      const watchedDialogIds = await DialogPersistence.loadDriveWatchedDialogIds(
-        mainDialog.id,
-        mainDialog.status,
-      );
-      if (!rootHasPendingNextStepTriggers && watchedDialogIds.length === 0) {
-        continue;
-      }
-      globalDialogRegistry.wakeDrive(mainDialog.id.rootId, {
-        source: 'kernel_driver_backend_loop',
-        reason: rootHasPendingNextStepTriggers
-          ? 'root_next_step_still_pending'
-          : 'drive_watch_still_pending',
-      });
-    } catch (error: unknown) {
-      log.error('Backend driver failed to reassert root wake for durable work', error, {
-        rootId: mainDialog.id.rootId,
-        selfId: mainDialog.id.selfId,
-      });
-    }
-  }
-}
-
 export async function driveQueuedDialogsOnce(): Promise<void> {
   const dialogsToDrive = await listLiveDialogsWithDurableDriveWork();
   for (const { rootDialog, dialog } of dialogsToDrive) {
@@ -163,7 +162,6 @@ export async function driveQueuedDialogsOnce(): Promise<void> {
         await DialogPersistence.removeDriveWatchForDialog(dialog.id, dialog.status);
         continue;
       }
-      const currentHasPendingNextStepTriggers = (latestForDrive?.nextStep.triggers.length ?? 0) > 0;
       const currentResumeInProgressGeneration =
         getRecoverableGenerationRunState(latestForDrive) !== undefined;
       const currentHasBackendDurableWork = hasDurableDriveWork(latestForDrive);
@@ -237,23 +235,33 @@ export async function driveQueuedDialogsOnce(): Promise<void> {
       const stillHasDurableWork = hasDurableDriveWork(latestAfterDrive);
       const shouldStayQueued = dialog.hasUpNext() || !status.canDrive || stillHasDurableWork;
       if (shouldStayQueued) {
-        globalDialogRegistry.wakeDrive(rootDialog.id.rootId, {
-          source: 'kernel_driver_backend_loop',
-          reason: dialog.hasUpNext()
-            ? 'post_drive_upnext_pending'
-            : stillHasDurableWork
-              ? 'post_drive_durable_work_pending'
-              : 'post_drive_suspended',
-        });
-        if (dialog.id.selfId === dialog.id.rootId) {
-          await DialogPersistence.upsertRootDriveWakeTrigger(
-            dialog.id,
-            dialog.hasUpNext()
+        const canRetryImmediately = dialog.hasUpNext() || (status.canDrive && stillHasDurableWork);
+        if (canRetryImmediately) {
+          globalDialogRegistry.wakeDrive(rootDialog.id.rootId, {
+            source: 'kernel_driver_backend_loop',
+            reason: dialog.hasUpNext()
               ? 'post_drive_upnext_pending'
-              : stillHasDurableWork
-                ? 'post_drive_durable_work_pending'
-                : 'post_drive_suspended',
-            dialog.status,
+              : 'post_drive_durable_work_pending',
+          });
+          if (dialog.id.selfId === dialog.id.rootId) {
+            await DialogPersistence.upsertRootDriveWakeTrigger(
+              dialog.id,
+              dialog.hasUpNext() ? 'post_drive_upnext_pending' : 'post_drive_durable_work_pending',
+              dialog.status,
+            );
+          }
+        } else {
+          log.debug(
+            'Backend driver left durable work parked until the blocking state changes',
+            undefined,
+            {
+              dialogId: dialog.id.valueOf(),
+              rootId: dialog.id.rootId,
+              selfId: dialog.id.selfId,
+              waitingQ4H: status.q4h,
+              backgroundCalleeDialogs: status.backgroundCalleeDialogs,
+              stillHasDurableWork,
+            },
           );
         }
       } else {
@@ -336,13 +344,55 @@ export async function driveQueuedDialogsOnce(): Promise<void> {
           dialog.status,
         );
         if (rootHasPendingNextStepTriggers || watchedDialogIds.length > 0) {
-          globalDialogRegistry.wakeDrive(dialog.id.rootId, {
-            source: 'kernel_driver_backend_loop',
-            reason: 'drive_error_durable_work_pending',
+          const durableWorkFingerprint = DialogPersistence.buildBackendDriveDurableWorkFingerprint(
+            latestAfterError,
+            dialog.id.selfId === dialog.id.rootId ? watchedDialogIds : [],
+          );
+          const record = await DialogPersistence.appendBackendDriveStallRecord(
+            dialog.id,
+            {
+              dialogId: dialog.id.valueOf(),
+              rootId: dialog.id.rootId,
+              selfId: dialog.id.selfId,
+              status: dialog.status,
+              reason: 'backend_drive_error',
+              durableWorkFingerprint,
+              latestSummary:
+                latestAfterError === null
+                  ? null
+                  : {
+                      currentCourse: latestAfterError.currentCourse,
+                      status: latestAfterError.status,
+                      generating: latestAfterError.generating ?? false,
+                      displayState: latestAfterError.displayState ?? null,
+                      executionMarker: latestAfterError.executionMarker ?? null,
+                      generationRunState: latestAfterError.generationRunState ?? null,
+                      nextStepTriggerCount: latestAfterError.nextStep.triggers.length,
+                      pendingRuntimePromptMsgId:
+                        latestAfterError.pendingRuntimePrompt?.msgId ?? null,
+                      replyDelivery: latestAfterError.replyDelivery ?? null,
+                      userWait: latestAfterError.userWait ?? null,
+                      sideDialogFinalResponse: latestAfterError.sideDialogFinalResponse ?? null,
+                    },
+              error: formatDriveError(err),
+              context: {
+                rootHasPendingNextStepTriggers,
+                watchedDialogCount: watchedDialogIds.length,
+              },
+            },
+            dialog.status,
+          );
+          log.warn('Backend driver persisted stalled durable work after drive error', undefined, {
+            dialogId: dialog.id.valueOf(),
+            rootId: dialog.id.rootId,
+            selfId: dialog.id.selfId,
+            stallRecordId: record.recordId,
+            rootHasPendingNextStepTriggers,
+            watchedDialogCount: watchedDialogIds.length,
           });
         }
-      } catch (requeueErr: unknown) {
-        log.error('Failed to requeue durable work after backend drive error', requeueErr, {
+      } catch (stallErr: unknown) {
+        log.error('Failed to persist backend drive stall after drive error', stallErr, {
           dialogId: dialog.id.valueOf(),
           rootId: dialog.id.rootId,
           selfId: dialog.id.selfId,
@@ -350,7 +400,6 @@ export async function driveQueuedDialogsOnce(): Promise<void> {
       }
     }
   }
-  await reassertLiveRootWakeForDurableWork();
 }
 
 function isBackendDriverAborted(options: { abortSignal?: AbortSignal } | undefined): boolean {

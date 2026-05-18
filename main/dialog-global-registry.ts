@@ -36,7 +36,18 @@ export type DriveTriggerMeta = Readonly<{
 
 class GlobalDialogRegistry {
   private static instance: GlobalDialogRegistry | undefined;
+  /**
+   * Runtime-owned roots keyed by rootId.
+   *
+   * Do not add an API that enumerates this map for backend driving. A dialog becomes driveable only
+   * through an explicit business/runtime wake (`wakeDrive`, result arrival, active-run clear, etc.).
+   * Reintroducing "scan every loaded root and see what happens" makes hidden polling loops easy to
+   * create and obscures the business event that should own the next action.
+   */
   private readonly entries: Map<string, RegistryEntry> = new Map();
+  private readonly queuedRootIds: string[] = [];
+  private readonly queuedRootIdSet: Set<string> = new Set();
+  private queuedRootIdReadIndex = 0;
   private readonly lastDriveTriggerByRootId: Map<string, DriveTriggerEvent> = new Map();
   private readonly driveTriggerPubChan: PubChan<DriveTriggerEvent> =
     createPubChan<DriveTriggerEvent>();
@@ -93,8 +104,49 @@ class GlobalDialogRegistry {
 
   unregister(rootId: string): void {
     this.entries.delete(rootId);
+    this.queuedRootIdSet.delete(rootId);
     this.lastDriveTriggerByRootId.delete(rootId);
     scheduleGlobalDialogMutexCleanupForRoot(rootId);
+  }
+
+  private enqueueRoot(rootId: string): void {
+    if (this.queuedRootIdSet.has(rootId)) {
+      return;
+    }
+    this.queuedRootIdSet.add(rootId);
+    this.queuedRootIds.push(rootId);
+  }
+
+  private compactQueuedRootsIfNeeded(): void {
+    if (this.queuedRootIdReadIndex === 0) {
+      return;
+    }
+    if (
+      this.queuedRootIdReadIndex < 256 &&
+      this.queuedRootIdReadIndex * 2 < this.queuedRootIds.length
+    ) {
+      return;
+    }
+    this.queuedRootIds.splice(0, this.queuedRootIdReadIndex);
+    this.queuedRootIdReadIndex = 0;
+  }
+
+  private compactSparseQueuedRootsIfNeeded(): void {
+    if (this.queuedRootIds.length < 512) {
+      return;
+    }
+    if (this.queuedRootIdSet.size * 2 >= this.queuedRootIds.length - this.queuedRootIdReadIndex) {
+      return;
+    }
+    const compacted: string[] = [];
+    for (let index = this.queuedRootIdReadIndex; index < this.queuedRootIds.length; index += 1) {
+      const rootId = this.queuedRootIds[index];
+      if (rootId !== undefined && this.queuedRootIdSet.has(rootId)) {
+        compacted.push(rootId);
+      }
+    }
+    this.queuedRootIds.splice(0, this.queuedRootIds.length, ...compacted);
+    this.queuedRootIdReadIndex = 0;
   }
 
   private publishDriveTrigger(args: {
@@ -142,6 +194,7 @@ class GlobalDialogRegistry {
       entry.wakeQueued = true;
       // A fresh queueing trigger supersedes any earlier "wake me once active run clears" debt.
       entry.activeRunClearedWakePending = false;
+      this.enqueueRoot(rootId);
     }
     this.publishDriveTrigger({
       action: 'wake_drive',
@@ -163,6 +216,8 @@ class GlobalDialogRegistry {
     if (entry) {
       entry.wakeQueued = false;
       entry.activeRunClearedWakePending = false;
+      this.queuedRootIdSet.delete(rootId);
+      this.compactSparseQueuedRootsIfNeeded();
     }
     this.publishDriveTrigger({
       action: 'clear_drive_wake',
@@ -183,12 +238,14 @@ class GlobalDialogRegistry {
     if (!entry) {
       return;
     }
-    if (!entry.activeRunClearedWakePending || !entry.wakeQueued) {
+    if (!entry.activeRunClearedWakePending) {
       entry.activeRunClearedWakePending = false;
       return;
     }
-    const currentWakeQueued = entry ? entry.wakeQueued : null;
+    const currentWakeQueued = entry.wakeQueued;
     entry.activeRunClearedWakePending = false;
+    entry.wakeQueued = true;
+    this.enqueueRoot(rootId);
     this.publishDriveTrigger({
       action: 'active_run_cleared',
       rootId,
@@ -201,7 +258,7 @@ class GlobalDialogRegistry {
 
   noteActiveRunBlockedQueuedDrive(rootId: string): void {
     const entry = this.entries.get(rootId);
-    if (!entry || !entry.wakeQueued) {
+    if (!entry) {
       return;
     }
     entry.activeRunClearedWakePending = true;
@@ -219,8 +276,24 @@ class GlobalDialogRegistry {
     return this.lastDriveTriggerByRootId.get(rootId);
   }
 
-  getAll(): MainDialog[] {
-    return Array.from(this.entries.values()).map((entry) => entry.mainDialog);
+  consumeQueuedMainDialogs(): MainDialog[] {
+    const queued: MainDialog[] = [];
+    while (this.queuedRootIdReadIndex < this.queuedRootIds.length) {
+      const rootId = this.queuedRootIds[this.queuedRootIdReadIndex];
+      this.queuedRootIdReadIndex += 1;
+      if (rootId === undefined || !this.queuedRootIdSet.has(rootId)) {
+        continue;
+      }
+      this.queuedRootIdSet.delete(rootId);
+      const entry = this.entries.get(rootId);
+      if (!entry) {
+        continue;
+      }
+      entry.wakeQueued = false;
+      queued.push(entry.mainDialog);
+    }
+    this.compactQueuedRootsIfNeeded();
+    return queued;
   }
 
   get size(): number {

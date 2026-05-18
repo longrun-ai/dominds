@@ -315,10 +315,13 @@ export function clearActiveRun(
     return;
   }
   clearQuarantiningMainDialogIfIdle(dialogId.rootId);
-  if (dialogId.selfId === dialogId.rootId && options?.notifyBackendLoop !== false) {
+  if (options?.notifyBackendLoop !== false) {
     globalDialogRegistry.notifyActiveRunCleared(dialogId.rootId, {
       source: 'dialog_display_state_active_run_clear',
-      reason: 'root_active_run_cleared',
+      reason:
+        dialogId.selfId === dialogId.rootId
+          ? 'root_active_run_cleared'
+          : 'sideDialog_active_run_cleared',
     });
   }
   syncRunControlCountsAfterActiveRunChange('clear_active_run', dialogId);

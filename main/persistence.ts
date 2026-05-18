@@ -56,6 +56,8 @@ import type {
   CallSiteCourseNo,
   CallSiteGenseqNo,
   DialogAskerStackState,
+  DialogBackendDriveStallState,
+  DialogBusinessContinuation,
   DialogCalleeReplyTarget,
   DialogDeferredReplyReassertion,
   DialogFbrState,
@@ -216,6 +218,7 @@ function summarizeLatestProjectionState(latest: DialogLatestFile): Record<string
     displayState: latest.displayState ?? null,
     executionMarker: latest.executionMarker ?? null,
     generationRunState: latest.generationRunState ?? null,
+    backendDriveStall: latest.backendDriveStall ?? null,
     nextStepTriggerCount: latest.nextStep.triggers.length,
     userWait: latest.userWait ?? null,
     replyDelivery: latest.replyDelivery ?? null,
@@ -260,6 +263,7 @@ function summarizeLatestMutationPatch(
     displayState: patch.displayState ?? null,
     executionMarker: patch.executionMarker ?? null,
     generationRunState: patch.generationRunState ?? null,
+    backendDriveStall: patch.backendDriveStall ?? null,
     nextStepTriggerCount: patch.nextStep?.triggers.length ?? null,
     userWait: patch.userWait ?? null,
     replyDelivery: patch.replyDelivery ?? null,
@@ -1757,6 +1761,29 @@ function parseDialogGenerationRunState(value: unknown): DialogGenerationRunState
   return null;
 }
 
+function parseDialogBackendDriveStallState(value: unknown): DialogBackendDriveStallState | null {
+  if (!isRecord(value)) return null;
+  if (value.kind !== 'backend_drive_error') return null;
+  if (typeof value.recordId !== 'string' || value.recordId.trim() === '') return null;
+  if (
+    typeof value.durableWorkFingerprint !== 'string' ||
+    value.durableWorkFingerprint.trim() === ''
+  ) {
+    return null;
+  }
+  if (typeof value.failedAt !== 'string' || value.failedAt.trim() === '') return null;
+  if (value.errorName !== undefined && typeof value.errorName !== 'string') return null;
+  if (typeof value.errorMessage !== 'string' || value.errorMessage.trim() === '') return null;
+  return {
+    kind: 'backend_drive_error',
+    recordId: value.recordId,
+    durableWorkFingerprint: value.durableWorkFingerprint,
+    failedAt: value.failedAt,
+    ...(value.errorName === undefined ? {} : { errorName: value.errorName }),
+    errorMessage: value.errorMessage,
+  };
+}
+
 function parseStringArrayField(value: unknown): readonly string[] | null {
   if (!Array.isArray(value)) return null;
   if (!value.every((entry) => typeof entry === 'string' && entry.trim() !== '')) return null;
@@ -1796,6 +1823,33 @@ function parseDialogFollowupReason(value: unknown): DialogFollowupReason | null 
     case 'runtime_guidance':
       if (typeof value.msgId !== 'string' || value.msgId.trim() === '') return null;
       return { kind: 'runtime_guidance', msgId: value.msgId };
+    default:
+      return null;
+  }
+}
+
+function parseDialogBusinessContinuation(value: unknown): DialogBusinessContinuation | null {
+  if (!isRecord(value)) return null;
+  switch (value.kind) {
+    case 'none':
+      return { kind: 'none' };
+    case 'inter_dialog_reply': {
+      const tellaskReplyDirective = parseTellaskReplyDirective(value.tellaskReplyDirective);
+      if (tellaskReplyDirective === null) return null;
+      if (value.calleeDialogReplyTarget === undefined) {
+        return {
+          kind: 'inter_dialog_reply',
+          tellaskReplyDirective,
+        };
+      }
+      const calleeDialogReplyTarget = parseDialogCalleeReplyTarget(value.calleeDialogReplyTarget);
+      if (calleeDialogReplyTarget === null) return null;
+      return {
+        kind: 'inter_dialog_reply',
+        tellaskReplyDirective,
+        calleeDialogReplyTarget,
+      };
+    }
     default:
       return null;
   }
@@ -1859,6 +1913,11 @@ function parseDialogNextStepTrigger(value: unknown): DialogNextStepTrigger | nul
         if (reason === null) return null;
         reasons.push(reason);
       }
+      const continuation = (() => {
+        if (value.continuation === undefined) return undefined;
+        return parseDialogBusinessContinuation(value.continuation);
+      })();
+      if (continuation === null) return null;
       return {
         ...base,
         kind: 'followup',
@@ -1867,6 +1926,7 @@ function parseDialogNextStepTrigger(value: unknown): DialogNextStepTrigger | nul
           genseq: toCallSiteGenseqNo(genseq),
         },
         reasons,
+        ...(continuation === undefined ? {} : { continuation }),
       };
     }
     case 'mainline_diligence': {
@@ -2217,6 +2277,13 @@ function parseDialogLatestFile(value: unknown): DialogLatestFile | null {
       : parseDialogGenerationRunState(generationRunStateRaw);
   if (generationRunState === null) return null;
 
+  const backendDriveStallRaw = (value as Record<string, unknown>).backendDriveStall;
+  const backendDriveStall: DialogBackendDriveStallState | null | undefined =
+    backendDriveStallRaw === undefined
+      ? undefined
+      : parseDialogBackendDriveStallState(backendDriveStallRaw);
+  if (backendDriveStall === null) return null;
+
   const nextStepRaw = (value as Record<string, unknown>).nextStep;
   if (nextStepRaw === undefined) return null;
   const nextStep: DialogNextStepTriggerState | null = parseDialogNextStepTriggerState(nextStepRaw);
@@ -2365,6 +2432,7 @@ function parseDialogLatestFile(value: unknown): DialogLatestFile | null {
     displayState,
     executionMarker,
     generationRunState,
+    backendDriveStall,
     nextStep,
     userWait,
     replyDelivery,
@@ -3078,7 +3146,10 @@ export class DiskFileDialogStore extends DialogStore {
    * CRITICAL: This must be called BEFORE any substream events (thinking_start, markdown_start, etc.)
    * to ensure proper event ordering on the frontend.
    */
-  public async notifyGeneratingStart(dialog: Dialog, msgId?: string): Promise<void> {
+  public async notifyGeneratingStart(
+    dialog: Dialog,
+    msgId?: string,
+  ): Promise<readonly DialogNextStepTrigger[]> {
     const course = dialog.activeGenCourseOrUndefined ?? dialog.currentCourse;
     const genseq = dialog.activeGenSeq;
     const startedAt = formatUnifiedTimestamp(new Date());
@@ -3119,6 +3190,7 @@ export class DiskFileDialogStore extends DialogStore {
             generating: true,
             displayState: { kind: 'proceeding' },
             executionMarker: undefined,
+            backendDriveStall: undefined,
             nextStep,
             generationRunState: {
               kind: 'open',
@@ -3140,6 +3212,7 @@ export class DiskFileDialogStore extends DialogStore {
     } catch (err) {
       log.warn('Failed to persist gen_start event', err);
     }
+    return acceptedTriggers;
   }
 
   private getResultArrivalBatchIdsFromAcceptedTriggers(
@@ -5691,6 +5764,31 @@ type DialogDriveWatchFile = Readonly<{
   dialogs: readonly string[];
 }>;
 
+export type BackendDriveStallWrite = Readonly<{
+  dialogId: string;
+  rootId: string;
+  selfId: string;
+  status: DialogStatusKind;
+  reason: 'backend_drive_error';
+  durableWorkFingerprint: string;
+  latestSummary: Record<string, unknown> | null;
+  error: {
+    name?: string;
+    message: string;
+    stack?: string;
+  };
+  context: {
+    rootHasPendingNextStepTriggers: boolean;
+    watchedDialogCount: number;
+  };
+}>;
+
+export type BackendDriveStallRecord = BackendDriveStallWrite &
+  Readonly<{
+    recordId: string;
+    recordedAt: string;
+  }>;
+
 type MainDialogWriteBackCancellationToken = Readonly<{
   scopeKey: string;
   generation: number;
@@ -5736,6 +5834,7 @@ export class DialogPersistence {
 
   private static readonly activeCalleesMutexes: Map<string, AsyncFifoMutex> = new Map();
   private static readonly driveWatchMutexes: Map<string, AsyncFifoMutex> = new Map();
+  private static readonly backendDriveStallMutexes: Map<string, AsyncFifoMutex> = new Map();
 
   private static readonly courseAppendMutexes: Map<string, AsyncFifoMutex> = new Map();
   private static readonly mainDialogWriteBackCancelGenerations: Map<string, number> = new Map();
@@ -5788,6 +5887,14 @@ export class DialogPersistence {
     return created;
   }
 
+  private static getBackendDriveStallMutex(key: string): AsyncFifoMutex {
+    const existing = this.backendDriveStallMutexes.get(key);
+    if (existing) return existing;
+    const created = new AsyncFifoMutex();
+    this.backendDriveStallMutexes.set(key, created);
+    return created;
+  }
+
   private static getLatestWriteBackKey(dialogId: DialogID, status: DialogStatusKind): string {
     // Include dialogs root dir to avoid cross-test/process.cwd collisions.
     return `${this.getDialogsRootDir()}|${status}|${dialogId.valueOf()}`;
@@ -5795,6 +5902,10 @@ export class DialogPersistence {
 
   private static getDriveWatchKey(rootDialogId: DialogID, status: DialogStatusKind): string {
     return `${this.getDialogsRootDir()}|${status}|${rootDialogId.rootId}|drive-watch`;
+  }
+
+  private static getBackendDriveStallKey(dialogId: DialogID, status: DialogStatusKind): string {
+    return `${this.getDialogsRootDir()}|${status}|${dialogId.valueOf()}|backend-drive-stall`;
   }
 
   private static getQ4HWriteBackKey(dialogId: DialogID, status: DialogStatusKind): string {
@@ -8311,6 +8422,91 @@ export class DialogPersistence {
     );
     await fs.promises.writeFile(tempFile, jsonContent, 'utf-8');
     await this.renameWithRetry(tempFile, filePath, 5);
+  }
+
+  private static getBackendDriveStallJsonlPath(
+    dialogId: DialogID,
+    status: DialogStatusKind,
+  ): string {
+    return path.join(this.getDialogEventsPath(dialogId, status), 'backend-drive-stalls.jsonl');
+  }
+
+  static buildBackendDriveDurableWorkFingerprint(
+    latest: DialogLatestFile | null,
+    watchedDialogIds: readonly DialogID[] = [],
+  ): string {
+    if (latest === null) {
+      return JSON.stringify({ latest: null });
+    }
+    const nextStepTriggers = sortNextStepTriggersForConsumption(latest.nextStep.triggers).map(
+      (trigger) => ({
+        triggerId: trigger.triggerId,
+        kind: trigger.kind,
+        seq: trigger.seq,
+        createdAt: trigger.createdAt,
+        payload: trigger,
+      }),
+    );
+    return JSON.stringify({
+      currentCourse: latest.currentCourse,
+      status: latest.status,
+      generating: latest.generating ?? false,
+      displayState: latest.displayState ?? null,
+      executionMarker: latest.executionMarker ?? null,
+      nextStepTriggers,
+      pendingRuntimePromptMsgId: latest.pendingRuntimePrompt?.msgId ?? null,
+      generationRunState: latest.generationRunState ?? null,
+      replyDelivery: latest.replyDelivery ?? null,
+      sideDialogFinalResponse: latest.sideDialogFinalResponse ?? null,
+      latestAssignmentAnchor: latest.latestAssignmentAnchor ?? null,
+      userWait: latest.userWait ?? null,
+      watchedDialogIds: watchedDialogIds.map((dialogId) => dialogId.valueOf()).sort(),
+    });
+  }
+
+  static async appendBackendDriveStallRecord(
+    dialogId: DialogID,
+    write: BackendDriveStallWrite,
+    status: DialogStatusKind = 'running',
+  ): Promise<BackendDriveStallRecord> {
+    const recordedAt = formatUnifiedTimestamp(new Date());
+    const record: BackendDriveStallRecord = {
+      ...write,
+      recordId: randomUUID(),
+      recordedAt,
+    };
+    const key = this.getBackendDriveStallKey(dialogId, status);
+    const mutex = this.getBackendDriveStallMutex(key);
+    const release = await mutex.acquire();
+    try {
+      const filePath = this.getBackendDriveStallJsonlPath(dialogId, status);
+      await fs.promises.mkdir(path.dirname(filePath), { recursive: true });
+      await fs.promises.appendFile(filePath, `${JSON.stringify(record)}\n`, 'utf-8');
+      await this.mutateDialogLatest(
+        dialogId,
+        () => ({
+          kind: 'patch',
+          patch: {
+            backendDriveStall: {
+              kind: 'backend_drive_error',
+              recordId: record.recordId,
+              durableWorkFingerprint: write.durableWorkFingerprint,
+              failedAt: recordedAt,
+              ...(write.error.name === undefined ? {} : { errorName: write.error.name }),
+              errorMessage: write.error.message,
+            },
+          },
+        }),
+        status,
+      );
+      return record;
+    } finally {
+      release();
+      const current = this.backendDriveStallMutexes.get(key);
+      if (current === mutex && !mutex.isLocked()) {
+        this.backendDriveStallMutexes.delete(key);
+      }
+    }
   }
 
   private static async mutateDriveWatch(

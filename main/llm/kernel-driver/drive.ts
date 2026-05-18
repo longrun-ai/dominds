@@ -13,11 +13,14 @@ import {
   toCallSiteGenseqNo,
   toDialogCourseNumber,
   toRootGenerationAnchor,
+  type DialogBusinessContinuation,
+  type DialogCalleeReplyTarget,
   type DialogFbrState,
   type DialogFollowupReason,
   type FuncResultRecord,
   type TellaskAnchorRecord,
   type TellaskCalleeRecord,
+  type TellaskReplyDirective,
 } from '@longrun-ai/kernel/types/storage';
 import { generateShortId } from '@longrun-ai/kernel/utils/id';
 import { formatUnifiedTimestamp, parseUnifiedTimestampMs } from '@longrun-ai/kernel/utils/time';
@@ -291,6 +294,56 @@ function buildInterruptedFuncResult(args: {
     role: 'tool',
     genseq: args.callGenseq,
   };
+}
+
+function sameDialogBusinessContinuation(
+  left: DialogBusinessContinuation,
+  right: DialogBusinessContinuation,
+): boolean {
+  if (left.kind !== right.kind) return false;
+  switch (left.kind) {
+    case 'none':
+      return true;
+    case 'inter_dialog_reply': {
+      if (right.kind !== 'inter_dialog_reply') return false;
+      return (
+        sameTellaskReplyDirective(left.tellaskReplyDirective, right.tellaskReplyDirective) &&
+        sameDialogCalleeReplyTarget(left.calleeDialogReplyTarget, right.calleeDialogReplyTarget)
+      );
+    }
+    default: {
+      const _exhaustive: never = left;
+      throw new Error(`Unhandled business continuation kind: ${String(_exhaustive)}`);
+    }
+  }
+}
+
+function sameTellaskReplyDirective(
+  left: TellaskReplyDirective,
+  right: TellaskReplyDirective,
+): boolean {
+  return (
+    left.expectedReplyCallName === right.expectedReplyCallName &&
+    left.targetDialogId === right.targetDialogId &&
+    left.targetCallId === right.targetCallId &&
+    left.tellaskContent === right.tellaskContent
+  );
+}
+
+function sameDialogCalleeReplyTarget(
+  left: DialogCalleeReplyTarget | undefined,
+  right: DialogCalleeReplyTarget | undefined,
+): boolean {
+  if (left === undefined || right === undefined) {
+    return left === right;
+  }
+  return (
+    left.callerDialogId === right.callerDialogId &&
+    left.callType === right.callType &&
+    left.callId === right.callId &&
+    left.callSiteCourse === right.callSiteCourse &&
+    left.callSiteGenseq === right.callSiteGenseq
+  );
 }
 
 function isFbrSideDialog(dlg: Dialog): dlg is SideDialog {
@@ -1538,6 +1591,7 @@ async function upsertImmediateFollowupTrigger(args: {
   routed: RoutedFunctionResult;
   invalidFuncCallCount: number;
   streamedFuncCalls: readonly FuncCallMsg[];
+  continuation: DialogBusinessContinuation;
 }): Promise<void> {
   const reasons: DialogFollowupReason[] = [];
   if (args.routed.immediateFollowupCallIds.length > 0) {
@@ -1573,6 +1627,7 @@ async function upsertImmediateFollowupTrigger(args: {
       genseq: toCallSiteGenseqNo(genseq),
     },
     reasons,
+    continuation: args.continuation,
   });
 }
 
@@ -2349,6 +2404,7 @@ export async function driveDialogStreamCore(
   let lastAssistantThinkingGenseq: number | null = null;
   let lastFunctionCallGenseq: number | null = null;
   let lastAssistantReplyTarget: KernelDriverPrompt['calleeDialogReplyTarget'] | undefined;
+  let lastBusinessContinuation: DialogBusinessContinuation = { kind: 'none' };
   let fbrConclusion:
     | {
         responseText: string;
@@ -2600,6 +2656,17 @@ export async function driveDialogStreamCore(
         let llmGenModelForGen: string = model;
         const currentPrompt = pendingPrompt;
         const currentReplyTarget = currentPrompt?.calleeDialogReplyTarget;
+        let currentBusinessContinuation: DialogBusinessContinuation =
+          driveOptions?.businessContinuation ?? { kind: 'none' };
+        if (currentPrompt?.tellaskReplyDirective !== undefined) {
+          currentBusinessContinuation = {
+            kind: 'inter_dialog_reply',
+            tellaskReplyDirective: currentPrompt.tellaskReplyDirective,
+            ...(currentPrompt.calleeDialogReplyTarget === undefined
+              ? {}
+              : { calleeDialogReplyTarget: currentPrompt.calleeDialogReplyTarget }),
+          };
+        }
         const currentFbrState = await loadDialogFbrState(dlg);
         let currentRuntimeGuideMsg:
           | Extract<ChatMessage, { type: 'transient_guide_msg' }>
@@ -2626,7 +2693,23 @@ export async function driveDialogStreamCore(
           }
         }
 
-        await dlg.notifyGeneratingStart(currentPrompt?.msgId);
+        const acceptedTriggers = await dlg.notifyGeneratingStart(currentPrompt?.msgId);
+        for (const trigger of acceptedTriggers) {
+          if (trigger.kind === 'followup' && trigger.continuation !== undefined) {
+            if (
+              currentBusinessContinuation.kind !== 'none' &&
+              !sameDialogBusinessContinuation(currentBusinessContinuation, trigger.continuation)
+            ) {
+              throw new Error(
+                `Business continuation invariant violation: conflicting accepted followup continuations ` +
+                  `(dialog=${dlg.id.valueOf()}, course=${String(dlg.activeGenCourseOrUndefined ?? dlg.currentCourse)}, ` +
+                  `genseq=${String(dlg.activeGenSeq)}, triggerId=${trigger.triggerId})`,
+              );
+            }
+            currentBusinessContinuation = trigger.continuation;
+          }
+        }
+        lastBusinessContinuation = currentBusinessContinuation;
         try {
           if (criticalUserInterjectionRuntimeGuide !== undefined) {
             await persistAndEmitRuntimeGuide(dlg, criticalUserInterjectionRuntimeGuide);
@@ -3464,6 +3547,7 @@ export async function driveDialogStreamCore(
                 lastAssistantThinkingGenseq,
                 lastFunctionCallGenseq,
                 lastAssistantReplyTarget,
+                lastBusinessContinuation,
               };
             }
             const nextFbrState = advanceFbrState(persistedFbrState);
@@ -3678,6 +3762,7 @@ export async function driveDialogStreamCore(
               routed,
               invalidFuncCallCount,
               streamedFuncCalls,
+              continuation: currentBusinessContinuation,
             });
             resolvingImmediateToolResultForUserPrompt =
               currentGenerationBelongsToUserPrompt ||
@@ -3843,6 +3928,7 @@ export async function driveDialogStreamCore(
     lastAssistantThinkingGenseq,
     lastFunctionCallGenseq,
     lastAssistantReplyTarget,
+    lastBusinessContinuation,
     fbrConclusion,
   };
 }

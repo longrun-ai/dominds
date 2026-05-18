@@ -12,7 +12,11 @@ import type {
   DialogRuntimeSideDialogPrompt,
   DialogUserPrompt,
 } from '@longrun-ai/kernel/types/drive-intent';
-import type { CallSiteCourseNo, CallSiteGenseqNo } from '@longrun-ai/kernel/types/storage';
+import type {
+  CallSiteCourseNo,
+  CallSiteGenseqNo,
+  DialogBusinessContinuation,
+} from '@longrun-ai/kernel/types/storage';
 import type { Dialog, DialogID } from '../../dialog';
 
 export type KernelDriverRunControl = DialogRunControlSpec;
@@ -38,6 +42,14 @@ export type KernelDriverDriveOptions = Readonly<{
   allowResumeFromInterrupted?: boolean;
   resumeInProgressGeneration?: boolean;
   criticalUserInterjectionRuntimeGuide?: string;
+  /**
+   * Business continuation identity for no-prompt driver iterations.
+   *
+   * This is deliberately part of the drive contract instead of being rediscovered from old
+   * transcript/assignment records. A continuation must tell the next iteration what business
+   * obligation it is continuing, or the driver treats it as no business continuation.
+   */
+  businessContinuation?: DialogBusinessContinuation;
   noPromptSideDialogResumeEntitlement?:
     | Readonly<{
         callerDialogId: string;
@@ -169,6 +181,7 @@ export type KernelDriverCoreResult = {
   lastAssistantThinkingGenseq: number | null;
   lastFunctionCallGenseq: number | null;
   lastAssistantReplyTarget?: KernelDriverCalleeReplyTarget;
+  lastBusinessContinuation: DialogBusinessContinuation;
   fbrConclusion?: {
     responseText: string;
     responseGenseq: number;
