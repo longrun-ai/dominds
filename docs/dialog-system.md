@@ -729,7 +729,7 @@ sequenceDiagram
   Side-->>Store: persist final response
   Driver-->>Asker: supply result-arrival fact + clear pending callee
   opt result arrival creates an explicit drive source
-    Driver-->>Asker: set needsDrive=true
+    Driver-->>Asker: upsert result_arrival trigger + wake queue
   end
 ```
 
@@ -1231,7 +1231,7 @@ Dominds' runtime does **not** persist a single enum-like “awaiting …” stat
 driven is derived from persisted facts:
 
 - Persisted status (API/index): `running | completed | archived`
-- Persisted `latest.yaml`: `status`, `needsDrive`, `generating`
+- Persisted `latest.yaml`: `status`, `nextStep.triggers`, `generating`
 - Derived gates: `hasPendingQ4H()`; active callee dispatches are background callee facts, not a drive gate
 
 **Persisted status lifecycle:**
@@ -1250,9 +1250,9 @@ stateDiagram-v2
 flowchart TD
   A[status=running] --> B{canDrive?\\n(no pending Q4H)}
   B -- no --> S[Suspended\\n(waiting on Q4H)]
-  S -->|Q4H answered| C{needsDrive?}
+  S -->|Q4H answered| C{nextStep trigger?}
   R[result arrival] --> C
-  B -- yes --> C{needsDrive?}
+  B -- yes --> C{nextStep trigger?}
   C -- no --> I[Idle\\n(waiting for trigger)]
   C -- yes --> D[Drive loop\\n(generating=true while streaming)]
   D --> E{hasUpNext?}
@@ -1306,7 +1306,7 @@ sequenceDiagram
   Side-->>Driver: final response
   Driver-->>Tellasker: supply result-arrival fact + clear pending callee
   opt result arrival creates an explicit drive source
-    Driver-->>Tellasker: set `needsDrive=true`
+    Driver-->>Tellasker: upsert result_arrival trigger + wake queue
   end
 ```
 
@@ -1381,7 +1381,7 @@ sequenceDiagram
   Side-->>Asker: sideDialog response supplied to tellasker (result-arrival fact; clears this pending callee)
 
   opt Asker has a result-arrival drive source
-    Asker-->>Asker: set needsDrive=true (result-arrival handling)
+    Asker-->>Asker: upsert result_arrival trigger + wake queue (result-arrival handling)
   end
 ```
 

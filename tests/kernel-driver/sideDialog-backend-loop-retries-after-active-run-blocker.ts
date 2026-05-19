@@ -122,12 +122,12 @@ async function main(): Promise<void> {
           return hasPendingNextStepTriggers(latest) === true;
         },
         3_000,
-        'root revive to queue while the synthetic active run is still present',
+        'root wake to queue while the synthetic active run is still present',
       );
       await waitFor(
         async () => globalDialogRegistry.hasPendingActiveRunClearedWake(root.id.rootId),
         3_000,
-        'backend loop to record that the queued root revive was deferred by the synthetic active run',
+        'backend loop to record that the queued root wake was deferred by the synthetic active run',
       );
       clearActiveRun(root.id);
 
@@ -141,7 +141,7 @@ async function main(): Promise<void> {
       await waitFor(
         async () => lastAssistantSaying(root) === rootFinalResponse,
         3_000,
-        'backend loop to retry the queued root revive after the active-run blocker clears',
+        'backend loop to retry the queued root wake after the active-run blocker clears',
       );
       await waitForAllDialogsUnlocked(root, 3_000);
 
@@ -149,7 +149,7 @@ async function main(): Promise<void> {
       assert.equal(
         hasPendingNextStepTriggers(latest),
         false,
-        'queued root revive should be fully consumed after backend-loop retry',
+        'queued root wake should be fully consumed after backend-loop retry',
       );
     } finally {
       clearActiveRun(root.id);

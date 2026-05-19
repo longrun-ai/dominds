@@ -131,7 +131,7 @@ async function main(): Promise<void> {
     assert.equal(
       hasPendingNextStepTriggers(latest),
       true,
-      'deferred queued root revive should remain persisted after tail failure',
+      'deferred queued root wake should remain persisted after tail failure',
     );
 
     const lastTrigger = globalDialogRegistry.getLastDriveTrigger(root.id.rootId);

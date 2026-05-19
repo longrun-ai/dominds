@@ -333,8 +333,9 @@ export interface DialogLatestFile {
   sideDialogFinalResponse?: DialogSideDialogFinalResponseState;
   fbrState?: DialogFbrState;
   deferredReplyReassertion?: DialogDeferredReplyReassertion;
-  // Durable runtime prompt that must survive restart and be consumed before ordinary no-prompt
-  // driving, including new-course prompts and reply-tool reminders after direct sideline replies.
+  // Durable runtime prompt that must survive restart and be consumed before ordinary
+  // business-continuation driving, including new-course prompts and reply-tool reminders after
+  // direct sideline replies.
   pendingRuntimePrompt?: DialogPendingRuntimePrompt;
   disableDiligencePush?: boolean;
   diligencePushRemainingBudget?: number;

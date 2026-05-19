@@ -559,7 +559,7 @@ async function main(): Promise<void> {
     assert.equal(
       scheduledFirstThinkingOnlyDrives.length,
       2,
-      'expected durable reply reminder to schedule one no-prompt follow-up drive',
+      'expected durable reply reminder to schedule one business-continuation follow-up drive',
     );
 
     await executeDriveRound({
@@ -990,7 +990,7 @@ async function main(): Promise<void> {
     assert.equal(
       durableQueuedReminder?.kind,
       'new_course_runtime_sideDialog',
-      'no-prompt post-tool continuation must recover reply obligation from durable trigger continuation',
+      'post-tool business continuation must recover reply obligation from durable trigger continuation',
     );
     assert.equal(durableQueuedReminder.prompt, durableToolThenPlainProgressReplyReminder);
     assert.equal(

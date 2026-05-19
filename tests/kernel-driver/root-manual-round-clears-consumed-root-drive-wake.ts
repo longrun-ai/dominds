@@ -17,8 +17,8 @@ async function main(): Promise<void> {
   await withTempRtws(async (tmpRoot) => {
     await writeStandardMinds(tmpRoot, { includePangu: true });
 
-    const prompt = 'Consume the previously queued revive now.';
-    const response = 'The pending revive has already been handled in this foreground round.';
+    const prompt = 'Consume the previously queued wake now.';
+    const response = 'The pending wake has already been handled in this foreground round.';
 
     await writeMockDb(tmpRoot, [
       {

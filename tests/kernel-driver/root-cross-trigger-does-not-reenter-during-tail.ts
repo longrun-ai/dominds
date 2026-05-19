@@ -130,14 +130,14 @@ async function main(): Promise<void> {
     assert.equal(
       genStartCount,
       1,
-      'unrelated root trigger must not cause a second no-prompt root generation while tail is still running',
+      'unrelated root trigger must not cause a second business-continuation root generation while tail is still running',
     );
 
     const latest = await DialogPersistence.loadDialogLatest(root.id, root.status);
     assert.equal(
       hasPendingNextStepTriggers(latest),
       false,
-      'foreground round should clear the stale queued revive',
+      'foreground round should clear the stale queued wake',
     );
     backendAbort.abort();
     await backendDriver;
