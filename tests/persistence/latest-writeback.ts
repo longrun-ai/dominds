@@ -24,6 +24,7 @@ import {
   createEmptyDialogTellaskResultState,
 } from '../../main/dialog-latest-state';
 import { DialogPersistence, DiskFileDialogStore } from '../../main/persistence';
+import { DomindsPersistenceFileError } from '../../main/persistence-errors';
 
 const sleep = async (ms: number): Promise<void> =>
   await new Promise((resolve) => setTimeout(resolve, ms));
@@ -434,6 +435,41 @@ async function main(): Promise<void> {
       await DialogPersistence.hasRootRuntimeWake(driveRootId, 'running'),
       false,
       'explicit root wake queue removal should remove the root runtime wake entry',
+    );
+
+    // Invariant 11: malformed Wake Queue JSONL records fail loudly with line diagnostics.
+    const wakeQueuePath = path.join(
+      sandboxDir,
+      '.dialogs',
+      'run',
+      driveRootId.selfId,
+      'wake-queue.jsonl',
+    );
+    await fs.mkdir(path.dirname(wakeQueuePath), { recursive: true });
+    await fs.writeFile(
+      wakeQueuePath,
+      [
+        JSON.stringify({
+          entryId: `root-runtime-wake:${driveRootId.selfId}:latest_writeback_jsonl_line_failure`,
+          kind: 'root_runtime_wake',
+          targetDialogId: driveRootId.selfId,
+          reason: 'latest_writeback_jsonl_line_failure',
+        }),
+        '{not-json',
+        '',
+      ].join('\n'),
+      'utf-8',
+    );
+    await assert.rejects(
+      DialogPersistence.loadWakeQueueEntries(driveRootId, 'running'),
+      (error: unknown) => {
+        assert.ok(error instanceof DomindsPersistenceFileError);
+        assert.equal(error.source, 'wake_queue');
+        assert.equal(error.format, 'jsonl');
+        assert.equal(error.operation, 'parse');
+        assert.equal(error.lineNumber, 2);
+        return true;
+      },
     );
   });
 }
