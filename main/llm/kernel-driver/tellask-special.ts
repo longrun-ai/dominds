@@ -1344,13 +1344,11 @@ async function reviveDialogIfUnblocked(
       source: 'kernel_driver_supply_response_caller_revive',
       reason,
       suppressDiligencePush: dialog.disableDiligencePush,
-      noPromptSideDialogResumeEntitlement:
-        dialog instanceof SideDialog
-          ? {
-              callerDialogId: dialog.id.selfId,
-              reason,
-            }
-          : undefined,
+      businessContinuation: {
+        kind: 'local_tellask_result',
+        callerDialogId: dialog.id.selfId,
+        reason,
+      },
     },
   });
 }

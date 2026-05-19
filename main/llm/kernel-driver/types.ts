@@ -53,40 +53,6 @@ export type KernelDriverDriveOptions = Readonly<{
    * contract, not a place to merge unrelated continuation semantics.
    */
   businessContinuation?: DialogBusinessContinuation;
-  /**
-   * Migration token for legacy no-prompt side-dialog resume paths.
-   *
-   * This is not business authority by itself. The receiving path must re-read its own persisted
-   * facts and locally claim or discard the continuation. Do not generalize this into a cross-cutting
-   * revive/cleanup/fingerprint mechanism.
-   */
-  noPromptSideDialogResumeEntitlement?:
-    | Readonly<{
-        callerDialogId: string;
-        reason: 'reply_tellask_back_delivered';
-        sideDialogId?: string;
-        callType?: 'A' | 'B' | 'C';
-        callId?: string;
-      }>
-    | Readonly<{
-        callerDialogId: string;
-        reason: 'replaced_pending_sideDialog_reply';
-        sideDialogId?: string;
-        callType?: 'A' | 'B' | 'C';
-        callId?: string;
-      }>
-    | Readonly<{
-        callerDialogId: string;
-        reason: 'resolved_pending_sideDialog_reply';
-        sideDialogId?: string;
-        callType?: 'A' | 'B' | 'C';
-        callId?: string;
-        callSiteCourse: number;
-        callSiteGenseq: number;
-        batchId: string;
-        resolvedCallIds?: readonly string[];
-        triggerCallId?: string;
-      }>;
   runControl?: KernelDriverRunControl;
   source: KernelDriverDriveSource;
   reason: string;

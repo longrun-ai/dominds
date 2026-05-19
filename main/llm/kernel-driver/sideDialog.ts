@@ -2,6 +2,7 @@ import {
   toAskerCourseNumber,
   toCalleeCourseNumber,
   toCalleeGenerationSeqNumber,
+  toCallSiteCourseNo,
   toCallSiteGenseqNo,
   toDialogCourseNumber,
   toRootGenerationAnchor,
@@ -699,16 +700,18 @@ export async function supplyResponseToAskerDialog(args: {
         waitInQue: true,
         driveOptions: {
           suppressDiligencePush: callerDialog.disableDiligencePush,
-          noPromptSideDialogResumeEntitlement: {
+          businessContinuation: {
+            kind: 'requested_work_reply',
             callerDialogId: callerDialog.id.selfId,
-            reason: 'resolved_pending_sideDialog_reply',
+            batchId: result.batchId,
+            callSiteCourse: toCallSiteCourseNo(result.callSiteCourse),
+            callSiteGenseq: toCallSiteGenseqNo(result.callSiteGenseq),
             sideDialogId: sideDialogId.selfId,
             callType,
             callId: resolvedCallId,
-            callSiteCourse: result.callSiteCourse,
-            callSiteGenseq: result.callSiteGenseq,
-            batchId: result.batchId,
-            resolvedCallIds: result.resolvedCallIds,
+            ...(result.resolvedCallIds === undefined
+              ? {}
+              : { resolvedCallIds: result.resolvedCallIds }),
             triggerCallId: resolvedCallId,
           },
           source: 'kernel_driver_supply_response_caller_revive',

@@ -1833,6 +1833,64 @@ function parseDialogBusinessContinuation(value: unknown): DialogBusinessContinua
   switch (value.kind) {
     case 'none':
       return { kind: 'none' };
+    case 'requested_work_reply': {
+      if (typeof value.callerDialogId !== 'string' || value.callerDialogId.trim() === '') {
+        return null;
+      }
+      if (typeof value.batchId !== 'string' || value.batchId.trim() === '') {
+        return null;
+      }
+      const callSiteCourse = parsePositiveIntegerField(value.callSiteCourse);
+      const callSiteGenseq = parsePositiveIntegerField(value.callSiteGenseq);
+      if (callSiteCourse === null || callSiteGenseq === null) return null;
+      if (value.sideDialogId !== undefined && typeof value.sideDialogId !== 'string') return null;
+      if (
+        value.callType !== undefined &&
+        value.callType !== 'A' &&
+        value.callType !== 'B' &&
+        value.callType !== 'C'
+      ) {
+        return null;
+      }
+      if (value.callId !== undefined && typeof value.callId !== 'string') return null;
+      if (value.resolvedCallIds !== undefined) {
+        if (!Array.isArray(value.resolvedCallIds)) return null;
+        if (!value.resolvedCallIds.every((entry) => typeof entry === 'string')) return null;
+      }
+      if (value.triggerCallId !== undefined && typeof value.triggerCallId !== 'string') {
+        return null;
+      }
+      return {
+        kind: 'requested_work_reply',
+        callerDialogId: value.callerDialogId,
+        batchId: value.batchId,
+        callSiteCourse: toCallSiteCourseNo(callSiteCourse),
+        callSiteGenseq: toCallSiteGenseqNo(callSiteGenseq),
+        ...(value.sideDialogId === undefined ? {} : { sideDialogId: value.sideDialogId }),
+        ...(value.callType === undefined ? {} : { callType: value.callType }),
+        ...(value.callId === undefined ? {} : { callId: value.callId }),
+        ...(value.resolvedCallIds === undefined
+          ? {}
+          : { resolvedCallIds: value.resolvedCallIds }),
+        ...(value.triggerCallId === undefined ? {} : { triggerCallId: value.triggerCallId }),
+      };
+    }
+    case 'local_tellask_result': {
+      if (typeof value.callerDialogId !== 'string' || value.callerDialogId.trim() === '') {
+        return null;
+      }
+      if (
+        value.reason !== 'reply_tellask_back_delivered' &&
+        value.reason !== 'replaced_pending_sideDialog_reply'
+      ) {
+        return null;
+      }
+      return {
+        kind: 'local_tellask_result',
+        callerDialogId: value.callerDialogId,
+        reason: value.reason,
+      };
+    }
     case 'inter_dialog_reply': {
       const tellaskReplyDirective = parseTellaskReplyDirective(value.tellaskReplyDirective);
       if (tellaskReplyDirective === null) return null;

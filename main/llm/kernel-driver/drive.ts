@@ -304,6 +304,24 @@ function sameDialogBusinessContinuation(
   switch (left.kind) {
     case 'none':
       return true;
+    case 'requested_work_reply': {
+      if (right.kind !== 'requested_work_reply') return false;
+      return (
+        left.callerDialogId === right.callerDialogId &&
+        left.batchId === right.batchId &&
+        left.callSiteCourse === right.callSiteCourse &&
+        left.callSiteGenseq === right.callSiteGenseq &&
+        left.sideDialogId === right.sideDialogId &&
+        left.callType === right.callType &&
+        left.callId === right.callId &&
+        sameStringArray(left.resolvedCallIds, right.resolvedCallIds) &&
+        left.triggerCallId === right.triggerCallId
+      );
+    }
+    case 'local_tellask_result': {
+      if (right.kind !== 'local_tellask_result') return false;
+      return left.callerDialogId === right.callerDialogId && left.reason === right.reason;
+    }
     case 'inter_dialog_reply': {
       if (right.kind !== 'inter_dialog_reply') return false;
       return (
@@ -316,6 +334,14 @@ function sameDialogBusinessContinuation(
       throw new Error(`Unhandled business continuation kind: ${String(_exhaustive)}`);
     }
   }
+}
+
+function sameStringArray(left: readonly string[] | undefined, right: readonly string[] | undefined): boolean {
+  if (left === undefined || right === undefined) {
+    return left === right;
+  }
+  if (left.length !== right.length) return false;
+  return left.every((value, index) => value === right[index]);
 }
 
 function sameTellaskReplyDirective(

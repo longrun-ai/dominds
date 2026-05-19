@@ -727,44 +727,39 @@ function hasFollowupNextAction(
   return latest?.nextStep.triggers.some((trigger) => trigger.kind === 'followup') === true;
 }
 
-function hasCallerReviveEntitlement(
+function hasCallerReviveContinuation(
   dialog: Dialog,
   driveOptions: KernelDriverDriveOptions | undefined,
 ): boolean {
-  const entitlement = driveOptions?.noPromptSideDialogResumeEntitlement;
-  if (!entitlement) {
+  const continuation = driveOptions?.businessContinuation;
+  if (!continuation) {
     return false;
   }
-  if (
-    driveOptions?.source !== 'kernel_driver_supply_response_caller_revive' ||
-    entitlement.callerDialogId !== dialog.id.selfId
-  ) {
+  if (driveOptions?.source !== 'kernel_driver_supply_response_caller_revive') {
     return false;
   }
-  if (entitlement.reason === 'reply_tellask_back_delivered') {
-    return true;
-  }
-  if (entitlement.reason === 'replaced_pending_sideDialog_reply') {
-    return true;
+  if (continuation.kind === 'local_tellask_result') {
+    return continuation.callerDialogId === dialog.id.selfId;
   }
   return (
-    entitlement.reason === 'resolved_pending_sideDialog_reply' &&
-    isPositiveInteger(entitlement.callSiteCourse) &&
-    isPositiveInteger(entitlement.callSiteGenseq)
+    continuation.kind === 'requested_work_reply' &&
+    continuation.callerDialogId === dialog.id.selfId &&
+    isPositiveInteger(continuation.callSiteCourse) &&
+    isPositiveInteger(continuation.callSiteGenseq)
   );
 }
 
-function hasResolvedPendingSideDialogReplyEntitlement(
+function hasRequestedWorkReplyContinuation(
   dialog: Dialog,
   driveOptions: KernelDriverDriveOptions | undefined,
 ): boolean {
-  const entitlement = driveOptions?.noPromptSideDialogResumeEntitlement;
+  const continuation = driveOptions?.businessContinuation;
   return (
     driveOptions?.source === 'kernel_driver_supply_response_caller_revive' &&
-    entitlement?.callerDialogId === dialog.id.selfId &&
-    entitlement.reason === 'resolved_pending_sideDialog_reply' &&
-    isPositiveInteger(entitlement.callSiteCourse) &&
-    isPositiveInteger(entitlement.callSiteGenseq)
+    continuation?.kind === 'requested_work_reply' &&
+    continuation.callerDialogId === dialog.id.selfId &&
+    isPositiveInteger(continuation.callSiteCourse) &&
+    isPositiveInteger(continuation.callSiteGenseq)
   );
 }
 
@@ -786,15 +781,15 @@ function resolveDirectRequestedWorkRepliedBatchId(args: {
   dialog: Dialog;
   driveOptions: KernelDriverDriveOptions | undefined;
 }): string | undefined {
-  const entitlement = args.driveOptions?.noPromptSideDialogResumeEntitlement;
+  const continuation = args.driveOptions?.businessContinuation;
   if (
     args.driveOptions?.source !== 'kernel_driver_supply_response_caller_revive' ||
-    entitlement?.callerDialogId !== args.dialog.id.selfId ||
-    entitlement.reason !== 'resolved_pending_sideDialog_reply'
+    continuation?.kind !== 'requested_work_reply' ||
+    continuation.callerDialogId !== args.dialog.id.selfId
   ) {
     return undefined;
   }
-  const batchId = entitlement.batchId.trim();
+  const batchId = continuation.batchId.trim();
   if (batchId === '') {
     throw new Error(
       `requested work reply continuation invariant violation: empty batchId ` +
@@ -1249,7 +1244,7 @@ async function inspectNoPromptSideDialogDrive(args: {
     latest !== null &&
     latest !== undefined &&
     hasRecoverableGenerationBeyondFinalResponse(latest);
-  const resolvedPendingSideDialogReplyEntitlement = hasResolvedPendingSideDialogReplyEntitlement(
+  const requestedWorkReplyContinuation = hasRequestedWorkReplyContinuation(
     args.dialog,
     args.driveOptions,
   );
@@ -1257,14 +1252,14 @@ async function inspectNoPromptSideDialogDrive(args: {
   const followupNextActionPresent = hasFollowupNextAction(latest);
   const replyDeliveryRecoveryClaimed = args.replyDeliveryRecoveryClaim.status === 'claimed';
   const supplyResponseCallerReviveAllowed =
-    hasCallerReviveEntitlement(args.dialog, args.driveOptions) &&
-    (!resolvedPendingSideDialogReplyEntitlement || sameBatchResultArrivalClaimed);
+    hasCallerReviveContinuation(args.dialog, args.driveOptions) &&
+    (!requestedWorkReplyContinuation || sameBatchResultArrivalClaimed);
   const backendLoopDurableWorkAllowed =
     source === 'kernel_driver_backend_loop' &&
     (sameBatchResultArrivalClaimed || followupNextActionPresent || replyDeliveryRecoveryClaimed);
   const finalResponseResultArrivalReviveAllowed =
     sideDialogFinalResponseCallId !== undefined &&
-    ((resolvedPendingSideDialogReplyEntitlement && sameBatchResultArrivalClaimed) ||
+    ((requestedWorkReplyContinuation && sameBatchResultArrivalClaimed) ||
       backendLoopDurableWorkAllowed ||
       inProgressGenerationResumeAllowed);
   if (sideDialogFinalResponseCallId !== undefined && !finalResponseResultArrivalReviveAllowed) {
@@ -1278,8 +1273,7 @@ async function inspectNoPromptSideDialogDrive(args: {
     };
   }
   if (
-    resolvedPendingSideDialogReplyEntitlement &&
-    args.requestedWorkReplyClaim.status !== 'claimed'
+    requestedWorkReplyContinuation && args.requestedWorkReplyClaim.status !== 'claimed'
   ) {
     return {
       shouldReject: true,
@@ -1560,6 +1554,9 @@ export async function executeDriveRound(args: {
           return undefined;
         case 'inter_dialog_reply':
           return activeBusinessContinuation.tellaskReplyDirective;
+        case 'requested_work_reply':
+        case 'local_tellask_result':
+          return undefined;
         default: {
           const _exhaustive: never = activeBusinessContinuation;
           throw new Error(`Unhandled business continuation kind: ${String(_exhaustive)}`);
@@ -1572,6 +1569,9 @@ export async function executeDriveRound(args: {
           return undefined;
         case 'inter_dialog_reply':
           return activeBusinessContinuation.calleeDialogReplyTarget;
+        case 'requested_work_reply':
+        case 'local_tellask_result':
+          return undefined;
         default: {
           const _exhaustive: never = activeBusinessContinuation;
           throw new Error(`Unhandled business continuation kind: ${String(_exhaustive)}`);
@@ -1812,16 +1812,16 @@ export async function executeDriveRound(args: {
       // true-source cases behind the same visible resumption panel:
       // - no active reply obligation / not suspended anymore -> continue real driving now
       // - active reply obligation + suspended -> restore the true suspension state
-      // - active reply obligation + still proceeding entitlement (for example queued upNext) ->
+      // - active reply obligation + still proceeding continuation (for example queued upNext) ->
       //   continue real driving now
       //
       // Do not refactor this branch using only `displayState` or only the previous interrupted
       // marker. The correct behavior emerges from combining fresh suspension facts, queued prompt
       // state, and the deferred reply reassertion logic elsewhere.
-      const hasEntitledCallerRevive = hasCallerReviveEntitlement(dialog, driveOptions);
+      const hasCallerRevive = hasCallerReviveContinuation(dialog, driveOptions);
       const suspension = resumeFromInterjectionPause
         ? await loadFreshSuspensionStatusFromPersistence(dialog)
-        : hasEntitledCallerRevive
+        : hasCallerRevive
           ? await loadFreshSuspensionStatusFromPersistence(dialog)
           : await dialog.getSuspensionStatus();
       const queuedPrompt: UpNextPrompt | undefined = dialog.peekUpNext();

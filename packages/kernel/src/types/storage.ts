@@ -185,6 +185,23 @@ export type DialogBusinessContinuation = Readonly<
       kind: 'none';
     }
   | {
+      kind: 'requested_work_reply';
+      callerDialogId: string;
+      batchId: string;
+      callSiteCourse: CallSiteCourseNo;
+      callSiteGenseq: CallSiteGenseqNo;
+      sideDialogId?: string;
+      callType?: 'A' | 'B' | 'C';
+      callId?: string;
+      resolvedCallIds?: readonly string[];
+      triggerCallId?: string;
+    }
+  | {
+      kind: 'local_tellask_result';
+      callerDialogId: string;
+      reason: 'reply_tellask_back_delivered' | 'replaced_pending_sideDialog_reply';
+    }
+  | {
       kind: 'inter_dialog_reply';
       tellaskReplyDirective: TellaskReplyDirective;
       calleeDialogReplyTarget?: DialogCalleeReplyTarget;
