@@ -750,14 +750,14 @@ async function main(): Promise<void> {
     }));
     const latestKBeforeRestart = await DialogPersistence.loadDialogLatest(kSideId, 'running');
     assert.ok(latestKBeforeRestart, 'side-k latest fixture should be readable');
-    await DialogPersistence.syncWakeCueForDialogLatest(kSideId, latestKBeforeRestart, 'running');
-    const wakeCuedKBeforeRestart = await DialogPersistence.loadWakeCuedDialogIds(
+    await DialogPersistence.syncWakeQueueForDialogLatest(kSideId, latestKBeforeRestart, 'running');
+    const wakeQueuedKBeforeRestart = await DialogPersistence.loadWakeQueuedDialogIds(
       kRootId,
       'running',
     );
     assert.ok(
-      wakeCuedKBeforeRestart.some((dialogId) => dialogId.selfId === kSide),
-      'side-k restart fixture should be present in root wake cue store',
+      wakeQueuedKBeforeRestart.some((dialogId) => dialogId.selfId === kSide),
+      'side-k restart fixture should be present in root wake queue',
     );
 
     await getRunControlCountsSnapshot();
@@ -818,25 +818,25 @@ async function main(): Promise<void> {
     assert.equal(
       latestKAfterRecovery?.generating,
       true,
-      'wake-cued pending-reply-obligation sideDialog restart recovery should keep unresolved durable work recoverable',
+      'wake-queued pending-reply-obligation sideDialog restart recovery should keep unresolved durable work recoverable',
     );
     assert.equal(
       latestKAfterRecovery?.generationRunState?.kind,
       'open',
-      'wake-cued pending-reply-obligation sideDialog restart recovery should preserve open generation state when not yet complete',
+      'wake-queued pending-reply-obligation sideDialog restart recovery should preserve open generation state when not yet complete',
     );
-    const wakeCuedKAfterRecovery = await DialogPersistence.loadWakeCuedDialogIds(
+    const wakeQueuedKAfterRecovery = await DialogPersistence.loadWakeQueuedDialogIds(
       kRootId,
       'running',
     );
     assert.ok(
-      wakeCuedKAfterRecovery.some((dialogId) => dialogId.selfId === kSide),
-      'unresolved wake-cued sideDialog recovery should keep the root wake cue entry',
+      wakeQueuedKAfterRecovery.some((dialogId) => dialogId.selfId === kSide),
+      'unresolved wake-queued sideDialog recovery should keep the root wake queue entry',
     );
     assert.equal(
       globalDialogRegistry.isDriveWakeQueued(kRoot),
       true,
-      'unresolved wake-cued sideDialog recovery should keep root backend wake queued for precise wake-cue driving',
+      'unresolved wake-queued sideDialog recovery should keep root backend wake queued for precise wake-queue driving',
     );
     globalDialogRegistry.unregister(kRoot);
 

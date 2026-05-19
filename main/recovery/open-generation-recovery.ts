@@ -50,17 +50,17 @@ async function recoverRootOpenGeneration(dialog: Dialog): Promise<void> {
 async function recoverSideDialogOpenGeneration(dialog: Dialog): Promise<void> {
   const latest = await DialogPersistence.loadDialogLatest(dialog.id, dialog.status);
   if (latest) {
-    await DialogPersistence.syncWakeCueForDialogLatest(dialog.id, latest, dialog.status);
+    await DialogPersistence.syncWakeQueueForDialogLatest(dialog.id, latest, dialog.status);
   } else {
-    await DialogPersistence.removeWakeCueForDialog(dialog.id, dialog.status);
+    await DialogPersistence.removeWakeQueueEntriesForDialog(dialog.id, dialog.status);
   }
   const rootId = new DialogID(dialog.id.rootId);
   const rootHasPendingNextStepTriggers = await DialogPersistence.hasPendingNextStepTriggers(
     rootId,
     dialog.status,
   );
-  const wakeCuedDialogIds = await DialogPersistence.loadWakeCuedDialogIds(rootId, dialog.status);
-  if (rootHasPendingNextStepTriggers || wakeCuedDialogIds.length > 0) {
+  const wakeQueueEntries = await DialogPersistence.loadWakeQueueEntries(rootId, dialog.status);
+  if (rootHasPendingNextStepTriggers || wakeQueueEntries.length > 0) {
     globalDialogRegistry.wakeDrive(dialog.id.rootId, {
       source: 'restart_recovery',
       reason: 'sideDialog_open_generation_recovered_more_work',
@@ -78,11 +78,11 @@ export async function recoverOpenGenerationAfterRestart(): Promise<void> {
   const dialogIds: DialogID[] = [];
   for (const rootDialogId of rootDialogIds) {
     dialogIds.push(rootDialogId);
-    const wakeCuedDialogIds = await DialogPersistence.loadWakeCuedDialogIds(
+    const wakeQueuedDialogIds = await DialogPersistence.loadWakeQueuedDialogIds(
       rootDialogId,
       'running',
     );
-    dialogIds.push(...wakeCuedDialogIds);
+    dialogIds.push(...wakeQueuedDialogIds);
   }
   const recoveredRootIds = new Set<string>();
   const recoveredDialogKeys = new Set<string>();

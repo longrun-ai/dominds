@@ -45,7 +45,7 @@ async function main(): Promise<void> {
       extraMembers: ['fullstack', 'mentor'],
     });
     const language = getWorkLanguage();
-    const wakeCuedResultMessage = formatTellaskResponseContent({
+    const wakeQueuedResultMessage = formatTellaskResponseContent({
       callName: 'tellaskSessionless',
       callId: 'caller-to-callee',
       responderId: 'mentor',
@@ -60,8 +60,8 @@ async function main(): Promise<void> {
     await writeMockDb(tmpRoot, [
       {
         role: 'tool',
-        message: wakeCuedResultMessage,
-        response: 'Caller resumed from wake-cued side-dialog result arrival.',
+        message: wakeQueuedResultMessage,
+        response: 'Caller resumed from wake-queued side-dialog result arrival.',
       },
       {
         role: 'tool',
@@ -93,7 +93,7 @@ async function main(): Promise<void> {
           deliveryMode: 'reply_tool',
           language,
         }),
-        response: 'Mainline resumed from wake-cued result arrival.',
+        response: 'Mainline resumed from wake-queued result arrival.',
       },
     ]);
 
@@ -112,7 +112,7 @@ async function main(): Promise<void> {
         callId: 'root-to-caller',
         callSiteCourse: toCallSiteCourseNo(1),
         callSiteGenseq: toCallSiteGenseqNo(1),
-        sessionSlug: 'wake-cued-caller',
+        sessionSlug: 'wake-queued-caller',
         collectiveTargets: ['fullstack'],
       },
     );
@@ -177,10 +177,10 @@ async function main(): Promise<void> {
       'side-dialog caller should retain durable result_arrival trigger when direct schedule is lost',
     );
 
-    const wakeCued = await DialogPersistence.loadWakeCuedDialogIds(root.id, root.status);
+    const wakeQueued = await DialogPersistence.loadWakeQueuedDialogIds(root.id, root.status);
     assert.ok(
-      wakeCued.some((dialogId) => dialogId.selfId === caller.id.selfId),
-      'side-dialog caller with durable result_arrival must stay wake-cued even after a final response anchor',
+      wakeQueued.some((dialogId) => dialogId.selfId === caller.id.selfId),
+      'side-dialog caller with durable result_arrival must stay wake-queued even after a final response anchor',
     );
 
     await driveQueuedDialogsOnce();
@@ -188,7 +188,7 @@ async function main(): Promise<void> {
 
     assert.equal(
       lastSideDialogAssistantSaying(caller),
-      'Caller resumed from wake-cued side-dialog result arrival.',
+      'Caller resumed from wake-queued side-dialog result arrival.',
     );
     const callerLatestAfterDrive = await DialogPersistence.loadDialogLatest(
       caller.id,
@@ -197,7 +197,7 @@ async function main(): Promise<void> {
     assert.equal(
       hasPendingNextStepTriggers(callerLatestAfterDrive),
       false,
-      'backend watch revive should consume side-dialog caller result_arrival trigger',
+      'backend wake queue should consume side-dialog caller result_arrival trigger',
     );
     const callerEventsAfterDrive = await DialogPersistence.loadCourseEvents(
       caller.id,
@@ -210,7 +210,7 @@ async function main(): Promise<void> {
 
     await driveDialogStream(caller, undefined, true, {
       source: 'kernel_driver_supply_response_caller_revive',
-      reason: 'late_direct_revive_after_backend_watch_consumed_result_arrival',
+      reason: 'late_direct_revive_after_backend_wake_queue_consumed_result_arrival',
       suppressDiligencePush: true,
       businessContinuation: {
         kind: 'requested_work_reply',
@@ -320,7 +320,7 @@ async function main(): Promise<void> {
         callId: 'root-to-caller-without-final',
         callSiteCourse: toCallSiteCourseNo(1),
         callSiteGenseq: toCallSiteGenseqNo(3),
-        sessionSlug: 'wake-cued-caller-without-final',
+        sessionSlug: 'wake-queued-caller-without-final',
         collectiveTargets: ['fullstack'],
       },
     );
@@ -494,8 +494,8 @@ async function main(): Promise<void> {
 
     assert.equal(
       lastMainAssistantSaying(root),
-      'Mainline resumed from wake-cued result arrival.',
-      'main dialog caller should process the wake-cued result_arrival once',
+      'Mainline resumed from wake-queued result arrival.',
+      'main dialog caller should process the wake-queued result_arrival once',
     );
     const rootEventsAfterMainlineDrive = await DialogPersistence.loadCourseEvents(
       root.id,
@@ -578,13 +578,13 @@ async function main(): Promise<void> {
     );
   });
 
-  console.log('kernel-driver sideDialog-caller-result-arrival-backend-wake-cue: PASS');
+  console.log('kernel-driver sideDialog-caller-result-arrival-backend-wake-queue: PASS');
 }
 
 void main().catch((err: unknown) => {
   const message = err instanceof Error ? (err.stack ?? err.message) : String(err);
   console.error(
-    `kernel-driver sideDialog-caller-result-arrival-backend-wake-cue: FAIL\n${message}`,
+    `kernel-driver sideDialog-caller-result-arrival-backend-wake-queue: FAIL\n${message}`,
   );
   process.exit(1);
 });

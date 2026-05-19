@@ -87,10 +87,13 @@ async function main(): Promise<void> {
       sideDialog.status,
     );
 
-    const wakeCuedSideDialogs = await DialogPersistence.loadWakeCuedDialogIds(root.id, root.status);
+    const wakeQueuedSideDialogs = await DialogPersistence.loadWakeQueuedDialogIds(
+      root.id,
+      root.status,
+    );
     assert(
-      wakeCuedSideDialogs.some((dialogId) => dialogId.selfId === sideDialog.id.selfId),
-      'sideDialog with pending reply delivery recovery must enter wake cue storage',
+      wakeQueuedSideDialogs.some((dialogId) => dialogId.selfId === sideDialog.id.selfId),
+      'sideDialog with pending reply delivery recovery must enter wake queue',
     );
 
     globalDialogRegistry.wakeDrive(root.id.rootId, {
@@ -117,13 +120,13 @@ async function main(): Promise<void> {
       'valid live reply delivery recovery should not emit stream_error_evt',
     );
 
-    const wakeCuedAfterRecovery = await DialogPersistence.loadWakeCuedDialogIds(
+    const wakeQueuedAfterRecovery = await DialogPersistence.loadWakeQueuedDialogIds(
       root.id,
       root.status,
     );
     assert(
-      !wakeCuedAfterRecovery.some((dialogId) => dialogId.selfId === sideDialog.id.selfId),
-      'sideDialog should leave wake cue storage after live reply delivery recovery is complete',
+      !wakeQueuedAfterRecovery.some((dialogId) => dialogId.selfId === sideDialog.id.selfId),
+      'sideDialog should leave wake queue after live reply delivery recovery is complete',
     );
   });
 

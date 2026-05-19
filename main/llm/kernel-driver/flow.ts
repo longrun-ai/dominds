@@ -684,7 +684,7 @@ async function clearStaleSideDialogRunControlForFinalResponse(args: {
     }),
     args.dialog.status,
   );
-  await DialogPersistence.removeWakeCueForDialog(args.dialog.id, args.dialog.status);
+  await DialogPersistence.removeWakeQueueEntriesForDialog(args.dialog.id, args.dialog.status);
   return {
     cleared: true,
     previousGenerating: latest.generating ?? null,
@@ -1741,7 +1741,7 @@ export async function executeDriveRound(args: {
         if (inspection.rejection === 'finalized_after_response_anchor') {
           const cleanup = await clearStaleSideDialogRunControlForFinalResponse({ dialog });
           if (!cleanup.cleared) {
-            await DialogPersistence.removeWakeCueForDialog(dialog.id, dialog.status);
+            await DialogPersistence.removeWakeQueueEntriesForDialog(dialog.id, dialog.status);
           }
           log.debug('Dropped stale sideDialog drive after final response anchor', undefined, {
             dialogId: dialog.id.valueOf(),

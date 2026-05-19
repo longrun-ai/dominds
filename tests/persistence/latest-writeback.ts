@@ -329,7 +329,7 @@ async function main(): Promise<void> {
       'pending-settled-runtime-prompt-msg',
     );
 
-    // Invariant 9: transient Windows-style filesystem failures must be retried for wake cue storage.
+    // Invariant 9: transient Windows-style filesystem failures must be retried for wake queue.
     const driveRootId = new DialogID('73/6d/da1d0177');
     const driveSideId = new DialogID('74/6d/da1d0177', driveRootId.selfId);
     const driveLatest = {
@@ -340,9 +340,9 @@ async function main(): Promise<void> {
         nextSeq: 1,
         triggers: [
           {
-            triggerId: 'wake-cue-trigger',
+            triggerId: 'wake-queue-trigger',
             kind: 'result_arrival',
-            batchId: 'wake-cue-batch',
+            batchId: 'wake-queue-batch',
             createdAt: formatUnifiedTimestamp(new Date('2026-04-12T00:06:00.000Z')),
             seq: 1,
           },
@@ -356,25 +356,25 @@ async function main(): Promise<void> {
       sideDialogCount: 0,
       disableDiligencePush: false,
       diligencePushRemainingBudget: 0,
-    } satisfies Parameters<typeof DialogPersistence.syncWakeCueForDialogLatest>[1];
+    } satisfies Parameters<typeof DialogPersistence.syncWakeQueueForDialogLatest>[1];
     const noDriveLatest = {
       ...driveLatest,
       nextStep: createEmptyDialogNextStepState(),
-    } satisfies Parameters<typeof DialogPersistence.syncWakeCueForDialogLatest>[1];
+    } satisfies Parameters<typeof DialogPersistence.syncWakeQueueForDialogLatest>[1];
     const fsForPatch = fsNode.promises as unknown as {
       rename: typeof fsNode.promises.rename;
       rm: typeof fsNode.promises.rm;
     };
     const originalRename = fsForPatch.rename;
     const originalRm = fsForPatch.rm;
-    let wakeCueRenameAttempts = 0;
-    let wakeCueRmAttempts = 0;
+    let wakeQueueRenameAttempts = 0;
+    let wakeQueueRmAttempts = 0;
     try {
       fsForPatch.rename = async (source, destination) => {
-        if (path.basename(destination) === 'wake-cues.json') {
-          wakeCueRenameAttempts += 1;
-          if (wakeCueRenameAttempts === 1) {
-            const error = new Error('simulated transient EPERM for wake cue storage');
+        if (path.basename(destination) === 'wake-queue.json') {
+          wakeQueueRenameAttempts += 1;
+          if (wakeQueueRenameAttempts === 1) {
+            const error = new Error('simulated transient EPERM for wake queue');
             (error as NodeJS.ErrnoException).code = 'EPERM';
             throw error;
           }
@@ -382,19 +382,19 @@ async function main(): Promise<void> {
         return originalRename(source, destination);
       };
 
-      await DialogPersistence.syncWakeCueForDialogLatest(driveSideId, driveLatest, 'running');
-      const wakeCuedIds = await DialogPersistence.loadWakeCuedDialogIds(driveRootId, 'running');
+      await DialogPersistence.syncWakeQueueForDialogLatest(driveSideId, driveLatest, 'running');
+      const wakeQueuedIds = await DialogPersistence.loadWakeQueuedDialogIds(driveRootId, 'running');
       assert.deepEqual(
-        wakeCuedIds.map((dialogId) => dialogId.selfId),
+        wakeQueuedIds.map((dialogId) => dialogId.selfId),
         [driveSideId.selfId],
       );
-      assert.equal(wakeCueRenameAttempts, 2);
+      assert.equal(wakeQueueRenameAttempts, 2);
 
       fsForPatch.rm = async (target) => {
-        if (path.basename(target) === 'wake-cues.json') {
-          wakeCueRmAttempts += 1;
-          if (wakeCueRmAttempts === 1) {
-            const error = new Error('simulated transient EPERM for wake cue storage removal');
+        if (path.basename(target) === 'wake-queue.json') {
+          wakeQueueRmAttempts += 1;
+          if (wakeQueueRmAttempts === 1) {
+            const error = new Error('simulated transient EPERM for wake queue removal');
             (error as NodeJS.ErrnoException).code = 'EPERM';
             throw error;
           }
@@ -402,13 +402,13 @@ async function main(): Promise<void> {
         return originalRm(target);
       };
 
-      await DialogPersistence.syncWakeCueForDialogLatest(driveSideId, noDriveLatest, 'running');
-      const clearedWakeCuedIds = await DialogPersistence.loadWakeCuedDialogIds(
+      await DialogPersistence.syncWakeQueueForDialogLatest(driveSideId, noDriveLatest, 'running');
+      const clearedWakeQueuedIds = await DialogPersistence.loadWakeQueuedDialogIds(
         driveRootId,
         'running',
       );
-      assert.deepEqual(clearedWakeCuedIds, []);
-      assert.equal(wakeCueRmAttempts, 2);
+      assert.deepEqual(clearedWakeQueuedIds, []);
+      assert.equal(wakeQueueRmAttempts, 2);
     } finally {
       fsForPatch.rename = originalRename;
       fsForPatch.rm = originalRm;

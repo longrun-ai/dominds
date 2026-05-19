@@ -59,6 +59,7 @@ import type {
   DialogBackendDriveStallState,
   DialogBusinessContinuation,
   DialogCalleeReplyTarget,
+  DialogCourseNumber,
   DialogDeferredReplyReassertion,
   DialogFbrState,
   DialogFollowupReason,
@@ -136,7 +137,8 @@ import {
   MainDialog,
   SideDialog,
 } from './dialog';
-import { hasDurableDriveWork } from './dialog-drive-work';
+import { hasRecoverableGenerationBeyondFinalResponse } from './dialog-drive-work';
+import { getRecoverableGenerationRunState } from './dialog-generation-run';
 import { isInterruptionReasonManualResumeEligible } from './dialog-interruption';
 import {
   createEmptyDialogNextStepState,
@@ -5834,8 +5836,49 @@ type DialogLatestMutation =
   | { kind: 'patch'; patch: DialogLatestPatch }
   | { kind: 'replace'; next: DialogLatestFile };
 
-type DialogWakeCueFile = Readonly<{
-  dialogs: readonly string[];
+type DialogWakeQueueEntry = Readonly<
+  | {
+      entryId: string;
+      kind: 'requested_work_reply_arrived';
+      targetDialogId: string;
+      batchId: string;
+    }
+  | {
+      entryId: string;
+      kind: 'reply_delivery_recovery';
+      targetDialogId: string;
+      replyDeliveryId: string;
+    }
+  | {
+      entryId: string;
+      kind: 'open_generation_recovery';
+      targetDialogId: string;
+      course: DialogCourseNumber;
+      genseq: CallSiteGenseqNo;
+    }
+  | {
+      entryId: string;
+      kind: 'pending_runtime_prompt';
+      targetDialogId: string;
+      msgId: string;
+    }
+  | {
+      entryId: string;
+      kind: 'tool_followup';
+      targetDialogId: string;
+      triggerId: string;
+    }
+  | {
+      entryId: string;
+      kind: 'next_step_trigger';
+      targetDialogId: string;
+      triggerId: string;
+      triggerKind: DialogNextStepTrigger['kind'];
+    }
+>;
+
+type DialogWakeQueueFile = Readonly<{
+  entries: readonly DialogWakeQueueEntry[];
 }>;
 
 export type BackendDriveStallWrite = Readonly<{
@@ -5853,7 +5896,7 @@ export type BackendDriveStallWrite = Readonly<{
   };
   context: {
     rootHasPendingNextStepTriggers: boolean;
-    wakeCuedDialogCount: number;
+    wakeQueueEntryCount: number;
   };
 }>;
 
@@ -5907,7 +5950,7 @@ export class DialogPersistence {
   private static readonly q4hWriteBack: Map<string, Q4HWriteBackEntry> = new Map();
 
   private static readonly activeCalleesMutexes: Map<string, AsyncFifoMutex> = new Map();
-  private static readonly wakeCueMutexes: Map<string, AsyncFifoMutex> = new Map();
+  private static readonly wakeQueueMutexes: Map<string, AsyncFifoMutex> = new Map();
   private static readonly backendDriveStallMutexes: Map<string, AsyncFifoMutex> = new Map();
 
   private static readonly courseAppendMutexes: Map<string, AsyncFifoMutex> = new Map();
@@ -5953,11 +5996,11 @@ export class DialogPersistence {
     return created;
   }
 
-  private static getWakeCueMutex(key: string): AsyncFifoMutex {
-    const existing = this.wakeCueMutexes.get(key);
+  private static getWakeQueueMutex(key: string): AsyncFifoMutex {
+    const existing = this.wakeQueueMutexes.get(key);
     if (existing) return existing;
     const created = new AsyncFifoMutex();
-    this.wakeCueMutexes.set(key, created);
+    this.wakeQueueMutexes.set(key, created);
     return created;
   }
 
@@ -5974,8 +6017,8 @@ export class DialogPersistence {
     return `${this.getDialogsRootDir()}|${status}|${dialogId.valueOf()}`;
   }
 
-  private static getWakeCueKey(rootDialogId: DialogID, status: DialogStatusKind): string {
-    return `${this.getDialogsRootDir()}|${status}|${rootDialogId.rootId}|wake cue storage`;
+  private static getWakeQueueKey(rootDialogId: DialogID, status: DialogStatusKind): string {
+    return `${this.getDialogsRootDir()}|${status}|${rootDialogId.rootId}|wake-queue`;
   }
 
   private static getBackendDriveStallKey(dialogId: DialogID, status: DialogStatusKind): string {
@@ -6443,9 +6486,9 @@ export class DialogPersistence {
       }
     }
 
-    for (const key of this.wakeCueMutexes.keys()) {
+    for (const key of this.wakeQueueMutexes.keys()) {
       if (matchesMainDialogKey(key)) {
-        this.wakeCueMutexes.delete(key);
+        this.wakeQueueMutexes.delete(key);
       }
     }
   }
@@ -8428,62 +8471,246 @@ export class DialogPersistence {
     await this.renameWithRetry(tempFile, filePath, 5);
   }
 
-  private static getWakeCueFilePath(rootDialogId: DialogID, status: DialogStatusKind): string {
-    return path.join(this.getMainDialogPath(rootDialogId, status), 'wake-cues.json');
+  private static getWakeQueueFilePath(rootDialogId: DialogID, status: DialogStatusKind): string {
+    return path.join(this.getMainDialogPath(rootDialogId, status), 'wake-queue.json');
   }
 
-  private static isWakeCueFile(value: unknown): value is DialogWakeCueFile {
+  private static isWakeQueueEntry(value: unknown): value is DialogWakeQueueEntry {
+    if (!isRecord(value)) return false;
+    if (typeof value.entryId !== 'string' || value.entryId.trim() === '') return false;
+    if (typeof value.targetDialogId !== 'string' || value.targetDialogId.trim() === '') {
+      return false;
+    }
+    switch (value.kind) {
+      case 'requested_work_reply_arrived':
+        return typeof value.batchId === 'string' && value.batchId.trim() !== '';
+      case 'reply_delivery_recovery':
+        return typeof value.replyDeliveryId === 'string' && value.replyDeliveryId.trim() !== '';
+      case 'open_generation_recovery': {
+        const course = parsePositiveIntegerField(value.course);
+        const genseq = parseNonNegativeIntegerField(value.genseq);
+        return course !== null && genseq !== null;
+      }
+      case 'pending_runtime_prompt':
+        return typeof value.msgId === 'string' && value.msgId.trim() !== '';
+      case 'tool_followup':
+        return typeof value.triggerId === 'string' && value.triggerId.trim() !== '';
+      case 'next_step_trigger':
+        return (
+          typeof value.triggerId === 'string' &&
+          value.triggerId.trim() !== '' &&
+          typeof value.triggerKind === 'string' &&
+          value.triggerKind.trim() !== ''
+        );
+      default:
+        return false;
+    }
+  }
+
+  private static isWakeQueueFile(value: unknown): value is DialogWakeQueueFile {
     return (
       isRecord(value) &&
-      Array.isArray(value.dialogs) &&
-      value.dialogs.every((entry) => typeof entry === 'string' && entry.trim() !== '')
+      Array.isArray(value.entries) &&
+      value.entries.every((entry) => this.isWakeQueueEntry(entry))
     );
   }
 
-  private static normalizeWakeCueFile(file: DialogWakeCueFile): DialogWakeCueFile {
+  private static normalizeWakeQueueEntry(entry: DialogWakeQueueEntry): DialogWakeQueueEntry {
+    switch (entry.kind) {
+      case 'requested_work_reply_arrived':
+        return {
+          entryId: entry.entryId.trim(),
+          kind: entry.kind,
+          targetDialogId: entry.targetDialogId.trim(),
+          batchId: entry.batchId.trim(),
+        };
+      case 'reply_delivery_recovery':
+        return {
+          entryId: entry.entryId.trim(),
+          kind: entry.kind,
+          targetDialogId: entry.targetDialogId.trim(),
+          replyDeliveryId: entry.replyDeliveryId.trim(),
+        };
+      case 'open_generation_recovery':
+        return {
+          entryId: entry.entryId.trim(),
+          kind: entry.kind,
+          targetDialogId: entry.targetDialogId.trim(),
+          course: toDialogCourseNumber(entry.course),
+          genseq: toCallSiteGenseqNo(entry.genseq),
+        };
+      case 'pending_runtime_prompt':
+        return {
+          entryId: entry.entryId.trim(),
+          kind: entry.kind,
+          targetDialogId: entry.targetDialogId.trim(),
+          msgId: entry.msgId.trim(),
+        };
+      case 'tool_followup':
+        return {
+          entryId: entry.entryId.trim(),
+          kind: entry.kind,
+          targetDialogId: entry.targetDialogId.trim(),
+          triggerId: entry.triggerId.trim(),
+        };
+      case 'next_step_trigger':
+        return {
+          entryId: entry.entryId.trim(),
+          kind: entry.kind,
+          targetDialogId: entry.targetDialogId.trim(),
+          triggerId: entry.triggerId.trim(),
+          triggerKind: entry.triggerKind,
+        };
+      default: {
+        const _exhaustive: never = entry;
+        throw new Error(`Unhandled wake queue entry: ${String(_exhaustive)}`);
+      }
+    }
+  }
+
+  private static normalizeWakeQueueFile(file: DialogWakeQueueFile): DialogWakeQueueFile {
+    const entriesById = new Map<string, DialogWakeQueueEntry>();
+    for (const entry of file.entries) {
+      const normalized = this.normalizeWakeQueueEntry(entry);
+      entriesById.set(normalized.entryId, normalized);
+    }
     return {
-      dialogs: [...new Set(file.dialogs.map((entry) => entry.trim()).filter(Boolean))].sort(),
+      entries: [...entriesById.values()].sort((left, right) =>
+        left.entryId.localeCompare(right.entryId),
+      ),
     };
   }
 
-  private static async loadWakeCueFromDisk(
+  private static buildWakeQueueEntriesForLatest(
+    dialogId: DialogID,
+    latest: DialogLatestFile,
+  ): readonly DialogWakeQueueEntry[] {
+    const entries: DialogWakeQueueEntry[] = [];
+    const targetDialogId = dialogId.selfId;
+    const replyDelivery = latest.replyDelivery;
+    if (
+      replyDelivery &&
+      (replyDelivery.status === 'pending' || replyDelivery.toolResultStatus === 'pending')
+    ) {
+      entries.push({
+        entryId: `reply-delivery-recovery:${targetDialogId}:${replyDelivery.replyDeliveryId}`,
+        kind: 'reply_delivery_recovery',
+        targetDialogId,
+        replyDeliveryId: replyDelivery.replyDeliveryId,
+      });
+    }
+    if (latest.pendingRuntimePrompt !== undefined) {
+      entries.push({
+        entryId: `pending-runtime-prompt:${targetDialogId}:${latest.pendingRuntimePrompt.msgId}`,
+        kind: 'pending_runtime_prompt',
+        targetDialogId,
+        msgId: latest.pendingRuntimePrompt.msgId,
+      });
+    }
+    const generationRunState = getRecoverableGenerationRunState(latest);
+    if (generationRunState !== undefined && hasRecoverableGenerationBeyondFinalResponse(latest)) {
+      entries.push({
+        entryId: `open-generation-recovery:${targetDialogId}:${generationRunState.course}:${generationRunState.genseq}`,
+        kind: 'open_generation_recovery',
+        targetDialogId,
+        course: generationRunState.course,
+        genseq: generationRunState.genseq,
+      });
+    }
+    for (const trigger of latest.nextStep.triggers) {
+      switch (trigger.kind) {
+        case 'result_arrival':
+          entries.push({
+            entryId: `requested-work-reply-arrived:${targetDialogId}:${trigger.batchId}`,
+            kind: 'requested_work_reply_arrived',
+            targetDialogId,
+            batchId: trigger.batchId,
+          });
+          break;
+        case 'followup':
+          entries.push({
+            entryId: `tool-followup:${targetDialogId}:${trigger.triggerId}`,
+            kind: 'tool_followup',
+            targetDialogId,
+            triggerId: trigger.triggerId,
+          });
+          break;
+        case 'reply_delivery_recovery':
+          entries.push({
+            entryId: `reply-delivery-recovery:${targetDialogId}:${trigger.replyDeliveryId}`,
+            kind: 'reply_delivery_recovery',
+            targetDialogId,
+            replyDeliveryId: trigger.replyDeliveryId,
+          });
+          break;
+        case 'open_generation_recovery':
+          entries.push({
+            entryId: `open-generation-recovery:${targetDialogId}:${trigger.course}:${trigger.genseq}`,
+            kind: 'open_generation_recovery',
+            targetDialogId,
+            course: trigger.course,
+            genseq: trigger.genseq,
+          });
+          break;
+        case 'user_input':
+        case 'queued_prompt':
+        case 'root_drive_wake':
+        case 'mainline_diligence':
+          entries.push({
+            entryId: `next-step-trigger:${targetDialogId}:${trigger.triggerId}`,
+            kind: 'next_step_trigger',
+            targetDialogId,
+            triggerId: trigger.triggerId,
+            triggerKind: trigger.kind,
+          });
+          break;
+        default: {
+          const _exhaustive: never = trigger;
+          throw new Error(`Unhandled next-step trigger for wake queue: ${String(_exhaustive)}`);
+        }
+      }
+    }
+    return this.normalizeWakeQueueFile({ entries }).entries;
+  }
+
+  private static async loadWakeQueueFromDisk(
     rootDialogId: DialogID,
     status: DialogStatusKind,
-  ): Promise<DialogWakeCueFile> {
-    const filePath = this.getWakeCueFilePath(rootDialogId, status);
+  ): Promise<DialogWakeQueueFile> {
+    const filePath = this.getWakeQueueFilePath(rootDialogId, status);
     try {
       const content = await readPersistenceTextFile({
         filePath,
-        source: 'wake_cue',
+        source: 'wake_queue',
         format: 'json',
       });
       const parsed: unknown = parsePersistenceJson({
         content,
         filePath,
-        source: 'wake_cue',
+        source: 'wake_queue',
       });
-      if (!this.isWakeCueFile(parsed)) {
+      if (!this.isWakeQueueFile(parsed)) {
         throw buildInvalidPersistenceFileError({
-          source: 'wake_cue',
+          source: 'wake_queue',
           format: 'json',
           filePath,
         });
       }
-      return this.normalizeWakeCueFile(parsed);
+      return this.normalizeWakeQueueFile(parsed);
     } catch (error: unknown) {
-      if (getErrorCode(error) === 'ENOENT') return { dialogs: [] };
+      if (getErrorCode(error) === 'ENOENT') return { entries: [] };
       throw error;
     }
   }
 
-  private static async writeWakeCueToDisk(
+  private static async writeWakeQueueToDisk(
     rootDialogId: DialogID,
-    file: DialogWakeCueFile,
+    file: DialogWakeQueueFile,
     status: DialogStatusKind,
   ): Promise<void> {
-    const normalized = this.normalizeWakeCueFile(file);
-    const filePath = this.getWakeCueFilePath(rootDialogId, status);
-    if (normalized.dialogs.length === 0) {
+    const normalized = this.normalizeWakeQueueFile(file);
+    const filePath = this.getWakeQueueFilePath(rootDialogId, status);
+    if (normalized.entries.length === 0) {
       await this.removeWithRetry(filePath);
       return;
     }
@@ -8507,7 +8734,7 @@ export class DialogPersistence {
 
   static buildBackendDriveDurableWorkFingerprint(
     latest: DialogLatestFile | null,
-    wakeCuedDialogIds: readonly DialogID[] = [],
+    wakeQueueEntries: readonly DialogWakeQueueEntry[] = [],
   ): string {
     if (latest === null) {
       return JSON.stringify({ latest: null });
@@ -8534,7 +8761,7 @@ export class DialogPersistence {
       sideDialogFinalResponse: latest.sideDialogFinalResponse ?? null,
       latestAssignmentAnchor: latest.latestAssignmentAnchor ?? null,
       userWait: latest.userWait ?? null,
-      wakeCuedDialogIds: wakeCuedDialogIds.map((dialogId) => dialogId.valueOf()).sort(),
+      wakeQueueEntries: this.normalizeWakeQueueFile({ entries: wakeQueueEntries }).entries,
     });
   }
 
@@ -8583,18 +8810,18 @@ export class DialogPersistence {
     }
   }
 
-  private static async mutateWakeCue(
+  private static async mutateWakeQueue(
     rootDialogId: DialogID,
-    mutator: (previous: DialogWakeCueFile) => DialogWakeCueFile,
+    mutator: (previous: DialogWakeQueueFile) => DialogWakeQueueFile,
     status: DialogStatusKind = 'running',
-  ): Promise<DialogWakeCueFile> {
-    const key = this.getWakeCueKey(rootDialogId, status);
-    const mutex = this.getWakeCueMutex(key);
+  ): Promise<DialogWakeQueueFile> {
+    const key = this.getWakeQueueKey(rootDialogId, status);
+    const mutex = this.getWakeQueueMutex(key);
     const release = await mutex.acquire();
     try {
-      const previous = await this.loadWakeCueFromDisk(rootDialogId, status);
-      const next = this.normalizeWakeCueFile(mutator(previous));
-      await this.writeWakeCueToDisk(rootDialogId, next, status);
+      const previous = await this.loadWakeQueueFromDisk(rootDialogId, status);
+      const next = this.normalizeWakeQueueFile(mutator(previous));
+      await this.writeWakeQueueToDisk(rootDialogId, next, status);
       return next;
     } finally {
       release();
@@ -8620,49 +8847,57 @@ export class DialogPersistence {
     throw lastError;
   }
 
-  static async loadWakeCuedDialogIds(
+  static async loadWakeQueueEntries(
     rootDialogId: DialogID,
     status: DialogStatusKind = 'running',
-  ): Promise<readonly DialogID[]> {
+  ): Promise<readonly DialogWakeQueueEntry[]> {
     try {
-      const file = await this.loadWakeCueFromDisk(rootDialogId, status);
-      return file.dialogs.map((selfId) => new DialogID(selfId, rootDialogId.rootId));
+      const file = await this.loadWakeQueueFromDisk(rootDialogId, status);
+      return file.entries;
     } catch (error: unknown) {
       await this.rethrowAfterQuarantiningDialogPersistenceProblem(
         rootDialogId,
         status,
-        'loadWakeCuedDialogIds',
+        'loadWakeQueueEntries',
         error,
       );
-      throw new Error('unreachable after loadWakeCuedDialogIds persistence rethrow');
+      throw new Error('unreachable after loadWakeQueueEntries persistence rethrow');
     }
   }
 
-  private static async setDialogWakeCued(
+  static async loadWakeQueuedDialogIds(
+    rootDialogId: DialogID,
+    status: DialogStatusKind = 'running',
+  ): Promise<readonly DialogID[]> {
+    const entries = await this.loadWakeQueueEntries(rootDialogId, status);
+    const selfIds = new Set(entries.map((entry) => entry.targetDialogId));
+    return [...selfIds].sort().map((selfId) => new DialogID(selfId, rootDialogId.rootId));
+  }
+
+  private static async replaceWakeQueueEntriesForDialog(
     dialogId: DialogID,
-    wakeCued: boolean,
+    entries: readonly DialogWakeQueueEntry[],
     status: DialogStatusKind,
   ): Promise<void> {
     if (dialogId.selfId === dialogId.rootId) {
       return;
     }
     const rootDialogId = new DialogID(dialogId.rootId);
-    await this.mutateWakeCue(
+    await this.mutateWakeQueue(
       rootDialogId,
       (previous) => {
-        const existing = new Set(previous.dialogs);
-        if (wakeCued) {
-          existing.add(dialogId.selfId);
-        } else {
-          existing.delete(dialogId.selfId);
-        }
-        return { dialogs: [...existing] };
+        return {
+          entries: [
+            ...previous.entries.filter((entry) => entry.targetDialogId !== dialogId.selfId),
+            ...entries,
+          ],
+        };
       },
       status,
     );
   }
 
-  static async syncWakeCueForDialogLatest(
+  static async syncWakeQueueForDialogLatest(
     dialogId: DialogID,
     latest: DialogLatestFile,
     status: DialogStatusKind = 'running',
@@ -8670,14 +8905,18 @@ export class DialogPersistence {
     if (status !== 'running' || dialogId.selfId === dialogId.rootId) {
       return;
     }
-    await this.setDialogWakeCued(dialogId, hasDurableDriveWork(latest), status);
+    await this.replaceWakeQueueEntriesForDialog(
+      dialogId,
+      this.buildWakeQueueEntriesForLatest(dialogId, latest),
+      status,
+    );
   }
 
-  static async removeWakeCueForDialog(
+  static async removeWakeQueueEntriesForDialog(
     dialogId: DialogID,
     status: DialogStatusKind = 'running',
   ): Promise<void> {
-    await this.setDialogWakeCued(dialogId, false, status);
+    await this.replaceWakeQueueEntriesForDialog(dialogId, [], status);
   }
 
   static async mutateActiveCallees(
@@ -10220,7 +10459,7 @@ export class DialogPersistence {
           mutationContext,
         );
         if (updated === existing) {
-          await this.syncWakeCueForDialogLatest(dialogId, existing, status);
+          await this.syncWakeQueueForDialogLatest(dialogId, existing, status);
           return existing;
         }
       } else if (mutation.kind === 'replace') {
@@ -10273,7 +10512,7 @@ export class DialogPersistence {
           timer,
         });
 
-        await this.syncWakeCueForDialogLatest(dialogId, updated, status);
+        await this.syncWakeQueueForDialogLatest(dialogId, updated, status);
         return updated;
       }
 
@@ -10283,7 +10522,7 @@ export class DialogPersistence {
       }
 
       // Keep the existing timer to ensure a bounded flush window.
-      await this.syncWakeCueForDialogLatest(dialogId, updated, status);
+      await this.syncWakeQueueForDialogLatest(dialogId, updated, status);
       return updated;
     } finally {
       release();

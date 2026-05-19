@@ -84,17 +84,17 @@ async function listReplyRecoveryCandidateDialogIds(): Promise<readonly DialogID[
       seen.add(rootKey);
       candidates.push(rootDialogId);
     }
-    const wakeCuedDialogIds = await DialogPersistence.loadWakeCuedDialogIds(
+    const wakeQueuedDialogIds = await DialogPersistence.loadWakeQueuedDialogIds(
       rootDialogId,
       'running',
     );
-    for (const wakeCuedDialogId of wakeCuedDialogIds) {
-      const wakeCuedKey = wakeCuedDialogId.key();
-      if (seen.has(wakeCuedKey)) {
+    for (const wakeQueuedDialogId of wakeQueuedDialogIds) {
+      const wakeQueuedKey = wakeQueuedDialogId.key();
+      if (seen.has(wakeQueuedKey)) {
         continue;
       }
-      seen.add(wakeCuedKey);
-      candidates.push(wakeCuedDialogId);
+      seen.add(wakeQueuedKey);
+      candidates.push(wakeQueuedDialogId);
     }
   }
   return candidates;

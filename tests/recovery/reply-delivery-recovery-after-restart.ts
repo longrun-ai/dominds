@@ -162,13 +162,13 @@ async function main(): Promise<void> {
       }),
       sideDialog.status,
     );
-    const wakeCuedSideDialogs = await DialogPersistence.loadWakeCuedDialogIds(
+    const wakeQueuedSideDialogs = await DialogPersistence.loadWakeQueuedDialogIds(
       sideRoot.id,
       sideRoot.status,
     );
     assert(
-      wakeCuedSideDialogs.some((dialogId) => dialogId.selfId === sideDialog.id.selfId),
-      'sideDialog with pending reply tool-result recovery must remain in root wake cue store',
+      wakeQueuedSideDialogs.some((dialogId) => dialogId.selfId === sideDialog.id.selfId),
+      'sideDialog with pending reply tool-result recovery must remain in root wake queue',
     );
 
     await recoverPendingReplyDeliveryAfterRestart();
@@ -179,7 +179,7 @@ async function main(): Promise<void> {
     );
     assert(
       sideReplyFuncResult,
-      'expected restart recovery to record pending sideDialog reply tool result via wake cue store',
+      'expected restart recovery to record pending sideDialog reply tool result via wake queue',
     );
 
     const resolutionOnlyRoot = await createMainDialog('tester');
