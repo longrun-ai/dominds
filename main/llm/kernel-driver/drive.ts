@@ -2721,6 +2721,7 @@ export async function driveDialogStreamCore(
           }
         }
         lastBusinessContinuation = currentBusinessContinuation;
+        let generationBodyError: unknown;
         try {
           if (currentPrompt) {
             if (currentPrompt.skipTaskdoc === true) {
@@ -3780,8 +3781,27 @@ export async function driveDialogStreamCore(
               : undefined;
             continue;
           }
+        } catch (err) {
+          generationBodyError = err;
+          throw err;
         } finally {
-          await dlg.notifyGeneratingFinish(contextHealthForGen, llmGenModelForGen);
+          try {
+            await dlg.notifyGeneratingFinish(contextHealthForGen, llmGenModelForGen);
+          } catch (finishErr) {
+            if (generationBodyError !== undefined) {
+              const combinedError = new Error(
+                `kernel-driver generation finish failed after generation body error ` +
+                  `(dialog=${dlg.id.valueOf()}, genseq=${String(dlg.activeGenSeqOrUndefined)})`,
+              );
+              (
+                combinedError as Error & {
+                  cause: { generationBodyError: unknown; finishErr: unknown };
+                }
+              ).cause = { generationBodyError, finishErr };
+              throw combinedError;
+            }
+            throw finishErr;
+          }
         }
       }
 

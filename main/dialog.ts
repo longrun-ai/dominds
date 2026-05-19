@@ -1981,7 +1981,14 @@ export abstract class Dialog {
     // This ensures sideDialog_final_response_evt waits for both user_text and generating_start_evt
     this.markGenerationStarted();
 
-    return this.dlgStore.notifyGeneratingStart(this, msgId);
+    try {
+      return await this.dlgStore.notifyGeneratingStart(this, msgId);
+    } catch (err) {
+      this._generationStarted = false;
+      this._generationStartedGenseq = 0;
+      this._activeGenCourse = undefined;
+      throw err;
+    }
   }
 
   public async notifyGeneratingFinish(
@@ -1993,17 +2000,12 @@ export abstract class Dialog {
     }
     try {
       await this.dlgStore.notifyGeneratingFinish(this, contextHealth, llmGenModel);
-    } catch (err) {
-      log.warn('notifyGeneratingFinish failed', undefined, {
-        genseq: this._activeGenSeq,
-        error: err,
-        message: err instanceof Error ? err.message : String(err),
-      });
+    } finally {
+      // Reset generation tracking for the next course even when persistence fails loudly.
+      this._generationStarted = false;
+      this._generationStartedGenseq = 0;
+      this._activeGenCourse = undefined;
     }
-    // Reset generation tracking for the next course
-    this._generationStarted = false;
-    this._generationStartedGenseq = 0;
-    this._activeGenCourse = undefined;
   }
 
   public async streamError(error: string): Promise<void> {

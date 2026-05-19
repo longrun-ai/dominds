@@ -684,12 +684,6 @@ async function clearStaleSideDialogRunControlForFinalResponse(args: {
   };
 }
 
-function hasResultArrivalTrigger(
-  latest: Awaited<ReturnType<typeof DialogPersistence.loadDialogLatest>>,
-): boolean {
-  return latest?.nextStep.triggers.some((trigger) => trigger.kind === 'result_arrival') === true;
-}
-
 function hasResultArrivalTriggerForBatch(
   latest: Awaited<ReturnType<typeof DialogPersistence.loadDialogLatest>>,
   batchId: string,
@@ -699,6 +693,24 @@ function hasResultArrivalTriggerForBatch(
       (trigger) => trigger.kind === 'result_arrival' && trigger.batchId === batchId,
     ) === true
   );
+}
+
+function listResultArrivalBatchIds(
+  latest: Awaited<ReturnType<typeof DialogPersistence.loadDialogLatest>>,
+): readonly string[] {
+  const batchIds: string[] = [];
+  const seen = new Set<string>();
+  for (const trigger of latest?.nextStep.triggers ?? []) {
+    if (trigger.kind !== 'result_arrival') {
+      continue;
+    }
+    if (seen.has(trigger.batchId)) {
+      continue;
+    }
+    seen.add(trigger.batchId);
+    batchIds.push(trigger.batchId);
+  }
+  return batchIds;
 }
 
 function hasFollowupNextAction(
@@ -753,7 +765,7 @@ type RequestedWorkReplyContinuationClaim =
   | Readonly<{ status: 'stale'; batchId: string }>
   | Readonly<{ status: 'not_applicable' }>;
 
-function resolveRequestedWorkRepliedBatchId(args: {
+function resolveDirectRequestedWorkRepliedBatchId(args: {
   dialog: Dialog;
   driveOptions: KernelDriverDriveOptions | undefined;
 }): string | undefined {
@@ -775,32 +787,63 @@ function resolveRequestedWorkRepliedBatchId(args: {
   return batchId;
 }
 
-async function claimRequestedWorkRepliedContinuationForDrive(args: {
+async function removeStaleRequestedWorkReplyTriggers(args: {
+  dialog: Dialog;
+  batchIds: readonly string[];
+}): Promise<void> {
+  const staleBatchIds = new Set(args.batchIds);
+  if (staleBatchIds.size === 0) {
+    return;
+  }
+  await DialogPersistence.removeNextStepTriggers(
+    args.dialog.id,
+    (trigger) => trigger.kind === 'result_arrival' && staleBatchIds.has(trigger.batchId),
+    args.dialog.status,
+  );
+}
+
+function assertResolvedRequestedWorkReplyBatch(args: {
   dialog: Dialog;
   driveOptions: KernelDriverDriveOptions | undefined;
-}): Promise<RequestedWorkReplyContinuationClaim> {
-  const batchId = resolveRequestedWorkRepliedBatchId(args);
-  if (batchId === undefined) {
-    return { status: 'not_applicable' };
+  batchId: string;
+  status: string;
+}): void {
+  if (args.status === 'resolved') {
+    return;
   }
+  const reason = args.driveOptions?.reason ?? 'unknown';
+  throw new Error(
+    `requested work reply continuation invariant violation: unresolved active callee batch ` +
+      `(dialog=${args.dialog.id.valueOf()}, reason=${reason}, ` +
+      `batchId=${args.batchId}, status=${args.status})`,
+  );
+}
+
+async function claimRequestedWorkRepliedBatchForDrive(args: {
+  dialog: Dialog;
+  driveOptions: KernelDriverDriveOptions | undefined;
+  batchId: string;
+}): Promise<RequestedWorkReplyContinuationClaim> {
   const activeCallees = await DialogPersistence.loadActiveCallees(
     args.dialog.id,
     args.dialog.status,
   );
-  const batch = activeCallees.batches.find((entry) => entry.batchId === batchId);
+  const batch = activeCallees.batches.find((entry) => entry.batchId === args.batchId);
   if (batch === undefined) {
-    return { status: 'stale', batchId };
+    await removeStaleRequestedWorkReplyTriggers({
+      dialog: args.dialog,
+      batchIds: [args.batchId],
+    });
+    return { status: 'stale', batchId: args.batchId };
   }
-  if (batch.status !== 'resolved') {
-    const reason = args.driveOptions?.reason ?? 'unknown';
-    throw new Error(
-      `requested work reply continuation invariant violation: unresolved active callee batch ` +
-        `(dialog=${args.dialog.id.valueOf()}, reason=${reason}, ` +
-        `batchId=${batchId}, status=${batch.status})`,
-    );
-  }
+  assertResolvedRequestedWorkReplyBatch({
+    dialog: args.dialog,
+    driveOptions: args.driveOptions,
+    batchId: args.batchId,
+    status: batch.status,
+  });
   const latest = await DialogPersistence.loadDialogLatest(args.dialog.id, args.dialog.status);
-  if (!hasResultArrivalTriggerForBatch(latest, batchId)) {
+  if (!hasResultArrivalTriggerForBatch(latest, args.batchId)) {
     // `active-callees` is the authority for whether the reply batch is still unconsumed. The
     // `result_arrival` trigger is just the gen-start handoff that will consume that active-callees
     // batch. If a resolved batch survived but its trigger was lost, rebuild this business-local
@@ -808,14 +851,81 @@ async function claimRequestedWorkRepliedContinuationForDrive(args: {
     await DialogPersistence.upsertNextStepTrigger(
       args.dialog.id,
       {
-        triggerId: `result-arrival:${batchId}`,
+        triggerId: `result-arrival:${args.batchId}`,
         kind: 'result_arrival',
-        batchId,
+        batchId: args.batchId,
       },
       args.dialog.status,
     );
   }
-  return { status: 'claimed', batchId };
+  return { status: 'claimed', batchId: args.batchId };
+}
+
+async function claimBackendLoopRequestedWorkRepliedContinuation(args: {
+  dialog: Dialog;
+  driveOptions: KernelDriverDriveOptions | undefined;
+}): Promise<RequestedWorkReplyContinuationClaim> {
+  if (args.driveOptions?.source !== 'kernel_driver_backend_loop') {
+    return { status: 'not_applicable' };
+  }
+  const latest = await DialogPersistence.loadDialogLatest(args.dialog.id, args.dialog.status);
+  const triggerBatchIds = listResultArrivalBatchIds(latest);
+  if (triggerBatchIds.length === 0) {
+    return { status: 'not_applicable' };
+  }
+  const activeCallees = await DialogPersistence.loadActiveCallees(
+    args.dialog.id,
+    args.dialog.status,
+  );
+  const staleBatchIds: string[] = [];
+  let claimedBatchId: string | undefined;
+  for (const batchId of triggerBatchIds) {
+    const batch = activeCallees.batches.find((entry) => entry.batchId === batchId);
+    if (batch === undefined) {
+      staleBatchIds.push(batchId);
+      continue;
+    }
+    assertResolvedRequestedWorkReplyBatch({
+      dialog: args.dialog,
+      driveOptions: args.driveOptions,
+      batchId,
+      status: batch.status,
+    });
+    if (claimedBatchId === undefined) {
+      claimedBatchId = batchId;
+    }
+  }
+  if (staleBatchIds.length > 0) {
+    // This is still requested-work reply business logic, not generic trigger cleanup. A
+    // `result_arrival` trigger whose batch has left `active-callees` is already consumed. Remove
+    // only those stale handoff cues so this backend wake can continue to claim any still-live batch.
+    await removeStaleRequestedWorkReplyTriggers({
+      dialog: args.dialog,
+      batchIds: staleBatchIds,
+    });
+  }
+  if (claimedBatchId !== undefined) {
+    return { status: 'claimed', batchId: claimedBatchId };
+  }
+  return { status: 'stale', batchId: staleBatchIds[0] ?? triggerBatchIds[0]! };
+}
+
+async function claimRequestedWorkRepliedContinuationForDrive(args: {
+  dialog: Dialog;
+  driveOptions: KernelDriverDriveOptions | undefined;
+}): Promise<RequestedWorkReplyContinuationClaim> {
+  const directBatchId = resolveDirectRequestedWorkRepliedBatchId(args);
+  if (directBatchId !== undefined) {
+    return await claimRequestedWorkRepliedBatchForDrive({
+      dialog: args.dialog,
+      driveOptions: args.driveOptions,
+      batchId: directBatchId,
+    });
+  }
+  return await claimBackendLoopRequestedWorkRepliedContinuation({
+    dialog: args.dialog,
+    driveOptions: args.driveOptions,
+  });
 }
 
 function resolveDriveRequestSource(
@@ -943,36 +1053,6 @@ async function inspectNoPromptSideDialogDrive(args: {
     latest !== null &&
     latest !== undefined &&
     hasRecoverableGenerationBeyondFinalResponse(latest);
-  const resultArrivalTriggerPresent = hasResultArrivalTrigger(latest);
-  let backendLoopResultArrivalClaimed = false;
-  if (source === 'kernel_driver_backend_loop' && resultArrivalTriggerPresent) {
-    // Backend-loop wakeups only get to treat `result_arrival` as durable work when the batch is
-    // still present in `active-callees`. The trigger itself is just the handoff cue; if the batch
-    // is already gone, this is a stale revive and must not reopen a generation.
-    const activeCallees = await DialogPersistence.loadActiveCallees(
-      args.dialog.id,
-      args.dialog.status,
-    );
-    for (const trigger of latest?.nextStep.triggers ?? []) {
-      if (trigger.kind !== 'result_arrival') {
-        continue;
-      }
-      const batch = activeCallees.batches.find((entry) => entry.batchId === trigger.batchId);
-      if (batch === undefined) {
-        continue;
-      }
-      if (batch.status !== 'resolved') {
-        const reason = args.driveOptions?.reason ?? 'unknown';
-        throw new Error(
-          `requested work reply continuation invariant violation: unresolved active callee batch ` +
-            `(dialog=${args.dialog.id.valueOf()}, reason=${reason}, ` +
-            `batchId=${trigger.batchId}, status=${batch.status})`,
-        );
-      }
-      backendLoopResultArrivalClaimed = true;
-      break;
-    }
-  }
   const resolvedPendingSideDialogReplyEntitlement = hasResolvedPendingSideDialogReplyEntitlement(
     args.dialog,
     args.driveOptions,
@@ -984,21 +1064,7 @@ async function inspectNoPromptSideDialogDrive(args: {
     (!resolvedPendingSideDialogReplyEntitlement || sameBatchResultArrivalClaimed);
   const backendLoopDurableWorkAllowed =
     source === 'kernel_driver_backend_loop' &&
-    (backendLoopResultArrivalClaimed || followupNextActionPresent);
-  if (
-    source === 'kernel_driver_backend_loop' &&
-    resultArrivalTriggerPresent &&
-    !backendLoopResultArrivalClaimed
-  ) {
-    return {
-      shouldReject: true,
-      source,
-      rejection: 'stale_consumed_result_arrival',
-      displayState,
-      currentCourse,
-      sideDialogFinalResponseCallId,
-    };
-  }
+    (sameBatchResultArrivalClaimed || followupNextActionPresent);
   const finalResponseResultArrivalReviveAllowed =
     sideDialogFinalResponseCallId !== undefined &&
     ((resolvedPendingSideDialogReplyEntitlement && sameBatchResultArrivalClaimed) ||
@@ -1327,6 +1393,7 @@ export async function executeDriveRound(args: {
   const allowResumeFromInterrupted =
     driveOptions?.allowResumeFromInterrupted === true || humanPrompt?.origin === 'user';
   const driveSource = resolveDriveRequestSource(humanPrompt, driveOptions);
+  let requestedWorkReplyClaim: RequestedWorkReplyContinuationClaim = { status: 'not_applicable' };
   try {
     // Prime active-run registration right after acquiring dialog lock so user stop can
     // reliably interrupt queued auto-revive drives during preflight.
@@ -1346,40 +1413,6 @@ export async function executeDriveRound(args: {
         latest.executionMarker.kind === 'dead'
       ) {
         return;
-      }
-      if (dialog instanceof SideDialog && !dialog.hasUpNext()) {
-        const inspection = await inspectNoPromptSideDialogDrive({
-          dialog,
-          driveOptions,
-          requestedWorkReplyClaim: { status: 'not_applicable' },
-        });
-        if (inspection.shouldReject && inspection.rejection === 'finalized_after_response_anchor') {
-          const cleanup = await clearStaleSideDialogRunControlForFinalResponse({ dialog });
-          if (!cleanup.cleared) {
-            await DialogPersistence.removeDriveWatchForDialog(dialog.id, dialog.status);
-          }
-          log.debug(
-            'Dropped stale no-prompt sideDialog drive after final response anchor',
-            undefined,
-            {
-              dialogId: dialog.id.valueOf(),
-              rootId: dialog.id.rootId,
-              selfId: dialog.id.selfId,
-              source: inspection.source,
-              reason: driveOptions?.reason ?? null,
-              rejection: inspection.rejection,
-              allowResumeFromInterrupted: driveOptions?.allowResumeFromInterrupted === true,
-              displayState: inspection.displayState ?? null,
-              currentCourse: inspection.currentCourse,
-              sideDialogFinalResponseCallId: inspection.sideDialogFinalResponseCallId ?? null,
-              clearedStaleRunControl: cleanup.cleared,
-              previousGenerating: cleanup.previousGenerating,
-              previousNextStepTriggerCount: cleanup.previousNextStepTriggerCount,
-              waitInQue,
-            },
-          );
-          return;
-        }
       }
       const stopRequested = getStopRequestedReason(dialog.id);
       if (stopRequested !== undefined) {
@@ -1425,17 +1458,8 @@ export async function executeDriveRound(args: {
       );
     }
 
-    // Queued/auto drive (without fresh human input) must be authorized by a concrete business
-    // continuation. Keep that claim local to the relevant handler: Q4H/user-answer, side-dialog
-    // reply delivery, requested-work result arrival, open-generation recovery, etc. Do not fold
-    // those cases into one cross-cutting "can auto drive" rule; that loses business meaning and
-    // makes stale wakeups look valid.
-    //
-    // SideDialogs currently have an explicit legacy no-prompt entitlement gate below. Main-dialog
-    // result-arrival handling must grow the same style of local claim for requested-work replies,
-    // instead of relying on generic driveOptions/source/reason checks.
     if (!humanPrompt) {
-      const requestedWorkReplyClaim = await claimRequestedWorkRepliedContinuationForDrive({
+      requestedWorkReplyClaim = await claimRequestedWorkRepliedContinuationForDrive({
         dialog,
         driveOptions,
       });
@@ -1450,36 +1474,46 @@ export async function executeDriveRound(args: {
         });
         return;
       }
-
-      if (dialog instanceof SideDialog && !dialog.hasUpNext()) {
-        try {
-          const inspection = await inspectNoPromptSideDialogDrive({
-            dialog,
-            driveOptions,
-            requestedWorkReplyClaim,
-          });
-          if (inspection.shouldReject) {
-            if (inspection.rejection === 'stale_consumed_result_arrival') {
-              log.debug(
-                'Dropped stale no-prompt sideDialog caller revive after result arrival',
-                undefined,
-                {
-                  dialogId: dialog.id.valueOf(),
-                  rootId: dialog.id.rootId,
-                  selfId: dialog.id.selfId,
-                  source: inspection.source,
-                  reason: driveOptions?.reason ?? null,
-                  rejection: inspection.rejection,
-                  allowResumeFromInterrupted: driveOptions?.allowResumeFromInterrupted === true,
-                  displayState: inspection.displayState ?? null,
-                  currentCourse: inspection.currentCourse,
-                  sideDialogFinalResponseCallId: inspection.sideDialogFinalResponseCallId ?? null,
-                  waitInQue,
-                },
-              );
-              return;
-            }
-            log.error('Rejected unexpected no-prompt sideDialog drive request', undefined, {
+    }
+    if (!humanPrompt && dialog instanceof SideDialog && !dialog.hasUpNext()) {
+      const inspection = await inspectNoPromptSideDialogDrive({
+        dialog,
+        driveOptions,
+        requestedWorkReplyClaim,
+      });
+      if (inspection.shouldReject) {
+        if (inspection.rejection === 'finalized_after_response_anchor') {
+          const cleanup = await clearStaleSideDialogRunControlForFinalResponse({ dialog });
+          if (!cleanup.cleared) {
+            await DialogPersistence.removeDriveWatchForDialog(dialog.id, dialog.status);
+          }
+          log.debug(
+            'Dropped stale no-prompt sideDialog drive after final response anchor',
+            undefined,
+            {
+              dialogId: dialog.id.valueOf(),
+              rootId: dialog.id.rootId,
+              selfId: dialog.id.selfId,
+              source: inspection.source,
+              reason: driveOptions?.reason ?? null,
+              rejection: inspection.rejection,
+              allowResumeFromInterrupted: driveOptions?.allowResumeFromInterrupted === true,
+              displayState: inspection.displayState ?? null,
+              currentCourse: inspection.currentCourse,
+              sideDialogFinalResponseCallId: inspection.sideDialogFinalResponseCallId ?? null,
+              clearedStaleRunControl: cleanup.cleared,
+              previousGenerating: cleanup.previousGenerating,
+              previousNextStepTriggerCount: cleanup.previousNextStepTriggerCount,
+              waitInQue,
+            },
+          );
+          return;
+        }
+        if (inspection.rejection === 'stale_consumed_result_arrival') {
+          log.debug(
+            'Dropped stale no-prompt sideDialog caller revive after result arrival',
+            undefined,
+            {
               dialogId: dialog.id.valueOf(),
               rootId: dialog.id.rootId,
               selfId: dialog.id.selfId,
@@ -1491,22 +1525,28 @@ export async function executeDriveRound(args: {
               currentCourse: inspection.currentCourse,
               sideDialogFinalResponseCallId: inspection.sideDialogFinalResponseCallId ?? null,
               waitInQue,
-            });
-            return;
-          }
-        } catch (err) {
-          log.error('Failed to inspect unexpected no-prompt sideDialog drive request', err, {
-            dialogId: dialog.id.valueOf(),
-            rootId: dialog.id.rootId,
-            selfId: dialog.id.selfId,
-            source: driveSource,
-            reason: driveOptions?.reason ?? null,
-            allowResumeFromInterrupted: driveOptions?.allowResumeFromInterrupted === true,
-          });
+            },
+          );
           return;
         }
+        log.error('Rejected unexpected no-prompt sideDialog drive request', undefined, {
+          dialogId: dialog.id.valueOf(),
+          rootId: dialog.id.rootId,
+          selfId: dialog.id.selfId,
+          source: inspection.source,
+          reason: driveOptions?.reason ?? null,
+          rejection: inspection.rejection,
+          allowResumeFromInterrupted: driveOptions?.allowResumeFromInterrupted === true,
+          displayState: inspection.displayState ?? null,
+          currentCourse: inspection.currentCourse,
+          sideDialogFinalResponseCallId: inspection.sideDialogFinalResponseCallId ?? null,
+          waitInQue,
+        });
+        return;
       }
+    }
 
+    if (!humanPrompt) {
       // WARNING:
       // `allowResumeFromInterrupted` covers multiple stop reasons, but the interjection-pause case
       // is semantically special. Clicking Continue here does NOT mean "blindly clear stopped and

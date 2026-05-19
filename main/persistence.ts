@@ -3154,68 +3154,64 @@ export class DiskFileDialogStore extends DialogStore {
     const genseq = dialog.activeGenSeq;
     const startedAt = formatUnifiedTimestamp(new Date());
     let acceptedTriggers: DialogNextStepTrigger[] = [];
-    try {
-      const ev: PersistedDialogRecord = {
-        ts: startedAt,
-        type: 'gen_start_record',
-        genseq: genseq,
-      };
-      await this.appendEvent(dialog, course, ev);
+    const ev: PersistedDialogRecord = {
+      ts: startedAt,
+      type: 'gen_start_record',
+      genseq: genseq,
+    };
+    await this.appendEvent(dialog, course, ev);
 
-      // Emit generating_start_evt event
-      // This event MUST be emitted and processed before any substream events
-      // to ensure the frontend has created the generation bubble before receiving
-      // thinking/markdown/calling events
-      const genStartEvt: GeneratingStartEvent = {
-        type: 'generating_start_evt',
-        course,
-        genseq: genseq,
-        msgId: typeof msgId === 'string' && msgId.trim() !== '' ? msgId : undefined,
-      };
-      postDialogEvent(dialog, genStartEvt);
+    // Emit generating_start_evt event
+    // This event MUST be emitted and processed before any substream events
+    // to ensure the frontend has created the generation bubble before receiving
+    // thinking/markdown/calling events
+    const genStartEvt: GeneratingStartEvent = {
+      type: 'generating_start_evt',
+      course,
+      genseq: genseq,
+      msgId: typeof msgId === 'string' && msgId.trim() !== '' ? msgId : undefined,
+    };
+    postDialogEvent(dialog, genStartEvt);
 
-      // Update generating flag in latest.yaml
-      await DialogPersistence.mutateDialogLatest(this.dialogId, (previous) => {
-        acceptedTriggers = sortNextStepTriggersForConsumption(previous.nextStep.triggers);
-        const acceptedTriggerIds = acceptedTriggers.map((trigger) => trigger.triggerId);
-        const nextStep =
-          acceptedTriggerIds.length === 0
-            ? previous.nextStep
-            : removeNextStepTrigger(previous.nextStep, (trigger) =>
-                acceptedTriggerIds.includes(trigger.triggerId),
-              );
-        return {
-          kind: 'patch',
-          patch: {
-            generating: true,
-            displayState: { kind: 'proceeding' },
-            executionMarker: undefined,
-            backendDriveStall: undefined,
-            nextStep,
-            generationRunState: {
-              kind: 'open',
-              course: toDialogCourseNumber(course),
-              genseq: toCallSiteGenseqNo(genseq),
-              phase: 'streaming',
-              acceptedTriggerIds,
-              openedAt: startedAt,
-              ...(typeof msgId === 'string' && msgId.trim() !== '' ? { msgId } : {}),
-            },
+    // Update generating flag in latest.yaml
+    await DialogPersistence.mutateDialogLatest(this.dialogId, (previous) => {
+      acceptedTriggers = sortNextStepTriggersForConsumption(previous.nextStep.triggers);
+      const acceptedTriggerIds = acceptedTriggers.map((trigger) => trigger.triggerId);
+      const nextStep =
+        acceptedTriggerIds.length === 0
+          ? previous.nextStep
+          : removeNextStepTrigger(previous.nextStep, (trigger) =>
+              acceptedTriggerIds.includes(trigger.triggerId),
+            );
+      return {
+        kind: 'patch',
+        patch: {
+          generating: true,
+          displayState: { kind: 'proceeding' },
+          executionMarker: undefined,
+          backendDriveStall: undefined,
+          nextStep,
+          generationRunState: {
+            kind: 'open',
+            course: toDialogCourseNumber(course),
+            genseq: toCallSiteGenseqNo(genseq),
+            phase: 'streaming',
+            acceptedTriggerIds,
+            openedAt: startedAt,
+            ...(typeof msgId === 'string' && msgId.trim() !== '' ? { msgId } : {}),
           },
-        };
-      });
-      for (const trigger of acceptedTriggers) {
-        if (trigger.kind === 'result_arrival') {
-          // `active-callees` is the business consumption ledger for requested-work replies. A
-          // resolved batch stays there until a concrete generation accepts its `result_arrival`
-          // trigger; at that point the reply fact belongs to this gen turn's LLM context and later
-          // caller revives for the same batch are stale. Do not move this into a generic trigger
-          // cleanup path or replace it with transcript/fingerprint guessing.
-          await DialogPersistence.removeActiveCalleeBatch(this.dialogId, trigger.batchId);
-        }
+        },
+      };
+    });
+    for (const trigger of acceptedTriggers) {
+      if (trigger.kind === 'result_arrival') {
+        // `active-callees` is the business consumption ledger for requested-work replies. A
+        // resolved batch stays there until a concrete generation accepts its `result_arrival`
+        // trigger; at that point the reply fact belongs to this gen turn's LLM context and later
+        // caller revives for the same batch are stale. Do not move this into a generic trigger
+        // cleanup path or replace it with transcript/fingerprint guessing.
+        await DialogPersistence.removeActiveCalleeBatch(this.dialogId, trigger.batchId);
       }
-    } catch (err) {
-      log.warn('Failed to persist gen_start event', err);
     }
     return acceptedTriggers;
   }
@@ -3248,59 +3244,55 @@ export class DiskFileDialogStore extends DialogStore {
     }
     const finishedAt = formatUnifiedTimestamp(new Date());
     let acceptedTriggerIds: readonly string[] = [];
-    try {
-      const ev: PersistedDialogRecord = {
-        ts: finishedAt,
-        type: 'gen_finish_record',
-        genseq: genseq,
-        contextHealth,
-        llmGenModel,
-      };
-      await this.appendEvent(dialog, course, ev);
+    const ev: PersistedDialogRecord = {
+      ts: finishedAt,
+      type: 'gen_finish_record',
+      genseq: genseq,
+      contextHealth,
+      llmGenModel,
+    };
+    await this.appendEvent(dialog, course, ev);
 
-      // Emit generating_finish_evt event (this was missing, causing double triggering issue)
-      const genFinishEvt: GeneratingFinishEvent = {
-        type: 'generating_finish_evt',
+    // Emit generating_finish_evt event (this was missing, causing double triggering issue)
+    const genFinishEvt: GeneratingFinishEvent = {
+      type: 'generating_finish_evt',
+      course,
+      genseq: genseq,
+      llmGenModel,
+    };
+    postDialogEvent(dialog, genFinishEvt);
+
+    if (contextHealth) {
+      const ctxEvt: ContextHealthEvent = {
+        type: 'context_health_evt',
         course,
-        genseq: genseq,
-        llmGenModel,
+        genseq,
+        contextHealth,
       };
-      postDialogEvent(dialog, genFinishEvt);
+      postDialogEvent(dialog, ctxEvt);
+    }
 
-      if (contextHealth) {
-        const ctxEvt: ContextHealthEvent = {
-          type: 'context_health_evt',
-          course,
-          genseq,
-          contextHealth,
-        };
-        postDialogEvent(dialog, ctxEvt);
-      }
-
-      // Update generating flag in latest.yaml
-      await DialogPersistence.mutateDialogLatest(this.dialogId, (previous) => {
-        acceptedTriggerIds =
-          previous.generationRunState?.kind === 'open'
-            ? previous.generationRunState.acceptedTriggerIds
-            : [];
-        return {
-          kind: 'patch',
-          patch: {
-            generating: false,
-            generationRunState: {
-              kind: 'closed',
-              course: toDialogCourseNumber(course),
-              genseq: toCallSiteGenseqNo(genseq),
-              closedAt: finishedAt,
-            },
+    // Update generating flag in latest.yaml
+    await DialogPersistence.mutateDialogLatest(this.dialogId, (previous) => {
+      acceptedTriggerIds =
+        previous.generationRunState?.kind === 'open'
+          ? previous.generationRunState.acceptedTriggerIds
+          : [];
+      return {
+        kind: 'patch',
+        patch: {
+          generating: false,
+          generationRunState: {
+            kind: 'closed',
+            course: toDialogCourseNumber(course),
+            genseq: toCallSiteGenseqNo(genseq),
+            closedAt: finishedAt,
           },
-        };
-      });
-      for (const batchId of this.getResultArrivalBatchIdsFromAcceptedTriggers(acceptedTriggerIds)) {
-        await DialogPersistence.removeActiveCalleeBatch(this.dialogId, batchId);
-      }
-    } catch (err) {
-      log.warn('Failed to persist gen_finish event', err);
+        },
+      };
+    });
+    for (const batchId of this.getResultArrivalBatchIdsFromAcceptedTriggers(acceptedTriggerIds)) {
+      await DialogPersistence.removeActiveCalleeBatch(this.dialogId, batchId);
     }
   }
 

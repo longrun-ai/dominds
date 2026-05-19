@@ -297,6 +297,17 @@ async function main(): Promise<void> {
       genStartCountAfterDrive,
       'backend-loop stale result_arrival trigger must not open a generation after active-callees consumption',
     );
+    const callerLatestAfterStaleBackendResidue = await DialogPersistence.loadDialogLatest(
+      caller.id,
+      caller.status,
+    );
+    assert.equal(
+      callerLatestAfterStaleBackendResidue?.nextStep.triggers.some(
+        (trigger) => trigger.kind === 'result_arrival',
+      ),
+      false,
+      'backend-loop stale side-dialog result_arrival trigger should be cleared by requested-work claim',
+    );
 
     const callerWithoutFinalResponse = await root.createSideDialog(
       'fullstack',
@@ -526,6 +537,44 @@ async function main(): Promise<void> {
       rootGenStartCountAfterLateMainlineRevive,
       rootGenStartCountAfterMainlineDrive,
       'late direct main-dialog revive after consumed result_arrival must not open an empty generation',
+    );
+
+    await DialogPersistence.upsertNextStepTrigger(
+      root.id,
+      {
+        triggerId: 'result-arrival:dispatch:test:root:c1:g5',
+        kind: 'result_arrival',
+        batchId: 'dispatch:test:root:c1:g5',
+      },
+      root.status,
+    );
+    await driveQueuedDialogsOnce();
+    await waitForAllDialogsUnlocked(root, 3_000);
+
+    const rootEventsAfterStaleMainlineBackendResidue = await DialogPersistence.loadCourseEvents(
+      root.id,
+      root.currentCourse,
+      root.status,
+    );
+    const rootGenStartCountAfterStaleMainlineBackendResidue =
+      rootEventsAfterStaleMainlineBackendResidue.filter(
+        (event) => event.type === 'gen_start_record',
+      ).length;
+    assert.equal(
+      rootGenStartCountAfterStaleMainlineBackendResidue,
+      rootGenStartCountAfterMainlineDrive,
+      'backend-loop stale main-dialog result_arrival trigger must not open a generation after active-callees consumption',
+    );
+    const rootLatestAfterStaleMainlineBackendResidue = await DialogPersistence.loadDialogLatest(
+      root.id,
+      root.status,
+    );
+    assert.equal(
+      rootLatestAfterStaleMainlineBackendResidue?.nextStep.triggers.some(
+        (trigger) => trigger.kind === 'result_arrival',
+      ),
+      false,
+      'backend-loop stale main-dialog result_arrival trigger should be cleared by requested-work claim',
     );
   });
 
