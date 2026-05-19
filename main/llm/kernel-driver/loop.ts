@@ -37,14 +37,12 @@ function formatDriveTriggerForLog(trigger: DriveTriggerEvent): Record<string, un
   };
 }
 
-function hasOpenGenerationRecoveryTrigger(
-  latest: Awaited<ReturnType<typeof DialogPersistence.loadDialogLatest>>,
-): boolean {
-  return (
-    latest?.nextStep.triggers.some((trigger) => trigger.kind === 'open_generation_recovery') ===
-    true
-  );
-}
+type DialogLatestForBackendLoop = Awaited<ReturnType<typeof DialogPersistence.loadDialogLatest>>;
+
+type OpenGenerationRecoveryClaim =
+  | Readonly<{ status: 'claimed' }>
+  | Readonly<{ status: 'stale'; latestAfterCleanup: DialogLatestForBackendLoop }>
+  | Readonly<{ status: 'not_applicable' }>;
 
 function wakeQueueHasEntriesForDialog(
   entries: Awaited<ReturnType<typeof DialogPersistence.loadWakeQueueEntries>>,
@@ -65,6 +63,32 @@ async function removeOpenGenerationRecoveryTriggers(dialog: Dialog): Promise<voi
   } else {
     await DialogPersistence.removeWakeQueueEntriesForDialog(dialog.id, dialog.status);
   }
+}
+
+async function claimOpenGenerationRecoveryForBackendLoop(args: {
+  dialog: Dialog;
+  latest: DialogLatestForBackendLoop;
+}): Promise<OpenGenerationRecoveryClaim> {
+  if (!args.latest) {
+    return { status: 'not_applicable' };
+  }
+  if (getRecoverableGenerationRunState(args.latest) !== undefined) {
+    return { status: 'claimed' };
+  }
+  const hasRecoveryTrigger = args.latest.nextStep.triggers.some(
+    (trigger) => trigger.kind === 'open_generation_recovery',
+  );
+  if (!hasRecoveryTrigger) {
+    return { status: 'not_applicable' };
+  }
+  await removeOpenGenerationRecoveryTriggers(args.dialog);
+  return {
+    status: 'stale',
+    latestAfterCleanup: await DialogPersistence.loadDialogLatest(
+      args.dialog.id,
+      args.dialog.status,
+    ),
+  };
 }
 
 async function listLiveDialogsWithDurableDriveWork(): Promise<
@@ -216,12 +240,12 @@ export async function driveQueuedDialogsOnce(): Promise<void> {
         await DialogPersistence.removeWakeQueueEntriesForDialog(dialog.id, dialog.status);
         continue;
       }
-      if (
-        hasOpenGenerationRecoveryTrigger(latestForDrive) &&
-        getRecoverableGenerationRunState(latestForDrive) === undefined
-      ) {
-        await removeOpenGenerationRecoveryTriggers(dialog);
-        latestForDrive = await DialogPersistence.loadDialogLatest(dialog.id, dialog.status);
+      let openGenerationRecoveryClaim = await claimOpenGenerationRecoveryForBackendLoop({
+        dialog,
+        latest: latestForDrive,
+      });
+      if (openGenerationRecoveryClaim.status === 'stale') {
+        latestForDrive = openGenerationRecoveryClaim.latestAfterCleanup;
         if (!latestForDrive || !hasDurableDriveWork(latestForDrive)) {
           if (dialog.id.selfId === dialog.id.rootId) {
             globalDialogRegistry.clearRootDriveQueue(dialog.id.rootId, {
@@ -233,9 +257,12 @@ export async function driveQueuedDialogsOnce(): Promise<void> {
           await DialogPersistence.removeWakeQueueEntriesForDialog(dialog.id, dialog.status);
           continue;
         }
+        openGenerationRecoveryClaim = await claimOpenGenerationRecoveryForBackendLoop({
+          dialog,
+          latest: latestForDrive,
+        });
       }
-      const currentResumeInProgressGeneration =
-        getRecoverableGenerationRunState(latestForDrive) !== undefined;
+      const currentResumeInProgressGeneration = openGenerationRecoveryClaim.status === 'claimed';
       const currentHasBackendDurableWork = hasDurableDriveWork(latestForDrive);
       wakeQueueEntriesForRoot = await DialogPersistence.loadWakeQueueEntries(
         rootDialog.id,
