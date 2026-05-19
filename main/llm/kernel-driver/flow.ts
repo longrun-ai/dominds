@@ -26,7 +26,7 @@ import {
   hasRecoverableGenerationBeyondFinalResponse,
 } from '../../dialog-drive-work';
 import { globalDialogRegistry } from '../../dialog-global-registry';
-import { doesInterruptionReasonRequireExplicitResume } from '../../dialog-interruption';
+import { isInterruptedDialogBlockedWithoutExplicitResume } from '../../dialog-interruption';
 import { createEmptyDialogNextStepState } from '../../dialog-latest-state';
 import { postDialogEvent } from '../../evt-registry';
 import { log } from '../../log';
@@ -1757,17 +1757,23 @@ export async function executeDriveRound(args: {
       }
       if (
         latest &&
-        latest.executionMarker &&
-        latest.executionMarker.kind === 'interrupted' &&
-        doesInterruptionReasonRequireExplicitResume(latest.executionMarker.reason) &&
-        !allowResumeFromInterrupted
+        isInterruptedDialogBlockedWithoutExplicitResume(
+          latest.executionMarker,
+          allowResumeFromInterrupted,
+        )
       ) {
+        const executionMarker = latest.executionMarker;
+        if (executionMarker?.kind !== 'interrupted') {
+          throw new Error(
+            `kernel-driver interruption invariant violation: expected interrupted marker after explicit-resume gate`,
+          );
+        }
         log.debug(
           'kernel-driver skip drive for interrupted dialog without explicit resume/user prompt',
           undefined,
           {
             dialogId: dialog.id.valueOf(),
-            reason: latest.executionMarker.reason,
+            reason: executionMarker.reason,
           },
         );
         return;

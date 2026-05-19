@@ -68,7 +68,7 @@ dialog-level wake cue storage 的问题类似。它把某个 dialog 标成“值
 - duplicate pending `replyDelivery` 的结论保留为 reply delivery handler 规则：可恢复 stale pending delivery 应 loud warn 并按当前有效 reply obligation 替换，真正 correlation 冲突才 loud fail。
 - 支线 caller 收到 callee 回贴后没有继续运行的结论保留为 wake queue 规则：不能全量扫描历史支线，必须有 root-local 精确 wake queue entry。
 - `needsDrive` / `backend_queue` 旧术语继续收敛为显式 wake queue entry 与 next-step trigger，不再作为文档概念保留。
-- malformed 边界仍是后续工作：必要状态机元信息缺失时应 loud fail / malformed，而不是初始化默认值后继续 unsafe drive。
+- malformed 边界已覆盖关键恢复路径：必要状态机元信息缺失时应 loud fail / quarantine malformed，而不是初始化默认值后继续 unsafe drive；后续扩展仍按同一原则处理。
 
 ## 目标结构
 
@@ -490,7 +490,7 @@ Consume:
 4. 已完成：把 root/sideDialog wake 存储从 dialog-level watch 迁移到业务命名 Wake Queue entry。
 5. 已完成：删除 `noPromptSideDialogResumeEntitlement` 和 `inspectNoPromptSideDialogDrive`。
 6. 已完成：删除运行面 dialog-level wake storage 命名，保留必要的 `wake-queue.jsonl` 存储实现。
-7. 收敛 malformed 边界：必要运行元信息缺失时 loud diagnostic / malformed，而不是初始化默认值后继续运行。
+7. 已完成关键边界：restart recovery 等必要运行元信息缺失时 loud diagnostic / malformed quarantine，而不是初始化默认值后继续运行；后续新增恢复入口必须沿用同一规则。
 8. 已完成：删除前序阶段性文档，让本文成为后续 dialog drive 重构的唯一设计入口。
 
 每一步都必须遵守：

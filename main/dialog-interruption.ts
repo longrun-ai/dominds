@@ -1,4 +1,5 @@
 import type { DialogInterruptionReason } from '@longrun-ai/kernel/types/display-state';
+import type { DialogExecutionMarker } from '@longrun-ai/kernel/types/storage';
 
 /**
  * Decides whether a finalized stopped dialog should expose manual Continue.
@@ -55,4 +56,15 @@ export function doesInterruptionReasonRequireExplicitResume(
       return _exhaustive;
     }
   }
+}
+
+export function isInterruptedDialogBlockedWithoutExplicitResume(
+  marker: DialogExecutionMarker | undefined,
+  explicitResumeAuthorized: boolean,
+): boolean {
+  return (
+    marker?.kind === 'interrupted' &&
+    doesInterruptionReasonRequireExplicitResume(marker.reason) &&
+    !explicitResumeAuthorized
+  );
 }

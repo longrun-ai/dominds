@@ -4,7 +4,7 @@ import { hasDurableDriveWork } from '../../dialog-drive-work';
 import { getRecoverableGenerationRunState } from '../../dialog-generation-run';
 import { globalDialogRegistry, type DriveTriggerEvent } from '../../dialog-global-registry';
 import { ensureDialogLoaded } from '../../dialog-instance-registry';
-import { doesInterruptionReasonRequireExplicitResume } from '../../dialog-interruption';
+import { isInterruptedDialogBlockedWithoutExplicitResume } from '../../dialog-interruption';
 import { log } from '../../log';
 import { DialogPersistence } from '../../persistence';
 import { findDomindsPersistenceFileError } from '../../persistence-errors';
@@ -273,14 +273,13 @@ export async function driveQueuedDialogsOnce(): Promise<void> {
         wakeQueueHasEntriesForDialog(wakeQueueEntriesForRoot, dialog.id);
       const executionMarker = latestForDrive?.executionMarker;
       const stopRequested = getStopRequestedReason(dialog.id);
-      const interruptedRequiresExplicitResume =
-        executionMarker?.kind === 'interrupted' &&
-        doesInterruptionReasonRequireExplicitResume(executionMarker.reason);
-      if (interruptedRequiresExplicitResume || stopRequested !== undefined) {
+      const interruptedBlockedWithoutExplicitResume =
+        isInterruptedDialogBlockedWithoutExplicitResume(executionMarker, false);
+      if (interruptedBlockedWithoutExplicitResume || stopRequested !== undefined) {
         if (dialog.id.selfId === dialog.id.rootId) {
           globalDialogRegistry.clearRootDriveQueue(dialog.id.rootId, {
             source: 'kernel_driver_backend_loop',
-            reason: interruptedRequiresExplicitResume
+            reason: interruptedBlockedWithoutExplicitResume
               ? 'execution_marker_blocked:interrupted'
               : `stop_requested:${stopRequested}`,
           });
