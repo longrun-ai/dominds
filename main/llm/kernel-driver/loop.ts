@@ -59,6 +59,12 @@ async function removeOpenGenerationRecoveryTriggers(dialog: Dialog): Promise<voi
     (trigger) => trigger.kind === 'open_generation_recovery',
     dialog.status,
   );
+  const latest = await DialogPersistence.loadDialogLatest(dialog.id, dialog.status);
+  if (latest) {
+    await DialogPersistence.syncWakeQueueForDialogLatest(dialog.id, latest, dialog.status);
+  } else {
+    await DialogPersistence.removeWakeQueueEntriesForDialog(dialog.id, dialog.status);
+  }
 }
 
 async function listLiveDialogsWithDurableDriveWork(): Promise<

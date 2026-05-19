@@ -357,7 +357,7 @@ Consume:
 - 本地 tool result 记录后标记 `toolResultStatus=recorded`；
 - 两者都完成后，不应再触发 recovery。
 
-注意：这是后续重构的重点之一。它不应只靠 restart recovery；live backend wake 也应 dispatch 到 reply delivery handler。
+注意：live backend wake 与 restart recovery 都必须 dispatch 到 reply delivery handler，不能只靠 restart recovery。
 
 duplicate pending `replyDelivery` 的处理必须保留前序重构结论：如果旧 pending 已经被状态事实证明为 stale，而新 reply call 对应当前有效 reply obligation，可以 loud warn 并替换 pending delivery；如果 target/call/tool correlation 冲突，则 loud fail。
 
@@ -484,7 +484,7 @@ Consume:
 
 0. 已完成基础：保留 `active-callees.json`、`nextStep.triggers`、`generationRunState`、`replyDelivery`、`userWait` 等状态机元信息作为运行判定源；不回扫历史补猜。
 1. 以 requested-work reply 为样板，确认 `active-callees` 消费账本、`result_arrival` handoff trigger、backend Wake Queue claim 都已本地化。
-2. 建立 reply delivery live continuation handler，让 backend wake 能执行 pending reply recovery，而不是只依赖 restart recovery。
+2. 已完成：建立 reply delivery live continuation handler，让 backend wake 能执行 pending reply recovery，而不是只依赖 restart recovery。
 3. 将 follow-up、pending runtime prompt、open generation recovery、explicit interrupted resume 的入口显式化为 handler。
 4. 已完成：把 root/sideDialog wake 存储从 dialog-level watch 迁移到业务命名 Wake Queue entry。
 5. 已完成：删除 `noPromptSideDialogResumeEntitlement` 和 `inspectNoPromptSideDialogDrive`。
