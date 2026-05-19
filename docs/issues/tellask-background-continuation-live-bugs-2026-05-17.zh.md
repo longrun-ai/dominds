@@ -6,7 +6,7 @@
 
 - caller/callee 是运行时业务关系，不是父子层级关系。实现命名已开始把 `parentDialog` 收敛为 `callerDialog`；剩余历史命名只应出现在明确的旧语义说明或尚未触达的内部实现细节中。
 - 任何会影响前端 badge / run-control / dialog list 的 dialog 状态变化，都必须有实时广播事件或全局状态推送，不能只依赖下一次列表刷新。
-- backend loop 不能全量扫描 root 下所有历史支线。root 长期运行并累积成千上万个支线是正常场景；需要维护 root-local 精确 watch index，只记录当前需要监护的支线子集。
+- backend loop 不能全量扫描 root 下所有历史支线。root 长期运行并累积成千上万个支线是正常场景；需要维护 root-local 精确 wake cue 子集，只记录当前需要处理的支线。
 - recoverable 一致性问题优先保活：日志要 loud，带 rootId/selfId/course/genseq/callId/batchId 等结构化字段；能继续对话时不要 hard stop。
 
 ## 1. 鞭策机制在 active callee 存在时误发
@@ -80,11 +80,11 @@
 
 目标修复：
 
-- 维护 root-local `drive-watch.json`，只记录需要 backend 监护的支线 selfId 子集。
+- 维护 root-local `wake-cues.json`，只记录需要 backend 处理的支线 selfId 子集。
 - 当支线写入 `nextStep` trigger、open generation 或未完成 `replyDelivery` 时加入 watch；当 trigger 消费、generation closed 且 replyDelivery 完整 recorded 后移除。
-- backend loop 仍由 root wake 唤醒，但只扫描 root 本身 + `drive-watch.json` 中的支线，不全量遍历历史支线目录。
+- backend loop 仍由 root wake 唤醒，但只扫描 root 本身 + `wake-cues.json` 中的支线，不全量遍历历史支线目录。
 - 支线 `result_arrival` 写入后应 wake root backend loop，保证 durable trigger 可恢复。
-- 回归脚本：`kernel-driver:sideDialog-caller-result-arrival-backend-watch`。
+- 回归脚本：`kernel-driver:sideDialog-caller-result-arrival-backend-wake-cue`。
 
 ## 5. 文档/实现状态需更新
 
@@ -95,7 +95,7 @@
 需要同步：
 
 - kernel-driver 已基本不再用 course JSONL 作为 active callee / reply recovery 运行源。
-- `latest.tellaskResults`、`replyDelivery`、`active-callees.json`、`nextStep.triggers`、drive watch index 是目标运行源。
+- `latest.tellaskResults`、`replyDelivery`、`active-callees.json`、`nextStep.triggers`、wake cue 子集是目标运行源。
 - `needsDrive` projection 已删除；`backend_queue` 旧术语仍需继续收敛为显式 next-step API。
 - malformed 边界仍未完全完成：`nextStep` 缺失仍会初始化，尚未做到所有必要状态机元信息缺失均转 malformed。
 - `sideDialog_created_evt` wire 字段已从 `parentDialog` / `parentBackground...` 收敛为 `callerDialog` / `callerBackground...`。

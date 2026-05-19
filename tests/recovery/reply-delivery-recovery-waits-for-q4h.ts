@@ -128,13 +128,10 @@ async function main(): Promise<void> {
       'blocked reply delivery recovery must not record a tool result before Q4H clears',
     );
 
-    const watchedWhileParked = await DialogPersistence.loadDriveWatchedDialogIds(
-      root.id,
-      root.status,
-    );
+    const wakeCuedWhileParked = await DialogPersistence.loadWakeCuedDialogIds(root.id, root.status);
     assert(
-      watchedWhileParked.some((dialogId) => dialogId.selfId === sideDialog.id.selfId),
-      'blocked reply delivery recovery should stay in drive-watch',
+      wakeCuedWhileParked.some((dialogId) => dialogId.selfId === sideDialog.id.selfId),
+      'blocked reply delivery recovery should stay in wake cue storage',
     );
 
     const removal = await DialogPersistence.removeQuestion4HumanState(

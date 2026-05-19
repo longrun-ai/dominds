@@ -9,7 +9,7 @@ import type {
 import { createLogger } from '../log';
 import { DialogPersistence } from '../persistence';
 
-const log = createLogger('reply-special-recovery');
+const log = createLogger('reply-delivery-recovery');
 const inFlightReplyRecoveryByDialog = new Map<string, Promise<number>>();
 
 function dispatchDrive(
@@ -22,7 +22,7 @@ function dispatchDrive(
   return driveDialogStream(dialog, undefined, options.waitInQue, options.driveOptions);
 }
 
-export async function recoverPendingReplyTellaskCallsForDialog(dialog: Dialog): Promise<number> {
+export async function recoverPendingReplyDeliveryForDialog(dialog: Dialog): Promise<number> {
   const dialogKey = dialog.id.valueOf();
   const existing = inFlightReplyRecoveryByDialog.get(dialogKey);
   if (existing) {
@@ -84,23 +84,23 @@ async function listReplyRecoveryCandidateDialogIds(): Promise<readonly DialogID[
       seen.add(rootKey);
       candidates.push(rootDialogId);
     }
-    const watchedDialogIds = await DialogPersistence.loadDriveWatchedDialogIds(
+    const wakeCuedDialogIds = await DialogPersistence.loadWakeCuedDialogIds(
       rootDialogId,
       'running',
     );
-    for (const watchedDialogId of watchedDialogIds) {
-      const watchedKey = watchedDialogId.key();
-      if (seen.has(watchedKey)) {
+    for (const wakeCuedDialogId of wakeCuedDialogIds) {
+      const wakeCuedKey = wakeCuedDialogId.key();
+      if (seen.has(wakeCuedKey)) {
         continue;
       }
-      seen.add(watchedKey);
-      candidates.push(watchedDialogId);
+      seen.add(wakeCuedKey);
+      candidates.push(wakeCuedDialogId);
     }
   }
   return candidates;
 }
 
-export async function recoverPendingReplyTellaskCallsAfterRestart(): Promise<void> {
+export async function recoverPendingReplyDeliveryAfterRestart(): Promise<void> {
   const dialogIds = await listReplyRecoveryCandidateDialogIds();
   for (const dialogId of dialogIds) {
     try {
@@ -120,7 +120,7 @@ export async function recoverPendingReplyTellaskCallsAfterRestart(): Promise<voi
       if (!dialog) {
         continue;
       }
-      await recoverPendingReplyTellaskCallsForDialog(dialog);
+      await recoverPendingReplyDeliveryForDialog(dialog);
     } catch (err) {
       log.error('Failed to recover pending replyTellask* delivery during restart recovery', err, {
         rootId: dialogId.rootId,

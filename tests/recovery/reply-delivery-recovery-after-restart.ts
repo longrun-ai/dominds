@@ -12,9 +12,9 @@ import { formatUnifiedTimestamp } from '@longrun-ai/kernel/utils/time';
 import { deliverTellaskBackReplyFromDirective } from '../../main/llm/kernel-driver/tellask-special';
 import { DialogPersistence } from '../../main/persistence';
 import {
-  recoverPendingReplyTellaskCallsAfterRestart,
-  recoverPendingReplyTellaskCallsForDialog,
-} from '../../main/recovery/reply-special';
+  recoverPendingReplyDeliveryAfterRestart,
+  recoverPendingReplyDeliveryForDialog,
+} from '../../main/recovery/reply-delivery-recovery';
 import { setWorkLanguage } from '../../main/runtime/work-language';
 import { createMainDialog, withTempRtws, writeStandardMinds } from '../kernel-driver/helpers';
 
@@ -86,7 +86,7 @@ async function main(): Promise<void> {
       1,
     );
 
-    await recoverPendingReplyTellaskCallsAfterRestart();
+    await recoverPendingReplyDeliveryAfterRestart();
 
     const rootEvents = await DialogPersistence.loadCourseEvents(root.id, 1, 'running');
     const replyFuncResult = rootEvents.find(
@@ -127,7 +127,7 @@ async function main(): Promise<void> {
         callId: sideTargetCallId,
         callSiteCourse: toCallSiteCourseNo(1),
         callSiteGenseq: toCallSiteGenseqNo(1),
-        sessionSlug: 'reply-special-side-recovery',
+        sessionSlug: 'reply-delivery-recovery-side-recovery',
         collectiveTargets: ['pangu'],
       },
     );
@@ -162,16 +162,16 @@ async function main(): Promise<void> {
       }),
       sideDialog.status,
     );
-    const watchedSideDialogs = await DialogPersistence.loadDriveWatchedDialogIds(
+    const wakeCuedSideDialogs = await DialogPersistence.loadWakeCuedDialogIds(
       sideRoot.id,
       sideRoot.status,
     );
     assert(
-      watchedSideDialogs.some((dialogId) => dialogId.selfId === sideDialog.id.selfId),
-      'sideDialog with pending reply tool-result recovery must remain in root drive-watch',
+      wakeCuedSideDialogs.some((dialogId) => dialogId.selfId === sideDialog.id.selfId),
+      'sideDialog with pending reply tool-result recovery must remain in root wake cue store',
     );
 
-    await recoverPendingReplyTellaskCallsAfterRestart();
+    await recoverPendingReplyDeliveryAfterRestart();
 
     const sideEvents = await DialogPersistence.loadCourseEvents(sideDialog.id, 1, 'running');
     const sideReplyFuncResult = sideEvents.find(
@@ -179,7 +179,7 @@ async function main(): Promise<void> {
     );
     assert(
       sideReplyFuncResult,
-      'expected restart recovery to record pending sideDialog reply tool result via drive-watch',
+      'expected restart recovery to record pending sideDialog reply tool result via wake cue store',
     );
 
     const resolutionOnlyRoot = await createMainDialog('tester');
@@ -215,7 +215,7 @@ async function main(): Promise<void> {
       targetCallId: 'tellask-back-target',
     });
 
-    await recoverPendingReplyTellaskCallsAfterRestart();
+    await recoverPendingReplyDeliveryAfterRestart();
 
     const resolutionEvents = await DialogPersistence.loadCourseEvents(
       resolutionOnlyRoot.id,
@@ -259,8 +259,8 @@ async function main(): Promise<void> {
     );
 
     await Promise.all([
-      recoverPendingReplyTellaskCallsForDialog(concurrentRoot),
-      recoverPendingReplyTellaskCallsForDialog(concurrentRoot),
+      recoverPendingReplyDeliveryForDialog(concurrentRoot),
+      recoverPendingReplyDeliveryForDialog(concurrentRoot),
     ]);
 
     const concurrentEvents = await DialogPersistence.loadCourseEvents(
@@ -296,11 +296,11 @@ async function main(): Promise<void> {
     );
   });
 
-  console.log('recovery reply-special-after-restart: PASS');
+  console.log('recovery reply-delivery-recovery-after-restart: PASS');
 }
 
 void main().catch((err: unknown) => {
   const message = err instanceof Error ? err.message : String(err);
-  console.error(`recovery reply-special-after-restart: FAIL\n${message}`);
+  console.error(`recovery reply-delivery-recovery-after-restart: FAIL\n${message}`);
   process.exit(1);
 });

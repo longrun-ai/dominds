@@ -15,8 +15,8 @@ import { reconcileDisplayStatesAfterRestart } from './dialog-display-state';
 import { runBackendDriver } from './llm/kernel-driver';
 import { createLogger } from './log';
 import { startMcpSupervisor } from './mcp/supervisor';
-import { recoverProceedingDrivesAfterRestart } from './recovery/proceeding-drive';
-import { recoverPendingReplyTellaskCallsAfterRestart } from './recovery/reply-special';
+import { recoverOpenGenerationAfterRestart } from './recovery/open-generation-recovery';
+import { recoverPendingReplyDeliveryAfterRestart } from './recovery/reply-delivery-recovery';
 import { getWorkLanguage, resolveWorkLanguage, setWorkLanguage } from './runtime/work-language';
 import { AuthConfig, computeAuthConfig } from './server/auth';
 import { configureDomindsSelfUpdate } from './server/dominds-self-update';
@@ -162,9 +162,9 @@ async function runPostListenStartup(params: {
   // are surfaced as blocked/resumable from durable facts.
   await reconcileDisplayStatesAfterRestart();
   if (params.token.canceled) return;
-  await recoverPendingReplyTellaskCallsAfterRestart();
+  await recoverPendingReplyDeliveryAfterRestart();
   if (params.token.canceled) return;
-  await recoverProceedingDrivesAfterRestart();
+  await recoverOpenGenerationAfterRestart();
 
   if (params.token.canceled) return;
   // Tests may opt out so the process can shut down cleanly without a driver stop API.

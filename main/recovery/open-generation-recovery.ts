@@ -6,9 +6,11 @@ import { createLogger } from '../log';
 import { DialogPersistence } from '../persistence';
 import { findDomindsPersistenceFileError } from '../persistence-errors';
 
-const log = createLogger('proceeding-drive-recovery');
+const log = createLogger('open-generation-recovery');
 
-async function restoreDialogForProceedingDrive(dialogId: DialogID): Promise<Dialog | undefined> {
+async function restoreDialogForOpenGenerationRecovery(
+  dialogId: DialogID,
+): Promise<Dialog | undefined> {
   const mainDialog = await getOrRestoreMainDialog(dialogId.rootId, 'running');
   if (!mainDialog) {
     return undefined;
@@ -19,12 +21,12 @@ async function restoreDialogForProceedingDrive(dialogId: DialogID): Promise<Dial
   return await ensureDialogLoaded(mainDialog, dialogId, 'running');
 }
 
-async function recoverRootProceedingDrive(dialog: Dialog): Promise<void> {
+async function recoverRootOpenGeneration(dialog: Dialog): Promise<void> {
   const latest = await DialogPersistence.loadDialogLatest(dialog.id, dialog.status);
   const generationRunState = latest?.generationRunState;
   if (!generationRunState || generationRunState.kind !== 'open') {
     throw new Error(
-      `proceeding-drive recovery invariant violation: missing open generation state ` +
+      `open-generation recovery invariant violation: missing open generation state ` +
         `(rootId=${dialog.id.rootId}, selfId=${dialog.id.selfId})`,
     );
   }
@@ -41,46 +43,46 @@ async function recoverRootProceedingDrive(dialog: Dialog): Promise<void> {
   );
   globalDialogRegistry.wakeDrive(dialog.id.rootId, {
     source: 'restart_recovery',
-    reason: 'persisted_drive_in_progress',
+    reason: 'persisted_open_generation_recovery',
   });
 }
 
-async function recoverSideDialogProceedingDrive(dialog: Dialog): Promise<void> {
+async function recoverSideDialogOpenGeneration(dialog: Dialog): Promise<void> {
   const latest = await DialogPersistence.loadDialogLatest(dialog.id, dialog.status);
   if (latest) {
-    await DialogPersistence.syncDriveWatchForDialogLatest(dialog.id, latest, dialog.status);
+    await DialogPersistence.syncWakeCueForDialogLatest(dialog.id, latest, dialog.status);
   } else {
-    await DialogPersistence.removeDriveWatchForDialog(dialog.id, dialog.status);
+    await DialogPersistence.removeWakeCueForDialog(dialog.id, dialog.status);
   }
   const rootId = new DialogID(dialog.id.rootId);
   const rootHasPendingNextStepTriggers = await DialogPersistence.hasPendingNextStepTriggers(
     rootId,
     dialog.status,
   );
-  const watchedDialogIds = await DialogPersistence.loadDriveWatchedDialogIds(rootId, dialog.status);
-  if (rootHasPendingNextStepTriggers || watchedDialogIds.length > 0) {
+  const wakeCuedDialogIds = await DialogPersistence.loadWakeCuedDialogIds(rootId, dialog.status);
+  if (rootHasPendingNextStepTriggers || wakeCuedDialogIds.length > 0) {
     globalDialogRegistry.wakeDrive(dialog.id.rootId, {
       source: 'restart_recovery',
-      reason: 'sideDialog_proceeding_recovered_more_work',
+      reason: 'sideDialog_open_generation_recovered_more_work',
     });
   } else {
     globalDialogRegistry.clearDriveWake(dialog.id.rootId, {
       source: 'restart_recovery',
-      reason: 'sideDialog_proceeding_recovered_idle',
+      reason: 'sideDialog_open_generation_recovered_idle',
     });
   }
 }
 
-export async function recoverProceedingDrivesAfterRestart(): Promise<void> {
+export async function recoverOpenGenerationAfterRestart(): Promise<void> {
   const rootDialogIds = await DialogPersistence.listMainDialogIds('running');
   const dialogIds: DialogID[] = [];
   for (const rootDialogId of rootDialogIds) {
     dialogIds.push(rootDialogId);
-    const watchedDialogIds = await DialogPersistence.loadDriveWatchedDialogIds(
+    const wakeCuedDialogIds = await DialogPersistence.loadWakeCuedDialogIds(
       rootDialogId,
       'running',
     );
-    dialogIds.push(...watchedDialogIds);
+    dialogIds.push(...wakeCuedDialogIds);
   }
   const recoveredRootIds = new Set<string>();
   const recoveredDialogKeys = new Set<string>();
@@ -93,7 +95,7 @@ export async function recoverProceedingDrivesAfterRestart(): Promise<void> {
       if (!findDomindsPersistenceFileError(error)) {
         throw error;
       }
-      log.warn('Skipping malformed dialog during proceeding-drive restart recovery', error, {
+      log.warn('Skipping malformed dialog during open-generation restart recovery', error, {
         dialogId: dialogId.valueOf(),
       });
       continue;
@@ -104,9 +106,9 @@ export async function recoverProceedingDrivesAfterRestart(): Promise<void> {
     }
 
     try {
-      const dialog = await restoreDialogForProceedingDrive(dialogId);
+      const dialog = await restoreDialogForOpenGenerationRecovery(dialogId);
       if (!dialog) {
-        log.warn('Proceeding-drive restart recovery could not restore dialog', undefined, {
+        log.warn('Open-generation restart recovery could not restore dialog', undefined, {
           rootId: dialogId.rootId,
           selfId: dialogId.selfId,
         });
@@ -124,12 +126,12 @@ export async function recoverProceedingDrivesAfterRestart(): Promise<void> {
           continue;
         }
         recoveredRootIds.add(dialog.id.rootId);
-        await recoverRootProceedingDrive(dialog);
+        await recoverRootOpenGeneration(dialog);
       } else {
-        await recoverSideDialogProceedingDrive(dialog);
+        await recoverSideDialogOpenGeneration(dialog);
       }
     } catch (error: unknown) {
-      log.error('Failed to recover proceeding drive after restart', error, {
+      log.error('Failed to recover open generation after restart', error, {
         rootId: dialogId.rootId,
         selfId: dialogId.selfId,
       });

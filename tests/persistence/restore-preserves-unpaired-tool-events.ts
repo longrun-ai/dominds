@@ -169,40 +169,40 @@ async function main(): Promise<void> {
     );
     await buildOpenAiRequestInputWrapper(sanitizedOrphaned.messages);
 
-    const replySpecialDlg = await createMainDialog('tester');
-    await replySpecialDlg.persistTellaskCall(
-      'reply-special-call',
+    const replyDeliveryDlg = await createMainDialog('tester');
+    await replyDeliveryDlg.persistTellaskCall(
+      'reply-delivery-call',
       'replyTellaskBack',
       '{"replyContent":"Final answer delivered."}',
       1,
     );
-    await replySpecialDlg.receiveFuncResult({
+    await replyDeliveryDlg.receiveFuncResult({
       type: 'func_result_msg',
       role: 'tool',
       genseq: 1,
-      id: 'reply-special-call',
+      id: 'reply-delivery-call',
       name: 'replyTellaskBack',
       content: 'Reply delivered via `replyTellaskBack`: Final answer delivered.',
     });
 
-    const restoredReplySpecial = await DialogPersistence.restoreDialog(
-      replySpecialDlg.id,
+    const restoredReplyDelivery = await DialogPersistence.restoreDialog(
+      replyDeliveryDlg.id,
       'running',
     );
-    assert(restoredReplySpecial, 'expected restoreDialog to preserve tellask special results');
+    assert(restoredReplyDelivery, 'expected restoreDialog to preserve reply delivery results');
     assert.equal(
-      restoredReplySpecial.messages.filter(
-        (msg) => msg.type === 'func_call_msg' && msg.id === 'reply-special-call',
+      restoredReplyDelivery.messages.filter(
+        (msg) => msg.type === 'func_call_msg' && msg.id === 'reply-delivery-call',
       ).length,
       1,
-      'expected tellask special result restore to avoid synthesizing a duplicate func_call_msg',
+      'expected reply delivery result restore to avoid synthesizing a duplicate func_call_msg',
     );
     assert.equal(
-      restoredReplySpecial.messages.filter(
-        (msg) => msg.type === 'func_result_msg' && msg.id === 'reply-special-call',
+      restoredReplyDelivery.messages.filter(
+        (msg) => msg.type === 'func_result_msg' && msg.id === 'reply-delivery-call',
       ).length,
       1,
-      'expected tellask special result restore to replay exactly one func_result_msg',
+      'expected reply delivery result restore to replay exactly one func_result_msg',
     );
 
     const malformedTellaskDlg = await createMainDialog('tester');

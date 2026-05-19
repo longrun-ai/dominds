@@ -396,13 +396,13 @@ async function main(): Promise<void> {
         },
       },
     }));
-    const watchedDuringLegacyRecovery = await DialogPersistence.loadDriveWatchedDialogIds(
+    const wakeCuedDuringLegacyRecovery = await DialogPersistence.loadWakeCuedDialogIds(
       dlg.id,
       dlg.status,
     );
     assert.ok(
-      watchedDuringLegacyRecovery.some((dialogId) => dialogId.selfId === sideDialog.id.selfId),
-      'open generation recovery must keep a reused registered sideDialog watched even with an old final-response projection',
+      wakeCuedDuringLegacyRecovery.some((dialogId) => dialogId.selfId === sideDialog.id.selfId),
+      'open generation recovery must keep a reused registered sideDialog wake-cued even with an old final-response projection',
     );
     await DialogPersistence.mutateDialogLatest(sideDialog.id, () => ({
       kind: 'patch',
@@ -414,7 +414,7 @@ async function main(): Promise<void> {
         displayState: { kind: 'idle_waiting_user' },
       },
     }));
-    await DialogPersistence.removeDriveWatchForDialog(sideDialog.id, sideDialog.status);
+    await DialogPersistence.removeWakeCueForDialog(sideDialog.id, sideDialog.status);
 
     await DialogPersistence.mutateDialogLatest(sideDialog.id, () => ({
       kind: 'patch',
@@ -456,12 +456,12 @@ async function main(): Promise<void> {
         },
       },
     }));
-    const watchedDuringSameCallStaleRecovery = await DialogPersistence.loadDriveWatchedDialogIds(
+    const wakeCuedDuringSameCallStaleRecovery = await DialogPersistence.loadWakeCuedDialogIds(
       dlg.id,
       dlg.status,
     );
     assert.equal(
-      watchedDuringSameCallStaleRecovery.some(
+      wakeCuedDuringSameCallStaleRecovery.some(
         (dialogId) => dialogId.selfId === sideDialog.id.selfId,
       ),
       false,

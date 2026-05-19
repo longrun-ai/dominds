@@ -7,7 +7,7 @@ export type DomindsPersistenceFileSource =
   | 'reminder_state'
   | 'questions4human_state'
   | 'active_callees'
-  | 'drive_watch'
+  | 'wake_cue'
   | 'sideDialog_responses'
   | 'sideDialog_registry';
 

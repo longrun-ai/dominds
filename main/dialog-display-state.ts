@@ -943,7 +943,7 @@ export async function reconcileDisplayStatesAfterRestart(): Promise<void> {
           },
         }));
       } catch (err) {
-        log.warn('Failed to preserve proceeding dialog for auto-drive after restart', err, {
+        log.warn('Failed to preserve open-generation dialog for auto-drive after restart', err, {
           dialogId: dialogId.valueOf(),
         });
       }
@@ -974,7 +974,7 @@ export async function reconcileDisplayStatesAfterRestart(): Promise<void> {
           },
         }));
       } catch (err) {
-        log.warn('Failed to reconcile proceeding dialog after restart', err, {
+        log.warn('Failed to reconcile open-generation dialog after restart', err, {
           dialogId: dialogId.valueOf(),
         });
       }

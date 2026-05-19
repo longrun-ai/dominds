@@ -395,12 +395,12 @@ async function main(): Promise<void> {
 
     await driveDialogStream(
       replyDlg,
-      makeUserPrompt(replyTrigger, 'kernel-driver-invalid-json-reply-special-feedback'),
+      makeUserPrompt(replyTrigger, 'kernel-driver-invalid-json-reply-delivery-feedback'),
       true,
     );
 
     const replyFuncResults = replyDlg.msgs.filter((msg) => msg.type === 'func_result_msg');
-    assert.equal(replyFuncResults.length, 1, 'expected exactly one reply-special failure result');
+    assert.equal(replyFuncResults.length, 1, 'expected exactly one reply delivery failure result');
     assert.equal(
       replyFuncResults[0]?.content,
       replyToolError,
@@ -412,7 +412,7 @@ async function main(): Promise<void> {
     );
     assert.ok(
       replyAssistantSayings.length >= 2,
-      'expected a recovery round after the reply-special failure',
+      'expected a recovery round after the reply delivery failure',
     );
     assert.equal(
       replyAssistantSayings[replyAssistantSayings.length - 1]?.content,

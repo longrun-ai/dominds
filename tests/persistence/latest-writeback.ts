@@ -329,7 +329,7 @@ async function main(): Promise<void> {
       'pending-settled-runtime-prompt-msg',
     );
 
-    // Invariant 9: transient Windows-style filesystem failures must be retried for drive-watch.
+    // Invariant 9: transient Windows-style filesystem failures must be retried for wake cue storage.
     const driveRootId = new DialogID('73/6d/da1d0177');
     const driveSideId = new DialogID('74/6d/da1d0177', driveRootId.selfId);
     const driveLatest = {
@@ -340,9 +340,9 @@ async function main(): Promise<void> {
         nextSeq: 1,
         triggers: [
           {
-            triggerId: 'drive-watch-trigger',
+            triggerId: 'wake-cue-trigger',
             kind: 'result_arrival',
-            batchId: 'drive-watch-batch',
+            batchId: 'wake-cue-batch',
             createdAt: formatUnifiedTimestamp(new Date('2026-04-12T00:06:00.000Z')),
             seq: 1,
           },
@@ -356,25 +356,25 @@ async function main(): Promise<void> {
       sideDialogCount: 0,
       disableDiligencePush: false,
       diligencePushRemainingBudget: 0,
-    } satisfies Parameters<typeof DialogPersistence.syncDriveWatchForDialogLatest>[1];
+    } satisfies Parameters<typeof DialogPersistence.syncWakeCueForDialogLatest>[1];
     const noDriveLatest = {
       ...driveLatest,
       nextStep: createEmptyDialogNextStepState(),
-    } satisfies Parameters<typeof DialogPersistence.syncDriveWatchForDialogLatest>[1];
+    } satisfies Parameters<typeof DialogPersistence.syncWakeCueForDialogLatest>[1];
     const fsForPatch = fsNode.promises as unknown as {
       rename: typeof fsNode.promises.rename;
       rm: typeof fsNode.promises.rm;
     };
     const originalRename = fsForPatch.rename;
     const originalRm = fsForPatch.rm;
-    let driveWatchRenameAttempts = 0;
-    let driveWatchRmAttempts = 0;
+    let wakeCueRenameAttempts = 0;
+    let wakeCueRmAttempts = 0;
     try {
       fsForPatch.rename = async (source, destination) => {
-        if (path.basename(destination) === 'drive-watch.json') {
-          driveWatchRenameAttempts += 1;
-          if (driveWatchRenameAttempts === 1) {
-            const error = new Error('simulated transient EPERM for drive-watch');
+        if (path.basename(destination) === 'wake-cues.json') {
+          wakeCueRenameAttempts += 1;
+          if (wakeCueRenameAttempts === 1) {
+            const error = new Error('simulated transient EPERM for wake cue storage');
             (error as NodeJS.ErrnoException).code = 'EPERM';
             throw error;
           }
@@ -382,19 +382,19 @@ async function main(): Promise<void> {
         return originalRename(source, destination);
       };
 
-      await DialogPersistence.syncDriveWatchForDialogLatest(driveSideId, driveLatest, 'running');
-      const watchedIds = await DialogPersistence.loadDriveWatchedDialogIds(driveRootId, 'running');
+      await DialogPersistence.syncWakeCueForDialogLatest(driveSideId, driveLatest, 'running');
+      const wakeCuedIds = await DialogPersistence.loadWakeCuedDialogIds(driveRootId, 'running');
       assert.deepEqual(
-        watchedIds.map((dialogId) => dialogId.selfId),
+        wakeCuedIds.map((dialogId) => dialogId.selfId),
         [driveSideId.selfId],
       );
-      assert.equal(driveWatchRenameAttempts, 2);
+      assert.equal(wakeCueRenameAttempts, 2);
 
       fsForPatch.rm = async (target) => {
-        if (path.basename(target) === 'drive-watch.json') {
-          driveWatchRmAttempts += 1;
-          if (driveWatchRmAttempts === 1) {
-            const error = new Error('simulated transient EPERM for drive-watch removal');
+        if (path.basename(target) === 'wake-cues.json') {
+          wakeCueRmAttempts += 1;
+          if (wakeCueRmAttempts === 1) {
+            const error = new Error('simulated transient EPERM for wake cue storage removal');
             (error as NodeJS.ErrnoException).code = 'EPERM';
             throw error;
           }
@@ -402,13 +402,13 @@ async function main(): Promise<void> {
         return originalRm(target);
       };
 
-      await DialogPersistence.syncDriveWatchForDialogLatest(driveSideId, noDriveLatest, 'running');
-      const clearedWatchedIds = await DialogPersistence.loadDriveWatchedDialogIds(
+      await DialogPersistence.syncWakeCueForDialogLatest(driveSideId, noDriveLatest, 'running');
+      const clearedWakeCuedIds = await DialogPersistence.loadWakeCuedDialogIds(
         driveRootId,
         'running',
       );
-      assert.deepEqual(clearedWatchedIds, []);
-      assert.equal(driveWatchRmAttempts, 2);
+      assert.deepEqual(clearedWakeCuedIds, []);
+      assert.equal(wakeCueRmAttempts, 2);
     } finally {
       fsForPatch.rename = originalRename;
       fsForPatch.rm = originalRm;

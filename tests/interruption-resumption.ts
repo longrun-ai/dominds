@@ -21,7 +21,7 @@ import {
 import { driveDialogStream } from '../main/llm/kernel-driver';
 import { driveQueuedDialogsOnce } from '../main/llm/kernel-driver/loop';
 import { DialogPersistence } from '../main/persistence';
-import { recoverProceedingDrivesAfterRestart } from '../main/recovery/proceeding-drive';
+import { recoverOpenGenerationAfterRestart } from '../main/recovery/open-generation-recovery';
 import { formatAssignmentFromAskerDialog } from '../main/runtime/inter-dialog-format';
 import { getWorkLanguage } from '../main/runtime/work-language';
 import {
@@ -750,14 +750,14 @@ async function main(): Promise<void> {
     }));
     const latestKBeforeRestart = await DialogPersistence.loadDialogLatest(kSideId, 'running');
     assert.ok(latestKBeforeRestart, 'side-k latest fixture should be readable');
-    await DialogPersistence.syncDriveWatchForDialogLatest(kSideId, latestKBeforeRestart, 'running');
-    const watchedKBeforeRestart = await DialogPersistence.loadDriveWatchedDialogIds(
+    await DialogPersistence.syncWakeCueForDialogLatest(kSideId, latestKBeforeRestart, 'running');
+    const wakeCuedKBeforeRestart = await DialogPersistence.loadWakeCuedDialogIds(
       kRootId,
       'running',
     );
     assert.ok(
-      watchedKBeforeRestart.some((dialogId) => dialogId.selfId === kSide),
-      'side-k restart fixture should be present in root drive-watch index',
+      wakeCuedKBeforeRestart.some((dialogId) => dialogId.selfId === kSide),
+      'side-k restart fixture should be present in root wake cue store',
     );
 
     await getRunControlCountsSnapshot();
@@ -806,7 +806,7 @@ async function main(): Promise<void> {
     assert.deepEqual(latestK.displayState, { kind: 'proceeding' });
     assert.equal(latestK.executionMarker, undefined);
 
-    await recoverProceedingDrivesAfterRestart();
+    await recoverOpenGenerationAfterRestart();
     const recoveredA = globalDialogRegistry.get(aRoot);
     assert.ok(recoveredA, 'restart recovery should restore dlg-a root');
     assert.equal(
@@ -818,25 +818,25 @@ async function main(): Promise<void> {
     assert.equal(
       latestKAfterRecovery?.generating,
       true,
-      'watched pending-reply-obligation sideDialog restart recovery should keep unresolved durable work recoverable',
+      'wake-cued pending-reply-obligation sideDialog restart recovery should keep unresolved durable work recoverable',
     );
     assert.equal(
       latestKAfterRecovery?.generationRunState?.kind,
       'open',
-      'watched pending-reply-obligation sideDialog restart recovery should preserve open generation state when not yet complete',
+      'wake-cued pending-reply-obligation sideDialog restart recovery should preserve open generation state when not yet complete',
     );
-    const watchedKAfterRecovery = await DialogPersistence.loadDriveWatchedDialogIds(
+    const wakeCuedKAfterRecovery = await DialogPersistence.loadWakeCuedDialogIds(
       kRootId,
       'running',
     );
     assert.ok(
-      watchedKAfterRecovery.some((dialogId) => dialogId.selfId === kSide),
-      'unresolved watched sideDialog recovery should keep the root drive-watch entry',
+      wakeCuedKAfterRecovery.some((dialogId) => dialogId.selfId === kSide),
+      'unresolved wake-cued sideDialog recovery should keep the root wake cue entry',
     );
     assert.equal(
       globalDialogRegistry.isDriveWakeQueued(kRoot),
       true,
-      'unresolved watched sideDialog recovery should keep root backend wake queued for precise watch-index driving',
+      'unresolved wake-cued sideDialog recovery should keep root backend wake queued for precise wake-cue driving',
     );
     globalDialogRegistry.unregister(kRoot);
 

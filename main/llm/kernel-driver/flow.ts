@@ -684,7 +684,7 @@ async function clearStaleSideDialogRunControlForFinalResponse(args: {
     }),
     args.dialog.status,
   );
-  await DialogPersistence.removeDriveWatchForDialog(args.dialog.id, args.dialog.status);
+  await DialogPersistence.removeWakeCueForDialog(args.dialog.id, args.dialog.status);
   return {
     cleared: true,
     previousGenerating: latest.generating ?? null,
@@ -1205,7 +1205,7 @@ async function applyRegisteredDialogRunControlsBeforeDrive(args: {
   }
 }
 
-async function inspectNoPromptSideDialogDrive(args: {
+async function inspectSideDialogBusinessContinuationDrive(args: {
   dialog: SideDialog;
   driveOptions: KernelDriverDriveOptions | undefined;
   requestedWorkReplyClaim: RequestedWorkReplyContinuationClaim;
@@ -1272,9 +1272,7 @@ async function inspectNoPromptSideDialogDrive(args: {
       sideDialogFinalResponseCallId,
     };
   }
-  if (
-    requestedWorkReplyContinuation && args.requestedWorkReplyClaim.status !== 'claimed'
-  ) {
+  if (requestedWorkReplyContinuation && args.requestedWorkReplyClaim.status !== 'claimed') {
     return {
       shouldReject: true,
       source,
@@ -1733,7 +1731,7 @@ export async function executeDriveRound(args: {
       }
     }
     if (!humanPrompt && dialog instanceof SideDialog && !dialog.hasUpNext()) {
-      const inspection = await inspectNoPromptSideDialogDrive({
+      const inspection = await inspectSideDialogBusinessContinuationDrive({
         dialog,
         driveOptions,
         requestedWorkReplyClaim,
@@ -1743,51 +1741,43 @@ export async function executeDriveRound(args: {
         if (inspection.rejection === 'finalized_after_response_anchor') {
           const cleanup = await clearStaleSideDialogRunControlForFinalResponse({ dialog });
           if (!cleanup.cleared) {
-            await DialogPersistence.removeDriveWatchForDialog(dialog.id, dialog.status);
+            await DialogPersistence.removeWakeCueForDialog(dialog.id, dialog.status);
           }
-          log.debug(
-            'Dropped stale no-prompt sideDialog drive after final response anchor',
-            undefined,
-            {
-              dialogId: dialog.id.valueOf(),
-              rootId: dialog.id.rootId,
-              selfId: dialog.id.selfId,
-              source: inspection.source,
-              reason: driveOptions?.reason ?? null,
-              rejection: inspection.rejection,
-              allowResumeFromInterrupted: driveOptions?.allowResumeFromInterrupted === true,
-              displayState: inspection.displayState ?? null,
-              currentCourse: inspection.currentCourse,
-              sideDialogFinalResponseCallId: inspection.sideDialogFinalResponseCallId ?? null,
-              clearedStaleRunControl: cleanup.cleared,
-              previousGenerating: cleanup.previousGenerating,
-              previousNextStepTriggerCount: cleanup.previousNextStepTriggerCount,
-              waitInQue,
-            },
-          );
+          log.debug('Dropped stale sideDialog drive after final response anchor', undefined, {
+            dialogId: dialog.id.valueOf(),
+            rootId: dialog.id.rootId,
+            selfId: dialog.id.selfId,
+            source: inspection.source,
+            reason: driveOptions?.reason ?? null,
+            rejection: inspection.rejection,
+            allowResumeFromInterrupted: driveOptions?.allowResumeFromInterrupted === true,
+            displayState: inspection.displayState ?? null,
+            currentCourse: inspection.currentCourse,
+            sideDialogFinalResponseCallId: inspection.sideDialogFinalResponseCallId ?? null,
+            clearedStaleRunControl: cleanup.cleared,
+            previousGenerating: cleanup.previousGenerating,
+            previousNextStepTriggerCount: cleanup.previousNextStepTriggerCount,
+            waitInQue,
+          });
           return;
         }
         if (inspection.rejection === 'stale_consumed_result_arrival') {
-          log.debug(
-            'Dropped stale no-prompt sideDialog caller revive after result arrival',
-            undefined,
-            {
-              dialogId: dialog.id.valueOf(),
-              rootId: dialog.id.rootId,
-              selfId: dialog.id.selfId,
-              source: inspection.source,
-              reason: driveOptions?.reason ?? null,
-              rejection: inspection.rejection,
-              allowResumeFromInterrupted: driveOptions?.allowResumeFromInterrupted === true,
-              displayState: inspection.displayState ?? null,
-              currentCourse: inspection.currentCourse,
-              sideDialogFinalResponseCallId: inspection.sideDialogFinalResponseCallId ?? null,
-              waitInQue,
-            },
-          );
+          log.debug('Dropped stale sideDialog caller revive after result arrival', undefined, {
+            dialogId: dialog.id.valueOf(),
+            rootId: dialog.id.rootId,
+            selfId: dialog.id.selfId,
+            source: inspection.source,
+            reason: driveOptions?.reason ?? null,
+            rejection: inspection.rejection,
+            allowResumeFromInterrupted: driveOptions?.allowResumeFromInterrupted === true,
+            displayState: inspection.displayState ?? null,
+            currentCourse: inspection.currentCourse,
+            sideDialogFinalResponseCallId: inspection.sideDialogFinalResponseCallId ?? null,
+            waitInQue,
+          });
           return;
         }
-        log.error('Rejected unexpected no-prompt sideDialog drive request', undefined, {
+        log.error('Rejected unexpected sideDialog drive request', undefined, {
           dialogId: dialog.id.valueOf(),
           rootId: dialog.id.rootId,
           selfId: dialog.id.selfId,

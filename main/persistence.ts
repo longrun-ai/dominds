@@ -1869,9 +1869,7 @@ function parseDialogBusinessContinuation(value: unknown): DialogBusinessContinua
         ...(value.sideDialogId === undefined ? {} : { sideDialogId: value.sideDialogId }),
         ...(value.callType === undefined ? {} : { callType: value.callType }),
         ...(value.callId === undefined ? {} : { callId: value.callId }),
-        ...(value.resolvedCallIds === undefined
-          ? {}
-          : { resolvedCallIds: value.resolvedCallIds }),
+        ...(value.resolvedCallIds === undefined ? {} : { resolvedCallIds: value.resolvedCallIds }),
         ...(value.triggerCallId === undefined ? {} : { triggerCallId: value.triggerCallId }),
       };
     }
@@ -5836,7 +5834,7 @@ type DialogLatestMutation =
   | { kind: 'patch'; patch: DialogLatestPatch }
   | { kind: 'replace'; next: DialogLatestFile };
 
-type DialogDriveWatchFile = Readonly<{
+type DialogWakeCueFile = Readonly<{
   dialogs: readonly string[];
 }>;
 
@@ -5855,7 +5853,7 @@ export type BackendDriveStallWrite = Readonly<{
   };
   context: {
     rootHasPendingNextStepTriggers: boolean;
-    watchedDialogCount: number;
+    wakeCuedDialogCount: number;
   };
 }>;
 
@@ -5909,7 +5907,7 @@ export class DialogPersistence {
   private static readonly q4hWriteBack: Map<string, Q4HWriteBackEntry> = new Map();
 
   private static readonly activeCalleesMutexes: Map<string, AsyncFifoMutex> = new Map();
-  private static readonly driveWatchMutexes: Map<string, AsyncFifoMutex> = new Map();
+  private static readonly wakeCueMutexes: Map<string, AsyncFifoMutex> = new Map();
   private static readonly backendDriveStallMutexes: Map<string, AsyncFifoMutex> = new Map();
 
   private static readonly courseAppendMutexes: Map<string, AsyncFifoMutex> = new Map();
@@ -5955,11 +5953,11 @@ export class DialogPersistence {
     return created;
   }
 
-  private static getDriveWatchMutex(key: string): AsyncFifoMutex {
-    const existing = this.driveWatchMutexes.get(key);
+  private static getWakeCueMutex(key: string): AsyncFifoMutex {
+    const existing = this.wakeCueMutexes.get(key);
     if (existing) return existing;
     const created = new AsyncFifoMutex();
-    this.driveWatchMutexes.set(key, created);
+    this.wakeCueMutexes.set(key, created);
     return created;
   }
 
@@ -5976,8 +5974,8 @@ export class DialogPersistence {
     return `${this.getDialogsRootDir()}|${status}|${dialogId.valueOf()}`;
   }
 
-  private static getDriveWatchKey(rootDialogId: DialogID, status: DialogStatusKind): string {
-    return `${this.getDialogsRootDir()}|${status}|${rootDialogId.rootId}|drive-watch`;
+  private static getWakeCueKey(rootDialogId: DialogID, status: DialogStatusKind): string {
+    return `${this.getDialogsRootDir()}|${status}|${rootDialogId.rootId}|wake cue storage`;
   }
 
   private static getBackendDriveStallKey(dialogId: DialogID, status: DialogStatusKind): string {
@@ -6445,9 +6443,9 @@ export class DialogPersistence {
       }
     }
 
-    for (const key of this.driveWatchMutexes.keys()) {
+    for (const key of this.wakeCueMutexes.keys()) {
       if (matchesMainDialogKey(key)) {
-        this.driveWatchMutexes.delete(key);
+        this.wakeCueMutexes.delete(key);
       }
     }
   }
@@ -8430,11 +8428,11 @@ export class DialogPersistence {
     await this.renameWithRetry(tempFile, filePath, 5);
   }
 
-  private static getDriveWatchFilePath(rootDialogId: DialogID, status: DialogStatusKind): string {
-    return path.join(this.getMainDialogPath(rootDialogId, status), 'drive-watch.json');
+  private static getWakeCueFilePath(rootDialogId: DialogID, status: DialogStatusKind): string {
+    return path.join(this.getMainDialogPath(rootDialogId, status), 'wake-cues.json');
   }
 
-  private static isDialogDriveWatchFile(value: unknown): value is DialogDriveWatchFile {
+  private static isWakeCueFile(value: unknown): value is DialogWakeCueFile {
     return (
       isRecord(value) &&
       Array.isArray(value.dialogs) &&
@@ -8442,49 +8440,49 @@ export class DialogPersistence {
     );
   }
 
-  private static normalizeDriveWatchFile(file: DialogDriveWatchFile): DialogDriveWatchFile {
+  private static normalizeWakeCueFile(file: DialogWakeCueFile): DialogWakeCueFile {
     return {
       dialogs: [...new Set(file.dialogs.map((entry) => entry.trim()).filter(Boolean))].sort(),
     };
   }
 
-  private static async loadDriveWatchFromDisk(
+  private static async loadWakeCueFromDisk(
     rootDialogId: DialogID,
     status: DialogStatusKind,
-  ): Promise<DialogDriveWatchFile> {
-    const filePath = this.getDriveWatchFilePath(rootDialogId, status);
+  ): Promise<DialogWakeCueFile> {
+    const filePath = this.getWakeCueFilePath(rootDialogId, status);
     try {
       const content = await readPersistenceTextFile({
         filePath,
-        source: 'drive_watch',
+        source: 'wake_cue',
         format: 'json',
       });
       const parsed: unknown = parsePersistenceJson({
         content,
         filePath,
-        source: 'drive_watch',
+        source: 'wake_cue',
       });
-      if (!this.isDialogDriveWatchFile(parsed)) {
+      if (!this.isWakeCueFile(parsed)) {
         throw buildInvalidPersistenceFileError({
-          source: 'drive_watch',
+          source: 'wake_cue',
           format: 'json',
           filePath,
         });
       }
-      return this.normalizeDriveWatchFile(parsed);
+      return this.normalizeWakeCueFile(parsed);
     } catch (error: unknown) {
       if (getErrorCode(error) === 'ENOENT') return { dialogs: [] };
       throw error;
     }
   }
 
-  private static async writeDriveWatchToDisk(
+  private static async writeWakeCueToDisk(
     rootDialogId: DialogID,
-    file: DialogDriveWatchFile,
+    file: DialogWakeCueFile,
     status: DialogStatusKind,
   ): Promise<void> {
-    const normalized = this.normalizeDriveWatchFile(file);
-    const filePath = this.getDriveWatchFilePath(rootDialogId, status);
+    const normalized = this.normalizeWakeCueFile(file);
+    const filePath = this.getWakeCueFilePath(rootDialogId, status);
     if (normalized.dialogs.length === 0) {
       await this.removeWithRetry(filePath);
       return;
@@ -8509,7 +8507,7 @@ export class DialogPersistence {
 
   static buildBackendDriveDurableWorkFingerprint(
     latest: DialogLatestFile | null,
-    watchedDialogIds: readonly DialogID[] = [],
+    wakeCuedDialogIds: readonly DialogID[] = [],
   ): string {
     if (latest === null) {
       return JSON.stringify({ latest: null });
@@ -8536,7 +8534,7 @@ export class DialogPersistence {
       sideDialogFinalResponse: latest.sideDialogFinalResponse ?? null,
       latestAssignmentAnchor: latest.latestAssignmentAnchor ?? null,
       userWait: latest.userWait ?? null,
-      watchedDialogIds: watchedDialogIds.map((dialogId) => dialogId.valueOf()).sort(),
+      wakeCuedDialogIds: wakeCuedDialogIds.map((dialogId) => dialogId.valueOf()).sort(),
     });
   }
 
@@ -8585,18 +8583,18 @@ export class DialogPersistence {
     }
   }
 
-  private static async mutateDriveWatch(
+  private static async mutateWakeCue(
     rootDialogId: DialogID,
-    mutator: (previous: DialogDriveWatchFile) => DialogDriveWatchFile,
+    mutator: (previous: DialogWakeCueFile) => DialogWakeCueFile,
     status: DialogStatusKind = 'running',
-  ): Promise<DialogDriveWatchFile> {
-    const key = this.getDriveWatchKey(rootDialogId, status);
-    const mutex = this.getDriveWatchMutex(key);
+  ): Promise<DialogWakeCueFile> {
+    const key = this.getWakeCueKey(rootDialogId, status);
+    const mutex = this.getWakeCueMutex(key);
     const release = await mutex.acquire();
     try {
-      const previous = await this.loadDriveWatchFromDisk(rootDialogId, status);
-      const next = this.normalizeDriveWatchFile(mutator(previous));
-      await this.writeDriveWatchToDisk(rootDialogId, next, status);
+      const previous = await this.loadWakeCueFromDisk(rootDialogId, status);
+      const next = this.normalizeWakeCueFile(mutator(previous));
+      await this.writeWakeCueToDisk(rootDialogId, next, status);
       return next;
     } finally {
       release();
@@ -8622,38 +8620,38 @@ export class DialogPersistence {
     throw lastError;
   }
 
-  static async loadDriveWatchedDialogIds(
+  static async loadWakeCuedDialogIds(
     rootDialogId: DialogID,
     status: DialogStatusKind = 'running',
   ): Promise<readonly DialogID[]> {
     try {
-      const file = await this.loadDriveWatchFromDisk(rootDialogId, status);
+      const file = await this.loadWakeCueFromDisk(rootDialogId, status);
       return file.dialogs.map((selfId) => new DialogID(selfId, rootDialogId.rootId));
     } catch (error: unknown) {
       await this.rethrowAfterQuarantiningDialogPersistenceProblem(
         rootDialogId,
         status,
-        'loadDriveWatchedDialogIds',
+        'loadWakeCuedDialogIds',
         error,
       );
-      throw new Error('unreachable after loadDriveWatchedDialogIds persistence rethrow');
+      throw new Error('unreachable after loadWakeCuedDialogIds persistence rethrow');
     }
   }
 
-  private static async setDialogDriveWatched(
+  private static async setDialogWakeCued(
     dialogId: DialogID,
-    watched: boolean,
+    wakeCued: boolean,
     status: DialogStatusKind,
   ): Promise<void> {
     if (dialogId.selfId === dialogId.rootId) {
       return;
     }
     const rootDialogId = new DialogID(dialogId.rootId);
-    await this.mutateDriveWatch(
+    await this.mutateWakeCue(
       rootDialogId,
       (previous) => {
         const existing = new Set(previous.dialogs);
-        if (watched) {
+        if (wakeCued) {
           existing.add(dialogId.selfId);
         } else {
           existing.delete(dialogId.selfId);
@@ -8664,7 +8662,7 @@ export class DialogPersistence {
     );
   }
 
-  static async syncDriveWatchForDialogLatest(
+  static async syncWakeCueForDialogLatest(
     dialogId: DialogID,
     latest: DialogLatestFile,
     status: DialogStatusKind = 'running',
@@ -8672,14 +8670,14 @@ export class DialogPersistence {
     if (status !== 'running' || dialogId.selfId === dialogId.rootId) {
       return;
     }
-    await this.setDialogDriveWatched(dialogId, hasDurableDriveWork(latest), status);
+    await this.setDialogWakeCued(dialogId, hasDurableDriveWork(latest), status);
   }
 
-  static async removeDriveWatchForDialog(
+  static async removeWakeCueForDialog(
     dialogId: DialogID,
     status: DialogStatusKind = 'running',
   ): Promise<void> {
-    await this.setDialogDriveWatched(dialogId, false, status);
+    await this.setDialogWakeCued(dialogId, false, status);
   }
 
   static async mutateActiveCallees(
@@ -10222,7 +10220,7 @@ export class DialogPersistence {
           mutationContext,
         );
         if (updated === existing) {
-          await this.syncDriveWatchForDialogLatest(dialogId, existing, status);
+          await this.syncWakeCueForDialogLatest(dialogId, existing, status);
           return existing;
         }
       } else if (mutation.kind === 'replace') {
@@ -10275,7 +10273,7 @@ export class DialogPersistence {
           timer,
         });
 
-        await this.syncDriveWatchForDialogLatest(dialogId, updated, status);
+        await this.syncWakeCueForDialogLatest(dialogId, updated, status);
         return updated;
       }
 
@@ -10285,7 +10283,7 @@ export class DialogPersistence {
       }
 
       // Keep the existing timer to ensure a bounded flush window.
-      await this.syncDriveWatchForDialogLatest(dialogId, updated, status);
+      await this.syncWakeCueForDialogLatest(dialogId, updated, status);
       return updated;
     } finally {
       release();

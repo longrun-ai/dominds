@@ -115,7 +115,7 @@ import {
   createProblemsSnapshotMessage,
   setProblemsBroadcaster,
 } from '../problems';
-import { recoverPendingReplyTellaskCallsForDialog } from '../recovery/reply-special';
+import { recoverPendingReplyDeliveryForDialog } from '../recovery/reply-delivery-recovery';
 import {
   formatAgentFacingCriticalUserInterjectionRemediationGuide,
   formatSystemNoticePrefix,
@@ -1950,7 +1950,7 @@ async function restoreDialogForDrive(dialogIdObj: DialogID, status: 'running'): 
   // Because those operations are execution-oriented, we repair pending replyTellask* delivery
   // before handing the dialog back to the tellasker.
   if (dialogIdObj.selfId === dialogIdObj.rootId) {
-    await recoverPendingReplyTellaskCallsForDialog(mainDialog);
+    await recoverPendingReplyDeliveryForDialog(mainDialog);
     return mainDialog;
   }
 
@@ -1958,7 +1958,7 @@ async function restoreDialogForDrive(dialogIdObj: DialogID, status: 'running'): 
   if (!sub) {
     throw new Error(`Dialog ${dialogIdObj.valueOf()} not found`);
   }
-  await recoverPendingReplyTellaskCallsForDialog(sub);
+  await recoverPendingReplyDeliveryForDialog(sub);
   return sub;
 }
 

@@ -42,7 +42,7 @@ export type KernelDriverDriveOptions = Readonly<{
   allowResumeFromInterrupted?: boolean;
   resumeInProgressGeneration?: boolean;
   /**
-   * Business continuation identity for no-prompt driver iterations.
+   * Business continuation identity for continuation-driven driver iterations.
    *
    * This is deliberately part of the drive contract instead of being rediscovered from old
    * transcript/assignment records. A continuation must tell the next iteration what business

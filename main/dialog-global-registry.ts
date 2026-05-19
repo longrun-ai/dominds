@@ -84,13 +84,13 @@ class GlobalDialogRegistry {
         const hasPendingNextStepTriggers = await DialogPersistence.hasPendingNextStepTriggers(
           mainDialog.id,
         );
-        const watchedDialogIds = await DialogPersistence.loadDriveWatchedDialogIds(mainDialog.id);
-        if (hasPendingNextStepTriggers || watchedDialogIds.length > 0) {
+        const wakeCuedDialogIds = await DialogPersistence.loadWakeCuedDialogIds(mainDialog.id);
+        if (hasPendingNextStepTriggers || wakeCuedDialogIds.length > 0) {
           this.wakeDrive(mainDialog.id.rootId, {
             source: 'dialog_registry_hydration',
             reason: hasPendingNextStepTriggers
               ? 'persisted_next_step_triggers'
-              : 'persisted_drive_watch',
+              : 'persisted_wake_cue',
           });
         }
       } catch (error: unknown) {
