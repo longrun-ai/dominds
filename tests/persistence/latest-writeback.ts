@@ -438,6 +438,47 @@ async function main(): Promise<void> {
     );
 
     // Invariant 11: malformed Wake Queue JSONL records fail loudly with line diagnostics.
+    const invalidWakeQueueRootId = new DialogID('73/6d/da1d0178');
+    const invalidWakeQueuePath = path.join(
+      sandboxDir,
+      '.dialogs',
+      'run',
+      invalidWakeQueueRootId.selfId,
+      'wake-queue.jsonl',
+    );
+    await fs.mkdir(path.dirname(invalidWakeQueuePath), { recursive: true });
+    await fs.writeFile(
+      invalidWakeQueuePath,
+      [
+        JSON.stringify({
+          entryId: `root-runtime-wake:${invalidWakeQueueRootId.selfId}:latest_writeback_valid_before_invalid_trigger_kind`,
+          kind: 'root_runtime_wake',
+          targetDialogId: invalidWakeQueueRootId.selfId,
+          reason: 'latest_writeback_valid_before_invalid_trigger_kind',
+        }),
+        JSON.stringify({
+          entryId: `next-step-trigger:${invalidWakeQueueRootId.selfId}:bad-trigger-kind`,
+          kind: 'next_step_trigger',
+          targetDialogId: invalidWakeQueueRootId.selfId,
+          triggerId: 'bad-trigger-kind',
+          triggerKind: 'not_a_real_trigger_kind',
+        }),
+        '',
+      ].join('\n'),
+      'utf-8',
+    );
+    await assert.rejects(
+      DialogPersistence.loadWakeQueueEntries(invalidWakeQueueRootId, 'running'),
+      (error: unknown) => {
+        assert.ok(error instanceof DomindsPersistenceFileError);
+        assert.equal(error.source, 'wake_queue');
+        assert.equal(error.format, 'jsonl');
+        assert.equal(error.operation, 'parse');
+        assert.equal(error.lineNumber, 2);
+        return true;
+      },
+    );
+
     const wakeQueuePath = path.join(
       sandboxDir,
       '.dialogs',

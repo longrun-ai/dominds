@@ -8492,12 +8492,21 @@ export class DialogPersistence {
       case 'tool_followup':
         return typeof value.triggerId === 'string' && value.triggerId.trim() !== '';
       case 'next_step_trigger':
-        return (
-          typeof value.triggerId === 'string' &&
-          value.triggerId.trim() !== '' &&
-          typeof value.triggerKind === 'string' &&
-          value.triggerKind.trim() !== ''
-        );
+        if (typeof value.triggerId !== 'string' || value.triggerId.trim() === '') {
+          return false;
+        }
+        switch (value.triggerKind) {
+          case 'user_input':
+          case 'queued_prompt':
+          case 'followup':
+          case 'mainline_diligence':
+          case 'result_arrival':
+          case 'open_generation_recovery':
+          case 'reply_delivery_recovery':
+            return true;
+          default:
+            return false;
+        }
       default:
         return false;
     }
