@@ -4,6 +4,11 @@ import { getRecoverableGenerationRunState } from './dialog-generation-run';
 
 export type DialogLatestSnapshot = DialogLatestFile | null;
 
+// Backend drive work is a wake routing filter only. It must stay deliberately shallow: this module
+// says "some persisted continuation source may need a handler", not "the dialog has business value
+// to drive". Each concrete continuation handler must locally re-read and claim its own business
+// facts before starting or continuing a generation. Do not add generic de-dup/fingerprint/cleanup
+// policy here; that would merge unrelated business continuations into one spaghetti gate.
 function hasResultArrivalTrigger(latest: DialogLatestFile): boolean {
   return latest.nextStep.triggers.some((trigger) => trigger.kind === 'result_arrival');
 }

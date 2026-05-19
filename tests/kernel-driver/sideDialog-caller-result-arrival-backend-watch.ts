@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 
 import { toCallSiteCourseNo, toCallSiteGenseqNo } from '@longrun-ai/kernel/types/storage';
 import { formatUnifiedTimestamp } from '@longrun-ai/kernel/utils/time';
-import type { SideDialog } from '../../main/dialog';
+import type { MainDialog, SideDialog } from '../../main/dialog';
 import { globalDialogRegistry } from '../../main/dialog-global-registry';
 import { driveDialogStream } from '../../main/llm/kernel-driver';
 import { driveQueuedDialogsOnce } from '../../main/llm/kernel-driver/loop';
@@ -20,6 +20,16 @@ import {
 } from './helpers';
 
 function lastSideDialogAssistantSaying(dlg: SideDialog): string | null {
+  for (let i = dlg.msgs.length - 1; i >= 0; i -= 1) {
+    const msg = dlg.msgs[i];
+    if (msg && msg.type === 'saying_msg' && msg.role === 'assistant') {
+      return typeof msg.content === 'string' ? msg.content : null;
+    }
+  }
+  return null;
+}
+
+function lastMainAssistantSaying(dlg: MainDialog): string | null {
   for (let i = dlg.msgs.length - 1; i >= 0; i -= 1) {
     const msg = dlg.msgs[i];
     if (msg && msg.type === 'saying_msg' && msg.role === 'assistant') {
@@ -52,6 +62,38 @@ async function main(): Promise<void> {
         role: 'tool',
         message: watchedResultMessage,
         response: 'Caller resumed from watched side-dialog result arrival.',
+      },
+      {
+        role: 'tool',
+        message: formatTellaskResponseContent({
+          callName: 'tellaskSessionless',
+          callId: 'caller-without-final-to-callee',
+          responderId: 'mentor',
+          tellaskerId: 'fullstack',
+          mentionList: ['@mentor'],
+          tellaskContent: 'Please finish the other nested task.',
+          responseBody: 'mentor finished the other nested task',
+          status: 'completed',
+          deliveryMode: 'reply_tool',
+          language,
+        }),
+        response: 'Caller without final response resumed from active-callees result arrival.',
+      },
+      {
+        role: 'tool',
+        message: formatTellaskResponseContent({
+          callName: 'tellaskSessionless',
+          callId: 'root-to-main-callee',
+          responderId: 'mentor',
+          tellaskerId: 'tester',
+          mentionList: ['@mentor'],
+          tellaskContent: 'Please finish the mainline task.',
+          responseBody: 'mentor finished the mainline task',
+          status: 'completed',
+          deliveryMode: 'reply_tool',
+          language,
+        }),
+        response: 'Mainline resumed from watched result arrival.',
       },
     ]);
 
@@ -157,7 +199,6 @@ async function main(): Promise<void> {
       false,
       'backend watch revive should consume side-dialog caller result_arrival trigger',
     );
-
     const callerEventsAfterDrive = await DialogPersistence.loadCourseEvents(
       caller.id,
       caller.currentCourse,
@@ -198,6 +239,63 @@ async function main(): Promise<void> {
       genStartCountAfterLateDirectRevive,
       genStartCountAfterDrive,
       'late direct caller revive after consumed result_arrival must not open an empty generation',
+    );
+
+    await DialogPersistence.upsertNextStepTrigger(
+      caller.id,
+      {
+        triggerId: 'result-arrival:dispatch:test:caller:c1:g2',
+        kind: 'result_arrival',
+        batchId: 'dispatch:test:caller:c1:g2',
+      },
+      caller.status,
+    );
+    await driveDialogStream(caller, undefined, true, {
+      source: 'kernel_driver_supply_response_caller_revive',
+      reason: 'late_direct_revive_after_consumed_result_arrival_with_stale_trigger_residue',
+      suppressDiligencePush: true,
+      noPromptSideDialogResumeEntitlement: {
+        callerDialogId: caller.id.selfId,
+        reason: 'resolved_pending_sideDialog_reply',
+        sideDialogId: callee.id.selfId,
+        callType: 'C',
+        callId: 'caller-to-callee',
+        callSiteCourse: 1,
+        callSiteGenseq: 2,
+        batchId: 'dispatch:test:caller:c1:g2',
+        resolvedCallIds: ['caller-to-callee'],
+        triggerCallId: 'caller-to-callee',
+      },
+    });
+    await waitForAllDialogsUnlocked(root, 3_000);
+    const callerEventsAfterLateDirectReviveWithResidue = await DialogPersistence.loadCourseEvents(
+      caller.id,
+      caller.currentCourse,
+      caller.status,
+    );
+    const genStartCountAfterLateDirectReviveWithResidue =
+      callerEventsAfterLateDirectReviveWithResidue.filter(
+        (event) => event.type === 'gen_start_record',
+      ).length;
+    assert.equal(
+      genStartCountAfterLateDirectReviveWithResidue,
+      genStartCountAfterDrive,
+      'late direct caller revive must stay stale when active-callees says the result_arrival batch was consumed',
+    );
+    await driveQueuedDialogsOnce();
+    await waitForAllDialogsUnlocked(root, 3_000);
+    const callerEventsAfterStaleBackendResidue = await DialogPersistence.loadCourseEvents(
+      caller.id,
+      caller.currentCourse,
+      caller.status,
+    );
+    const genStartCountAfterStaleBackendResidue = callerEventsAfterStaleBackendResidue.filter(
+      (event) => event.type === 'gen_start_record',
+    ).length;
+    assert.equal(
+      genStartCountAfterStaleBackendResidue,
+      genStartCountAfterDrive,
+      'backend-loop stale result_arrival trigger must not open a generation after active-callees consumption',
     );
 
     const callerWithoutFinalResponse = await root.createSideDialog(
@@ -269,7 +367,7 @@ async function main(): Promise<void> {
 
     await driveDialogStream(callerWithoutFinalResponse, undefined, true, {
       source: 'kernel_driver_supply_response_caller_revive',
-      reason: 'late_direct_revive_after_consumed_result_arrival_without_final_response',
+      reason: 'direct_revive_after_result_arrival_trigger_was_lost_without_final_response',
       suppressDiligencePush: true,
       noPromptSideDialogResumeEntitlement: {
         callerDialogId: callerWithoutFinalResponse.id.selfId,
@@ -294,10 +392,140 @@ async function main(): Promise<void> {
     const genStartCountAfterLateReviveWithoutFinal = callerWithoutFinalEventsAfterLateRevive.filter(
       (event) => event.type === 'gen_start_record',
     ).length;
+    assert.ok(
+      genStartCountAfterLateReviveWithoutFinal > genStartCountBeforeLateRevive,
+      'direct caller revive should recover when active-callees still has a resolved result_arrival batch even if its trigger was lost',
+    );
+    const activeCalleesAfterLostTriggerRevive = await DialogPersistence.loadActiveCallees(
+      callerWithoutFinalResponse.id,
+      callerWithoutFinalResponse.status,
+    );
     assert.equal(
+      activeCalleesAfterLostTriggerRevive.batches.some(
+        (batch) => batch.batchId === 'dispatch:test:caller-without-final:c1:g4',
+      ),
+      false,
+      'active-callees-backed direct revive should consume the resolved result_arrival batch',
+    );
+
+    await driveDialogStream(callerWithoutFinalResponse, undefined, true, {
+      source: 'kernel_driver_supply_response_caller_revive',
+      reason: 'late_direct_revive_after_active_callees_consumed_without_final_response',
+      suppressDiligencePush: true,
+      noPromptSideDialogResumeEntitlement: {
+        callerDialogId: callerWithoutFinalResponse.id.selfId,
+        reason: 'resolved_pending_sideDialog_reply',
+        sideDialogId: calleeWithoutFinalResponse.id.selfId,
+        callType: 'C',
+        callId: 'caller-without-final-to-callee',
+        callSiteCourse: 1,
+        callSiteGenseq: 4,
+        batchId: 'dispatch:test:caller-without-final:c1:g4',
+        resolvedCallIds: ['caller-without-final-to-callee'],
+        triggerCallId: 'caller-without-final-to-callee',
+      },
+    });
+    await waitForAllDialogsUnlocked(root, 3_000);
+
+    const callerWithoutFinalEventsAfterConsumedRevive = await DialogPersistence.loadCourseEvents(
+      callerWithoutFinalResponse.id,
+      callerWithoutFinalResponse.currentCourse,
+      callerWithoutFinalResponse.status,
+    );
+    const genStartCountAfterConsumedRevive = callerWithoutFinalEventsAfterConsumedRevive.filter(
+      (event) => event.type === 'gen_start_record',
+    ).length;
+    assert.equal(
+      genStartCountAfterConsumedRevive,
       genStartCountAfterLateReviveWithoutFinal,
-      genStartCountBeforeLateRevive,
-      'late direct caller revive after consumed result_arrival and no final response must not open an empty generation',
+      'late direct caller revive after active-callees consumption and no final response must not open an empty generation',
+    );
+
+    const mainlineCallee = await root.createSideDialog(
+      'mentor',
+      ['@mentor'],
+      'Please finish the mainline task.',
+      {
+        callName: 'tellaskSessionless',
+        originMemberId: 'tester',
+        askerDialogId: root.id.selfId,
+        callId: 'root-to-main-callee',
+        callSiteCourse: toCallSiteCourseNo(1),
+        callSiteGenseq: toCallSiteGenseqNo(5),
+        collectiveTargets: ['mentor'],
+      },
+    );
+    await DialogPersistence.appendActiveCalleeDispatch(root.id, {
+      batchId: 'dispatch:test:root:c1:g5',
+      calleeDialogId: mainlineCallee.id.selfId,
+      callId: 'root-to-main-callee',
+      callName: 'tellaskSessionless',
+      callSiteCourse: toCallSiteCourseNo(1),
+      callSiteGenseq: toCallSiteGenseqNo(5),
+      callType: 'C',
+      createdAt: formatUnifiedTimestamp(new Date()),
+      mentionList: ['@mentor'],
+      targetAgentId: 'mentor',
+      tellaskContent: 'Please finish the mainline task.',
+    });
+    await supplyResponseToAskerDialog({
+      callerDialog: root,
+      sideDialogId: mainlineCallee.id,
+      responseText: 'mentor finished the mainline task',
+      callType: 'C',
+      callId: 'root-to-main-callee',
+      calleeResponseRef: { course: 1, genseq: 1 },
+      scheduleDrive: () => {},
+    });
+
+    await driveQueuedDialogsOnce();
+    await waitForAllDialogsUnlocked(root, 3_000);
+
+    assert.equal(
+      lastMainAssistantSaying(root),
+      'Mainline resumed from watched result arrival.',
+      'main dialog caller should process the watched result_arrival once',
+    );
+    const rootEventsAfterMainlineDrive = await DialogPersistence.loadCourseEvents(
+      root.id,
+      root.currentCourse,
+      root.status,
+    );
+    const rootGenStartCountAfterMainlineDrive = rootEventsAfterMainlineDrive.filter(
+      (event) => event.type === 'gen_start_record',
+    ).length;
+
+    await driveDialogStream(root, undefined, true, {
+      source: 'kernel_driver_supply_response_caller_revive',
+      reason: 'late_direct_mainline_revive_after_consumed_result_arrival',
+      suppressDiligencePush: true,
+      noPromptSideDialogResumeEntitlement: {
+        callerDialogId: root.id.selfId,
+        reason: 'resolved_pending_sideDialog_reply',
+        sideDialogId: mainlineCallee.id.selfId,
+        callType: 'C',
+        callId: 'root-to-main-callee',
+        callSiteCourse: 1,
+        callSiteGenseq: 5,
+        batchId: 'dispatch:test:root:c1:g5',
+        resolvedCallIds: ['root-to-main-callee'],
+        triggerCallId: 'root-to-main-callee',
+      },
+    });
+    await waitForAllDialogsUnlocked(root, 3_000);
+
+    const rootEventsAfterLateMainlineRevive = await DialogPersistence.loadCourseEvents(
+      root.id,
+      root.currentCourse,
+      root.status,
+    );
+    const rootGenStartCountAfterLateMainlineRevive = rootEventsAfterLateMainlineRevive.filter(
+      (event) => event.type === 'gen_start_record',
+    ).length;
+    assert.equal(
+      rootGenStartCountAfterLateMainlineRevive,
+      rootGenStartCountAfterMainlineDrive,
+      'late direct main-dialog revive after consumed result_arrival must not open an empty generation',
     );
   });
 

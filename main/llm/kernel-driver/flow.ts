@@ -690,6 +690,17 @@ function hasResultArrivalTrigger(
   return latest?.nextStep.triggers.some((trigger) => trigger.kind === 'result_arrival') === true;
 }
 
+function hasResultArrivalTriggerForBatch(
+  latest: Awaited<ReturnType<typeof DialogPersistence.loadDialogLatest>>,
+  batchId: string,
+): boolean {
+  return (
+    latest?.nextStep.triggers.some(
+      (trigger) => trigger.kind === 'result_arrival' && trigger.batchId === batchId,
+    ) === true
+  );
+}
+
 function hasFollowupNextAction(
   latest: Awaited<ReturnType<typeof DialogPersistence.loadDialogLatest>>,
 ): boolean {
@@ -735,6 +746,76 @@ function hasResolvedPendingSideDialogReplyEntitlement(
     isPositiveInteger(entitlement.callSiteCourse) &&
     isPositiveInteger(entitlement.callSiteGenseq)
   );
+}
+
+type RequestedWorkReplyContinuationClaim =
+  | Readonly<{ status: 'claimed'; batchId: string }>
+  | Readonly<{ status: 'stale'; batchId: string }>
+  | Readonly<{ status: 'not_applicable' }>;
+
+function resolveRequestedWorkRepliedBatchId(args: {
+  dialog: Dialog;
+  driveOptions: KernelDriverDriveOptions | undefined;
+}): string | undefined {
+  const entitlement = args.driveOptions?.noPromptSideDialogResumeEntitlement;
+  if (
+    args.driveOptions?.source !== 'kernel_driver_supply_response_caller_revive' ||
+    entitlement?.callerDialogId !== args.dialog.id.selfId ||
+    entitlement.reason !== 'resolved_pending_sideDialog_reply'
+  ) {
+    return undefined;
+  }
+  const batchId = entitlement.batchId.trim();
+  if (batchId === '') {
+    throw new Error(
+      `requested work reply continuation invariant violation: empty batchId ` +
+        `(dialog=${args.dialog.id.valueOf()}, reason=${args.driveOptions.reason})`,
+    );
+  }
+  return batchId;
+}
+
+async function claimRequestedWorkRepliedContinuationForDrive(args: {
+  dialog: Dialog;
+  driveOptions: KernelDriverDriveOptions | undefined;
+}): Promise<RequestedWorkReplyContinuationClaim> {
+  const batchId = resolveRequestedWorkRepliedBatchId(args);
+  if (batchId === undefined) {
+    return { status: 'not_applicable' };
+  }
+  const activeCallees = await DialogPersistence.loadActiveCallees(
+    args.dialog.id,
+    args.dialog.status,
+  );
+  const batch = activeCallees.batches.find((entry) => entry.batchId === batchId);
+  if (batch === undefined) {
+    return { status: 'stale', batchId };
+  }
+  if (batch.status !== 'resolved') {
+    const reason = args.driveOptions?.reason ?? 'unknown';
+    throw new Error(
+      `requested work reply continuation invariant violation: unresolved active callee batch ` +
+        `(dialog=${args.dialog.id.valueOf()}, reason=${reason}, ` +
+        `batchId=${batchId}, status=${batch.status})`,
+    );
+  }
+  const latest = await DialogPersistence.loadDialogLatest(args.dialog.id, args.dialog.status);
+  if (!hasResultArrivalTriggerForBatch(latest, batchId)) {
+    // `active-callees` is the authority for whether the reply batch is still unconsumed. The
+    // `result_arrival` trigger is just the gen-start handoff that will consume that active-callees
+    // batch. If a resolved batch survived but its trigger was lost, rebuild this business-local
+    // trigger instead of treating trigger absence as stale.
+    await DialogPersistence.upsertNextStepTrigger(
+      args.dialog.id,
+      {
+        triggerId: `result-arrival:${batchId}`,
+        kind: 'result_arrival',
+        batchId,
+      },
+      args.dialog.status,
+    );
+  }
+  return { status: 'claimed', batchId };
 }
 
 function resolveDriveRequestSource(
@@ -827,6 +908,7 @@ async function applyRegisteredDialogRunControlsBeforeDrive(args: {
 async function inspectNoPromptSideDialogDrive(args: {
   dialog: SideDialog;
   driveOptions: KernelDriverDriveOptions | undefined;
+  requestedWorkReplyClaim: RequestedWorkReplyContinuationClaim;
 }): Promise<
   | {
       shouldReject: false;
@@ -853,7 +935,6 @@ async function inspectNoPromptSideDialogDrive(args: {
   const rawCourse = latest?.currentCourse ?? args.dialog.currentCourse;
   const currentCourse = Number.isFinite(rawCourse) && rawCourse > 0 ? Math.floor(rawCourse) : 1;
   const sideDialogFinalResponseCallId = latest?.sideDialogFinalResponse?.callId;
-
   const explicitInterruptedResumeAllowed =
     args.driveOptions?.allowResumeFromInterrupted === true &&
     latest?.executionMarker?.kind === 'interrupted';
@@ -862,21 +943,65 @@ async function inspectNoPromptSideDialogDrive(args: {
     latest !== null &&
     latest !== undefined &&
     hasRecoverableGenerationBeyondFinalResponse(latest);
+  const resultArrivalTriggerPresent = hasResultArrivalTrigger(latest);
+  let backendLoopResultArrivalClaimed = false;
+  if (source === 'kernel_driver_backend_loop' && resultArrivalTriggerPresent) {
+    // Backend-loop wakeups only get to treat `result_arrival` as durable work when the batch is
+    // still present in `active-callees`. The trigger itself is just the handoff cue; if the batch
+    // is already gone, this is a stale revive and must not reopen a generation.
+    const activeCallees = await DialogPersistence.loadActiveCallees(
+      args.dialog.id,
+      args.dialog.status,
+    );
+    for (const trigger of latest?.nextStep.triggers ?? []) {
+      if (trigger.kind !== 'result_arrival') {
+        continue;
+      }
+      const batch = activeCallees.batches.find((entry) => entry.batchId === trigger.batchId);
+      if (batch === undefined) {
+        continue;
+      }
+      if (batch.status !== 'resolved') {
+        const reason = args.driveOptions?.reason ?? 'unknown';
+        throw new Error(
+          `requested work reply continuation invariant violation: unresolved active callee batch ` +
+            `(dialog=${args.dialog.id.valueOf()}, reason=${reason}, ` +
+            `batchId=${trigger.batchId}, status=${batch.status})`,
+        );
+      }
+      backendLoopResultArrivalClaimed = true;
+      break;
+    }
+  }
   const resolvedPendingSideDialogReplyEntitlement = hasResolvedPendingSideDialogReplyEntitlement(
     args.dialog,
     args.driveOptions,
   );
-  const resultArrivalTriggerPresent = hasResultArrivalTrigger(latest);
+  const sameBatchResultArrivalClaimed = args.requestedWorkReplyClaim.status === 'claimed';
   const followupNextActionPresent = hasFollowupNextAction(latest);
   const supplyResponseCallerReviveAllowed =
     hasCallerReviveEntitlement(args.dialog, args.driveOptions) &&
-    (!resolvedPendingSideDialogReplyEntitlement || resultArrivalTriggerPresent);
+    (!resolvedPendingSideDialogReplyEntitlement || sameBatchResultArrivalClaimed);
   const backendLoopDurableWorkAllowed =
     source === 'kernel_driver_backend_loop' &&
-    (resultArrivalTriggerPresent || followupNextActionPresent);
+    (backendLoopResultArrivalClaimed || followupNextActionPresent);
+  if (
+    source === 'kernel_driver_backend_loop' &&
+    resultArrivalTriggerPresent &&
+    !backendLoopResultArrivalClaimed
+  ) {
+    return {
+      shouldReject: true,
+      source,
+      rejection: 'stale_consumed_result_arrival',
+      displayState,
+      currentCourse,
+      sideDialogFinalResponseCallId,
+    };
+  }
   const finalResponseResultArrivalReviveAllowed =
     sideDialogFinalResponseCallId !== undefined &&
-    ((resolvedPendingSideDialogReplyEntitlement && resultArrivalTriggerPresent) ||
+    ((resolvedPendingSideDialogReplyEntitlement && sameBatchResultArrivalClaimed) ||
       backendLoopDurableWorkAllowed ||
       inProgressGenerationResumeAllowed);
   if (sideDialogFinalResponseCallId !== undefined && !finalResponseResultArrivalReviveAllowed) {
@@ -889,7 +1014,10 @@ async function inspectNoPromptSideDialogDrive(args: {
       sideDialogFinalResponseCallId,
     };
   }
-  if (resolvedPendingSideDialogReplyEntitlement && !resultArrivalTriggerPresent) {
+  if (
+    resolvedPendingSideDialogReplyEntitlement &&
+    args.requestedWorkReplyClaim.status !== 'claimed'
+  ) {
     return {
       shouldReject: true,
       source,
@@ -1220,7 +1348,11 @@ export async function executeDriveRound(args: {
         return;
       }
       if (dialog instanceof SideDialog && !dialog.hasUpNext()) {
-        const inspection = await inspectNoPromptSideDialogDrive({ dialog, driveOptions });
+        const inspection = await inspectNoPromptSideDialogDrive({
+          dialog,
+          driveOptions,
+          requestedWorkReplyClaim: { status: 'not_applicable' },
+        });
         if (inspection.shouldReject && inspection.rejection === 'finalized_after_response_anchor') {
           const cleanup = await clearStaleSideDialogRunControlForFinalResponse({ dialog });
           if (!cleanup.cleared) {
@@ -1293,13 +1425,39 @@ export async function executeDriveRound(args: {
       );
     }
 
-    // Queued/auto drive (without fresh human input) must not proceed while dialog is suspended by
-    // Q4H. SideDialogs have an extra no-prompt entitlement gate below so background wake-ups cannot
-    // duplicate final-response or reply-obligation work.
+    // Queued/auto drive (without fresh human input) must be authorized by a concrete business
+    // continuation. Keep that claim local to the relevant handler: Q4H/user-answer, side-dialog
+    // reply delivery, requested-work result arrival, open-generation recovery, etc. Do not fold
+    // those cases into one cross-cutting "can auto drive" rule; that loses business meaning and
+    // makes stale wakeups look valid.
+    //
+    // SideDialogs currently have an explicit legacy no-prompt entitlement gate below. Main-dialog
+    // result-arrival handling must grow the same style of local claim for requested-work replies,
+    // instead of relying on generic driveOptions/source/reason checks.
     if (!humanPrompt) {
+      const requestedWorkReplyClaim = await claimRequestedWorkRepliedContinuationForDrive({
+        dialog,
+        driveOptions,
+      });
+      if (requestedWorkReplyClaim.status === 'stale') {
+        log.debug('kernel-driver dropped stale requested-work reply continuation', undefined, {
+          dialogId: dialog.id.valueOf(),
+          rootId: dialog.id.rootId,
+          selfId: dialog.id.selfId,
+          source: driveSource,
+          reason: driveOptions?.reason ?? null,
+          batchId: requestedWorkReplyClaim.batchId,
+        });
+        return;
+      }
+
       if (dialog instanceof SideDialog && !dialog.hasUpNext()) {
         try {
-          const inspection = await inspectNoPromptSideDialogDrive({ dialog, driveOptions });
+          const inspection = await inspectNoPromptSideDialogDrive({
+            dialog,
+            driveOptions,
+            requestedWorkReplyClaim,
+          });
           if (inspection.shouldReject) {
             if (inspection.rejection === 'stale_consumed_result_arrival') {
               log.debug(

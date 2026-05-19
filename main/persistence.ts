@@ -3206,6 +3206,11 @@ export class DiskFileDialogStore extends DialogStore {
       });
       for (const trigger of acceptedTriggers) {
         if (trigger.kind === 'result_arrival') {
+          // `active-callees` is the business consumption ledger for requested-work replies. A
+          // resolved batch stays there until a concrete generation accepts its `result_arrival`
+          // trigger; at that point the reply fact belongs to this gen turn's LLM context and later
+          // caller revives for the same batch are stale. Do not move this into a generic trigger
+          // cleanup path or replace it with transcript/fingerprint guessing.
           await DialogPersistence.removeActiveCalleeBatch(this.dialogId, trigger.batchId);
         }
       }

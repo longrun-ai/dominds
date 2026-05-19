@@ -47,8 +47,19 @@ export type KernelDriverDriveOptions = Readonly<{
    * This is deliberately part of the drive contract instead of being rediscovered from old
    * transcript/assignment records. A continuation must tell the next iteration what business
    * obligation it is continuing, or the driver treats it as no business continuation.
+   *
+   * Keep continuation decisions local to the concrete business handler. Do not add generic
+   * "already consumed", fingerprint, or catch-all can-drive logic here; this type is a routing
+   * contract, not a place to merge unrelated continuation semantics.
    */
   businessContinuation?: DialogBusinessContinuation;
+  /**
+   * Migration token for legacy no-prompt side-dialog resume paths.
+   *
+   * This is not business authority by itself. The receiving path must re-read its own persisted
+   * facts and locally claim or discard the continuation. Do not generalize this into a cross-cutting
+   * revive/cleanup/fingerprint mechanism.
+   */
   noPromptSideDialogResumeEntitlement?:
     | Readonly<{
         callerDialogId: string;
