@@ -109,7 +109,7 @@ Business continuation handler 是 drive 算法的业务核心。
 - 它是否仍未消费？
 - claim 成功后要给 drive core 哪些显式 continuation 信息？
 - 它的消费点在哪里？
-- stale 时本业务如何清理自己的 cue？
+- stale 时本业务如何清理自己的 entry / trigger？
 - 不合理状态如何 loud fail？
 
 handler 之间不能共享一个综合 `canAutoDrive` / `canNoPromptDrive` / `cleanupStaleContinuation` 之类的总逻辑。跨业务汇总判断会丢失业务依据，并制造 spaghetti。
@@ -125,14 +125,14 @@ Drive core 只执行已经被 handler claim 的 continuation。
 目标算法应接近：
 
 ```text
-wake queue yields cue
+wake queue yields entry
   -> resolve target dialog
-  -> dispatch cue to its local business continuation handler
+  -> dispatch entry to its local business continuation handler
   -> handler re-reads durable authority
   -> handler returns one of:
        claimed(continuation) -> drive core executes explicit continuation
-       stale(cleaned)        -> handler cleaned its own stale cue; stop
-       not_applicable        -> try next cue/handler or expire queue item
+       stale(cleaned)        -> handler cleaned its own stale entry / trigger; stop
+       not_applicable        -> try next entry/handler or expire queue item
        impossible(error)     -> loud fail
 ```
 
@@ -178,11 +178,11 @@ requested-work reply 的原则是：
 
 当前对应消费账本是 `active-callees`。`result_arrival` 只是交接提示；真正判断是否还能继续，必须看 `active-callees` 里是否仍存在对应 batch。
 
-其他 continuation 也必须建立类似的业务消费点，而不是依赖 queue/watch 是否存在。
+其他 continuation 也必须建立类似的业务消费点，而不是依赖 wake queue entry 是否存在。
 
 ### 3. Stale 清理必须本地化
 
-stale 清理只能清理本业务自己产生的 cue。
+stale 清理只能清理本业务自己产生的 entry / trigger。
 
 例如 requested-work reply handler 可以清理自己确认 stale 的 `result_arrival` trigger；reply delivery handler 可以清理自己确认 completed 的 `reply_delivery_recovery` trigger。
 
@@ -212,7 +212,7 @@ Wake queue 可以丢、重复、延迟、残留。它只是让 handler 有机会
 - queue item 存在，不代表可以 drive；
 - queue item 消失，不代表业务事实已消费；
 - handler claim 必须读 durable authority；
-- handler stale 必须只清自己的 cue；
+- handler stale 必须只清自己的 entry / trigger；
 - drive core 不能根据 queue/source/reason 猜授权。
 
 ### 6. 先决等待优先于 runnable continuation
@@ -268,7 +268,7 @@ Durable authority:
 
 - `active-callees` 中对应 batch 是否存在；
 - batch 必须是 `resolved`；
-- `result_arrival` trigger 只是 gen-start handoff cue。
+- `result_arrival` trigger 只是 gen-start handoff trigger。
 
 Claim:
 
@@ -373,7 +373,7 @@ Durable authority:
 Claim:
 
 - handler 必须确认 generation 可恢复；
-- 如果 sideDialog final response 已锚定且没有 recoverable generation，应拒绝或清理本业务 cue。
+- 如果 sideDialog final response 已锚定且没有 recoverable generation，应拒绝或清理本业务 entry / trigger。
 
 Consume:
 
@@ -483,10 +483,10 @@ Consume:
 建议按低风险顺序推进：
 
 0. 已完成基础：保留 `active-callees.json`、`nextStep.triggers`、`generationRunState`、`replyDelivery`、`userWait` 等状态机元信息作为运行判定源；不回扫历史补猜。
-1. 以 requested-work reply 为样板，确认 `active-callees` 消费账本、`result_arrival` handoff cue、backend wake claim 都已本地化。
+1. 以 requested-work reply 为样板，确认 `active-callees` 消费账本、`result_arrival` handoff trigger、backend Wake Queue claim 都已本地化。
 2. 建立 reply delivery live continuation handler，让 backend wake 能执行 pending reply recovery，而不是只依赖 restart recovery。
 3. 将 follow-up、pending runtime prompt、open generation recovery、explicit interrupted resume 的入口显式化为 handler。
-4. 已完成：把 root/sideline wake 存储从 dialog-level watch 迁移到业务命名 Wake Queue entry。
+4. 已完成：把 root/sideDialog wake 存储从 dialog-level watch 迁移到业务命名 Wake Queue entry。
 5. 已完成：删除 `noPromptSideDialogResumeEntitlement` 和 `inspectNoPromptSideDialogDrive`。
 6. 已完成：删除运行面 dialog-level wake storage 命名，保留必要的 `wake-queue.jsonl` 存储实现。
 7. 收敛 malformed 边界：必要运行元信息缺失时 loud diagnostic / malformed，而不是初始化默认值后继续运行。
@@ -508,9 +508,9 @@ Consume:
 - caller/callee 角色相对性：不按主线/支线硬编码 drive/reply/recovery。
 - Diligence Push 边界：只作用主线编排保活，不把 active callee pending 当 runtime drive 授权。
 - active-callees 语义：既是 observability/background summary，也是 requested-work reply 的消费账本；消费后删除 batch，不累积历史。
-- result-arrival 语义：trigger 是 gen-start handoff cue，业务授权来自 `active-callees` batch claim。
+- result-arrival 语义：trigger 是 gen-start handoff trigger，业务授权来自 `active-callees` batch claim。
 - replyDelivery 语义：pending/delivered/recorded 双状态防重复交付，duplicate stale pending 走 loud warn + replace，correlation 冲突 loud fail。
-- root-local sideline wake：不能全量扫描历史支线；当前实现是业务命名 Wake Queue entry。
+- root-local Wake Queue：不能全量扫描历史支线；当前实现是业务命名 Wake Queue entry。
 - 状态机元信息：常态 runtime 不回扫 course JSONL；缺元信息时 loud/malformed。
 - 已完成现场 bug 的测试名或代码路径保留，例如 background callee badge event、sideDialog caller result-arrival backend wake queue、reply delivery duplicate/stale handling。
 
@@ -522,7 +522,7 @@ Consume:
 - 用 edge/level/fingerprint 代替业务 durable authority；
 - 根据 old transcript 或 LLM ctx 文本模糊匹配判断是否消费；
 - 在 backend loop 中直接“试 drive 一下”；
-- queue/watch 残留时启动空 generation；
+- wake queue entry 残留时启动空 generation；
 - stale 清理做成跨业务总清理；
 - 发现 invariant 不合理时静默移除 queue item；
 - 让 `source` / `reason` 决定业务是否可以继续。
