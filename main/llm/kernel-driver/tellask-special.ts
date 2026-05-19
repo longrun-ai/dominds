@@ -380,7 +380,11 @@ export async function deliverTellaskBackReplyFromDirective(args: {
   // persisted and mirrored locally. Otherwise a write failure here would leave suspension state
   // claiming "resumed" while the business fact never landed.
   askBackAskerDialog.setSuspensionState('resumed');
-  await reviveDialogIfUnblocked(askBackAskerDialog, args.callbacks, 'reply_tellask_back_delivered');
+  await scheduleContinuationDriveIfUnblocked(
+    askBackAskerDialog,
+    args.callbacks,
+    'reply_tellask_back_delivered',
+  );
   return { kind: 'delivered' };
 }
 
@@ -1326,7 +1330,7 @@ async function finishRegisteredTellaskReplacement(args: {
   await callerDialog.addChatMessages(result);
 }
 
-async function reviveDialogIfUnblocked(
+async function scheduleContinuationDriveIfUnblocked(
   dialog: Dialog,
   callbacks: KernelDriverDriveCallbacks,
   reason: 'reply_tellask_back_delivered' | 'replaced_pending_sideDialog_reply',
@@ -1341,7 +1345,7 @@ async function reviveDialogIfUnblocked(
   callbacks.scheduleDrive(dialog, {
     waitInQue: true,
     driveOptions: {
-      source: 'kernel_driver_supply_response_caller_revive',
+      source: 'kernel_driver_business_continuation',
       reason,
       suppressDiligencePush: dialog.disableDiligencePush,
       businessContinuation: {
@@ -2315,7 +2319,7 @@ async function executeTellaskCall(
               previousPendingOwner,
               'kernel-driver:executeTellaskCall:TypeB:replacePreviousPendingAssignment',
             );
-            await reviveDialogIfUnblocked(
+            await scheduleContinuationDriveIfUnblocked(
               previousPendingOwner,
               callbacks,
               'replaced_pending_sideDialog_reply',

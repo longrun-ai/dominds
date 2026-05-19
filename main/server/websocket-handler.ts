@@ -865,7 +865,7 @@ async function handleDeclareSideDialogDead(
     (dispatch) => dispatch.calleeDialogId === dialogIdObj.selfId,
   );
   if (!activeCalleeDispatch) {
-    // Asker is not waiting on this sideDialog anymore; do not auto-revive.
+    // Asker is not waiting on this sideDialog anymore; do not schedule a continuation drive.
     return;
   }
 

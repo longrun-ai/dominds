@@ -417,7 +417,7 @@ export abstract class Dialog {
   // Used to ensure proper ordering when multiple generations occur
   protected _generationStartedGenseq: number = 0;
 
-  // Pending sideDialog IDs (for auto-revive tracking)
+  // Pending sideDialog IDs (for active callee tracking)
   protected _activeCalleeDialogIds: DialogID[] = [];
 
   // Phase 11: Suspension state for Type A sideDialog mechanism

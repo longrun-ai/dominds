@@ -312,7 +312,7 @@ export async function supplyResponseToAskerDialog(args: {
             );
       const hasQ4H = await callerDialog.hasPendingQ4H();
       const batchCompleted = activeCalleeOutcome?.batchCompleted === true;
-      const shouldRevive = batchCompleted && !hasQ4H;
+      const shouldDriveContinuation = batchCompleted && !hasQ4H;
       if (batchCompleted && activeCalleeOutcome !== undefined) {
         await DialogPersistence.upsertNextStepTrigger(
           callerDialog.id,
@@ -348,7 +348,7 @@ export async function supplyResponseToAskerDialog(args: {
           activeCalleeDispatch?.callSiteCourse !== undefined
             ? toAskerCourseNumber(activeCalleeDispatch.callSiteCourse)
             : askerCourseOverride,
-        shouldRevive,
+        shouldDriveContinuation,
       };
     });
 
@@ -664,14 +664,14 @@ export async function supplyResponseToAskerDialog(args: {
           };
     await callerDialog.addChatMessages(immediateMirror);
 
-    if (result.shouldRevive) {
+    if (result.shouldDriveContinuation) {
       const isRoot = callerDialog instanceof MainDialog;
       const hasRegistryEntry = isRoot
         ? globalDialogRegistry.get(callerDialog.id.rootId) !== undefined
         : false;
 
       log.debug(
-        `All Type ${callType} sideDialogs complete, caller ${callerDialog.id.selfId} scheduling auto-revive`,
+        `All Type ${callType} sideDialogs complete, caller ${callerDialog.id.selfId} scheduling continuation drive`,
         undefined,
         {
           rootId: callerDialog.id.rootId,
@@ -714,7 +714,7 @@ export async function supplyResponseToAskerDialog(args: {
               : { resolvedCallIds: result.resolvedCallIds }),
             triggerCallId: resolvedCallId,
           },
-          source: 'kernel_driver_supply_response_caller_revive',
+          source: 'kernel_driver_business_continuation',
           reason: `dispatch_batch_resolved:type_${callType}:c${result.callSiteCourse}:g${result.callSiteGenseq}`,
         },
       });

@@ -727,7 +727,7 @@ function hasFollowupNextAction(
   return latest?.nextStep.triggers.some((trigger) => trigger.kind === 'followup') === true;
 }
 
-function hasCallerReviveContinuation(
+function hasSupplyResponseBusinessContinuation(
   dialog: Dialog,
   driveOptions: KernelDriverDriveOptions | undefined,
 ): boolean {
@@ -735,7 +735,7 @@ function hasCallerReviveContinuation(
   if (!continuation) {
     return false;
   }
-  if (driveOptions?.source !== 'kernel_driver_supply_response_caller_revive') {
+  if (driveOptions?.source !== 'kernel_driver_business_continuation') {
     return false;
   }
   if (continuation.kind === 'local_tellask_result') {
@@ -755,7 +755,7 @@ function hasRequestedWorkReplyContinuation(
 ): boolean {
   const continuation = driveOptions?.businessContinuation;
   return (
-    driveOptions?.source === 'kernel_driver_supply_response_caller_revive' &&
+    driveOptions?.source === 'kernel_driver_business_continuation' &&
     continuation?.kind === 'requested_work_reply' &&
     continuation.callerDialogId === dialog.id.selfId &&
     isPositiveInteger(continuation.callSiteCourse) &&
@@ -783,7 +783,7 @@ function resolveDirectRequestedWorkRepliedBatchId(args: {
 }): string | undefined {
   const continuation = args.driveOptions?.businessContinuation;
   if (
-    args.driveOptions?.source !== 'kernel_driver_supply_response_caller_revive' ||
+    args.driveOptions?.source !== 'kernel_driver_business_continuation' ||
     continuation?.kind !== 'requested_work_reply' ||
     continuation.callerDialogId !== args.dialog.id.selfId
   ) {
@@ -1224,7 +1224,7 @@ async function inspectSideDialogBusinessContinuationDrive(args: {
       rejection:
         | 'finalized_after_response_anchor'
         | 'stale_consumed_result_arrival'
-        | 'missing_explicit_interrupted_resume_entitlement';
+        | 'missing_explicit_continuation';
       displayState: DialogDisplayState | undefined;
       currentCourse: number;
       sideDialogFinalResponseCallId: string | undefined;
@@ -1251,18 +1251,18 @@ async function inspectSideDialogBusinessContinuationDrive(args: {
   const sameBatchResultArrivalClaimed = args.requestedWorkReplyClaim.status === 'claimed';
   const followupNextActionPresent = hasFollowupNextAction(latest);
   const replyDeliveryRecoveryClaimed = args.replyDeliveryRecoveryClaim.status === 'claimed';
-  const supplyResponseCallerReviveAllowed =
-    hasCallerReviveContinuation(args.dialog, args.driveOptions) &&
+  const supplyResponseBusinessContinuationAllowed =
+    hasSupplyResponseBusinessContinuation(args.dialog, args.driveOptions) &&
     (!requestedWorkReplyContinuation || sameBatchResultArrivalClaimed);
   const backendLoopDurableWorkAllowed =
     source === 'kernel_driver_backend_loop' &&
     (sameBatchResultArrivalClaimed || followupNextActionPresent || replyDeliveryRecoveryClaimed);
-  const finalResponseResultArrivalReviveAllowed =
+  const finalResponseContinuationAllowed =
     sideDialogFinalResponseCallId !== undefined &&
     ((requestedWorkReplyContinuation && sameBatchResultArrivalClaimed) ||
       backendLoopDurableWorkAllowed ||
       inProgressGenerationResumeAllowed);
-  if (sideDialogFinalResponseCallId !== undefined && !finalResponseResultArrivalReviveAllowed) {
+  if (sideDialogFinalResponseCallId !== undefined && !finalResponseContinuationAllowed) {
     return {
       shouldReject: true,
       source,
@@ -1285,13 +1285,13 @@ async function inspectSideDialogBusinessContinuationDrive(args: {
   if (
     !explicitInterruptedResumeAllowed &&
     !inProgressGenerationResumeAllowed &&
-    !supplyResponseCallerReviveAllowed &&
+    !supplyResponseBusinessContinuationAllowed &&
     !backendLoopDurableWorkAllowed
   ) {
     return {
       shouldReject: true,
       source,
-      rejection: 'missing_explicit_interrupted_resume_entitlement',
+      rejection: 'missing_explicit_continuation',
       displayState,
       currentCourse,
       sideDialogFinalResponseCallId,
@@ -1594,7 +1594,7 @@ export async function executeDriveRound(args: {
   };
   try {
     // Prime active-run registration right after acquiring dialog lock so user stop can
-    // reliably interrupt queued auto-revive drives during preflight.
+    // reliably interrupt queued continuation drives during preflight.
     const hadActiveRunBefore = hasActiveRun(dialog.id);
     createActiveRun(dialog.id);
     activeRunPrimed = true;
@@ -1762,19 +1762,23 @@ export async function executeDriveRound(args: {
           return;
         }
         if (inspection.rejection === 'stale_consumed_result_arrival') {
-          log.debug('Dropped stale sideDialog caller revive after result arrival', undefined, {
-            dialogId: dialog.id.valueOf(),
-            rootId: dialog.id.rootId,
-            selfId: dialog.id.selfId,
-            source: inspection.source,
-            reason: driveOptions?.reason ?? null,
-            rejection: inspection.rejection,
-            allowResumeFromInterrupted: driveOptions?.allowResumeFromInterrupted === true,
-            displayState: inspection.displayState ?? null,
-            currentCourse: inspection.currentCourse,
-            sideDialogFinalResponseCallId: inspection.sideDialogFinalResponseCallId ?? null,
-            waitInQue,
-          });
+          log.debug(
+            'Dropped stale sideDialog requested-work reply after result arrival',
+            undefined,
+            {
+              dialogId: dialog.id.valueOf(),
+              rootId: dialog.id.rootId,
+              selfId: dialog.id.selfId,
+              source: inspection.source,
+              reason: driveOptions?.reason ?? null,
+              rejection: inspection.rejection,
+              allowResumeFromInterrupted: driveOptions?.allowResumeFromInterrupted === true,
+              displayState: inspection.displayState ?? null,
+              currentCourse: inspection.currentCourse,
+              sideDialogFinalResponseCallId: inspection.sideDialogFinalResponseCallId ?? null,
+              waitInQue,
+            },
+          );
           return;
         }
         log.error('Rejected unexpected sideDialog drive request', undefined, {
@@ -1808,10 +1812,13 @@ export async function executeDriveRound(args: {
       // Do not refactor this branch using only `displayState` or only the previous interrupted
       // marker. The correct behavior emerges from combining fresh suspension facts, queued prompt
       // state, and the deferred reply reassertion logic elsewhere.
-      const hasCallerRevive = hasCallerReviveContinuation(dialog, driveOptions);
+      const hasSupplyResponseContinuation = hasSupplyResponseBusinessContinuation(
+        dialog,
+        driveOptions,
+      );
       const suspension = resumeFromInterjectionPause
         ? await loadFreshSuspensionStatusFromPersistence(dialog)
-        : hasCallerRevive
+        : hasSupplyResponseContinuation
           ? await loadFreshSuspensionStatusFromPersistence(dialog)
           : await dialog.getSuspensionStatus();
       const queuedPrompt: UpNextPrompt | undefined = dialog.peekUpNext();

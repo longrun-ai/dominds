@@ -284,7 +284,7 @@ export async function suspendForKeepGoingBudgetExhausted(options: {
   const content = formatQ4HDiligencePushBudgetExhausted(language, { maxInjectCount });
   const genseq = dlg.activeGenSeqOrUndefined ?? 1;
   // This is informational only: it stops further automatic diligence pushes, but does not create
-  // a Q4H wait state and does not participate in revive gating.
+  // a Q4H wait state and does not participate in drive gating.
   await dlg.persistUiOnlyMarkdown(content, genseq);
   postDialogEvent(dlg, {
     type: 'ui_only_markdown_evt',

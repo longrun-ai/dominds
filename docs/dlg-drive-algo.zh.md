@@ -28,7 +28,7 @@
 
 这些业务的 durable authority、消费点、stale 清理、错误边界都不同。把它们放进一个总的 `inspectNoPromptSideDialogDrive` 或类似 gate，会把业务语义压扁成技术条件，最后变成跨业务综合判断和清理逻辑。
 
-dialog-level wake cue storage 的问题类似。它把某个 dialog 标成“值得被 drive 看一下”，但这仍然是 dialog-level 的技术抽象。它既不是业务事实，也不是消费账本。残留 watch 很容易变成空 drive、误 revive 或噪声日志。
+dialog-level wake cue storage 的问题类似。它把某个 dialog 标成“值得被 drive 看一下”，但这仍然是 dialog-level 的技术抽象。它既不是业务事实，也不是消费账本。残留 watch 很容易变成空 drive、误触发 continuation 或噪声日志。
 
 ## 与前序重构文档的关系
 
@@ -66,7 +66,7 @@ dialog-level wake cue storage 的问题类似。它把某个 dialog 标成“值
 
 - caller/callee 命名与 badge 推送属于 UI/观测层规则；保留在相关代码与测试中，不再由 drive algorithm 文档承载现场细节。
 - duplicate pending `replyDelivery` 的结论保留为 reply delivery handler 规则：可恢复 stale pending delivery 应 loud warn 并按当前有效 reply obligation 替换，真正 correlation 冲突才 loud fail。
-- 支线 caller 收到 callee 回贴后没有 revive 的结论保留为 wake queue 规则：不能全量扫描历史支线，必须有 root-local 精确 wake queue entry。
+- 支线 caller 收到 callee 回贴后没有继续运行的结论保留为 wake queue 规则：不能全量扫描历史支线，必须有 root-local 精确 wake queue entry。
 - `needsDrive` / `backend_queue` 旧术语继续收敛为显式 wake queue entry 与 next-step trigger，不再作为文档概念保留。
 - malformed 边界仍是后续工作：必要状态机元信息缺失时应 loud fail / malformed，而不是初始化默认值后继续 unsafe drive。
 
@@ -173,7 +173,7 @@ handler 必须定义“什么时候算已消费”。
 
 requested-work reply 的原则是：
 
-> 如果后续 gen turn 的 LLM context 已经接受了 reply 内容，这个 result 就已消费，后续 revive 必须视为 stale。
+> 如果后续 gen turn 的 LLM context 已经接受了 reply 内容，这个 result 就已消费，后续 continuation 必须视为 stale。
 
 当前对应消费账本是 `active-callees`。`result_arrival` 只是交接提示；真正判断是否还能继续，必须看 `active-callees` 里是否仍存在对应 batch。
 
@@ -271,14 +271,14 @@ Durable authority:
 
 Claim:
 
-- direct caller revive 必须带 batch correlation；
+- direct requested-work reply 必须带 batch correlation；
 - backend wake queue entry 也必须指向 batch；
 - handler 读取 `active-callees`，确认 batch still live。
 
 Consume:
 
 - 当一个具体 gen turn 接受 `result_arrival` trigger 后，移除对应 `active-callees` batch；
-- 后续 direct revive 或 backend cue 再看到同 batch，必须 stale。
+- 后续 direct continuation 或 backend queue entry 再看到同 batch，必须 stale。
 
 Stale cleanup:
 
@@ -390,7 +390,7 @@ Durable authority:
 
 Claim:
 
-- 必须有用户 prompt 或明确 resume entitlement；
+- 必须有用户 prompt 或明确 resume continuation；
 - 不能因为 backend wake 或 queue residue 自动恢复。
 
 Consume:
@@ -486,7 +486,7 @@ Consume:
 2. 建立 reply delivery live continuation handler，让 backend wake 能执行 pending reply recovery，而不是只依赖 restart recovery。
 3. 将 follow-up、pending runtime prompt、open generation recovery、explicit interrupted resume 的入口显式化为 handler。
 4. 已完成：把 root/sideline wake 存储从 dialog-level watch 迁移到业务命名 Wake Queue entry。
-5. 删除 `noPromptSideDialogResumeEntitlement` 和 `inspectNoPromptSideDialogDrive`。
+5. 已完成：删除 `noPromptSideDialogResumeEntitlement` 和 `inspectNoPromptSideDialogDrive`。
 6. 已完成：删除运行面 dialog-level wake storage 命名，保留必要的 `wake-queue.json` 存储实现。
 7. 收敛 malformed 边界：必要运行元信息缺失时 loud diagnostic / malformed，而不是初始化默认值后继续运行。
 8. 已完成：删除前序阶段性文档，让本文成为后续 dialog drive 重构的唯一设计入口。

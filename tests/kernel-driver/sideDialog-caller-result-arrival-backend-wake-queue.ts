@@ -209,8 +209,8 @@ async function main(): Promise<void> {
     ).length;
 
     await driveDialogStream(caller, undefined, true, {
-      source: 'kernel_driver_supply_response_caller_revive',
-      reason: 'late_direct_revive_after_backend_wake_queue_consumed_result_arrival',
+      source: 'kernel_driver_business_continuation',
+      reason: 'late_direct_continuation_after_backend_wake_queue_consumed_result_arrival',
       suppressDiligencePush: true,
       businessContinuation: {
         kind: 'requested_work_reply',
@@ -227,18 +227,18 @@ async function main(): Promise<void> {
     });
     await waitForAllDialogsUnlocked(root, 3_000);
 
-    const callerEventsAfterLateDirectRevive = await DialogPersistence.loadCourseEvents(
+    const callerEventsAfterLateDirectContinuation = await DialogPersistence.loadCourseEvents(
       caller.id,
       caller.currentCourse,
       caller.status,
     );
-    const genStartCountAfterLateDirectRevive = callerEventsAfterLateDirectRevive.filter(
+    const genStartCountAfterLateDirectContinuation = callerEventsAfterLateDirectContinuation.filter(
       (event) => event.type === 'gen_start_record',
     ).length;
     assert.equal(
-      genStartCountAfterLateDirectRevive,
+      genStartCountAfterLateDirectContinuation,
       genStartCountAfterDrive,
-      'late direct caller revive after consumed result_arrival must not open an empty generation',
+      'late direct requested-work reply after consumed result_arrival must not open an empty generation',
     );
 
     await DialogPersistence.upsertNextStepTrigger(
@@ -251,8 +251,8 @@ async function main(): Promise<void> {
       caller.status,
     );
     await driveDialogStream(caller, undefined, true, {
-      source: 'kernel_driver_supply_response_caller_revive',
-      reason: 'late_direct_revive_after_consumed_result_arrival_with_stale_trigger_residue',
+      source: 'kernel_driver_business_continuation',
+      reason: 'late_direct_continuation_after_consumed_result_arrival_with_stale_trigger_residue',
       suppressDiligencePush: true,
       businessContinuation: {
         kind: 'requested_work_reply',
@@ -268,19 +268,16 @@ async function main(): Promise<void> {
       },
     });
     await waitForAllDialogsUnlocked(root, 3_000);
-    const callerEventsAfterLateDirectReviveWithResidue = await DialogPersistence.loadCourseEvents(
-      caller.id,
-      caller.currentCourse,
-      caller.status,
-    );
-    const genStartCountAfterLateDirectReviveWithResidue =
-      callerEventsAfterLateDirectReviveWithResidue.filter(
+    const callerEventsAfterLateDirectContinuationWithResidue =
+      await DialogPersistence.loadCourseEvents(caller.id, caller.currentCourse, caller.status);
+    const genStartCountAfterLateDirectContinuationWithResidue =
+      callerEventsAfterLateDirectContinuationWithResidue.filter(
         (event) => event.type === 'gen_start_record',
       ).length;
     assert.equal(
-      genStartCountAfterLateDirectReviveWithResidue,
+      genStartCountAfterLateDirectContinuationWithResidue,
       genStartCountAfterDrive,
-      'late direct caller revive must stay stale when active-callees says the result_arrival batch was consumed',
+      'late direct requested-work reply must stay stale when active-callees says the result_arrival batch was consumed',
     );
     await driveQueuedDialogsOnce();
     await waitForAllDialogsUnlocked(root, 3_000);
@@ -367,18 +364,19 @@ async function main(): Promise<void> {
       callerWithoutFinalResponse.status,
     );
 
-    const callerWithoutFinalEventsBeforeLateRevive = await DialogPersistence.loadCourseEvents(
+    const callerWithoutFinalEventsBeforeLateContinuation = await DialogPersistence.loadCourseEvents(
       callerWithoutFinalResponse.id,
       callerWithoutFinalResponse.currentCourse,
       callerWithoutFinalResponse.status,
     );
-    const genStartCountBeforeLateRevive = callerWithoutFinalEventsBeforeLateRevive.filter(
-      (event) => event.type === 'gen_start_record',
-    ).length;
+    const genStartCountBeforeLateContinuation =
+      callerWithoutFinalEventsBeforeLateContinuation.filter(
+        (event) => event.type === 'gen_start_record',
+      ).length;
 
     await driveDialogStream(callerWithoutFinalResponse, undefined, true, {
-      source: 'kernel_driver_supply_response_caller_revive',
-      reason: 'direct_revive_after_result_arrival_trigger_was_lost_without_final_response',
+      source: 'kernel_driver_business_continuation',
+      reason: 'direct_continuation_after_result_arrival_trigger_was_lost_without_final_response',
       suppressDiligencePush: true,
       businessContinuation: {
         kind: 'requested_work_reply',
@@ -395,33 +393,34 @@ async function main(): Promise<void> {
     });
     await waitForAllDialogsUnlocked(root, 3_000);
 
-    const callerWithoutFinalEventsAfterLateRevive = await DialogPersistence.loadCourseEvents(
+    const callerWithoutFinalEventsAfterLateContinuation = await DialogPersistence.loadCourseEvents(
       callerWithoutFinalResponse.id,
       callerWithoutFinalResponse.currentCourse,
       callerWithoutFinalResponse.status,
     );
-    const genStartCountAfterLateReviveWithoutFinal = callerWithoutFinalEventsAfterLateRevive.filter(
-      (event) => event.type === 'gen_start_record',
-    ).length;
+    const genStartCountAfterLateContinuationWithoutFinal =
+      callerWithoutFinalEventsAfterLateContinuation.filter(
+        (event) => event.type === 'gen_start_record',
+      ).length;
     assert.ok(
-      genStartCountAfterLateReviveWithoutFinal > genStartCountBeforeLateRevive,
-      'direct caller revive should recover when active-callees still has a resolved result_arrival batch even if its trigger was lost',
+      genStartCountAfterLateContinuationWithoutFinal > genStartCountBeforeLateContinuation,
+      'direct requested-work reply should recover when active-callees still has a resolved result_arrival batch even if its trigger was lost',
     );
-    const activeCalleesAfterLostTriggerRevive = await DialogPersistence.loadActiveCallees(
+    const activeCalleesAfterLostTriggerContinuation = await DialogPersistence.loadActiveCallees(
       callerWithoutFinalResponse.id,
       callerWithoutFinalResponse.status,
     );
     assert.equal(
-      activeCalleesAfterLostTriggerRevive.batches.some(
+      activeCalleesAfterLostTriggerContinuation.batches.some(
         (batch) => batch.batchId === 'dispatch:test:caller-without-final:c1:g4',
       ),
       false,
-      'active-callees-backed direct revive should consume the resolved result_arrival batch',
+      'active-callees-backed direct continuation should consume the resolved result_arrival batch',
     );
 
     await driveDialogStream(callerWithoutFinalResponse, undefined, true, {
-      source: 'kernel_driver_supply_response_caller_revive',
-      reason: 'late_direct_revive_after_active_callees_consumed_without_final_response',
+      source: 'kernel_driver_business_continuation',
+      reason: 'late_direct_continuation_after_active_callees_consumed_without_final_response',
       suppressDiligencePush: true,
       businessContinuation: {
         kind: 'requested_work_reply',
@@ -438,18 +437,20 @@ async function main(): Promise<void> {
     });
     await waitForAllDialogsUnlocked(root, 3_000);
 
-    const callerWithoutFinalEventsAfterConsumedRevive = await DialogPersistence.loadCourseEvents(
-      callerWithoutFinalResponse.id,
-      callerWithoutFinalResponse.currentCourse,
-      callerWithoutFinalResponse.status,
-    );
-    const genStartCountAfterConsumedRevive = callerWithoutFinalEventsAfterConsumedRevive.filter(
-      (event) => event.type === 'gen_start_record',
-    ).length;
+    const callerWithoutFinalEventsAfterConsumedContinuation =
+      await DialogPersistence.loadCourseEvents(
+        callerWithoutFinalResponse.id,
+        callerWithoutFinalResponse.currentCourse,
+        callerWithoutFinalResponse.status,
+      );
+    const genStartCountAfterConsumedContinuation =
+      callerWithoutFinalEventsAfterConsumedContinuation.filter(
+        (event) => event.type === 'gen_start_record',
+      ).length;
     assert.equal(
-      genStartCountAfterConsumedRevive,
-      genStartCountAfterLateReviveWithoutFinal,
-      'late direct caller revive after active-callees consumption and no final response must not open an empty generation',
+      genStartCountAfterConsumedContinuation,
+      genStartCountAfterLateContinuationWithoutFinal,
+      'late direct requested-work reply after active-callees consumption and no final response must not open an empty generation',
     );
 
     const mainlineCallee = await root.createSideDialog(
@@ -507,8 +508,8 @@ async function main(): Promise<void> {
     ).length;
 
     await driveDialogStream(root, undefined, true, {
-      source: 'kernel_driver_supply_response_caller_revive',
-      reason: 'late_direct_mainline_revive_after_consumed_result_arrival',
+      source: 'kernel_driver_business_continuation',
+      reason: 'late_direct_mainline_continuation_after_consumed_result_arrival',
       suppressDiligencePush: true,
       businessContinuation: {
         kind: 'requested_work_reply',
@@ -525,18 +526,19 @@ async function main(): Promise<void> {
     });
     await waitForAllDialogsUnlocked(root, 3_000);
 
-    const rootEventsAfterLateMainlineRevive = await DialogPersistence.loadCourseEvents(
+    const rootEventsAfterLateMainlineContinuation = await DialogPersistence.loadCourseEvents(
       root.id,
       root.currentCourse,
       root.status,
     );
-    const rootGenStartCountAfterLateMainlineRevive = rootEventsAfterLateMainlineRevive.filter(
-      (event) => event.type === 'gen_start_record',
-    ).length;
+    const rootGenStartCountAfterLateMainlineContinuation =
+      rootEventsAfterLateMainlineContinuation.filter(
+        (event) => event.type === 'gen_start_record',
+      ).length;
     assert.equal(
-      rootGenStartCountAfterLateMainlineRevive,
+      rootGenStartCountAfterLateMainlineContinuation,
       rootGenStartCountAfterMainlineDrive,
-      'late direct main-dialog revive after consumed result_arrival must not open an empty generation',
+      'late direct main-dialog continuation after consumed result_arrival must not open an empty generation',
     );
 
     await DialogPersistence.upsertNextStepTrigger(
