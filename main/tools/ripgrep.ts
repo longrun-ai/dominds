@@ -9,7 +9,7 @@ import * as readline from 'node:readline';
 import path from 'path';
 import { Team } from '../team';
 import type { FuncTool, ToolArguments, ToolCallOutput } from '../tool';
-import { toolFailure, toolSuccess } from '../tool';
+import { toolFailure, toolPartialFailure, toolSuccess } from '../tool';
 
 function yamlQuote(value: string): string {
   return `'${value.replace(/'/g, "''")}'`;
@@ -91,6 +91,22 @@ function optionalStringArrayArg(args: ToolArguments, key: string): string[] | un
   return value;
 }
 
+function optionalStringListArg(args: ToolArguments, key: string): string[] | undefined {
+  const value = args[key];
+  if (value === undefined) return undefined;
+  if (typeof value === 'string') return [value];
+  if (!Array.isArray(value) || !value.every((v) => typeof v === 'string')) {
+    throw new Error(`Invalid arguments: \`${key}\` must be a string or an array of strings`);
+  }
+  return value;
+}
+
+function parseRipgrepGlobsArg(args: ToolArguments): string[] {
+  const globs = optionalStringArrayArg(args, 'globs') ?? [];
+  const include = optionalStringListArg(args, 'include') ?? [];
+  return [...globs, ...include];
+}
+
 function dirPatternToRipgrepGlob(pattern: string): string | undefined {
   const normalized = pattern.replace(/\\/g, '/').replace(/^\/+|\/+$/g, '') || '.';
   if (normalized === '.' || normalized === '') return undefined;
@@ -106,7 +122,7 @@ function buildAccessControlGlobs(member: Team.Member): { include: string[]; excl
   const whitelist = member.read_dirs ?? [];
   for (const pat of whitelist) {
     const glob = dirPatternToRipgrepGlob(pat);
-    if (glob) include.push(glob);
+    if (glob && glob !== '**' && glob !== '**/**') include.push(glob);
   }
 
   const blacklist = member.no_read_dirs ?? [];
@@ -279,6 +295,10 @@ const RIPGREP_SNIPPET_TEXT_CHAR_LIMIT = 400;
 const RIPGREP_SNIPPET_OUTPUT_CHAR_LIMIT = 200_000;
 const RIPGREP_SNIPPET_RESULTS_CHAR_BUDGET = RIPGREP_SNIPPET_OUTPUT_CHAR_LIMIT - 2048;
 const RIPGREP_STDERR_CHAR_LIMIT = 16_000;
+const RIPGREP_PARTIAL_PATH_FAILURE_SUMMARY =
+  'Search hit a path error (exit code 2), but returned matches are shown.';
+const RIPGREP_PARTIAL_PATH_FAILURE_NO_MATCH_SUMMARY =
+  'Search hit a path error (exit code 2); no matches were returned.';
 
 type RipgrepSnippetResult = Readonly<{
   path: string;
@@ -300,6 +320,28 @@ type RipgrepRenderedSnippetResult = Readonly<{
   textTruncated: boolean;
   originalTextChars: number;
 }>;
+
+type RipgrepRunDiagnostics = Readonly<{
+  partialPathFailure: boolean;
+  stderrText: string;
+}>;
+
+type RipgrepFilterPlan = Readonly<{
+  args: readonly string[];
+  postFilter: (relPath: string) => boolean;
+  globCompatibilityWarnings: readonly string[];
+}>;
+
+type RawRipgrepArgsPlan = Readonly<{
+  args: readonly string[];
+  postFilter: (relPath: string) => boolean;
+  globCompatibilityWarnings: readonly string[];
+}>;
+
+type ParsedRawRipgrepArg =
+  | Readonly<{ kind: 'glob_pair'; flag: '--glob' | '--iglob' | '-g'; glob: string }>
+  | Readonly<{ kind: 'glob_equals'; prefix: '--glob=' | '--iglob=' | '-g'; glob: string }>
+  | Readonly<{ kind: 'other'; value: string }>;
 
 function truncateRipgrepSnippetText(
   text: string,
@@ -424,21 +466,23 @@ function buildRipgrepSnippetSummary(input: {
   truncatedByMatchLimit: boolean;
   truncatedByOutputChars: boolean;
   textTruncated: boolean;
+  partialPathFailure: boolean;
 }): string {
-  if (input.totalMatches === 0) return 'No matches.';
+  const partialSuffix = input.partialPathFailure ? ` ${RIPGREP_PARTIAL_PATH_FAILURE_SUMMARY}` : '';
+  if (input.totalMatches === 0) return formatRipgrepNoMatchesSummary(input.partialPathFailure);
   if (input.truncatedByMatchLimit && input.truncatedByOutputChars) {
-    return `Found ${input.totalMatches} matches; showing ${input.shownResults} snippets within max_results/output limits (truncated=true).`;
+    return `Found ${input.totalMatches} matches; showing ${input.shownResults} snippets within max_results/output limits (truncated=true).${partialSuffix}`;
   }
   if (input.truncatedByOutputChars) {
-    return `Found ${input.totalMatches} matches; showing ${input.shownResults} snippets within output size limit (truncated=true).`;
+    return `Found ${input.totalMatches} matches; showing ${input.shownResults} snippets within output size limit (truncated=true).${partialSuffix}`;
   }
   if (input.truncatedByMatchLimit) {
-    return `Showing first ${input.maxResults} of ${input.totalMatches} matches (truncated=true).`;
+    return `Showing first ${input.maxResults} of ${input.totalMatches} matches (truncated=true).${partialSuffix}`;
   }
   if (input.textTruncated) {
-    return `Found ${input.totalMatches} matches; long snippet lines were trimmed for readability.`;
+    return `Found ${input.totalMatches} matches; long snippet lines were trimmed for readability.${partialSuffix}`;
   }
-  return `Found ${input.totalMatches} matches.`;
+  return `Found ${input.totalMatches} matches.${partialSuffix}`;
 }
 
 function formatRipgrepSnippetYaml(input: {
@@ -450,6 +494,8 @@ function formatRipgrepSnippetYaml(input: {
   maxResults: number;
   fileCount: number;
   totalMatches: number;
+  partialPathFailure: boolean;
+  diagnostics: ReadonlyArray<string>;
   results: ReadonlyArray<RipgrepSnippetResult>;
 }): ToolCallOutput {
   const fitted = fitRipgrepSnippetResults(input.results);
@@ -466,10 +512,11 @@ function formatRipgrepSnippetYaml(input: {
     truncatedByMatchLimit,
     truncatedByOutputChars: fitted.outputCharsTruncated,
     textTruncated: fitted.textTruncated,
+    partialPathFailure: input.partialPathFailure,
   });
 
   const yaml = [
-    `status: ok`,
+    `status: ${input.partialPathFailure ? 'partial_failure' : 'ok'}`,
     `pattern: ${yamlQuote(input.pattern)}`,
     `mode: snippets`,
     `path: ${yamlQuote(input.searchPath)}`,
@@ -488,6 +535,9 @@ function formatRipgrepSnippetYaml(input: {
     `  files_matched: ${input.fileCount}`,
     `  matches: ${input.totalMatches}`,
     `  shown_results: ${fitted.rendered.length}`,
+    `diagnostics:`,
+    `  partial_path_failure: ${input.partialPathFailure}`,
+    `  messages: ${yamlFlowStringArray(input.diagnostics)}`,
     `truncation:`,
     `  applied: ${truncated}`,
     `  reasons: ${yamlFlowStringArray(truncationReasons)}`,
@@ -499,7 +549,7 @@ function formatRipgrepSnippetYaml(input: {
     `results:`,
     ...fitted.rendered,
   ].join('\n');
-  return okYaml(yaml);
+  return input.partialPathFailure ? toolPartialFailure(formatYamlCodeBlock(yaml)) : okYaml(yaml);
 }
 
 function defaultBaseOptions(): RipgrepBaseOptions {
@@ -519,7 +569,147 @@ function parseRipgrepCaseModeArg(args: ToolArguments, defaultValue: RipgrepCase)
   throw new Error("Invalid arguments: `case` must be one of: 'smart', 'sensitive', 'insensitive'");
 }
 
-function baseRgArgs(options: RipgrepBaseOptions, member: Team.Member): string[] {
+const RIPGREP_EXTENSION_TYPE_BY_EXT: ReadonlyMap<string, string> = new Map([
+  ['cjs', 'js'],
+  ['cts', 'ts'],
+  ['css', 'css'],
+  ['ejs', 'html'],
+  ['htm', 'html'],
+  ['html', 'html'],
+  ['js', 'js'],
+  ['json', 'json'],
+  ['jsx', 'js'],
+  ['markdown', 'md'],
+  ['md', 'md'],
+  ['mdown', 'md'],
+  ['mdwn', 'md'],
+  ['mdx', 'md'],
+  ['mjs', 'js'],
+  ['mkd', 'md'],
+  ['mkdn', 'md'],
+  ['mts', 'ts'],
+  ['scss', 'css'],
+  ['svelte', 'svelte'],
+  ['ts', 'ts'],
+  ['tsx', 'ts'],
+  ['vue', 'vue'],
+  ['yaml', 'yaml'],
+  ['yml', 'yaml'],
+]);
+
+function normalizeRipgrepSearchPath(searchPath: string): string {
+  if (!searchPath.includes('\\')) return searchPath;
+  if (process.platform !== 'win32' && !searchPath.startsWith('.\\')) return searchPath;
+  return searchPath.replace(/\\/g, '/');
+}
+
+function parseSimpleExtensionGlob(glob: string): string | null {
+  const normalized = glob.trim().replace(/\\/g, '/').replace(/^\.\//, '');
+  if (normalized.startsWith('!')) return null;
+
+  const simpleMatch = /^(?:\*\*\/)?\*\.([A-Za-z0-9_+-]+)$/.exec(normalized);
+  if (simpleMatch) return simpleMatch[1]?.toLowerCase() ?? null;
+
+  const braceMatch = /^(?:\*\*\/)?\*\.\{([A-Za-z0-9_+,\-\s]+)\}$/.exec(normalized);
+  if (!braceMatch) return null;
+  const exts = braceMatch[1]
+    ?.split(',')
+    .map((ext) => ext.trim().toLowerCase())
+    .filter((ext) => ext !== '');
+  if (!exts || exts.length === 0) return null;
+  return exts.join(',');
+}
+
+function extractSimpleExtensionGlobs(globs: ReadonlyArray<string>): Readonly<{
+  typeArgs: readonly string[];
+  extensionFilters: readonly string[];
+  passthroughGlobs: readonly string[];
+}> {
+  const typeNames = new Set<string>();
+  const extensionFilters = new Set<string>();
+  const passthroughGlobs: string[] = [];
+  let hasComplexPositiveGlob = false;
+
+  for (const glob of globs) {
+    const extSpec = parseSimpleExtensionGlob(glob);
+    if (!extSpec) {
+      passthroughGlobs.push(glob);
+      if (!glob.trim().startsWith('!')) hasComplexPositiveGlob = true;
+      continue;
+    }
+
+    const exts = extSpec.split(',');
+    let allKnown = true;
+    const nextTypes: string[] = [];
+    for (const ext of exts) {
+      const typeName = RIPGREP_EXTENSION_TYPE_BY_EXT.get(ext);
+      if (!typeName) {
+        allKnown = false;
+        break;
+      }
+      nextTypes.push(typeName);
+    }
+    if (!allKnown) {
+      passthroughGlobs.push(glob);
+      hasComplexPositiveGlob = true;
+      continue;
+    }
+
+    for (const typeName of nextTypes) typeNames.add(typeName);
+    for (const ext of exts) extensionFilters.add(ext);
+  }
+
+  if (hasComplexPositiveGlob) {
+    return {
+      typeArgs: [],
+      extensionFilters: [],
+      passthroughGlobs: globs,
+    };
+  }
+
+  return {
+    typeArgs: [...typeNames].flatMap((typeName) => ['--type', typeName]),
+    extensionFilters: [...extensionFilters],
+    passthroughGlobs,
+  };
+}
+
+function buildFilterPlan(options: RipgrepBaseOptions, member: Team.Member): RipgrepFilterPlan {
+  const args: string[] = [];
+  const access = buildAccessControlGlobs(member);
+  for (const inc of access.include) {
+    args.push('--glob', inc);
+  }
+  for (const exc of access.exclude) {
+    args.push('--glob', `!${exc}`);
+  }
+
+  const simple =
+    process.platform === 'win32'
+      ? extractSimpleExtensionGlobs(options.globs)
+      : { typeArgs: [], extensionFilters: [], passthroughGlobs: options.globs };
+  args.push(...simple.typeArgs);
+  for (const glob of simple.passthroughGlobs) {
+    args.push('--glob', glob);
+  }
+
+  const globCompatibilityWarnings =
+    process.platform === 'win32' && simple.passthroughGlobs.length > 0
+      ? [
+          'Some complex globs were passed through to rg --glob. On Windows, simple extension filters are translated to --type, but complex globs may still be affected by ripgrep glob/path compatibility.',
+        ]
+      : [];
+
+  return {
+    args,
+    postFilter: (relPath: string): boolean =>
+      simple.extensionFilters.length === 0 ||
+      simple.extensionFilters.some((ext) => relPath.toLowerCase().endsWith(`.${ext}`)),
+    globCompatibilityWarnings,
+  };
+}
+
+function baseRgArgs(options: RipgrepBaseOptions, member: Team.Member): RipgrepFilterPlan {
   const args: string[] = ['--no-messages', '--color=never'];
   if (options.includeHidden) args.push('--hidden');
   if (options.followSymlinks) args.push('--follow');
@@ -530,19 +720,153 @@ function baseRgArgs(options: RipgrepBaseOptions, member: Team.Member): string[] 
 
   if (options.fixedStrings) args.push('--fixed-strings');
 
-  const access = buildAccessControlGlobs(member);
-  for (const inc of access.include) {
-    args.push('--glob', inc);
+  const filters = buildFilterPlan(options, member);
+  args.push(...filters.args);
+  return {
+    args,
+    postFilter: filters.postFilter,
+    globCompatibilityWarnings: filters.globCompatibilityWarnings,
+  };
+}
+
+function buildRipgrepDiagnostics(
+  run: RipgrepRunDiagnostics,
+  filterPlan: Pick<RipgrepFilterPlan, 'globCompatibilityWarnings'>,
+  returnedMatches: boolean,
+): string[] {
+  const diagnostics: string[] = [];
+  if (run.partialPathFailure) {
+    diagnostics.push(
+      returnedMatches
+        ? RIPGREP_PARTIAL_PATH_FAILURE_SUMMARY
+        : RIPGREP_PARTIAL_PATH_FAILURE_NO_MATCH_SUMMARY,
+    );
   }
-  for (const exc of access.exclude) {
-    args.push('--glob', `!${exc}`);
+  diagnostics.push(...filterPlan.globCompatibilityWarnings);
+  return diagnostics;
+}
+
+function formatRipgrepNoMatchesSummary(partialPathFailure: boolean): string {
+  return partialPathFailure ? RIPGREP_PARTIAL_PATH_FAILURE_NO_MATCH_SUMMARY : 'No matches.';
+}
+
+function buildRawRipgrepArgsPlan(rawArgs: ReadonlyArray<string>): RawRipgrepArgsPlan {
+  if (process.platform !== 'win32') {
+    return {
+      args: [...rawArgs],
+      postFilter: () => true,
+      globCompatibilityWarnings: [],
+    };
   }
 
-  for (const glob of options.globs) {
-    args.push('--glob', glob);
+  const parsedArgs: ParsedRawRipgrepArg[] = [];
+  const globsForTypeConversion: string[] = [];
+  let hasComplexPositiveGlob = false;
+
+  for (let i = 0; i < rawArgs.length; i += 1) {
+    const tok = rawArgs[i] ?? '';
+    if (tok === '--glob' || tok === '--iglob' || tok === '-g') {
+      const next = rawArgs[i + 1];
+      if (typeof next === 'string' && parseSimpleExtensionGlob(next) !== null) {
+        globsForTypeConversion.push(next);
+        parsedArgs.push({ kind: 'glob_pair', flag: tok, glob: next });
+        i += 1;
+        continue;
+      }
+      if (typeof next === 'string') {
+        if (!next.trim().startsWith('!')) hasComplexPositiveGlob = true;
+        parsedArgs.push({ kind: 'glob_pair', flag: tok, glob: next });
+        i += 1;
+      } else {
+        parsedArgs.push({ kind: 'other', value: tok });
+      }
+      continue;
+    }
+    if (tok.startsWith('--glob=')) {
+      const glob = tok.slice('--glob='.length);
+      if (parseSimpleExtensionGlob(glob) !== null) {
+        globsForTypeConversion.push(glob);
+        parsedArgs.push({ kind: 'glob_equals', prefix: '--glob=', glob });
+        continue;
+      }
+      if (!glob.trim().startsWith('!')) hasComplexPositiveGlob = true;
+      parsedArgs.push({ kind: 'glob_equals', prefix: '--glob=', glob });
+      continue;
+    }
+    if (tok.startsWith('--iglob=')) {
+      const glob = tok.slice('--iglob='.length);
+      if (parseSimpleExtensionGlob(glob) !== null) {
+        globsForTypeConversion.push(glob);
+        parsedArgs.push({ kind: 'glob_equals', prefix: '--iglob=', glob });
+        continue;
+      }
+      if (!glob.trim().startsWith('!')) hasComplexPositiveGlob = true;
+      parsedArgs.push({ kind: 'glob_equals', prefix: '--iglob=', glob });
+      continue;
+    }
+    if (tok.startsWith('-g') && tok.length > 2) {
+      const glob = tok.slice(2);
+      if (parseSimpleExtensionGlob(glob) !== null) {
+        globsForTypeConversion.push(glob);
+        parsedArgs.push({ kind: 'glob_equals', prefix: '-g', glob });
+        continue;
+      }
+      if (!glob.trim().startsWith('!')) hasComplexPositiveGlob = true;
+      parsedArgs.push({ kind: 'glob_equals', prefix: '-g', glob });
+      continue;
+    }
+    parsedArgs.push({ kind: 'other', value: tok });
   }
 
-  return args;
+  const renderParsedArgs = (args: ReadonlyArray<ParsedRawRipgrepArg>): string[] =>
+    args.flatMap((arg) => {
+      switch (arg.kind) {
+        case 'glob_pair':
+          return [arg.flag, arg.glob];
+        case 'glob_equals':
+          return [`${arg.prefix}${arg.glob}`];
+        case 'other':
+          return [arg.value];
+      }
+    });
+
+  if (hasComplexPositiveGlob) {
+    return {
+      args: renderParsedArgs(parsedArgs),
+      postFilter: () => true,
+      globCompatibilityWarnings:
+        process.platform === 'win32'
+          ? [
+              'rg_args contains complex globs, so simple extension globs were left as --glob to preserve ripgrep ordering semantics.',
+            ]
+          : [],
+    };
+  }
+
+  const simple = extractSimpleExtensionGlobs(globsForTypeConversion);
+  const convertedArgs = renderParsedArgs(
+    parsedArgs.filter((arg) => {
+      if (arg.kind === 'other') return true;
+      return parseSimpleExtensionGlob(arg.glob) === null;
+    }),
+  );
+  convertedArgs.push(...simple.typeArgs);
+  convertedArgs.push(...simple.passthroughGlobs.flatMap((glob) => ['--glob', glob]));
+
+  const globCompatibilityWarnings =
+    process.platform === 'win32' && simple.passthroughGlobs.length > 0
+      ? [
+          'Some rg_args globs were passed through to rg --glob because they are not simple extension filters.',
+        ]
+      : [];
+
+  return {
+    args: convertedArgs,
+    postFilter: (relPath: string): boolean =>
+      simple.extensionFilters.length === 0 ||
+      simple.extensionFilters.some((ext) => relPath.toLowerCase().endsWith(`.${ext}`)),
+    globCompatibilityWarnings,
+  };
 }
 
 function appendTruncatedText(
@@ -569,10 +893,23 @@ function formatTruncatedText(state: { text: string; omittedChars: number }): str
   return `${state.text}${suffix}`;
 }
 
+function isRipgrepPartialPathFailure(stderrText: string): boolean {
+  const lower = stderrText.toLowerCase();
+  if (lower.includes('unrecognized flag')) return false;
+  if (lower.includes('unknown option')) return false;
+  if (lower.includes('invalid option')) return false;
+  return (
+    lower.includes('os error') ||
+    lower.includes('no such file or directory') ||
+    lower.includes('the system cannot find the path specified') ||
+    lower.includes('系统找不到指定的路径')
+  );
+}
+
 async function runRgLines(
-  args: string[],
+  args: readonly string[],
   onLine: (line: string) => void | Promise<void>,
-): Promise<void> {
+): Promise<RipgrepRunDiagnostics> {
   return await new Promise((resolve, reject) => {
     const child = spawn('rg', args, { cwd: process.cwd(), stdio: ['ignore', 'pipe', 'pipe'] });
     if (!child.stdout || !child.stderr) {
@@ -605,11 +942,18 @@ async function runRgLines(
         return;
       }
       if (processCloseCode !== null && processCloseCode !== 0 && processCloseCode !== 1) {
+        if (processCloseCode === 2 && isRipgrepPartialPathFailure(stderrText)) {
+          resolve({
+            partialPathFailure: true,
+            stderrText,
+          });
+          return;
+        }
         const summary = stderrText === '' ? `rg exited with code ${processCloseCode}` : stderrText;
         reject(new Error(summary));
         return;
       }
-      resolve();
+      resolve({ partialPathFailure: false, stderrText });
     };
 
     child.on('error', (err: unknown) => rejectOnce(err));
@@ -667,25 +1011,34 @@ async function runRipgrepFiles(
     return formatForbiddenSearchPathAccessDeniedYaml('files', pattern, searchPath, forbiddenGlob);
   }
 
-  const args = [...baseRgArgs(options, caller), '--files-with-matches', '--', pattern, searchPath];
+  const filterPlan = baseRgArgs(options, caller);
+  const args = [
+    ...filterPlan.args,
+    '--files-with-matches',
+    '--',
+    pattern,
+    normalizeRipgrepSearchPath(searchPath),
+  ];
 
   try {
     let totalFiles = 0;
     const results: Array<{ path: string }> = [];
-    await runRgLines(args, (line) => {
+    const run = await runRgLines(args, (line) => {
+      if (!filterPlan.postFilter(line)) return;
       totalFiles++;
       if (results.length < options.maxFiles) results.push({ path: line });
     });
+    const diagnostics = buildRipgrepDiagnostics(run, filterPlan, totalFiles > 0);
     const truncated = totalFiles > options.maxFiles;
     const summary =
       totalFiles === 0
-        ? 'No matches.'
+        ? formatRipgrepNoMatchesSummary(run.partialPathFailure)
         : truncated
-          ? `Found ${totalFiles} files; showing first ${options.maxFiles} (truncated=true).`
-          : `Found ${totalFiles} files.`;
+          ? `Found ${totalFiles} files; showing first ${options.maxFiles} (truncated=true).${run.partialPathFailure ? ` ${RIPGREP_PARTIAL_PATH_FAILURE_SUMMARY}` : ''}`
+          : `Found ${totalFiles} files.${run.partialPathFailure ? ` ${RIPGREP_PARTIAL_PATH_FAILURE_SUMMARY}` : ''}`;
 
     const yaml = [
-      `status: ok`,
+      `status: ${run.partialPathFailure ? 'partial_failure' : 'ok'}`,
       `pattern: ${yamlQuote(pattern)}`,
       `mode: files`,
       `path: ${yamlQuote(searchPath)}`,
@@ -698,11 +1051,14 @@ async function runRipgrepFiles(
       `  max_files: ${options.maxFiles}`,
       `totals:`,
       `  files_matched: ${totalFiles}`,
+      `diagnostics:`,
+      `  partial_path_failure: ${run.partialPathFailure}`,
+      `  messages: ${yamlFlowStringArray(diagnostics)}`,
       `summary: ${yamlQuote(summary)}`,
       `results:`,
       ...results.map((r) => `  - path: ${yamlQuote(r.path)}`),
     ].join('\n');
-    return okYaml(yaml);
+    return run.partialPathFailure ? toolPartialFailure(formatYamlCodeBlock(yaml)) : okYaml(yaml);
   } catch (error: unknown) {
     return failYaml(
       [
@@ -732,6 +1088,7 @@ export const ripgrepFilesTool: FuncTool = {
       pattern: { type: 'string' },
       path: { type: 'string' },
       globs: { type: 'array', items: { type: 'string' } },
+      include: { type: ['string', 'array'], items: { type: 'string' } },
       case: { type: 'string' },
       fixed_strings: { type: 'boolean' },
       max_files: { type: 'integer' },
@@ -744,7 +1101,7 @@ export const ripgrepFilesTool: FuncTool = {
   call: async (_dlg, caller, args): Promise<ToolCallOutput> => {
     const pattern = requireNonEmptyStringArg(args, 'pattern');
     const searchPath = optionalStringArg(args, 'path') ?? '.';
-    const globs = optionalStringArrayArg(args, 'globs') ?? [];
+    const globs = parseRipgrepGlobsArg(args);
     const caseMode = parseRipgrepCaseModeArg(args, 'smart');
     const fixedStrings = optionalBooleanArg(args, 'fixed_strings') ?? false;
     const includeHidden = optionalBooleanArg(args, 'include_hidden') ?? false;
@@ -779,16 +1136,24 @@ async function runRipgrepCount(
     return formatForbiddenSearchPathAccessDeniedYaml('count', pattern, searchPath, forbiddenGlob);
   }
 
-  const args = [...baseRgArgs(options, caller), '--count-matches', '--', pattern, searchPath];
+  const filterPlan = baseRgArgs(options, caller);
+  const args = [
+    ...filterPlan.args,
+    '--count-matches',
+    '--',
+    pattern,
+    normalizeRipgrepSearchPath(searchPath),
+  ];
 
   try {
     let totalFiles = 0;
     let totalMatches = 0;
     const results: Array<{ path: string; count: number }> = [];
-    await runRgLines(args, (line) => {
+    const run = await runRgLines(args, (line) => {
       const idx = line.lastIndexOf(':');
       if (idx <= 0) return;
       const p = line.slice(0, idx);
+      if (!filterPlan.postFilter(p)) return;
       const rawCount = line.slice(idx + 1);
       const count = Number.parseInt(rawCount, 10);
       if (!Number.isFinite(count)) return;
@@ -796,16 +1161,17 @@ async function runRipgrepCount(
       totalMatches += count;
       if (results.length < options.maxFiles) results.push({ path: p, count });
     });
+    const diagnostics = buildRipgrepDiagnostics(run, filterPlan, totalMatches > 0);
     const truncated = totalFiles > options.maxFiles;
     const summary =
       totalMatches === 0
-        ? 'No matches.'
+        ? formatRipgrepNoMatchesSummary(run.partialPathFailure)
         : truncated
-          ? `Counted ${totalMatches} matches in ${totalFiles} files; showing first ${options.maxFiles} files (truncated=true).`
-          : `Counted ${totalMatches} matches in ${totalFiles} files.`;
+          ? `Counted ${totalMatches} matches in ${totalFiles} files; showing first ${options.maxFiles} files (truncated=true).${run.partialPathFailure ? ` ${RIPGREP_PARTIAL_PATH_FAILURE_SUMMARY}` : ''}`
+          : `Counted ${totalMatches} matches in ${totalFiles} files.${run.partialPathFailure ? ` ${RIPGREP_PARTIAL_PATH_FAILURE_SUMMARY}` : ''}`;
 
     const yaml = [
-      `status: ok`,
+      `status: ${run.partialPathFailure ? 'partial_failure' : 'ok'}`,
       `pattern: ${yamlQuote(pattern)}`,
       `mode: count`,
       `path: ${yamlQuote(searchPath)}`,
@@ -819,11 +1185,14 @@ async function runRipgrepCount(
       `totals:`,
       `  files_matched: ${totalFiles}`,
       `  matches: ${totalMatches}`,
+      `diagnostics:`,
+      `  partial_path_failure: ${run.partialPathFailure}`,
+      `  messages: ${yamlFlowStringArray(diagnostics)}`,
       `summary: ${yamlQuote(summary)}`,
       `results:`,
       ...results.map((r) => `  - path: ${yamlQuote(r.path)}\n    count: ${r.count}`),
     ].join('\n');
-    return okYaml(yaml);
+    return run.partialPathFailure ? toolPartialFailure(formatYamlCodeBlock(yaml)) : okYaml(yaml);
   } catch (error: unknown) {
     return failYaml(
       [
@@ -853,6 +1222,7 @@ export const ripgrepCountTool: FuncTool = {
       pattern: { type: 'string' },
       path: { type: 'string' },
       globs: { type: 'array', items: { type: 'string' } },
+      include: { type: ['string', 'array'], items: { type: 'string' } },
       case: { type: 'string' },
       fixed_strings: { type: 'boolean' },
       max_files: { type: 'integer' },
@@ -865,7 +1235,7 @@ export const ripgrepCountTool: FuncTool = {
   call: async (_dlg, caller, args): Promise<ToolCallOutput> => {
     const pattern = requireNonEmptyStringArg(args, 'pattern');
     const searchPath = optionalStringArg(args, 'path') ?? '.';
-    const globs = optionalStringArrayArg(args, 'globs') ?? [];
+    const globs = parseRipgrepGlobsArg(args);
     const caseMode = parseRipgrepCaseModeArg(args, 'smart');
     const fixedStrings = optionalBooleanArg(args, 'fixed_strings') ?? false;
     const includeHidden = optionalBooleanArg(args, 'include_hidden') ?? false;
@@ -910,7 +1280,14 @@ async function runRipgrepSnippets(
     );
   }
 
-  const args = [...baseRgArgs(options, caller), '--vimgrep', '--', pattern, searchPath];
+  const filterPlan = baseRgArgs(options, caller);
+  const args = [
+    ...filterPlan.args,
+    '--vimgrep',
+    '--',
+    pattern,
+    normalizeRipgrepSearchPath(searchPath),
+  ];
 
   try {
     let totalMatches = 0;
@@ -925,8 +1302,7 @@ async function runRipgrepSnippets(
     }> = [];
     const fileCache = new Map<string, string[]>();
 
-    await runRgLines(args, async (line) => {
-      totalMatches++;
+    const run = await runRgLines(args, async (line) => {
       const first = line.indexOf(':');
       if (first <= 0) return;
       const second = line.indexOf(':', first + 1);
@@ -940,6 +1316,8 @@ async function runRipgrepSnippets(
       const ln = Number.parseInt(lineStr, 10);
       const col = Number.parseInt(colStr, 10);
       if (!Number.isFinite(ln) || !Number.isFinite(col)) return;
+      if (!filterPlan.postFilter(filePath)) return;
+      totalMatches++;
       fileSet.add(filePath);
 
       if (results.length >= options.maxResults) return;
@@ -953,6 +1331,7 @@ async function runRipgrepSnippets(
       const after = lines.slice(idx0 + 1, idx0 + 1 + options.contextAfter);
       results.push({ path: filePath, line: ln, col, match: text, before, after });
     });
+    const diagnostics = buildRipgrepDiagnostics(run, filterPlan, totalMatches > 0);
 
     return formatRipgrepSnippetYaml({
       pattern,
@@ -963,6 +1342,8 @@ async function runRipgrepSnippets(
       maxResults: options.maxResults,
       fileCount: fileSet.size,
       totalMatches,
+      partialPathFailure: run.partialPathFailure,
+      diagnostics,
       results,
     });
   } catch (error: unknown) {
@@ -994,6 +1375,7 @@ export const ripgrepSnippetsTool: FuncTool = {
       pattern: { type: 'string' },
       path: { type: 'string' },
       globs: { type: 'array', items: { type: 'string' } },
+      include: { type: ['string', 'array'], items: { type: 'string' } },
       case: { type: 'string' },
       fixed_strings: { type: 'boolean' },
       context_before: { type: 'integer' },
@@ -1008,7 +1390,7 @@ export const ripgrepSnippetsTool: FuncTool = {
   call: async (_dlg, caller, args): Promise<ToolCallOutput> => {
     const pattern = requireNonEmptyStringArg(args, 'pattern');
     const searchPath = optionalStringArg(args, 'path') ?? '.';
-    const globs = optionalStringArrayArg(args, 'globs') ?? [];
+    const globs = parseRipgrepGlobsArg(args);
     const caseMode = parseRipgrepCaseModeArg(args, 'smart');
     const fixedStrings = optionalBooleanArg(args, 'fixed_strings') ?? false;
     const includeHidden = optionalBooleanArg(args, 'include_hidden') ?? false;
@@ -1049,6 +1431,7 @@ export const ripgrepFixedTool: FuncTool = {
       path: { type: 'string' },
       mode: { type: 'string' },
       globs: { type: 'array', items: { type: 'string' } },
+      include: { type: ['string', 'array'], items: { type: 'string' } },
       case: { type: 'string' },
       max_files: { type: 'integer' },
       max_results: { type: 'integer' },
@@ -1068,7 +1451,7 @@ export const ripgrepFixedTool: FuncTool = {
       throw new Error("Invalid arguments: `mode` must be one of: 'files', 'snippets', 'count'");
     }
 
-    const globs = optionalStringArrayArg(args, 'globs') ?? [];
+    const globs = parseRipgrepGlobsArg(args);
     const caseMode = parseRipgrepCaseModeArg(args, 'smart');
     const includeHidden = optionalBooleanArg(args, 'include_hidden') ?? false;
     const followSymlinks = optionalBooleanArg(args, 'follow_symlinks') ?? false;
@@ -1155,21 +1538,22 @@ async function runRipgrepSearch(
     contextAfter: 1,
   };
 
+  const filterPlan = baseRgArgs(options, caller);
+  const rawArgsPlan = buildRawRipgrepArgsPlan(rawRgArgs);
   const rgArgs = [
-    ...baseRgArgs(options, caller),
-    ...rawRgArgs,
+    ...filterPlan.args,
+    ...rawArgsPlan.args,
     '--vimgrep',
     '--',
     pattern,
-    searchPath,
+    normalizeRipgrepSearchPath(searchPath),
   ];
 
   try {
     let totalMatches = 0;
     const fileSet = new Set<string>();
     const results: Array<{ path: string; line: number; col: number; match: string }> = [];
-    await runRgLines(rgArgs, (line) => {
-      totalMatches++;
+    const run = await runRgLines(rgArgs, (line) => {
       const first = line.indexOf(':');
       if (first <= 0) return;
       const secondColon = line.indexOf(':', first + 1);
@@ -1183,10 +1567,16 @@ async function runRipgrepSearch(
       const ln = Number.parseInt(lineStr, 10);
       const col = Number.parseInt(colStr, 10);
       if (!Number.isFinite(ln) || !Number.isFinite(col)) return;
+      if (!rawArgsPlan.postFilter(filePath)) return;
+      totalMatches++;
       fileSet.add(filePath);
       if (results.length < options.maxResults)
         results.push({ path: filePath, line: ln, col, match: text });
     });
+    const diagnostics = [
+      ...buildRipgrepDiagnostics(run, filterPlan, totalMatches > 0),
+      ...rawArgsPlan.globCompatibilityWarnings,
+    ];
 
     return formatRipgrepSnippetYaml({
       pattern,
@@ -1197,6 +1587,8 @@ async function runRipgrepSearch(
       maxResults: options.maxResults,
       fileCount: fileSet.size,
       totalMatches,
+      partialPathFailure: run.partialPathFailure,
+      diagnostics,
       results,
     });
   } catch (error: unknown) {

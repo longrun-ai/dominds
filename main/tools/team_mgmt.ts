@@ -2691,6 +2691,7 @@ export const teamMgmtRipgrepFilesTool: FuncTool = {
       pattern: { type: 'string' },
       path: { type: 'string' },
       globs: { type: 'array', items: { type: 'string' } },
+      include: { type: ['string', 'array'], items: { type: 'string' } },
       case: { type: 'string' },
       fixed_strings: { type: 'boolean' },
       max_files: { type: 'integer' },
@@ -2728,6 +2729,16 @@ export const teamMgmtRipgrepFilesTool: FuncTool = {
           throw new Error('Invalid globs (expected string[])');
         }
         toolArgs['globs'] = globsValue;
+      }
+      const includeValue = args['include'];
+      if (includeValue !== undefined) {
+        if (
+          typeof includeValue !== 'string' &&
+          (!Array.isArray(includeValue) || !includeValue.every((v) => typeof v === 'string'))
+        ) {
+          throw new Error('Invalid include (expected string or string[])');
+        }
+        toolArgs['include'] = includeValue;
       }
       const caseValue = args['case'];
       if (caseValue !== undefined) {
@@ -2789,6 +2800,7 @@ export const teamMgmtRipgrepSnippetsTool: FuncTool = {
       pattern: { type: 'string' },
       path: { type: 'string' },
       globs: { type: 'array', items: { type: 'string' } },
+      include: { type: ['string', 'array'], items: { type: 'string' } },
       case: { type: 'string' },
       fixed_strings: { type: 'boolean' },
       context_before: { type: 'integer' },
@@ -2828,6 +2840,16 @@ export const teamMgmtRipgrepSnippetsTool: FuncTool = {
           throw new Error('Invalid globs (expected string[])');
         }
         toolArgs['globs'] = globsValue;
+      }
+      const includeValue = args['include'];
+      if (includeValue !== undefined) {
+        if (
+          typeof includeValue !== 'string' &&
+          (!Array.isArray(includeValue) || !includeValue.every((v) => typeof v === 'string'))
+        ) {
+          throw new Error('Invalid include (expected string or string[])');
+        }
+        toolArgs['include'] = includeValue;
       }
       const caseValue = args['case'];
       if (caseValue !== undefined) {
@@ -2904,6 +2926,7 @@ export const teamMgmtRipgrepCountTool: FuncTool = {
       pattern: { type: 'string' },
       path: { type: 'string' },
       globs: { type: 'array', items: { type: 'string' } },
+      include: { type: ['string', 'array'], items: { type: 'string' } },
       case: { type: 'string' },
       fixed_strings: { type: 'boolean' },
       max_files: { type: 'integer' },
@@ -2941,6 +2964,16 @@ export const teamMgmtRipgrepCountTool: FuncTool = {
           throw new Error('Invalid globs (expected string[])');
         }
         toolArgs['globs'] = globsValue;
+      }
+      const includeValue = args['include'];
+      if (includeValue !== undefined) {
+        if (
+          typeof includeValue !== 'string' &&
+          (!Array.isArray(includeValue) || !includeValue.every((v) => typeof v === 'string'))
+        ) {
+          throw new Error('Invalid include (expected string or string[])');
+        }
+        toolArgs['include'] = includeValue;
       }
       const caseValue = args['case'];
       if (caseValue !== undefined) {
@@ -3003,6 +3036,7 @@ export const teamMgmtRipgrepFixedTool: FuncTool = {
       path: { type: 'string' },
       mode: { type: 'string' },
       globs: { type: 'array', items: { type: 'string' } },
+      include: { type: ['string', 'array'], items: { type: 'string' } },
       case: { type: 'string' },
       max_files: { type: 'integer' },
       max_results: { type: 'integer' },
@@ -3052,6 +3086,16 @@ export const teamMgmtRipgrepFixedTool: FuncTool = {
           throw new Error('Invalid globs (expected string[])');
         }
         toolArgs['globs'] = globsValue;
+      }
+      const includeValue = args['include'];
+      if (includeValue !== undefined) {
+        if (
+          typeof includeValue !== 'string' &&
+          (!Array.isArray(includeValue) || !includeValue.every((v) => typeof v === 'string'))
+        ) {
+          throw new Error('Invalid include (expected string or string[])');
+        }
+        toolArgs['include'] = includeValue;
       }
       const maxFilesValue = args['max_files'];
       if (maxFilesValue !== undefined) {
