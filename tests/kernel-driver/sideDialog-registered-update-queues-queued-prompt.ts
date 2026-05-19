@@ -131,7 +131,7 @@ async function main(): Promise<void> {
       root,
       {
         content: initialTrigger,
-        msgId: 'kernel-driver-registered-update-upnext-initial',
+        msgId: 'kernel-driver-registered-update-queued-prompt-initial',
         grammar: 'markdown',
         origin: 'user',
       },
@@ -154,7 +154,7 @@ async function main(): Promise<void> {
       root,
       {
         content: updatedTrigger,
-        msgId: 'kernel-driver-registered-update-upnext-second',
+        msgId: 'kernel-driver-registered-update-queued-prompt-second',
         grammar: 'markdown',
         origin: 'user',
       },
@@ -220,11 +220,13 @@ async function main(): Promise<void> {
     );
   });
 
-  console.log('kernel-driver sideDialog-registered-update-queues-upnext: PASS');
+  console.log('kernel-driver sideDialog-registered-update-queues-queued-prompt: PASS');
 }
 
 void main().catch((err: unknown) => {
   const message = err instanceof Error ? err.message : String(err);
-  console.error(`kernel-driver sideDialog-registered-update-queues-upnext: FAIL\n${message}`);
+  console.error(
+    `kernel-driver sideDialog-registered-update-queues-queued-prompt: FAIL\n${message}`,
+  );
   process.exit(1);
 });

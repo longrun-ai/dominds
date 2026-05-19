@@ -145,7 +145,6 @@ export type KernelDriverRunBackendResult = Promise<void>;
 export type KernelDriverRuntimeState = {
   driveCount: number;
   totalGenIterations: number;
-  usedLegacyDriveCore: boolean;
   lastDisplayState?: DialogDisplayState;
   lastInterruptionReason?: DialogInterruptionReason;
 };
@@ -169,6 +168,5 @@ export function createKernelDriverRuntimeState(): KernelDriverRuntimeState {
   return {
     driveCount: 0,
     totalGenIterations: 0,
-    usedLegacyDriveCore: false,
   };
 }

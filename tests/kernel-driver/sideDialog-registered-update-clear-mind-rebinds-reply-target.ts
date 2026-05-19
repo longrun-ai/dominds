@@ -105,7 +105,7 @@ async function main(): Promise<void> {
         source: 'clear_mind',
       }),
     );
-    const queuedPrompt = sideDialog.peekUpNext();
+    const queuedPrompt = sideDialog.peekQueuedPrompt();
     assert.ok(queuedPrompt, 'expected clear_mind to queue the rebound new-course prompt');
     const newCoursePrompt = queuedPrompt?.prompt;
 

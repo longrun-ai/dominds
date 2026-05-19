@@ -83,7 +83,7 @@ async function main(): Promise<void> {
       .map((msg) => msg.content);
     assert.ok(
       promptingContents.includes(course2Prompt),
-      `expected course-2 upNext prompt to be consumed, got: ${JSON.stringify(promptingContents)}`,
+      `expected course-2 queued prompt to be consumed, got: ${JSON.stringify(promptingContents)}`,
     );
   });
 

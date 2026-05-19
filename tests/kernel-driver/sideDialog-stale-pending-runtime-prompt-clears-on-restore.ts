@@ -60,7 +60,7 @@ async function main(): Promise<void> {
         source: 'clear_mind',
       }),
     );
-    const queuedPrompt = sideDialog.peekUpNext();
+    const queuedPrompt = sideDialog.peekQueuedPrompt();
     assert.ok(queuedPrompt, 'expected clear_mind to queue a pending runtime prompt');
 
     await writeMockDb(tmpRoot, [
@@ -138,7 +138,7 @@ async function main(): Promise<void> {
     );
     assert.ok(restoredSideDialog, 'expected sideDialog restore to succeed');
     assert.equal(
-      restoredSideDialog.peekUpNext(),
+      restoredSideDialog.peekQueuedPrompt(),
       undefined,
       'restore should not requeue a stale runtime prompt that is already persisted in course events',
     );

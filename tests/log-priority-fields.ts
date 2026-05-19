@@ -25,7 +25,7 @@ try {
     },
     _mutex: { locked: true, waiters: [] },
     _activeCalleeDialogIds: [],
-    _upNextQueue: [],
+    _queuedPrompts: [],
     agentId: 'fullstack',
     askerStack: { askerStack: [] },
     rootId: 'bd/86/0d197a16',

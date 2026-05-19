@@ -146,9 +146,6 @@ import type {
   KernelDriverDriveCallbacks,
   KernelDriverPrompt,
   KernelDriverRuntimeGuidePrompt,
-  KernelDriverRuntimeReplyPrompt,
-  KernelDriverRuntimeSideDialogPrompt,
-  KernelDriverUserPrompt,
 } from './types';
 
 type KernelDriverRetryPolicy = Readonly<{
@@ -336,7 +333,10 @@ function sameDialogBusinessContinuation(
   }
 }
 
-function sameStringArray(left: readonly string[] | undefined, right: readonly string[] | undefined): boolean {
+function sameStringArray(
+  left: readonly string[] | undefined,
+  right: readonly string[] | undefined,
+): boolean {
   if (left === undefined || right === undefined) {
     return left === right;
   }
@@ -965,77 +965,6 @@ function emitDiligenceBudgetEvent(
     remainingCount,
     disableDiligencePush: dlg.disableDiligencePush,
   });
-}
-
-function resolveUpNextPrompt(dlg: Dialog): KernelDriverPrompt | undefined {
-  const upNext = dlg.takeUpNext();
-  if (!upNext) return undefined;
-  const normalizedRunControl = (() => {
-    const runControl = upNext.runControl;
-    if (!runControl) return undefined;
-    if (
-      runControl.source !== 'drive_dlg_by_user_msg' &&
-      runControl.source !== 'drive_dialog_by_user_answer'
-    ) {
-      return undefined;
-    }
-    return {
-      controlId: runControl.controlId,
-      input: runControl.input,
-      source: runControl.source,
-      q4h: runControl.q4h,
-    };
-  })();
-  const common = {
-    content: upNext.prompt,
-    msgId: upNext.msgId,
-    grammar: upNext.grammar ?? 'markdown',
-    ...(upNext.userLanguageCode === undefined ? {} : { userLanguageCode: upNext.userLanguageCode }),
-    ...(normalizedRunControl === undefined ? {} : { runControl: normalizedRunControl }),
-  };
-  switch (upNext.kind) {
-    case 'user_generation_boundary':
-    case 'deferred_q4h_answer': {
-      const prompt: KernelDriverUserPrompt = {
-        ...common,
-        origin: 'user',
-        ...(upNext.q4hAnswerCallId === undefined
-          ? {}
-          : { q4hAnswerCallId: upNext.q4hAnswerCallId }),
-      };
-      return prompt;
-    }
-    case 'registered_assignment_update':
-    case 'new_course_runtime_guide':
-    case 'new_course_runtime_reply':
-    case 'new_course_runtime_sideDialog': {
-      const runtimeCommon = {
-        ...common,
-        origin: 'runtime' as const,
-        ...(upNext.skipTaskdoc === undefined ? {} : { skipTaskdoc: upNext.skipTaskdoc }),
-      };
-      if (
-        upNext.kind === 'registered_assignment_update' ||
-        upNext.kind === 'new_course_runtime_sideDialog'
-      ) {
-        const prompt: KernelDriverRuntimeSideDialogPrompt = {
-          ...runtimeCommon,
-          tellaskReplyDirective: upNext.tellaskReplyDirective,
-          calleeDialogReplyTarget: upNext.calleeDialogReplyTarget,
-        };
-        return prompt;
-      }
-      if (upNext.kind === 'new_course_runtime_reply') {
-        const prompt: KernelDriverRuntimeReplyPrompt = {
-          ...runtimeCommon,
-          tellaskReplyDirective: upNext.tellaskReplyDirective,
-        };
-        return prompt;
-      }
-      const prompt: KernelDriverRuntimeGuidePrompt = runtimeCommon;
-      return prompt;
-    }
-  }
 }
 
 async function renderRemindersForContext(dlg: Dialog): Promise<ChatMessage[]> {
@@ -2369,17 +2298,14 @@ async function maybeContinueWithHealthPromptBeforeDiligence(args: {
       nextCourse: dlg.currentCourse + 1,
       source: 'critical_auto_clear',
     });
-    await dlg.startNewCourse(newCoursePrompt);
+    const normalizedNewCoursePrompt = await dlg.startNewCourse(newCoursePrompt);
     dlg.setLastContextHealth({ kind: 'unavailable', reason: 'usage_unavailable' });
     resetContextHealthRoundState(dlg.id.key());
-
-    const nextPrompt = resolveUpNextPrompt(dlg);
-    if (!nextPrompt) {
-      throw new Error(
-        `kernel-driver critical force-new-course invariant violation: missing upNext prompt after startNewCourse for dialog=${dlg.id.valueOf()}`,
-      );
-    }
-    return { kind: 'health_continue', prompt: nextPrompt, resetTaskdoc: true };
+    return {
+      kind: 'health_continue',
+      prompt: normalizedNewCoursePrompt,
+      resetTaskdoc: true,
+    };
   }
 
   const language = getWorkLanguage();
@@ -2602,7 +2528,7 @@ export async function driveDialogStreamCore(
           resolvingImmediateToolResultForUserPrompt = false;
           resolvingImmediateToolResultUserPromptMsgId = undefined;
           const snapshot = dlg.getLastContextHealth();
-          const hasQueuedUpNext = dlg.hasUpNext() || pendingPrompt !== undefined;
+          const hasQueuedPrompt = dlg.hasQueuedPrompt() || pendingPrompt !== undefined;
           const modelInfoForRemediation = resolveModelInfo(providerCfg, model);
           const cautionRemediationCadenceGenerations = resolveCautionRemediationCadenceGenerations(
             modelInfoForRemediation?.caution_remediation_cadence_generations,
@@ -2623,7 +2549,7 @@ export async function driveDialogStreamCore(
                 isAgentFacingCriticalUserInterjectionRemediationGuideContent(
                   currentPendingPrompt.content,
                 )),
-            canInjectPromptThisGen: !hasQueuedUpNext,
+            canInjectPromptThisGen: !hasQueuedPrompt,
             cautionRemediationCadenceGenerations,
             criticalCountdownRemaining,
           });
@@ -2635,17 +2561,10 @@ export async function driveDialogStreamCore(
                 nextCourse: dlg.currentCourse + 1,
                 source: 'critical_auto_clear',
               });
-              await dlg.startNewCourse(newCoursePrompt);
+              const normalizedNewCoursePrompt = await dlg.startNewCourse(newCoursePrompt);
               dlg.setLastContextHealth({ kind: 'unavailable', reason: 'usage_unavailable' });
               resetContextHealthRoundState(dlg.id.key());
-
-              const nextPrompt = resolveUpNextPrompt(dlg);
-              if (!nextPrompt) {
-                throw new Error(
-                  `kernel-driver critical force-new-course invariant violation: missing upNext prompt after startNewCourse for dialog=${dlg.id.valueOf()}`,
-                );
-              }
-              pendingPrompt = nextPrompt;
+              pendingPrompt = normalizedNewCoursePrompt;
               skipTaskdocForThisDrive = false;
             } else if (healthDecision.reason === 'critical_user_prompt_remediation') {
               if (
@@ -2664,7 +2583,7 @@ export async function driveDialogStreamCore(
                 );
               }
               criticalRemediationAppliedUserPromptMsgId = currentUserPromptMsgId;
-            } else if (!hasQueuedUpNext) {
+            } else if (!hasQueuedPrompt) {
               const language = getWorkLanguage();
               const dialogScope = dlg instanceof SideDialog ? 'sideDialog' : 'mainDialog';
               const guideText =
@@ -3735,9 +3654,8 @@ export async function driveDialogStreamCore(
             break;
           }
 
-          if (dlg.hasUpNext()) {
-            pendingPrompt = resolveUpNextPrompt(dlg);
-            continue;
+          if (dlg.hasQueuedPrompt()) {
+            break;
           }
 
           if (dlg.remindersVer > pubRemindersVer) {

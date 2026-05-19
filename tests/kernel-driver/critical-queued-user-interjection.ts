@@ -84,7 +84,11 @@ async function main(): Promise<void> {
     });
 
     await seedDrive;
-    assert.equal(dlg.hasUpNext(), false, 'queued user interjection should be consumed by drive');
+    assert.equal(
+      dlg.hasQueuedPrompt(),
+      false,
+      'queued user interjection should be consumed by drive',
+    );
 
     const runtimeGuides = dlg.msgs.filter((msg) => msg.type === 'transient_guide_msg');
     assert.equal(

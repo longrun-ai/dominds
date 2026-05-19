@@ -599,7 +599,7 @@ async function main(): Promise<void> {
       'reply-obligation follow-up should be queued onto the dialog instead of passed as a fresh user prompt',
     );
     assert.equal(scheduled.reason, 'follow_up_prompt');
-    const queuedReplyReminder = sessionlessSideDialog.peekUpNext();
+    const queuedReplyReminder = sessionlessSideDialog.peekQueuedPrompt();
     if (queuedReplyReminder?.kind !== 'new_course_runtime_sideDialog') {
       throw new Error('expected queued sideDialog runtime reply reminder');
     }
@@ -624,7 +624,7 @@ async function main(): Promise<void> {
       'post-tool thinking-only reply candidate should use the normal reply reminder path',
     );
     assert.equal(
-      sessionlessSideDialog.hasUpNext(),
+      sessionlessSideDialog.hasQueuedPrompt(),
       true,
       'reply-obligation follow-up should continue the normal business state machine without manual Continue',
     );
@@ -685,7 +685,7 @@ async function main(): Promise<void> {
       sessionlessSideDialog.status,
     );
     assert.equal(
-      sessionlessSideDialog.hasUpNext(),
+      sessionlessSideDialog.hasQueuedPrompt(),
       false,
       'stale reply reminder should be removed from the in-memory queue after assignment callId changes',
     );
@@ -769,7 +769,7 @@ async function main(): Promise<void> {
       sessionlessSideDialog.status,
     );
     assert.equal(
-      sessionlessSideDialog.hasUpNext(),
+      sessionlessSideDialog.hasQueuedPrompt(),
       false,
       'finalized stale reply reminder should be removed from the in-memory queue',
     );

@@ -324,7 +324,7 @@ Durable authority:
 
 Claim:
 
-- handler 读取 pending prompt；`_upNextQueue` 只是已物化输入，不能替代 durable pending authority；
+- handler 读取 pending prompt；dialog 本地 `queued prompts` 只是已物化输入，不能替代 durable pending authority；
 - `msgId` 必须稳定，queued runtime prompt 必须与 `latest.pendingRuntimePrompt` 精确匹配；
 - 如果 queued runtime prompt 已没有对应 durable pending prompt，按 stale 丢弃，不能开启空 generation；
 - 如果 prompt 与 active reply obligation 不一致，按业务 invariant loud fail 或由对应业务修复。

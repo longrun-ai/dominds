@@ -105,7 +105,7 @@ async function main(): Promise<void> {
     );
     assert.ok(restoredSideDialog, 'expected sideDialog restore to succeed');
 
-    const restoredQueuedPrompt = restoredSideDialog.peekUpNext();
+    const restoredQueuedPrompt = restoredSideDialog.peekQueuedPrompt();
     assert.ok(restoredQueuedPrompt, 'restore should rehydrate the pending new-course prompt');
     assert.equal(
       restoredQueuedPrompt.msgId,

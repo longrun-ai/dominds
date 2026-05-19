@@ -66,7 +66,7 @@ async function main(): Promise<void> {
 
     await sideDialog.startNewCourse('continue in course two');
 
-    const queuedPrompt = sideDialog.peekUpNext();
+    const queuedPrompt = sideDialog.peekQueuedPrompt();
     assert.ok(queuedPrompt, 'expected startNewCourse to queue a new-course prompt');
     assert.equal(
       queuedPrompt.tellaskReplyDirective?.targetCallId,

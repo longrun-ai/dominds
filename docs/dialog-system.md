@@ -1255,7 +1255,7 @@ flowchart TD
   B -- yes --> C{nextStep trigger?}
   C -- no --> I[Idle\\n(waiting for trigger)]
   C -- yes --> D[Drive loop\\n(generating=true while streaming)]
-  D --> E{hasUpNext?}
+  D --> E{hasQueuedPrompt?}
   E -- yes --> C
   E -- no --> I
 ```

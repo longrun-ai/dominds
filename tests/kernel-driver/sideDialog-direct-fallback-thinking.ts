@@ -501,7 +501,7 @@ async function main(): Promise<void> {
       driveDialog: async () => {},
     });
 
-    const firstThinkingOnlyQueuedReminder = firstThinkingOnlySideDialog.peekUpNext();
+    const firstThinkingOnlyQueuedReminder = firstThinkingOnlySideDialog.peekQueuedPrompt();
     assert.equal(
       firstThinkingOnlyQueuedReminder?.kind,
       'new_course_runtime_sideDialog',
@@ -545,7 +545,7 @@ async function main(): Promise<void> {
       restoredFirstThinkingOnlySideDialog instanceof SideDialog,
       'expected side dialog to restore after durable reply reminder is queued',
     );
-    const restoredQueuedReminder = restoredFirstThinkingOnlySideDialog.peekUpNext();
+    const restoredQueuedReminder = restoredFirstThinkingOnlySideDialog.peekQueuedPrompt();
     assert.equal(
       restoredQueuedReminder?.msgId,
       firstThinkingOnlyQueuedReminder.msgId,
@@ -766,7 +766,7 @@ async function main(): Promise<void> {
       'thinking plus same-round tellask must not direct-fallback to the upstream tellasker',
     );
     assert.equal(
-      thinkingThenTellaskSideDialog.peekUpNext(),
+      thinkingThenTellaskSideDialog.peekQueuedPrompt(),
       undefined,
       'thinking plus same-round tellask must not queue a reply reminder while delegated work is pending',
     );
@@ -849,7 +849,7 @@ async function main(): Promise<void> {
       driveDialog: async () => {},
     });
 
-    const queuedToolThenPlainProgressReminder = toolThenPlainProgressSideDialog.peekUpNext();
+    const queuedToolThenPlainProgressReminder = toolThenPlainProgressSideDialog.peekQueuedPrompt();
     assert.equal(
       queuedToolThenPlainProgressReminder?.kind,
       'new_course_runtime_sideDialog',
@@ -913,7 +913,7 @@ async function main(): Promise<void> {
       driveDialog: async () => {},
     });
 
-    const removedDurableReminder = durableToolThenPlainProgressSideDialog.takeUpNext();
+    const removedDurableReminder = durableToolThenPlainProgressSideDialog.takeQueuedPrompt();
     assert.equal(
       removedDurableReminder?.kind,
       'new_course_runtime_sideDialog',
@@ -986,7 +986,7 @@ async function main(): Promise<void> {
       driveDialog: async () => {},
     });
 
-    const durableQueuedReminder = durableContinuationSideDialog.peekUpNext();
+    const durableQueuedReminder = durableContinuationSideDialog.peekQueuedPrompt();
     assert.equal(
       durableQueuedReminder?.kind,
       'new_course_runtime_sideDialog',

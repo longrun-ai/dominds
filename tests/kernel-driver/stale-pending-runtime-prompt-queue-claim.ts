@@ -18,12 +18,12 @@ async function main(): Promise<void> {
     });
 
     await root.startNewCourse(queuedPrompt);
-    const queued = root.peekUpNext();
-    assert.ok(queued, 'test precondition: startNewCourse should materialize an upNext prompt');
+    const queued = root.peekQueuedPrompt();
+    assert.ok(queued, 'test precondition: startNewCourse should materialize a queued prompt');
 
     await DialogPersistence.clearPendingRuntimePrompt(root.id, queued.msgId, root.status);
     assert.equal(
-      root.hasUpNext(),
+      root.hasQueuedPrompt(),
       true,
       'test precondition: in-memory queue should still contain the stale runtime prompt',
     );
@@ -31,7 +31,7 @@ async function main(): Promise<void> {
     await driveDialogStream(root, undefined, true);
 
     assert.equal(
-      root.hasUpNext(),
+      root.hasQueuedPrompt(),
       false,
       'driver should discard the stale in-memory pending runtime prompt claim',
     );

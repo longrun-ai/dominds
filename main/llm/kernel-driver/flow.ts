@@ -114,7 +114,7 @@ type RuntimeSideDialogReplyReminderPrompt = Readonly<{
   calleeDialogReplyTarget: KernelDriverRuntimeSideDialogPrompt['calleeDialogReplyTarget'];
 }>;
 
-type UpNextPrompt = DialogQueuedPromptState;
+type QueuedPrompt = DialogQueuedPromptState;
 
 type FollowUpPrompt =
   | DialogQueuedPromptState
@@ -230,9 +230,9 @@ function buildCurrentSideDialogAssignmentReplyDirective(
 }
 
 function isQueuedReplyObligationContinuation(
-  prompt: UpNextPrompt,
+  prompt: QueuedPrompt,
 ): prompt is Extract<
-  UpNextPrompt,
+  QueuedPrompt,
   { kind: 'new_course_runtime_reply' | 'new_course_runtime_sideDialog' }
 > {
   return (
@@ -240,6 +240,23 @@ function isQueuedReplyObligationContinuation(
       prompt.kind === 'new_course_runtime_sideDialog') &&
     isReplyToolReminderPromptContent(prompt.prompt)
   );
+}
+
+function isPendingRuntimePromptFollowUp(prompt: QueuedPrompt): boolean {
+  switch (prompt.kind) {
+    case 'new_course_runtime_guide':
+    case 'new_course_runtime_reply':
+    case 'new_course_runtime_sideDialog':
+      return true;
+    case 'user_generation_boundary':
+    case 'deferred_q4h_answer':
+    case 'registered_assignment_update':
+      return false;
+    default: {
+      const _exhaustive: never = prompt;
+      throw new Error(`Unsupported queued prompt kind for pending-runtime follow-up check`);
+    }
+  }
 }
 
 function latestHasTellaskResultForCallId(
@@ -254,7 +271,7 @@ function latestHasTellaskResultForCallId(
 async function claimQueuedReplyObligationContinuation(args: {
   dialog: KernelDriverDriveArgs[0];
   prompt: Extract<
-    UpNextPrompt,
+    QueuedPrompt,
     { kind: 'new_course_runtime_reply' | 'new_course_runtime_sideDialog' }
   >;
 }): Promise<'claimed' | 'stale'> {
@@ -374,7 +391,7 @@ function isEffectiveUserPromptForContextHealth(prompt: KernelDriverPrompt | unde
   return prompt?.origin === 'user' && !hasQ4HAnswerCallId(prompt.q4hAnswerCallId);
 }
 
-function isQueuedUserPromptForContextHealth(prompt: UpNextPrompt | undefined): boolean {
+function isQueuedUserPromptForContextHealth(prompt: QueuedPrompt | undefined): boolean {
   return prompt?.kind === 'user_generation_boundary' && !hasQ4HAnswerCallId(prompt.q4hAnswerCallId);
 }
 
@@ -578,7 +595,7 @@ async function clearConsumedRootRuntimeWakeIfIdle(dialog: Dialog): Promise<void>
     return;
   }
   const suspension = await dialog.getSuspensionStatus();
-  if (dialog.hasUpNext() || !suspension.canDrive) {
+  if (dialog.hasQueuedPrompt() || !suspension.canDrive) {
     return;
   }
   const hasRootRuntimeWake = await DialogPersistence.hasRootRuntimeWake(dialog.id, dialog.status);
@@ -1132,7 +1149,7 @@ async function claimToolFollowupContinuationForDrive(args: {
   };
 }
 
-function isPendingRuntimePromptQueuePrompt(prompt: UpNextPrompt): boolean {
+function isPendingRuntimePromptQueuePrompt(prompt: QueuedPrompt): boolean {
   switch (prompt.kind) {
     case 'new_course_runtime_guide':
     case 'new_course_runtime_reply':
@@ -1151,7 +1168,7 @@ function isPendingRuntimePromptQueuePrompt(prompt: UpNextPrompt): boolean {
 
 function pendingRuntimePromptMatchesQueuePrompt(args: {
   pendingRuntimePrompt: DialogPendingRuntimePrompt;
-  prompt: UpNextPrompt;
+  prompt: QueuedPrompt;
 }): boolean {
   if (!isPendingRuntimePromptQueuePrompt(args.prompt)) {
     return false;
@@ -1194,7 +1211,7 @@ function pendingRuntimePromptMatchesQueuePrompt(args: {
 
 async function claimPendingRuntimePromptForDrive(args: {
   dialog: Dialog;
-  prompt: UpNextPrompt;
+  prompt: QueuedPrompt;
 }): Promise<PendingRuntimePromptClaim> {
   if (!isPendingRuntimePromptQueuePrompt(args.prompt)) {
     return { status: 'not_applicable' };
@@ -1520,41 +1537,45 @@ async function resolveEffectivePrompt(
 ): Promise<
   Readonly<{
     prompt: KernelDriverPrompt | undefined;
-    fromUpNext: boolean;
+    fromQueuedPrompt: boolean;
     droppedStaleQueuedContinuation: boolean;
   }>
 > {
   if (humanPrompt) {
-    return { prompt: humanPrompt, fromUpNext: false, droppedStaleQueuedContinuation: false };
+    return { prompt: humanPrompt, fromQueuedPrompt: false, droppedStaleQueuedContinuation: false };
   }
   let droppedStaleQueuedContinuation = false;
   for (;;) {
-    const upNext: UpNextPrompt | undefined = dialog.peekUpNext();
-    if (!upNext) {
+    const queuedPrompt: QueuedPrompt | undefined = dialog.peekQueuedPrompt();
+    if (!queuedPrompt) {
       return {
         prompt: await maybeResolveDeferredReplyReassertionPrompt(dialog),
-        fromUpNext: false,
+        fromQueuedPrompt: false,
         droppedStaleQueuedContinuation,
       };
     }
 
-    if (isQueuedReplyObligationContinuation(upNext)) {
-      const claim = await claimQueuedReplyObligationContinuation({ dialog, prompt: upNext });
+    if (isQueuedReplyObligationContinuation(queuedPrompt)) {
+      const claim = await claimQueuedReplyObligationContinuation({ dialog, prompt: queuedPrompt });
       if (claim === 'stale') {
-        const discarded = dialog.takeUpNext();
-        if (!discarded || discarded.msgId !== upNext.msgId) {
+        const discarded = dialog.takeQueuedPrompt();
+        if (!discarded || discarded.msgId !== queuedPrompt.msgId) {
           throw new Error(
-            `reply obligation continuation invariant violation: expected queued prompt ${upNext.msgId} before stale discard`,
+            `reply obligation continuation invariant violation: expected queued prompt ${queuedPrompt.msgId} before stale discard`,
           );
         }
-        await DialogPersistence.clearPendingRuntimePrompt(dialog.id, upNext.msgId, dialog.status);
+        await DialogPersistence.clearPendingRuntimePrompt(
+          dialog.id,
+          queuedPrompt.msgId,
+          dialog.status,
+        );
         log.debug('kernel-driver dropped stale reply obligation continuation', undefined, {
           dialogId: dialog.id.valueOf(),
           rootId: dialog.id.rootId,
           selfId: dialog.id.selfId,
-          msgId: upNext.msgId,
-          targetCallId: upNext.tellaskReplyDirective.targetCallId,
-          expectedReplyCallName: upNext.tellaskReplyDirective.expectedReplyCallName,
+          msgId: queuedPrompt.msgId,
+          targetCallId: queuedPrompt.tellaskReplyDirective.targetCallId,
+          expectedReplyCallName: queuedPrompt.tellaskReplyDirective.expectedReplyCallName,
         });
         droppedStaleQueuedContinuation = true;
         continue;
@@ -1563,50 +1584,50 @@ async function resolveEffectivePrompt(
 
     const pendingRuntimePromptClaim = await claimPendingRuntimePromptForDrive({
       dialog,
-      prompt: upNext,
+      prompt: queuedPrompt,
     });
     if (pendingRuntimePromptClaim.status === 'stale') {
-      const discarded = dialog.takeUpNext();
-      if (!discarded || discarded.msgId !== upNext.msgId) {
+      const discarded = dialog.takeQueuedPrompt();
+      if (!discarded || discarded.msgId !== queuedPrompt.msgId) {
         throw new Error(
-          `pending runtime prompt invariant violation: expected queued prompt ${upNext.msgId} before stale discard`,
+          `pending runtime prompt invariant violation: expected queued prompt ${queuedPrompt.msgId} before stale discard`,
         );
       }
       log.debug('kernel-driver dropped stale pending runtime prompt continuation', undefined, {
         dialogId: dialog.id.valueOf(),
         rootId: dialog.id.rootId,
         selfId: dialog.id.selfId,
-        msgId: upNext.msgId,
-        kind: upNext.kind,
+        msgId: queuedPrompt.msgId,
+        kind: queuedPrompt.kind,
       });
       droppedStaleQueuedContinuation = true;
       continue;
     }
 
     return {
-      fromUpNext: true,
+      fromQueuedPrompt: true,
       droppedStaleQueuedContinuation,
       prompt: (() => {
         const normalizedUserLanguageCode: KernelDriverPrompt['userLanguageCode'] =
-          upNext.userLanguageCode === 'zh' || upNext.userLanguageCode === 'en'
-            ? upNext.userLanguageCode
+          queuedPrompt.userLanguageCode === 'zh' || queuedPrompt.userLanguageCode === 'en'
+            ? queuedPrompt.userLanguageCode
             : undefined;
         const common = {
-          content: upNext.prompt,
-          msgId: upNext.msgId,
-          grammar: upNext.grammar ?? 'markdown',
+          content: queuedPrompt.prompt,
+          msgId: queuedPrompt.msgId,
+          grammar: queuedPrompt.grammar ?? 'markdown',
           userLanguageCode: normalizedUserLanguageCode,
-          runControl: upNext.runControl,
+          runControl: queuedPrompt.runControl,
         };
-        switch (upNext.kind) {
+        switch (queuedPrompt.kind) {
           case 'user_generation_boundary':
           case 'deferred_q4h_answer': {
             const prompt: KernelDriverUserPrompt = {
               ...common,
               origin: 'user',
-              ...(upNext.q4hAnswerCallId === undefined
+              ...(queuedPrompt.q4hAnswerCallId === undefined
                 ? {}
-                : { q4hAnswerCallId: upNext.q4hAnswerCallId }),
+                : { q4hAnswerCallId: queuedPrompt.q4hAnswerCallId }),
             };
             return prompt;
           }
@@ -1617,23 +1638,25 @@ async function resolveEffectivePrompt(
             const runtimeCommon = {
               ...common,
               origin: 'runtime' as const,
-              ...(upNext.skipTaskdoc === undefined ? {} : { skipTaskdoc: upNext.skipTaskdoc }),
+              ...(queuedPrompt.skipTaskdoc === undefined
+                ? {}
+                : { skipTaskdoc: queuedPrompt.skipTaskdoc }),
             };
             if (
-              upNext.kind === 'registered_assignment_update' ||
-              upNext.kind === 'new_course_runtime_sideDialog'
+              queuedPrompt.kind === 'registered_assignment_update' ||
+              queuedPrompt.kind === 'new_course_runtime_sideDialog'
             ) {
               const prompt: KernelDriverRuntimeSideDialogPrompt = {
                 ...runtimeCommon,
-                tellaskReplyDirective: upNext.tellaskReplyDirective,
-                calleeDialogReplyTarget: upNext.calleeDialogReplyTarget,
+                tellaskReplyDirective: queuedPrompt.tellaskReplyDirective,
+                calleeDialogReplyTarget: queuedPrompt.calleeDialogReplyTarget,
               };
               return prompt;
             }
-            if (upNext.kind === 'new_course_runtime_reply') {
+            if (queuedPrompt.kind === 'new_course_runtime_reply') {
               const prompt: KernelDriverRuntimeReplyPrompt = {
                 ...runtimeCommon,
-                tellaskReplyDirective: upNext.tellaskReplyDirective,
+                tellaskReplyDirective: queuedPrompt.tellaskReplyDirective,
               };
               return prompt;
             }
@@ -1665,6 +1688,7 @@ export async function executeDriveRound(args: {
   let shouldRefreshDisplayStateAfterActiveRunCleared = false;
   let followUp: FollowUpPrompt | undefined;
   let driveResult: KernelDriverCoreResult | undefined;
+  let shouldDriveQueuedPromptAfterCore = false;
   let activeBusinessContinuation: DialogBusinessContinuation =
     driveOptions?.businessContinuation ?? { kind: 'none' };
   const replyContinuationScope = {
@@ -1871,7 +1895,7 @@ export async function executeDriveRound(args: {
         driveOptions,
       });
     }
-    if (!humanPrompt && dialog instanceof SideDialog && !dialog.hasUpNext()) {
+    if (!humanPrompt && dialog instanceof SideDialog && !dialog.hasQueuedPrompt()) {
       const inspection = await inspectSideDialogBusinessContinuationDrive({
         dialog,
         driveOptions,
@@ -1948,7 +1972,7 @@ export async function executeDriveRound(args: {
       // true-source cases behind the same visible resumption panel:
       // - no active reply obligation / not suspended anymore -> continue real driving now
       // - active reply obligation + suspended -> restore the true suspension state
-      // - active reply obligation + still proceeding continuation (for example queued upNext) ->
+      // - active reply obligation + still proceeding continuation (for example queued prompt) ->
       //   continue real driving now
       //
       // Do not refactor this branch using only `displayState` or only the previous interrupted
@@ -1963,7 +1987,7 @@ export async function executeDriveRound(args: {
         : hasSupplyResponseContinuation
           ? await loadFreshSuspensionStatusFromPersistence(dialog)
           : await dialog.getSuspensionStatus();
-      const queuedPrompt: UpNextPrompt | undefined = dialog.peekUpNext();
+      const queuedPrompt: QueuedPrompt | undefined = dialog.peekQueuedPrompt();
       const queuedSideDialogPromptCanResume =
         dialog instanceof SideDialog && queuedPrompt !== undefined;
       if (!suspension.canDrive && !queuedSideDialogPromptCanResume) {
@@ -1994,7 +2018,7 @@ export async function executeDriveRound(args: {
           rootId: dialog.id.rootId,
           selfId: dialog.id.selfId,
           waitInQue,
-          hasQueuedUpNext: dialog.hasUpNext(),
+          hasQueuedPrompt: dialog.hasQueuedPrompt(),
           waitingQ4H: suspension.q4h,
           backgroundCalleeDialogs: suspension.backgroundCalleeDialogs,
           lastDriveTrigger: lastTrigger
@@ -2022,7 +2046,7 @@ export async function executeDriveRound(args: {
             dialogId: dialog.id.valueOf(),
             waitingQ4H: suspension.q4h,
             backgroundCalleeDialogs: suspension.backgroundCalleeDialogs,
-            hasQueuedUpNext: dialog.hasUpNext(),
+            hasQueuedPrompt: dialog.hasQueuedPrompt(),
             queuedSideDialogPromptCanResume,
           },
         );
@@ -2043,8 +2067,8 @@ export async function executeDriveRound(args: {
     }
 
     const snapshot = dialog.getLastContextHealth();
-    const queuedUpNextBeforeHealth = dialog.peekUpNext();
-    const hasQueuedUpNext = queuedUpNextBeforeHealth !== undefined;
+    const queuedPromptBeforeHealth = dialog.peekQueuedPrompt();
+    const hasQueuedPrompt = queuedPromptBeforeHealth !== undefined;
     const provider = policy.effectiveAgent.provider ?? minds.team.memberDefaults.provider;
     const model = policy.effectiveAgent.model ?? minds.team.memberDefaults.model;
     let cautionRemediationCadenceGenerations =
@@ -2060,19 +2084,19 @@ export async function executeDriveRound(args: {
     const userPromptContentForHealth =
       humanPrompt?.origin === 'user'
         ? humanPrompt.content
-        : queuedUpNextBeforeHealth?.origin === 'user'
-          ? queuedUpNextBeforeHealth.prompt
+        : queuedPromptBeforeHealth?.origin === 'user'
+          ? queuedPromptBeforeHealth.prompt
           : undefined;
     const healthDecision = decideKernelDriverContextHealth({
       dialogKey: dialog.id.key(),
       snapshot,
       hadUserPromptThisGen:
         isEffectiveUserPromptForContextHealth(humanPrompt) ||
-        (humanPrompt === undefined && isQueuedUserPromptForContextHealth(queuedUpNextBeforeHealth)),
+        (humanPrompt === undefined && isQueuedUserPromptForContextHealth(queuedPromptBeforeHealth)),
       userPromptCriticalRemediationAlreadyApplied:
         userPromptContentForHealth !== undefined &&
         isAgentFacingCriticalUserInterjectionRemediationGuideContent(userPromptContentForHealth),
-      canInjectPromptThisGen: !hasQueuedUpNext,
+      canInjectPromptThisGen: !hasQueuedPrompt,
       cautionRemediationCadenceGenerations,
       criticalCountdownRemaining,
     });
@@ -2084,7 +2108,7 @@ export async function executeDriveRound(args: {
           nextCourse: dialog.currentCourse + 1,
           source: 'critical_auto_clear',
         });
-        await dialog.startNewCourse(newCoursePrompt);
+        healthPrompt = await dialog.startNewCourse(newCoursePrompt);
         dialog.setLastContextHealth({ kind: 'unavailable', reason: 'usage_unavailable' });
         resetContextHealthRoundState(dialog.id.key());
       } else if (healthDecision.reason === 'critical_user_prompt_remediation') {
@@ -2100,13 +2124,13 @@ export async function executeDriveRound(args: {
               msgId:
                 humanPrompt?.origin === 'user'
                   ? humanPrompt.msgId
-                  : queuedUpNextBeforeHealth?.origin === 'user'
-                    ? queuedUpNextBeforeHealth.msgId
+                  : queuedPromptBeforeHealth?.origin === 'user'
+                    ? queuedPromptBeforeHealth.msgId
                     : null,
             },
           );
         }
-      } else if (!hasQueuedUpNext) {
+      } else if (!hasQueuedPrompt) {
         const language = getWorkLanguage();
         const dialogScope = dialog instanceof SideDialog ? 'sideDialog' : 'mainDialog';
         const guideText =
@@ -2135,12 +2159,8 @@ export async function executeDriveRound(args: {
 
     args.runtime.driveCount += 1;
     args.runtime.totalGenIterations += 1;
-    args.runtime.usedLegacyDriveCore = false;
 
-    const promptForCore =
-      healthDecision.kind === 'continue' && healthDecision.reason === 'critical_force_new_course'
-        ? undefined
-        : (healthPrompt ?? humanPrompt);
+    const promptForCore = healthPrompt ?? humanPrompt;
     const resolvedPrompt = await resolveEffectivePrompt(dialog, promptForCore);
     const effectivePrompt = resolvedPrompt.prompt;
     const latestBeforeCore = await DialogPersistence.loadDialogLatest(dialog.id, dialog.status);
@@ -2171,11 +2191,11 @@ export async function executeDriveRound(args: {
       driveSource,
       genIterNo: args.runtime.totalGenIterations,
     });
-    if (resolvedPrompt.fromUpNext) {
-      const consumed: UpNextPrompt | undefined = dialog.takeUpNext();
+    if (resolvedPrompt.fromQueuedPrompt) {
+      const consumed: QueuedPrompt | undefined = dialog.takeQueuedPrompt();
       if (!consumed || consumed.msgId !== effectivePrompt?.msgId) {
         throw new Error(
-          `kernel-driver upNext invariant violation: expected queued prompt ${effectivePrompt?.msgId ?? 'unknown'} before drive`,
+          `kernel-driver queued prompt invariant violation: expected queued prompt ${effectivePrompt?.msgId ?? 'unknown'} before drive`,
         );
       }
     }
@@ -2243,13 +2263,21 @@ export async function executeDriveRound(args: {
     activeTellaskReplyDirective = activeTellaskReplyDirective ?? replyContinuationScope.directive();
     interruptedBySignal = getActiveRunSignal(dialog.id)?.aborted === true;
     if (!interruptedBySignal) {
-      const queuedFollowUp = dialog.takeUpNext();
-      if (queuedFollowUp && isQueuedReplyObligationContinuation(queuedFollowUp)) {
+      const queuedFollowUp = dialog.peekQueuedPrompt();
+      if (queuedFollowUp && isPendingRuntimePromptFollowUp(queuedFollowUp)) {
+        followUp = undefined;
+      } else if (queuedFollowUp && isQueuedReplyObligationContinuation(queuedFollowUp)) {
         const claim = await claimQueuedReplyObligationContinuation({
           dialog,
           prompt: queuedFollowUp,
         });
         if (claim === 'stale') {
+          const discarded = dialog.takeQueuedPrompt();
+          if (!discarded || discarded.msgId !== queuedFollowUp.msgId) {
+            throw new Error(
+              `reply obligation continuation invariant violation: expected queued prompt ${queuedFollowUp.msgId} before stale discard after core`,
+            );
+          }
           await DialogPersistence.clearPendingRuntimePrompt(
             dialog.id,
             queuedFollowUp.msgId,
@@ -2269,10 +2297,15 @@ export async function executeDriveRound(args: {
           );
           followUp = undefined;
         } else {
-          followUp = queuedFollowUp;
+          followUp = dialog.takeQueuedPrompt();
+          if (!followUp || followUp.msgId !== queuedFollowUp.msgId) {
+            throw new Error(
+              `reply obligation continuation invariant violation: expected queued prompt ${queuedFollowUp.msgId} before claimed follow-up after core`,
+            );
+          }
         }
       } else {
-        followUp = queuedFollowUp;
+        followUp = dialog.takeQueuedPrompt();
       }
     }
 
@@ -2645,6 +2678,10 @@ export async function executeDriveRound(args: {
           })(),
         });
       }
+      if (dialog.hasQueuedPrompt()) {
+        shouldDriveQueuedPromptAfterCore = true;
+        return driveResult;
+      }
       if (
         shouldPauseAfterLocalUserInterjection &&
         !interruptedBySignal &&
@@ -2726,6 +2763,15 @@ export async function executeDriveRound(args: {
       }
     }
     release();
+    if (shouldDriveQueuedPromptAfterCore) {
+      return await args.driveDialog(dialog, {
+        waitInQue: true,
+        driveOptions: {
+          source: 'kernel_driver_follow_up',
+          reason: 'queued_prompt_after_core',
+        },
+      });
+    }
     maybeStartIdleReminderWake(
       dialog,
       {

@@ -350,20 +350,23 @@ export async function driveQueuedDialogsOnce(): Promise<void> {
         );
       }
       const stillHasDurableWork = hasDurableDriveWork(latestAfterDrive);
-      const shouldStayQueued = dialog.hasUpNext() || !status.canDrive || stillHasDurableWork;
+      const shouldStayQueued = dialog.hasQueuedPrompt() || !status.canDrive || stillHasDurableWork;
       if (shouldStayQueued) {
-        const canRetryImmediately = dialog.hasUpNext() || (status.canDrive && stillHasDurableWork);
+        const canRetryImmediately =
+          dialog.hasQueuedPrompt() || (status.canDrive && stillHasDurableWork);
         if (canRetryImmediately) {
           globalDialogRegistry.queueRootDrive(rootDialog.id.rootId, {
             source: 'kernel_driver_backend_loop',
-            reason: dialog.hasUpNext()
-              ? 'post_drive_upnext_pending'
+            reason: dialog.hasQueuedPrompt()
+              ? 'post_drive_queued_prompt_pending'
               : 'post_drive_durable_work_pending',
           });
           if (dialog.id.selfId === dialog.id.rootId) {
             await DialogPersistence.upsertRootRuntimeWake(
               dialog.id,
-              dialog.hasUpNext() ? 'post_drive_upnext_pending' : 'post_drive_durable_work_pending',
+              dialog.hasQueuedPrompt()
+                ? 'post_drive_queued_prompt_pending'
+                : 'post_drive_durable_work_pending',
               dialog.status,
             );
           }
@@ -400,7 +403,7 @@ export async function driveQueuedDialogsOnce(): Promise<void> {
           selfId: dialog.id.selfId,
           waitingQ4H: status.q4h,
           backgroundCalleeDialogs: status.backgroundCalleeDialogs,
-          hasQueuedUpNext: dialog.hasUpNext(),
+          hasQueuedPrompt: dialog.hasQueuedPrompt(),
           lastDriveTrigger: lastTrigger
             ? {
                 action: lastTrigger.action,
@@ -421,7 +424,7 @@ export async function driveQueuedDialogsOnce(): Promise<void> {
           selfId: dialog.id.selfId,
           waitingQ4H: status.q4h,
           backgroundCalleeDialogs: status.backgroundCalleeDialogs,
-          hasQueuedUpNext: dialog.hasUpNext(),
+          hasQueuedPrompt: dialog.hasQueuedPrompt(),
           lastDriveTrigger: lastTrigger
             ? {
                 action: lastTrigger.action,

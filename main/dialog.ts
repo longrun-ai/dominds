@@ -399,7 +399,7 @@ export abstract class Dialog {
   protected _lastContextHealth?: ContextHealthSnapshot;
   protected _lastContextHealthGenseq?: number;
   // Prompts queued for future drives (set by startNewCourse or deferred-resume flows).
-  protected _upNextQueue: DialogQueuedPromptState[] = [];
+  protected _queuedPrompts: DialogQueuedPromptState[] = [];
   protected _driveIntents: DriveIntent[] = [];
   protected _activeRunControlSpec?: DialogRunControlSpec;
   protected _newCourseHook?: NewCourseHook;
@@ -1072,13 +1072,13 @@ export abstract class Dialog {
     existingMsgId: string,
     nextPrompt: DialogQueuedPromptState,
   ): DialogQueuedPromptState {
-    const queueIndex = this._upNextQueue.findIndex((prompt) => prompt.msgId === existingMsgId);
+    const queueIndex = this._queuedPrompts.findIndex((prompt) => prompt.msgId === existingMsgId);
     if (queueIndex < 0) {
       throw new Error(
-        `UpNext prompt replacement invariant violation: dialog=${this.id.valueOf()} existingMsgId=${existingMsgId}`,
+        `Queued prompt replacement invariant violation: dialog=${this.id.valueOf()} existingMsgId=${existingMsgId}`,
       );
     }
-    this._upNextQueue[queueIndex] = nextPrompt;
+    this._queuedPrompts[queueIndex] = nextPrompt;
 
     for (let index = this._driveIntents.length - 1; index >= 0; index -= 1) {
       const intent = this._driveIntents[index];
@@ -1142,7 +1142,7 @@ export abstract class Dialog {
             default: {
               const _exhaustive: never = nextPrompt;
               throw new Error(
-                `UpNext prompt replacement invariant violation: unsupported queued prompt`,
+                `Queued prompt replacement invariant violation: unsupported queued prompt`,
               );
             }
           }
@@ -1153,7 +1153,7 @@ export abstract class Dialog {
     }
 
     throw new Error(
-      `UpNext prompt replacement invariant violation: missing drive intent dialog=${this.id.valueOf()} existingMsgId=${existingMsgId}`,
+      `Queued prompt replacement invariant violation: missing drive intent dialog=${this.id.valueOf()} existingMsgId=${existingMsgId}`,
     );
   }
 
@@ -1202,7 +1202,7 @@ export abstract class Dialog {
               const prompt: DialogRuntimeGuidePrompt = runtimeCommon;
               return prompt;
             })();
-    this._upNextQueue = [
+    this._queuedPrompts = [
       normalized.calleeDialogReplyTarget !== undefined
         ? {
             kind: 'new_course_runtime_sideDialog',
@@ -1261,7 +1261,7 @@ export abstract class Dialog {
   }
 
   private enqueueQueuedPromptState(state: DialogQueuedPromptState): void {
-    this._upNextQueue.push(state);
+    this._queuedPrompts.push(state);
     const promptCommon = {
       content: state.prompt,
       ...(state.contentItems === undefined ? {} : { contentItems: state.contentItems }),
@@ -1314,7 +1314,7 @@ export abstract class Dialog {
           }
           default: {
             const _exhaustive: never = state;
-            throw new Error(`UpNext enqueue invariant violation: unsupported queued prompt`);
+            throw new Error(`Queued prompt enqueue invariant violation: unsupported queued prompt`);
           }
         }
       })(),
@@ -1323,11 +1323,11 @@ export abstract class Dialog {
     this._updatedAt = formatUnifiedTimestamp(new Date());
   }
 
-  private peekLatestUpNext(): DialogQueuedPromptState | undefined {
-    if (this._upNextQueue.length === 0) {
+  private peekLatestQueuedPrompt(): DialogQueuedPromptState | undefined {
+    if (this._queuedPrompts.length === 0) {
       return undefined;
     }
-    return this._upNextQueue[this._upNextQueue.length - 1];
+    return this._queuedPrompts[this._queuedPrompts.length - 1];
   }
 
   public queueUserPromptAtGenerationBoundary(options: {
@@ -1338,7 +1338,7 @@ export abstract class Dialog {
     userLanguageCode?: LanguageCode;
     q4hAnswerCallId?: string;
   }): DialogQueuedPromptState {
-    const existing = this.peekLatestUpNext();
+    const existing = this.peekLatestQueuedPrompt();
     const trimmed = options.prompt.trim();
     if (!trimmed) {
       throw new Error('Prompt is required to queue generation-boundary user prompt');
@@ -1417,7 +1417,7 @@ export abstract class Dialog {
     skipTaskdoc?: boolean;
     calleeDialogReplyTarget: DialogCalleeReplyTarget;
   }): DialogQueuedPromptState {
-    const existing = this.peekLatestUpNext();
+    const existing = this.peekLatestQueuedPrompt();
     const trimmed = options.prompt.trim();
     if (!trimmed) {
       throw new Error('Prompt is required to queue registered assignment update');
@@ -1557,16 +1557,16 @@ export abstract class Dialog {
     return created;
   }
 
-  public hasUpNext(): boolean {
-    return this._upNextQueue.length > 0;
+  public hasQueuedPrompt(): boolean {
+    return this._queuedPrompts.length > 0;
   }
 
-  public peekUpNext(): DialogQueuedPromptState | undefined {
-    return this._upNextQueue[0];
+  public peekQueuedPrompt(): DialogQueuedPromptState | undefined {
+    return this._queuedPrompts[0];
   }
 
-  public takeUpNext(): DialogQueuedPromptState | undefined {
-    return this._upNextQueue.shift();
+  public takeQueuedPrompt(): DialogQueuedPromptState | undefined {
+    return this._queuedPrompts.shift();
   }
 
   public setActiveRunControlSpec(spec?: DialogRunControlSpec): void {
@@ -1611,7 +1611,7 @@ export abstract class Dialog {
       skipRunControlHook?: boolean;
       skipEnqueueIntent?: boolean;
     },
-  ): Promise<void> {
+  ): Promise<DialogRuntimePrompt> {
     const trimmedPrompt = newCoursePrompt.trim();
     if (!trimmedPrompt) {
       throw new Error('newCoursePrompt is required to start a new course');
@@ -1695,6 +1695,7 @@ export abstract class Dialog {
         runControl: runControlSpec,
       });
     }
+    return normalized;
   }
 
   // Proxy methods for DialogStore - route calls through dialog object instead of direct dlgStore access
