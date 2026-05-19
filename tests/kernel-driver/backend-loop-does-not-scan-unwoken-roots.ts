@@ -35,7 +35,7 @@ async function main(): Promise<void> {
     root.disableDiligencePush = true;
     globalDialogRegistry.register(root);
     await root.startNewCourse(queuedPrompt);
-    globalDialogRegistry.clearDriveWake(root.id.rootId, {
+    globalDialogRegistry.clearRootDriveQueue(root.id.rootId, {
       source: 'kernel_driver_test',
       reason: 'remove_start_new_course_wake_for_scan_guard',
     });
@@ -47,7 +47,7 @@ async function main(): Promise<void> {
       'backend loop must not discover durable work by enumerating all registered roots',
     );
 
-    globalDialogRegistry.wakeDrive(root.id.rootId, {
+    globalDialogRegistry.queueRootDrive(root.id.rootId, {
       source: 'kernel_driver_test',
       reason: 'explicit_wake_after_unwoken_root_scan_guard',
     });

@@ -122,12 +122,12 @@ async function main(): Promise<void> {
           return hasPendingNextStepTriggers(latest) === true;
         },
         3_000,
-        'root wake to queue while the synthetic active run is still present',
+        'root drive to queue while the synthetic active run is still present',
       );
       await waitFor(
-        async () => globalDialogRegistry.hasPendingActiveRunClearedWake(root.id.rootId),
+        async () => globalDialogRegistry.hasPendingActiveRunClearedDrive(root.id.rootId),
         3_000,
-        'backend loop to record that the queued root wake was deferred by the synthetic active run',
+        'backend loop to record that the queued root drive was deferred by the synthetic active run',
       );
       clearActiveRun(root.id);
 
@@ -135,7 +135,7 @@ async function main(): Promise<void> {
         async () =>
           globalDialogRegistry.getLastDriveTrigger(root.id.rootId)?.action === 'active_run_cleared',
         3_000,
-        'clearing the synthetic blocker to emit an active_run_cleared wake event',
+        'clearing the synthetic blocker to emit an active_run_cleared drive event',
       );
 
       await waitFor(

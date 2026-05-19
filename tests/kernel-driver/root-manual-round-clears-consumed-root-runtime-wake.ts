@@ -34,17 +34,17 @@ async function main(): Promise<void> {
 
     await DialogPersistence.upsertRootRuntimeWake(
       root.id,
-      'seed_root_queue_before_foreground_consumption_without_blocked_wake_marker',
+      'seed_root_queue_before_foreground_consumption_without_blocked_drive_marker',
       root.status,
     );
-    globalDialogRegistry.wakeDrive(root.id.rootId, {
+    globalDialogRegistry.queueRootDrive(root.id.rootId, {
       source: 'kernel_driver_test',
-      reason: 'seed_root_queue_before_foreground_consumption_without_blocked_wake_marker',
+      reason: 'seed_root_queue_before_foreground_consumption_without_blocked_drive_marker',
     });
     assert.equal(
-      globalDialogRegistry.hasPendingActiveRunClearedWake(root.id.rootId),
+      globalDialogRegistry.hasPendingActiveRunClearedDrive(root.id.rootId),
       false,
-      'test precondition: queued root should not already carry an active-run-cleared wake marker',
+      'test precondition: queued root should not already carry an active-run-cleared drive marker',
     );
 
     await executeDriveRound({
@@ -80,14 +80,14 @@ async function main(): Promise<void> {
       'idle foreground root round should remove the consumed root runtime wake queue entry',
     );
     assert.equal(
-      globalDialogRegistry.hasPendingActiveRunClearedWake(root.id.rootId),
+      globalDialogRegistry.hasPendingActiveRunClearedDrive(root.id.rootId),
       false,
-      'idle foreground root round should not leave a deferred wake marker behind',
+      'idle foreground root round should not leave a deferred drive marker behind',
     );
     assert.equal(
-      globalDialogRegistry.hasPendingActiveRunClearedWake(root.id.rootId),
+      globalDialogRegistry.hasPendingActiveRunClearedDrive(root.id.rootId),
       false,
-      'idle foreground root round should not leave a deferred wake marker behind after durable root runtime wake cleanup',
+      'idle foreground root round should not leave a deferred drive marker behind after durable root runtime wake cleanup',
     );
   });
 

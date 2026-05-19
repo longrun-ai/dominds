@@ -323,7 +323,7 @@ export async function supplyResponseToAskerDialog(args: {
           },
           callerDialog.status,
         );
-        globalDialogRegistry.wakeDrive(callerDialog.id.rootId, {
+        globalDialogRegistry.queueRootDrive(callerDialog.id.rootId, {
           source: 'kernel_driver_supply_response',
           reason: `result_arrival_triggered:type_${callType}`,
         });

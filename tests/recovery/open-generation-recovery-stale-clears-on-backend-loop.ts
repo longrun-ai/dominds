@@ -33,7 +33,7 @@ async function main(): Promise<void> {
       },
     }));
 
-    globalDialogRegistry.wakeDrive(root.id.rootId, {
+    globalDialogRegistry.queueRootDrive(root.id.rootId, {
       source: 'test_open_generation_recovery_stale',
       reason: 'open_generation_recovery',
     });

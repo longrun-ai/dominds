@@ -781,7 +781,7 @@ async function main(): Promise<void> {
     const recoveredA = globalDialogRegistry.get(aRoot);
     assert.ok(recoveredA, 'restart recovery should restore dlg-a root');
     assert.equal(
-      globalDialogRegistry.isDriveWakeQueued(aRoot),
+      globalDialogRegistry.isRootDriveQueued(aRoot),
       true,
       'restart recovery should enqueue dlg-a for backend drive',
     );
@@ -789,12 +789,12 @@ async function main(): Promise<void> {
     assert.equal(
       latestKAfterRecovery?.generating,
       true,
-      'wake-queued pending-reply-obligation sideDialog restart recovery should keep unresolved durable work recoverable',
+      'Wake Queue pending-reply-obligation sideDialog restart recovery should keep unresolved durable work recoverable',
     );
     assert.equal(
       latestKAfterRecovery?.generationRunState?.kind,
       'open',
-      'wake-queued pending-reply-obligation sideDialog restart recovery should preserve open generation state when not yet complete',
+      'Wake Queue pending-reply-obligation sideDialog restart recovery should preserve open generation state when not yet complete',
     );
     const wakeQueueTargetsKAfterRecovery = await DialogPersistence.loadWakeQueueTargetDialogIds(
       kRootId,
@@ -802,12 +802,12 @@ async function main(): Promise<void> {
     );
     assert.ok(
       wakeQueueTargetsKAfterRecovery.some((dialogId) => dialogId.selfId === kSide),
-      'unresolved wake-queued sideDialog recovery should keep the root wake queue entry',
+      'unresolved Wake Queue sideDialog recovery should keep the root wake queue entry',
     );
     assert.equal(
-      globalDialogRegistry.isDriveWakeQueued(kRoot),
+      globalDialogRegistry.isRootDriveQueued(kRoot),
       true,
-      'unresolved wake-queued sideDialog recovery should keep root backend wake queued for precise wake-queue driving',
+      'unresolved Wake Queue sideDialog recovery should keep root backend drive queued for precise wake-queue driving',
     );
     globalDialogRegistry.unregister(kRoot);
 

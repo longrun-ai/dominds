@@ -96,7 +96,7 @@ async function main(): Promise<void> {
       'sideDialog with pending reply delivery recovery must enter wake queue',
     );
 
-    globalDialogRegistry.wakeDrive(root.id.rootId, {
+    globalDialogRegistry.queueRootDrive(root.id.rootId, {
       source: 'test_reply_delivery_live_continuation',
       reason: 'reply_delivery_recovery',
     });

@@ -581,7 +581,7 @@ async function clearConsumedRootRuntimeWakeIfIdle(dialog: Dialog): Promise<void>
     });
     return;
   }
-  globalDialogRegistry.clearDriveWake(dialog.id.rootId, {
+  globalDialogRegistry.clearRootDriveQueue(dialog.id.rootId, {
     source: 'kernel_driver_flow_tail',
     reason: 'root_idle_after_consuming_deferred_queue',
   });
@@ -610,7 +610,7 @@ async function restoreRootRuntimeWakeAfterDriveFailure(args: {
   }
   const reason = `${args.reason}_requeue:${args.driveOptions?.reason ?? 'unknown'}`;
   await DialogPersistence.upsertRootRuntimeWake(args.dialog.id, reason, args.dialog.status);
-  globalDialogRegistry.wakeDrive(args.dialog.id.rootId, {
+  globalDialogRegistry.queueRootDrive(args.dialog.id.rootId, {
     source: 'kernel_driver_flow_tail',
     reason,
   });
@@ -1846,8 +1846,8 @@ export async function executeDriveRound(args: {
                 emittedAtMs: lastTrigger.emittedAtMs,
                 ageMs: lastTriggerAgeMs,
                 entryFound: lastTrigger.entryFound,
-                previousWakeQueued: lastTrigger.previousWakeQueued,
-                nextWakeQueued: lastTrigger.nextWakeQueued,
+                previousDriveQueued: lastTrigger.previousDriveQueued,
+                nextDriveQueued: lastTrigger.nextDriveQueued,
               }
             : null,
           source: driveSource,

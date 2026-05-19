@@ -41,7 +41,7 @@ async function recoverRootOpenGeneration(dialog: Dialog): Promise<void> {
     },
     dialog.status,
   );
-  globalDialogRegistry.wakeDrive(dialog.id.rootId, {
+  globalDialogRegistry.queueRootDrive(dialog.id.rootId, {
     source: 'restart_recovery',
     reason: 'persisted_open_generation_recovery',
   });
@@ -61,12 +61,12 @@ async function recoverSideDialogOpenGeneration(dialog: Dialog): Promise<void> {
   );
   const wakeQueueEntries = await DialogPersistence.loadWakeQueueEntries(rootId, dialog.status);
   if (rootHasPendingNextStepTriggers || wakeQueueEntries.length > 0) {
-    globalDialogRegistry.wakeDrive(dialog.id.rootId, {
+    globalDialogRegistry.queueRootDrive(dialog.id.rootId, {
       source: 'restart_recovery',
       reason: 'sideDialog_open_generation_recovered_more_work',
     });
   } else {
-    globalDialogRegistry.clearDriveWake(dialog.id.rootId, {
+    globalDialogRegistry.clearRootDriveQueue(dialog.id.rootId, {
       source: 'restart_recovery',
       reason: 'sideDialog_open_generation_recovered_idle',
     });

@@ -402,7 +402,7 @@ async function main(): Promise<void> {
       wakeQueueTargetsDuringLegacyRecovery.some(
         (dialogId) => dialogId.selfId === sideDialog.id.selfId,
       ),
-      'open generation recovery must keep a reused registered sideDialog wake-queued even with an old final-response projection',
+      'open generation recovery must keep a reused registered sideDialog in Wake Queue even with an old final-response projection',
     );
     await DialogPersistence.mutateDialogLatest(sideDialog.id, () => ({
       kind: 'patch',

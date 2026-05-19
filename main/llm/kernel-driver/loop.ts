@@ -29,8 +29,8 @@ function formatDriveTriggerForLog(trigger: DriveTriggerEvent): Record<string, un
     action: trigger.action,
     rootId: trigger.rootId,
     entryFound: trigger.entryFound,
-    previousWakeQueued: trigger.previousWakeQueued,
-    nextWakeQueued: trigger.nextWakeQueued,
+    previousDriveQueued: trigger.previousDriveQueued,
+    nextDriveQueued: trigger.nextDriveQueued,
     source: trigger.source,
     reason: trigger.reason,
     emittedAtMs: trigger.emittedAtMs,
@@ -107,7 +107,7 @@ async function listLiveDialogsWithDurableDriveWork(): Promise<
         );
       } catch (error: unknown) {
         hadCandidateInspectionError = true;
-        log.error('Backend driver failed to restore wake queued side dialog', error, {
+        log.error('Backend driver failed to restore Wake Queue target side dialog', error, {
           rootId: mainDialog.id.rootId,
           selfId: wakeQueueTargetDialogId.selfId,
         });
@@ -117,7 +117,7 @@ async function listLiveDialogsWithDurableDriveWork(): Promise<
         candidateDialogs.push(wakeQueueTargetDialog);
       } else {
         log.warn(
-          'Backend driver could not restore wake queued side dialog; dropping wake queue entries',
+          'Backend driver could not restore Wake Queue target side dialog; dropping wake queue entries',
           undefined,
           {
             rootId: mainDialog.id.rootId,
@@ -183,7 +183,7 @@ async function listLiveDialogsWithDurableDriveWork(): Promise<
       });
     }
     if (!hasQueuedCandidateForRoot && !hadCandidateInspectionError && !hadStalledCandidateForRoot) {
-      globalDialogRegistry.clearDriveWake(mainDialog.id.rootId, {
+      globalDialogRegistry.clearRootDriveQueue(mainDialog.id.rootId, {
         source: 'kernel_driver_backend_loop',
         reason: 'no_durable_drive_work',
       });
@@ -218,7 +218,7 @@ export async function driveQueuedDialogsOnce(): Promise<void> {
         latestForDrive = await DialogPersistence.loadDialogLatest(dialog.id, dialog.status);
         if (!latestForDrive || !hasDurableDriveWork(latestForDrive)) {
           if (dialog.id.selfId === dialog.id.rootId) {
-            globalDialogRegistry.clearDriveWake(dialog.id.rootId, {
+            globalDialogRegistry.clearRootDriveQueue(dialog.id.rootId, {
               source: 'kernel_driver_backend_loop',
               reason: 'stale_open_generation_recovery',
             });
@@ -245,7 +245,7 @@ export async function driveQueuedDialogsOnce(): Promise<void> {
         doesInterruptionReasonRequireExplicitResume(executionMarker.reason);
       if (interruptedRequiresExplicitResume || stopRequested !== undefined) {
         if (dialog.id.selfId === dialog.id.rootId) {
-          globalDialogRegistry.clearDriveWake(dialog.id.rootId, {
+          globalDialogRegistry.clearRootDriveQueue(dialog.id.rootId, {
             source: 'kernel_driver_backend_loop',
             reason: interruptedRequiresExplicitResume
               ? 'execution_marker_blocked:interrupted'
@@ -275,7 +275,7 @@ export async function driveQueuedDialogsOnce(): Promise<void> {
 
       if (!currentHasBackendDurableWork && !currentHasRootRuntimeWakeQueueEntry) {
         if (dialog.id.selfId === dialog.id.rootId) {
-          globalDialogRegistry.clearDriveWake(dialog.id.rootId, {
+          globalDialogRegistry.clearRootDriveQueue(dialog.id.rootId, {
             source: 'kernel_driver_backend_loop',
             reason: 'missing_durable_drive_work',
           });
@@ -313,7 +313,7 @@ export async function driveQueuedDialogsOnce(): Promise<void> {
       if (shouldStayQueued) {
         const canRetryImmediately = dialog.hasUpNext() || (status.canDrive && stillHasDurableWork);
         if (canRetryImmediately) {
-          globalDialogRegistry.wakeDrive(rootDialog.id.rootId, {
+          globalDialogRegistry.queueRootDrive(rootDialog.id.rootId, {
             source: 'kernel_driver_backend_loop',
             reason: dialog.hasUpNext()
               ? 'post_drive_upnext_pending'
@@ -342,7 +342,7 @@ export async function driveQueuedDialogsOnce(): Promise<void> {
         }
       } else {
         if (dialog.id.selfId === dialog.id.rootId) {
-          globalDialogRegistry.clearDriveWake(dialog.id.rootId, {
+          globalDialogRegistry.clearRootDriveQueue(dialog.id.rootId, {
             source: 'kernel_driver_backend_loop',
             reason: 'post_drive_idle',
           });
@@ -368,8 +368,8 @@ export async function driveQueuedDialogsOnce(): Promise<void> {
                 emittedAtMs: lastTrigger.emittedAtMs,
                 ageMs: lastTriggerAgeMs,
                 entryFound: lastTrigger.entryFound,
-                previousWakeQueued: lastTrigger.previousWakeQueued,
-                nextWakeQueued: lastTrigger.nextWakeQueued,
+                previousDriveQueued: lastTrigger.previousDriveQueued,
+                nextDriveQueued: lastTrigger.nextDriveQueued,
               }
             : null,
         });
@@ -389,8 +389,8 @@ export async function driveQueuedDialogsOnce(): Promise<void> {
                 emittedAtMs: lastTrigger.emittedAtMs,
                 ageMs: lastTriggerAgeMs,
                 entryFound: lastTrigger.entryFound,
-                previousWakeQueued: lastTrigger.previousWakeQueued,
-                nextWakeQueued: lastTrigger.nextWakeQueued,
+                previousDriveQueued: lastTrigger.previousDriveQueued,
+                nextDriveQueued: lastTrigger.nextDriveQueued,
               }
             : null,
         });
@@ -487,7 +487,7 @@ export function runBackendDriver(options?: {
 }): KernelDriverRunBackendResult {
   return (async () => {
     const abortListener = (): void => {
-      globalDialogRegistry.wakeDrive('__kernel_driver_abort__', {
+      globalDialogRegistry.queueRootDrive('__kernel_driver_abort__', {
         source: 'kernel_driver_backend_loop',
         reason: 'abort_signal',
       });

@@ -70,7 +70,7 @@ async function main(): Promise<void> {
       'seed_deferred_root_queue_before_cross_trigger_tail_test',
       root.status,
     );
-    globalDialogRegistry.wakeDrive(root.id.rootId, {
+    globalDialogRegistry.queueRootDrive(root.id.rootId, {
       source: 'kernel_driver_test',
       reason: 'seed_deferred_root_queue_before_cross_trigger_tail_test',
     });
@@ -105,7 +105,7 @@ async function main(): Promise<void> {
           return;
         }
         injectedUnrelatedTrigger = true;
-        globalDialogRegistry.wakeDrive('synthetic-unrelated-root-trigger', {
+        globalDialogRegistry.queueRootDrive('synthetic-unrelated-root-trigger', {
           source: 'kernel_driver_test',
           reason: 'unrelated_root_trigger_while_root_tail_is_still_running',
         });

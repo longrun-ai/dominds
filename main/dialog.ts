@@ -83,12 +83,12 @@ import {
 } from './tool';
 import { generateDialogID } from './utils/id';
 
-async function wakeRootDialogDrive(
+async function queueRootDialogDrive(
   rootId: string,
   meta: { source: string; reason: string },
 ): Promise<void> {
   const { globalDialogRegistry } = await import('./dialog-global-registry');
-  globalDialogRegistry.wakeDrive(rootId, meta);
+  globalDialogRegistry.queueRootDrive(rootId, meta);
 }
 
 export class InvalidReminderIndexError extends Error {
@@ -1464,7 +1464,7 @@ export abstract class Dialog {
   private async persistPendingRuntimePrompt(prompt: DialogRuntimePrompt): Promise<void> {
     await this.dlgStore.persistPendingRuntimePrompt(this, prompt);
     if (this.id.selfId === this.id.rootId) {
-      await wakeRootDialogDrive(this.id.rootId, {
+      await queueRootDialogDrive(this.id.rootId, {
         source: 'dialog_runtime_prompt',
         reason: `queued_runtime_prompt:${prompt.msgId}`,
       });
@@ -1672,7 +1672,7 @@ export abstract class Dialog {
       await this.dlgStore.startNewCourse(this, nextPrompt);
     }
     if (this.id.selfId === this.id.rootId) {
-      await wakeRootDialogDrive(this.id.rootId, {
+      await queueRootDialogDrive(this.id.rootId, {
         source: 'dialog_start_new_course',
         reason: `queued_runtime_prompt:${nextPrompt.msgId}`,
       });

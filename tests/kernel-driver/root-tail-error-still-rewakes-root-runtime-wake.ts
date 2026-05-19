@@ -79,7 +79,7 @@ async function main(): Promise<void> {
       'seed_preexisting_root_queue_before_tail_failure',
       root.status,
     );
-    globalDialogRegistry.wakeDrive(root.id.rootId, {
+    globalDialogRegistry.queueRootDrive(root.id.rootId, {
       source: 'kernel_driver_test',
       reason: 'seed_preexisting_root_queue_before_tail_failure',
     });
@@ -136,18 +136,18 @@ async function main(): Promise<void> {
     const lastTrigger = globalDialogRegistry.getLastDriveTrigger(root.id.rootId);
     assert.equal(
       lastTrigger?.action,
-      'wake_drive',
-      'tail failure should requeue and wake the deferred root drive',
+      'queue_root_drive',
+      'tail failure should requeue the deferred root drive',
     );
     assert.match(
       lastTrigger?.reason ?? '',
       /^core_stopped_requeue:/u,
-      'wake event should describe the drive-failure requeue',
+      'drive event should describe the drive-failure requeue',
     );
     assert.equal(
-      lastTrigger?.nextWakeQueued,
+      lastTrigger?.nextDriveQueued,
       true,
-      'wake event should keep the queued registry state intact',
+      'drive event should keep the queued registry state intact',
     );
   });
 

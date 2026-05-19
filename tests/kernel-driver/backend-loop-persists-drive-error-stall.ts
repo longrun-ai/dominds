@@ -52,7 +52,7 @@ async function main(): Promise<void> {
       throw new Error('synthetic backend canDrive failure');
     };
 
-    globalDialogRegistry.wakeDrive(root.id.rootId, {
+    globalDialogRegistry.queueRootDrive(root.id.rootId, {
       source: 'kernel_driver_test',
       reason: 'backend_drive_error_stall_first_attempt',
     });
@@ -78,7 +78,7 @@ async function main(): Promise<void> {
       'first backend failure should append one stall record',
     );
 
-    globalDialogRegistry.wakeDrive(root.id.rootId, {
+    globalDialogRegistry.queueRootDrive(root.id.rootId, {
       source: 'kernel_driver_test',
       reason: 'backend_drive_error_stall_same_facts',
     });

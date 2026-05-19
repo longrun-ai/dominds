@@ -98,7 +98,7 @@ async function main(): Promise<void> {
     };
     await DialogPersistence.appendQuestion4HumanState(sideDialog.id, question, sideDialog.status);
 
-    globalDialogRegistry.wakeDrive(root.id.rootId, {
+    globalDialogRegistry.queueRootDrive(root.id.rootId, {
       source: 'test_reply_delivery_recovery_waits_for_q4h',
       reason: 'reply_delivery_recovery',
     });
@@ -144,7 +144,7 @@ async function main(): Promise<void> {
     );
     assert.equal(removal.found, true, 'test Q4H question should be removed before recovery retry');
 
-    globalDialogRegistry.wakeDrive(root.id.rootId, {
+    globalDialogRegistry.queueRootDrive(root.id.rootId, {
       source: 'test_reply_delivery_recovery_waits_for_q4h',
       reason: 'q4h_cleared',
     });
