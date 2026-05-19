@@ -324,8 +324,9 @@ Durable authority:
 
 Claim:
 
-- handler 读取 pending prompt；
-- `msgId` 必须稳定；
+- handler 读取 pending prompt；`_upNextQueue` 只是已物化输入，不能替代 durable pending authority；
+- `msgId` 必须稳定，queued runtime prompt 必须与 `latest.pendingRuntimePrompt` 精确匹配；
+- 如果 queued runtime prompt 已没有对应 durable pending prompt，按 stale 丢弃，不能开启空 generation；
 - 如果 prompt 与 active reply obligation 不一致，按业务 invariant loud fail 或由对应业务修复。
 
 Consume:
@@ -485,7 +486,7 @@ Consume:
 0. 已完成基础：保留 `active-callees.json`、`nextStep.triggers`、`generationRunState`、`replyDelivery`、`userWait` 等状态机元信息作为运行判定源；不回扫历史补猜。
 1. 以 requested-work reply 为样板，确认 `active-callees` 消费账本、`result_arrival` handoff trigger、backend Wake Queue claim 都已本地化。
 2. 已完成：建立 reply delivery live continuation handler，让 backend wake 能执行 pending reply recovery，而不是只依赖 restart recovery。
-3. 将 follow-up、pending runtime prompt、open generation recovery、explicit interrupted resume 的入口显式化为 handler。
+3. 已完成：将 follow-up、pending runtime prompt、open generation recovery 的入口显式化为 handler；explicit interrupted resume 保持由 interruption marker + 明确 resume 授权 gate 处理。
 4. 已完成：把 root/sideDialog wake 存储从 dialog-level watch 迁移到业务命名 Wake Queue entry。
 5. 已完成：删除 `noPromptSideDialogResumeEntitlement` 和 `inspectNoPromptSideDialogDrive`。
 6. 已完成：删除运行面 dialog-level wake storage 命名，保留必要的 `wake-queue.jsonl` 存储实现。

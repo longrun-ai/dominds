@@ -2,6 +2,7 @@ import type { DialogDisplayState } from '@longrun-ai/kernel/types/display-state'
 import type { DialogQueuedPromptState } from '@longrun-ai/kernel/types/drive-intent';
 import type {
   DialogBusinessContinuation,
+  DialogPendingRuntimePrompt,
   DialogReplyDeliveryState,
 } from '@longrun-ai/kernel/types/storage';
 import { generateShortId } from '@longrun-ai/kernel/utils/id';
@@ -186,6 +187,19 @@ function hasSameReplyDirective(
     left.targetDialogId === right.targetDialogId &&
     left.targetCallId === right.targetCallId &&
     left.tellaskContent === right.tellaskContent
+  );
+}
+
+function hasSameCalleeReplyTarget(
+  left: NonNullable<KernelDriverPrompt['calleeDialogReplyTarget']>,
+  right: NonNullable<KernelDriverPrompt['calleeDialogReplyTarget']>,
+): boolean {
+  return (
+    left.callerDialogId === right.callerDialogId &&
+    left.callId === right.callId &&
+    left.callType === right.callType &&
+    left.callSiteCourse === right.callSiteCourse &&
+    left.callSiteGenseq === right.callSiteGenseq
   );
 }
 
@@ -753,6 +767,11 @@ type ToolFollowupContinuationClaim =
   | Readonly<{ status: 'claimed'; triggerIds: readonly string[] }>
   | Readonly<{ status: 'not_applicable' }>;
 
+type PendingRuntimePromptClaim =
+  | Readonly<{ status: 'claimed'; pendingRuntimePrompt: DialogPendingRuntimePrompt }>
+  | Readonly<{ status: 'stale' }>
+  | Readonly<{ status: 'not_applicable' }>;
+
 function resolveDirectRequestedWorkRepliedBatchId(args: {
   dialog: Dialog;
   driveOptions: KernelDriverDriveOptions | undefined;
@@ -1113,6 +1132,94 @@ async function claimToolFollowupContinuationForDrive(args: {
   };
 }
 
+function isPendingRuntimePromptQueuePrompt(prompt: UpNextPrompt): boolean {
+  switch (prompt.kind) {
+    case 'new_course_runtime_guide':
+    case 'new_course_runtime_reply':
+    case 'new_course_runtime_sideDialog':
+      return true;
+    case 'user_generation_boundary':
+    case 'deferred_q4h_answer':
+    case 'registered_assignment_update':
+      return false;
+    default: {
+      const _exhaustive: never = prompt;
+      throw new Error(`Unsupported queued prompt kind for pending-runtime claim`);
+    }
+  }
+}
+
+function pendingRuntimePromptMatchesQueuePrompt(args: {
+  pendingRuntimePrompt: DialogPendingRuntimePrompt;
+  prompt: UpNextPrompt;
+}): boolean {
+  if (!isPendingRuntimePromptQueuePrompt(args.prompt)) {
+    return false;
+  }
+  if (
+    args.pendingRuntimePrompt.msgId !== args.prompt.msgId ||
+    args.pendingRuntimePrompt.content !== args.prompt.prompt ||
+    args.pendingRuntimePrompt.grammar !== (args.prompt.grammar ?? 'markdown') ||
+    args.pendingRuntimePrompt.origin !== args.prompt.origin ||
+    args.pendingRuntimePrompt.skipTaskdoc !== args.prompt.skipTaskdoc
+  ) {
+    return false;
+  }
+  if (args.pendingRuntimePrompt.userLanguageCode !== args.prompt.userLanguageCode) {
+    return false;
+  }
+  if (args.pendingRuntimePrompt.tellaskReplyDirective === undefined) {
+    return args.prompt.kind === 'new_course_runtime_guide';
+  }
+  if (
+    args.prompt.kind === 'new_course_runtime_guide' ||
+    !hasSameReplyDirective(
+      args.pendingRuntimePrompt.tellaskReplyDirective,
+      args.prompt.tellaskReplyDirective,
+    )
+  ) {
+    return false;
+  }
+  if (args.pendingRuntimePrompt.calleeDialogReplyTarget === undefined) {
+    return args.prompt.kind === 'new_course_runtime_reply';
+  }
+  return (
+    args.prompt.kind === 'new_course_runtime_sideDialog' &&
+    hasSameCalleeReplyTarget(
+      args.pendingRuntimePrompt.calleeDialogReplyTarget,
+      args.prompt.calleeDialogReplyTarget,
+    )
+  );
+}
+
+async function claimPendingRuntimePromptForDrive(args: {
+  dialog: Dialog;
+  prompt: UpNextPrompt;
+}): Promise<PendingRuntimePromptClaim> {
+  if (!isPendingRuntimePromptQueuePrompt(args.prompt)) {
+    return { status: 'not_applicable' };
+  }
+  const latest = await DialogPersistence.loadDialogLatest(args.dialog.id, args.dialog.status);
+  const pendingRuntimePrompt = latest?.pendingRuntimePrompt;
+  if (pendingRuntimePrompt === undefined) {
+    return { status: 'stale' };
+  }
+  if (pendingRuntimePrompt.msgId !== args.prompt.msgId) {
+    throw new Error(
+      `pending runtime prompt invariant violation: queued prompt msgId does not match durable pending prompt ` +
+        `(rootId=${args.dialog.id.rootId}, selfId=${args.dialog.id.selfId}, ` +
+        `queuedMsgId=${args.prompt.msgId}, pendingMsgId=${pendingRuntimePrompt.msgId})`,
+    );
+  }
+  if (!pendingRuntimePromptMatchesQueuePrompt({ pendingRuntimePrompt, prompt: args.prompt })) {
+    throw new Error(
+      `pending runtime prompt invariant violation: queued prompt does not match durable pending prompt ` +
+        `(rootId=${args.dialog.id.rootId}, selfId=${args.dialog.id.selfId}, msgId=${args.prompt.msgId})`,
+    );
+  }
+  return { status: 'claimed', pendingRuntimePrompt };
+}
+
 function resolveDriveRequestSource(
   humanPrompt: KernelDriverPrompt | undefined,
   driveOptions: KernelDriverDriveOptions | undefined,
@@ -1452,6 +1559,28 @@ async function resolveEffectivePrompt(
         droppedStaleQueuedContinuation = true;
         continue;
       }
+    }
+
+    const pendingRuntimePromptClaim = await claimPendingRuntimePromptForDrive({
+      dialog,
+      prompt: upNext,
+    });
+    if (pendingRuntimePromptClaim.status === 'stale') {
+      const discarded = dialog.takeUpNext();
+      if (!discarded || discarded.msgId !== upNext.msgId) {
+        throw new Error(
+          `pending runtime prompt invariant violation: expected queued prompt ${upNext.msgId} before stale discard`,
+        );
+      }
+      log.debug('kernel-driver dropped stale pending runtime prompt continuation', undefined, {
+        dialogId: dialog.id.valueOf(),
+        rootId: dialog.id.rootId,
+        selfId: dialog.id.selfId,
+        msgId: upNext.msgId,
+        kind: upNext.kind,
+      });
+      droppedStaleQueuedContinuation = true;
+      continue;
     }
 
     return {
