@@ -162,12 +162,12 @@ async function main(): Promise<void> {
       }),
       sideDialog.status,
     );
-    const wakeQueuedSideDialogs = await DialogPersistence.loadWakeQueuedDialogIds(
+    const wakeQueueTargetSideDialogs = await DialogPersistence.loadWakeQueueTargetDialogIds(
       sideRoot.id,
       sideRoot.status,
     );
     assert(
-      wakeQueuedSideDialogs.some((dialogId) => dialogId.selfId === sideDialog.id.selfId),
+      wakeQueueTargetSideDialogs.some((dialogId) => dialogId.selfId === sideDialog.id.selfId),
       'sideDialog with pending reply tool-result recovery must remain in root wake queue',
     );
 

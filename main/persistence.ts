@@ -8602,8 +8602,9 @@ export class DialogPersistence {
         msgId: latest.pendingRuntimePrompt.msgId,
       });
     }
+    const hasOpenGenerationRecoveryWork = hasRecoverableGenerationBeyondFinalResponse(latest);
     const generationRunState = getRecoverableGenerationRunState(latest);
-    if (generationRunState !== undefined && hasRecoverableGenerationBeyondFinalResponse(latest)) {
+    if (generationRunState !== undefined && hasOpenGenerationRecoveryWork) {
       entries.push({
         entryId: `open-generation-recovery:${targetDialogId}:${generationRunState.course}:${generationRunState.genseq}`,
         kind: 'open_generation_recovery',
@@ -8639,6 +8640,9 @@ export class DialogPersistence {
           });
           break;
         case 'open_generation_recovery':
+          if (!hasOpenGenerationRecoveryWork) {
+            break;
+          }
           entries.push({
             entryId: `open-generation-recovery:${targetDialogId}:${trigger.course}:${trigger.genseq}`,
             kind: 'open_generation_recovery',
@@ -8869,7 +8873,7 @@ export class DialogPersistence {
     }
   }
 
-  static async loadWakeQueuedDialogIds(
+  static async loadWakeQueueTargetDialogIds(
     rootDialogId: DialogID,
     status: DialogStatusKind = 'running',
   ): Promise<readonly DialogID[]> {

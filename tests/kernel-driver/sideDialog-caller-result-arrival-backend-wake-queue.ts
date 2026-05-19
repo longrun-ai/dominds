@@ -177,9 +177,12 @@ async function main(): Promise<void> {
       'side-dialog caller should retain durable result_arrival trigger when direct schedule is lost',
     );
 
-    const wakeQueued = await DialogPersistence.loadWakeQueuedDialogIds(root.id, root.status);
+    const wakeQueueTargets = await DialogPersistence.loadWakeQueueTargetDialogIds(
+      root.id,
+      root.status,
+    );
     assert.ok(
-      wakeQueued.some((dialogId) => dialogId.selfId === caller.id.selfId),
+      wakeQueueTargets.some((dialogId) => dialogId.selfId === caller.id.selfId),
       'side-dialog caller with durable result_arrival must stay wake-queued even after a final response anchor',
     );
 

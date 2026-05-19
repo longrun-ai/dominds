@@ -78,11 +78,11 @@ export async function recoverOpenGenerationAfterRestart(): Promise<void> {
   const dialogIds: DialogID[] = [];
   for (const rootDialogId of rootDialogIds) {
     dialogIds.push(rootDialogId);
-    const wakeQueuedDialogIds = await DialogPersistence.loadWakeQueuedDialogIds(
+    const wakeQueueTargetDialogIds = await DialogPersistence.loadWakeQueueTargetDialogIds(
       rootDialogId,
       'running',
     );
-    dialogIds.push(...wakeQueuedDialogIds);
+    dialogIds.push(...wakeQueueTargetDialogIds);
   }
   const recoveredRootIds = new Set<string>();
   const recoveredDialogKeys = new Set<string>();

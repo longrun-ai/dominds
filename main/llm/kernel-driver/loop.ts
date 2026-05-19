@@ -87,7 +87,7 @@ async function listLiveDialogsWithDurableDriveWork(): Promise<
       });
       continue;
     }
-    const wakeQueuedDialogIds = [
+    const wakeQueueTargetDialogIds = [
       ...new Set(
         wakeQueueEntries
           .map((entry) => entry.targetDialogId)
@@ -97,35 +97,35 @@ async function listLiveDialogsWithDurableDriveWork(): Promise<
     const candidateDialogs: Dialog[] = [mainDialog];
     let hadCandidateInspectionError = false;
     let hadStalledCandidateForRoot = false;
-    for (const wakeQueuedDialogId of wakeQueuedDialogIds) {
-      let wakeQueuedDialog: Dialog | undefined;
+    for (const wakeQueueTargetDialogId of wakeQueueTargetDialogIds) {
+      let wakeQueueTargetDialog: Dialog | undefined;
       try {
-        wakeQueuedDialog = await ensureDialogLoaded(
+        wakeQueueTargetDialog = await ensureDialogLoaded(
           mainDialog,
-          wakeQueuedDialogId,
+          wakeQueueTargetDialogId,
           mainDialog.status,
         );
       } catch (error: unknown) {
         hadCandidateInspectionError = true;
         log.error('Backend driver failed to restore wake queued side dialog', error, {
           rootId: mainDialog.id.rootId,
-          selfId: wakeQueuedDialogId.selfId,
+          selfId: wakeQueueTargetDialogId.selfId,
         });
         continue;
       }
-      if (wakeQueuedDialog !== undefined) {
-        candidateDialogs.push(wakeQueuedDialog);
+      if (wakeQueueTargetDialog !== undefined) {
+        candidateDialogs.push(wakeQueueTargetDialog);
       } else {
         log.warn(
           'Backend driver could not restore wake queued side dialog; dropping wake queue entries',
           undefined,
           {
             rootId: mainDialog.id.rootId,
-            selfId: wakeQueuedDialogId.selfId,
+            selfId: wakeQueueTargetDialogId.selfId,
           },
         );
         await DialogPersistence.removeWakeQueueEntriesForDialog(
-          wakeQueuedDialogId,
+          wakeQueueTargetDialogId,
           mainDialog.status,
         );
       }

@@ -396,12 +396,12 @@ async function main(): Promise<void> {
         },
       },
     }));
-    const wakeQueuedDuringLegacyRecovery = await DialogPersistence.loadWakeQueuedDialogIds(
-      dlg.id,
-      dlg.status,
-    );
+    const wakeQueueTargetsDuringLegacyRecovery =
+      await DialogPersistence.loadWakeQueueTargetDialogIds(dlg.id, dlg.status);
     assert.ok(
-      wakeQueuedDuringLegacyRecovery.some((dialogId) => dialogId.selfId === sideDialog.id.selfId),
+      wakeQueueTargetsDuringLegacyRecovery.some(
+        (dialogId) => dialogId.selfId === sideDialog.id.selfId,
+      ),
       'open generation recovery must keep a reused registered sideDialog wake-queued even with an old final-response projection',
     );
     await DialogPersistence.mutateDialogLatest(sideDialog.id, () => ({
@@ -456,12 +456,10 @@ async function main(): Promise<void> {
         },
       },
     }));
-    const wakeQueuedDuringSameCallStaleRecovery = await DialogPersistence.loadWakeQueuedDialogIds(
-      dlg.id,
-      dlg.status,
-    );
+    const wakeQueueTargetsDuringSameCallStaleRecovery =
+      await DialogPersistence.loadWakeQueueTargetDialogIds(dlg.id, dlg.status);
     assert.equal(
-      wakeQueuedDuringSameCallStaleRecovery.some(
+      wakeQueueTargetsDuringSameCallStaleRecovery.some(
         (dialogId) => dialogId.selfId === sideDialog.id.selfId,
       ),
       false,

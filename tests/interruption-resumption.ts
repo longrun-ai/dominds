@@ -722,12 +722,12 @@ async function main(): Promise<void> {
     const latestKBeforeRestart = await DialogPersistence.loadDialogLatest(kSideId, 'running');
     assert.ok(latestKBeforeRestart, 'side-k latest fixture should be readable');
     await DialogPersistence.syncWakeQueueForDialogLatest(kSideId, latestKBeforeRestart, 'running');
-    const wakeQueuedKBeforeRestart = await DialogPersistence.loadWakeQueuedDialogIds(
+    const wakeQueueTargetsKBeforeRestart = await DialogPersistence.loadWakeQueueTargetDialogIds(
       kRootId,
       'running',
     );
     assert.ok(
-      wakeQueuedKBeforeRestart.some((dialogId) => dialogId.selfId === kSide),
+      wakeQueueTargetsKBeforeRestart.some((dialogId) => dialogId.selfId === kSide),
       'side-k restart fixture should be present in root wake queue',
     );
 
@@ -796,12 +796,12 @@ async function main(): Promise<void> {
       'open',
       'wake-queued pending-reply-obligation sideDialog restart recovery should preserve open generation state when not yet complete',
     );
-    const wakeQueuedKAfterRecovery = await DialogPersistence.loadWakeQueuedDialogIds(
+    const wakeQueueTargetsKAfterRecovery = await DialogPersistence.loadWakeQueueTargetDialogIds(
       kRootId,
       'running',
     );
     assert.ok(
-      wakeQueuedKAfterRecovery.some((dialogId) => dialogId.selfId === kSide),
+      wakeQueueTargetsKAfterRecovery.some((dialogId) => dialogId.selfId === kSide),
       'unresolved wake-queued sideDialog recovery should keep the root wake queue entry',
     );
     assert.equal(

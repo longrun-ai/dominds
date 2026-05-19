@@ -383,9 +383,12 @@ async function main(): Promise<void> {
       };
 
       await DialogPersistence.syncWakeQueueForDialogLatest(driveSideId, driveLatest, 'running');
-      const wakeQueuedIds = await DialogPersistence.loadWakeQueuedDialogIds(driveRootId, 'running');
+      const wakeQueueTargetIds = await DialogPersistence.loadWakeQueueTargetDialogIds(
+        driveRootId,
+        'running',
+      );
       assert.deepEqual(
-        wakeQueuedIds.map((dialogId) => dialogId.selfId),
+        wakeQueueTargetIds.map((dialogId) => dialogId.selfId),
         [driveSideId.selfId],
       );
       assert.equal(wakeQueueRenameAttempts, 2);
@@ -403,11 +406,11 @@ async function main(): Promise<void> {
       };
 
       await DialogPersistence.syncWakeQueueForDialogLatest(driveSideId, noDriveLatest, 'running');
-      const clearedWakeQueuedIds = await DialogPersistence.loadWakeQueuedDialogIds(
+      const clearedWakeQueueTargetIds = await DialogPersistence.loadWakeQueueTargetDialogIds(
         driveRootId,
         'running',
       );
-      assert.deepEqual(clearedWakeQueuedIds, []);
+      assert.deepEqual(clearedWakeQueueTargetIds, []);
       assert.equal(wakeQueueRmAttempts, 2);
     } finally {
       fsForPatch.rename = originalRename;
