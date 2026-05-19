@@ -110,6 +110,24 @@ async function main(): Promise<void> {
         lastModified: previous.lastModified,
       },
     }));
+    const latestBeforeRestore = await DialogPersistence.loadDialogLatest(
+      sideDialog.id,
+      sideDialog.status,
+    );
+    assert.ok(latestBeforeRestore, 'expected sideDialog latest before restore');
+    await DialogPersistence.syncWakeQueueForDialogLatest(
+      sideDialog.id,
+      latestBeforeRestore,
+      sideDialog.status,
+    );
+    const wakeQueueTargetsBeforeRestore = await DialogPersistence.loadWakeQueueTargetDialogIds(
+      root.id,
+      root.status,
+    );
+    assert.ok(
+      wakeQueueTargetsBeforeRestore.some((dialogId) => dialogId.selfId === sideDialog.id.selfId),
+      'test precondition: stale pending runtime prompt should be represented in root Wake Queue before restore',
+    );
 
     const restoredRoot = await getOrRestoreMainDialog(root.id.rootId, 'running');
     assert.ok(restoredRoot, 'expected main dialog restore to succeed');
@@ -145,6 +163,15 @@ async function main(): Promise<void> {
       latestAfterRestore?.displayState,
       { kind: 'idle_waiting_user' },
       'restore should clear the stale stopped projection once the pending prompt is already persisted',
+    );
+    const wakeQueueTargetsAfterRestore = await DialogPersistence.loadWakeQueueTargetDialogIds(
+      root.id,
+      root.status,
+    );
+    assert.equal(
+      wakeQueueTargetsAfterRestore.some((dialogId) => dialogId.selfId === sideDialog.id.selfId),
+      false,
+      'restore should remove the stale pending runtime prompt from the root Wake Queue',
     );
   });
 

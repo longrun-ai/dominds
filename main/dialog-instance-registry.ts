@@ -43,6 +43,16 @@ async function resolvePendingRuntimePromptForRestore(args: {
   if (alreadyPersisted) {
     if (args.status === 'running') {
       await DialogPersistence.clearPendingRuntimePrompt(args.dialogId, pending.msgId, args.status);
+      const latestAfterClear = await DialogPersistence.loadDialogLatest(args.dialogId, args.status);
+      if (latestAfterClear) {
+        await DialogPersistence.syncWakeQueueForDialogLatest(
+          args.dialogId,
+          latestAfterClear,
+          args.status,
+        );
+      } else {
+        await DialogPersistence.removeWakeQueueEntriesForDialog(args.dialogId, args.status);
+      }
     }
     return { pendingRuntimePrompt: undefined };
   }
