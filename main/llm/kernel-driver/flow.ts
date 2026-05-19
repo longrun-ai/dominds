@@ -699,12 +699,6 @@ function listResultArrivalBatchIds(
   return batchIds;
 }
 
-function hasFollowupNextAction(
-  latest: Awaited<ReturnType<typeof DialogPersistence.loadDialogLatest>>,
-): boolean {
-  return latest?.nextStep.triggers.some((trigger) => trigger.kind === 'followup') === true;
-}
-
 function hasSupplyResponseBusinessContinuation(
   dialog: Dialog,
   driveOptions: KernelDriverDriveOptions | undefined,
@@ -753,6 +747,10 @@ type ReplyDeliveryRecoveryContinuationClaim =
       replyDeliveryId: string;
       reason: 'missing_reply_delivery' | 'completed_reply_delivery';
     }>
+  | Readonly<{ status: 'not_applicable' }>;
+
+type ToolFollowupContinuationClaim =
+  | Readonly<{ status: 'claimed'; triggerIds: readonly string[] }>
   | Readonly<{ status: 'not_applicable' }>;
 
 function resolveDirectRequestedWorkRepliedBatchId(args: {
@@ -1096,6 +1094,25 @@ async function claimReplyDeliveryRecoveryContinuationForDrive(args: {
   return { status: 'claimed', replyDelivery };
 }
 
+async function claimToolFollowupContinuationForDrive(args: {
+  dialog: Dialog;
+  driveOptions: KernelDriverDriveOptions | undefined;
+}): Promise<ToolFollowupContinuationClaim> {
+  if (args.driveOptions?.source !== 'kernel_driver_backend_loop') {
+    return { status: 'not_applicable' };
+  }
+  const latest = await DialogPersistence.loadDialogLatest(args.dialog.id, args.dialog.status);
+  const followupTriggers =
+    latest?.nextStep.triggers.filter((trigger) => trigger.kind === 'followup') ?? [];
+  if (followupTriggers.length === 0) {
+    return { status: 'not_applicable' };
+  }
+  return {
+    status: 'claimed',
+    triggerIds: followupTriggers.map((trigger) => trigger.triggerId),
+  };
+}
+
 function resolveDriveRequestSource(
   humanPrompt: KernelDriverPrompt | undefined,
   driveOptions: KernelDriverDriveOptions | undefined,
@@ -1188,6 +1205,7 @@ async function inspectSideDialogBusinessContinuationDrive(args: {
   driveOptions: KernelDriverDriveOptions | undefined;
   requestedWorkReplyClaim: RequestedWorkReplyContinuationClaim;
   replyDeliveryRecoveryClaim: ReplyDeliveryRecoveryContinuationClaim;
+  toolFollowupClaim: ToolFollowupContinuationClaim;
 }): Promise<
   | {
       shouldReject: false;
@@ -1227,14 +1245,14 @@ async function inspectSideDialogBusinessContinuationDrive(args: {
     args.driveOptions,
   );
   const sameBatchResultArrivalClaimed = args.requestedWorkReplyClaim.status === 'claimed';
-  const followupNextActionPresent = hasFollowupNextAction(latest);
+  const toolFollowupClaimed = args.toolFollowupClaim.status === 'claimed';
   const replyDeliveryRecoveryClaimed = args.replyDeliveryRecoveryClaim.status === 'claimed';
   const supplyResponseBusinessContinuationAllowed =
     hasSupplyResponseBusinessContinuation(args.dialog, args.driveOptions) &&
     (!requestedWorkReplyContinuation || sameBatchResultArrivalClaimed);
   const backendLoopDurableWorkAllowed =
     source === 'kernel_driver_backend_loop' &&
-    (sameBatchResultArrivalClaimed || followupNextActionPresent || replyDeliveryRecoveryClaimed);
+    (sameBatchResultArrivalClaimed || toolFollowupClaimed || replyDeliveryRecoveryClaimed);
   const finalResponseContinuationAllowed =
     sideDialogFinalResponseCallId !== undefined &&
     ((requestedWorkReplyContinuation && sameBatchResultArrivalClaimed) ||
@@ -1570,6 +1588,7 @@ export async function executeDriveRound(args: {
   let replyDeliveryRecoveryClaim: ReplyDeliveryRecoveryContinuationClaim = {
     status: 'not_applicable',
   };
+  let toolFollowupClaim: ToolFollowupContinuationClaim = { status: 'not_applicable' };
   try {
     // Prime active-run registration right after acquiring dialog lock so user stop can
     // reliably interrupt queued continuation drives during preflight.
@@ -1712,6 +1731,10 @@ export async function executeDriveRound(args: {
         });
         return;
       }
+      toolFollowupClaim = await claimToolFollowupContinuationForDrive({
+        dialog,
+        driveOptions,
+      });
     }
     if (!humanPrompt && dialog instanceof SideDialog && !dialog.hasUpNext()) {
       const inspection = await inspectSideDialogBusinessContinuationDrive({
@@ -1719,6 +1742,7 @@ export async function executeDriveRound(args: {
         driveOptions,
         requestedWorkReplyClaim,
         replyDeliveryRecoveryClaim,
+        toolFollowupClaim,
       });
       if (inspection.shouldReject) {
         if (inspection.rejection === 'finalized_after_response_anchor') {
