@@ -1,6 +1,9 @@
 import type { DialogDisplayState } from '@longrun-ai/kernel/types/display-state';
 import type { DialogQueuedPromptState } from '@longrun-ai/kernel/types/drive-intent';
-import type { DialogBusinessContinuation } from '@longrun-ai/kernel/types/storage';
+import type {
+  DialogBusinessContinuation,
+  DialogReplyDeliveryState,
+} from '@longrun-ai/kernel/types/storage';
 import { generateShortId } from '@longrun-ai/kernel/utils/id';
 import {
   applyRegisteredAppDialogRunControls,
@@ -67,6 +70,7 @@ import {
 import {
   deliverTellaskBackReplyFromDirective,
   loadActiveTellaskReplyDirective,
+  recoverPendingReplyDelivery,
 } from './tellask-special';
 import type {
   KernelDriverCoreResult,
@@ -599,6 +603,10 @@ function hasRootDriveWakeTrigger(args: {
   );
 }
 
+function formatPreDriveExecutionFactsError(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
+}
+
 async function restoreAcceptedRootDriveWakeAfterDriveFailure(args: {
   dialog: Dialog;
   driveOptions: KernelDriverDriveOptions | undefined;
@@ -765,6 +773,15 @@ type RequestedWorkReplyContinuationClaim =
   | Readonly<{ status: 'stale'; batchId: string }>
   | Readonly<{ status: 'not_applicable' }>;
 
+type ReplyDeliveryRecoveryContinuationClaim =
+  | Readonly<{ status: 'claimed'; replyDelivery: DialogReplyDeliveryState }>
+  | Readonly<{
+      status: 'stale';
+      replyDeliveryId: string;
+      reason: 'missing_reply_delivery' | 'completed_reply_delivery';
+    }>
+  | Readonly<{ status: 'not_applicable' }>;
+
 function resolveDirectRequestedWorkRepliedBatchId(args: {
   dialog: Dialog;
   driveOptions: KernelDriverDriveOptions | undefined;
@@ -928,6 +945,184 @@ async function claimRequestedWorkRepliedContinuationForDrive(args: {
   });
 }
 
+async function removeReplyDeliveryRecoveryTriggers(args: {
+  dialog: Dialog;
+  replyDeliveryIds: readonly string[];
+}): Promise<void> {
+  const replyDeliveryIds = new Set(args.replyDeliveryIds);
+  if (replyDeliveryIds.size === 0) {
+    return;
+  }
+  await DialogPersistence.removeNextStepTriggers(
+    args.dialog.id,
+    (trigger) =>
+      trigger.kind === 'reply_delivery_recovery' && replyDeliveryIds.has(trigger.replyDeliveryId),
+    args.dialog.status,
+  );
+}
+
+async function failReplyDeliveryRecoveryInvariant(args: {
+  dialog: Dialog;
+  replyDelivery: DialogReplyDeliveryState;
+  detail: string;
+  extra?: Record<string, unknown>;
+}): Promise<never> {
+  const message =
+    `reply delivery recovery invariant violation: ${args.detail} ` +
+    `(rootId=${args.dialog.id.rootId}, selfId=${args.dialog.id.selfId}, ` +
+    `replyDeliveryId=${args.replyDelivery.replyDeliveryId}, ` +
+    `replyCallId=${args.replyDelivery.replyCallId}, ` +
+    `targetDialogId=${args.replyDelivery.targetDialogId}, ` +
+    `targetCallId=${args.replyDelivery.targetCallId})`;
+  const error = new Error(message);
+  log.error('Reply delivery recovery invariant violation', error, {
+    rootId: args.dialog.id.rootId,
+    selfId: args.dialog.id.selfId,
+    course: args.dialog.currentCourse,
+    genseq: args.replyDelivery.replyGenseq,
+    callId: args.replyDelivery.replyCallId,
+    replyDeliveryId: args.replyDelivery.replyDeliveryId,
+    targetDialogId: args.replyDelivery.targetDialogId,
+    targetCallId: args.replyDelivery.targetCallId,
+    status: args.replyDelivery.status,
+    toolResultStatus: args.replyDelivery.toolResultStatus,
+    ...args.extra,
+  });
+  try {
+    await args.dialog.streamError(message);
+  } catch (streamError: unknown) {
+    log.warn('Failed to emit stream_error_evt for reply delivery recovery invariant', streamError, {
+      rootId: args.dialog.id.rootId,
+      selfId: args.dialog.id.selfId,
+      callId: args.replyDelivery.replyCallId,
+      replyDeliveryId: args.replyDelivery.replyDeliveryId,
+    });
+  }
+  throw error;
+}
+
+async function assertReplyDeliveryRecoveryCorrelation(args: {
+  dialog: Dialog;
+  replyDelivery: DialogReplyDeliveryState;
+}): Promise<void> {
+  if (args.replyDelivery.status !== 'pending') {
+    return;
+  }
+  const activeDirective = await loadActiveTellaskReplyDirective(args.dialog);
+  if (!activeDirective) {
+    await failReplyDeliveryRecoveryInvariant({
+      dialog: args.dialog,
+      replyDelivery: args.replyDelivery,
+      detail: 'pending delivery has no active reply obligation',
+    });
+    return;
+  }
+  if (
+    activeDirective.expectedReplyCallName !== args.replyDelivery.expectedReplyCallName ||
+    activeDirective.targetDialogId !== args.replyDelivery.targetDialogId ||
+    activeDirective.targetCallId !== args.replyDelivery.targetCallId
+  ) {
+    await failReplyDeliveryRecoveryInvariant({
+      dialog: args.dialog,
+      replyDelivery: args.replyDelivery,
+      detail: 'pending delivery does not match active reply obligation',
+      extra: {
+        activeExpectedReplyCallName: activeDirective.expectedReplyCallName,
+        activeTargetDialogId: activeDirective.targetDialogId,
+        activeTargetCallId: activeDirective.targetCallId,
+      },
+    });
+  }
+}
+
+async function claimReplyDeliveryRecoveryContinuationForDrive(args: {
+  dialog: Dialog;
+  driveOptions: KernelDriverDriveOptions | undefined;
+}): Promise<ReplyDeliveryRecoveryContinuationClaim> {
+  if (args.driveOptions?.source !== 'kernel_driver_backend_loop') {
+    return { status: 'not_applicable' };
+  }
+  const latest = await DialogPersistence.loadDialogLatest(args.dialog.id, args.dialog.status);
+  if (!latest) {
+    return { status: 'not_applicable' };
+  }
+  const recoveryTriggers = latest.nextStep.triggers.filter(
+    (trigger) => trigger.kind === 'reply_delivery_recovery',
+  );
+  const replyDelivery = latest.replyDelivery;
+  if (!replyDelivery) {
+    await removeReplyDeliveryRecoveryTriggers({
+      dialog: args.dialog,
+      replyDeliveryIds: recoveryTriggers.map((trigger) => trigger.replyDeliveryId),
+    });
+    const firstStale = recoveryTriggers[0];
+    return firstStale === undefined
+      ? { status: 'not_applicable' }
+      : {
+          status: 'stale',
+          replyDeliveryId: firstStale.replyDeliveryId,
+          reason: 'missing_reply_delivery',
+        };
+  }
+
+  const pending =
+    replyDelivery.status === 'pending' || replyDelivery.toolResultStatus === 'pending';
+  if (!pending) {
+    await removeReplyDeliveryRecoveryTriggers({
+      dialog: args.dialog,
+      replyDeliveryIds: recoveryTriggers.map((trigger) => trigger.replyDeliveryId),
+    });
+    return recoveryTriggers.length === 0
+      ? { status: 'not_applicable' }
+      : {
+          status: 'stale',
+          replyDeliveryId: replyDelivery.replyDeliveryId,
+          reason: 'completed_reply_delivery',
+        };
+  }
+
+  const staleTriggerIds: string[] = [];
+  for (const trigger of recoveryTriggers) {
+    if (trigger.replyDeliveryId !== replyDelivery.replyDeliveryId) {
+      staleTriggerIds.push(trigger.replyDeliveryId);
+      continue;
+    }
+    if (trigger.targetDialogId !== replyDelivery.targetDialogId) {
+      await failReplyDeliveryRecoveryInvariant({
+        dialog: args.dialog,
+        replyDelivery,
+        detail: 'recovery trigger target does not match reply delivery target',
+        extra: {
+          triggerId: trigger.triggerId,
+          triggerTargetDialogId: trigger.targetDialogId,
+        },
+      });
+    }
+  }
+  if (staleTriggerIds.length > 0) {
+    await removeReplyDeliveryRecoveryTriggers({
+      dialog: args.dialog,
+      replyDeliveryIds: staleTriggerIds,
+    });
+    log.warn(
+      'Dropped stale reply delivery recovery trigger(s) before claiming current delivery',
+      undefined,
+      {
+        rootId: args.dialog.id.rootId,
+        selfId: args.dialog.id.selfId,
+        replyDeliveryId: replyDelivery.replyDeliveryId,
+        staleReplyDeliveryIds: staleTriggerIds,
+      },
+    );
+  }
+
+  await assertReplyDeliveryRecoveryCorrelation({
+    dialog: args.dialog,
+    replyDelivery,
+  });
+  return { status: 'claimed', replyDelivery };
+}
+
 function resolveDriveRequestSource(
   humanPrompt: KernelDriverPrompt | undefined,
   driveOptions: KernelDriverDriveOptions | undefined,
@@ -1019,6 +1214,7 @@ async function inspectNoPromptSideDialogDrive(args: {
   dialog: SideDialog;
   driveOptions: KernelDriverDriveOptions | undefined;
   requestedWorkReplyClaim: RequestedWorkReplyContinuationClaim;
+  replyDeliveryRecoveryClaim: ReplyDeliveryRecoveryContinuationClaim;
 }): Promise<
   | {
       shouldReject: false;
@@ -1059,12 +1255,13 @@ async function inspectNoPromptSideDialogDrive(args: {
   );
   const sameBatchResultArrivalClaimed = args.requestedWorkReplyClaim.status === 'claimed';
   const followupNextActionPresent = hasFollowupNextAction(latest);
+  const replyDeliveryRecoveryClaimed = args.replyDeliveryRecoveryClaim.status === 'claimed';
   const supplyResponseCallerReviveAllowed =
     hasCallerReviveEntitlement(args.dialog, args.driveOptions) &&
     (!resolvedPendingSideDialogReplyEntitlement || sameBatchResultArrivalClaimed);
   const backendLoopDurableWorkAllowed =
     source === 'kernel_driver_backend_loop' &&
-    (sameBatchResultArrivalClaimed || followupNextActionPresent);
+    (sameBatchResultArrivalClaimed || followupNextActionPresent || replyDeliveryRecoveryClaimed);
   const finalResponseResultArrivalReviveAllowed =
     sideDialogFinalResponseCallId !== undefined &&
     ((resolvedPendingSideDialogReplyEntitlement && sameBatchResultArrivalClaimed) ||
@@ -1394,6 +1591,9 @@ export async function executeDriveRound(args: {
     driveOptions?.allowResumeFromInterrupted === true || humanPrompt?.origin === 'user';
   const driveSource = resolveDriveRequestSource(humanPrompt, driveOptions);
   let requestedWorkReplyClaim: RequestedWorkReplyContinuationClaim = { status: 'not_applicable' };
+  let replyDeliveryRecoveryClaim: ReplyDeliveryRecoveryContinuationClaim = {
+    status: 'not_applicable',
+  };
   try {
     // Prime active-run registration right after acquiring dialog lock so user stop can
     // reliably interrupt queued auto-revive drives during preflight.
@@ -1448,14 +1648,33 @@ export async function executeDriveRound(args: {
         allowResumeFromInterrupted &&
         latest?.executionMarker?.kind === 'interrupted' &&
         isUserInterjectionPauseStopReason(latest.executionMarker.reason);
-    } catch (err) {
-      log.warn(
-        'kernel-driver failed to check execution facts before drive; proceeding best-effort',
-        err,
-        {
-          dialogId: dialog.id.valueOf(),
-        },
-      );
+    } catch (error: unknown) {
+      const message =
+        `kernel-driver failed to check execution facts before drive; refusing unsafe drive ` +
+        `(rootId=${dialog.id.rootId}, selfId=${dialog.id.selfId}, ` +
+        `source=${driveSource}, reason=${driveOptions?.reason ?? 'unknown'}): ` +
+        formatPreDriveExecutionFactsError(error);
+      log.error('kernel-driver refused unsafe drive after execution fact load failure', error, {
+        dialogId: dialog.id.valueOf(),
+        rootId: dialog.id.rootId,
+        selfId: dialog.id.selfId,
+        source: driveSource,
+        reason: driveOptions?.reason ?? null,
+      });
+      try {
+        await dialog.streamError(message);
+      } catch (streamError: unknown) {
+        log.warn(
+          'kernel-driver failed to emit stream_error_evt for pre-drive execution fact failure',
+          streamError,
+          {
+            dialogId: dialog.id.valueOf(),
+            rootId: dialog.id.rootId,
+            selfId: dialog.id.selfId,
+          },
+        );
+      }
+      throw error;
     }
 
     if (!humanPrompt) {
@@ -1474,12 +1693,51 @@ export async function executeDriveRound(args: {
         });
         return;
       }
+      replyDeliveryRecoveryClaim = await claimReplyDeliveryRecoveryContinuationForDrive({
+        dialog,
+        driveOptions,
+      });
+      if (replyDeliveryRecoveryClaim.status === 'stale') {
+        log.debug('kernel-driver dropped stale reply delivery recovery continuation', undefined, {
+          dialogId: dialog.id.valueOf(),
+          rootId: dialog.id.rootId,
+          selfId: dialog.id.selfId,
+          source: driveSource,
+          reason: driveOptions?.reason ?? null,
+          replyDeliveryId: replyDeliveryRecoveryClaim.replyDeliveryId,
+          staleReason: replyDeliveryRecoveryClaim.reason,
+        });
+        return;
+      }
+      if (replyDeliveryRecoveryClaim.status === 'claimed') {
+        await recoverPendingReplyDelivery({
+          dlg: dialog,
+          replyDelivery: replyDeliveryRecoveryClaim.replyDelivery,
+          callbacks: {
+            scheduleDrive: args.scheduleDrive,
+            driveDialog: args.driveDialog,
+          },
+        });
+        log.debug('kernel-driver recovered pending reply delivery continuation', undefined, {
+          dialogId: dialog.id.valueOf(),
+          rootId: dialog.id.rootId,
+          selfId: dialog.id.selfId,
+          source: driveSource,
+          reason: driveOptions?.reason ?? null,
+          replyDeliveryId: replyDeliveryRecoveryClaim.replyDelivery.replyDeliveryId,
+          replyCallId: replyDeliveryRecoveryClaim.replyDelivery.replyCallId,
+          targetDialogId: replyDeliveryRecoveryClaim.replyDelivery.targetDialogId,
+          targetCallId: replyDeliveryRecoveryClaim.replyDelivery.targetCallId,
+        });
+        return;
+      }
     }
     if (!humanPrompt && dialog instanceof SideDialog && !dialog.hasUpNext()) {
       const inspection = await inspectNoPromptSideDialogDrive({
         dialog,
         driveOptions,
         requestedWorkReplyClaim,
+        replyDeliveryRecoveryClaim,
       });
       if (inspection.shouldReject) {
         if (inspection.rejection === 'finalized_after_response_anchor') {

@@ -451,21 +451,23 @@ export async function recoverPendingReplyDelivery(args: {
             call,
             callbacks: args.callbacks,
           });
-    for (const message of execution.messages) {
-      if (message.type !== 'func_result_msg') {
-        throw new Error(
-          `reply recovery invariant violation: unexpected message type ${message.type}`,
-        );
+    if (args.replyDelivery.toolResultStatus === 'pending') {
+      for (const message of execution.messages) {
+        if (message.type !== 'func_result_msg') {
+          throw new Error(
+            `reply recovery invariant violation: unexpected message type ${message.type}`,
+          );
+        }
+        await args.dlg.receiveFuncResult({
+          type: 'func_result_msg',
+          role: 'tool',
+          genseq: args.replyDelivery.replyGenseq,
+          id: message.id,
+          name: message.name,
+          content: message.content,
+          contentItems: message.contentItems,
+        });
       }
-      await args.dlg.receiveFuncResult({
-        type: 'func_result_msg',
-        role: 'tool',
-        genseq: args.replyDelivery.replyGenseq,
-        id: message.id,
-        name: message.name,
-        content: message.content,
-        contentItems: message.contentItems,
-      });
     }
   } catch (err) {
     const errorText = err instanceof Error ? `${err.name}: ${err.message}` : String(err);

@@ -37,6 +37,23 @@ function formatDriveTriggerForLog(trigger: DriveTriggerEvent): Record<string, un
   };
 }
 
+function hasOpenGenerationRecoveryTrigger(
+  latest: Awaited<ReturnType<typeof DialogPersistence.loadDialogLatest>>,
+): boolean {
+  return (
+    latest?.nextStep.triggers.some((trigger) => trigger.kind === 'open_generation_recovery') ===
+    true
+  );
+}
+
+async function removeOpenGenerationRecoveryTriggers(dialog: Dialog): Promise<void> {
+  await DialogPersistence.removeNextStepTriggers(
+    dialog.id,
+    (trigger) => trigger.kind === 'open_generation_recovery',
+    dialog.status,
+  );
+}
+
 async function listLiveDialogsWithDurableDriveWork(): Promise<
   Array<{
     rootDialog: MainDialog;
@@ -157,10 +174,28 @@ export async function driveQueuedDialogsOnce(): Promise<void> {
   const dialogsToDrive = await listLiveDialogsWithDurableDriveWork();
   for (const { rootDialog, dialog } of dialogsToDrive) {
     try {
-      const latestForDrive = await DialogPersistence.loadDialogLatest(dialog.id, dialog.status);
+      let latestForDrive = await DialogPersistence.loadDialogLatest(dialog.id, dialog.status);
       if (!hasDurableDriveWork(latestForDrive)) {
         await DialogPersistence.removeDriveWatchForDialog(dialog.id, dialog.status);
         continue;
+      }
+      if (
+        hasOpenGenerationRecoveryTrigger(latestForDrive) &&
+        getRecoverableGenerationRunState(latestForDrive) === undefined
+      ) {
+        await removeOpenGenerationRecoveryTriggers(dialog);
+        latestForDrive = await DialogPersistence.loadDialogLatest(dialog.id, dialog.status);
+        if (!latestForDrive || !hasDurableDriveWork(latestForDrive)) {
+          if (dialog.id.selfId === dialog.id.rootId) {
+            globalDialogRegistry.clearDriveWake(dialog.id.rootId, {
+              source: 'kernel_driver_backend_loop',
+              reason: 'stale_open_generation_recovery',
+            });
+            await DialogPersistence.removeRootDriveWakeTrigger(dialog.id, dialog.status);
+          }
+          await DialogPersistence.removeDriveWatchForDialog(dialog.id, dialog.status);
+          continue;
+        }
       }
       const currentResumeInProgressGeneration =
         getRecoverableGenerationRunState(latestForDrive) !== undefined;

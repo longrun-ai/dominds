@@ -1609,6 +1609,9 @@ async function upsertImmediateFollowupTrigger(args: {
   }
   if (args.invalidFuncCallCount > 0) {
     const callIds = args.streamedFuncCalls.map((call) => call.id);
+    // Invalid provider tool payloads are a same-turn recovery fact, not a generic retry hint.
+    // Keep them inside the follow-up trigger so the next generation can repair the current turn
+    // immediately, while the invalid payload itself stays loud in runtime guides and logs.
     reasons.push({
       kind: 'invalid_tool_recovery',
       callIds: callIds.length > 0 ? callIds : [`invalid-tool:${args.invalidFuncCallCount}`],

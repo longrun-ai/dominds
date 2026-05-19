@@ -4249,6 +4249,27 @@ export class DiskFileDialogStore extends DialogStore {
                       trigger.kind === 'reply_delivery_recovery' &&
                       trigger.replyDeliveryId === existingPending.replyDeliveryId,
                   );
+            if (
+              existingPending &&
+              existingPending.replyCallId === id &&
+              (existingPending.targetDialogId !== activeReplyObligation.targetDialogId ||
+                existingPending.targetCallId !== activeReplyObligation.targetCallId ||
+                existingPending.expectedReplyCallName !== name)
+            ) {
+              throw new Error(
+                `reply delivery invariant violation: pending delivery correlation conflict ` +
+                  `(rootId=${dialog.id.rootId}, selfId=${dialog.id.selfId}, ` +
+                  `existingReplyDeliveryId=${existingPending.replyDeliveryId}, ` +
+                  `existingReplyCallId=${existingPending.replyCallId}, ` +
+                  `existingTargetDialogId=${existingPending.targetDialogId}, ` +
+                  `existingTargetCallId=${existingPending.targetCallId}, ` +
+                  `existingExpectedReplyCallName=${existingPending.expectedReplyCallName}, ` +
+                  `incomingReplyDeliveryId=${replyDeliveryId}, incomingReplyCallId=${id}, ` +
+                  `incomingTargetDialogId=${activeReplyObligation.targetDialogId}, ` +
+                  `incomingTargetCallId=${activeReplyObligation.targetCallId}, ` +
+                  `incomingExpectedReplyCallName=${name})`,
+              );
+            }
             return {
               kind: 'patch',
               patch: {
@@ -9588,12 +9609,15 @@ export class DialogPersistence {
         if (!replyDelivery || replyDelivery.replyCallId !== replyCallId) {
           return { kind: 'noop' };
         }
-        const nextStep = removeNextStepTrigger(
-          previous.nextStep,
-          (trigger) =>
-            trigger.kind === 'reply_delivery_recovery' &&
-            trigger.replyDeliveryId === replyDelivery.replyDeliveryId,
-        );
+        const nextStep =
+          replyDelivery.toolResultStatus === 'recorded'
+            ? removeNextStepTrigger(
+                previous.nextStep,
+                (trigger) =>
+                  trigger.kind === 'reply_delivery_recovery' &&
+                  trigger.replyDeliveryId === replyDelivery.replyDeliveryId,
+              )
+            : previous.nextStep;
         return {
           kind: 'patch',
           patch: {
@@ -9622,6 +9646,15 @@ export class DialogPersistence {
         if (!replyDelivery || replyDelivery.replyCallId !== replyCallId) {
           return { kind: 'noop' };
         }
+        const nextStep =
+          replyDelivery.status === 'delivered'
+            ? removeNextStepTrigger(
+                previous.nextStep,
+                (trigger) =>
+                  trigger.kind === 'reply_delivery_recovery' &&
+                  trigger.replyDeliveryId === replyDelivery.replyDeliveryId,
+              )
+            : previous.nextStep;
         return {
           kind: 'patch',
           patch: {
@@ -9629,6 +9662,7 @@ export class DialogPersistence {
               ...replyDelivery,
               toolResultStatus: 'recorded',
             },
+            nextStep,
           },
         };
       },
