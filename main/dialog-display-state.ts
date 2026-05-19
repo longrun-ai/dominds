@@ -711,7 +711,8 @@ export async function refreshRunControlProjectionFromPersistenceFacts(
     | 'resume_all'
     | 'run_control_snapshot'
     | 'active_callee_dispatches_changed'
-    | 'q4h_changed',
+    | 'q4h_changed'
+    | 'restart_reconciliation',
 ): Promise<DialogLatestFile | null> {
   let latest = await DialogPersistence.loadDialogLatest(dialogId, 'running');
   if (!latest) {
@@ -975,6 +976,22 @@ export async function reconcileDisplayStatesAfterRestart(): Promise<void> {
         }));
       } catch (err) {
         log.warn('Failed to reconcile open-generation dialog after restart', err, {
+          dialogId: dialogId.valueOf(),
+        });
+      }
+      continue;
+    }
+
+    if (
+      latest.userWait?.kind === 'awaiting_user_answer' ||
+      latest.pendingRuntimePrompt !== undefined ||
+      latest.executionMarker?.kind === 'interrupted' ||
+      isNonIdleDisplayProjection(latest.displayState)
+    ) {
+      try {
+        await refreshRunControlProjectionFromPersistenceFacts(dialogId, 'restart_reconciliation');
+      } catch (err) {
+        log.warn('Failed to refresh stale run-control projection after restart', err, {
           dialogId: dialogId.valueOf(),
         });
       }

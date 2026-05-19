@@ -8,7 +8,6 @@ import { DialogPersistence } from '../../main/persistence';
 import { REPLY_TOOL_REMINDER_PREFIX_EN } from '../../main/runtime/reply-prompt-copy';
 import {
   createMainDialog,
-  hasPendingNextStepTriggers,
   makeDriveOptions,
   withTempRtws,
   writeMockDb,
@@ -75,7 +74,7 @@ async function main(): Promise<void> {
       callType: 'C',
     });
 
-    await DialogPersistence.upsertRootDriveWakeTrigger(
+    await DialogPersistence.upsertRootRuntimeWake(
       root.id,
       'seed_preexisting_root_queue_before_tail_failure',
       root.status,
@@ -129,9 +128,9 @@ async function main(): Promise<void> {
       'stopped state should retain the surfaced tail failure detail',
     );
     assert.equal(
-      hasPendingNextStepTriggers(latest),
+      await DialogPersistence.hasRootRuntimeWake(root.id, root.status),
       true,
-      'deferred queued root wake should remain persisted after tail failure',
+      'deferred queued root runtime wake should remain persisted after tail failure',
     );
 
     const lastTrigger = globalDialogRegistry.getLastDriveTrigger(root.id.rootId);
@@ -152,11 +151,11 @@ async function main(): Promise<void> {
     );
   });
 
-  console.log('kernel-driver root-tail-error-still-rewakes-root-drive-wake: PASS');
+  console.log('kernel-driver root-tail-error-still-rewakes-root-runtime-wake: PASS');
 }
 
 void main().catch((err: unknown) => {
   const message = err instanceof Error ? err.message : String(err);
-  console.error(`kernel-driver root-tail-error-still-rewakes-root-drive-wake: FAIL\n${message}`);
+  console.error(`kernel-driver root-tail-error-still-rewakes-root-runtime-wake: FAIL\n${message}`);
   process.exit(1);
 });

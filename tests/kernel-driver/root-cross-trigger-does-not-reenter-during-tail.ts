@@ -65,7 +65,7 @@ async function main(): Promise<void> {
       },
     );
 
-    await DialogPersistence.upsertRootDriveWakeTrigger(
+    await DialogPersistence.upsertRootRuntimeWake(
       root.id,
       'seed_deferred_root_queue_before_cross_trigger_tail_test',
       root.status,

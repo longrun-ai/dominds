@@ -211,7 +211,6 @@ export type DialogBusinessContinuation = Readonly<
 export type DialogNextStepTriggerPayload = Readonly<
   | { triggerId: string; kind: 'user_input'; course: DialogCourseNumber; genseq: CallSiteGenseqNo }
   | { triggerId: string; kind: 'queued_prompt'; promptId: string; course: DialogCourseNumber }
-  | { triggerId: string; kind: 'root_drive_wake'; reason: string; course: DialogCourseNumber }
   | {
       triggerId: string;
       kind: 'followup';

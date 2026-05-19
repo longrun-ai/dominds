@@ -256,9 +256,9 @@ async function main(): Promise<void> {
                   nextSeq: 2,
                   triggers: [
                     {
-                      triggerId: `root-drive-wake:${dialogId.selfId}`,
-                      kind: 'root_drive_wake',
-                      reason: 'test_writeback_blocker',
+                      triggerId: 'queued-prompt:test_writeback_blocker',
+                      kind: 'queued_prompt',
+                      promptId: 'test_writeback_blocker',
                       course: toDialogCourseNumber(1),
                       createdAt: new Date().toISOString(),
                       seq: 1,
@@ -305,9 +305,14 @@ async function main(): Promise<void> {
         });
 
         await assert.rejects(
-          DialogPersistence.upsertRootDriveWakeTrigger(
+          DialogPersistence.upsertNextStepTrigger(
             dialogId,
-            'test_missing_latest_patch_quarantine',
+            {
+              triggerId: 'queued-prompt:test_missing_latest_patch_quarantine',
+              kind: 'queued_prompt',
+              promptId: 'test_missing_latest_patch_quarantine',
+              course: toDialogCourseNumber(1),
+            },
             'running',
           ),
           /Missing latest\.yaml for non-initial latest mutation/,

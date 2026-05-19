@@ -1340,7 +1340,7 @@ async function scheduleContinuationDriveIfUnblocked(
     return;
   }
   if (dialog instanceof MainDialog) {
-    await DialogPersistence.upsertRootDriveWakeTrigger(dialog.id, reason, dialog.status);
+    await DialogPersistence.upsertRootRuntimeWake(dialog.id, reason, dialog.status);
   }
   callbacks.scheduleDrive(dialog, {
     waitInQue: true,

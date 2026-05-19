@@ -46,6 +46,13 @@ function hasOpenGenerationRecoveryTrigger(
   );
 }
 
+function wakeQueueHasEntriesForDialog(
+  entries: Awaited<ReturnType<typeof DialogPersistence.loadWakeQueueEntries>>,
+  dialogId: DialogID,
+): boolean {
+  return entries.some((entry) => entry.targetDialogId === dialogId.selfId);
+}
+
 async function removeOpenGenerationRecoveryTriggers(dialog: Dialog): Promise<void> {
   await DialogPersistence.removeNextStepTriggers(
     dialog.id,
@@ -81,7 +88,11 @@ async function listLiveDialogsWithDurableDriveWork(): Promise<
       continue;
     }
     const wakeQueuedDialogIds = [
-      ...new Set(wakeQueueEntries.map((entry) => entry.targetDialogId)),
+      ...new Set(
+        wakeQueueEntries
+          .map((entry) => entry.targetDialogId)
+          .filter((selfId) => selfId !== mainDialog.id.rootId),
+      ),
     ].map((selfId) => new DialogID(selfId, mainDialog.id.rootId));
     const candidateDialogs: Dialog[] = [mainDialog];
     let hadCandidateInspectionError = false;
@@ -145,7 +156,10 @@ async function listLiveDialogsWithDurableDriveWork(): Promise<
         continue;
       }
       await DialogPersistence.syncWakeQueueForDialogLatest(dialog.id, latest, dialog.status);
-      if (!hasDurableDriveWork(latest)) {
+      const hasRuntimeWakeQueueEntry =
+        dialog.id.selfId === dialog.id.rootId &&
+        wakeQueueHasEntriesForDialog(wakeQueueEntries, dialog.id);
+      if (!hasDurableDriveWork(latest) && !hasRuntimeWakeQueueEntry) {
         continue;
       }
       const durableWorkFingerprint = DialogPersistence.buildBackendDriveDurableWorkFingerprint(
@@ -173,7 +187,7 @@ async function listLiveDialogsWithDurableDriveWork(): Promise<
         source: 'kernel_driver_backend_loop',
         reason: 'no_durable_drive_work',
       });
-      await DialogPersistence.removeRootDriveWakeTrigger(mainDialog.id, mainDialog.status);
+      await DialogPersistence.removeRootRuntimeWake(mainDialog.id, mainDialog.status);
     }
   }
 
@@ -185,7 +199,14 @@ export async function driveQueuedDialogsOnce(): Promise<void> {
   for (const { rootDialog, dialog } of dialogsToDrive) {
     try {
       let latestForDrive = await DialogPersistence.loadDialogLatest(dialog.id, dialog.status);
-      if (!hasDurableDriveWork(latestForDrive)) {
+      let wakeQueueEntriesForRoot = await DialogPersistence.loadWakeQueueEntries(
+        rootDialog.id,
+        rootDialog.status,
+      );
+      const hasRootRuntimeWakeQueueEntry =
+        dialog.id.selfId === dialog.id.rootId &&
+        wakeQueueHasEntriesForDialog(wakeQueueEntriesForRoot, dialog.id);
+      if (!hasDurableDriveWork(latestForDrive) && !hasRootRuntimeWakeQueueEntry) {
         await DialogPersistence.removeWakeQueueEntriesForDialog(dialog.id, dialog.status);
         continue;
       }
@@ -201,7 +222,7 @@ export async function driveQueuedDialogsOnce(): Promise<void> {
               source: 'kernel_driver_backend_loop',
               reason: 'stale_open_generation_recovery',
             });
-            await DialogPersistence.removeRootDriveWakeTrigger(dialog.id, dialog.status);
+            await DialogPersistence.removeRootRuntimeWake(dialog.id, dialog.status);
           }
           await DialogPersistence.removeWakeQueueEntriesForDialog(dialog.id, dialog.status);
           continue;
@@ -210,6 +231,13 @@ export async function driveQueuedDialogsOnce(): Promise<void> {
       const currentResumeInProgressGeneration =
         getRecoverableGenerationRunState(latestForDrive) !== undefined;
       const currentHasBackendDurableWork = hasDurableDriveWork(latestForDrive);
+      wakeQueueEntriesForRoot = await DialogPersistence.loadWakeQueueEntries(
+        rootDialog.id,
+        rootDialog.status,
+      );
+      const currentHasRootRuntimeWakeQueueEntry =
+        dialog.id.selfId === dialog.id.rootId &&
+        wakeQueueHasEntriesForDialog(wakeQueueEntriesForRoot, dialog.id);
       const executionMarker = latestForDrive?.executionMarker;
       const stopRequested = getStopRequestedReason(dialog.id);
       const interruptedRequiresExplicitResume =
@@ -225,7 +253,7 @@ export async function driveQueuedDialogsOnce(): Promise<void> {
           });
         }
         if (dialog.id.selfId === dialog.id.rootId) {
-          await DialogPersistence.removeRootDriveWakeTrigger(dialog.id, dialog.status);
+          await DialogPersistence.removeRootRuntimeWake(dialog.id, dialog.status);
         }
         await DialogPersistence.removeWakeQueueEntriesForDialog(dialog.id, dialog.status);
         continue;
@@ -245,7 +273,7 @@ export async function driveQueuedDialogsOnce(): Promise<void> {
         continue;
       }
 
-      if (!currentHasBackendDurableWork) {
+      if (!currentHasBackendDurableWork && !currentHasRootRuntimeWakeQueueEntry) {
         if (dialog.id.selfId === dialog.id.rootId) {
           globalDialogRegistry.clearDriveWake(dialog.id.rootId, {
             source: 'kernel_driver_backend_loop',
@@ -253,18 +281,21 @@ export async function driveQueuedDialogsOnce(): Promise<void> {
           });
         }
         if (dialog.id.selfId === dialog.id.rootId) {
-          await DialogPersistence.removeRootDriveWakeTrigger(dialog.id, dialog.status);
+          await DialogPersistence.removeRootRuntimeWake(dialog.id, dialog.status);
         }
         await DialogPersistence.removeWakeQueueEntriesForDialog(dialog.id, dialog.status);
         continue;
       }
-      if (!currentResumeInProgressGeneration && !(await dialog.canDrive())) {
+      if (
+        !currentHasBackendDurableWork ||
+        (!currentResumeInProgressGeneration && !(await dialog.canDrive()))
+      ) {
         continue;
       }
 
       await driveDialogStream(dialog, undefined, true, {
         source: 'kernel_driver_backend_loop',
-        reason: dialog.id.selfId === dialog.id.rootId ? 'root_drive_wake' : 'wake_queue',
+        reason: dialog.id.selfId === dialog.id.rootId ? 'root_runtime_wake' : 'wake_queue',
         ...(currentResumeInProgressGeneration ? { resumeInProgressGeneration: true } : {}),
       });
 
@@ -289,7 +320,7 @@ export async function driveQueuedDialogsOnce(): Promise<void> {
               : 'post_drive_durable_work_pending',
           });
           if (dialog.id.selfId === dialog.id.rootId) {
-            await DialogPersistence.upsertRootDriveWakeTrigger(
+            await DialogPersistence.upsertRootRuntimeWake(
               dialog.id,
               dialog.hasUpNext() ? 'post_drive_upnext_pending' : 'post_drive_durable_work_pending',
               dialog.status,
@@ -315,7 +346,7 @@ export async function driveQueuedDialogsOnce(): Promise<void> {
             source: 'kernel_driver_backend_loop',
             reason: 'post_drive_idle',
           });
-          await DialogPersistence.removeRootDriveWakeTrigger(dialog.id, dialog.status);
+          await DialogPersistence.removeRootRuntimeWake(dialog.id, dialog.status);
         }
         await DialogPersistence.removeWakeQueueEntriesForDialog(dialog.id, dialog.status);
       }

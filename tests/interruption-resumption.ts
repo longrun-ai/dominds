@@ -57,35 +57,6 @@ function hasPendingNextStepTriggers(
   return (latest?.nextStep.triggers.length ?? 0) > 0;
 }
 
-function rootDriveWakeNextStep(
-  selfId: string,
-  reason: string,
-): {
-  nextSeq: number;
-  triggers: Array<{
-    triggerId: string;
-    kind: 'root_drive_wake';
-    reason: string;
-    course: number;
-    createdAt: string;
-    seq: number;
-  }>;
-} {
-  return {
-    nextSeq: 2,
-    triggers: [
-      {
-        triggerId: `root-drive-wake:${selfId}`,
-        kind: 'root_drive_wake',
-        reason,
-        course: 1,
-        createdAt: new Date().toISOString(),
-        seq: 1,
-      },
-    ],
-  };
-}
-
 async function writeSideDialogAskerStack(args: {
   sideDialogId: DialogID;
   assignment: SideDialogAssignmentFromAsker;
@@ -267,7 +238,7 @@ async function main(): Promise<void> {
       lastModified: new Date().toISOString(),
       status: 'active',
       generating: false,
-      nextStep: rootDriveWakeNextStep(bRoot, 'test_restart_fixture'),
+      nextStep: createEmptyDialogNextStepState(),
       ...emptyTellaskIndexes(),
       displayState: { kind: 'proceeding' },
       userWait: {
@@ -323,8 +294,8 @@ async function main(): Promise<void> {
       displayState: { kind: 'proceeding' },
     });
 
-    // Dialog C: malformed q4h detail must not affect run-control recovery once userWait is the
-    // durable suspension fact. Q4H detail consumers still fail loudly when they need the payload.
+    // Dialog C: malformed q4h detail must not affect run-control recovery when no durable
+    // suspension fact points at it. Q4H detail consumers still fail loudly when they need payload.
     const cRoot = 'dlg-c';
     await writeYaml(path.join(tmpRoot, '.dialogs', 'run', cRoot, 'dialog.yaml'), { id: cRoot });
     await writeYaml(path.join(tmpRoot, '.dialogs', 'run', cRoot, 'latest.yaml'), {
@@ -332,7 +303,7 @@ async function main(): Promise<void> {
       lastModified: new Date().toISOString(),
       status: 'active',
       generating: false,
-      nextStep: rootDriveWakeNextStep(cRoot, 'test_restart_fixture'),
+      nextStep: createEmptyDialogNextStepState(),
       ...emptyTellaskIndexes(),
       displayState: { kind: 'idle_waiting_user' },
     });
@@ -419,7 +390,7 @@ async function main(): Promise<void> {
       lastModified: new Date().toISOString(),
       status: 'active',
       generating: false,
-      nextStep: rootDriveWakeNextStep(gRoot, 'test_restart_fixture'),
+      nextStep: createEmptyDialogNextStepState(),
       ...emptyTellaskIndexes(),
       displayState: { kind: 'idle_waiting_user' },
     });
@@ -892,8 +863,7 @@ async function main(): Promise<void> {
 
     const latestC = await DialogPersistence.loadDialogLatest(new DialogID(cRoot), 'running');
     assert.ok(latestC, 'latest.yaml for dlg-c should remain readable');
-    assert.equal(latestC.displayState?.kind, 'stopped');
-    assert.equal(latestC.displayState?.reason.kind, 'server_restart');
+    assert.equal(latestC.displayState?.kind, 'idle_waiting_user');
     await assert.rejects(fs.access(path.join(tmpRoot, '.dialogs', 'malformed', cRoot)));
 
     const latestD = await DialogPersistence.loadDialogLatest(new DialogID(dRoot), 'running');
@@ -926,9 +896,8 @@ async function main(): Promise<void> {
     const latestG = await DialogPersistence.loadDialogLatest(new DialogID(gRoot), 'running');
     assert.ok(latestG, 'latest.yaml for dlg-g should exist');
     assert.ok(latestG.displayState);
-    assert.equal(latestG.displayState.kind, 'stopped');
-    assert.equal(latestG.displayState.reason.kind, 'server_restart');
-    assert.equal(latestG.executionMarker?.kind, 'interrupted');
+    assert.equal(latestG.displayState.kind, 'idle_waiting_user');
+    assert.equal(latestG.executionMarker, undefined);
 
     const latestJ = await DialogPersistence.loadDialogLatest(new DialogID(jSide, jRoot), 'running');
     assert.ok(latestJ, 'latest.yaml for dlg-j sideDialog should exist');

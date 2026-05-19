@@ -371,7 +371,7 @@ async function main(): Promise<void> {
     let wakeQueueRmAttempts = 0;
     try {
       fsForPatch.rename = async (source, destination) => {
-        if (path.basename(destination) === 'wake-queue.json') {
+        if (path.basename(destination) === 'wake-queue.jsonl') {
           wakeQueueRenameAttempts += 1;
           if (wakeQueueRenameAttempts === 1) {
             const error = new Error('simulated transient EPERM for wake queue');
@@ -391,7 +391,7 @@ async function main(): Promise<void> {
       assert.equal(wakeQueueRenameAttempts, 2);
 
       fsForPatch.rm = async (target) => {
-        if (path.basename(target) === 'wake-queue.json') {
+        if (path.basename(target) === 'wake-queue.jsonl') {
           wakeQueueRmAttempts += 1;
           if (wakeQueueRmAttempts === 1) {
             const error = new Error('simulated transient EPERM for wake queue removal');
@@ -413,6 +413,25 @@ async function main(): Promise<void> {
       fsForPatch.rename = originalRename;
       fsForPatch.rm = originalRm;
     }
+
+    // Invariant 10: root runtime wake is a Wake Queue fact independent from root latest sync.
+    await DialogPersistence.upsertRootRuntimeWake(
+      driveRootId,
+      'latest_writeback_preserve_root_runtime_wake',
+      'running',
+    );
+    await DialogPersistence.syncWakeQueueForDialogLatest(driveRootId, noDriveLatest, 'running');
+    assert.equal(
+      await DialogPersistence.hasRootRuntimeWake(driveRootId, 'running'),
+      true,
+      'root latest sync must not erase the independent root runtime wake entry',
+    );
+    await DialogPersistence.removeWakeQueueEntriesForDialog(driveRootId, 'running');
+    assert.equal(
+      await DialogPersistence.hasRootRuntimeWake(driveRootId, 'running'),
+      false,
+      'explicit root wake queue removal should remove the root runtime wake entry',
+    );
   });
 }
 

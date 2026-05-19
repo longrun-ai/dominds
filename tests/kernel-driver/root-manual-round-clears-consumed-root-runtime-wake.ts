@@ -32,7 +32,7 @@ async function main(): Promise<void> {
     root.disableDiligencePush = true;
     globalDialogRegistry.register(root);
 
-    await DialogPersistence.upsertRootDriveWakeTrigger(
+    await DialogPersistence.upsertRootRuntimeWake(
       root.id,
       'seed_root_queue_before_foreground_consumption_without_blocked_wake_marker',
       root.status,
@@ -53,14 +53,14 @@ async function main(): Promise<void> {
         root,
         {
           content: prompt,
-          msgId: 'root-manual-round-clears-consumed-root-drive-wake',
+          msgId: 'root-manual-round-clears-consumed-root-runtime-wake',
           grammar: 'markdown',
           origin: 'runtime',
         },
         true,
         makeDriveOptions({
           source: 'ws_resume_dialog',
-          reason: 'test_foreground_consumes_root_drive_wake',
+          reason: 'test_foreground_consumes_root_runtime_wake',
           suppressDiligencePush: true,
         }),
       ],
@@ -72,7 +72,12 @@ async function main(): Promise<void> {
     assert.equal(
       hasPendingNextStepTriggers(latest),
       false,
-      'idle foreground root round should clear the consumed root drive wake from persistence',
+      'idle foreground root round should clear the consumed root runtime wake from persistence',
+    );
+    assert.equal(
+      await DialogPersistence.hasRootRuntimeWake(root.id, root.status),
+      false,
+      'idle foreground root round should remove the consumed root runtime wake queue entry',
     );
     assert.equal(
       globalDialogRegistry.hasPendingActiveRunClearedWake(root.id.rootId),
@@ -82,17 +87,17 @@ async function main(): Promise<void> {
     assert.equal(
       globalDialogRegistry.hasPendingActiveRunClearedWake(root.id.rootId),
       false,
-      'idle foreground root round should not leave a deferred wake marker behind after durable root drive wake cleanup',
+      'idle foreground root round should not leave a deferred wake marker behind after durable root runtime wake cleanup',
     );
   });
 
-  console.log('kernel-driver root-manual-round-clears-consumed-root-drive-wake: PASS');
+  console.log('kernel-driver root-manual-round-clears-consumed-root-runtime-wake: PASS');
 }
 
 void main().catch((err: unknown) => {
   const message = err instanceof Error ? err.message : String(err);
   console.error(
-    `kernel-driver root-manual-round-clears-consumed-root-drive-wake: FAIL\n${message}`,
+    `kernel-driver root-manual-round-clears-consumed-root-runtime-wake: FAIL\n${message}`,
   );
   process.exit(1);
 });

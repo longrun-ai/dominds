@@ -556,7 +556,7 @@ async function loadPendingDiagnosticsSnapshot(args: {
   }
 }
 
-async function clearConsumedDeferredRootWakeIfIdle(dialog: Dialog): Promise<void> {
+async function clearConsumedRootRuntimeWakeIfIdle(dialog: Dialog): Promise<void> {
   if (dialog.id.selfId !== dialog.id.rootId) {
     return;
   }
@@ -567,14 +567,14 @@ async function clearConsumedDeferredRootWakeIfIdle(dialog: Dialog): Promise<void
   if (dialog.hasUpNext() || !suspension.canDrive) {
     return;
   }
-  const persistedNextStepTriggers = await DialogPersistence.hasPendingNextStepTriggers(dialog.id);
-  if (!persistedNextStepTriggers) {
+  const hasRootRuntimeWake = await DialogPersistence.hasRootRuntimeWake(dialog.id, dialog.status);
+  if (!hasRootRuntimeWake) {
     return;
   }
   try {
-    await DialogPersistence.removeRootDriveWakeTrigger(dialog.id, dialog.status);
+    await DialogPersistence.removeRootRuntimeWake(dialog.id, dialog.status);
   } catch (error: unknown) {
-    log.error('kernel-driver failed to persist consumed root drive wake cleanup', error, {
+    log.error('kernel-driver failed to persist consumed root runtime wake cleanup', error, {
       dialogId: dialog.id.valueOf(),
       rootId: dialog.id.rootId,
       selfId: dialog.id.selfId,
@@ -587,61 +587,39 @@ async function clearConsumedDeferredRootWakeIfIdle(dialog: Dialog): Promise<void
   });
 }
 
-function hasRootDriveWakeTrigger(args: {
-  dialog: Dialog;
-  latest: Awaited<ReturnType<typeof DialogPersistence.loadDialogLatest>>;
-}): boolean {
-  if (args.dialog.id.selfId !== args.dialog.id.rootId) {
-    return false;
-  }
-  return (
-    args.latest?.nextStep.triggers.some(
-      (trigger) =>
-        trigger.kind === 'root_drive_wake' &&
-        trigger.triggerId === `root-drive-wake:${args.dialog.id.selfId}`,
-    ) === true
-  );
-}
-
 function formatPreDriveExecutionFactsError(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
 }
 
-async function restoreAcceptedRootDriveWakeAfterDriveFailure(args: {
+async function restoreRootRuntimeWakeAfterDriveFailure(args: {
   dialog: Dialog;
   driveOptions: KernelDriverDriveOptions | undefined;
   reason: 'core_stopped' | 'tail_error';
   error?: unknown;
-  hadRootDriveWakeBeforeCore?: boolean;
+  hadRootRuntimeWakeBeforeCore?: boolean;
 }): Promise<void> {
   if (args.dialog.id.selfId !== args.dialog.id.rootId) {
     return;
   }
   const latest = await DialogPersistence.loadDialogLatest(args.dialog.id, args.dialog.status);
-  const acceptedTriggerIds =
-    latest?.generationRunState?.kind === 'open' ? latest.generationRunState.acceptedTriggerIds : [];
-  const acceptedRootDriveWake = acceptedTriggerIds.some((triggerId) =>
-    triggerId.startsWith(`root-drive-wake:${args.dialog.id.selfId}`),
-  );
-  if (!acceptedRootDriveWake && args.hadRootDriveWakeBeforeCore !== true) {
+  if (args.hadRootRuntimeWakeBeforeCore !== true) {
     return;
   }
   if (args.reason === 'core_stopped' && latest?.executionMarker?.kind !== 'interrupted') {
     return;
   }
   const reason = `${args.reason}_requeue:${args.driveOptions?.reason ?? 'unknown'}`;
-  await DialogPersistence.upsertRootDriveWakeTrigger(args.dialog.id, reason, args.dialog.status);
+  await DialogPersistence.upsertRootRuntimeWake(args.dialog.id, reason, args.dialog.status);
   globalDialogRegistry.wakeDrive(args.dialog.id.rootId, {
     source: 'kernel_driver_flow_tail',
     reason,
   });
-  log.warn('kernel-driver requeued accepted root drive wake after drive failure', args.error, {
+  log.warn('kernel-driver requeued root runtime wake after drive failure', args.error, {
     dialogId: args.dialog.id.valueOf(),
     rootId: args.dialog.id.rootId,
     selfId: args.dialog.id.selfId,
     requeueReason: args.reason,
-    acceptedTriggerIds,
-    hadRootDriveWakeBeforeCore: args.hadRootDriveWakeBeforeCore === true,
+    hadRootRuntimeWakeBeforeCore: args.hadRootRuntimeWakeBeforeCore === true,
     source: args.driveOptions?.source ?? null,
     reason: args.driveOptions?.reason ?? null,
   });
@@ -1583,7 +1561,7 @@ export async function executeDriveRound(args: {
   let activePromptWasReplyToolReminder = false;
   let shouldPauseAfterLocalUserInterjection = false;
   let resumeFromInterjectionPause = false;
-  let hadRootDriveWakeBeforeCore = false;
+  let hadRootRuntimeWakeBeforeCore = false;
   let coreEndedInterrupted = false;
   const allowResumeFromInterrupted =
     driveOptions?.allowResumeFromInterrupted === true || humanPrompt?.origin === 'user';
@@ -1603,7 +1581,12 @@ export async function executeDriveRound(args: {
     // "dead" is irreversible for sideDialogs. Skip drive if marked dead.
     try {
       const latest = await DialogPersistence.loadDialogLatest(dialog.id, 'running');
-      hadRootDriveWakeBeforeCore ||= hasRootDriveWakeTrigger({ dialog, latest });
+      if (dialog.id.selfId === dialog.id.rootId) {
+        hadRootRuntimeWakeBeforeCore ||= await DialogPersistence.hasRootRuntimeWake(
+          dialog.id,
+          dialog.status,
+        );
+      }
       if (
         dialog.id.selfId !== dialog.id.rootId &&
         latest &&
@@ -2002,10 +1985,12 @@ export async function executeDriveRound(args: {
     const resolvedPrompt = await resolveEffectivePrompt(dialog, promptForCore);
     const effectivePrompt = resolvedPrompt.prompt;
     const latestBeforeCore = await DialogPersistence.loadDialogLatest(dialog.id, dialog.status);
-    hadRootDriveWakeBeforeCore ||= hasRootDriveWakeTrigger({
-      dialog,
-      latest: latestBeforeCore,
-    });
+    if (dialog.id.selfId === dialog.id.rootId) {
+      hadRootRuntimeWakeBeforeCore ||= await DialogPersistence.hasRootRuntimeWake(
+        dialog.id,
+        dialog.status,
+      );
+    }
     if (
       resolvedPrompt.droppedStaleQueuedContinuation &&
       effectivePrompt === undefined &&
@@ -2085,11 +2070,11 @@ export async function executeDriveRound(args: {
     );
     const latestAfterCore = await DialogPersistence.loadDialogLatest(dialog.id, dialog.status);
     coreEndedInterrupted = latestAfterCore?.executionMarker?.kind === 'interrupted';
-    await restoreAcceptedRootDriveWakeAfterDriveFailure({
+    await restoreRootRuntimeWakeAfterDriveFailure({
       dialog,
       driveOptions,
       reason: 'core_stopped',
-      hadRootDriveWakeBeforeCore,
+      hadRootRuntimeWakeBeforeCore,
     });
     replyContinuationScope.refresh(driveResult.lastBusinessContinuation);
     calleeDialogReplyTarget =
@@ -2533,28 +2518,10 @@ export async function executeDriveRound(args: {
 
     if (tailError === undefined && !coreEndedInterrupted) {
       try {
-        await clearConsumedDeferredRootWakeIfIdle(dialog);
-      } catch (error: unknown) {
-        log.error('kernel-driver failed to reconcile consumed root drive wake after tail', error, {
-          dialogId: dialog.id.valueOf(),
-          rootId: dialog.id.rootId,
-          selfId: dialog.id.selfId,
-        });
-      }
-    }
-
-    if (tailError !== undefined) {
-      try {
-        await restoreAcceptedRootDriveWakeAfterDriveFailure({
-          dialog,
-          driveOptions,
-          reason: 'tail_error',
-          error: tailError,
-          hadRootDriveWakeBeforeCore,
-        });
+        await clearConsumedRootRuntimeWakeIfIdle(dialog);
       } catch (error: unknown) {
         log.error(
-          'kernel-driver failed to requeue accepted root drive wake after tail failure',
+          'kernel-driver failed to reconcile consumed root runtime wake after tail',
           error,
           {
             dialogId: dialog.id.valueOf(),
@@ -2562,6 +2529,24 @@ export async function executeDriveRound(args: {
             selfId: dialog.id.selfId,
           },
         );
+      }
+    }
+
+    if (tailError !== undefined) {
+      try {
+        await restoreRootRuntimeWakeAfterDriveFailure({
+          dialog,
+          driveOptions,
+          reason: 'tail_error',
+          error: tailError,
+          hadRootRuntimeWakeBeforeCore,
+        });
+      } catch (error: unknown) {
+        log.error('kernel-driver failed to requeue root runtime wake after tail failure', error, {
+          dialogId: dialog.id.valueOf(),
+          rootId: dialog.id.rootId,
+          selfId: dialog.id.selfId,
+        });
       }
       throw tailError;
     }
