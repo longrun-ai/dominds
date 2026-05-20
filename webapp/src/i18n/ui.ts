@@ -329,7 +329,7 @@ export type UiStrings = {
   dialogReminderScope: string;
   taskReminderScope: string;
   agentReminderScope: string;
-  systemReminderScope: string;
+  runtimeReminderScope: string;
 
   // /setup
   setupTitle: string;
@@ -748,7 +748,7 @@ export function getUiStrings(language: LanguageCode): UiStrings {
       dialogReminderScope: '对话范围提醒',
       taskReminderScope: '任务范围提醒',
       agentReminderScope: '智能体范围提醒',
-      systemReminderScope: '系统共享提醒',
+      runtimeReminderScope: '运行时提醒',
 
       setupTitle: '设置',
       setupRefresh: '刷新',
@@ -1185,7 +1185,7 @@ export function getUiStrings(language: LanguageCode): UiStrings {
     dialogReminderScope: 'Dialog-scope reminder',
     taskReminderScope: 'Task-scope reminder',
     agentReminderScope: 'Agent-scope reminder',
-    systemReminderScope: 'System-shared reminder',
+    runtimeReminderScope: 'Runtime reminder',
 
     setupTitle: 'Setup',
     setupRefresh: 'Refresh',

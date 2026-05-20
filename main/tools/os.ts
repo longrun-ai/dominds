@@ -2004,7 +2004,7 @@ export const shellCmdTool: FuncTool = {
         content: `[Daemon PID ${initialMessage.daemonPid} - This content should not be visible, check dynamic rendering]`,
         owner: shellCmdReminderOwner,
         meta: reminderMeta,
-        scope: 'agent_shared',
+        scope: 'runtime',
         renderMode: 'markdown',
       });
       try {

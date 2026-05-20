@@ -81,7 +81,7 @@ async function main(): Promise<void> {
         delete: { altInstruction: `stop_daemon({ "pid": ${String(pid)} })` },
         ...(process.platform === 'win32' ? {} : { processGroupId: pid }),
       },
-      scope: 'agent_shared',
+      scope: 'runtime',
     });
 
     try {

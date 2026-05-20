@@ -6199,19 +6199,19 @@ export class DomindsApp extends HTMLElement {
       }
 
       .rem-item-scope-dialog {
-        --icon-mask: ${ICON_MASK_URLS.bookmark};
+        --icon-mask: ${ICON_MASK_URLS.messageSquareText};
       }
 
       .rem-item-scope-task {
-        --icon-mask: ${ICON_MASK_URLS.pin};
+        --icon-mask: ${ICON_MASK_URLS.clipboardList};
       }
 
       .rem-item-scope-agent {
-        --icon-mask: ${ICON_MASK_URLS.warning};
+        --icon-mask: ${ICON_MASK_URLS.userRound};
       }
 
-      .rem-item-scope-agent-shared {
-        --icon-mask: ${ICON_MASK_URLS.link};
+      .rem-item-scope-runtime {
+        --icon-mask: ${ICON_MASK_URLS.shield};
       }
 
       .rem-item-content {
@@ -12363,8 +12363,8 @@ export class DomindsApp extends HTMLElement {
     if (scope === 'agent') {
       return `<span class="rem-item-scope rem-item-scope-agent" title="${this.escapeHtml(t.agentReminderScope)}" aria-label="${this.escapeHtml(t.agentReminderScope)}"><span class="icon-mask" aria-hidden="true"></span></span>`;
     }
-    if (scope === 'agent_shared') {
-      return `<span class="rem-item-scope rem-item-scope-agent-shared" title="${this.escapeHtml(t.systemReminderScope)}" aria-label="${this.escapeHtml(t.systemReminderScope)}"><span class="icon-mask" aria-hidden="true"></span></span>`;
+    if (scope === 'runtime') {
+      return `<span class="rem-item-scope rem-item-scope-runtime" title="${this.escapeHtml(t.runtimeReminderScope)}" aria-label="${this.escapeHtml(t.runtimeReminderScope)}"><span class="icon-mask" aria-hidden="true"></span></span>`;
     }
     return `<span class="rem-item-scope rem-item-scope-dialog" title="${this.escapeHtml(t.dialogReminderScope)}" aria-label="${this.escapeHtml(t.dialogReminderScope)}"><span class="icon-mask" aria-hidden="true"></span></span>`;
   }

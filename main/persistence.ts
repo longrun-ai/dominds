@@ -2558,8 +2558,8 @@ function isReminderPriority(value: unknown): value is 'high' | 'medium' | 'low' 
   return value === 'high' || value === 'medium' || value === 'low';
 }
 
-function isReminderScope(value: unknown): value is 'dialog' | 'task' | 'agent' | 'agent_shared' {
-  return value === 'dialog' || value === 'task' || value === 'agent' || value === 'agent_shared';
+function isReminderScope(value: unknown): value is 'dialog' | 'task' | 'agent' | 'runtime' {
+  return value === 'dialog' || value === 'task' || value === 'agent' || value === 'runtime';
 }
 
 function isReminderRenderMode(value: unknown): value is 'plain' | 'markdown' {

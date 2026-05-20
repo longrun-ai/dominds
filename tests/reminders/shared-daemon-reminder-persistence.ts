@@ -98,7 +98,7 @@ async function main(): Promise<void> {
       );
       const raw = await fs.readFile(sharedReminderPath, 'utf-8');
       assert.match(raw, /"kind": "daemon"/);
-      assert.match(raw, /"scope": "agent_shared"/);
+      assert.match(raw, /"scope": "runtime"/);
       assert.match(raw, /"ownerName": "shellCmd"/);
       assert.match(raw, /"runnerPid": /);
       assert.match(raw, /"runnerEndpoint": /);

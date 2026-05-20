@@ -257,7 +257,7 @@ export function formatReminderItemGuide(
   language: LanguageCode,
   reminderId: string,
   content: string,
-  options?: { meta?: unknown; scope?: 'dialog' | 'task' | 'agent' | 'agent_shared' },
+  options?: { meta?: unknown; scope?: 'dialog' | 'task' | 'agent' | 'runtime' },
 ): string {
   function isRecord(value: unknown): value is Record<string, unknown> {
     return typeof value === 'object' && value !== null && !Array.isArray(value);

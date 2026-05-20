@@ -4312,7 +4312,7 @@ export function renderPrimingManual(language: LanguageCode): string {
       fmtHeader('.minds/priming/*（启动脚本）') +
       fmtList([
         '目录约定：个人脚本放在 `.minds/priming/individual/<member-id>/<slug>.md`；团队共享脚本放在 `.minds/priming/team_shared/<slug>.md`。',
-        '脚本语义（按当前实现）：创建对话时，frontmatter 里的 `reminders` 会按 `scope` 分流：`dialog` 恢复为该对话本地提醒，`task` 写入当前差遣牒任务的持久提醒，`agent` / `agent_shared` 写入该成员的全局提醒；随后脚本 records 会被追加进持久化事件流，并尽可能回放成真正的对话历史消息。它不是 system prompt，也不是只读日志，而是可编辑的“起手历史/行为引导层”。',
+        '脚本语义（按当前实现）：创建对话时，frontmatter 里的 `reminders` 会按 `scope` 分流：`dialog` 恢复为该对话本地提醒，`task` 写入当前差遣牒任务的持久提醒，`agent` / `runtime` 写入该成员的全局提醒；随后脚本 records 会被追加进持久化事件流，并尽可能回放成真正的对话历史消息。它不是 system prompt，也不是只读日志，而是可编辑的“起手历史/行为引导层”。',
         '推荐格式：`frontmatter + record 块`。每个 `### record <type>` 对应一个持久化事件（去掉 `ts`），可忠实复原 tool 记录与 call-id 等技术细节。',
         '口吻规则取决于 record 类型，而不是统一写成一种旁白：`human_text_record` 会变成 `role=user` 的 prompting message，应写成“用户/诉请者正在对这个智能体说的话”；`agent_words_record` 会变成 `role=assistant` 的可见回复，应写成“这个智能体已经说出口的话”；`agent_thought_record` 会变成 thinking message，只适合非常克制地承载内部推理痕迹，不适合拿来写通用制度说明。',
         '`func_call_record` / `func_result_record` / tellask 相关 records 属于技术回放层：如果要保留，就应写真实调用名、参数、结果与关联 id，而不是随手写一段 prose 摘要来冒充工具历史。',
@@ -4320,7 +4320,7 @@ export function renderPrimingManual(language: LanguageCode): string {
         '严格约束：不支持 `### user` / `### assistant` 旧写法。',
         '`func_call_record` 使用三反引号 `json`；其余 record 建议使用 6 重反引号 markdown block（避免与正文三反引号冲突）。',
         '建议在 frontmatter 里维护 `title`、`applicableMemberIds` 等元数据；`team_shared` 脚本可用 `applicableMemberIds` 控制适用成员。',
-        'frontmatter.reminders 的写法也要遵循 reminder 语义：内容应短小、像手头工作提示，不要塞成长文手册；若省略 `scope`，当前实现默认是 `task`；只对当前对话有效时用 `dialog`；紧急、短期、全局刺眼提醒才用 `agent`；`agent_shared` 仅供系统维护的提醒使用。',
+        'frontmatter.reminders 的写法也要遵循 reminder 语义：内容应短小、像手头工作提示，不要塞成长文手册；若省略 `scope`，当前实现默认是 `task`；只对当前对话有效时用 `dialog`；紧急、短期、全局刺眼提醒才用 `agent`；`runtime` 仅供系统维护的提醒使用。',
         '维护原则：允许任意编辑/重写脚本内容，包括新增或改写 assistant 消息，以引导期望行为（而不是拘泥于历史实录）。',
         '每次修改 `.minds/priming/**` 后，建议运行 `team_mgmt_validate_priming_scripts({})` 做格式/路径校验。',
         'WebUI 支持把“当前 course 历史”直接导出为个人启动脚本；导出后应由团队管理者审阅并按团队规范再编辑。',
@@ -4364,7 +4364,7 @@ export function renderPrimingManual(language: LanguageCode): string {
     fmtHeader('.minds/priming/* (startup scripts)') +
     fmtList([
       'Directory convention: individual scripts live at `.minds/priming/individual/<member-id>/<slug>.md`; team-shared scripts live at `.minds/priming/team_shared/<slug>.md`.',
-      "Script semantics (current implementation): at dialog creation, frontmatter `reminders` are routed by `scope`: `dialog` restores into dialog-local reminder state, `task` writes to the current task's persisted reminders, and `agent` / `agent_shared` write to the member-wide reminder set; then records are appended to the persisted event stream and replayed into dialog history when possible. A priming script is not system prompt text and not a read-only log; it is an editable “startup history / behavior-guidance” asset.",
+      "Script semantics (current implementation): at dialog creation, frontmatter `reminders` are routed by `scope`: `dialog` restores into dialog-local reminder state, `task` writes to the current task's persisted reminders, and `agent` / `runtime` write to the member-wide reminder set; then records are appended to the persisted event stream and replayed into dialog history when possible. A priming script is not system prompt text and not a read-only log; it is an editable “startup history / behavior-guidance” asset.",
       'Recommended format: `frontmatter + record blocks`. Each `### record <type>` maps to one persisted event (without `ts`) for faithful replay, including tool records and call-id links.',
       'Tone depends on record type, not on one narrator voice: `human_text_record` becomes a `role=user` prompting message, so write it as what the user is saying to the agent; `agent_words_record` becomes a visible `role=assistant` reply, so write it as words the agent has already said; `agent_thought_record` becomes a thinking message and should be used sparingly, not as a place for general policy prose.',
       '`func_call_record` / `func_result_record` / tellask-related records are technical replay artifacts. Keep real call names, arguments, results, and linked ids if you include them; do not replace them with loose prose summaries.',
@@ -4372,7 +4372,7 @@ export function renderPrimingManual(language: LanguageCode): string {
       'Strict rule: legacy `### user` / `### assistant` sections are not supported.',
       '`func_call_record` uses triple-backtick `json`; other records should use six-backtick markdown blocks to avoid nested-fence collisions.',
       'Use frontmatter for metadata like `title` and `applicableMemberIds`; for `team_shared`, `applicableMemberIds` narrows applicability.',
-      'frontmatter.reminders should follow reminder semantics too: keep them short like current-work prompts rather than mini-manuals. If `scope` is omitted, the current implementation defaults it to `task`; use `dialog` for truly dialog-local notes; use `agent` only for urgent, short-lived, globally visible cues; `agent_shared` is reserved for system-maintained reminders.',
+      'frontmatter.reminders should follow reminder semantics too: keep them short like current-work prompts rather than mini-manuals. If `scope` is omitted, the current implementation defaults it to `task`; use `dialog` for truly dialog-local notes; use `agent` only for urgent, short-lived, globally visible cues; `runtime` is reserved for system-maintained reminders.',
       'Maintenance principle: freely edit or fully rewrite scripts, including assistant messages, to shape expected behavior.',
       'After each edit under `.minds/priming/**`, run `team_mgmt_validate_priming_scripts({})` for format/path validation.',
       'WebUI can export current-course history into an individual startup script; team managers should review and refine exported scripts.',

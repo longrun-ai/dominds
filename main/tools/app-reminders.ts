@@ -254,11 +254,11 @@ async function persistAndPublishReminders(dlg: Dialog): Promise<void> {
     agentId: dlg.agentId,
     taskDocPath: dlg.taskDocPath,
   });
-  const agentSharedReminders = await loadSharedReminders({ kind: 'agent', agentId: dlg.agentId });
+  const runtimeReminders = await loadSharedReminders({ kind: 'agent', agentId: dlg.agentId });
   const visibleReminders = [
     ...dlg.reminders.map((reminder) => cloneReminder(reminder)),
     ...taskSharedReminders,
-    ...agentSharedReminders,
+    ...runtimeReminders,
   ];
   visibleReminders.sort(compareReminderDisplayOrder);
   const reminders: ReminderContent[] = visibleReminders.map((reminder) => ({

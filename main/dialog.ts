@@ -262,7 +262,7 @@ export type VisibleReminderTarget =
       reminder: Reminder;
     }>
   | Readonly<{
-      source: 'agent_shared';
+      source: 'runtime';
       index: number;
       reminder: Reminder;
       target: SharedReminderTarget;
@@ -832,7 +832,7 @@ export abstract class Dialog {
         const reminder = sharedReminders[index];
         if (!reminder) continue;
         targets.push({
-          source: 'agent_shared',
+          source: 'runtime',
           index,
           reminder,
           target: sharedTarget,
@@ -930,13 +930,13 @@ export abstract class Dialog {
       agentId: this.agentId,
       taskDocPath: this.taskDocPath,
     };
-    const agentSharedTarget: SharedReminderTarget = { kind: 'agent', agentId: this.agentId };
+    const runtimeTarget: SharedReminderTarget = { kind: 'agent', agentId: this.agentId };
     const taskSharedReminders = await loadSharedReminders(taskSharedTarget);
-    const agentSharedReminders = await loadSharedReminders(agentSharedTarget);
+    const runtimeReminders = await loadSharedReminders(runtimeTarget);
     const localChanged = await this.processReminderCollection(this.reminders);
     const taskSharedChanged = await this.processReminderCollection(taskSharedReminders);
-    const agentSharedChanged = await this.processReminderCollection(agentSharedReminders);
-    if (localChanged || taskSharedChanged || agentSharedChanged) {
+    const runtimeChanged = await this.processReminderCollection(runtimeReminders);
+    if (localChanged || taskSharedChanged || runtimeChanged) {
       this.touchReminders();
     }
 
@@ -957,7 +957,7 @@ export abstract class Dialog {
       });
     }
     try {
-      await replaceSharedReminders(agentSharedTarget, agentSharedReminders);
+      await replaceSharedReminders(runtimeTarget, runtimeReminders);
     } catch (err) {
       log.warn('Failed to persist agent-scoped reminders', err, {
         dialogId: this.id.valueOf(),
@@ -968,7 +968,7 @@ export abstract class Dialog {
     const visibleReminders = [
       ...this.reminders.map((reminder) => cloneReminder(reminder)),
       ...taskSharedReminders,
-      ...agentSharedReminders,
+      ...runtimeReminders,
     ];
     visibleReminders.sort(compareReminderDisplayOrder);
     const reminders: ReminderContent[] = visibleReminders.map((r: Reminder) => ({

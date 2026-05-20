@@ -12,6 +12,7 @@ import chevronRightUrl from '../assets/icons/chevron-right.svg';
 import chevronsDownUrl from '../assets/icons/chevrons-down.svg';
 import chevronsUpUrl from '../assets/icons/chevrons-up.svg';
 import circleUrl from '../assets/icons/circle.svg';
+import clipboardListUrl from '../assets/icons/clipboard-list.svg';
 import closeUrl from '../assets/icons/close.svg';
 import collapseStripUrl from '../assets/icons/collapse-strip.svg';
 import copyUrl from '../assets/icons/copy.svg';
@@ -28,6 +29,7 @@ import infoUrl from '../assets/icons/info.svg';
 import insertDownUrl from '../assets/icons/insert-down.svg';
 import linkUrl from '../assets/icons/link.svg';
 import lockUrl from '../assets/icons/lock.svg';
+import messageSquareTextUrl from '../assets/icons/message-square-text.svg';
 import pinUrl from '../assets/icons/pin.svg';
 import playUrl from '../assets/icons/play.svg';
 import plusCircleUrl from '../assets/icons/plus-circle.svg';
@@ -39,6 +41,7 @@ import saveUrl from '../assets/icons/save.svg';
 import scrollDownUrl from '../assets/icons/scroll-down.svg';
 import searchUrl from '../assets/icons/search.svg';
 import sendUrl from '../assets/icons/send.svg';
+import shieldUrl from '../assets/icons/shield.svg';
 import sparklesUrl from '../assets/icons/sparkles.svg';
 import stopUrl from '../assets/icons/stop.svg';
 import themeDarkUrl from '../assets/icons/theme-dark.svg';
@@ -47,6 +50,7 @@ import toggleTriangleUrl from '../assets/icons/toggle-triangle.svg';
 import toolsUrl from '../assets/icons/tools.svg';
 import trashUrl from '../assets/icons/trash.svg';
 import uploadCloudUrl from '../assets/icons/upload-cloud.svg';
+import userRoundUrl from '../assets/icons/user-round.svg';
 import usersUrl from '../assets/icons/users.svg';
 import warningUrl from '../assets/icons/warning.svg';
 
@@ -101,6 +105,10 @@ export const ICON_MASK_URLS = {
   brain: asMaskUrl(brainUrl),
   bolt: asMaskUrl(boltUrl),
   sparkles: asMaskUrl(sparklesUrl),
+  messageSquareText: asMaskUrl(messageSquareTextUrl),
+  clipboardList: asMaskUrl(clipboardListUrl),
+  userRound: asMaskUrl(userRoundUrl),
+  shield: asMaskUrl(shieldUrl),
   themeDark: asMaskUrl(themeDarkUrl),
   themeLight: asMaskUrl(themeLightUrl),
   resizeCornerBottomLeft: asMaskUrl(resizeCornerBottomLeftUrl),

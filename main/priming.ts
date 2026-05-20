@@ -109,7 +109,7 @@ type PrimingReminderSnapshot = {
   ownerName?: string;
   meta?: JsonValue;
   echoback?: boolean;
-  scope?: 'dialog' | 'task' | 'agent' | 'agent_shared';
+  scope?: 'dialog' | 'task' | 'agent' | 'runtime';
   renderMode?: 'plain' | 'markdown';
   createdAt?: string;
   priority?: PrimingReminderPriority;
@@ -293,10 +293,10 @@ function parseReminderSnapshots(
       scope !== 'dialog' &&
       scope !== 'task' &&
       scope !== 'agent' &&
-      scope !== 'agent_shared'
+      scope !== 'runtime'
     ) {
       throw new Error(
-        `${context}.scope must be "dialog", "task", "agent", or "agent_shared" when provided`,
+        `${context}.scope must be "dialog", "task", "agent", or "runtime" when provided`,
       );
     }
     const createdAt = item['createdAt'];
@@ -315,7 +315,7 @@ function parseReminderSnapshots(
       meta,
       echoback,
       scope:
-        scope === 'dialog' || scope === 'task' || scope === 'agent' || scope === 'agent_shared'
+        scope === 'dialog' || scope === 'task' || scope === 'agent' || scope === 'runtime'
           ? scope
           : undefined,
       renderMode: renderMode === 'plain' || renderMode === 'markdown' ? renderMode : undefined,
@@ -2507,7 +2507,7 @@ async function applyPrimingRemindersToDialog(args: {
         taskReminders.push(reminder);
         break;
       case 'agent':
-      case 'agent_shared':
+      case 'runtime':
         agentReminders.push(reminder);
         break;
     }

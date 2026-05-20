@@ -370,7 +370,7 @@ async function deleteResolvedReminderTarget(
         dlg.deleteReminder(index);
       });
     }
-    case 'agent_shared': {
+    case 'runtime': {
       const deleted = await deleteSharedReminderById(target.target, target.reminder.id);
       if (deleted) dlg.touchReminders();
       return deleted;
@@ -395,7 +395,7 @@ async function updateResolvedReminderTarget(
         dlg.updateReminder(index, content, meta, { renderMode });
       });
     }
-    case 'agent_shared': {
+    case 'runtime': {
       const updated = await updateSharedReminderById(target.target, target.reminder.id, (current) =>
         replaceReminderContent(current, content, meta, renderMode),
       );

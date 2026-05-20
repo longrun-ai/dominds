@@ -127,7 +127,7 @@ export interface ReminderOptions {
   readonly renderMode?: ReminderRenderMode;
 }
 
-export type ReminderScope = 'dialog' | 'task' | 'agent' | 'agent_shared';
+export type ReminderScope = 'dialog' | 'task' | 'agent' | 'runtime';
 export type ReminderRenderMode = 'plain' | 'markdown';
 
 export type ReminderPriority = 'high' | 'medium' | 'low';
@@ -261,7 +261,7 @@ function parseReminderSortTimestamp(value: string): number | null {
 }
 
 // Reminder presentation order is a framework-level concern distinct from owner semantics.
-// Keep it centralized so dialog-local reminders and agent-shared reminders stay in the same
+// Keep it centralized so dialog-local reminders and runtime reminders stay in the same
 // newest-first order everywhere they are merged, rendered, or injected.
 export function compareReminderDisplayOrder(a: Reminder, b: Reminder): number {
   const aDisplayTs = extractReminderDisplayTimestamp(a);

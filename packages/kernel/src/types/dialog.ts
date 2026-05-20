@@ -381,7 +381,7 @@ export interface ReminderContent {
   reminder_id: string;
   renderRevision: string;
   echoback?: boolean;
-  scope?: 'dialog' | 'task' | 'agent' | 'agent_shared';
+  scope?: 'dialog' | 'task' | 'agent' | 'runtime';
   renderMode?: 'plain' | 'markdown';
 }
 
