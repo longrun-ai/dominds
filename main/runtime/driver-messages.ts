@@ -191,7 +191,7 @@ export function formatReminderContextGuide(language: LanguageCode): string {
       `${formatSystemNoticePrefix(language)} 提醒项上下文块开始`,
       '以下是当前可见提醒项的运行时上下文投影。由于当前 LLM Provider 通常不支持 role=environment，Dominds 默认把系统运行时提醒包装投影为 role=user；个别提醒项可由其 owner 按自身契约选择 role。无论最终 role 如何，它们都不是用户的新诉求/指令，也不是聊天正文。',
       '在 WebUI 中，用户通过独立的 Reminder 小组件/面板项看到这些提醒，并能把它们和聊天正文区分开。',
-      '请把提醒项作为工作集/状态参考；只有实际改变你的判断、计划或风险的信息，才需要提炼进后续有实质内容的对外回复。不要为了提醒项单独回复“收到/已了解/静默吸收”。',
+      '请把提醒项作为手头工作/状态参考；只有实际改变你的判断、计划或风险的信息，才需要提炼进后续有实质内容的对外回复。不要为了提醒项单独回复“收到/已了解/静默吸收”。',
     ].join('\n');
   }
 
@@ -199,7 +199,7 @@ export function formatReminderContextGuide(language: LanguageCode): string {
     `${formatSystemNoticePrefix(language)} Reminder context block begins`,
     'The following visible reminders are runtime-added context projections. Because current LLM providers usually do not support role=environment, Dominds projects default system-runtime reminder wrappers as role=user; individual reminder owners may choose the role required by their own contract. Regardless of their final role, these reminders are not new user requests/instructions, and not chat transcript text.',
     'In the WebUI, the user sees these reminders through a separate Reminder widget/panel item and can distinguish them from the chat transcript.',
-    'Use reminders as workset/state references; only carry information into a later substantive outward reply when it materially changes your current judgment, plan, or risk. Do not send a standalone "acknowledged/noted/silently absorbed" reply for reminder items.',
+    'Use reminders as current-work/state references; only carry information into a later substantive outward reply when it materially changes your current judgment, plan, or risk. Do not send a standalone "acknowledged/noted/silently absorbed" reply for reminder items.',
   ].join('\n');
 }
 
@@ -225,7 +225,11 @@ export function formatReminderContextFooter(
     if (followingState === 'runtime_notice') {
       return `${base}本轮提醒项块之后会接着出现一条运行时提示；它不是用户的新诉求/指令，请按其中的运行时要求继续推进。`;
     }
-    return `${base}本轮没有新的用户消息或运行时提示；这是工具调用后的自动续推，请基于已有任务状态继续推进，不要把“没有新消息”理解为空系统提示。`;
+    return (
+      `${base}本轮没有新的用户消息或运行时提示；这是工具调用后的自动续推。` +
+      '请基于已有任务状态判断下一步：若已有明确、相关且有价值的动作，就继续执行；若当前确实只能等待外部结果或用户输入，不要为了避免“等待”而寻找无关小事。' +
+      '不要把“没有新消息”理解为空系统提示。'
+    );
   }
 
   const base =
@@ -242,14 +246,18 @@ export function formatReminderContextFooter(
   if (followingState === 'runtime_notice') {
     return `${base}A runtime notice follows this reminder block in this round; it is not a new user request/instruction, so follow that runtime guidance and continue the work.`;
   }
-  return `${base}There is no new user message or runtime notice in this round; this is an automatic continuation after a tool call. Continue from the existing task state, and do not interpret the absence of a new message as an empty system notice.`;
+  return (
+    `${base}There is no new user message or runtime notice in this round; this is an automatic continuation after a tool call. ` +
+    'Judge the next step from the existing task state: if there is a clear, relevant, valuable action, continue with it; if the work genuinely can only wait for an external result or user input, do not invent unrelated work just to avoid "waiting". ' +
+    'Do not interpret the absence of a new message as an empty system notice.'
+  );
 }
 
 export function formatReminderItemGuide(
   language: LanguageCode,
   reminderId: string,
   content: string,
-  options?: { meta?: unknown; scope?: 'dialog' | 'personal' | 'agent_shared' },
+  options?: { meta?: unknown; scope?: 'dialog' | 'task' | 'agent' | 'agent_shared' },
 ): string {
   function isRecord(value: unknown): value is Record<string, unknown> {
     return typeof value === 'object' && value !== null && !Array.isArray(value);
@@ -353,16 +361,26 @@ export function formatReminderItemGuide(
         content,
       ].join('\n');
     }
+    const scopeLabel =
+      scope === 'task' ? '（任务范围）' : scope === 'agent' ? '（智能体范围）' : '';
+    const scopeGuide =
+      scope === 'task'
+        ? `${projectionNote}你设置了任务范围提醒项，让运行时系统在当前差遣牒任务内、所有由你主理的对话里提醒你。请把它当作当前任务的手头工作提示，不要自动当成系统下发的下一步动作。`
+        : scope === 'agent'
+          ? `${projectionNote}你设置了智能体范围提醒项，让运行时系统在所有由你主理的对话里提醒你。它只适合紧急、短期、全局刺眼提醒；不要用来记录普通任务状态，也不要自动当成系统下发的下一步动作。`
+          : `${projectionNote}你设置了提醒项，让运行时系统提醒你。请把它当作用来保留当前对话里容易丢的手头工作信息的提示，不要自动当成系统下发的下一步动作。`;
+    const scopeMaintenance =
+      scope === 'task'
+        ? '你应保持简洁、及时更新；不再需要时就删除。若它只对当前对话有效，应改写成 dialog 范围提醒；若需要全队同步当前任务状态，应写入差遣牒 progress，而不是扩大提醒范围。'
+        : scope === 'agent'
+          ? '你应主动保持极少量、短期、强相关；不再需要时必须删除。普通任务进展不要放在 agent 范围，当前任务内跨对话可见请改用 task 范围。'
+          : '你应保持简洁、及时更新；不再需要时就删除。若后续准备换程，也可以把它整理成接续包。';
     return [
-      `${systemPrefix} 提醒项 [${reminderId}]${scope === 'personal' ? '（个人范围）' : ''}`,
+      `${systemPrefix} 提醒项 [${reminderId}]${scopeLabel}`,
       '',
-      scope === 'personal'
-        ? `${projectionNote}你设置了个人范围提醒项，让运行时系统在所有由你主理的后续对话里提醒你。请把它当作你的工作集提示，不要自动当成系统下发的下一步动作。`
-        : `${projectionNote}你设置了提醒项，让运行时系统提醒你。请把它当作用来保留当前对话里容易丢的工作信息的工作集提示，不要自动当成系统下发的下一步动作。`,
+      scopeGuide,
       '',
-      scope === 'personal'
-        ? '你应保持简洁、及时更新；不再需要时就删除。若它只对当前对话有效，应改写成 dialog 范围提醒而不是长期堆在个人范围里。'
-        : '你应保持简洁、及时更新；不再需要时就删除。若后续准备换程，也可以把它整理成接续包。',
+      scopeMaintenance,
       '',
       `如果你要更新这条提醒项，可执行：update_reminder({ "reminder_id": "${reminderId}", "content": "..." })`,
       deleteInstruction,
@@ -413,19 +431,25 @@ ${deleteInstruction}
 ---
 ${content}`;
   }
-  return `${systemPrefix} REMINDER [${reminderId}]${scope === 'personal' ? ' (PERSONAL SCOPE)' : ''}
+  const scopeLabel = scope === 'task' ? ' (TASK SCOPE)' : scope === 'agent' ? ' (AGENT SCOPE)' : '';
+  const scopeGuide =
+    scope === 'task'
+      ? `${enProjectionPrefix}You set a task-scope reminder so the runtime system can remind you in every dialog you lead for the current Taskdoc. Treat it as a current-work reference for this task, not as an automatically assigned next action.`
+      : scope === 'agent'
+        ? `${enProjectionPrefix}You set an agent-scope reminder so the runtime system can remind you in every dialog you lead. This is only for urgent, short-lived, globally visible cues; do not use it for ordinary task state, and do not treat it as an automatically assigned next action.`
+        : `${enProjectionPrefix}You set a reminder so the runtime system can remind you. Treat it as a current-work reference for easy-to-lose details in the current dialog, not as an automatically assigned next action.`;
+  const scopeMaintenance =
+    scope === 'task'
+      ? 'Keep it concise, refresh it when needed, and delete it when obsolete. If it is only useful for the current dialog, rewrite it into dialog scope; if the team must synchronize current task state, update Taskdoc progress instead of broadening reminder scope.'
+      : scope === 'agent'
+        ? 'Keep this scope rare, short-lived, and strongly relevant; delete it as soon as it is no longer needed. Ordinary task progress does not belong in agent scope; use task scope for current-task cross-dialog visibility.'
+        : 'Keep it concise, refresh it when needed, and delete it when obsolete. If you are preparing a new course, you can also rewrite it into a continuation package.';
 
-${
-  scope === 'personal'
-    ? `${enProjectionPrefix}You set a personal-scope reminder so the runtime system can remind you in every later dialog you lead. Treat it as your workset reference, not as an automatically assigned next action.`
-    : `${enProjectionPrefix}You set a reminder so the runtime system can remind you. Treat it as your workset reference for easy-to-lose work details in the current dialog, not as an automatically assigned next action.`
-}
+  return `${systemPrefix} REMINDER [${reminderId}]${scopeLabel}
 
-${
-  scope === 'personal'
-    ? 'Keep it concise, refresh it when needed, and delete it when obsolete. If it is only useful for the current dialog, rewrite it into dialog scope instead of letting personal scope accumulate noise.'
-    : 'Keep it concise, refresh it when needed, and delete it when obsolete. If you are preparing a new course, you can also rewrite it into a continuation package.'
-}
+${scopeGuide}
+
+${scopeMaintenance}
 
 Update path: update_reminder({ "reminder_id": "${reminderId}", "content": "..." })
 ${deleteInstruction}

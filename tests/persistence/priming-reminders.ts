@@ -23,6 +23,7 @@ import {
   applyPrimingScriptsToDialog,
   saveDialogCourseAsIndividualPrimingScript,
 } from '../../main/priming';
+import { loadSharedReminders } from '../../main/shared-reminders';
 import { materializeReminder, type Reminder } from '../../main/tool';
 
 async function withTempCwd<T>(fn: (sandboxDir: string) => Promise<T>): Promise<T> {
@@ -183,11 +184,18 @@ async function main(): Promise<void> {
     assert.equal(
       persistedReminders.length,
       1,
-      'replayed priming must persist restored reminder state to reminders.json',
+      'replayed priming must restore explicit dialog-scoped reminders to dialog-local reminders.json',
     );
     assert.equal(persistedReminders[0]?.content, sourceReminder.content);
     assert.deepEqual(persistedReminders[0]?.meta, sourceReminder.meta);
     assert.equal(persistedReminders[0]?.echoback, false);
+
+    const taskSharedReminders = await loadSharedReminders({
+      kind: 'task',
+      agentId: 'rtws',
+      taskDocPath: 'plans/demo.tsk',
+    });
+    assert.equal(taskSharedReminders.length, 0);
 
     const persistedPending = await DialogPersistence.loadActiveCalleeDispatches(
       replayId,
@@ -206,6 +214,85 @@ async function main(): Promise<void> {
       false,
       'replayed priming must not append pending runtime state records',
     );
+
+    const remindersOnlyRef = 'team_shared/reminders-only';
+    const primingRootDir = path.resolve(path.dirname(saved.path), '..', '..');
+    const remindersOnlyPath = path.join(primingRootDir, 'team_shared', 'reminders-only.md');
+    await fs.mkdir(path.dirname(remindersOnlyPath), { recursive: true });
+    await fs.writeFile(
+      remindersOnlyPath,
+      [
+        '---',
+        'kind: agent_priming_script',
+        'version: 3',
+        'title: Reminders Only',
+        'reminders:',
+        '  - id: dialog-priming',
+        '    content: Dialog-local startup cue',
+        '    scope: dialog',
+        '  - id: task-priming',
+        '    content: Task startup cue',
+        '  - id: agent-priming',
+        '    content: Agent startup cue',
+        '    scope: agent',
+        '---',
+        '',
+      ].join('\n'),
+      'utf-8',
+    );
+
+    const remindersOnlyId = new DialogID('11/22/priming-reminders-only');
+    const remindersOnlyStore: DialogStore = new DiskFileDialogStore(remindersOnlyId);
+    const remindersOnlyDialog = new MainDialog(
+      remindersOnlyStore,
+      'plans/reminders-only.tsk',
+      remindersOnlyId,
+      'rtws',
+    );
+    remindersOnlyDialog.setPersistenceStatus('running');
+    await DialogPersistence.saveDialogMetadata(remindersOnlyId, {
+      id: remindersOnlyId.selfId,
+      agentId: 'rtws',
+      taskDocPath: 'plans/reminders-only.tsk',
+      createdAt: formatUnifiedTimestamp(new Date('2026-03-09T02:03:00.000Z')),
+    });
+    await writeLatest(remindersOnlyId, 1);
+
+    const remindersOnlyResult = await applyPrimingScriptsToDialog({
+      dialog: remindersOnlyDialog,
+      agentId: 'rtws',
+      status: 'running',
+      priming: {
+        scriptRefs: [remindersOnlyRef],
+        showInUi: true,
+      },
+    });
+
+    assert.deepEqual(remindersOnlyResult, {
+      appliedScriptRefs: [remindersOnlyRef],
+      appendedMessageCount: 0,
+    });
+    assert.equal(
+      remindersOnlyDialog.reminders[0]?.id,
+      'dialog-priming',
+      'reminders-only priming must apply dialog-local reminders even without record blocks',
+    );
+    const remindersOnlyPersisted = await DialogPersistence.loadReminderState(
+      remindersOnlyId,
+      'running',
+    );
+    assert.equal(remindersOnlyPersisted[0]?.id, 'dialog-priming');
+    const remindersOnlyTaskShared = await loadSharedReminders({
+      kind: 'task',
+      agentId: 'rtws',
+      taskDocPath: 'plans/reminders-only.tsk',
+    });
+    assert.equal(remindersOnlyTaskShared[0]?.id, 'task-priming');
+    const remindersOnlyAgentShared = await loadSharedReminders({
+      kind: 'agent',
+      agentId: 'rtws',
+    });
+    assert.equal(remindersOnlyAgentShared[0]?.id, 'agent-priming');
   });
 }
 

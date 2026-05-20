@@ -26,7 +26,7 @@
 
 control is Dominds' **dialog control toolset** for managing dialog state, reminders, taskdocs, and inter-dialog reply closure semantics:
 
-- **Reminder management**: Two reminder scopes. Default to dialog-local working set; use `personal` only for responsibility-linked notes that you should keep seeing in all later dialogs you lead
+- **Reminder management**: Three reminder scopes: `dialog` / `task` / `agent`. Default to `task` for current work under the same Taskdoc; use `dialog` only for truly dialog-local notes; use `agent` only for urgent, short-lived, globally visible cues
 - **Taskdoc operations**: Append to, replace, or delete task contract sections (goals/constraints/progress); within Taskdoc, `progress` is the team-shared, quasi-real-time, scannable task bulletin board
 - **Context maintenance**: Reduce cognitive load without losing key resume state
 - **Reply routing**: Separate `tellaskBack`, `replyTellask*`, and plain text by responsibility in Side Dialog / ask-back flows
@@ -51,7 +51,7 @@ control is Dominds' **dialog control toolset** for managing dialog state, remind
 
 ### Reminder
 
-Reminders are temporary working-set information for:
+Reminders are temporary current-work information for:
 
 - Marking pending tasks
 - Tracking current next steps / blockers
@@ -62,8 +62,9 @@ Reminders are not for manually copying Dominds runtime-maintained environment st
 
 Scope rule:
 
-- `dialog`: current-dialog working set
-- `personal`: responsibility-related reminders that you should keep seeing in all later dialogs you lead
+- `dialog`: current-dialog current work
+- `task`: current work under the current Taskdoc, and the default scope
+- `agent`: urgent, short-lived, globally visible cues you should keep seeing in all later dialogs you lead
 
 ### Taskdoc
 

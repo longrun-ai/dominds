@@ -15,7 +15,7 @@ import {
   formatReminderItemGuide,
 } from '../runtime/driver-messages';
 import { getWorkLanguage } from '../runtime/work-language';
-import { loadAgentSharedReminders } from '../shared-reminders';
+import { loadSharedReminders } from '../shared-reminders';
 import {
   cloneReminder,
   compareReminderDisplayOrder,
@@ -249,10 +249,16 @@ function wrapAppRenderedReminder(
 
 async function persistAndPublishReminders(dlg: Dialog): Promise<void> {
   await dlg.dlgStore.persistReminders(dlg, dlg.reminders);
-  const sharedReminders = await loadAgentSharedReminders(dlg.agentId);
+  const taskSharedReminders = await loadSharedReminders({
+    kind: 'task',
+    agentId: dlg.agentId,
+    taskDocPath: dlg.taskDocPath,
+  });
+  const agentSharedReminders = await loadSharedReminders({ kind: 'agent', agentId: dlg.agentId });
   const visibleReminders = [
     ...dlg.reminders.map((reminder) => cloneReminder(reminder)),
-    ...sharedReminders,
+    ...taskSharedReminders,
+    ...agentSharedReminders,
   ];
   visibleReminders.sort(compareReminderDisplayOrder);
   const reminders: ReminderContent[] = visibleReminders.map((reminder) => ({

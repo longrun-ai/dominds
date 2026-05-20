@@ -44,15 +44,15 @@
 
 **适用：**
 
-- 添加新的临时工作集条目
+- 添加新的临时手头工作条目
 - 若准备 `clear_mind`，主线对话先把应由下一程知会的未落文档讨论细节补进差遣牒，再新建接续包提醒项；支线对话直接维护足够详尽的接续包提醒项。若当前程已被系统置于吃紧/告急处置态，支线提醒项长度没有技术限制，先记粗略过桥信息也可以
-- 只记录需要你手工维护的工作集/接续细节；不要在手工提醒项里记录后台进程状态、后台进行中诉请、会话附件状态等 Dominds 系统环境会自动维护的信息
+- 只记录需要你手工维护的手头工作/接续细节；不要在手工提醒项里记录后台进程状态、后台进行中诉请、会话附件状态等 Dominds 系统环境会自动维护的信息
 
 **参数：**
 
 - `content`（必需）：提醒内容
-- `position`（可选）：插入位置（1-based，默认追加；仅 `dialog` 范围支持）
-- `scope`（可选）：`dialog` 或 `personal`；默认 `dialog`。只有在所有由你主理的后续对话里也应该继续看到这条提醒时才用 `personal`；否则保持 `dialog`。
+- `scope`（可选）：`dialog` / `task` / `agent`；默认 `task`。`dialog` 只用于真正对话局部的提醒；`agent` 只用于紧急、短期、全局刺眼提醒。
+- `render_mode`（可选）：`markdown` / `plain`；默认 `markdown`
 
 **返回：**
 
@@ -60,7 +60,6 @@
 status: ok|error
 reminder_id: <提醒 id>
 content: <提醒内容>
-position: <插入位置>
 created_at: <创建时间戳>
 ```
 
@@ -271,7 +270,6 @@ clear_mind({
 ```typescript
 add_reminder({
   content: '等待 @fullstack 确认 API 设计',
-  position: 1,
 });
 ```
 

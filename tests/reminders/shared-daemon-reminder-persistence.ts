@@ -92,6 +92,7 @@ async function main(): Promise<void> {
         sandboxDir,
         '.dialogs',
         'reminders',
+        'agents',
         'tester',
         `${reminderA.id}.json`,
       );

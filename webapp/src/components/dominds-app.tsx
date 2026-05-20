@@ -6202,8 +6202,12 @@ export class DomindsApp extends HTMLElement {
         --icon-mask: ${ICON_MASK_URLS.bookmark};
       }
 
-      .rem-item-scope-personal {
+      .rem-item-scope-task {
         --icon-mask: ${ICON_MASK_URLS.pin};
+      }
+
+      .rem-item-scope-agent {
+        --icon-mask: ${ICON_MASK_URLS.warning};
       }
 
       .rem-item-scope-agent-shared {
@@ -12353,11 +12357,14 @@ export class DomindsApp extends HTMLElement {
 
   private renderReminderScopeBadgeHtml(scope: ReminderContent['scope'] | undefined): string {
     const t = getUiStrings(this.uiLanguage);
-    if (scope === 'personal') {
-      return `<span class="rem-item-scope rem-item-scope-personal" title="${this.escapeHtml(t.personalReminderScope)}" aria-label="${this.escapeHtml(t.personalReminderScope)}"><span class="icon-mask" aria-hidden="true"></span></span>`;
+    if (scope === 'task') {
+      return `<span class="rem-item-scope rem-item-scope-task" title="${this.escapeHtml(t.taskReminderScope)}" aria-label="${this.escapeHtml(t.taskReminderScope)}"><span class="icon-mask" aria-hidden="true"></span></span>`;
+    }
+    if (scope === 'agent') {
+      return `<span class="rem-item-scope rem-item-scope-agent" title="${this.escapeHtml(t.agentReminderScope)}" aria-label="${this.escapeHtml(t.agentReminderScope)}"><span class="icon-mask" aria-hidden="true"></span></span>`;
     }
     if (scope === 'agent_shared') {
-      return `<span class="rem-item-scope rem-item-scope-agent-shared" title="${this.escapeHtml(t.sharedReminderScope)}" aria-label="${this.escapeHtml(t.sharedReminderScope)}"><span class="icon-mask" aria-hidden="true"></span></span>`;
+      return `<span class="rem-item-scope rem-item-scope-agent-shared" title="${this.escapeHtml(t.systemReminderScope)}" aria-label="${this.escapeHtml(t.systemReminderScope)}"><span class="icon-mask" aria-hidden="true"></span></span>`;
     }
     return `<span class="rem-item-scope rem-item-scope-dialog" title="${this.escapeHtml(t.dialogReminderScope)}" aria-label="${this.escapeHtml(t.dialogReminderScope)}"><span class="icon-mask" aria-hidden="true"></span></span>`;
   }

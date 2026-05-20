@@ -327,8 +327,9 @@ export type UiStrings = {
   commandLabel: string;
   unknownCommand: string;
   dialogReminderScope: string;
-  personalReminderScope: string;
-  sharedReminderScope: string;
+  taskReminderScope: string;
+  agentReminderScope: string;
+  systemReminderScope: string;
 
   // /setup
   setupTitle: string;
@@ -745,8 +746,9 @@ export function getUiStrings(language: LanguageCode): UiStrings {
       commandLabel: '命令',
       unknownCommand: '未知命令',
       dialogReminderScope: '对话范围提醒',
-      personalReminderScope: '个人范围提醒',
-      sharedReminderScope: '共享范围提醒',
+      taskReminderScope: '任务范围提醒',
+      agentReminderScope: '智能体范围提醒',
+      systemReminderScope: '系统共享提醒',
 
       setupTitle: '设置',
       setupRefresh: '刷新',
@@ -1181,8 +1183,9 @@ export function getUiStrings(language: LanguageCode): UiStrings {
     commandLabel: 'Command',
     unknownCommand: 'unknown command',
     dialogReminderScope: 'Dialog-scope reminder',
-    personalReminderScope: 'Personal-scope reminder',
-    sharedReminderScope: 'Shared-scope reminder',
+    taskReminderScope: 'Task-scope reminder',
+    agentReminderScope: 'Agent-scope reminder',
+    systemReminderScope: 'System-shared reminder',
 
     setupTitle: 'Setup',
     setupRefresh: 'Refresh',

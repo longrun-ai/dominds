@@ -11,28 +11,33 @@
 - Failure Branch
 - Completion Criteria
 
-## Scenario 1: Reminder Working Set Tracking
+## Scenario 1: Reminder Current-Work Tracking
 
 ### Scenario Description
 
-Use reminders for the current dialog's working set: next steps, blockers, and volatile details that are not meant to become the team's Taskdoc bulletin board.
+Use reminders for the current task's current work: next steps, blockers, and volatile details that are not meant to become the team's Taskdoc bulletin board.
 
 ### Example
 
 ```typescript
-// Add a dialog-scoped working-set reminder
+// Default to task scope: visible when continuing the same Taskdoc in a new dialog
 add_reminder({
   content: 'Next step: verify the control manual wording against Taskdoc progress semantics',
 });
 
-// Add a personal reminder only because this is a responsibility-linked cue
-// that you should keep seeing in all later dialogs you lead
+// Use dialog only when the note is truly local to the current dialog
 add_reminder({
-  content: 'Preferred deploy smoke-check command: pnpm -C dominds run lint:types',
-  scope: 'personal',
+  content: 'In this dialog, compare against line 12 of the last tool output',
+  scope: 'dialog',
 });
 
-// Update after the local working-set detail changes
+// Use agent only for urgent, short-lived, globally visible cues
+add_reminder({
+  content: 'Urgent: confirm human authorization before deleting any external resource',
+  scope: 'agent',
+});
+
+// Update after the current-work detail changes
 update_reminder({
   reminder_id: 'abc123de',
   content: 'Blocker cleared: control manual wording now aligned with Taskdoc progress semantics',
@@ -46,10 +51,11 @@ delete_reminder({
 
 ### Key Points
 
-- Default to `dialog` for local next steps, temporary blockers, and volatile bridge details
-- Use `personal` only when you should still see the note in all later dialogs you lead
+- Default to `task` for next steps, temporary blockers, and volatile bridge details under the same Taskdoc
+- Use `dialog` only for notes that are truly local to the current dialog
+- Use `agent` only for urgent, short-lived, globally visible cues
 - If the information should synchronize the whole team's current effective state, put it in Taskdoc `progress` instead
-- If the note is durable knowledge rather than an active working-set cue, move it to `personal_memory` instead
+- If the note is durable knowledge rather than an active current-work cue, move it to `personal_memory` instead
 
 ## Scenario 2: Side Dialog is complete, and the assignment header requires replyTellask
 

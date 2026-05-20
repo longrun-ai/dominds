@@ -120,6 +120,7 @@
     "memory-access": "tsx toolsets/memory-access.ts",
     "skills-tools": "tsx toolsets/skills-tools.ts",
     "reminder-format": "tsx reminders/reminder-format.ts",
+    "reminder-scope": "tsx reminders/task-agent-reminder-scope.ts",
     "reminder-context-health-continuation": "tsx reminders/context-health-continuation.ts",
     "reminder-delete-empty-state": "tsx reminders/delete-reminder-empty-state.ts",
     "reminder-delete-meta-guard": "tsx reminders/delete-reminder-meta-guard.ts",

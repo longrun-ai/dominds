@@ -3,6 +3,7 @@ import { formatUnifiedTimestamp } from '@longrun-ai/kernel/utils/time';
 import { randomUUID } from 'node:crypto';
 import * as fs from 'node:fs/promises';
 import * as path from 'node:path';
+import { crc32 } from 'zlib';
 import { AsyncFifoMutex } from './runtime/async-fifo-mutex';
 import {
   cloneReminder,
@@ -14,22 +15,69 @@ import { getReminderOwner } from './tools/registry';
 
 const sharedReminderLocks = new Map<string, AsyncFifoMutex>();
 
-function getSharedReminderLock(agentId: string): AsyncFifoMutex {
-  const existing = sharedReminderLocks.get(agentId);
+export type SharedReminderTarget =
+  | Readonly<{
+      kind: 'agent';
+      agentId: string;
+    }>
+  | Readonly<{
+      kind: 'task';
+      agentId: string;
+      taskDocPath: string;
+    }>;
+
+function getSharedReminderTargetKey(target: SharedReminderTarget): string {
+  switch (target.kind) {
+    case 'agent':
+      return `agent:${target.agentId}`;
+    case 'task':
+      return `task:${target.agentId}:${target.taskDocPath}`;
+  }
+  const _exhaustive: never = target;
+  return _exhaustive;
+}
+
+function getSharedReminderLock(target: SharedReminderTarget): AsyncFifoMutex {
+  const key = getSharedReminderTargetKey(target);
+  const existing = sharedReminderLocks.get(key);
   if (existing) return existing;
   const created = new AsyncFifoMutex();
-  sharedReminderLocks.set(agentId, created);
+  sharedReminderLocks.set(key, created);
   return created;
 }
 
-function clearSharedReminderLockIfIdle(agentId: string, lock: AsyncFifoMutex): void {
-  if (sharedReminderLocks.get(agentId) === lock && !lock.isLocked()) {
-    sharedReminderLocks.delete(agentId);
+function clearSharedReminderLockIfIdle(target: SharedReminderTarget, lock: AsyncFifoMutex): void {
+  const key = getSharedReminderTargetKey(target);
+  if (sharedReminderLocks.get(key) === lock && !lock.isLocked()) {
+    sharedReminderLocks.delete(key);
   }
 }
 
-function getSharedReminderDirPath(agentId: string): string {
-  return path.resolve(process.cwd(), '.dialogs', 'reminders', agentId);
+function getTaskDocPathStorageKey(taskDocPath: string): string {
+  const normalized = taskDocPath.trim().replace(/\\/g, '/').replace(/\/+$/g, '');
+  if (normalized === '') {
+    throw new Error('task-scoped reminders require a non-empty taskDocPath');
+  }
+  const checksum = crc32(normalized) >>> 0;
+  return `crc32-${checksum.toString(16).padStart(8, '0')}`;
+}
+
+function getSharedReminderDirPath(target: SharedReminderTarget): string {
+  switch (target.kind) {
+    case 'agent':
+      return path.resolve(process.cwd(), '.dialogs', 'reminders', 'agents', target.agentId);
+    case 'task':
+      return path.resolve(
+        process.cwd(),
+        '.dialogs',
+        'reminders',
+        'agent_tasks',
+        target.agentId,
+        getTaskDocPathStorageKey(target.taskDocPath),
+      );
+  }
+  const _exhaustive: never = target;
+  return _exhaustive;
 }
 
 function ensureReminderIdPathSegment(reminderId: string): string {
@@ -39,9 +87,9 @@ function ensureReminderIdPathSegment(reminderId: string): string {
   return reminderId;
 }
 
-function getSharedReminderFilePath(agentId: string, reminderId: string): string {
+function getSharedReminderFilePath(target: SharedReminderTarget, reminderId: string): string {
   return path.join(
-    getSharedReminderDirPath(agentId),
+    getSharedReminderDirPath(target),
     `${ensureReminderIdPathSegment(reminderId)}.json`,
   );
 }
@@ -55,7 +103,7 @@ function serializeReminder(reminder: Reminder): ReminderSnapshotItem {
     ownerName: reminder.owner?.name,
     meta: reminder.meta,
     echoback: reminder.echoback,
-    scope: reminder.scope ?? 'agent_shared',
+    scope: reminder.scope ?? 'agent',
     renderMode: reminder.renderMode ?? 'markdown',
     createdAt: reminder.createdAt ?? formatUnifiedTimestamp(new Date()),
     priority: reminder.priority ?? 'medium',
@@ -72,7 +120,7 @@ function materializeStoredReminder(snapshot: ReminderSnapshotItem): Reminder {
     owner,
     meta: snapshot.meta,
     echoback: snapshot.echoback,
-    scope: snapshot.scope ?? 'agent_shared',
+    scope: snapshot.scope ?? 'agent',
     renderMode: snapshot.renderMode ?? 'markdown',
     createdAt: snapshot.createdAt,
     priority: snapshot.priority,
@@ -100,8 +148,8 @@ async function listPerReminderJsonFiles(dirPath: string): Promise<string[]> {
     .map((entry) => entry.name);
 }
 
-async function readSharedRemindersUnlocked(agentId: string): Promise<Reminder[]> {
-  const dirPath = getSharedReminderDirPath(agentId);
+async function readSharedRemindersUnlocked(target: SharedReminderTarget): Promise<Reminder[]> {
+  const dirPath = getSharedReminderDirPath(target);
   let fileNames: string[];
   try {
     fileNames = await listPerReminderJsonFiles(dirPath);
@@ -125,10 +173,10 @@ async function readSharedRemindersUnlocked(agentId: string): Promise<Reminder[]>
 }
 
 async function writeSharedRemindersUnlocked(
-  agentId: string,
+  target: SharedReminderTarget,
   reminders: readonly Reminder[],
 ): Promise<void> {
-  const dirPath = getSharedReminderDirPath(agentId);
+  const dirPath = getSharedReminderDirPath(target);
   await fs.mkdir(dirPath, { recursive: true });
 
   const existingFileNames = await listPerReminderJsonFiles(dirPath);
@@ -136,7 +184,7 @@ async function writeSharedRemindersUnlocked(
   for (const reminder of reminders) {
     if (desiredIds.has(reminder.id)) {
       throw new Error(
-        `Duplicate shared reminder_id detected while persisting agent ${agentId}: ${reminder.id}`,
+        `Duplicate shared reminder_id detected while persisting ${getSharedReminderTargetKey(target)}: ${reminder.id}`,
       );
     }
     desiredIds.add(reminder.id);
@@ -151,51 +199,51 @@ async function writeSharedRemindersUnlocked(
   await Promise.all(
     reminders.map((reminder) =>
       writeReminderSnapshotFile(
-        getSharedReminderFilePath(agentId, reminder.id),
+        getSharedReminderFilePath(target, reminder.id),
         serializeReminder(reminder),
       ),
     ),
   );
 }
 
-export async function loadAgentSharedReminders(agentId: string): Promise<Reminder[]> {
-  const lock = getSharedReminderLock(agentId);
+export async function loadSharedReminders(target: SharedReminderTarget): Promise<Reminder[]> {
+  const lock = getSharedReminderLock(target);
   const release = await lock.acquire();
   try {
-    return cloneReminderList(await readSharedRemindersUnlocked(agentId));
+    return cloneReminderList(await readSharedRemindersUnlocked(target));
   } finally {
     release();
-    clearSharedReminderLockIfIdle(agentId, lock);
+    clearSharedReminderLockIfIdle(target, lock);
   }
 }
 
-export async function replaceAgentSharedReminders(
-  agentId: string,
+export async function replaceSharedReminders(
+  target: SharedReminderTarget,
   reminders: readonly Reminder[],
 ): Promise<void> {
-  const lock = getSharedReminderLock(agentId);
+  const lock = getSharedReminderLock(target);
   const release = await lock.acquire();
   try {
-    await writeSharedRemindersUnlocked(agentId, reminders);
+    await writeSharedRemindersUnlocked(target, reminders);
   } finally {
     release();
-    clearSharedReminderLockIfIdle(agentId, lock);
+    clearSharedReminderLockIfIdle(target, lock);
   }
 }
 
-export async function mutateAgentSharedReminders<T>(
-  agentId: string,
+export async function mutateSharedReminders<T>(
+  target: SharedReminderTarget,
   mutate: (reminders: Reminder[]) => Promise<T> | T,
 ): Promise<T> {
-  const lock = getSharedReminderLock(agentId);
+  const lock = getSharedReminderLock(target);
   const release = await lock.acquire();
   try {
-    const reminders = await readSharedRemindersUnlocked(agentId);
+    const reminders = await readSharedRemindersUnlocked(target);
     const result = await mutate(reminders);
-    await writeSharedRemindersUnlocked(agentId, reminders);
+    await writeSharedRemindersUnlocked(target, reminders);
     return result;
   } finally {
     release();
-    clearSharedReminderLockIfIdle(agentId, lock);
+    clearSharedReminderLockIfIdle(target, lock);
   }
 }

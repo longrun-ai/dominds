@@ -11,28 +11,33 @@
 - 失败分支处理
 - 完成判据
 
-## 场景 1：提醒项工作集跟踪
+## 场景 1：提醒项手头工作跟踪
 
 ### 场景描述
 
-使用 reminders 承接当前对话的工作集：下一步、临时阻塞、易丢的 bridge 细节，而不是把它写成面向全队同步的 Taskdoc 公告牌。
+使用 reminders 承接当前任务的手头工作：下一步、临时阻塞、易丢的 bridge 细节，而不是把它写成面向全队同步的 Taskdoc 公告牌。
 
 ### 示例
 
 ```typescript
-// 添加一条 dialog 级工作集提醒
+// 默认添加 task 范围提醒：同一差遣牒任务换新对话继续时仍可见
 add_reminder({
   content: '下一步：复核 control 手册是否已经完整表达 Taskdoc progress 的公告牌语义',
 });
 
-// 只有因为这是一条职责相关提示，且在所有由你主理的后续对话里也应继续看到，
-// 才把它写成 personal
+// 只有真正只对当前对话局部有效，才显式写成 dialog
 add_reminder({
-  content: '常用部署自检命令：pnpm -C dominds run lint:types',
-  scope: 'personal',
+  content: '本对话里临时对照一下刚才那段 tool output 的第 12 行',
+  scope: 'dialog',
 });
 
-// 当本地工作集细节变化后更新
+// 只有紧急、短期、全局刺眼提醒，才写成 agent
+add_reminder({
+  content: '紧急：在删除任何外部资源前必须先向用户确认授权',
+  scope: 'agent',
+});
+
+// 当手头工作细节变化后更新
 update_reminder({
   reminder_id: 'abc123de',
   content: '阻塞已解除：control 手册文案已与 Taskdoc progress 语义对齐',
@@ -46,10 +51,11 @@ delete_reminder({
 
 ### 关键点
 
-- 本地下一步、临时阻塞、一次性 bridge 细节默认都用 `dialog`
-- 只有职责相关、且在所有由你主理的后续对话里也应继续看到的提醒才用 `personal`
+- 同一差遣牒任务内的下一步、临时阻塞、bridge 细节默认都用 `task`
+- 真正只对当前对话有效的提醒才用 `dialog`
+- 只有紧急、短期、全局刺眼提醒才用 `agent`
 - 如果信息需要向全队同步当前有效状态、关键决策、下一步或仍成立阻塞，应写入 Taskdoc `progress`
-- 如果内容本质上是长期知识而不是当前工作集提示，应改存到 `personal_memory`
+- 如果内容本质上是长期知识而不是当前手头工作提示，应改存到 `personal_memory`
 
 ## 场景 2：支线已完成，按 assignment 头部要求调用 replyTellask
 

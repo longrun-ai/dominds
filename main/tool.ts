@@ -127,7 +127,7 @@ export interface ReminderOptions {
   readonly renderMode?: ReminderRenderMode;
 }
 
-export type ReminderScope = 'dialog' | 'personal' | 'agent_shared';
+export type ReminderScope = 'dialog' | 'task' | 'agent' | 'agent_shared';
 export type ReminderRenderMode = 'plain' | 'markdown';
 
 export type ReminderPriority = 'high' | 'medium' | 'low';

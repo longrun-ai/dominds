@@ -7,7 +7,7 @@ import { log } from '../../log';
 import { DialogPersistence } from '../../persistence';
 import { formatSystemNoticePrefix } from '../../runtime/driver-messages';
 import { getWorkLanguage } from '../../runtime/work-language';
-import { mutateAgentSharedReminders } from '../../shared-reminders';
+import { mutateSharedReminders } from '../../shared-reminders';
 import { materializeReminder, type Reminder, type ReminderWakeEvent } from '../../tool';
 import type { KernelDriverDriveCallbacks } from './types';
 
@@ -154,7 +154,7 @@ async function applyWakeEventUpdates(
       });
       continue;
     }
-    await mutateAgentSharedReminders(target.agentId, (reminders) => {
+    await mutateSharedReminders(target.target, (reminders) => {
       const index = reminders.findIndex((reminder) => reminder.id === target.reminder.id);
       if (index < 0) {
         throw new Error(

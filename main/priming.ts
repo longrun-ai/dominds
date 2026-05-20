@@ -47,19 +47,33 @@ import type { Dirent } from 'fs';
 import fs from 'fs/promises';
 import path from 'path';
 import YAML from 'yaml';
+import { crc32 } from 'zlib';
 import type { Dialog } from './dialog';
 import { DialogID } from './dialog';
 import type { ChatMessage } from './llm/client';
 import { parseMarkdownFrontmatter } from './markdown/frontmatter';
 import { DialogPersistence } from './persistence';
-import { materializeReminder, type Reminder } from './tool';
+import { mutateSharedReminders, type SharedReminderTarget } from './shared-reminders';
+import { materializeReminder, type Reminder, type ReminderScope } from './tool';
 import { getReminderOwner } from './tools/registry';
 
-const PRIMING_ROOT_DIR = path.resolve(process.cwd(), '.minds', 'priming');
-const PRIMING_INDIVIDUAL_DIR = path.resolve(PRIMING_ROOT_DIR, 'individual');
-const PRIMING_TEAM_SHARED_DIR = path.resolve(PRIMING_ROOT_DIR, 'team_shared');
-const RECENT_PRIMING_DIR = path.resolve(process.cwd(), '.dialogs', 'recent-priming');
 const RECENT_PRIMING_MAX = 20;
+
+function getPrimingRootDir(): string {
+  return path.resolve(process.cwd(), '.minds', 'priming');
+}
+
+function getPrimingIndividualDir(): string {
+  return path.resolve(getPrimingRootDir(), 'individual');
+}
+
+function getPrimingTeamSharedDir(): string {
+  return path.resolve(getPrimingRootDir(), 'team_shared');
+}
+
+function getRecentPrimingDir(): string {
+  return path.resolve(process.cwd(), '.dialogs', 'recent-priming');
+}
 
 type StripTs<T> = T extends { ts: string } ? Omit<T, 'ts'> : never;
 type PrimingUnsupportedRecord = Extract<
@@ -95,7 +109,7 @@ type PrimingReminderSnapshot = {
   ownerName?: string;
   meta?: JsonValue;
   echoback?: boolean;
-  scope?: 'dialog' | 'personal' | 'agent_shared';
+  scope?: 'dialog' | 'task' | 'agent' | 'agent_shared';
   renderMode?: 'plain' | 'markdown';
   createdAt?: string;
   priority?: PrimingReminderPriority;
@@ -196,8 +210,9 @@ function normalizeScriptRef(raw: string): string | null {
 }
 
 function scriptRefToAbsolutePath(scriptRef: string): string {
-  const absPath = path.resolve(PRIMING_ROOT_DIR, `${scriptRef}.md`);
-  if (!ensureInside(PRIMING_ROOT_DIR, absPath)) {
+  const primingRootDir = getPrimingRootDir();
+  const absPath = path.resolve(primingRootDir, `${scriptRef}.md`);
+  if (!ensureInside(primingRootDir, absPath)) {
     throw new Error(`Priming script path escapes priming root: ${scriptRef}`);
   }
   return absPath;
@@ -276,11 +291,12 @@ function parseReminderSnapshots(
     if (
       scope !== undefined &&
       scope !== 'dialog' &&
-      scope !== 'personal' &&
+      scope !== 'task' &&
+      scope !== 'agent' &&
       scope !== 'agent_shared'
     ) {
       throw new Error(
-        `${context}.scope must be "dialog", "personal", or "agent_shared" when provided`,
+        `${context}.scope must be "dialog", "task", "agent", or "agent_shared" when provided`,
       );
     }
     const createdAt = item['createdAt'];
@@ -299,7 +315,9 @@ function parseReminderSnapshots(
       meta,
       echoback,
       scope:
-        scope === 'dialog' || scope === 'personal' || scope === 'agent_shared' ? scope : undefined,
+        scope === 'dialog' || scope === 'task' || scope === 'agent' || scope === 'agent_shared'
+          ? scope
+          : undefined,
       renderMode: renderMode === 'plain' || renderMode === 'markdown' ? renderMode : undefined,
       createdAt: typeof createdAt === 'string' ? createdAt : undefined,
       priority,
@@ -323,7 +341,17 @@ function reminderToSnapshot(reminder: Reminder): PrimingReminderSnapshot {
   };
 }
 
-function materializeReminderSnapshot(snapshot: PrimingReminderSnapshot, context: string): Reminder {
+function generatePrimingReminderId(scriptRef: string, index: number): string {
+  const checksum = crc32(`${scriptRef}\n${String(index)}`) >>> 0;
+  return `priming-${checksum.toString(16).padStart(8, '0')}`;
+}
+
+function materializeReminderSnapshot(
+  snapshot: PrimingReminderSnapshot,
+  context: string,
+  defaultScope: ReminderScope,
+  fallbackId: string,
+): Reminder {
   const owner =
     snapshot.ownerName === undefined
       ? undefined
@@ -335,12 +363,12 @@ function materializeReminderSnapshot(snapshot: PrimingReminderSnapshot, context:
           return resolved;
         })();
   return materializeReminder({
-    id: snapshot.id,
+    id: snapshot.id ?? fallbackId,
     content: snapshot.content,
     owner,
     meta: snapshot.meta,
     echoback: snapshot.echoback,
-    scope: snapshot.scope,
+    scope: snapshot.scope ?? defaultScope,
     renderMode: snapshot.renderMode ?? 'markdown',
     createdAt: snapshot.createdAt,
     priority: snapshot.priority,
@@ -1725,9 +1753,6 @@ function parseRecordsFromBody(body: string): PrimingReplayRecord[] {
     }
     records.push(normalizedRecord);
   }
-  if (records.length === 0) {
-    throw new Error("Priming script must contain at least one '### record <type>' block");
-  }
   return records;
 }
 
@@ -1772,7 +1797,7 @@ async function listMarkdownFilesRecursively(dirPath: string): Promise<string[]> 
 }
 
 export async function validateAllPrimingScriptsInRtws(): Promise<PrimingScriptsValidationResult> {
-  const absFiles = await listMarkdownFilesRecursively(PRIMING_ROOT_DIR);
+  const absFiles = await listMarkdownFilesRecursively(getPrimingRootDir());
   const sorted = [...absFiles].sort((a, b) => a.localeCompare(b));
   const issues: PrimingScriptValidationIssue[] = [];
 
@@ -1805,7 +1830,7 @@ export async function validateAllPrimingScriptsInRtws(): Promise<PrimingScriptsV
 function parseSummaryFromAbsolutePath(
   absPath: string,
 ): Omit<PrimingScriptSummary, 'updatedAt' | 'title'> {
-  const rel = path.relative(PRIMING_ROOT_DIR, absPath).replace(/\\/g, '/');
+  const rel = path.relative(getPrimingRootDir(), absPath).replace(/\\/g, '/');
   const relNoExt = rel.toLowerCase().endsWith('.md') ? rel.slice(0, -'.md'.length) : rel;
   const parts = relNoExt.split('/');
   if (parts[0] === 'individual') {
@@ -1885,8 +1910,9 @@ function normalizeRecentUsageAgentId(agentIdRaw: string): string {
 
 function resolveRecentUsageFilePath(agentIdRaw: string): string {
   const agentId = normalizeRecentUsageAgentId(agentIdRaw);
-  const absPath = path.resolve(RECENT_PRIMING_DIR, `${agentId}.json`);
-  if (!ensureInside(RECENT_PRIMING_DIR, absPath)) {
+  const recentPrimingDir = getRecentPrimingDir();
+  const absPath = path.resolve(recentPrimingDir, `${agentId}.json`);
+  if (!ensureInside(recentPrimingDir, absPath)) {
     throw new Error(`Recent-priming path escapes expected directory: ${absPath}`);
   }
   return absPath;
@@ -1938,7 +1964,7 @@ async function loadRecentUsage(agentIdRaw: string): Promise<PrimingRecentScriptF
 
 async function saveRecentUsage(agentIdRaw: string, file: PrimingRecentScriptFile): Promise<void> {
   const filePath = resolveRecentUsageFilePath(agentIdRaw);
-  await fs.mkdir(RECENT_PRIMING_DIR, { recursive: true });
+  await fs.mkdir(getRecentPrimingDir(), { recursive: true });
   await fs.writeFile(filePath, JSON.stringify(file, null, 2), 'utf-8');
 }
 
@@ -2073,9 +2099,9 @@ export async function searchApplicablePrimingScripts(args: {
       ? Math.floor(args.limit)
       : 50;
 
-  const individualDir = path.resolve(PRIMING_INDIVIDUAL_DIR, agentId);
+  const individualDir = path.resolve(getPrimingIndividualDir(), agentId);
   const individualFiles = await listMarkdownFilesRecursively(individualDir);
-  const teamSharedFiles = await listMarkdownFilesRecursively(PRIMING_TEAM_SHARED_DIR);
+  const teamSharedFiles = await listMarkdownFilesRecursively(getPrimingTeamSharedDir());
 
   const matched: PrimingScriptSummary[] = [];
   const warnings: PrimingScriptLoadIssue[] = [];
@@ -2125,7 +2151,7 @@ export async function loadPrimingScriptByRef(
   }
 
   const absPath = scriptRefToAbsolutePath(scriptRef);
-  if (!ensureInside(PRIMING_ROOT_DIR, absPath)) {
+  if (!ensureInside(getPrimingRootDir(), absPath)) {
     throw new Error(`Priming script path escapes priming root: ${scriptRef}`);
   }
   const loaded = await loadScriptFromAbsolutePath(absPath);
@@ -2138,6 +2164,8 @@ export async function loadPrimingScriptByRef(
       materializeReminderSnapshot(
         item,
         `priming script '${scriptRef}' frontmatter.reminders[${String(index)}]`,
+        'task',
+        generatePrimingReminderId(scriptRef, index),
       ),
     ),
     records: loaded.parsed.records,
@@ -2427,6 +2455,90 @@ function primingRecordToChatMessage(record: PrimingReplayRecord): ChatMessage | 
   }
 }
 
+function assertUniquePrimingReminderIds(reminders: readonly Reminder[]): void {
+  const seen = new Set<string>();
+  for (const reminder of reminders) {
+    if (seen.has(reminder.id)) {
+      throw new Error(`Duplicate reminder id in priming scripts: ${reminder.id}`);
+    }
+    seen.add(reminder.id);
+  }
+}
+
+async function upsertPrimingSharedReminders(
+  target: SharedReminderTarget,
+  incoming: readonly Reminder[],
+): Promise<void> {
+  if (incoming.length === 0) return;
+  await mutateSharedReminders(target, (reminders) => {
+    const byId = new Map<string, number>();
+    reminders.forEach((reminder, index) => byId.set(reminder.id, index));
+    for (const reminder of incoming) {
+      const existingIndex = byId.get(reminder.id);
+      if (existingIndex === undefined) {
+        byId.set(reminder.id, reminders.length);
+        reminders.push(reminder);
+      } else {
+        reminders[existingIndex] = reminder;
+      }
+    }
+  });
+}
+
+async function applyPrimingRemindersToDialog(args: {
+  dialog: Dialog;
+  agentId: string;
+  status: DialogStatusKind;
+  reminders: readonly Reminder[];
+}): Promise<void> {
+  if (args.reminders.length === 0) return;
+  assertUniquePrimingReminderIds(args.reminders);
+
+  const dialogReminders: Reminder[] = [];
+  const taskReminders: Reminder[] = [];
+  const agentReminders: Reminder[] = [];
+  for (const reminder of args.reminders) {
+    const scope = reminder.scope ?? 'task';
+    switch (scope) {
+      case 'dialog':
+        dialogReminders.push(reminder);
+        break;
+      case 'task':
+        taskReminders.push(reminder);
+        break;
+      case 'agent':
+      case 'agent_shared':
+        agentReminders.push(reminder);
+        break;
+    }
+  }
+
+  if (dialogReminders.length > 0) {
+    args.dialog.reminders.splice(0, args.dialog.reminders.length, ...dialogReminders);
+    await DialogPersistence._saveReminderState(
+      args.dialog.id,
+      [...args.dialog.reminders],
+      args.status,
+    );
+    await DialogPersistence.appendRemindersReconciledRecord(
+      args.dialog.id,
+      args.dialog.reminders,
+      {
+        kind: 'root_anchor',
+        rootAnchor: toRootGenerationAnchor({ rootCourse: 1, rootGenseq: 0 }),
+      },
+      args.status,
+    );
+  }
+
+  await upsertPrimingSharedReminders(
+    { kind: 'task', agentId: args.agentId, taskDocPath: args.dialog.taskDocPath },
+    taskReminders,
+  );
+  await upsertPrimingSharedReminders({ kind: 'agent', agentId: args.agentId }, agentReminders);
+  args.dialog.touchReminders();
+}
+
 export async function applyPrimingScriptsToDialog(args: {
   dialog: Dialog;
   agentId: string;
@@ -2439,6 +2551,15 @@ export async function applyPrimingScriptsToDialog(args: {
   const agentId = args.agentId.trim();
   if (agentId === '') {
     throw new Error('agentId is required');
+  }
+  const dialogAgentId = args.dialog.agentId.trim();
+  if (dialogAgentId === '') {
+    throw new Error(`Dialog agentId missing for ${args.dialog.id.valueOf()}`);
+  }
+  if (dialogAgentId !== agentId) {
+    throw new Error(
+      `applyPrimingScriptsToDialog agentId mismatch: dialog=${dialogAgentId} request=${agentId}`,
+    );
   }
 
   const normalizedRefs: string[] = [];
@@ -2466,26 +2587,14 @@ export async function applyPrimingScriptsToDialog(args: {
     allReminders.push(...loaded.reminders);
     allRecords.push(...remapped.records);
   }
-  if (allRecords.length === 0) {
-    return { appliedScriptRefs: normalizedRefs, appendedMessageCount: 0 };
-  }
 
   if (allReminders.length > 0) {
-    args.dialog.reminders.splice(0, args.dialog.reminders.length, ...allReminders);
-    await DialogPersistence._saveReminderState(
-      args.dialog.id,
-      [...args.dialog.reminders],
-      args.status,
-    );
-    await DialogPersistence.appendRemindersReconciledRecord(
-      args.dialog.id,
-      args.dialog.reminders,
-      {
-        kind: 'root_anchor',
-        rootAnchor: toRootGenerationAnchor({ rootCourse: 1, rootGenseq: 0 }),
-      },
-      args.status,
-    );
+    await applyPrimingRemindersToDialog({
+      dialog: args.dialog,
+      agentId,
+      status: args.status,
+      reminders: allReminders,
+    });
   }
 
   for (const record of allRecords) {
@@ -2859,7 +2968,7 @@ export async function saveDialogCourseAsIndividualPrimingScript(args: {
   const scriptRef = `individual/${ownerAgentId}/${normalizedSlug}`;
   const absPath = scriptRefToAbsolutePath(scriptRef);
   const parentDir = path.dirname(absPath);
-  if (!ensureInside(PRIMING_INDIVIDUAL_DIR, parentDir)) {
+  if (!ensureInside(getPrimingIndividualDir(), parentDir)) {
     throw new Error(`Priming script directory escapes individual scope: ${parentDir}`);
   }
 

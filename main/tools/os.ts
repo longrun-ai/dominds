@@ -21,7 +21,7 @@ import {
   formatSystemNoticePrefix,
 } from '../runtime/driver-messages';
 import { getWorkLanguage } from '../runtime/work-language';
-import { loadAgentSharedReminders, mutateAgentSharedReminders } from '../shared-reminders';
+import { loadSharedReminders, mutateSharedReminders } from '../shared-reminders';
 import { Team } from '../team';
 import type {
   FuncTool,
@@ -412,7 +412,7 @@ async function ensureTrackedDaemonForAgent(
   if (existing) {
     return existing;
   }
-  const reminders = await loadAgentSharedReminders(agentId);
+  const reminders = await loadSharedReminders({ kind: 'agent', agentId });
   for (const reminder of reminders) {
     if (isShellCmdReminder(reminder) && reminder.meta.pid === pid) {
       return await ensureTrackedDaemonFromReminder(reminder);
@@ -990,7 +990,7 @@ async function removeDaemonRemindersForPid(dlg: Dialog, pid: number): Promise<vo
   for (let i = indicesToRemove.length - 1; i >= 0; i--) {
     dlg.deleteReminder(indicesToRemove[i]);
   }
-  await mutateAgentSharedReminders(dlg.agentId, (reminders) => {
+  await mutateSharedReminders({ kind: 'agent', agentId: dlg.agentId }, (reminders) => {
     for (let i = reminders.length - 1; i >= 0; i--) {
       const reminder = reminders[i];
       if (isShellCmdReminder(reminder) && reminder.meta.pid === pid) {
@@ -2008,7 +2008,7 @@ export const shellCmdTool: FuncTool = {
         renderMode: 'markdown',
       });
       try {
-        await mutateAgentSharedReminders(dlg.agentId, (reminders) => {
+        await mutateSharedReminders({ kind: 'agent', agentId: dlg.agentId }, (reminders) => {
           reminders.push(reminder);
         });
         dlg.touchReminders();
@@ -2851,7 +2851,7 @@ export const stopDaemonTool: FuncTool = {
     const language = getWorkLanguage();
     const t = getOsToolMessages(language);
     const { pid, entirePg } = parseStopDaemonArgs(args);
-    const reminders = await loadAgentSharedReminders(dlg.agentId);
+    const reminders = await loadSharedReminders({ kind: 'agent', agentId: dlg.agentId });
     const reminder = reminders.find(
       (candidate) => isShellCmdReminder(candidate) && candidate.meta.pid === pid,
     );
@@ -2920,7 +2920,7 @@ export const getDaemonOutputTool: FuncTool = {
     const t = getOsToolMessages(language);
     const { pid, stdout, stderr } = parseGetDaemonOutputArgs(args);
 
-    const reminders = await loadAgentSharedReminders(dlg.agentId);
+    const reminders = await loadSharedReminders({ kind: 'agent', agentId: dlg.agentId });
     const reminder = reminders.find(
       (candidate) => isShellCmdReminder(candidate) && candidate.meta.pid === pid,
     );

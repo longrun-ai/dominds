@@ -53,6 +53,14 @@ async function main() {
     'Expected zh auto-continue reminder footer to explicitly say no new message follows',
   );
   assert(
+    zhAutoContinueFooter.includes('若已有明确、相关且有价值的动作，就继续执行'),
+    'Expected zh auto-continue reminder footer to make continuation conditional on relevant work',
+  );
+  assert(
+    zhAutoContinueFooter.includes('不要为了避免“等待”而寻找无关小事'),
+    'Expected zh auto-continue reminder footer to avoid pressuring agents into unrelated work',
+  );
+  assert(
     zhAutoContinueFooter.includes('不要把“没有新消息”理解为空系统提示'),
     'Expected zh auto-continue reminder footer to prevent empty system notice misread',
   );
@@ -78,9 +86,10 @@ async function main() {
     zh.includes('运行时提醒项投影：'),
     'Expected zh reminder guide to include a compact self-contained per-item projection note',
   );
+  const deprecatedZhWorkset = '\u5de5\u4f5c\u96c6';
   assert(
-    !zh.includes('高优先级工作集'),
-    'Expected zh reminder guide not to use work-queue framing',
+    !zh.includes(deprecatedZhWorkset),
+    'Expected zh reminder guide not to use work-set wording',
   );
   assert(
     !zh.includes('快捷操作：'),
@@ -92,16 +101,26 @@ async function main() {
     'Expected zh reminder guide to use conditional update wording',
   );
 
-  const zhPersonal = formatReminderItemGuide('zh', 'rem09abc', '记住常用部署命令\n', {
-    scope: 'personal',
+  const zhTask = formatReminderItemGuide('zh', 'rem09abc', '记住当前任务部署命令\n', {
+    scope: 'task',
   });
+  assert(zhTask.includes('任务范围'), 'Expected zh task reminder guide to mark task scope');
   assert(
-    zhPersonal.includes('个人范围'),
-    'Expected zh personal reminder guide to mark personal scope',
+    zhTask.includes('当前差遣牒任务内、所有由你主理的对话里提醒你'),
+    'Expected zh task reminder guide to explain same-task persistence',
   );
   assert(
-    zhPersonal.includes('在所有由你主理的后续对话里提醒你'),
-    'Expected zh personal reminder guide to explain cross-dialog persistence',
+    zhTask.includes('当前任务的手头工作提示'),
+    'Expected zh task reminder guide to use current-work wording',
+  );
+
+  const zhAgent = formatReminderItemGuide('zh', 'rem12abc', '紧急全局提醒\n', {
+    scope: 'agent',
+  });
+  assert(zhAgent.includes('智能体范围'), 'Expected zh agent reminder guide to mark agent scope');
+  assert(
+    zhAgent.includes('紧急、短期、全局刺眼提醒'),
+    'Expected zh agent reminder guide to constrain agent scope',
   );
 
   const zhToolManaged = formatReminderItemGuide('zh', 'rem01abc', 'Managed content\n', {
@@ -295,7 +314,15 @@ async function main() {
     'Expected en auto-continue reminder footer to explicitly say no new message follows',
   );
   assert(
-    enAutoContinueFooter.includes('do not interpret the absence of a new message'),
+    enAutoContinueFooter.includes('if there is a clear, relevant, valuable action'),
+    'Expected en auto-continue reminder footer to make continuation conditional on relevant work',
+  );
+  assert(
+    enAutoContinueFooter.includes('do not invent unrelated work just to avoid "waiting"'),
+    'Expected en auto-continue reminder footer to avoid pressuring agents into unrelated work',
+  );
+  assert(
+    enAutoContinueFooter.includes('Do not interpret the absence of a new message'),
     'Expected en auto-continue reminder footer to prevent empty system notice misread',
   );
   const enRuntimeFooter = formatReminderContextFooter('en', 'runtime_notice');
@@ -327,6 +354,11 @@ async function main() {
     !en.includes('HIGH-PRIORITY WORKING SET'),
     'Expected en reminder guide not to use work-queue framing',
   );
+  const deprecatedEnWorkset = 'work' + 'set';
+  assert(
+    !en.includes(deprecatedEnWorkset),
+    'Expected en reminder guide not to use deprecated work-set wording',
+  );
   assert(
     !en.includes('Optional actions:'),
     'Expected en reminder guide to omit action section labels',
@@ -336,16 +368,26 @@ async function main() {
     'Expected en reminder guide to present update action as a path',
   );
 
-  const enPersonal = formatReminderItemGuide('en', 'rem09abc', 'Remember the deploy command\n', {
-    scope: 'personal',
+  const enTask = formatReminderItemGuide('en', 'rem09abc', 'Remember the deploy command\n', {
+    scope: 'task',
   });
+  assert(enTask.includes('TASK SCOPE'), 'Expected en task reminder guide to mark task scope');
   assert(
-    enPersonal.includes('PERSONAL SCOPE'),
-    'Expected en personal reminder guide to mark personal scope',
+    enTask.includes('every dialog you lead for the current Taskdoc'),
+    'Expected en task reminder guide to explain same-task persistence',
   );
   assert(
-    enPersonal.includes('runtime system can remind you in every later dialog you lead'),
-    'Expected en personal reminder guide to explain cross-dialog persistence',
+    enTask.includes('current-work reference'),
+    'Expected en task reminder guide to use current-work wording',
+  );
+
+  const enAgent = formatReminderItemGuide('en', 'rem12abc', 'Urgent global cue\n', {
+    scope: 'agent',
+  });
+  assert(enAgent.includes('AGENT SCOPE'), 'Expected en agent reminder guide to mark agent scope');
+  assert(
+    enAgent.includes('urgent, short-lived, globally visible cues'),
+    'Expected en agent reminder guide to constrain agent scope',
   );
 
   const enToolManaged = formatReminderItemGuide('en', 'rem03abc', 'Managed content\n', {

@@ -44,15 +44,15 @@ Add reminder.
 
 Use when:
 
-- Adding a new temporary working-set item
+- Adding a new temporary current-work item
 - Before `clear_mind`, the Main Dialog first records undocumented discussion details the next course needs to know into Taskdoc, then creates continuation-package notes; a Side Dialog directly maintains sufficiently detailed continuation-package reminders. When the current course is already under caution/critical remediation, Side Dialog reminder length has no technical limit and rough bridge notes are acceptable
-- Record only manually maintained working-set / continuation details; do not put runtime-maintained environment state such as background process status, in-flight background asks, or session attachment state into manual reminders
+- Record only manually maintained current-work / continuation details; do not put runtime-maintained environment state such as background process status, in-flight background asks, or session attachment state into manual reminders
 
 **Parameters:**
 
 - `content` (required): Reminder content
-- `position` (optional): Insert position (1-based, default append; dialog scope only)
-- `scope` (optional): `dialog` or `personal`; default is `dialog`. Use `personal` only when you should keep seeing this reminder in all later dialogs you lead; otherwise keep it `dialog`.
+- `scope` (optional): `dialog` / `task` / `agent`; default is `task`. Use `dialog` only for truly dialog-local notes; use `agent` only for urgent, short-lived, globally visible cues.
+- `render_mode` (optional): `markdown` / `plain`; defaults to `markdown`
 
 **Returns:**
 
@@ -60,7 +60,6 @@ Use when:
 status: ok|error
 reminder_id: <reminder id>
 content: <reminder content>
-position: <insert position>
 created_at: <creation timestamp>
 ```
 
@@ -276,7 +275,6 @@ clear_mind({
 ```typescript
 add_reminder({
   content: 'Waiting for @fullstack to confirm API design',
-  position: 1,
 });
 ```
 

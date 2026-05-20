@@ -38,11 +38,10 @@ import { InvalidReminderIndexError, SideDialog } from '../dialog';
 import { formatNewCourseStartPrompt } from '../runtime/driver-messages';
 import { formatToolActionResult } from '../runtime/tool-result-messages';
 import { getWorkLanguage } from '../runtime/work-language';
-import { mutateAgentSharedReminders } from '../shared-reminders';
+import { mutateSharedReminders, type SharedReminderTarget } from '../shared-reminders';
 import type { Team } from '../team';
 import {
   materializeReminder,
-  reminderIsListed,
   toolFailure,
   toolSuccess,
   type FuncTool,
@@ -70,9 +69,7 @@ type CtrlMessages = Readonly<{
   reminderDoesNotExist: (reminderId: string) => string;
   reminderTargetChanged: string;
   invalidFormatAdd: string;
-  personalPositionUnsupported: string;
   reminderContentEmpty: string;
-  invalidReminderPosition: (positionHuman: string, totalPlusOne: number) => string;
   invalidFormatUpdate: string;
   invalidFormatDoMind: string;
   invalidFormatChangeMind: string;
@@ -100,17 +97,6 @@ type CtrlMessages = Readonly<{
   taskDocSectionDeleteMissing: (relativePath: string) => string;
   clearedCoursePrompt: (nextCourse: number) => string;
 }>;
-
-class InvalidReminderPositionError extends Error {
-  public readonly positionHuman: string;
-  public readonly totalPlusOne: number;
-
-  constructor(positionHuman: string, totalPlusOne: number) {
-    super(`Invalid reminder position ${positionHuman} (max ${String(totalPlusOne)})`);
-    this.positionHuman = positionHuman;
-    this.totalPlusOne = totalPlusOne;
-  }
-}
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
@@ -197,52 +183,6 @@ function formatManualUpdateBlockedError(language: LanguageCode, altInstruction: 
   return language === 'zh'
     ? `错误：该提醒项不能用 update_reminder 修改；请改按此处理：${altInstruction}`
     : `Error: This reminder cannot be edited via update_reminder. Follow instead: ${altInstruction}`;
-}
-
-function listListedReminderIndices(reminders: readonly Reminder[]): number[] {
-  return listListedReminderIndicesBy(reminders, () => true);
-}
-
-function listListedReminderIndicesBy(
-  reminders: readonly Reminder[],
-  predicate: (reminder: Reminder) => boolean,
-): number[] {
-  const indices: number[] = [];
-  for (let index = 0; index < reminders.length; index += 1) {
-    const reminder = reminders[index];
-    if (!reminder || !reminderIsListed(reminder) || !predicate(reminder)) {
-      continue;
-    }
-    indices.push(index);
-  }
-  return indices;
-}
-
-function computeReminderInsertIndex(
-  reminders: readonly Reminder[],
-  positionValue: unknown,
-  predicate: (reminder: Reminder) => boolean,
-): number {
-  const listedIndices = listListedReminderIndicesBy(reminders, predicate);
-  let insertIndex = reminders.length;
-  if (positionValue === undefined) {
-    return insertIndex;
-  }
-  if (typeof positionValue !== 'number' || !Number.isInteger(positionValue)) {
-    throw new Error('invalid_add_position_format');
-  }
-  const position = positionValue - 1;
-  if (position < 0 || position > listedIndices.length) {
-    throw new InvalidReminderPositionError(String(positionValue), listedIndices.length + 1);
-  }
-  if (position < listedIndices.length) {
-    const targetIndex = listedIndices[position];
-    if (targetIndex === undefined) {
-      throw new InvalidReminderPositionError(String(positionValue), listedIndices.length + 1);
-    }
-    insertIndex = targetIndex;
-  }
-  return insertIndex;
 }
 
 function parseReminderRenderMode(value: unknown): ReminderRenderMode | null {
@@ -368,8 +308,11 @@ function findReminderIndexById(
   return foundIndex;
 }
 
-async function deleteSharedReminderById(agentId: string, reminderId: string): Promise<boolean> {
-  return mutateAgentSharedReminders(agentId, (reminders) => {
+async function deleteSharedReminderById(
+  target: SharedReminderTarget,
+  reminderId: string,
+): Promise<boolean> {
+  return mutateSharedReminders(target, (reminders) => {
     const index = findReminderIndexById('shared', reminders, reminderId);
     if (index === null) return false;
     reminders.splice(index, 1);
@@ -378,11 +321,11 @@ async function deleteSharedReminderById(agentId: string, reminderId: string): Pr
 }
 
 async function updateSharedReminderById(
-  agentId: string,
+  target: SharedReminderTarget,
   reminderId: string,
   updateReminder: (reminder: Reminder) => Reminder,
 ): Promise<boolean> {
-  return mutateAgentSharedReminders(agentId, (reminders) => {
+  return mutateSharedReminders(target, (reminders) => {
     const index = findReminderIndexById('shared', reminders, reminderId);
     if (index === null) return false;
     const reminder = reminders[index];
@@ -428,7 +371,7 @@ async function deleteResolvedReminderTarget(
       });
     }
     case 'agent_shared': {
-      const deleted = await deleteSharedReminderById(target.agentId, target.reminder.id);
+      const deleted = await deleteSharedReminderById(target.target, target.reminder.id);
       if (deleted) dlg.touchReminders();
       return deleted;
     }
@@ -453,10 +396,8 @@ async function updateResolvedReminderTarget(
       });
     }
     case 'agent_shared': {
-      const updated = await updateSharedReminderById(
-        target.agentId,
-        target.reminder.id,
-        (current) => replaceReminderContent(current, content, meta, renderMode),
+      const updated = await updateSharedReminderById(target.target, target.reminder.id, (current) =>
+        replaceReminderContent(current, content, meta, renderMode),
       );
       if (updated) dlg.touchReminders();
       return updated;
@@ -474,11 +415,8 @@ function getCtrlMessages(language: LanguageCode): CtrlMessages {
       reminderTargetChanged:
         '错误：提醒项列表已变化，这条提醒项当前不在可见列表中。请重新查看提醒项列表后，用当前的 reminder_id 重试。',
       invalidFormatAdd:
-        '参数格式不对。用法：add_reminder({ content: string, position?: number, scope?: "dialog" | "personal" })（省略 position 表示追加）',
-      personalPositionUnsupported: 'personal 范围提醒当前只支持追加，不能指定 position。',
+        '参数格式不对。用法：add_reminder({ content: string, scope?: "dialog" | "task" | "agent" })（省略 scope 表示 task）',
       reminderContentEmpty: '提醒内容不能为空',
-      invalidReminderPosition: (positionHuman, totalPlusOne) =>
-        `位置 ${positionHuman} 无效。有效范围：1-${totalPlusOne}`,
       invalidFormatUpdate:
         '参数格式不对。用法：update_reminder({ reminder_id: string, content: string })',
       invalidFormatDoMind:
@@ -549,12 +487,8 @@ function getCtrlMessages(language: LanguageCode): CtrlMessages {
     reminderTargetChanged:
       'Error: The reminder list changed, and this reminder is no longer visible. Refresh the reminders and retry with the current reminder_id.',
     invalidFormatAdd:
-      'Error: Invalid args. Use: add_reminder({ content: string, position?: number, scope?: "dialog" | "personal" }) (omit position to append).',
-    personalPositionUnsupported:
-      'Error: personal-scope reminders currently support append only; do not pass position.',
+      'Error: Invalid args. Use: add_reminder({ content: string, scope?: "dialog" | "task" | "agent" }) (omitting scope means task).',
     reminderContentEmpty: 'Error: Reminder content cannot be empty',
-    invalidReminderPosition: (positionHuman, totalPlusOne) =>
-      `Error: Invalid reminder position ${positionHuman}. Valid range: 1-${totalPlusOne}`,
     invalidFormatUpdate:
       'Error: Invalid args. Use: update_reminder({ reminder_id: string, content: string })',
     invalidFormatDoMind:
@@ -661,10 +595,10 @@ export const addReminderTool: FuncTool = {
   type: 'func',
   name: 'add_reminder',
   description:
-    'Add a manually maintained working-set reminder, optionally inserting at a 1-based position and choosing dialog or personal scope. Do not manually record runtime-maintained environment state such as background process status or in-flight background asks.',
+    'Add a manually maintained reminder for current work. Scope defaults to task so the reminder survives continuing the same Taskdoc in another dialog; dialog is only for truly dialog-local notes; agent is visible to this agent across dialogs and should be reserved for urgent short-lived global cues. Do not manually record runtime-maintained environment state such as background process status or in-flight background asks.',
   descriptionI18n: {
-    en: 'Add a manually maintained working-set reminder, optionally inserting at a 1-based position and choosing dialog or personal scope. Do not manually record runtime-maintained environment state such as background process status or in-flight background asks.',
-    zh: '添加手工维护的工作集提醒，可选指定 1-based 插入位置，并可选择对话或个人范围。不要手工记录后台进程状态、后台进行中诉请等 runtime 会自动维护的环境状态。',
+    en: 'Add a manually maintained reminder for current work. Scope defaults to task so the reminder survives continuing the same Taskdoc in another dialog; dialog is only for truly dialog-local notes; agent is visible to this agent across dialogs and should be reserved for urgent short-lived global cues. Do not manually record runtime-maintained environment state such as background process status or in-flight background asks.',
+    zh: '添加手工维护的手头工作提醒。scope 默认 task，以便同一差遣牒任务换新对话继续时仍可见；dialog 只用于真正对话局部的事项；agent 会在本智能体所有对话中可见，仅用于紧急、短期、全局刺眼提醒。不要手工记录后台进程状态、后台进行中诉请等 runtime 会自动维护的环境状态。',
   },
   parameters: {
     type: 'object',
@@ -672,11 +606,10 @@ export const addReminderTool: FuncTool = {
     required: ['content'],
     properties: {
       content: { type: 'string', description: 'Reminder content.' },
-      position: { type: 'integer', description: 'Insert position (1-based). Defaults to append.' },
       scope: {
         type: 'string',
-        enum: ['dialog', 'personal'],
-        description: 'Reminder visibility scope. Defaults to dialog.',
+        enum: ['dialog', 'task', 'agent'],
+        description: 'Reminder visibility scope. Defaults to task.',
       },
       render_mode: {
         type: 'string',
@@ -694,10 +627,10 @@ export const addReminderTool: FuncTool = {
     if (!reminderContent) return toolFailure(t.reminderContentEmpty);
 
     const scopeValue = args['scope'];
-    const reminderScope: 'dialog' | 'personal' | null =
+    const reminderScope: 'dialog' | 'task' | 'agent' | null =
       scopeValue === undefined
-        ? 'dialog'
-        : scopeValue === 'dialog' || scopeValue === 'personal'
+        ? 'task'
+        : scopeValue === 'dialog' || scopeValue === 'task' || scopeValue === 'agent'
           ? scopeValue
           : null;
     if (reminderScope === null) {
@@ -708,7 +641,6 @@ export const addReminderTool: FuncTool = {
       return toolFailure(t.invalidFormatAdd);
     }
 
-    const positionValue = args['position'];
     const contextHealthLevel = getContinuationPackageContextHealthLevel(dlg.getLastContextHealth());
     const reminderMeta =
       contextHealthLevel === undefined
@@ -719,51 +651,28 @@ export const addReminderTool: FuncTool = {
           });
 
     if (reminderScope === 'dialog') {
-      try {
-        const insertIndex = computeReminderInsertIndex(dlg.reminders, positionValue, () => true);
-        dlg.addReminder(reminderContent, undefined, reminderMeta, insertIndex, {
-          scope: 'dialog',
-          renderMode: reminderRenderMode,
-        });
-        return formatToolActionResult(language, 'added');
-      } catch (error: unknown) {
-        if (error instanceof InvalidReminderPositionError) {
-          return toolFailure(t.invalidReminderPosition(error.positionHuman, error.totalPlusOne));
-        }
-        if (error instanceof Error && error.message === 'invalid_add_position_format') {
-          return toolFailure(t.invalidFormatAdd);
-        }
-        throw error;
-      }
+      dlg.addReminder(reminderContent, undefined, reminderMeta, undefined, {
+        scope: 'dialog',
+        renderMode: reminderRenderMode,
+      });
+      return formatToolActionResult(language, 'added');
     }
 
-    try {
-      await mutateAgentSharedReminders(dlg.agentId, (reminders) => {
-        if (positionValue !== undefined) {
-          throw new Error('personal_add_position_unsupported');
-        }
-        const reminder = materializeReminder({
-          content: reminderContent,
-          meta: reminderMeta,
-          scope: 'personal' satisfies ReminderScope,
-          renderMode: reminderRenderMode,
-        });
-        reminders.push(reminder);
+    const sharedTarget: SharedReminderTarget =
+      reminderScope === 'task'
+        ? { kind: 'task', agentId: dlg.agentId, taskDocPath: dlg.taskDocPath }
+        : { kind: 'agent', agentId: dlg.agentId };
+    await mutateSharedReminders(sharedTarget, (reminders) => {
+      const reminder = materializeReminder({
+        content: reminderContent,
+        meta: reminderMeta,
+        scope: reminderScope satisfies ReminderScope,
+        renderMode: reminderRenderMode,
       });
-      dlg.touchReminders();
-      return formatToolActionResult(language, 'added');
-    } catch (error: unknown) {
-      if (error instanceof InvalidReminderPositionError) {
-        return toolFailure(t.invalidReminderPosition(error.positionHuman, error.totalPlusOne));
-      }
-      if (error instanceof Error && error.message === 'invalid_add_position_format') {
-        return toolFailure(t.invalidFormatAdd);
-      }
-      if (error instanceof Error && error.message === 'personal_add_position_unsupported') {
-        return toolFailure(t.personalPositionUnsupported);
-      }
-      throw error;
-    }
+      reminders.push(reminder);
+    });
+    dlg.touchReminders();
+    return formatToolActionResult(language, 'added');
   },
 };
 

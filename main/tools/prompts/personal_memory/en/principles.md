@@ -73,7 +73,7 @@ The `personal_memory` toolset uses a **path key-value storage** model:
 - Boundary with skills: workspace-coupled facts, paths, local contracts, and responsibility-area indexes belong in `personal_memory`; workspace-independent operating methods, checklists, triggers, and boundaries belong in skills. If both appear in one experience, split them so skills do not hide repo facts that can go stale.
 - Do not store task progress or daily state here:
   - Information that must synchronize the team's current effective state, key decisions, next step, or still-active blockers belongs in Taskdoc `progress`, the quasi-real-time task bulletin board
-  - Personal or current-dialog short-term working set details belong in reminders
+  - Current-task or current-dialog short-term current-work details belong in reminders
 
 ### 3. Recommended Boundaries
 
@@ -81,7 +81,7 @@ The `personal_memory` toolset uses a **path key-value storage** model:
 - **A member’s own reusable long-lived experience and working index**: `personal_memory`
 - **Reusable operating guidance / checklists / triggers and boundaries**: `skills`
 - **Taskdoc `progress`**: the team-shared quasi-real-time task bulletin board for current effective state, key decisions, next steps, and still-active blockers
-- **reminders**: personal or current-dialog short-term working set, continuation package, and easy-to-lose volatile details
+- **reminders**: current-task or current-dialog short-term current work, continuation package, and easy-to-lose volatile details
 - **Team-shared long-lived conventions / invariants / consensus rules**: `team_memory`
 
 > Note: If the main purpose of the information is to let the team quickly synchronize on where things stand now, which decisions are in effect, what is next, or which blockers still hold, it belongs in Taskdoc `progress`, not in `personal_memory`.
