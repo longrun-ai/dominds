@@ -52,12 +52,14 @@ async function main(): Promise<void> {
   // Test 2: Toolset lookup returns Tool objects
   await runTest('Toolset lookup returns Tool objects', () => {
     const wsReadToolset = getToolset('ws_read');
+    const fsReadToolset = getToolset('fs_read');
     const personalMemoryToolset = getToolset('personal_memory');
     const sharedMemoryToolset = getToolset('team_memory');
     const skillsToolset = getToolset('skills');
     const nonexistentToolset = getToolset('nonexistent');
 
     assertTrue(Array.isArray(wsReadToolset), 'ws_read toolset should be an array');
+    assertTrue(Array.isArray(fsReadToolset), 'fs_read toolset should be an array');
     assertTrue(Array.isArray(personalMemoryToolset), 'personal_memory toolset should be an array');
     assertTrue(Array.isArray(sharedMemoryToolset), 'team_memory toolset should be an array');
     assertTrue(Array.isArray(skillsToolset), 'skills toolset should be an array');
@@ -77,13 +79,25 @@ async function main(): Promise<void> {
       }
       console.log(`ws_read toolset tools: ${wsReadToolset.map((t) => t.name).join(', ')}`);
     }
+
+    if (fsReadToolset) {
+      const fsReadNames = fsReadToolset.map((t) => t.name);
+      assertTrue(fsReadNames.includes('fs_read_file'), 'fs_read should expose fs_read_file');
+      assertTrue(
+        fsReadNames.includes('fs_ripgrep_search'),
+        'fs_read should expose fs_ripgrep_search',
+      );
+      console.log(`fs_read toolset tools: ${fsReadNames.join(', ')}`);
+    }
   });
 
   // Test 3: Individual tool lookup
   await runTest('Individual tool lookup', () => {
     const listDirTool = getTool('list_dir');
     const readFileTool = getTool('read_file');
+    const fsReadFileTool = getTool('fs_read_file');
     const readPictureTool = getTool('read_picture');
+    const fsReadPictureTool = getTool('fs_read_picture');
     const writePictureTool = getTool('write_picture');
     const addPersonalMemoryTool = getTool('add_personal_memory');
     const addPersonalSkillTool = getTool('add_personal_skill');
@@ -95,7 +109,9 @@ async function main(): Promise<void> {
 
     assertTrue(!!listDirTool, 'list_dir tool should exist');
     assertTrue(!!readFileTool, 'read_file tool should exist');
+    assertTrue(!!fsReadFileTool, 'fs_read_file tool should exist');
     assertTrue(!!readPictureTool, 'read_picture tool should exist');
+    assertTrue(!!fsReadPictureTool, 'fs_read_picture tool should exist');
     assertTrue(!!writePictureTool, 'write_picture tool should exist');
     assertTrue(!!addPersonalMemoryTool, 'add_personal_memory tool should exist');
     assertTrue(!!addPersonalSkillTool, 'add_personal_skill tool should exist');
@@ -170,6 +186,46 @@ async function main(): Promise<void> {
       wildcardMember.listResolvedToolsetNames({ onMissing: 'silent' }).includes('control'),
       false,
       'wildcard toolsets should not resolve non-assignable control',
+    );
+  });
+
+  await runTest('fs_read is explicit-grant only', () => {
+    const explicitMember = new Team.Member({
+      id: 'fs-read-explicit-test',
+      name: 'FS Read Explicit Test Member',
+      provider: 'openai',
+      model: 'gpt-4',
+      toolsets: ['fs_read'],
+    });
+    assertTrue(
+      explicitMember.listResolvedToolsetNames({ onMissing: 'silent' }).includes('fs_read'),
+      'fs_read should resolve when explicitly assigned',
+    );
+    assertTrue(
+      explicitMember
+        .listTools({ onMissingToolset: 'silent' })
+        .some((tool) => tool.name === 'fs_read_file'),
+      'explicit fs_read assignment should grant fs_read_file',
+    );
+
+    const wildcardMember = new Team.Member({
+      id: 'fs-read-wildcard-test',
+      name: 'FS Read Wildcard Test Member',
+      provider: 'openai',
+      model: 'gpt-4',
+      toolsets: ['*'],
+    });
+    assertEqual(
+      wildcardMember.listResolvedToolsetNames({ onMissing: 'silent' }).includes('fs_read'),
+      false,
+      'wildcard toolsets should not grant fs_read',
+    );
+    assertEqual(
+      wildcardMember
+        .listTools({ onMissingToolset: 'silent' })
+        .some((tool) => tool.name === 'fs_read_file'),
+      false,
+      'wildcard toolsets should not grant fs_read_file',
     );
   });
 

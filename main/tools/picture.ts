@@ -40,6 +40,14 @@ function ensureInsideWorkspace(rel: string): string {
   throw new Error('Path must be within rtws (runtime workspace)');
 }
 
+function resolveLocalFilesystemPath(inputPath: string): string {
+  return path.resolve(process.cwd(), inputPath);
+}
+
+function displayLocalFilesystemPath(inputPath: string, absPath: string): string {
+  return path.isAbsolute(inputPath) ? absPath : inputPath;
+}
+
 function requirePathArg(args: ToolArguments): string {
   const value = args['path'];
   if (typeof value !== 'string' || value.trim() === '') {
@@ -208,7 +216,7 @@ async function persistPictureArtifact(args: {
 
 function formatPictureResultYaml(args: {
   status: 'ok';
-  action: 'read_picture' | 'write_picture';
+  action: 'read_picture' | 'fs_read_picture' | 'write_picture';
   path: string;
   mimeType: SupportedImageMimeType;
   byteLength: number;
@@ -281,6 +289,69 @@ export const readPictureTool: FuncTool = {
           status: 'ok',
           action: 'read_picture',
           path: relPath,
+          mimeType,
+          byteLength: bytes.length,
+          artifactRelPath: item.artifact.relPath,
+        }),
+        [item],
+      );
+    } catch (error: unknown) {
+      return fail(error instanceof Error ? error.message : String(error));
+    }
+  },
+};
+
+export const fsReadPictureTool: FuncTool = {
+  type: 'func',
+  name: 'fs_read_picture',
+  description:
+    'Read a PNG/JPEG/WebP/GIF image from the local filesystem without restricting paths to rtws, then attach it as an image content item for the next LLM context.',
+  descriptionI18n: {
+    en: 'Read a PNG/JPEG/WebP/GIF image from the local filesystem without restricting paths to rtws, then attach it as an image content item for the next LLM context.',
+    zh: '读取本机文件系统中的 PNG/JPEG/WebP/GIF 图片（不限制路径必须位于 rtws 内），并作为图片 content item 放入后续 LLM 上下文。',
+  },
+  parameters: {
+    type: 'object',
+    additionalProperties: false,
+    properties: {
+      path: {
+        type: 'string',
+        description:
+          'Image path to read. Absolute paths are accepted; relative paths resolve from the current process cwd. Supported extensions: .png, .jpg, .jpeg, .webp, .gif.',
+      },
+    },
+    required: ['path'],
+  },
+  argsValidation: 'dominds',
+  call: async (dlg, _caller, args): Promise<ToolCallOutput> => {
+    try {
+      const requestedPath = requirePathArg(args);
+      const absPath = resolveLocalFilesystemPath(requestedPath);
+      const displayPath = displayLocalFilesystemPath(requestedPath, absPath);
+      const mimeType = extToMimeType(displayPath);
+      if (mimeType === null) {
+        return fail(
+          'Unsupported image extension. Supported extensions: .png, .jpg, .jpeg, .webp, .gif',
+        );
+      }
+      const stat = await fs.stat(absPath);
+      if (!stat.isFile()) return fail(`Path is not a file: ${displayPath}`);
+      if (stat.size <= 0 || stat.size > PICTURE_MAX_BYTES) {
+        return fail(`Image must be between 1 byte and ${String(PICTURE_MAX_BYTES)} bytes`);
+      }
+      const bytes = await fs.readFile(absPath);
+      validateImageBytesMatchMimeType(bytes, mimeType);
+      const item = await persistPictureArtifact({
+        dlg,
+        toolName: 'fs_read_picture',
+        mimeType,
+        bytes,
+      });
+      return ok(
+        formatPictureResultYaml({
+          status: 'ok',
+          action: 'fs_read_picture',
+          path: displayPath,
           mimeType,
           byteLength: bytes.length,
           artifactRelPath: item.artifact.relPath,

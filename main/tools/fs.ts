@@ -391,7 +391,7 @@ export const listDirTool: FuncTool = {
                   ? '🔗'
                   : '❓';
 
-          const sizeStr = entry.size ? formatSize(entry.size) : '-';
+          const sizeStr = entry.size === undefined ? '-' : formatSize(entry.size);
           const linesStr = entry.lines ? entry.lines.toString() : '-';
           const targetTypeStr =
             entry.type === 'symlink' && entry.symlinkResolvedType
@@ -424,6 +424,243 @@ export const listDirTool: FuncTool = {
         (error as { code?: unknown }).code === 'ENOTDIR'
       ) {
         return fail(labels.notDir(rel));
+      }
+
+      const msg = error instanceof Error ? error.message : String(error);
+      return fail(labels.readDirFailed(msg));
+    }
+  },
+};
+
+export const fsListDirTool: FuncTool = {
+  type: 'func',
+  name: 'fs_list_dir',
+  description:
+    'List local filesystem directory contents without restricting paths to rtws (runtime workspace).',
+  descriptionI18n: {
+    en: 'List local filesystem directory contents without restricting paths to rtws (runtime workspace).',
+    zh: '列出本机文件系统目录内容，不限制路径必须位于 rtws（运行时工作区）内。',
+  },
+  parameters: {
+    type: 'object',
+    additionalProperties: false,
+    properties: {
+      path: {
+        type: 'string',
+        description:
+          "Directory path to read. Absolute paths are accepted; relative paths resolve from the current process cwd. Defaults to '.'.",
+      },
+    },
+  },
+  argsValidation: 'dominds',
+  call: async (_dlg, _caller, args: ToolArguments): Promise<ToolCallOutput> => {
+    const workLanguage = getWorkLanguage();
+    const labels =
+      workLanguage === 'zh'
+        ? {
+            notFound: (p: string) => `❌ **未找到**\n\n目录 \`${p}\` 不存在。`,
+            notDir: (p: string) => `❌ **错误**\n\n路径 \`${p}\` 不是目录。`,
+            readDirFailed: (msg: string) => `❌ **错误**\n\n读取目录失败：${msg}`,
+            dirHeader: '📁 **目录：**',
+            symlinkPathNotice: (p: string, target?: string) =>
+              target
+                ? `🔗 **说明：** \`${p}\` 是符号链接（→ \`${target}\`），已按目录跟随读取。`
+                : `🔗 **说明：** \`${p}\` 是符号链接，已按目录跟随读取。`,
+            emptyDir: '_此目录为空。_',
+            table: {
+              name: '名称',
+              type: '类型',
+              size: '大小',
+              lines: '行数',
+              target: '目标',
+            },
+          }
+        : {
+            notFound: (p: string) => `❌ **Not Found**\n\nDirectory \`${p}\` does not exist.`,
+            notDir: (p: string) => `❌ **Error**\n\nPath \`${p}\` is not a directory.`,
+            readDirFailed: (msg: string) => `❌ **Error**\n\nFailed to read directory: ${msg}`,
+            dirHeader: '📁 **Directory:**',
+            symlinkPathNotice: (p: string, target?: string) =>
+              target
+                ? `🔗 **Note:** \`${p}\` is a symlink (→ \`${target}\`), and was followed as a directory.`
+                : `🔗 **Note:** \`${p}\` is a symlink and was followed as a directory.`,
+            emptyDir: '_This directory is empty._',
+            table: {
+              name: 'Name',
+              type: 'Type',
+              size: 'Size',
+              lines: 'Lines',
+              target: 'Target',
+            },
+          };
+
+    let requestedPath = '.';
+    const pathValue = args['path'];
+    if (typeof pathValue === 'string' && pathValue.trim() !== '') {
+      requestedPath = pathValue.trim();
+    }
+
+    const dir = path.resolve(process.cwd(), requestedPath);
+    const displayPath = path.isAbsolute(requestedPath) ? dir : requestedPath;
+
+    try {
+      let inputPathIsSymlink = false;
+      let inputPathSymlinkTarget: string | undefined;
+      try {
+        const statsInfo = await statWithSymlinkInfo(dir);
+        inputPathIsSymlink = statsInfo.isSymlink;
+        inputPathSymlinkTarget = statsInfo.symlinkTarget;
+        if (!statsInfo.followStat.isDirectory()) {
+          return fail(labels.notDir(displayPath));
+        }
+      } catch (error: unknown) {
+        if (
+          typeof error === 'object' &&
+          error !== null &&
+          'code' in error &&
+          (error as { code?: unknown }).code === 'ENOENT'
+        ) {
+          return fail(labels.notFound(displayPath));
+        }
+
+        const msg = error instanceof Error ? error.message : String(error);
+        return fail(labels.readDirFailed(msg));
+      }
+
+      const entries = await fs.readdir(dir, { withFileTypes: true });
+      const data: DirectoryEntry[] = [];
+
+      for (const entry of entries) {
+        const entryPath = path.join(dir, entry.name);
+        const dirEntry: DirectoryEntry = {
+          name: entry.name,
+          type: 'other',
+        };
+
+        try {
+          const stats = await fs.lstat(entryPath);
+
+          if (entry.isDirectory()) {
+            dirEntry.type = 'dir';
+            dirEntry.size = stats.size;
+          } else if (entry.isFile()) {
+            dirEntry.type = 'file';
+            dirEntry.size = stats.size;
+            if (isTextFile(entry.name)) {
+              dirEntry.lines = await countLines(entryPath);
+            }
+          } else if (entry.isSymbolicLink()) {
+            dirEntry.type = 'symlink';
+            dirEntry.size = stats.size;
+
+            try {
+              const target = await fs.readlink(entryPath);
+              dirEntry.target = target;
+
+              try {
+                const targetStats = await fs.stat(entryPath);
+                if (targetStats.isDirectory()) {
+                  dirEntry.symlinkResolvedType = 'dir';
+                } else if (targetStats.isFile()) {
+                  dirEntry.symlinkResolvedType = 'file';
+                } else {
+                  dirEntry.symlinkResolvedType = 'other';
+                }
+
+                if (targetStats.isFile() && (isTextFile(entry.name) || isTextFile(target))) {
+                  dirEntry.lines = await countLines(entryPath);
+                }
+              } catch (err: unknown) {
+                log.warn(`Failed to stat symlink target ${entryPath}:`, err);
+                dirEntry.symlinkResolvedType = 'broken';
+              }
+            } catch (err: unknown) {
+              log.warn(`Failed to read symlink ${entryPath}:`, err);
+              dirEntry.target = '<unreadable>';
+              dirEntry.symlinkResolvedType = 'other';
+            }
+          } else {
+            dirEntry.type = 'other';
+            dirEntry.size = stats.size;
+          }
+        } catch (_error: unknown) {
+          if (entry.isDirectory()) {
+            dirEntry.type = 'dir';
+          } else if (entry.isFile()) {
+            dirEntry.type = 'file';
+          } else if (entry.isSymbolicLink()) {
+            dirEntry.type = 'symlink';
+            dirEntry.target = '<error>';
+          }
+        }
+
+        data.push(dirEntry);
+      }
+
+      let markdown = `${labels.dirHeader} \`${displayPath}\`\n\n`;
+      if (inputPathIsSymlink) {
+        markdown += `${labels.symlinkPathNotice(displayPath, inputPathSymlinkTarget)}\n\n`;
+      }
+
+      if (data.length === 0) {
+        markdown += labels.emptyDir;
+      } else {
+        const shownEntries = data.slice(0, LIST_DIR_MAX_RENDERED_ENTRIES);
+        const omittedEntries = Math.max(0, data.length - shownEntries.length);
+
+        if (omittedEntries > 0) {
+          markdown +=
+            workLanguage === 'zh'
+              ? `⚠️ **说明：** 目录项过多；为避免输出过长，仅展示前 ${shownEntries.length} 项，省略 ${omittedEntries} 项。\n\n`
+              : `⚠️ **Note:** Directory contains many entries; to keep the output bounded, showing the first ${shownEntries.length} entries and omitting ${omittedEntries}.\n\n`;
+        }
+
+        markdown += `| ${labels.table.name} | ${labels.table.type} | ${labels.table.size} | ${labels.table.lines} | ${labels.table.target} |\n`;
+        markdown += '|------|------|------|-------|--------|\n';
+
+        for (const entry of shownEntries) {
+          const typeIcon =
+            entry.type === 'dir'
+              ? '📁'
+              : entry.type === 'file'
+                ? '📄'
+                : entry.type === 'symlink'
+                  ? '🔗'
+                  : '❓';
+
+          const sizeStr = entry.size === undefined ? '-' : formatSize(entry.size);
+          const linesStr = entry.lines ? entry.lines.toString() : '-';
+          const targetTypeStr =
+            entry.type === 'symlink' && entry.symlinkResolvedType
+              ? ` (${entry.symlinkResolvedType})`
+              : '';
+          const renderedName = truncateInlineText(entry.name, LIST_DIR_NAME_CHAR_LIMIT);
+          const targetStr = entry.target
+            ? truncateInlineText(`→ ${entry.target}${targetTypeStr}`, LIST_DIR_TARGET_CHAR_LIMIT)
+            : '-';
+
+          markdown += `| ${typeIcon} \`${renderedName}\` | ${entry.type} | ${sizeStr} | ${linesStr} | ${targetStr} |\n`;
+        }
+      }
+
+      return ok(markdown);
+    } catch (error: unknown) {
+      if (
+        typeof error === 'object' &&
+        error !== null &&
+        'code' in error &&
+        (error as { code?: unknown }).code === 'ENOENT'
+      ) {
+        return fail(labels.notFound(displayPath));
+      }
+
+      if (
+        typeof error === 'object' &&
+        error !== null &&
+        'code' in error &&
+        (error as { code?: unknown }).code === 'ENOTDIR'
+      ) {
+        return fail(labels.notDir(displayPath));
       }
 
       const msg = error instanceof Error ? error.message : String(error);
@@ -1200,6 +1437,81 @@ export const readSymlinkTool: FuncTool = {
         `status: error`,
         `mode: read_symlink`,
         `path: ${yamlQuote(rel)}`,
+        `error: FAILED`,
+        `summary: ${yamlQuote(error instanceof Error ? error.message : String(error))}`,
+      ].join('\n');
+      return failYaml(yaml);
+    }
+  },
+};
+
+export const fsReadSymlinkTool: FuncTool = {
+  type: 'func',
+  name: 'fs_read_symlink',
+  description:
+    'Read a local filesystem symlink target without following it, without restricting paths to rtws.',
+  descriptionI18n: {
+    en: 'Read a local filesystem symlink target without following it, without restricting paths to rtws.',
+    zh: '读取本机文件系统符号链接目标（不跟随链接），不限制路径必须位于 rtws 内。',
+  },
+  parameters: {
+    type: 'object',
+    additionalProperties: false,
+    required: ['path'],
+    properties: {
+      path: {
+        type: 'string',
+        description:
+          'Symlink path. Absolute paths are accepted; relative paths resolve from the current process cwd.',
+      },
+    },
+  },
+  argsValidation: 'dominds',
+  call: async (_dlg, _caller, args: ToolArguments): Promise<ToolCallOutput> => {
+    const pathValue = args['path'];
+    const requestedPath = typeof pathValue === 'string' ? pathValue.trim() : '';
+    if (!requestedPath) {
+      return failYaml(
+        [
+          `status: error`,
+          `mode: fs_read_symlink`,
+          `error: PATH_REQUIRED`,
+          `summary: ${yamlQuote('Fs-read-symlink failed: path required.')}`,
+        ].join('\n'),
+      );
+    }
+
+    const absPath = path.resolve(process.cwd(), requestedPath);
+    const displayPath = path.isAbsolute(requestedPath) ? absPath : requestedPath;
+
+    try {
+      const pathStat = await fs.lstat(absPath);
+      if (!pathStat.isSymbolicLink()) {
+        return failYaml(
+          [
+            `status: error`,
+            `mode: fs_read_symlink`,
+            `path: ${yamlQuote(displayPath)}`,
+            `error: NOT_SYMLINK`,
+            `summary: ${yamlQuote('Fs-read-symlink failed: path is not a symlink.')}`,
+          ].join('\n'),
+        );
+      }
+      const target = await fs.readlink(absPath);
+      return okYaml(
+        [
+          `status: ok`,
+          `mode: fs_read_symlink`,
+          `path: ${yamlQuote(displayPath)}`,
+          `target: ${yamlQuote(target)}`,
+          `summary: ${yamlQuote(`Fs-read-symlink: ${displayPath} -> ${target}.`)}`,
+        ].join('\n'),
+      );
+    } catch (error: unknown) {
+      const yaml = [
+        `status: error`,
+        `mode: fs_read_symlink`,
+        `path: ${yamlQuote(displayPath)}`,
         `error: FAILED`,
         `summary: ${yamlQuote(error instanceof Error ? error.message : String(error))}`,
       ].join('\n');

@@ -768,6 +768,8 @@ export namespace Team {
       const seen = new Set<string>();
       const isAssignableToolset = (name: string): boolean =>
         getToolsetMeta(name)?.assignable !== false;
+      const isWildcardAssignableToolset = (name: string): boolean =>
+        getToolsetMeta(name)?.wildcardAssignable !== false;
 
       for (const toolsetName of [...staticToolsets, ...dynamicToolsetNames]) {
         if (toolsetName.startsWith('!')) continue;
@@ -775,7 +777,10 @@ export namespace Team {
         const toolsetNames =
           toolsetName === '*'
             ? Object.keys(listToolsets()).filter(
-                (n) => !excludedToolsets.has(n) && isAssignableToolset(n),
+                (n) =>
+                  !excludedToolsets.has(n) &&
+                  isAssignableToolset(n) &&
+                  isWildcardAssignableToolset(n),
               )
             : excludedToolsets.has(toolsetName)
               ? []

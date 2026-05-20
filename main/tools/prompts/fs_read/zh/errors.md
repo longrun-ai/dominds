@@ -1,0 +1,6 @@
+# 错误
+
+- `PATH_REQUIRED`
+- `NOT_SYMLINK`
+- `NOT_FOUND`
+- `FAILED`

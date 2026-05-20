@@ -24,6 +24,12 @@ export type ToolsetMeta = {
    * system according to dialog scope rather than granted by team config.
    */
   assignable?: boolean;
+  /**
+   * Whether wildcard toolset expansion (`toolsets: ['*']`) may include this
+   * toolset. Defaults to true. Use false for explicitly grantable toolsets that
+   * should not be mass-assigned by wildcard baselines.
+   */
+  wildcardAssignable?: boolean;
   descriptionI18n?: I18nText;
   /**
    * Toolset-level prompt injected into the agent system prompt when the member

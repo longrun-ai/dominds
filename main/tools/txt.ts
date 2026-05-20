@@ -40,6 +40,14 @@ function ensureInsideWorkspace(rel: string): string {
   return file;
 }
 
+function resolveLocalFilesystemPath(inputPath: string): string {
+  return path.resolve(process.cwd(), inputPath);
+}
+
+function displayLocalFilesystemPath(inputPath: string, absPath: string): string {
+  return path.isAbsolute(inputPath) ? absPath : inputPath;
+}
+
 function normalizeFileWriteBody(inputBody: string): {
   normalizedBody: string;
   addedTrailingNewlineToContent: boolean;
@@ -1087,6 +1095,325 @@ export const readFileTool = {
         return toolFailure(labels.formatError);
       }
 
+      const msg = error instanceof Error ? error.message : String(error);
+      return toolFailure(labels.failedToRead(msg));
+    }
+  },
+} satisfies FuncTool;
+
+export const fsReadFileTool = {
+  type: 'func',
+  name: 'fs_read_file',
+  description:
+    'Read a bounded local filesystem text file without restricting paths to rtws (runtime workspace).',
+  descriptionI18n: {
+    en: 'Read a bounded local filesystem text file without restricting paths to rtws (runtime workspace).',
+    zh: '读取本机文件系统文本文件（有上限/可截断），不限制路径必须位于 rtws（运行时工作区）内。',
+  },
+  parameters: {
+    type: 'object',
+    additionalProperties: false,
+    properties: {
+      path: {
+        type: 'string',
+        description:
+          'File path. Absolute paths are accepted; relative paths resolve from the current process cwd.',
+      },
+      range: {
+        type: 'string',
+        description:
+          "Optional line range string: '10~50' | '300~' | '~20' | '~' (1-based, inclusive).",
+      },
+      max_lines: { type: 'integer', description: 'Max lines to show (default: 500).' },
+      show_linenos: {
+        type: 'boolean',
+        description: 'Whether to show line numbers (default: true).',
+      },
+    },
+    required: ['path'],
+  },
+  argsValidation: 'dominds',
+  call: async (_dlg, _caller, args: ToolArguments): Promise<ToolCallOutput> => {
+    const language = getWorkLanguage();
+    const labels =
+      language === 'zh'
+        ? {
+            formatError:
+              '请使用正确的函数工具参数调用 `fs_read_file`。\n\n' +
+              '**期望格式：** `fs_read_file({ path, range, max_lines, show_linenos })`\n\n' +
+              '注意：`path` 可为绝对路径，或相对当前进程 cwd 的路径；可选字段可直接省略。若你显式传入“未指定/默认”，可使用：`range: ""`（不指定范围）、`max_lines: 0`（默认 500）。',
+            formatErrorWithReason: (msg: string) =>
+              `❌ **错误：** ${msg}\n\n请使用正确的函数工具参数调用 \`fs_read_file\`。`,
+            fileLabel: '文件',
+            warningTruncatedByMaxLines: (shown: number, maxLines: number) =>
+              `⚠️ **警告：** 输出已截断（最多显示 ${maxLines} 行，当前显示 ${shown} 行）\n\n`,
+            warningTruncatedByCharLimit: (shown: number, maxChars: number) =>
+              `⚠️ **警告：** 输出已截断（字符总数上限约 ${maxChars}，当前显示 ${shown} 行）\n\n`,
+            warningTruncatedByMaxLinesWithRange: (
+              maxLines: number,
+              rangeLines: number,
+              used: number,
+            ) =>
+              `⚠️ **警告：** 输出将被 \`max_lines\`（${maxLines}）截断：\`range\` 共 ${rangeLines} 行，仅返回前 ${used} 行。\n\n`,
+            hintUseRangeNext: (filePath: string, start: number, end: number) =>
+              `💡 **提示：** 可继续调用 \`fs_read_file\` 读取下一段，例如：\`fs_read_file({ "path": "${filePath}", "range": "${start}~${end}", "max_lines": 0, "show_linenos": true })\`\n\n`,
+            hintLargeFileStrategy: (filePath: string) =>
+              `💡 **大文件策略：** 建议分多程分析，每程读取一段并整理接续信息，再继续读取下一段（例如：\`fs_read_file({ "path": "${filePath}", "range": "1~500", "max_lines": 0, "show_linenos": true })\`）。\n\n`,
+            sizeLabel: '大小',
+            totalLinesLabel: '总行数',
+            emptyFileLabel: '<空文件>',
+            failedToRead: (msg: string) => `❌ **错误**\n\n读取文件失败：${msg}`,
+            invalidFormatMultiToolCalls: (toolName: string) =>
+              `INVALID_FORMAT：检测到疑似把多个工具调用文本混入了 \`fs_read_file\` 的输入（例如出现 \`${toolName}\`）。\n\n请把不同工具拆分为独立调用。`,
+          }
+        : {
+            formatError:
+              'Please call the function tool `fs_read_file` with valid arguments.\n\n' +
+              '**Expected:** `fs_read_file({ path, range, max_lines, show_linenos })`\n\n' +
+              'Note: `path` may be absolute or relative to the current process cwd. Optional fields can be omitted. If you explicitly pass “unset/default”, use `range: ""` (unset range) and `max_lines: 0` (default 500).',
+            formatErrorWithReason: (msg: string) =>
+              `❌ **Error:** ${msg}\n\nPlease call the function tool \`fs_read_file\` with valid arguments.`,
+            fileLabel: 'File',
+            warningTruncatedByMaxLines: (shown: number, maxLines: number) =>
+              `⚠️ **Warning:** Output was truncated (max ${maxLines} lines; showing ${shown})\n\n`,
+            warningTruncatedByCharLimit: (shown: number, maxChars: number) =>
+              `⚠️ **Warning:** Output was truncated (~${maxChars} character cap; showing ${shown} lines)\n\n`,
+            warningTruncatedByMaxLinesWithRange: (
+              maxLines: number,
+              rangeLines: number,
+              used: number,
+            ) =>
+              `⚠️ **Warning:** Output will be truncated by \`max_lines\` (${maxLines}): \`range\` has ${rangeLines} lines; returning only the first ${used}.\n\n`,
+            hintUseRangeNext: (filePath: string, start: number, end: number) =>
+              `💡 **Hint:** Call \`fs_read_file\` again to continue reading, e.g. \`fs_read_file({ "path": "${filePath}", "range": "${start}~${end}", "max_lines": 0, "show_linenos": true })\`\n\n`,
+            hintLargeFileStrategy: (filePath: string) =>
+              `💡 **Large file strategy:** Analyze in slices and continue with another \`fs_read_file\` range, e.g. \`fs_read_file({ "path": "${filePath}", "range": "1~500", "max_lines": 0, "show_linenos": true })\`.\n\n`,
+            sizeLabel: 'Size',
+            totalLinesLabel: 'Total lines',
+            emptyFileLabel: '<empty file>',
+            failedToRead: (msg: string) => `❌ **Error**\n\nFailed to read file: ${msg}`,
+            invalidFormatMultiToolCalls: (toolName: string) =>
+              `INVALID_FORMAT: Detected what looks like function tool call text mixed into \`fs_read_file\` input (e.g. \`${toolName}\`).\n\nSplit different tools into separate calls.`,
+          };
+
+    const errorMsg = (zh: string, en: string): string => (language === 'zh' ? zh : en);
+
+    const pathValue = args['path'];
+    if (typeof pathValue !== 'string' || pathValue.trim() === '') {
+      return toolFailure(labels.formatError);
+    }
+    const requestedPath = pathValue.trim();
+    const absPath = resolveLocalFilesystemPath(requestedPath);
+    const displayPath = displayLocalFilesystemPath(requestedPath, absPath);
+
+    const showLinenosValue = args['show_linenos'];
+    const showLinenos =
+      showLinenosValue === undefined
+        ? true
+        : typeof showLinenosValue === 'boolean'
+          ? showLinenosValue
+          : null;
+    if (showLinenos === null) {
+      return toolFailure(
+        labels.formatErrorWithReason(
+          errorMsg('`show_linenos` 必须是 boolean', '`show_linenos` must be a boolean'),
+        ),
+      );
+    }
+
+    const maxLinesValue = args['max_lines'];
+    const maxLinesSpecified = maxLinesValue !== undefined && maxLinesValue !== 0;
+    const maxLines =
+      maxLinesValue === undefined || maxLinesValue === 0
+        ? 500
+        : typeof maxLinesValue === 'number' && Number.isInteger(maxLinesValue) && maxLinesValue > 0
+          ? maxLinesValue
+          : null;
+    if (maxLines === null) {
+      return toolFailure(
+        labels.formatErrorWithReason(
+          errorMsg(
+            '`max_lines` 必须是正整数（或传 0 表示默认值）',
+            '`max_lines` must be a positive integer (or 0 for default)',
+          ),
+        ),
+      );
+    }
+
+    const rangeValue = args['range'];
+    const rangeStr =
+      rangeValue === undefined ? '' : typeof rangeValue === 'string' ? rangeValue.trim() : null;
+    if (rangeStr === null) {
+      return toolFailure(
+        labels.formatErrorWithReason(
+          errorMsg(
+            '`range` 必须是 string（传 "" 表示不指定）',
+            '`range` must be a string (use "" for unset)',
+          ),
+        ),
+      );
+    }
+    const rangeSpecified = rangeStr !== '';
+
+    const detectMultiToolCalls = (input: string): string | null => {
+      const trimmed = input.trimEnd();
+      const lines = trimmed.split(/\r?\n/);
+      if (lines.length <= 1) return null;
+      const suspicious = lines.slice(1).find((l) => l.trimStart().startsWith('@'));
+      if (!suspicious) return null;
+      return suspicious.trimStart().split(/\s+/)[0] ?? null;
+    };
+
+    const suspiciousTool =
+      detectMultiToolCalls(requestedPath) ??
+      (rangeSpecified ? detectMultiToolCalls(rangeStr) : null);
+    if (suspiciousTool) {
+      return toolFailure(labels.invalidFormatMultiToolCalls(suspiciousTool));
+    }
+
+    const options: ReadFileOptions = { decorateLinenos: showLinenos, maxLines };
+    if (rangeSpecified) {
+      const match = rangeStr.match(/^(\d+)?~(\d+)?$/);
+      if (!match) {
+        return toolFailure(
+          labels.formatErrorWithReason(
+            errorMsg(
+              '`range` 无效（期望："start~end" / "start~" / "~end" / "~"）',
+              'Invalid `range` (expected "start~end" / "start~" / "~end" / "~")',
+            ),
+          ),
+        );
+      }
+      const [, startStr, endStr] = match;
+      if (startStr) {
+        const start = Number.parseInt(startStr, 10);
+        if (!Number.isFinite(start) || start <= 0) {
+          return toolFailure(
+            labels.formatErrorWithReason(
+              errorMsg(
+                '`range` 起始行号无效（必须是正整数）',
+                'Invalid `range` start (must be a positive integer)',
+              ),
+            ),
+          );
+        }
+        options.rangeStart = start;
+      }
+      if (endStr) {
+        const end = Number.parseInt(endStr, 10);
+        if (!Number.isFinite(end) || end <= 0) {
+          return toolFailure(
+            labels.formatErrorWithReason(
+              errorMsg(
+                '`range` 结束行号无效（必须是正整数）',
+                'Invalid `range` end (must be a positive integer)',
+              ),
+            ),
+          );
+        }
+        options.rangeEnd = end;
+      }
+      if (
+        options.rangeStart !== undefined &&
+        options.rangeEnd !== undefined &&
+        options.rangeStart > options.rangeEnd
+      ) {
+        return toolFailure(
+          labels.formatErrorWithReason(
+            errorMsg('`range` 无效（start 必须 <= end）', 'Invalid `range` (start must be <= end)'),
+          ),
+        );
+      }
+    }
+
+    try {
+      const stat = await fs.stat(absPath);
+      const contentSummary = await readFileContentBounded(absPath, options);
+
+      const maxLinesRangeMismatch: { maxLines: number; rangeLines: number; used: number } | null =
+        contentSummary.truncatedByMaxLines &&
+        maxLinesSpecified &&
+        rangeSpecified &&
+        options.rangeEnd !== undefined
+          ? (() => {
+              const rangeStart = options.rangeStart ?? 1;
+              const rangeLines = options.rangeEnd - rangeStart + 1;
+              if (rangeLines > options.maxLines) {
+                return { maxLines: options.maxLines, rangeLines, used: options.maxLines };
+              }
+              return null;
+            })()
+          : null;
+
+      const headerSummary =
+        language === 'zh'
+          ? `fs_read_file：${displayPath}；size=${stat.size} bytes；total_lines=${contentSummary.totalLines}；shown=${contentSummary.shownLines}.`
+          : `fs_read_file: ${displayPath}; size=${stat.size} bytes; total_lines=${contentSummary.totalLines}; shown=${contentSummary.shownLines}.`;
+
+      const yaml = [
+        `status: ok`,
+        `mode: fs_read_file`,
+        `path: ${yamlQuote(displayPath)}`,
+        `size_bytes: ${stat.size}`,
+        `total_lines: ${contentSummary.totalLines}`,
+        `shown_lines: ${contentSummary.shownLines}`,
+        `truncated_by_max_lines: ${contentSummary.truncatedByMaxLines}`,
+        `truncated_by_char_limit: ${contentSummary.truncatedByCharLimit}`,
+        `summary: ${yamlQuote(headerSummary)}`,
+      ].join('\n');
+
+      let markdown = `${formatYamlCodeBlock(yaml)}\n\n`;
+      markdown += `📄 **${labels.fileLabel}:** \`${displayPath}\`\n`;
+
+      if (maxLinesRangeMismatch) {
+        markdown += labels.warningTruncatedByMaxLinesWithRange(
+          maxLinesRangeMismatch.maxLines,
+          maxLinesRangeMismatch.rangeLines,
+          maxLinesRangeMismatch.used,
+        );
+      }
+
+      if (contentSummary.truncatedByCharLimit) {
+        markdown += labels.warningTruncatedByCharLimit(
+          contentSummary.shownLines,
+          READ_FILE_CONTENT_CHAR_LIMIT,
+        );
+      } else if (contentSummary.truncatedByMaxLines && !maxLinesRangeMismatch) {
+        markdown += labels.warningTruncatedByMaxLines(contentSummary.shownLines, options.maxLines);
+      }
+
+      if (
+        (contentSummary.truncatedByCharLimit || contentSummary.truncatedByMaxLines) &&
+        !maxLinesSpecified &&
+        !rangeSpecified
+      ) {
+        const start = contentSummary.shownLines + 1;
+        const end = start + 199;
+        markdown += labels.hintUseRangeNext(displayPath, start, end);
+      }
+
+      if (contentSummary.truncatedByCharLimit) {
+        markdown += labels.hintLargeFileStrategy(displayPath);
+      }
+
+      markdown += `**${labels.sizeLabel}:** ${stat.size} bytes\n`;
+      markdown += `**${labels.totalLinesLabel}:** ${contentSummary.totalLines}\n`;
+      if (contentSummary.totalLines === 0) {
+        markdown += `\n${labels.emptyFileLabel}\n`;
+      }
+      markdown += '\n';
+
+      if (contentSummary.totalLines > 0) {
+        markdown += '```\n';
+        markdown += contentSummary.formattedContent;
+        if (!contentSummary.formattedContent.endsWith('\n')) {
+          markdown += '\n';
+        }
+        markdown += '```';
+      }
+
+      return toolSuccess(markdown);
+    } catch (error: unknown) {
       const msg = error instanceof Error ? error.message : String(error);
       return toolFailure(labels.failedToRead(msg));
     }

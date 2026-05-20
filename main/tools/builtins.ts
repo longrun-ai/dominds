@@ -20,6 +20,8 @@ import {
 import { envGetTool, envSetTool, envUnsetTool } from './env';
 import {
   createSymlinkTool,
+  fsListDirTool,
+  fsReadSymlinkTool,
   listDirTool,
   mkDirTool,
   moveDirTool,
@@ -49,10 +51,15 @@ import {
   stopDaemonTool,
 } from './os';
 import { pendingTellaskReminderOwner } from './pending-tellask-reminder';
-import { readPictureTool, writePictureTool } from './picture';
+import { fsReadPictureTool, readPictureTool, writePictureTool } from './picture';
 import { registerReminderOwner, registerTool, registerToolset, setToolsetMeta } from './registry';
 import { fetchResourceTool, listResourcesTool } from './resources';
 import {
+  fsRipgrepCountTool,
+  fsRipgrepFilesTool,
+  fsRipgrepFixedTool,
+  fsRipgrepSearchTool,
+  fsRipgrepSnippetsTool,
   ripgrepCountTool,
   ripgrepFilesTool,
   ripgrepFixedTool,
@@ -71,6 +78,7 @@ import { teamMgmtTools } from './team_mgmt';
 import {
   applyFileModificationTool,
   createNewFileTool,
+  fsReadFileTool,
   overwriteEntireFileTool,
   prepareFileAppendTool,
   prepareFileBlockReplaceTool,
@@ -113,8 +121,12 @@ registerTool(moveFileTool);
 registerTool(moveDirTool);
 registerTool(readSymlinkTool);
 registerTool(createSymlinkTool);
+registerTool(fsListDirTool);
+registerTool(fsReadSymlinkTool);
 registerTool(readFileTool);
+registerTool(fsReadFileTool);
 registerTool(readPictureTool);
+registerTool(fsReadPictureTool);
 registerTool(writePictureTool);
 registerTool(createNewFileTool);
 registerTool(overwriteEntireFileTool);
@@ -131,6 +143,11 @@ registerTool(ripgrepSnippetsTool);
 registerTool(ripgrepCountTool);
 registerTool(ripgrepFixedTool);
 registerTool(ripgrepSearchTool);
+registerTool(fsRipgrepFilesTool);
+registerTool(fsRipgrepSnippetsTool);
+registerTool(fsRipgrepCountTool);
+registerTool(fsRipgrepFixedTool);
+registerTool(fsRipgrepSearchTool);
 
 // OS tools
 registerTool(shellCmdTool);
@@ -321,6 +338,27 @@ setToolsetMeta('ws_read', {
   },
   promptFilesI18n: promptFilesFor('ws_read'),
   manualSpec: manualSpecFor('ws_read'),
+});
+registerToolset('fs_read', [
+  fsListDirTool,
+  fsReadSymlinkTool,
+  fsReadFileTool,
+  fsReadPictureTool,
+  fsRipgrepFilesTool,
+  fsRipgrepSnippetsTool,
+  fsRipgrepCountTool,
+  fsRipgrepFixedTool,
+  fsRipgrepSearchTool,
+]);
+setToolsetMeta('fs_read', {
+  source: 'dominds',
+  wildcardAssignable: false,
+  descriptionI18n: {
+    en: 'Local filesystem read-only access without rtws path restriction: list directories, read text/images, and search files.',
+    zh: '本机文件系统只读访问，不限制路径必须位于 rtws 内：列目录、读文本/图片、检索文件。',
+  },
+  promptFilesI18n: promptFilesFor('fs_read'),
+  manualSpec: manualSpecFor('fs_read'),
 });
 registerToolset('ws_mod', [
   listDirTool,
