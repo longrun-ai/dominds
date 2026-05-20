@@ -144,6 +144,9 @@ export class HttpServerCore {
         if (await handleApiRoute(req, res, pathname, apiContext)) {
           return;
         }
+
+        this.sendApiNotFound(res);
+        return;
       }
 
       // Handle static files
@@ -189,6 +192,15 @@ export class HttpServerCore {
       'WWW-Authenticate': 'Bearer',
     });
     res.end(JSON.stringify({ error: 'unauthorized' }));
+  }
+
+  private sendApiNotFound(res: ServerResponse): void {
+    if (res.headersSent) return;
+    res.writeHead(404, {
+      'Content-Type': 'application/json',
+      'Cache-Control': 'no-store',
+    });
+    res.end(JSON.stringify({ success: false, error: 'Not Found' }));
   }
 
   /**

@@ -61,6 +61,7 @@ import {
   searchTaskDocumentSuggestionsInWorker,
 } from '../utils/taskdoc-search-worker-client';
 import { makeCreateDialogFailure, parseCreateDialogInput } from './create-dialog-contract';
+import { getDomindsRuntimeStatus } from './dominds-runtime-status';
 import { installLatestDominds, restartDomindsIntoLatest } from './dominds-self-update';
 import { isTextLikeMimeType, sniffMimeType } from './mime-types';
 import {
@@ -1160,6 +1161,10 @@ export async function handleApiRoute(
     // Live reload endpoint for development
     if (pathname === '/api/live-reload' && req.method === 'GET') {
       return await handleLiveReload(res, context);
+    }
+
+    if (pathname === '/api/info' && req.method === 'GET') {
+      return await handleGetRuntimeInfo(res, context);
     }
 
     if (pathname === '/api/dominds/self-update' && req.method === 'POST') {
@@ -2332,6 +2337,23 @@ async function handleLiveReload(res: ServerResponse, context: ApiRouteContext): 
   } catch (error) {
     log.error('Live reload failed:', error);
     respondJson(res, 500, { success: false, error: 'Live reload failed' });
+    return true;
+  }
+}
+
+/**
+ * Runtime info endpoint
+ */
+async function handleGetRuntimeInfo(
+  res: ServerResponse,
+  context: ApiRouteContext,
+): Promise<boolean> {
+  try {
+    respondJson(res, 200, await getDomindsRuntimeStatus(context.mode));
+    return true;
+  } catch (error) {
+    log.error('Runtime info failed:', error);
+    respondJson(res, 500, { success: false, error: 'Failed to get runtime info' });
     return true;
   }
 }
