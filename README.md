@@ -103,7 +103,8 @@ Supported proxy variables:
 Practical guidance:
 
 - Set both `HTTP_PROXY` and `HTTPS_PROXY` when your network uses the same proxy for both schemes. Lowercase forms also work.
-- Use `NO_PROXY` for localhost, loopback, and internal domains that should bypass the proxy.
+- Use `NO_PROXY` for hosts that should bypass the proxy. Node's built-in support includes exact hosts, suffix matches like `.company.com`, wildcard hosts like `*.company.com`, exact IPs, IP ranges like `192.168.1.1-192.168.1.100`, and `host:port` entries.
+- `NO_PROXY` syntax is not standardized across languages and clients. Do not assume CIDR notation such as `192.168.0.0/16` is supported unless the specific runtime documents it.
 - Values should be standard proxy URLs, for example `http://proxy.company.com:8080`.
 - If your shell already exports proxy variables, Dominds will read them too; clear unrelated proxy vars if you want a clean test environment.
 
@@ -113,13 +114,13 @@ Examples:
 # Windows PowerShell
 $env:HTTP_PROXY = "http://proxy.company.com:8080"
 $env:HTTPS_PROXY = "http://proxy.company.com:8080"
-$env:NO_PROXY = "localhost,127.0.0.1,.corp.local"
+$env:NO_PROXY = "localhost,127.0.0.1,.corp.local,192.168.1.1-192.168.1.100"
 dominds
 
 # macOS / Linux shell
 export HTTP_PROXY="http://proxy.company.com:8080"
 export HTTPS_PROXY="http://proxy.company.com:8080"
-export NO_PROXY="localhost,127.0.0.1,.corp.local"
+export NO_PROXY="localhost,127.0.0.1,.corp.local,192.168.1.1-192.168.1.100"
 dominds
 
 # Disable Dominds env-proxy handling
