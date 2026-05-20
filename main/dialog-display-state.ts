@@ -397,6 +397,7 @@ export async function loadDialogExecutionMarker(
 export async function setDialogExecutionMarker(
   dialogId: DialogID,
   executionMarker: DialogExecutionMarker | undefined,
+  status: 'running' | 'completed' | 'archived' = 'running',
 ): Promise<void> {
   if (executionMarker?.kind === 'dead' && dialogId.selfId === dialogId.rootId) {
     log.warn(
@@ -410,38 +411,48 @@ export async function setDialogExecutionMarker(
   }
 
   try {
-    await DialogPersistence.mutateDialogLatest(dialogId, () => ({
-      kind: 'patch',
-      patch: { executionMarker },
-    }));
+    await DialogPersistence.mutateDialogLatest(
+      dialogId,
+      () => ({
+        kind: 'patch',
+        patch: { executionMarker },
+      }),
+      status,
+    );
   } catch (err) {
     log.warn('Failed to persist dialog executionMarker', err, {
       dialogId: dialogId.valueOf(),
       rootId: dialogId.rootId,
       selfId: dialogId.selfId,
+      status,
       intendedExecutionMarker: executionMarker ?? null,
     });
   }
 }
 
-export async function clearDialogInterruptedExecutionMarker(dialogId: DialogID): Promise<void> {
+export async function clearDialogInterruptedExecutionMarker(
+  dialogId: DialogID,
+  status: 'running' | 'completed' | 'archived' = 'running',
+): Promise<void> {
   try {
-    const latest = await DialogPersistence.loadDialogLatest(dialogId, 'running');
+    const latest = await DialogPersistence.loadDialogLatest(dialogId, status);
     if (latest?.executionMarker?.kind !== 'interrupted') {
       return;
     }
   } catch (err) {
     log.warn('Failed to inspect executionMarker before clearing interrupted marker', err, {
       dialogId: dialogId.valueOf(),
+      status,
     });
     return;
   }
-  await setDialogExecutionMarker(dialogId, undefined);
+  await setDialogExecutionMarker(dialogId, undefined, status);
 }
 
 export async function setDialogDisplayState(
   dialogId: DialogID,
   displayState: DialogDisplayState,
+  status: 'running' | 'completed' | 'archived' = 'running',
 ): Promise<void> {
   if (displayState.kind === 'dead' && dialogId.selfId === dialogId.rootId) {
     log.warn(
@@ -459,7 +470,7 @@ export async function setDialogDisplayState(
   // "dead" is irreversible. Once a dialog is marked dead, do not allow overwriting it with
   // another state (best-effort; races may still exist across concurrent writers).
   try {
-    const latest = await DialogPersistence.loadDialogLatest(dialogId, 'running');
+    const latest = await DialogPersistence.loadDialogLatest(dialogId, status);
     previousDisplayState = latest?.displayState;
     previousExecutionMarker = latest?.executionMarker;
     if (
@@ -484,6 +495,7 @@ export async function setDialogDisplayState(
   } catch (err) {
     log.warn('Failed to check existing displayState before setDialogDisplayState', err, {
       dialogId: dialogId.valueOf(),
+      status,
     });
   }
 
@@ -497,15 +509,20 @@ export async function setDialogDisplayState(
           : previousExecutionMarker;
 
   try {
-    await DialogPersistence.mutateDialogLatest(dialogId, () => ({
-      kind: 'patch',
-      patch: { displayState, executionMarker: nextExecutionMarker },
-    }));
+    await DialogPersistence.mutateDialogLatest(
+      dialogId,
+      () => ({
+        kind: 'patch',
+        patch: { displayState, executionMarker: nextExecutionMarker },
+      }),
+      status,
+    );
   } catch (err) {
     log.warn('Failed to persist dialog displayState', err, {
       dialogId: dialogId.valueOf(),
       rootId: dialogId.rootId,
       selfId: dialogId.selfId,
+      status,
       intendedDisplayState: displayState,
     });
   }

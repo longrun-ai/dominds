@@ -18,6 +18,7 @@ import * as os from 'node:os';
 import * as path from 'node:path';
 import * as yaml from 'yaml';
 import { DialogID, MainDialog } from '../../main/dialog';
+import { setDialogDisplayState, setDialogExecutionMarker } from '../../main/dialog-display-state';
 import {
   createEmptyDialogNextStepState,
   createEmptyDialogTellaskCallState,
@@ -330,7 +331,65 @@ async function main(): Promise<void> {
       'pending-settled-runtime-prompt-msg',
     );
 
-    // Invariant 10: a new-course runtime prompt should be able to supersede a stale prior-course
+    // Invariant 10: run-control helpers must update the requested persistence status bucket.
+    const completedRunControlDialogId = new DialogID('74/6e/completedctl');
+    const completedRunControlMetadata: MainDialogMetadataFile = {
+      id: completedRunControlDialogId.selfId,
+      agentId: 'tester',
+      taskDocPath: 'plans/latest-writeback-completed-run-control.tsk',
+      createdAt: formatUnifiedTimestamp(new Date('2026-04-12T00:05:20.000Z')),
+    };
+    await DialogPersistence.saveMainDialogMetadata(
+      completedRunControlDialogId,
+      completedRunControlMetadata,
+      'completed',
+    );
+    await DialogPersistence.mutateDialogLatest(
+      completedRunControlDialogId,
+      () => ({
+        kind: 'replace',
+        next: {
+          currentCourse: 1,
+          lastModified: formatUnifiedTimestamp(new Date('2026-04-12T00:05:21.000Z')),
+          status: 'completed',
+          generating: false,
+          nextStep: createEmptyDialogNextStepState(),
+          tellaskCalls: createEmptyDialogTellaskCallState(),
+          tellaskResults: createEmptyDialogTellaskResultState(),
+          displayState: { kind: 'idle_waiting_user' },
+          messageCount: 0,
+          functionCallCount: 0,
+          sideDialogCount: 0,
+          disableDiligencePush: false,
+          diligencePushRemainingBudget: 0,
+        },
+      }),
+      'completed',
+    );
+    await setDialogExecutionMarker(
+      completedRunControlDialogId,
+      { kind: 'interrupted', reason: { kind: 'user_stop' } },
+      'completed',
+    );
+    await setDialogDisplayState(
+      completedRunControlDialogId,
+      { kind: 'idle_waiting_user' },
+      'completed',
+    );
+    const completedRunControlLatest = await DialogPersistence.loadDialogLatest(
+      completedRunControlDialogId,
+      'completed',
+    );
+    assert.ok(completedRunControlLatest, 'Expected completed latest after run-control updates');
+    assert.deepEqual(completedRunControlLatest.displayState, { kind: 'idle_waiting_user' });
+    assert.equal(completedRunControlLatest.executionMarker, undefined);
+    assert.equal(
+      await DialogPersistence.loadDialogLatest(completedRunControlDialogId, 'running'),
+      null,
+      'completed run-control updates must not create a running latest.yaml',
+    );
+
+    // Invariant 11: a new-course runtime prompt should be able to supersede a stale prior-course
     // followup without losing the live generation path.
     const supersedeDialogId = new DialogID('74/6e/da2d0178');
     const supersedeMetadata: MainDialogMetadataFile = {
@@ -413,7 +472,7 @@ async function main(): Promise<void> {
       'queued runtime prompt should remain as the live continuation for the new course',
     );
 
-    // Invariant 11: transient Windows-style filesystem failures must be retried for wake queue.
+    // Invariant 12: transient Windows-style filesystem failures must be retried for wake queue.
     const driveRootId = new DialogID('73/6d/da1d0177');
     const driveSideId = new DialogID('74/6d/da1d0177', driveRootId.selfId);
     const driveLatest = {
@@ -501,7 +560,7 @@ async function main(): Promise<void> {
       fsForPatch.rm = originalRm;
     }
 
-    // Invariant 12: root runtime wake is a Wake Queue fact independent from root latest sync.
+    // Invariant 13: root runtime wake is a Wake Queue fact independent from root latest sync.
     await DialogPersistence.upsertRootRuntimeWake(
       driveRootId,
       'latest_writeback_preserve_root_runtime_wake',
@@ -520,7 +579,7 @@ async function main(): Promise<void> {
       'explicit root wake queue removal should remove the root runtime wake entry',
     );
 
-    // Invariant 13: malformed Wake Queue JSONL records fail loudly with line diagnostics.
+    // Invariant 14: malformed Wake Queue JSONL records fail loudly with line diagnostics.
     const invalidWakeQueueRootId = new DialogID('73/6d/da1d0178');
     const invalidWakeQueuePath = path.join(
       sandboxDir,

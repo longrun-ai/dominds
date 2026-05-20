@@ -1723,15 +1723,19 @@ async function executeTellaskCall(
       });
       await broadcastBackgroundCalleeSummary(dlg);
       const initialFbrState = createInitialFbrState(fbrEffort);
-      await DialogPersistence.mutateDialogLatest(sub.id, () => ({
-        kind: 'patch',
-        patch: {
-          generating: true,
-          displayState: { kind: 'proceeding' },
-          executionMarker: undefined,
-          fbrState: initialFbrState,
-        },
-      }));
+      await DialogPersistence.mutateDialogLatest(
+        sub.id,
+        () => ({
+          kind: 'patch',
+          patch: {
+            generating: true,
+            displayState: { kind: 'proceeding' },
+            executionMarker: undefined,
+            fbrState: initialFbrState,
+          },
+        }),
+        sub.status,
+      );
       await syncPendingTellaskReminderBestEffort(
         dlg,
         'kernel-driver:executeTellaskCall:FBR:appendPending',

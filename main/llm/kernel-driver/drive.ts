@@ -400,10 +400,14 @@ async function persistDialogFbrState(
   dialog: Dialog,
   fbrState: DialogFbrState | undefined,
 ): Promise<void> {
-  await DialogPersistence.mutateDialogLatest(dialog.id, () => ({
-    kind: 'patch',
-    patch: { fbrState },
-  }));
+  await DialogPersistence.mutateDialogLatest(
+    dialog.id,
+    () => ({
+      kind: 'patch',
+      patch: { fbrState },
+    }),
+    dialog.status,
+  );
 }
 
 function buildKernelDriverFbrPrompt(
@@ -2131,10 +2135,14 @@ async function preserveDiligenceBudgetAcrossQ4H(dlg: Dialog): Promise<void> {
     // Q4H is a suspension boundary, not a reason to reapply member defaults. Keep the dialog's
     // own remaining budget as the source of truth so operator-adjusted budgets survive Q4H.
     dlg.diligencePushRemainingBudget = Math.max(0, Math.floor(dlg.diligencePushRemainingBudget));
-    void DialogPersistence.mutateDialogLatest(dlg.id, () => ({
-      kind: 'patch',
-      patch: { diligencePushRemainingBudget: dlg.diligencePushRemainingBudget },
-    }));
+    void DialogPersistence.mutateDialogLatest(
+      dlg.id,
+      () => ({
+        kind: 'patch',
+        patch: { diligencePushRemainingBudget: dlg.diligencePushRemainingBudget },
+      }),
+      dlg.status,
+    );
   } catch (err) {
     log.error('kernel-driver failed to preserve Diligence Push budget after Q4H', err, {
       dialogId: dlg.id.valueOf(),
@@ -2172,10 +2180,14 @@ async function maybeContinueWithDiligencePrompt(args: {
 
   if (dlg instanceof MainDialog) {
     dlg.diligencePushRemainingBudget = prepared.nextRemainingBudget;
-    void DialogPersistence.mutateDialogLatest(dlg.id, () => ({
-      kind: 'patch',
-      patch: { diligencePushRemainingBudget: dlg.diligencePushRemainingBudget },
-    }));
+    void DialogPersistence.mutateDialogLatest(
+      dlg.id,
+      () => ({
+        kind: 'patch',
+        patch: { diligencePushRemainingBudget: dlg.diligencePushRemainingBudget },
+      }),
+      dlg.status,
+    );
   }
 
   if (dlg instanceof MainDialog && prepared.kind !== 'disabled') {
@@ -3889,7 +3901,7 @@ export async function driveDialogStreamCore(
 
   let shouldPersistFinalDisplayProjection = true;
   try {
-    const latest = await DialogPersistence.loadDialogLatest(dlg.id, 'running');
+    const latest = await DialogPersistence.loadDialogLatest(dlg.id, dlg.status);
     if (dlg.id.selfId !== dlg.id.rootId && latest?.executionMarker?.kind === 'dead') {
       finalDisplayState = { kind: 'dead', reason: latest.executionMarker.reason };
     } else if (
@@ -3925,18 +3937,22 @@ export async function driveDialogStreamCore(
 
   if (shouldPersistFinalDisplayProjection) {
     if (finalDisplayState.kind === 'stopped') {
-      await setDialogExecutionMarker(dlg.id, {
-        kind: 'interrupted',
-        reason: finalDisplayState.reason,
-      });
+      await setDialogExecutionMarker(
+        dlg.id,
+        {
+          kind: 'interrupted',
+          reason: finalDisplayState.reason,
+        },
+        dlg.status,
+      );
       broadcastDisplayStateMarker(dlg.id, {
         kind: 'interrupted',
         reason: finalDisplayState.reason,
       });
     } else if (finalDisplayState.kind !== 'dead') {
-      await clearDialogInterruptedExecutionMarker(dlg.id);
+      await clearDialogInterruptedExecutionMarker(dlg.id, dlg.status);
     }
-    await setDialogDisplayState(dlg.id, finalDisplayState);
+    await setDialogDisplayState(dlg.id, finalDisplayState, dlg.status);
   }
 
   return {
