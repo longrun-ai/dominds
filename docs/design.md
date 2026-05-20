@@ -10,6 +10,10 @@ Dominds implements **Social Division of Labor** for AI agents - a systematic app
 
 **Key Design Principle**: Agents operate in **autonomous "YOLO mode"** with **Fresh Boots Reasoning** - making independent decisions with clean mental states through strategic context reset and task-centered focus architecture.
 
+**Liveness Principle**: If humans and agents can still continue the business dialogue with reasonable judgment, the system should prefer keeping the conversation alive. Technical projection drift, local semantic noise, or imperfect intermediate states should not automatically override the business continuation path. Only conflicts that would cause wrong delivery, duplicate consumption, unaccountable behavior, or broken safety boundaries must stop the path loudly.
+
+**Expressiveness Principle**: After liveness, the system should keep business intent direct and easy to state. Prefer fewer extra abstractions, fewer newly invented labels, and less technical phrasing that obscures the business meaning. Specific “this should not be too wordy” judgments belong in the concrete business scenario, not as a low-level instruction to optimize for shortest paths or quiet logs.
+
 ## Table of Contents
 
 1. [The Problem: Agentic Disorientation](#the-problem-agentic-disorientation)

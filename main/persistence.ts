@@ -314,6 +314,9 @@ function emitInvariantWarning(message: string, details: Record<string, unknown>)
     ...details,
     diagnosticJson,
   });
+  if (process.env.DOMINDS_FULL_INVARIANT_DIAGNOSTICS !== '1') {
+    return;
+  }
   if (diagnosticJson !== null) {
     const parts = chunkInvariantDiagnosticJson(diagnosticJson, 1600);
     for (const [index, part] of parts.entries()) {
@@ -434,8 +437,9 @@ async function normalizeSideDialogIdleWhileReplyObligationPending(
     return latest;
   }
   const top = askerStackState?.askerStack[askerStackState.askerStack.length - 1];
-  emitInvariantWarning(
+  log.debug(
     'Dialog latest projection invariant warning: sideDialog awaiting Q4H attempted to enter idle displayState; healing from persistence facts',
+    undefined,
     {
       trigger: context.trigger,
       mutationKind: context.mutationKind,
@@ -3221,13 +3225,42 @@ export class DiskFileDialogStore extends DialogStore {
 
     // Update generating flag in latest.yaml
     await DialogPersistence.mutateDialogLatest(this.dialogId, (previous) => {
-      acceptedTriggers = sortNextStepTriggersForConsumption(previous.nextStep.triggers);
+      const triggerSelection = filterNextStepTriggersForGenerationStart({
+        dialogId: this.dialogId,
+        currentCourse: toDialogCourseNumber(course),
+        msgId,
+        triggers: previous.nextStep.triggers,
+      });
+      acceptedTriggers = triggerSelection.acceptedTriggers;
+      if (triggerSelection.supersededTriggers.length > 0) {
+        log.debug(
+          'Superseded stale next-step triggers while starting queued runtime prompt generation',
+          undefined,
+          {
+            dialogId: this.dialogId.valueOf(),
+            rootId: this.dialogId.rootId,
+            selfId: this.dialogId.selfId,
+            course,
+            genseq,
+            msgId: msgId ?? null,
+            acceptedTriggerIds: acceptedTriggers.map((trigger) => trigger.triggerId),
+            supersededTriggerIds: triggerSelection.supersededTriggers.map(
+              (trigger) => trigger.triggerId,
+            ),
+            reason: 'queued_runtime_prompt_new_course_takes_precedence',
+          },
+        );
+      }
       const acceptedTriggerIds = acceptedTriggers.map((trigger) => trigger.triggerId);
+      const consumedTriggerIds = new Set([
+        ...acceptedTriggerIds,
+        ...triggerSelection.supersededTriggers.map((trigger) => trigger.triggerId),
+      ]);
       const nextStep =
-        acceptedTriggerIds.length === 0
+        consumedTriggerIds.size === 0
           ? previous.nextStep
           : removeNextStepTrigger(previous.nextStep, (trigger) =>
-              acceptedTriggerIds.includes(trigger.triggerId),
+              consumedTriggerIds.has(trigger.triggerId),
             );
       return {
         kind: 'patch',
@@ -5787,6 +5820,62 @@ function sortNextStepTriggersForConsumption(
     if (createdAtOrder !== 0) return createdAtOrder;
     return left.triggerId.localeCompare(right.triggerId);
   });
+}
+
+function filterNextStepTriggersForGenerationStart(args: {
+  dialogId: DialogID;
+  currentCourse: DialogCourseNumber;
+  msgId?: string;
+  triggers: readonly DialogNextStepTrigger[];
+}): {
+  acceptedTriggers: DialogNextStepTrigger[];
+  supersededTriggers: DialogNextStepTrigger[];
+} {
+  const orderedTriggers = sortNextStepTriggersForConsumption(args.triggers);
+  if (typeof args.msgId !== 'string' || args.msgId.trim() === '') {
+    return { acceptedTriggers: orderedTriggers, supersededTriggers: [] };
+  }
+
+  const promptTrigger = orderedTriggers.find(
+    (trigger) =>
+      trigger.kind === 'queued_prompt' &&
+      trigger.promptId === args.msgId &&
+      trigger.course === args.currentCourse,
+  );
+  if (promptTrigger === undefined) {
+    return { acceptedTriggers: orderedTriggers, supersededTriggers: [] };
+  }
+
+  const acceptedTriggers: DialogNextStepTrigger[] = [];
+  const supersededTriggers: DialogNextStepTrigger[] = [];
+  for (const trigger of orderedTriggers) {
+    const belongsToPromptCourse = (() => {
+      switch (trigger.kind) {
+        case 'queued_prompt':
+        case 'user_input':
+        case 'open_generation_recovery':
+          return trigger.course === args.currentCourse;
+        case 'followup':
+          return trigger.sourceGeneration.course === args.currentCourse;
+        case 'mainline_diligence':
+        case 'result_arrival':
+        case 'reply_delivery_recovery':
+          return true;
+        default: {
+          const _exhaustive: never = trigger;
+          throw new Error(
+            `next-step trigger filtering invariant violation: unsupported trigger kind for dialog=${args.dialogId.valueOf()}`,
+          );
+        }
+      }
+    })();
+    if (belongsToPromptCourse) {
+      acceptedTriggers.push(trigger);
+    } else {
+      supersededTriggers.push(trigger);
+    }
+  }
+  return { acceptedTriggers, supersededTriggers };
 }
 
 function buildReplyDeliveryId(dialogId: DialogID, replyCallId: string): string {
@@ -10859,8 +10948,9 @@ export class DialogPersistence {
                     }),
                     callStack: captureInvariantWarningStack(),
                   };
-                  emitInvariantWarning(
+                  log.debug(
                     'clearPendingRuntimePrompt invariant warning: generating dialog still projected as pending_runtime_prompt; healing displayState to proceeding',
+                    undefined,
                     warningDetails,
                   );
                   return { kind: 'proceeding' } as const;

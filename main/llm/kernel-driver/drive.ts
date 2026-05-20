@@ -17,6 +17,7 @@ import {
   type DialogCalleeReplyTarget,
   type DialogFbrState,
   type DialogFollowupReason,
+  type DialogGenerationRunState,
   type FuncResultRecord,
   type TellaskAnchorRecord,
   type TellaskCalleeRecord,
@@ -291,6 +292,19 @@ function buildInterruptedFuncResult(args: {
     role: 'tool',
     genseq: args.callGenseq,
   };
+}
+
+function sameOpenGenerationRun(
+  state: DialogGenerationRunState | undefined,
+  course: number,
+  genseq: number | undefined,
+): boolean {
+  return (
+    state?.kind === 'open' &&
+    state.course === course &&
+    genseq !== undefined &&
+    state.genseq === genseq
+  );
 }
 
 function sameDialogBusinessContinuation(
@@ -3871,13 +3885,37 @@ export async function driveDialogStreamCore(
       reason: lateInterruptedReason,
       continueEnabled: resolveStoppedContinueEnabled(lateInterruptedReason),
     };
-    broadcastDisplayStateMarker(dlg.id, { kind: 'interrupted', reason: lateInterruptedReason });
   }
 
+  let shouldPersistFinalDisplayProjection = true;
   try {
     const latest = await DialogPersistence.loadDialogLatest(dlg.id, 'running');
     if (dlg.id.selfId !== dlg.id.rootId && latest?.executionMarker?.kind === 'dead') {
       finalDisplayState = { kind: 'dead', reason: latest.executionMarker.reason };
+    } else if (
+      finalDisplayState.kind === 'stopped' &&
+      latest?.generating === true &&
+      !sameOpenGenerationRun(
+        latest.generationRunState,
+        dlg.activeGenCourseOrUndefined ?? dlg.currentCourse,
+        dlg.activeGenSeqOrUndefined,
+      )
+    ) {
+      shouldPersistFinalDisplayProjection = false;
+      log.debug(
+        'Skipped stale stopped projection from superseded generation to preserve liveness',
+        undefined,
+        {
+          dialogId: dlg.id.valueOf(),
+          rootId: dlg.id.rootId,
+          selfId: dlg.id.selfId,
+          activeCourse: dlg.activeGenCourseOrUndefined ?? dlg.currentCourse,
+          activeGenseq: dlg.activeGenSeqOrUndefined ?? null,
+          latestGenerationRunState: latest.generationRunState ?? null,
+          latestDisplayState: latest.displayState ?? null,
+          reason: 'newer_generation_active',
+        },
+      );
     }
   } catch (err) {
     log.warn('kernel-driver failed to re-check displayState before finalizing', err, {
@@ -3885,15 +3923,21 @@ export async function driveDialogStreamCore(
     });
   }
 
-  if (finalDisplayState.kind === 'stopped') {
-    await setDialogExecutionMarker(dlg.id, {
-      kind: 'interrupted',
-      reason: finalDisplayState.reason,
-    });
-  } else if (finalDisplayState.kind !== 'dead') {
-    await clearDialogInterruptedExecutionMarker(dlg.id);
+  if (shouldPersistFinalDisplayProjection) {
+    if (finalDisplayState.kind === 'stopped') {
+      await setDialogExecutionMarker(dlg.id, {
+        kind: 'interrupted',
+        reason: finalDisplayState.reason,
+      });
+      broadcastDisplayStateMarker(dlg.id, {
+        kind: 'interrupted',
+        reason: finalDisplayState.reason,
+      });
+    } else if (finalDisplayState.kind !== 'dead') {
+      await clearDialogInterruptedExecutionMarker(dlg.id);
+    }
+    await setDialogDisplayState(dlg.id, finalDisplayState);
   }
-  await setDialogDisplayState(dlg.id, finalDisplayState);
 
   return {
     lastAssistantSayingContent,

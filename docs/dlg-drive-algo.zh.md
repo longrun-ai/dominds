@@ -8,6 +8,10 @@
 
 任何进入 drive core 的动作，都必须先由一个本地化的业务 continuation handler 认领。技术形态上的“没有 human prompt”不是业务授权，不能作为 drive 的依据。
 
+同时，drive algorithm 的最高产品目标是**业务保活**。技术不变量服务于“对话能正确地继续”，而不是反过来要求业务对话为技术投影的瞬时洁净让路。若旧 course 的残留 follow-up、displayState 投影抖动、日志诊断噪声等问题不会造成错误交付、重复消费或不可判责，且新的 runtime prompt / 人类判断 / 智能体判断已经给出明确接续路径，系统应优先让对话继续，并保留足够诊断信号供后续自愈。只有会破坏业务消费账本、跨 dialog reply routing、Q4H 等待边界或安全交付边界的冲突，才应阻断 unsafe path。
+
+在保活之下，还要继续追求**顺直**：这里说的不是工程意义上的“最短路径”或“少噪音”，而是业务意图表达要更直白，少额外抽象、少新口径、少让技术概念盖住业务意思。真正“这里不该太啰嗦”的判断应在具体业务场景里落地，而不是把这些技术抽象当成低阶工作的直接口令。
+
 ## 背景问题
 
 历史实现里存在两个过宽的技术概念：
@@ -309,6 +313,7 @@ Stale cleanup:
 
 - 只能清理本 follow-up trigger；
 - 不能用“近期是否生成过内容”之类 transcript 猜测。
+- 如果一个更新的 pending runtime prompt 已经开启新 course，旧 course 的 follow-up 不应和新 prompt 在同一 gen turn 中竞争 business continuation；此类残留应被视为被新 course prompt 取代，loud warn 后清理对应 trigger，让新程继续运行。
 
 注意：pending tellask dispatch ack 不是 immediate follow-up 的理由。只有真正需要当前 LLM 立刻消化的 tool result、invalid tool recovery、reply delivery result 等，才应形成 follow-up。
 

@@ -330,7 +330,90 @@ async function main(): Promise<void> {
       'pending-settled-runtime-prompt-msg',
     );
 
-    // Invariant 9: transient Windows-style filesystem failures must be retried for wake queue.
+    // Invariant 10: a new-course runtime prompt should be able to supersede a stale prior-course
+    // followup without losing the live generation path.
+    const supersedeDialogId = new DialogID('74/6e/da2d0178');
+    const supersedeMetadata: MainDialogMetadataFile = {
+      id: supersedeDialogId.selfId,
+      agentId: 'tester',
+      taskDocPath: 'plans/latest-writeback-supersede-course.tsk',
+      createdAt: formatUnifiedTimestamp(new Date('2026-04-12T00:05:30.000Z')),
+    };
+    await DialogPersistence.saveMainDialogMetadata(supersedeDialogId, supersedeMetadata, 'running');
+    await DialogPersistence.mutateDialogLatest(supersedeDialogId, () => ({
+      kind: 'replace',
+      next: {
+        currentCourse: 2,
+        lastModified: formatUnifiedTimestamp(new Date('2026-04-12T00:05:31.000Z')),
+        status: 'active',
+        generating: false,
+        nextStep: {
+          nextSeq: 3,
+          triggers: [
+            {
+              triggerId: 'followup:c1:g1',
+              kind: 'followup',
+              sourceGeneration: {
+                course: 1,
+                genseq: 1,
+              },
+              reasons: [{ kind: 'reply_delivery_result', replyDeliveryId: 'reply-delivery:old' }],
+              continuation: { kind: 'none' },
+              createdAt: formatUnifiedTimestamp(new Date('2026-04-12T00:05:31.000Z')),
+              seq: 1,
+            },
+          ],
+        },
+        tellaskCalls: createEmptyDialogTellaskCallState(),
+        tellaskResults: createEmptyDialogTellaskResultState(),
+        displayState: { kind: 'proceeding' },
+        messageCount: 0,
+        functionCallCount: 0,
+        sideDialogCount: 0,
+        disableDiligencePush: false,
+        diligencePushRemainingBudget: 0,
+      },
+    }));
+    const supersedeStore = new DiskFileDialogStore(supersedeDialogId);
+    const supersedeDialog = new MainDialog(
+      supersedeStore,
+      'plans/latest-writeback-supersede-course.tsk',
+      supersedeDialogId,
+      'tester',
+    );
+    await supersedeDialog.notifyGeneratingStart('supersede-new-course-msg');
+    await supersedeStore.startNewCourse(supersedeDialog, {
+      content: 'continue with the new course and ignore stale prior followup',
+      msgId: 'pending-supersede-runtime-prompt-msg',
+      grammar: 'markdown',
+      origin: 'runtime',
+      userLanguageCode: 'en',
+    });
+    const latestAfterSupersede = await DialogPersistence.loadDialogLatest(supersedeDialogId);
+    assert.ok(latestAfterSupersede, 'Expected latest after superseding stale followup');
+    assert.equal(latestAfterSupersede.generating, true);
+    assert.equal(
+      latestAfterSupersede.pendingRuntimePrompt?.msgId,
+      'pending-supersede-runtime-prompt-msg',
+    );
+    assert.equal(
+      latestAfterSupersede.nextStep.triggers.some(
+        (trigger) => trigger.kind === 'followup' && trigger.triggerId === 'followup:c1:g1',
+      ),
+      false,
+      'stale prior-course followup should be removed when the new runtime prompt takes precedence',
+    );
+    assert.equal(
+      latestAfterSupersede.nextStep.triggers.some(
+        (trigger) =>
+          trigger.kind === 'queued_prompt' &&
+          trigger.promptId === 'pending-supersede-runtime-prompt-msg',
+      ),
+      true,
+      'queued runtime prompt should remain as the live continuation for the new course',
+    );
+
+    // Invariant 11: transient Windows-style filesystem failures must be retried for wake queue.
     const driveRootId = new DialogID('73/6d/da1d0177');
     const driveSideId = new DialogID('74/6d/da1d0177', driveRootId.selfId);
     const driveLatest = {
@@ -418,7 +501,7 @@ async function main(): Promise<void> {
       fsForPatch.rm = originalRm;
     }
 
-    // Invariant 10: root runtime wake is a Wake Queue fact independent from root latest sync.
+    // Invariant 12: root runtime wake is a Wake Queue fact independent from root latest sync.
     await DialogPersistence.upsertRootRuntimeWake(
       driveRootId,
       'latest_writeback_preserve_root_runtime_wake',
@@ -437,7 +520,7 @@ async function main(): Promise<void> {
       'explicit root wake queue removal should remove the root runtime wake entry',
     );
 
-    // Invariant 11: malformed Wake Queue JSONL records fail loudly with line diagnostics.
+    // Invariant 13: malformed Wake Queue JSONL records fail loudly with line diagnostics.
     const invalidWakeQueueRootId = new DialogID('73/6d/da1d0178');
     const invalidWakeQueuePath = path.join(
       sandboxDir,
