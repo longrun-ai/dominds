@@ -204,6 +204,10 @@ async function main(): Promise<void> {
     'zh critical new-course prompt should explicitly mark the new course boundary',
   );
   assert.ok(
+    zhNewCoursePrompt.includes('上下文已经不再吃紧，告急状况已改观'),
+    'zh critical new-course prompt should say the context pressure has been relieved',
+  );
+  assert.ok(
     zhNewCoursePrompt.includes('不是新的用户诉求'),
     'zh critical new-course prompt should say it is not a new user request',
   );
