@@ -6,8 +6,12 @@ import * as fs from 'node:fs/promises';
 import * as os from 'node:os';
 import * as path from 'node:path';
 import * as yaml from 'yaml';
-import { DialogID } from '../../main/dialog';
-import { DialogPersistence, setDialogsQuarantinedBroadcaster } from '../../main/persistence';
+import { DialogID, MainDialog } from '../../main/dialog';
+import {
+  DialogPersistence,
+  DiskFileDialogStore,
+  setDialogsQuarantinedBroadcaster,
+} from '../../main/persistence';
 import { DomindsPersistenceFileError } from '../../main/persistence-errors';
 
 async function withTempCwd<T>(fn: (sandboxDir: string) => Promise<T>): Promise<T> {
@@ -62,7 +66,11 @@ async function assertPersistenceFailure(promise: Promise<unknown>): Promise<void
   );
 }
 
-async function seedLatestYaml(sourceRoot: string, dialogId: DialogID): Promise<void> {
+async function seedLatestYaml(
+  sourceRoot: string,
+  dialogId: DialogID,
+  status: 'running' | 'completed' | 'archived' = 'running',
+): Promise<void> {
   await writeYaml(path.join(sourceRoot, 'latest.yaml'), {
     currentCourse: 1,
     lastModified: '2026/04/10-02:40:29',
@@ -81,8 +89,61 @@ async function seedLatestYaml(sourceRoot: string, dialogId: DialogID): Promise<v
       kind: 'idle_waiting_user',
     },
   } satisfies DialogLatestFile);
-  const loaded = await DialogPersistence.loadDialogLatest(dialogId, 'running');
+  const loaded = await DialogPersistence.loadDialogLatest(dialogId, status);
   assert.ok(loaded, 'seeded latest.yaml should be valid');
+}
+
+async function seedSideDialogWithAsker(args: {
+  rootPath: string;
+  selfId: string;
+  agentId: string;
+  sessionSlug: string;
+  askerDialogId: string;
+  callId: string;
+}): Promise<void> {
+  const sideRoot = path.join(args.rootPath, 'sideDialogs', args.selfId);
+  await writeYaml(path.join(sideRoot, 'dialog.yaml'), {
+    id: args.selfId,
+    agentId: args.agentId,
+    taskDocPath: 'tasks/side.tsk',
+    createdAt: '2026/04/10-02:40:29',
+    sessionSlug: args.sessionSlug,
+  });
+  await writeYaml(path.join(sideRoot, 'latest.yaml'), {
+    currentCourse: 1,
+    lastModified: '2026/04/10-02:40:29',
+    status: 'active',
+    nextStep: { nextSeq: 1, triggers: [] },
+    tellaskCalls: { calls: [] },
+    tellaskResults: { results: [] },
+    displayState: { kind: 'idle_waiting_user' },
+  } satisfies DialogLatestFile);
+  await fs.writeFile(
+    path.join(sideRoot, 'asker-stack.jsonl'),
+    `${JSON.stringify({
+      kind: 'asker_dialog_stack_frame',
+      askerDialogId: args.askerDialogId,
+      assignmentFromAsker: {
+        callName: 'tellask',
+        mentionList: [`@${args.agentId}`],
+        tellaskContent: 'cyclic registry restore fixture',
+        originMemberId: args.agentId,
+        askerDialogId: args.askerDialogId,
+        callId: args.callId,
+        callSiteCourse: 1,
+        callSiteGenseq: 1,
+        collectiveTargets: [args.agentId],
+      },
+      tellaskReplyObligation: {
+        expectedReplyCallName: 'replyTellask',
+        targetDialogId: args.askerDialogId,
+        targetCallId: args.callId,
+        tellaskContent: 'cyclic registry restore fixture',
+      },
+    })}\n`,
+    'utf-8',
+  );
+  await fs.writeFile(path.join(sideRoot, 'course-001.jsonl'), '', 'utf-8');
 }
 
 type DialogPersistencePrivate = typeof DialogPersistence & {
@@ -208,6 +269,118 @@ async function main(): Promise<void> {
           DialogPersistence.takeSideDialogResponses(dialogId, 'running'),
         );
         await assertQuarantined({ sourceRoot, malformedRoot });
+      }
+
+      for (const fixture of [
+        { dialogId: new DialogID('4c/61/cycle01'), status: 'running' as const, statusDir: 'run' },
+        {
+          dialogId: new DialogID('4c/61/cycledone'),
+          status: 'completed' as const,
+          statusDir: 'done',
+        },
+      ]) {
+        const dialogId = fixture.dialogId;
+        const { sourceRoot } = await seedMainDialog({
+          sandboxDir,
+          dialogId,
+          statusDir: fixture.statusDir,
+        });
+        await seedLatestYaml(sourceRoot, dialogId, fixture.status);
+        await writeYaml(path.join(sourceRoot, 'registry.yaml'), {
+          entries: [
+            {
+              key: 'builder!cycle-a',
+              sideDialogId: '4c/61/cycle-a',
+              agentId: 'builder',
+              sessionSlug: 'cycle-a',
+            },
+            {
+              key: 'mentor!cycle-b',
+              sideDialogId: '4c/61/cycle-b',
+              agentId: 'mentor',
+              sessionSlug: 'cycle-b',
+            },
+          ],
+        });
+        await seedSideDialogWithAsker({
+          rootPath: sourceRoot,
+          selfId: '4c/61/cycle-a',
+          agentId: 'builder',
+          sessionSlug: 'cycle-a',
+          askerDialogId: '4c/61/cycle-b',
+          callId: 'tool_cycle_a',
+        });
+        await seedSideDialogWithAsker({
+          rootPath: sourceRoot,
+          selfId: '4c/61/cycle-b',
+          agentId: 'mentor',
+          sessionSlug: 'cycle-b',
+          askerDialogId: '4c/61/cycle-a',
+          callId: 'tool_cycle_b',
+        });
+
+        const mainDialog = new MainDialog(
+          new DiskFileDialogStore(dialogId),
+          'tasks/demo.tsk',
+          dialogId,
+          'devops',
+        );
+        mainDialog.setPersistenceStatus(fixture.status);
+        await mainDialog.loadSideDialogRegistry();
+        assert.deepEqual(
+          mainDialog.getRegisteredSideDialogs(),
+          [],
+          'cyclic Type-B entries should not prevent the root from loading',
+        );
+        const prunedRegistry = yaml.parse(
+          await fs.readFile(path.join(sourceRoot, 'registry.yaml'), 'utf-8'),
+        ) as { entries?: unknown[] };
+        assert.deepEqual(prunedRegistry.entries, []);
+      }
+
+      {
+        const dialogId = new DialogID('4c/61/mismatchreg');
+        const { sourceRoot } = await seedMainDialog({
+          sandboxDir,
+          dialogId,
+          statusDir: 'run',
+        });
+        await seedLatestYaml(sourceRoot, dialogId);
+        await writeYaml(path.join(sourceRoot, 'registry.yaml'), {
+          entries: [
+            {
+              key: 'builder!expected-session',
+              sideDialogId: '4c/61/mismatched-side',
+              agentId: 'builder',
+              sessionSlug: 'expected-session',
+            },
+          ],
+        });
+        await seedSideDialogWithAsker({
+          rootPath: sourceRoot,
+          selfId: '4c/61/mismatched-side',
+          agentId: 'builder',
+          sessionSlug: 'actual-session',
+          askerDialogId: dialogId.selfId,
+          callId: 'tool_mismatched_registry',
+        });
+
+        const mainDialog = new MainDialog(
+          new DiskFileDialogStore(dialogId),
+          'tasks/demo.tsk',
+          dialogId,
+          'devops',
+        );
+        await mainDialog.loadSideDialogRegistry();
+        assert.deepEqual(
+          mainDialog.getRegisteredSideDialogs(),
+          [],
+          'mismatched Type-B entries should not leave partially registered sideDialogs',
+        );
+        const prunedRegistry = yaml.parse(
+          await fs.readFile(path.join(sourceRoot, 'registry.yaml'), 'utf-8'),
+        ) as { entries?: unknown[] };
+        assert.deepEqual(prunedRegistry.entries, []);
       }
 
       {

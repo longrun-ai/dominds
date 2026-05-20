@@ -4500,7 +4500,7 @@ export class DiskFileDialogStore extends DialogStore {
   ): Promise<void> {
     const entries = await DialogPersistence.loadSideDialogRegistry(mainDialog.id, status);
     const shouldPruneDead = status === 'running';
-    let prunedDeadRegistryEntries = false;
+    let prunedRegistryEntries = false;
     const restoringSideDialogs = new Map<string, Promise<SideDialog>>();
 
     const ensureSideDialogLoaded = async (
@@ -4634,47 +4634,73 @@ export class DiskFileDialogStore extends DialogStore {
     for (const entry of entries) {
       if (!entry.sessionSlug) continue;
 
-      if (shouldPruneDead) {
-        const latest = await DialogPersistence.loadDialogLatest(entry.sideDialogId, status);
-        const executionMarker = latest?.executionMarker;
-        if (executionMarker && executionMarker.kind === 'dead') {
-          prunedDeadRegistryEntries = true;
-          mainDialog.unregisterSideDialog(entry.agentId, entry.sessionSlug);
-          log.debug('Skip dead sideDialog while loading Type B registry', undefined, {
-            rootId: mainDialog.id.rootId,
-            sideDialogId: entry.sideDialogId.selfId,
-            agentId: entry.agentId,
-            sessionSlug: entry.sessionSlug,
-          });
-          continue;
+      try {
+        if (shouldPruneDead) {
+          const latest = await DialogPersistence.loadDialogLatest(entry.sideDialogId, status);
+          const executionMarker = latest?.executionMarker;
+          if (executionMarker && executionMarker.kind === 'dead') {
+            prunedRegistryEntries = true;
+            mainDialog.unregisterSideDialog(entry.agentId, entry.sessionSlug);
+            log.debug('Skip dead sideDialog while loading Type B registry', undefined, {
+              rootId: mainDialog.id.rootId,
+              sideDialogId: entry.sideDialogId.selfId,
+              agentId: entry.agentId,
+              sessionSlug: entry.sessionSlug,
+            });
+            continue;
+          }
         }
-      }
 
-      const sideDialog = await ensureSideDialogLoaded(entry.sideDialogId);
-      if (!sideDialog.sessionSlug) {
-        throw new Error(
-          `SideDialog registry invariant violation: missing sessionSlug on loaded sideDialog ` +
-            `(rootId=${mainDialog.id.rootId}, selfId=${entry.sideDialogId.selfId}, expectedSessionSlug=${entry.sessionSlug})`,
-        );
+        const sideDialog = await ensureSideDialogLoaded(entry.sideDialogId);
+        if (!sideDialog.sessionSlug) {
+          throw new Error(
+            `SideDialog registry invariant violation: missing sessionSlug on loaded sideDialog ` +
+              `(rootId=${mainDialog.id.rootId}, selfId=${entry.sideDialogId.selfId}, expectedSessionSlug=${entry.sessionSlug})`,
+          );
+        }
+        if (sideDialog.sessionSlug !== entry.sessionSlug) {
+          throw new Error(
+            `SideDialog registry invariant violation: sessionSlug mismatch ` +
+              `(rootId=${mainDialog.id.rootId}, selfId=${entry.sideDialogId.selfId}, ` +
+              `expected=${entry.sessionSlug}, actual=${sideDialog.sessionSlug})`,
+          );
+        }
+        if (sideDialog.agentId !== entry.agentId) {
+          throw new Error(
+            `SideDialog registry invariant violation: agentId mismatch ` +
+              `(rootId=${mainDialog.id.rootId}, selfId=${entry.sideDialogId.selfId}, ` +
+              `expected=${entry.agentId}, actual=${sideDialog.agentId})`,
+          );
+        }
+        mainDialog.registerSideDialog(sideDialog);
+      } catch (error: unknown) {
+        if (findDomindsPersistenceFileError(error)) {
+          throw error;
+        }
+        prunedRegistryEntries = true;
+        const loadedDialog = mainDialog.lookupDialog(entry.sideDialogId.selfId);
+        if (
+          loadedDialog instanceof SideDialog &&
+          loadedDialog.sessionSlug &&
+          (loadedDialog.agentId !== entry.agentId || loadedDialog.sessionSlug !== entry.sessionSlug)
+        ) {
+          mainDialog.unregisterSideDialog(loadedDialog.agentId, loadedDialog.sessionSlug);
+        }
+        mainDialog.unregisterDialog(entry.sideDialogId.selfId);
+        if (entry.sessionSlug) {
+          mainDialog.unregisterSideDialog(entry.agentId, entry.sessionSlug);
+        }
+        log.error('Pruned invalid sideDialog registry entry while loading Type B registry', error, {
+          rootId: mainDialog.id.rootId,
+          sideDialogId: entry.sideDialogId.selfId,
+          agentId: entry.agentId,
+          sessionSlug: entry.sessionSlug,
+          status,
+        });
       }
-      if (sideDialog.sessionSlug !== entry.sessionSlug) {
-        throw new Error(
-          `SideDialog registry invariant violation: sessionSlug mismatch ` +
-            `(rootId=${mainDialog.id.rootId}, selfId=${entry.sideDialogId.selfId}, ` +
-            `expected=${entry.sessionSlug}, actual=${sideDialog.sessionSlug})`,
-        );
-      }
-      if (sideDialog.agentId !== entry.agentId) {
-        throw new Error(
-          `SideDialog registry invariant violation: agentId mismatch ` +
-            `(rootId=${mainDialog.id.rootId}, selfId=${entry.sideDialogId.selfId}, ` +
-            `expected=${entry.agentId}, actual=${sideDialog.agentId})`,
-        );
-      }
-      mainDialog.registerSideDialog(sideDialog);
     }
 
-    if (prunedDeadRegistryEntries) {
+    if (prunedRegistryEntries) {
       await mainDialog.saveSideDialogRegistry();
     }
   }
