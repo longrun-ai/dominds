@@ -2151,14 +2151,6 @@ async function executeTellaskCall(
                       previousAssignment.askerDialogId === pendingOwner.id.selfId
                         ? pendingOwner.id
                         : new DialogID(previousAssignment.askerDialogId, mainDialog.id.rootId);
-                    await DialogPersistence.removeActiveCallee(
-                      previousOwnerId,
-                      {
-                        batchId: replacedPending.batchId,
-                        callId: replacedPending.callId,
-                      },
-                      pendingOwner.status,
-                    );
                     if (previousOwnerId.selfId !== pendingOwner.id.selfId) {
                       const previousOwnerDialog =
                         mainDialog.lookupDialog(previousOwnerId.selfId) ??
@@ -2183,12 +2175,6 @@ async function executeTellaskCall(
                       }
                     }
                   }
-                  await DialogPersistence.upsertActiveCalleeFromPendingRecord(
-                    pendingOwner.id,
-                    pendingRecord,
-                    pendingOwner.status,
-                  );
-
                   await updateSideDialogAssignment(existing, assignment, {
                     replacePendingCallId: previousAssignment.callId,
                     replacePendingAskerDialogId: previousAssignment.askerDialogId,

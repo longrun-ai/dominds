@@ -130,7 +130,7 @@ export type KernelDriverSupplyResponseArgs = [
   sideDialogId: DialogID,
   responseText: string,
   callType: 'A' | 'B' | 'C',
-  callId?: string,
+  callId: string,
   status?: 'completed' | 'failed',
   calleeResponseRef?: {
     course: number;

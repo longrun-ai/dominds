@@ -193,7 +193,7 @@ export async function supplyResponseToAskerDialog(args: {
   sideDialogId: DialogID;
   responseText: string;
   callType: 'A' | 'B' | 'C';
-  callId?: string;
+  callId: string;
   status?: 'completed' | 'failed';
   deliveryMode?: 'reply_tool' | 'direct_fallback';
   directFallbackSource?: 'saying' | 'thinking_only';
@@ -220,6 +220,13 @@ export async function supplyResponseToAskerDialog(args: {
     scheduleDrive,
     sideDialog: maybeSideDialog,
   } = args;
+  const requestedCallId = typeof callId === 'string' ? callId.trim() : '';
+  if (requestedCallId === '') {
+    throw new Error(
+      `sideDialog response supply invariant violation: callId is required ` +
+        `(callerId=${callerDialog.id.selfId}, sideDialogId=${sideDialogId.selfId})`,
+    );
+  }
   try {
     const result = await withSideDialogTxnLock(callerDialog.id, async () => {
       const activeCalleeDispatches = await DialogPersistence.loadActiveCalleeDispatches(
@@ -227,11 +234,10 @@ export async function supplyResponseToAskerDialog(args: {
         callerDialog.status,
       );
       let activeCalleeDispatch: ActiveCalleeDispatchRecord | undefined;
-      const requestedCallId = typeof callId === 'string' ? callId.trim() : '';
       for (const dispatch of activeCalleeDispatches) {
         if (
           dispatch.calleeDialogId === sideDialogId.selfId &&
-          (requestedCallId === '' || dispatch.callId === requestedCallId) &&
+          dispatch.callId === requestedCallId &&
           activeCalleeDispatch === undefined
         ) {
           activeCalleeDispatch = dispatch;
@@ -352,7 +358,7 @@ export async function supplyResponseToAskerDialog(args: {
       };
     });
 
-    const normalizedCallId = typeof callId === 'string' ? callId.trim() : '';
+    const normalizedCallId = requestedCallId;
     const fallbackCallId = typeof result.callId === 'string' ? result.callId.trim() : '';
     const resolvedCallId = normalizedCallId !== '' ? normalizedCallId : fallbackCallId;
     const rootForLookup =

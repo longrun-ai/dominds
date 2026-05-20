@@ -162,6 +162,7 @@ async function main(): Promise<void> {
     await DialogPersistence.removeActiveCalleeDispatch(
       sideDialog.id,
       nestedSideDialog.id.selfId,
+      'pangu-to-nuwa-call',
       undefined,
       sideDialog.status,
     );

@@ -1,7 +1,9 @@
 import assert from 'node:assert/strict';
 
 import { type SetDiligencePushRequest } from '@longrun-ai/kernel/types/wire';
+import { DialogID } from '../../main/dialog';
 import { driveDialogStream } from '../../main/llm/kernel-driver';
+import { supplyResponseToAskerDialog } from '../../main/llm/kernel-driver/sideDialog';
 import { DialogPersistence } from '../../main/persistence';
 import { handleWebSocketMessage } from '../../main/server/websocket-handler';
 import {
@@ -132,6 +134,7 @@ async function main(): Promise<void> {
     await DialogPersistence.removeActiveCalleeDispatch(
       root.id,
       firstCalleeId,
+      'background-dispatch-only',
       undefined,
       root.status,
     );
@@ -166,6 +169,35 @@ async function main(): Promise<void> {
       activeAfterRegisteredUpdate.batches[0]?.callees[0]?.callId,
       'registered-background-update-only',
       'registered tellask update should preserve the new call id',
+    );
+
+    const missingCallIdSupplyArgs = {
+      callerDialog: root,
+      sideDialogId: new DialogID(firstCalleeId, root.id.rootId),
+      responseText: 'Late stale response without a callId must not consume the new round.',
+      callType: 'B',
+      scheduleDrive: async () => {},
+    } as unknown as Parameters<typeof supplyResponseToAskerDialog>[0];
+    await assert.rejects(
+      async () => {
+        await supplyResponseToAskerDialog(missingCallIdSupplyArgs);
+      },
+      /callId is required/,
+      'callId-less sideDialog response supply must be rejected as an invariant violation',
+    );
+    const activeAfterLateStaleReply = await DialogPersistence.loadActiveCallees(
+      root.id,
+      root.status,
+    );
+    assert.equal(
+      activeAfterLateStaleReply.batches.length,
+      1,
+      'late stale callId-less reply must not remove the newly appended registered tellask batch',
+    );
+    assert.equal(
+      activeAfterLateStaleReply.batches[0]?.callees[0]?.callId,
+      'registered-background-update-only',
+      'late stale callId-less reply must not resolve the new registered tellask pending record',
     );
 
     const eventsAfterRegisteredUpdate = await DialogPersistence.loadCourseEvents(

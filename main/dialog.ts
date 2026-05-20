@@ -689,12 +689,6 @@ export abstract class Dialog {
     this._activeCalleeDialogIds.push(...ids);
   }
 
-  public removeActiveCalleeDispatch(id: DialogID): void {
-    this._activeCalleeDialogIds = this._activeCalleeDialogIds.filter(
-      (activeCallee) => activeCallee.selfId !== id.selfId,
-    );
-  }
-
   public clearActiveCalleeDialogs(): void {
     this._activeCalleeDialogIds = [];
   }

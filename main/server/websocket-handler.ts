@@ -862,7 +862,9 @@ async function handleDeclareSideDialogDead(
     requestedStatus,
   );
   const activeCalleeDispatch = activeCalleeDispatches.find(
-    (dispatch) => dispatch.calleeDialogId === dialogIdObj.selfId,
+    (dispatch) =>
+      dispatch.calleeDialogId === dialogIdObj.selfId &&
+      dispatch.callId === assignmentFromAsker.callId,
   );
   if (!activeCalleeDispatch) {
     // Asker is not waiting on this sideDialog anymore; do not schedule a continuation drive.

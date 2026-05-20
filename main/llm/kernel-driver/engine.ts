@@ -91,7 +91,7 @@ export async function supplyResponseToSideDialogBridge(
   sideDialogId: DialogID,
   responseText: string,
   callType: 'A' | 'B' | 'C',
-  callId?: string,
+  callId: string,
   status?: 'completed' | 'failed',
   calleeResponseRef?: { course: number; genseq: number },
   directFallbackSource?: 'saying' | 'thinking_only',

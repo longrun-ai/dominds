@@ -3295,19 +3295,6 @@ export class DiskFileDialogStore extends DialogStore {
     return acceptedTriggers;
   }
 
-  private getResultArrivalBatchIdsFromAcceptedTriggers(
-    triggerIds: readonly string[],
-  ): readonly string[] {
-    const batchIds: string[] = [];
-    for (const triggerId of triggerIds) {
-      const prefix = 'result-arrival:';
-      if (triggerId.startsWith(prefix) && triggerId.length > prefix.length) {
-        batchIds.push(triggerId.slice(prefix.length));
-      }
-    }
-    return batchIds;
-  }
-
   /**
    * Notify end of LLM generation for frontend bubble management
    */
@@ -3322,7 +3309,6 @@ export class DiskFileDialogStore extends DialogStore {
       throw new Error('Missing active genseq for notifyGeneratingFinish');
     }
     const finishedAt = formatUnifiedTimestamp(new Date());
-    let acceptedTriggerIds: readonly string[] = [];
     const ev: PersistedDialogRecord = {
       ts: finishedAt,
       type: 'gen_finish_record',
@@ -3353,10 +3339,6 @@ export class DiskFileDialogStore extends DialogStore {
 
     // Update generating flag in latest.yaml
     await DialogPersistence.mutateDialogLatest(this.dialogId, (previous) => {
-      acceptedTriggerIds =
-        previous.generationRunState?.kind === 'open'
-          ? previous.generationRunState.acceptedTriggerIds
-          : [];
       return {
         kind: 'patch',
         patch: {
@@ -3370,9 +3352,6 @@ export class DiskFileDialogStore extends DialogStore {
         },
       };
     });
-    for (const batchId of this.getResultArrivalBatchIdsFromAcceptedTriggers(acceptedTriggerIds)) {
-      await DialogPersistence.removeActiveCalleeBatch(this.dialogId, batchId);
-    }
   }
 
   // Track saying/thinking content for persistence
@@ -8131,48 +8110,6 @@ export class DialogPersistence {
     }
   }
 
-  private static isActiveCalleeDispatchRecord(value: unknown): value is ActiveCalleeDispatchRecord {
-    if (!isRecord(value)) return false;
-    if (typeof value.calleeDialogId !== 'string') return false;
-    if (value.calleeDialogId.trim() === '') return false;
-    if (typeof value.createdAt !== 'string') return false;
-    if (typeof value.batchId !== 'string') return false;
-    if (value.batchId.trim() === '') return false;
-    if (
-      value.callName !== 'tellask' &&
-      value.callName !== 'tellaskSessionless' &&
-      value.callName !== 'freshBootsReasoning'
-    ) {
-      return false;
-    }
-    switch (value.callName) {
-      case 'tellask':
-      case 'tellaskSessionless':
-        if (!Array.isArray(value.mentionList)) return false;
-        if (!value.mentionList.every((item) => typeof item === 'string')) return false;
-        if (value.mentionList.length < 1) return false;
-        break;
-      case 'freshBootsReasoning':
-        if (value.mentionList !== undefined) return false;
-        break;
-    }
-    if (typeof value.tellaskContent !== 'string') return false;
-    if (typeof value.targetAgentId !== 'string') return false;
-    if (typeof value.callId !== 'string') return false;
-    if (typeof value.callSiteCourse !== 'number') return false;
-    if (!Number.isInteger(value.callSiteCourse)) return false;
-    if (value.callSiteCourse <= 0) return false;
-    if (typeof value.callSiteGenseq !== 'number') return false;
-    if (!Number.isInteger(value.callSiteGenseq)) return false;
-    if (value.callSiteGenseq <= 0) return false;
-    if (value.callType !== 'A' && value.callType !== 'B' && value.callType !== 'C') return false;
-    if ('sessionSlug' in value) {
-      const sessionSlug = value.sessionSlug;
-      if (sessionSlug !== undefined && typeof sessionSlug !== 'string') return false;
-    }
-    return true;
-  }
-
   private static activeCalleeDispatchCalleeDialogId(record: ActiveCalleeDispatchRecord): string {
     const calleeDialogId = record.calleeDialogId;
     if (calleeDialogId.trim() === '') {
@@ -8293,9 +8230,14 @@ export class DialogPersistence {
     if (!isRecord(value) || !Array.isArray(value.batches)) return false;
     if (!value.batches.every((batch) => this.isActiveCalleeBatch(batch))) return false;
     const seenBatchIds = new Set<string>();
+    const seenCallIds = new Set<string>();
     for (const batch of value.batches) {
       if (seenBatchIds.has(batch.batchId)) return false;
       seenBatchIds.add(batch.batchId);
+      for (const callee of batch.callees) {
+        if (seenCallIds.has(callee.callId)) return false;
+        seenCallIds.add(callee.callId);
+      }
     }
     return true;
   }
@@ -8370,7 +8312,15 @@ export class DialogPersistence {
     dispatches: readonly ActiveCalleeDispatchRecord[],
   ): ActiveCalleesFile {
     const batchesById = new Map<string, ActiveCalleeBatch>();
+    const callIds = new Set<string>();
     for (const dispatch of dispatches) {
+      if (callIds.has(dispatch.callId)) {
+        throw new Error(
+          `active-callees dispatch invariant violation: duplicate callId ` +
+            `(calleeDialogId=${dispatch.calleeDialogId}, batchId=${dispatch.batchId}, callId=${dispatch.callId})`,
+        );
+      }
+      callIds.add(dispatch.callId);
       const existingBatch = batchesById.get(dispatch.batchId);
       const callee = this.buildActiveCalleeRecordFromDispatch(dispatch);
       if (!existingBatch) {
@@ -8394,9 +8344,6 @@ export class DialogPersistence {
           `active-callees dispatch invariant violation: batch call-site mismatch ` +
             `(calleeDialogId=${dispatch.calleeDialogId}, batchId=${dispatch.batchId})`,
         );
-      }
-      if (existingBatch.callees.some((entry) => entry.callId === dispatch.callId)) {
-        continue;
       }
       batchesById.set(dispatch.batchId, {
         ...existingBatch,
@@ -8470,19 +8417,47 @@ export class DialogPersistence {
   static async removeActiveCalleeDispatch(
     mainDialogId: DialogID,
     calleeDialogId: string,
+    callId: string,
     rootAnchor?: RootGenerationAnchor,
     status: DialogStatusKind = 'running',
   ): Promise<void> {
+    const normalizedCallId = callId.trim();
+    if (normalizedCallId === '') {
+      throw new Error(
+        `active-callees remove invariant violation: callId is required ` +
+          `(rootId=${mainDialogId.rootId}, selfId=${mainDialogId.selfId}, calleeDialogId=${calleeDialogId})`,
+      );
+    }
     await this.mutateActiveCallees(
       mainDialogId,
-      (previous) => ({
-        batches: previous.batches
-          .map((batch) => ({
-            ...batch,
-            callees: batch.callees.filter((callee) => callee.calleeDialogId !== calleeDialogId),
-          }))
-          .filter((batch) => batch.callees.length > 0),
-      }),
+      (previous) => {
+        const removedCount = previous.batches.reduce((count, batch) => {
+          return (
+            count +
+            batch.callees.filter(
+              (callee) =>
+                callee.calleeDialogId === calleeDialogId && callee.callId === normalizedCallId,
+            ).length
+          );
+        }, 0);
+        if (removedCount !== 1) {
+          throw new Error(
+            `active-callees remove invariant violation: expected exactly one dispatch ` +
+              `(rootId=${mainDialogId.rootId}, selfId=${mainDialogId.selfId}, calleeDialogId=${calleeDialogId}, callId=${normalizedCallId}, removedCount=${removedCount})`,
+          );
+        }
+        const batches: ActiveCalleeBatch[] = [];
+        for (const batch of previous.batches) {
+          const callees = batch.callees.filter(
+            (callee) =>
+              !(callee.calleeDialogId === calleeDialogId && callee.callId === normalizedCallId),
+          );
+          if (callees.length > 0) {
+            batches.push({ ...batch, callees });
+          }
+        }
+        return { batches };
+      },
       status,
     );
     if (rootAnchor) {
@@ -8535,6 +8510,14 @@ export class DialogPersistence {
           filePath,
         });
       }
+      this.assertNoDuplicateSessionedTellaskPendingRecords(
+        this.projectActiveCalleeDispatches(parsed),
+        {
+          rootId: dialogId.rootId,
+          selfId: dialogId.selfId,
+          status,
+        },
+      );
       return parsed;
     } catch (error: unknown) {
       if (getErrorCode(error) === 'ENOENT') return { batches: [] };
@@ -9093,6 +9076,17 @@ export class DialogPersistence {
     await this.mutateActiveCallees(
       dialogId,
       (previous) => {
+        const duplicateCallId = previous.batches.some((batch) =>
+          batch.batchId === record.batchId
+            ? false
+            : batch.callees.some((entry) => entry.callId === record.callId),
+        );
+        if (duplicateCallId) {
+          throw new Error(
+            `active-callees duplicate call invariant violation ` +
+              `(rootId=${dialogId.rootId}, selfId=${dialogId.selfId}, batchId=${record.batchId}, callId=${record.callId})`,
+          );
+        }
         const existingBatch = previous.batches.find((batch) => batch.batchId === record.batchId);
         const callee = this.buildActiveCalleeRecordFromDispatch(record);
         if (existingBatch === undefined) {
@@ -9131,16 +9125,10 @@ export class DialogPersistence {
           (entry) => entry.callId === record.callId,
         );
         if (existingCallee !== undefined) {
-          if (
-            existingCallee.calleeDialogId !== callee.calleeDialogId ||
-            existingCallee.callName !== record.callName
-          ) {
-            throw new Error(
-              `active-callees duplicate call invariant violation ` +
-                `(rootId=${dialogId.rootId}, selfId=${dialogId.selfId}, batchId=${record.batchId}, callId=${record.callId})`,
-            );
-          }
-          return previous;
+          throw new Error(
+            `active-callees duplicate call invariant violation ` +
+              `(rootId=${dialogId.rootId}, selfId=${dialogId.selfId}, batchId=${record.batchId}, callId=${record.callId})`,
+          );
         }
         return {
           batches: previous.batches.map((batch) =>
@@ -9236,31 +9224,6 @@ export class DialogPersistence {
     return outcome;
   }
 
-  static async removeActiveCallee(
-    dialogId: DialogID,
-    args: Readonly<{ batchId: string; callId: string }>,
-    status: DialogStatusKind = 'running',
-  ): Promise<void> {
-    await this.mutateActiveCallees(
-      dialogId,
-      (previous) => {
-        const batches: ActiveCalleeBatch[] = [];
-        for (const batch of previous.batches) {
-          if (batch.batchId !== args.batchId) {
-            batches.push(batch);
-            continue;
-          }
-          const callees = batch.callees.filter((callee) => callee.callId !== args.callId);
-          if (callees.length > 0) {
-            batches.push({ ...batch, callees });
-          }
-        }
-        return { batches };
-      },
-      status,
-    );
-  }
-
   static async removeActiveCalleeBatch(
     dialogId: DialogID,
     batchId: string,
@@ -9268,9 +9231,18 @@ export class DialogPersistence {
   ): Promise<void> {
     await this.mutateActiveCallees(
       dialogId,
-      (previous) => ({
-        batches: previous.batches.filter((batch) => batch.batchId !== batchId),
-      }),
+      (previous) => {
+        const removedCount = previous.batches.filter((batch) => batch.batchId === batchId).length;
+        if (removedCount !== 1) {
+          throw new Error(
+            `active-callees remove batch invariant violation: expected exactly one batch ` +
+              `(rootId=${dialogId.rootId}, selfId=${dialogId.selfId}, batchId=${batchId}, removedCount=${removedCount})`,
+          );
+        }
+        return {
+          batches: previous.batches.filter((batch) => batch.batchId !== batchId),
+        };
+      },
       status,
     );
   }
