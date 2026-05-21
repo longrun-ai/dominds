@@ -3,9 +3,10 @@ import type { DialogInterruptionReason } from '@longrun-ai/kernel/types/display-
 const USER_INTERJECTION_PAUSE_STOP_DETAIL = 'user_interjection_pause_resume_original_task';
 
 // WARNING:
-// This special stop reason is only a UI/run-control projection for "user interjected, and there
-// is still an original task parked for explicit Continue". It is intentionally encoded as
-// `system_stop`, but it does NOT mean the same thing as ordinary system-stop failure semantics.
+// This special stop reason is only a UI/run-control projection for legacy paused-interjection
+// state. New answered-interjection flow reasserts the reply obligation automatically instead of
+// depending on this stop reason. It is intentionally encoded as `system_stop`, but it does NOT mean
+// the same thing as ordinary system-stop failure semantics.
 //
 // Not every user interjection should use this reason. If there is no parked original task to
 // resume afterwards, the interjection should simply complete and the dialog should fall back to
@@ -17,8 +18,8 @@ const USER_INTERJECTION_PAUSE_STOP_DETAIL = 'user_interjection_pause_resume_orig
 //
 // Do not change this file in isolation. The complete behavior depends on coordinated logic across:
 // - `reply-guidance.ts`          suppressing tellasker reply obligation during interjection chat
-// - `flow.ts`                   parking after the local reply, then re-running fresh-fact resume
-// - `dialog-display-state.ts`   preserving this paused projection until explicit Continue
+// - `flow.ts`                   answering locally, then automatically reasserting reply obligation
+// - `dialog-display-state.ts`   preserving legacy paused projection until Continue
 // - `websocket-handler.ts`      treating Continue as "resume attempt" rather than immediate success
 //
 // Reading only this stop reason or only `displayState.kind === 'stopped'` gives an incomplete and
@@ -31,8 +32,8 @@ export function buildUserInterjectionPauseStopReason(): Extract<
     kind: 'system_stop',
     detail: USER_INTERJECTION_PAUSE_STOP_DETAIL,
     i18nStopReason: {
-      zh: '插话已处理；原任务已暂停。点击“继续”恢复原任务，继续发送新消息则继续这段临时对话。',
-      en: 'Interjection handled; the original task is paused. Click Continue to resume it, or send another message to keep this temporary side conversation going.',
+      zh: '插话已处理；原任务已暂停。“继续”会重新检查最新任务状态，继续发送新消息则继续这段临时对话。',
+      en: 'Interjection handled; the original task is paused. Continue will recheck the latest task state, or send another message to keep this temporary side conversation going.',
     },
   };
 }

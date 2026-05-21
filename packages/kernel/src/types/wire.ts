@@ -1,7 +1,7 @@
 // Wire Protocol Types for Dominds WebUI
 // Network communication protocols and message definitions
 
-import type { TypedDialogEvent } from './dialog';
+import type { NewA2HAnsweredEvent, TypedDialogEvent } from './dialog';
 import type { LanguageCode } from './language';
 import type {
   ClearResolvedProblemsRequest,
@@ -80,6 +80,9 @@ export type WebSocketMessage =
   | DiligencePushUpdatedMessage
   | GetQ4HStateRequest
   | Q4HStateResponse
+  | AckA2HRequest
+  | A2HAcknowledgedEvent
+  | NewA2HAnsweredEvent
   | DialogsMovedMessage
   | DialogsDeletedMessage
   | DialogsCreatedMessage
@@ -286,6 +289,12 @@ export interface DriveDialogByUserAnswer {
   userLanguageCode: LanguageCode;
 }
 
+export interface AckA2HRequest {
+  type: 'ack_a2h';
+  dialog: DialogIdent;
+  answerId: string;
+}
+
 export interface InterruptDialogRequest {
   type: 'interrupt_dialog';
   dialog: DialogIdent;
@@ -341,6 +350,31 @@ export interface Q4HStateResponse {
       messageIndex: number;
     };
   }>;
+  answers: Array<{
+    id: string;
+    selfId: string;
+    rootId: string;
+    agentId: string;
+    taskDocPath: string;
+    content: string;
+    answeredAt: string;
+    userInterjection: {
+      msgId: string;
+      course: number;
+      genseq: number;
+    };
+    answerRef: {
+      course: number;
+      genseq: number;
+    };
+  }>;
+}
+
+export interface A2HAcknowledgedEvent {
+  type: 'a2h_acknowledged';
+  answerId: string;
+  selfId: string;
+  rootId: string;
 }
 
 export type DialogsMovedScope =

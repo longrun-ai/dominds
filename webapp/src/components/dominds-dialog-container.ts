@@ -1599,7 +1599,7 @@ export class DomindsDialogContainer extends HTMLElement {
           this.clearViewportPanel();
         } else if (this.viewportPanelState.kind === 'stopped') {
           // Clear stale resumption-panel viewport state as soon as the persisted display-state leaves
-          // stopped/dead. Without this, a manual Continue that restores true blocked state can keep
+          // stopped/dead. Without this, a Continue attempt that restores true blocked state can keep
           // showing the old resumption panel until some later unrelated event arrives.
           this.clearViewportPanel();
         }

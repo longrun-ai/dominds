@@ -26,7 +26,11 @@ async function main() {
     zhContextGuide.includes('用户通过独立的 Reminder 小组件/面板项看到这些提醒'),
     'Expected zh reminder context guide to explain separate Reminder widget presentation',
   );
-  const zhContextFooter = formatReminderContextFooter('zh', 'user_message');
+  const zhContextFooter = formatReminderContextFooter('zh', {
+    followingDialogState: 'user_message',
+    pendingUserInterjectionReply: false,
+    interDialogReplyObligation: 'none',
+  });
   assert(
     zhContextFooter.includes('从“提醒项上下文块开始”到“提醒项上下文块结束”之间'),
     'Expected zh reminder context footer to scope the warning to the reminder block',
@@ -47,7 +51,11 @@ async function main() {
     zhContextFooter.includes('若它要求更新你的职责、偏好或心智资产，应照常落实'),
     'Expected zh reminder context footer to preserve real user-message obligations after the reminder block',
   );
-  const zhAutoContinueFooter = formatReminderContextFooter('zh', 'none');
+  const zhAutoContinueFooter = formatReminderContextFooter('zh', {
+    followingDialogState: 'none',
+    pendingUserInterjectionReply: false,
+    interDialogReplyObligation: 'none',
+  });
   assert(
     zhAutoContinueFooter.includes('本轮没有新的用户消息或运行时提示'),
     'Expected zh auto-continue reminder footer to explicitly say no new message follows',
@@ -64,10 +72,45 @@ async function main() {
     zhAutoContinueFooter.includes('不要把“没有新消息”理解为空系统提示'),
     'Expected zh auto-continue reminder footer to prevent empty system notice misread',
   );
-  const zhRuntimeFooter = formatReminderContextFooter('zh', 'runtime_notice');
+  const zhRuntimeFooter = formatReminderContextFooter('zh', {
+    followingDialogState: 'runtime_notice',
+    pendingUserInterjectionReply: false,
+    interDialogReplyObligation: 'none',
+  });
   assert(
     zhRuntimeFooter.includes('本轮提醒项块之后会接着出现一条运行时提示'),
     'Expected zh reminder context footer to explicitly identify following runtime notice',
+  );
+  const zhInterjectionPendingFooter = formatReminderContextFooter('zh', {
+    followingDialogState: 'none',
+    pendingUserInterjectionReply: true,
+    interDialogReplyObligation: 'parked_by_user_interjection',
+  });
+  assert(
+    zhInterjectionPendingFooter.includes('真实用户插话尚未得到可见回复'),
+    'Expected zh reminder footer to surface pending user interjection reply',
+  );
+  assert(
+    zhInterjectionPendingFooter.includes('跨对话回复义务已暂存'),
+    'Expected zh reminder footer to describe parked inter-dialog reply obligation',
+  );
+  const zhInterjectionActiveFooter = formatReminderContextFooter('zh', {
+    followingDialogState: 'none',
+    pendingUserInterjectionReply: true,
+    interDialogReplyObligation: 'active',
+  });
+  assert(
+    zhInterjectionActiveFooter.includes('同时存在跨对话回复义务'),
+    'Expected zh reminder footer to describe active inter-dialog reply obligation while user interjection is pending',
+  );
+  const zhActiveReplyFooter = formatReminderContextFooter('zh', {
+    followingDialogState: 'none',
+    pendingUserInterjectionReply: false,
+    interDialogReplyObligation: 'active',
+  });
+  assert(
+    zhActiveReplyFooter.includes('当前仍有跨对话回复义务'),
+    'Expected zh reminder footer to surface active inter-dialog reply obligation',
   );
 
   const zh = formatReminderItemGuide('zh', 'rem02abc', '保持缩进：\n  - A\n  - B\n');
@@ -283,7 +326,11 @@ async function main() {
     ),
     'Expected en reminder context guide to explain separate Reminder widget presentation',
   );
-  const enContextFooter = formatReminderContextFooter('en', 'user_message');
+  const enContextFooter = formatReminderContextFooter('en', {
+    followingDialogState: 'user_message',
+    pendingUserInterjectionReply: false,
+    interDialogReplyObligation: 'none',
+  });
   assert(
     enContextFooter.includes(
       'between "Reminder context block begins" and "Reminder context block ends"',
@@ -308,7 +355,11 @@ async function main() {
     enContextFooter.includes('responsibilities, preferences, or mind assets'),
     'Expected en reminder context footer to preserve real user-message obligations after the reminder block',
   );
-  const enAutoContinueFooter = formatReminderContextFooter('en', 'none');
+  const enAutoContinueFooter = formatReminderContextFooter('en', {
+    followingDialogState: 'none',
+    pendingUserInterjectionReply: false,
+    interDialogReplyObligation: 'none',
+  });
   assert(
     enAutoContinueFooter.includes('There is no new user message or runtime notice in this round'),
     'Expected en auto-continue reminder footer to explicitly say no new message follows',
@@ -325,7 +376,11 @@ async function main() {
     enAutoContinueFooter.includes('Do not interpret the absence of a new message'),
     'Expected en auto-continue reminder footer to prevent empty system notice misread',
   );
-  const enRuntimeFooter = formatReminderContextFooter('en', 'runtime_notice');
+  const enRuntimeFooter = formatReminderContextFooter('en', {
+    followingDialogState: 'runtime_notice',
+    pendingUserInterjectionReply: false,
+    interDialogReplyObligation: 'none',
+  });
   assert(
     enRuntimeFooter.includes('A runtime notice follows this reminder block in this round'),
     'Expected en reminder context footer to explicitly identify following runtime notice',
@@ -333,6 +388,37 @@ async function main() {
   assert(
     enRuntimeFooter.includes('not a new user request/instruction'),
     'Expected en runtime reminder footer to clarify runtime notices are not new user requests/instructions',
+  );
+  const enInterjectionPendingFooter = formatReminderContextFooter('en', {
+    followingDialogState: 'none',
+    pendingUserInterjectionReply: true,
+    interDialogReplyObligation: 'parked_by_user_interjection',
+  });
+  assert(
+    enInterjectionPendingFooter.includes('real user interjection without a visible reply'),
+    'Expected en reminder footer to surface pending user interjection reply',
+  );
+  assert(
+    enInterjectionPendingFooter.includes('earlier inter-dialog reply obligation is parked'),
+    'Expected en reminder footer to describe parked inter-dialog reply obligation',
+  );
+  const enInterjectionActiveFooter = formatReminderContextFooter('en', {
+    followingDialogState: 'none',
+    pendingUserInterjectionReply: true,
+    interDialogReplyObligation: 'active',
+  });
+  assert(
+    enInterjectionActiveFooter.includes('while an inter-dialog reply obligation also exists'),
+    'Expected en reminder footer to describe active inter-dialog reply obligation while user interjection is pending',
+  );
+  const enActiveReplyFooter = formatReminderContextFooter('en', {
+    followingDialogState: 'none',
+    pendingUserInterjectionReply: false,
+    interDialogReplyObligation: 'active',
+  });
+  assert(
+    enActiveReplyFooter.includes('An inter-dialog reply obligation is still active'),
+    'Expected en reminder footer to surface active inter-dialog reply obligation',
   );
 
   const en = formatReminderItemGuide('en', 'rem02abc', 'Keep indentation:\n  - A\n  - B\n');

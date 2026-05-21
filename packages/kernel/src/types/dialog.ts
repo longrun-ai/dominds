@@ -555,6 +555,35 @@ export interface Q4HAnsweredEvent {
   selfId: string;
 }
 
+export interface NewA2HAnsweredEvent {
+  type: 'new_a2h_answered';
+  answer: {
+    id: string;
+    selfId: string;
+    rootId: string;
+    agentId: string;
+    taskDocPath: string;
+    content: string;
+    answeredAt: string;
+    userInterjection: {
+      msgId: string;
+      course: number;
+      genseq: number;
+    };
+    answerRef: {
+      course: number;
+      genseq: number;
+    };
+  };
+}
+
+export interface A2HAcknowledgedDialogEvent {
+  type: 'a2h_acknowledged';
+  answerId: string;
+  selfId: string;
+  rootId: string;
+}
+
 export interface DialogEventBase {
   dialog: {
     selfId: string;
@@ -608,5 +637,7 @@ export type DialogEvent =
   | CourseEvent
   | NewQ4HAskedEvent
   | Q4HAnsweredEvent
+  | NewA2HAnsweredEvent
+  | A2HAcknowledgedDialogEvent
   | StreamErrorEvent
   | LlmRetryEvent;

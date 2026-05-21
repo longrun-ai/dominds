@@ -3,6 +3,7 @@ export * from './types/context-health';
 export * from './types/dialog';
 export * from './types/display-state';
 export * from './types/drive-intent';
+export * from './types/human-attention';
 export * from './types/i18n';
 export * from './types/language';
 export * from './types/priming';

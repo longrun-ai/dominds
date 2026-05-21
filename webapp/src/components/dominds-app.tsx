@@ -23,6 +23,7 @@ import type { ContextHealthSnapshot } from '@longrun-ai/kernel/types/context-hea
 import type {
   ContextHealthEvent,
   FullRemindersEvent,
+  NewA2HAnsweredEvent,
   NewQ4HAskedEvent,
   Q4HAnsweredEvent,
   ReminderContent,
@@ -33,6 +34,7 @@ import type {
   DialogDisplayState,
   DialogInterruptionReason,
 } from '@longrun-ai/kernel/types/display-state';
+import type { GlobalAnswerToHumanItem } from '@longrun-ai/kernel/types/human-attention';
 import {
   formatLanguageName,
   normalizeLanguageCode,
@@ -41,6 +43,7 @@ import {
 } from '@longrun-ai/kernel/types/language';
 import type { HumanQuestion, Q4HDialogContext } from '@longrun-ai/kernel/types/q4h';
 import type {
+  A2HAcknowledgedEvent,
   ClearResolvedProblemsResultMessage,
   DialogReadyMessage,
   DiligencePushUpdatedMessage,
@@ -683,6 +686,7 @@ export class DomindsApp extends HTMLElement {
   // Q4H (Questions for Human) state
   private q4hQuestionCount: number = 0;
   private q4hQuestions: HumanQuestion[] = [];
+  private a2hAnswers: GlobalAnswerToHumanItem[] = [];
   private q4hDialogContexts: Q4HDialogContext[] = [];
 
   // Bottom panel: tabs + content
@@ -844,14 +848,15 @@ export class DomindsApp extends HTMLElement {
     if (q4hTab) {
       const badge = q4hTab.querySelector('.bp-badge') as HTMLElement | null;
       if (badge) {
-        badge.textContent = String(this.q4hQuestionCount);
-        badge.setAttribute('data-has-questions', this.q4hQuestionCount > 0 ? 'true' : 'false');
+        const humanAttentionCount = this.humanAttentionCount;
+        badge.textContent = String(humanAttentionCount);
+        badge.setAttribute('data-has-questions', humanAttentionCount > 0 ? 'true' : 'false');
       }
     }
 
     const q4hEmpty = sr.querySelector('.bp-q4h-empty') as HTMLElement | null;
     if (q4hEmpty) {
-      q4hEmpty.classList.toggle('hidden', this.q4hQuestionCount !== 0);
+      q4hEmpty.classList.toggle('hidden', this.humanAttentionCount !== 0);
     }
     const diligenceTab = sr.querySelector(
       'button.bp-tab[data-bp-tab="diligence"]',
@@ -881,12 +886,16 @@ export class DomindsApp extends HTMLElement {
 
     const q4hPanel = sr.querySelector('#q4h-panel') as HTMLElement | null;
     if (q4hPanel) {
-      q4hPanel.classList.toggle('hidden', this.q4hQuestionCount === 0);
+      q4hPanel.classList.toggle('hidden', this.humanAttentionCount === 0);
     }
   }
 
   private get hasQuestions(): boolean {
-    return this.q4hQuestionCount > 0;
+    return this.humanAttentionCount > 0;
+  }
+
+  private get humanAttentionCount(): number {
+    return this.q4hQuestionCount + this.a2hAnswers.length;
   }
 
   private get q4hInput(): DomindsQ4HInput | null {
@@ -6893,8 +6902,8 @@ export class DomindsApp extends HTMLElement {
 		                </div>
 		                <div class="bottom-panel-content" id="bottom-panel-content">
 	                  <div class="bp-content bp-q4h ${this.bottomPanelTab === 'q4h' ? '' : 'hidden'}">
-	                    <div class="bp-q4h-empty ${this.q4hQuestionCount === 0 ? '' : 'hidden'}">${t.q4hNoPending}</div>
-	                    <dominds-q4h-panel id="q4h-panel" ui-language="${this.uiLanguage}" class="${this.q4hQuestionCount === 0 ? 'hidden' : ''}"></dominds-q4h-panel>
+	                    <div class="bp-q4h-empty ${this.humanAttentionCount === 0 ? '' : 'hidden'}">${t.q4hNoPending}</div>
+	                    <dominds-q4h-panel id="q4h-panel" ui-language="${this.uiLanguage}" class="${this.humanAttentionCount === 0 ? 'hidden' : ''}"></dominds-q4h-panel>
 	                  </div>
 	                  <div class="bp-content bp-diligence ${this.bottomPanelTab === 'diligence' ? '' : 'hidden'}">
 	                    <div class="bp-diligence-row">
@@ -6923,7 +6932,7 @@ export class DomindsApp extends HTMLElement {
 	                </div>
 	                <div class="bottom-panel-footer" id="bottom-panel-footer">
 	                  <button class="bp-tab ${this.bottomPanelExpanded && this.bottomPanelTab === 'q4h' ? 'active' : ''}" type="button" data-bp-tab="q4h">
-	                    <span class="bp-badge" data-has-questions="${this.q4hQuestionCount > 0 ? 'true' : 'false'}">${String(this.q4hQuestionCount)}</span>
+	                    <span class="bp-badge" data-has-questions="${this.humanAttentionCount > 0 ? 'true' : 'false'}">${String(this.humanAttentionCount)}</span>
 	                    <span class="bp-label" data-bp-label="q4h">${t.q4hPendingQuestions}</span>
 	                  </button>
 	                  <button class="bp-tab ${this.bottomPanelExpanded && this.bottomPanelTab === 'diligence' ? 'active' : ''}" type="button" data-bp-tab="diligence">
@@ -7215,6 +7224,17 @@ export class DomindsApp extends HTMLElement {
           if (current && current === input) current.focusInput();
         }, 100);
       }
+    });
+
+    this.shadowRoot.addEventListener('a2h-ack', (event) => {
+      this.wsManager.sendRaw({
+        type: 'ack_a2h',
+        dialog: {
+          selfId: event.detail.dialogId,
+          rootId: event.detail.rootId,
+        },
+        answerId: event.detail.answerId,
+      });
     });
 
     // Call-site navigation requests from dialog bubbles (internal link icon).
@@ -7956,9 +7976,13 @@ export class DomindsApp extends HTMLElement {
       const panel = this.shadowRoot?.querySelector('#q4h-panel');
       if (
         panel instanceof HTMLElement &&
-        typeof (panel as DomindsQ4HPanel).setQuestions === 'function'
+        typeof (panel as DomindsQ4HPanel).setHumanAttention === 'function'
       ) {
-        (panel as DomindsQ4HPanel).setQuestions(this.q4hQuestionCount, this.q4hDialogContexts);
+        (panel as DomindsQ4HPanel).setHumanAttention(
+          this.humanAttentionCount,
+          this.q4hDialogContexts,
+          this.a2hAnswers,
+        );
       }
       return;
     }
@@ -11777,6 +11801,16 @@ export class DomindsApp extends HTMLElement {
         this.handleQ4HStateResponse(event);
         return true;
       }
+      case 'a2h_acknowledged': {
+        const event: A2HAcknowledgedEvent = message;
+        this.handleA2HAcknowledged(event);
+        return true;
+      }
+      case 'new_a2h_answered': {
+        const event: NewA2HAnsweredEvent = message;
+        this.handleNewA2HAnswered(event);
+        return true;
+      }
       case 'dialogs_moved': {
         // Another client moved dialogs between running/done/archived - refresh lists.
         // This ensures multi-tab/multi-browser updates stay consistent without polling.
@@ -12854,7 +12888,7 @@ export class DomindsApp extends HTMLElement {
    * Removes a question from the global Q4H state
    */
   private handleQ4HAnswered(event: Q4HAnsweredEvent): void {
-    const wasVisibleQ4HCount = this.q4hQuestionCount;
+    const wasVisibleHumanAttentionCount = this.humanAttentionCount;
     const removeIndex = this.q4hQuestions.findIndex((q) => q.id === event.questionId);
     if (removeIndex >= 0) {
       this.q4hQuestions.splice(removeIndex, 1);
@@ -12866,7 +12900,7 @@ export class DomindsApp extends HTMLElement {
 
     // Build dialog contexts and update component
     this.updateQ4HComponent();
-    if (removeIndex >= 0 && wasVisibleQ4HCount > 0 && this.q4hQuestionCount === 0) {
+    if (removeIndex >= 0 && wasVisibleHumanAttentionCount > 0 && this.humanAttentionCount === 0) {
       this.collapseBottomPanelQ4HTabIfExpanded();
     }
   }
@@ -12944,9 +12978,36 @@ export class DomindsApp extends HTMLElement {
     }
 
     this.q4hQuestions = next;
+    this.a2hAnswers = event.answers as GlobalAnswerToHumanItem[];
     this.updateQ4HComponent();
     this.applyPendingQ4HSelectionFromDeepLink();
     this.applyPendingDeepLinkIfQ4H();
+  }
+
+  private handleA2HAcknowledged(event: A2HAcknowledgedEvent): void {
+    const removeIndex = this.a2hAnswers.findIndex(
+      (answer) =>
+        answer.id === event.answerId &&
+        answer.selfId === event.selfId &&
+        answer.rootId === event.rootId,
+    );
+    if (removeIndex >= 0) {
+      this.a2hAnswers.splice(removeIndex, 1);
+      this.updateQ4HComponent();
+      return;
+    }
+    this.wsManager.sendRaw({ type: 'get_q4h_state' });
+  }
+
+  private handleNewA2HAnswered(event: NewA2HAnsweredEvent): void {
+    const answer = event.answer;
+    const existingIndex = this.a2hAnswers.findIndex((item) => item.id === answer.id);
+    if (existingIndex >= 0) {
+      this.a2hAnswers[existingIndex] = answer;
+    } else {
+      this.a2hAnswers.push(answer);
+    }
+    this.updateQ4HComponent();
   }
 
   private resolveHydratedQ4HDialogContext(question: HumanQuestion): Q4HDialogContext | null {
@@ -12970,6 +13031,7 @@ export class DomindsApp extends HTMLElement {
         agentId: globalQuestion.agentId ?? 'unknown',
         taskDocPath: globalQuestion.taskDocPath ?? '',
         questions: [question],
+        answers: [],
       };
     }
 
@@ -12987,6 +13049,7 @@ export class DomindsApp extends HTMLElement {
       agentId: dialogInfo.agentId,
       taskDocPath: dialogInfo.taskDocPath,
       questions: [question],
+      answers: [],
     };
   }
 
@@ -13028,9 +13091,13 @@ export class DomindsApp extends HTMLElement {
     const panel = this.shadowRoot?.querySelector('#q4h-panel');
     if (
       panel instanceof HTMLElement &&
-      typeof (panel as DomindsQ4HPanel).setQuestions === 'function'
+      typeof (panel as DomindsQ4HPanel).setHumanAttention === 'function'
     ) {
-      (panel as DomindsQ4HPanel).setQuestions(this.q4hQuestionCount, this.q4hDialogContexts);
+      (panel as DomindsQ4HPanel).setHumanAttention(
+        this.humanAttentionCount,
+        this.q4hDialogContexts,
+        this.a2hAnswers,
+      );
     }
 
     this.updateBottomPanelFooterUi();
@@ -13089,6 +13156,7 @@ export class DomindsApp extends HTMLElement {
             agentId: agentId ?? 'unknown',
             taskDocPath: taskDocPath ?? '',
             questions: [],
+            answers: [],
           };
           contextMap.set(key, context);
         }

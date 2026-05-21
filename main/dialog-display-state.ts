@@ -235,9 +235,8 @@ export async function getRunControlCountsSnapshot(): Promise<RunControlCountsSna
       ) {
         // Keep run-control counts aligned with actual Continue affordance:
         // - ordinary interrupted dialogs count as resumable only when no Q4H suspension remains
-        // - interjection-paused dialogs still count as resumable even if Q4H remains,
-        //   because the intended UX is that Continue exits the temporary paused projection
-        //   and re-evaluates the original task from fresh facts
+        // - legacy interjection-paused dialogs still count as resumable even if Q4H remains,
+        //   because Continue only re-evaluates the original task from fresh facts
         if (isUserInterjectionPauseStopReason(latest.executionMarker.reason)) {
           resumable++;
         } else {
@@ -767,10 +766,10 @@ export async function refreshRunControlProjectionFromPersistenceFacts(
       isUserInterjectionPauseStopReason(latest.executionMarker.reason)
     ) {
       // WARNING:
-      // This is the one place where the projection intentionally preserves the paused-interjection
-      // stopped state ahead of the current suspension facts. That is not a bug: after a user
-      // interjection we want the UI to keep showing "original task paused; click Continue" even if
-      // the underlying dialog is still waiting on Q4H.
+      // This is the one place where the projection intentionally preserves legacy
+      // paused-interjection stopped state ahead of the current suspension facts. That is not a bug:
+      // the UI may still need to show that the original task was paused even if the underlying
+      // dialog is now waiting on Q4H.
       //
       // The true source-of-truth decision about what Continue should do next lives in `flow.ts`'s
       // resume path, which performs a fresh fact scan at resume time and then either restores the

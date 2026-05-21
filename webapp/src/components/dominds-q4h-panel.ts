@@ -4,6 +4,7 @@
  * Used inline between conversation and input area
  */
 
+import type { GlobalAnswerToHumanItem } from '@longrun-ai/kernel/types/human-attention';
 import type { LanguageCode } from '@longrun-ai/kernel/types/language';
 import type { HumanQuestion, Q4HDialogContext } from '@longrun-ai/kernel/types/q4h';
 import { getUiStrings } from '../i18n/ui';
@@ -19,6 +20,8 @@ interface Q4HPanelProps {
   count: number;
   /** Dialog contexts with questions */
   dialogContexts: Q4HDialogContext[];
+  /** Dialog contexts with answer-to-human items */
+  answers: GlobalAnswerToHumanItem[];
 }
 
 export class DomindsQ4HPanel extends HTMLElement {
@@ -26,6 +29,7 @@ export class DomindsQ4HPanel extends HTMLElement {
   private props: Q4HPanelProps = {
     count: 0,
     dialogContexts: [],
+    answers: [],
   };
   private expandedQuestions: Set<string> = new Set();
   private selectedQuestionId: string | null = null;
@@ -72,6 +76,17 @@ export class DomindsQ4HPanel extends HTMLElement {
       }
       if (!stillExists) this.selectedQuestionId = null;
     }
+    this.render();
+  }
+
+  public setHumanAttention(
+    count: number,
+    dialogContexts: Q4HDialogContext[],
+    answers: GlobalAnswerToHumanItem[],
+  ): void {
+    this.props.count = count;
+    this.props.dialogContexts = dialogContexts;
+    this.props.answers = answers;
     this.render();
   }
 
@@ -202,6 +217,19 @@ export class DomindsQ4HPanel extends HTMLElement {
     );
   }
 
+  private ackAnswer(answer: GlobalAnswerToHumanItem): void {
+    dispatchDomindsEvent(
+      this,
+      'a2h-ack',
+      {
+        answerId: answer.id,
+        dialogId: answer.selfId,
+        rootId: answer.rootId,
+      },
+      { bubbles: true, composed: true },
+    );
+  }
+
   private handleSelectFromCard(card: Element): void {
     const questionId = card.getAttribute('data-question-id');
     const dialogId = card.getAttribute('data-dialog-id');
@@ -259,7 +287,9 @@ export class DomindsQ4HPanel extends HTMLElement {
       icon.addEventListener('click', (e) => {
         e.stopPropagation();
         const target = e.currentTarget as HTMLElement;
-        const questionId = target.closest('.q4h-question-card')?.getAttribute('data-question-id');
+        const card = target.closest('.q4h-question-card');
+        if (card?.classList.contains('a2h-card')) return;
+        const questionId = card?.getAttribute('data-question-id');
         if (questionId) {
           this.toggleQuestion(questionId);
         }
@@ -280,6 +310,7 @@ export class DomindsQ4HPanel extends HTMLElement {
 
         const card = header.closest('.q4h-question-card');
         if (!card) return;
+        if (card.classList.contains('a2h-card')) return;
 
         e.preventDefault();
         e.stopPropagation();
@@ -294,6 +325,7 @@ export class DomindsQ4HPanel extends HTMLElement {
         e.stopPropagation();
         const card = el.closest('.q4h-question-card');
         if (!card) return;
+        if (card.classList.contains('a2h-card')) return;
 
         this.handleSelectFromCard(card);
       });
@@ -397,6 +429,50 @@ export class DomindsQ4HPanel extends HTMLElement {
         );
       });
     });
+
+    this.shadowRoot.querySelectorAll('.a2h-ack-btn').forEach((btn) => {
+      btn.addEventListener('click', (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        const target = e.currentTarget as HTMLElement;
+        const answerId = target.getAttribute('data-answer-id');
+        const dialogId = target.getAttribute('data-dialog-id');
+        const rootId = target.getAttribute('data-root-id');
+        if (!answerId || !dialogId || !rootId) return;
+        const answer = this.props.answers.find(
+          (item) => item.id === answerId && item.selfId === dialogId && item.rootId === rootId,
+        );
+        if (!answer) return;
+        this.ackAnswer(answer);
+      });
+    });
+
+    this.shadowRoot.querySelectorAll('.a2h-goto-answer-btn').forEach((btn) => {
+      btn.addEventListener('click', (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        const target = e.currentTarget as HTMLElement;
+        const dialogId = target.getAttribute('data-dialog-id');
+        const rootId = target.getAttribute('data-root-id');
+        const course = target.getAttribute('data-course');
+        const genseq = target.getAttribute('data-genseq');
+        if (!dialogId || !rootId || !course || !genseq) return;
+        const parsedCourse = Number.parseInt(course, 10);
+        const parsedGenseq = Number.parseInt(genseq, 10);
+        if (!Number.isFinite(parsedCourse) || !Number.isFinite(parsedGenseq)) return;
+        dispatchDomindsEvent(
+          this,
+          'navigate-genseq',
+          {
+            rootId,
+            selfId: dialogId,
+            course: parsedCourse,
+            genseq: parsedGenseq,
+          },
+          { bubbles: true, composed: true },
+        );
+      });
+    });
   }
 
   private render(): void {
@@ -495,6 +571,22 @@ export class DomindsQ4HPanel extends HTMLElement {
       .q4h-question-card:hover {
         border-color: var(--color-accent-primary, #007acc);
         box-shadow: 0 2px 8px color-mix(in srgb, var(--color-accent-primary, #007acc) 15%, transparent);
+      }
+
+      .a2h-card {
+        border-color: color-mix(in srgb, var(--color-success, #16a34a) 35%, var(--color-border-primary, #e2e8f0));
+      }
+
+      .a2h-card .q4h-question-body {
+        display: block;
+      }
+
+      .a2h-header {
+        cursor: default;
+      }
+
+      .a2h-header:hover {
+        background: transparent;
       }
 
       /* Selected state for question card */
@@ -808,9 +900,41 @@ export class DomindsQ4HPanel extends HTMLElement {
         transition: all 0.15s ease;
       }
 
+      .a2h-ack-btn {
+        width: 24px;
+        height: 24px;
+        padding: 0;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        border-radius: 6px;
+        border: 1px solid transparent;
+        background: transparent;
+        color: var(--color-fg-tertiary, #64748b);
+        cursor: pointer;
+        transition: all 0.15s ease;
+      }
+
+      .a2h-goto-answer-btn {
+        width: 24px;
+        height: 24px;
+        padding: 0;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        border-radius: 6px;
+        border: 1px solid transparent;
+        background: transparent;
+        color: var(--color-fg-tertiary, #64748b);
+        cursor: pointer;
+        transition: all 0.15s ease;
+      }
+
       .q4h-goto-site-btn:hover,
       .q4h-open-external-btn:hover,
-      .q4h-share-link-btn:hover {
+      .q4h-share-link-btn:hover,
+      .a2h-goto-answer-btn:hover,
+      .a2h-ack-btn:hover {
         border-color: var(--color-border-primary, #e2e8f0);
         background: var(--color-bg-tertiary, #f8fafc);
         color: var(--color-fg-secondary, #475569);
@@ -818,7 +942,9 @@ export class DomindsQ4HPanel extends HTMLElement {
 
       .q4h-goto-site-btn:focus-visible,
       .q4h-open-external-btn:focus-visible,
-      .q4h-share-link-btn:focus-visible {
+      .q4h-share-link-btn:focus-visible,
+      .a2h-goto-answer-btn:focus-visible,
+      .a2h-ack-btn:focus-visible {
         outline: 2px solid color-mix(in srgb, var(--color-fg-tertiary, #64748b) 70%, transparent);
         outline-offset: 2px;
       }
@@ -826,7 +952,9 @@ export class DomindsQ4HPanel extends HTMLElement {
       .q4h-expand-icon.icon-mask,
       .q4h-goto-site-btn .icon-mask,
       .q4h-open-external-btn .icon-mask,
-      .q4h-share-link-btn .icon-mask {
+      .q4h-share-link-btn .icon-mask,
+      .a2h-goto-answer-btn .icon-mask,
+      .a2h-ack-btn .icon-mask {
         width: 14px;
         height: 14px;
       }
@@ -843,20 +971,25 @@ export class DomindsQ4HPanel extends HTMLElement {
         --icon-mask: ${ICON_MASK_URLS.link};
       }
 
+      .q4h-icon-check-circle {
+        --icon-mask: ${ICON_MASK_URLS.checkCircle};
+      }
+
     `;
   }
 
   getHTML(): string {
-    const { dialogContexts } = this.props;
+    const { dialogContexts, answers } = this.props;
 
-    // Return empty content when no questions - panel should be hidden when collapsed
-    if (dialogContexts.length === 0) {
+    // Return empty content when no visible items - panel should be hidden when collapsed
+    if (dialogContexts.length === 0 && answers.length === 0) {
       return '';
     }
 
     return `
       <div class="q4h-panel-content">
         ${this.renderQuestions(dialogContexts)}
+        ${this.renderAnswers(answers)}
       </div>
     `;
   }
@@ -880,6 +1013,71 @@ export class DomindsQ4HPanel extends HTMLElement {
         `;
       })
       .join('');
+  }
+
+  private renderAnswers(answers: GlobalAnswerToHumanItem[]): string {
+    if (answers.length === 0) return '';
+    return `
+      <div class="q4h-dialog-group a2h-group">
+        <div class="q4h-dialog-header">
+          <span class="q4h-dialog-icon icon-mask q4h-icon-pin" aria-hidden="true"></span>
+          <span class="q4h-dialog-name">${this.escapeHtml(
+            this.uiLanguage === 'zh' ? 'A2H / 待确认' : 'A2H / Awaiting Ack',
+          )}</span>
+        </div>
+        ${answers.map((answer) => this.renderAnswerCard(answer)).join('')}
+      </div>
+    `;
+  }
+
+  private renderAnswerCard(answer: GlobalAnswerToHumanItem): string {
+    const t = getUiStrings(this.uiLanguage);
+    return `
+      <div class="q4h-question-card a2h-card" data-answer-id="${this.escapeHtml(answer.id)}" data-dialog-id="${this.escapeHtml(answer.selfId)}" data-root-id="${this.escapeHtml(answer.rootId)}">
+        <div class="q4h-question-header a2h-header">
+          <span class="q4h-question-title">
+            <span class="q4h-question-origin">@${this.escapeHtml(answer.agentId)}</span>
+            <span class="q4h-question-origin-sep">•</span>
+            <span class="q4h-question-origin-id">${this.escapeHtml(answer.selfId)}</span>
+            <span class="q4h-question-origin-sep">•</span>
+            <span class="q4h-question-origin-asked-at">${this.escapeHtml(answer.answeredAt)}</span>
+          </span>
+          <span class="q4h-question-actions-top">
+            <button
+              class="a2h-goto-answer-btn"
+              type="button"
+              title="${this.escapeHtml(t.a2hGoToAnswerTitle)}"
+              aria-label="${this.escapeHtml(t.a2hGoToAnswerTitle)}"
+              data-dialog-id="${this.escapeHtml(answer.selfId)}"
+              data-root-id="${this.escapeHtml(answer.rootId)}"
+              data-course="${answer.answerRef.course}"
+              data-genseq="${answer.answerRef.genseq}"
+            >
+              <span class="icon-mask q4h-icon-goto" aria-hidden="true"></span>
+            </button>
+            <button
+              class="a2h-ack-btn"
+              type="button"
+              title="${this.escapeHtml(this.uiLanguage === 'zh' ? '确认已阅' : 'Acknowledge')}"
+              aria-label="${this.escapeHtml(this.uiLanguage === 'zh' ? '确认已阅' : 'Acknowledge')}"
+              data-answer-id="${this.escapeHtml(answer.id)}"
+              data-dialog-id="${this.escapeHtml(answer.selfId)}"
+              data-root-id="${this.escapeHtml(answer.rootId)}"
+            >
+              <span class="icon-mask q4h-icon-check-circle" aria-hidden="true"></span>
+            </button>
+          </span>
+        </div>
+        <div class="q4h-question-body a2h-body">
+          <div class="q4h-tellask">
+            <div class="q4h-tellask-body">${renderDomindsMarkdown(answer.content, {
+              kind: 'chat',
+              allowRelativeWorkspaceLinks: true,
+            })}</div>
+          </div>
+        </div>
+      </div>
+    `;
   }
 
   private renderQuestionCard(question: HumanQuestion, dialogContext: Q4HDialogContext): string {

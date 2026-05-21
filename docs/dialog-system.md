@@ -155,52 +155,38 @@ Dialog state is persisted to storage at key points:
 
 This ensures crash recovery and enables the backend to resume from any persisted state without depending on frontend state.
 
-### User Interjection Pause And Continue Semantics
+### User Interjection And A2H Semantics
 
 When a dialog still carries an inter-dialog reply obligation, but the user temporarily interjects and asks it to handle a local question first, the system must distinguish between the **UI projection** and the **true driving source state**.
+
+Plainly: the system should answer the user's interjection first. Once the user receives a visible answer, the backend records that answer as A2H (Answer to Human) in Human Attention so the user can find and acknowledge it even if the dialog immediately continues automatically.
 
 **Normative semantics**:
 
 1. Every user interjection message is driven as a complete normal round.
-2. If that round needs tools, the system MUST finish the full tool round and any post-tool follow-up before pausing.
-3. The system only projects the original task as resumable `stopped` when this interjection has actually parked an original task that still needs explicit restoration.
-4. If there is no parked original task to resume afterwards (for example, no inter-dialog reply obligation needs reassertion), the interjection round should simply finish and return to the true underlying state without showing this special `stopped` panel.
-5. As long as the user keeps sending new messages, the dialog stays in temporary interjection-chat handling, and that paused projection remains in place only if it was established in the first place.
-6. Only an explicit UI `Continue` attempts to restore the original task.
+2. If that round needs tools, the system MUST finish the full tool round and any post-tool follow-up before treating the interjection as answered.
+3. A visible assistant `saying` settles the pending user-interjection reply only when no same-round function/tellask call remains after that `saying`.
+4. Settling the interjection appends an A2H item to the dialog's `a2h.yaml`. A2H is an acknowledgement queue, not a problem report and not durable drive work.
+5. If an inter-dialog reply obligation still exists after the interjection is answered, the backend automatically reasserts that obligation and continues. The user should not need to click `Continue` merely because the interjection answer completed.
+6. A2H disappears when the user acknowledges it. This is intentionally "read then burn"; the canonical answer remains in the dialog transcript at `answerRef`.
+7. The Human Attention panel shows Q4H and A2H together. Q4H waits for a human answer; A2H waits only for human acknowledgement.
 
 **Strict boundary**: a formal `askHuman` answer is not part of this "user interjection" category. As soon as a prompt carries a real `q4hAnswerCallId`, it belongs to the askHuman reply channel and semantically continues an already-materialized question/answer chain; it must never be downgraded into temporary local side-chat.
 
-**Key point**: this `stopped` state is only a temporary run-control / UI projection. It is not the same as an ordinary system-stop failure, and it is not the final business source of truth. It also does not apply to every interjection; it exists only when there really is a parked original task to resume.
-
-After the user clicks `Continue`, the backend MUST re-evaluate fresh persistence facts and decide which true-source case now applies. It must not infer the result purely from the visible `displayState`:
-
-- **Case 1: the dialog no longer has a reply obligation**
-  If there is also no user-wait fact such as Q4H, the dialog should simply continue driving. If it has already become ordinary idle-waiting-user, then `resume_dialog` is no longer actually resumable.
-- **Case 2: the dialog still has a reply obligation and is waiting for user input**
-  The canonical example is pending Q4H. In this case, `Continue` should exit the interjection-paused projection and restore the true `blocked` state.
-- **Case 3: the dialog still has a reply obligation but is no longer suspended and is eligible to proceed**
-  For example, the Q4H/user-wait fact has disappeared, or a queued prompt provides a valid continuation path. In this case, `Continue` must not first fall back to an intermediate placeholder `blocked/idle` state; it should keep driving immediately.
-
-**This leads to two implementation constraints**:
-
-- `refreshRunControlProjectionFromPersistenceFacts()` MUST preserve the special "interjection handled; original task paused" `stopped` projection until the user explicitly clicks `Continue`; otherwise the UI collapses back to ordinary `blocked` too early and breaks multi-turn interjection UX. Conversely, when there is no parked original task, this paused projection should not be created at all.
-- The actual outcome of `Continue` MUST be decided in the resume drive path by re-reading fresh persistence facts. "Continue is clickable" does not mean "the dialog will definitely enter proceeding immediately".
-- If `Continue` reveals that the true state is still `blocked`, the reply-obligation reassertion copy should be materialized immediately as a runtime guide in both `dlg.msgs` and persisted course history, while also surfacing as a frontend bubble. That lets the later real resume path rely on ordinary context replay instead of synthesizing a second duplicate runtime prompt.
-- The run-control toolbar's `resumable` count should align with "manual Continue attempt is meaningful". Therefore an interjection-paused `stopped` dialog still counts as resumable even when underlying user-wait facts remain, because the business meaning of `Continue` there is "exit the temporary paused projection and re-evaluate from source-of-truth facts".
+**Key point**: pending user-interjection reply and inter-dialog reply obligation are independent business facts. Reminder/footer copy can use those two facts directly: if the interjection is still pending, prioritize answering the user; if it is settled and the reply obligation remains active, continue toward the required inter-dialog closure.
 
 **Mental-model warning**:
 
-- Do not reason about this flow from `displayState.kind === 'stopped'` alone.
-- Do not reason about it from user-wait facts alone and then wonder why the UI still shows `stopped`.
-- Do not reason about it from `resume_dialog` eligibility alone and assume resumption always means immediate running.
 - Do not flatten every `origin === 'user'` prompt into "interjection"; a non-empty `q4hAnswerCallId` means askHuman answer continuation and follows a different semantic path.
+- Do not treat A2H as Q4H. A2H does not block drive and does not route input to an agent.
+- Do not store A2H in the Problems panel. It belongs to Human Attention and is removed by Ack.
 
 You need all of the following together to understand the behavior correctly:
 
 - reply-guidance suppression / deferred reassertion for interjection turns
-- flow logic for "pause after local interjection reply" plus "fresh-fact second decision after Continue"
-- dialog-display-state projection preservation
-- websocket resume entry semantics distinguishing "allowed to attempt Continue" from "actually re-entered driving"
+- pending user-interjection reply settlement after visible final `saying`
+- A2H persistence and Ack flow
+- automatic reply-obligation reassertion after the user-visible answer
 
 This is an intentionally cross-module semantic contract. Do not locally "simplify" one piece based only on its surface meaning.
 

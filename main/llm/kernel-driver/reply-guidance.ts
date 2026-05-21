@@ -258,15 +258,15 @@ async function shouldSuppressInterDialogReplyGuidanceForUserInterjection(args: {
   // This suppression decision is not a cosmetic prompt tweak. It is one leg of the full
   // interjection-pause state machine:
   // 1. user interjection suppresses the live reply obligation here;
-  // 2. `flow.ts` answers locally and parks the original task in a resumable stopped state;
-  // 3. manual Continue later decides from fresh persistence facts whether the dialog should stay
-  //    blocked or resume real driving.
+  // 2. `flow.ts` answers locally and stores a deferred reply reassertion;
+  // 3. after a visible local answer, the driver reasserts the reply obligation automatically.
   //
   // Do not "simplify" this into a pure display-state check or a pure active-callee check.
   // Proceeding dialogs with a still-active reply obligation are part of the same rule: a fresh
   // user interjection should still suppress the live reply obligation and answer locally first.
-  // The business anchor is the deferred reply reassertion, while the paused execution marker keeps
-  // repeated interjection turns behaving as local side conversation until explicit Continue.
+  // The business anchor is the deferred reply reassertion. A stale paused execution marker still
+  // means a repeated interjection should behave as local side conversation, but it is not durable
+  // drive work and must not force a manual Continue after the answer is visible.
   const prompt = args.prompt;
   if (!prompt) {
     return false;

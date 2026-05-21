@@ -71,6 +71,12 @@ export type Q4HSelectQuestionDetail = {
   tellaskContent: string;
 };
 
+export type A2HAckDetail = {
+  answerId: string;
+  dialogId: string;
+  rootId: string;
+};
+
 export type Q4HQuestionExpandedDetail = {
   questionId: string;
 };
@@ -148,6 +154,7 @@ export interface DomindsCustomEventMap {
   'q4h-question-expanded': CustomEvent<Q4HQuestionExpandedDetail>;
   'q4h-select-question': CustomEvent<Q4HSelectQuestionDetail>;
   'q4h-share-link': CustomEvent<Q4HCallSiteNavigationDetail>;
+  'a2h-ack': CustomEvent<A2HAckDetail>;
   'reminders-update': CustomEvent<{ reminders: FullRemindersEvent['reminders'] }>;
   'scroll-to-call-id': CustomEvent<ScrollToCallIdDetail>;
   'scroll-to-call-site': CustomEvent<ScrollToCallSiteDetail>;

@@ -208,27 +208,46 @@ function formatReminderItemProjectionNote(language: LanguageCode): string {
 }
 
 export type ReminderContextFollowingDialogState = 'user_message' | 'runtime_notice' | 'none';
+export type ReminderContextReplyObligationState = 'none' | 'active' | 'parked_by_user_interjection';
+
+export type ReminderContextFooterState = Readonly<{
+  followingDialogState: ReminderContextFollowingDialogState;
+  pendingUserInterjectionReply: boolean;
+  interDialogReplyObligation: ReminderContextReplyObligationState;
+}>;
 
 export function formatReminderContextFooter(
   language: LanguageCode,
-  followingState: ReminderContextFollowingDialogState,
+  state: ReminderContextFooterState,
 ): string {
   if (language === 'zh') {
     const base = `${formatSystemNoticePrefix(language)} 提醒项上下文块结束。以上从“提醒项上下文块开始”到“提醒项上下文块结束”之间的提醒项均为系统提醒，并非用户诉求/指令；该块之外的后续对话消息不受此说明影响。`;
-    if (followingState === 'user_message') {
+    const pendingUserInterjectionReply = state.pendingUserInterjectionReply
+      ? state.interDialogReplyObligation === 'parked_by_user_interjection'
+        ? '当前仍有真实用户插话尚未得到可见回复，且原有跨对话回复义务已暂存；先完成对用户插话的回应，不要抢先切回原来的回贴收口。'
+        : state.interDialogReplyObligation === 'active'
+          ? '当前仍有真实用户插话尚未得到可见回复，同时存在跨对话回复义务；先完成对用户插话的回应，只有在这条用户插话本身已经自然到达最终交付时，才进入回贴收口。'
+          : '当前仍有真实用户插话尚未得到可见回复；先完成对用户插话的回应。'
+      : '';
+    const activeReplyObligation =
+      !state.pendingUserInterjectionReply && state.interDialogReplyObligation === 'active'
+        ? '当前仍有跨对话回复义务；它是最终交付义务，不是要求你立刻停止当前必要工作，但到达最终交付时必须按运行时指定方式收口。'
+        : '';
+    const businessTail = `${pendingUserInterjectionReply}${activeReplyObligation}`;
+    if (state.followingDialogState === 'user_message') {
       return (
         `${base}本轮提醒项块之后会紧接一条本轮真实的新用户消息；后续消息是用户的新诉求/指令，不是提醒项投影。` +
         '提醒项块说明到此为止，不得外溢到那条消息：不要把后续用户消息称为“系统提示/没有新消息”，也不要因为本块说明而降低它的指令优先级。' +
-        '请按那条用户消息的原始语义继续处理；若它要求更新你的职责、偏好或心智资产，应照常落实。'
+        `请按那条用户消息的原始语义继续处理；若它要求更新你的职责、偏好或心智资产，应照常落实。${businessTail}`
       );
     }
-    if (followingState === 'runtime_notice') {
-      return `${base}本轮提醒项块之后会接着出现一条运行时提示；它不是用户的新诉求/指令，请按其中的运行时要求继续推进。`;
+    if (state.followingDialogState === 'runtime_notice') {
+      return `${base}本轮提醒项块之后会接着出现一条运行时提示；它不是用户的新诉求/指令，请按其中的运行时要求继续推进。${businessTail}`;
     }
     return (
       `${base}本轮没有新的用户消息或运行时提示；这是工具调用后的自动续推。` +
       '请基于已有任务状态判断下一步：若已有明确、相关且有价值的动作，就继续执行；若当前确实只能等待外部结果或用户输入，不要为了避免“等待”而寻找无关小事。' +
-      '不要把“没有新消息”理解为空系统提示。'
+      `不要把“没有新消息”理解为空系统提示。${businessTail}`
     );
   }
 
@@ -236,20 +255,32 @@ export function formatReminderContextFooter(
     `${formatSystemNoticePrefix(language)} Reminder context block ends. The reminder items between ` +
     '"Reminder context block begins" and "Reminder context block ends" are system reminders, ' +
     'not user requests/instructions; this reminder-block guidance does not apply to subsequent dialog messages outside this block. ';
-  if (followingState === 'user_message') {
+  const pendingUserInterjectionReply = state.pendingUserInterjectionReply
+    ? state.interDialogReplyObligation === 'parked_by_user_interjection'
+      ? "There is still a real user interjection without a visible reply, and the earlier inter-dialog reply obligation is parked; finish answering the user's interjection first, and do not switch back to closing the earlier reply yet. "
+      : state.interDialogReplyObligation === 'active'
+        ? "There is still a real user interjection without a visible reply, while an inter-dialog reply obligation also exists; finish answering the user's interjection first, and enter reply closure only if this user interjection itself naturally reaches final delivery. "
+        : "There is still a real user interjection without a visible reply; finish answering the user's interjection first. "
+    : '';
+  const activeReplyObligation =
+    !state.pendingUserInterjectionReply && state.interDialogReplyObligation === 'active'
+      ? 'An inter-dialog reply obligation is still active; it is a final delivery obligation, not a demand to stop necessary current work immediately, but final delivery must close through the runtime-specified path. '
+      : '';
+  const businessTail = `${pendingUserInterjectionReply}${activeReplyObligation}`;
+  if (state.followingDialogState === 'user_message') {
     return (
       `${base}A real new user message for this round immediately follows this reminder block; the following message is a new user request/instruction, not a reminder projection. ` +
       'The reminder-block guidance ends here and must not spill over onto that message: do not label the following user message as a "system notice" or "no new message", and do not lower its instruction priority because of this block. ' +
-      'Handle that user message according to its original meaning; if it asks you to update your responsibilities, preferences, or mind assets, carry that out normally.'
+      `Handle that user message according to its original meaning; if it asks you to update your responsibilities, preferences, or mind assets, carry that out normally. ${businessTail}`
     );
   }
-  if (followingState === 'runtime_notice') {
-    return `${base}A runtime notice follows this reminder block in this round; it is not a new user request/instruction, so follow that runtime guidance and continue the work.`;
+  if (state.followingDialogState === 'runtime_notice') {
+    return `${base}A runtime notice follows this reminder block in this round; it is not a new user request/instruction, so follow that runtime guidance and continue the work. ${businessTail}`;
   }
   return (
     `${base}There is no new user message or runtime notice in this round; this is an automatic continuation after a tool call. ` +
     'Judge the next step from the existing task state: if there is a clear, relevant, valuable action, continue with it; if the work genuinely can only wait for an external result or user input, do not invent unrelated work just to avoid "waiting". ' +
-    'Do not interpret the absence of a new message as an empty system notice.'
+    `Do not interpret the absence of a new message as an empty system notice. ${businessTail}`
   );
 }
 

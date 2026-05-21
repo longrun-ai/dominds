@@ -121,6 +121,12 @@ export type DialogDeferredReplyReassertion = Readonly<{
   resumeGuideSurfaced?: boolean;
 }>;
 
+export type DialogPendingUserInterjectionReply = Readonly<{
+  msgId: string;
+  course: DialogCourseNumber;
+  genseq: CallSiteGenseqNo;
+}>;
+
 export type DialogCalleeReplyTarget = Readonly<{
   callerDialogId: string;
   callType: 'A' | 'B' | 'C';
@@ -332,6 +338,7 @@ export interface DialogLatestFile {
   sideDialogFinalResponse?: DialogSideDialogFinalResponseState;
   fbrState?: DialogFbrState;
   deferredReplyReassertion?: DialogDeferredReplyReassertion;
+  pendingUserInterjectionReply?: DialogPendingUserInterjectionReply;
   // Durable runtime prompt that must survive restart and be consumed before ordinary
   // business-continuation driving, including new-course prompts and reply-tool reminders after
   // direct sideline replies.
@@ -1047,6 +1054,7 @@ export interface GenStartRecord extends RootGenerationRef {
   ts: string;
   type: 'gen_start_record';
   genseq: number;
+  msgId?: string;
   sourceTag?: 'priming_script';
 }
 
@@ -1130,6 +1138,26 @@ export interface HumanQuestion {
 
 export interface Questions4HumanFile {
   questions: HumanQuestion[];
+  updatedAt: string;
+}
+
+export interface AnswerToHumanItem {
+  id: string;
+  content: string;
+  answeredAt: string;
+  userInterjection: {
+    msgId: string;
+    course: number;
+    genseq: number;
+  };
+  answerRef: {
+    course: number;
+    genseq: number;
+  };
+}
+
+export interface AnswersToHumanFile {
+  answers: AnswerToHumanItem[];
   updatedAt: string;
 }
 

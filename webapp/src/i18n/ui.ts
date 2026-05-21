@@ -155,6 +155,7 @@ export type UiStrings = {
   q4hEnterToStopTitle: string;
   q4hCtrlEnterToStopTitle: string;
   q4hGoToCallSiteTitle: string;
+  a2hGoToAnswerTitle: string;
   q4hAnswerCallSitesLabel: string;
   q4hOpenInNewTabTitle: string;
   q4hCopyLinkTitle: string;
@@ -565,8 +566,8 @@ export function getUiStrings(language: LanguageCode): UiStrings {
       declareDeathConfirmFbr:
         '宣布此扪心自问（FBR）支线对话“卡死”？此操作不可逆转；诉请者将收到系统反馈并不再等待该支线对话。后续若仍需继续，请重新发起新的扪心自问（FBR）支线对话；由于不会续接此前上下文，新的诉请正文需提供最新完整上下文。',
 
-      q4hNoPending: '暂无待处理问题',
-      q4hPendingQuestions: '待处理问题',
+      q4hNoPending: '暂无待人处理项',
+      q4hPendingQuestions: '待人处理',
       q4hInputPlaceholder: '输入你的回答…',
       q4hEnterToSendTitle: '按 Enter 发送\n- Shift+Enter 换行\n- Cmd/Ctrl+Enter 发送',
       q4hCtrlEnterToSendTitle: '按 Cmd/Ctrl+Enter 发送\n- Enter 换行\n- Shift+Enter 换行',
@@ -575,6 +576,7 @@ export function getUiStrings(language: LanguageCode): UiStrings {
       q4hEnterToStopTitle: '按 Enter 停止',
       q4hCtrlEnterToStopTitle: '按 Cmd/Ctrl+Enter 停止',
       q4hGoToCallSiteTitle: '定位到提问点',
+      a2hGoToAnswerTitle: '定位到答复',
       q4hAnswerCallSitesLabel: '本次回答对应提问点：',
       q4hOpenInNewTabTitle: '新标签打开',
       q4hCopyLinkTitle: '复制链接',
@@ -1000,8 +1002,8 @@ export function getUiStrings(language: LanguageCode): UiStrings {
     declareDeathConfirmFbr:
       'Declare this FBR Side Dialog as “dead”? This is irreversible; the tellasker will receive a system notice and stop waiting for it. If the work is still needed later, start a new FBR Side Dialog. Prior context will not carry over, so include the latest full context in the new tellask body.',
 
-    q4hNoPending: 'No pending questions',
-    q4hPendingQuestions: 'Pending Questions',
+    q4hNoPending: 'No items need attention',
+    q4hPendingQuestions: 'Human Attention',
     q4hInputPlaceholder: 'Type your answer...',
     q4hEnterToSendTitle: 'Press Enter to send\n- Shift+Enter newline\n- Cmd/Ctrl+Enter send',
     q4hCtrlEnterToSendTitle: 'Press Cmd/Ctrl+Enter to send\n- Enter newline\n- Shift+Enter newline',
@@ -1012,6 +1014,7 @@ export function getUiStrings(language: LanguageCode): UiStrings {
     q4hEnterToStopTitle: 'Press Enter to stop',
     q4hCtrlEnterToStopTitle: 'Press Cmd/Ctrl+Enter to stop',
     q4hGoToCallSiteTitle: 'Go to call site',
+    a2hGoToAnswerTitle: 'Go to answer',
     q4hAnswerCallSitesLabel: 'Answer applies to call sites:',
     q4hOpenInNewTabTitle: 'Open in new tab',
     q4hCopyLinkTitle: 'Copy link',

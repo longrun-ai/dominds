@@ -6,6 +6,7 @@ export type DomindsPersistenceFileSource =
   | 'dialog_course_events'
   | 'reminder_state'
   | 'questions4human_state'
+  | 'answers2human_state'
   | 'active_callees'
   | 'wake_queue'
   | 'sideDialog_responses'

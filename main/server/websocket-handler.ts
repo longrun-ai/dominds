@@ -12,6 +12,7 @@ import {
   type SubChan,
 } from '@longrun-ai/kernel/evt';
 import type {
+  AckA2HRequest,
   ClearResolvedProblemsRequest,
   CreateDialogErrorCode,
   CreateDialogRequest,
@@ -41,6 +42,7 @@ import type {
   WebSocketMessage,
 } from '@longrun-ai/kernel/types';
 import type {
+  A2HAcknowledgedDialogEvent,
   DialogEvent,
   Q4HAnsweredEvent,
   TypedDialogEvent,
@@ -85,7 +87,7 @@ import {
   createEmptyDialogTellaskCallState,
   createEmptyDialogTellaskResultState,
 } from '../dialog-latest-state';
-import { dialogEventRegistry, postDialogEvent } from '../evt-registry';
+import { dialogEventRegistry, postDialogEvent, postDialogEventById } from '../evt-registry';
 import { driveDialogStream, supplyResponseToAskerDialog } from '../llm/kernel-driver';
 import {
   consumeCriticalCountdown,
@@ -383,8 +385,8 @@ function buildResumeIneligibleMessage(
   // WARNING:
   // `resume_dialog` eligibility is intentionally based on the freshly healed projection, not on a
   // naive local check of raw suspension facts. In particular, the paused-interjection stopped state
-  // must remain resumable here so the user can explicitly press Continue even while the underlying
-  // dialog may still be suspended by Q4H.
+  // remains resumable here so explicit Continue can re-evaluate the true state even while the
+  // underlying dialog may still be suspended by Q4H.
   //
   // The actual outcome of that Continue attempt is decided later in `flow.ts` from fresh facts:
   // it may restore Q4H suspension, or it may immediately continue driving. Do not reinterpret a
@@ -701,6 +703,10 @@ export async function handleWebSocketMessage(
 
       case 'get_q4h_state':
         await handleGetQ4HState(ws, packet);
+        break;
+
+      case 'ack_a2h':
+        await handleAckA2H(ws, packet);
         break;
 
       case 'display_reminders':
@@ -1567,6 +1573,7 @@ async function handleDisplayDialog(ws: WebSocket, packet: DisplayDialogRequest):
     // delivery paths and blur event semantics.
     try {
       const allQuestions = await DialogPersistence.loadAllQ4HState();
+      const allAnswers = await DialogPersistence.loadAllA2HState();
       const response: Q4HStateResponse = {
         type: 'q4h_state_response',
         questions: allQuestions.map((q) => ({
@@ -1579,6 +1586,17 @@ async function handleDisplayDialog(ws: WebSocket, packet: DisplayDialogRequest):
           askedAt: q.askedAt,
           callId: q.callId,
           callSiteRef: q.callSiteRef,
+        })),
+        answers: allAnswers.map((a) => ({
+          id: a.id,
+          selfId: a.selfId,
+          rootId: a.rootId,
+          agentId: a.agentId,
+          taskDocPath: a.taskDocPath,
+          content: a.content,
+          answeredAt: a.answeredAt,
+          userInterjection: a.userInterjection,
+          answerRef: a.answerRef,
         })),
       };
       ws.send(JSON.stringify(response));
@@ -1607,6 +1625,7 @@ async function handleGetQ4HState(ws: WebSocket, _packet: GetQ4HStateRequest): Pr
   try {
     // Load Q4H from all running dialogs
     const allQuestions = await DialogPersistence.loadAllQ4HState();
+    const allAnswers = await DialogPersistence.loadAllA2HState();
 
     // Transform to wire `Q4HStateResponse` question entries.
     // `selfId` + `rootId` uniquely identify the originating dialog (including sideDialogs).
@@ -1621,11 +1640,23 @@ async function handleGetQ4HState(ws: WebSocket, _packet: GetQ4HStateRequest): Pr
       callId: q.callId,
       callSiteRef: q.callSiteRef,
     }));
+    const answers = allAnswers.map((a) => ({
+      id: a.id,
+      selfId: a.selfId,
+      rootId: a.rootId,
+      agentId: a.agentId,
+      taskDocPath: a.taskDocPath,
+      content: a.content,
+      answeredAt: a.answeredAt,
+      userInterjection: a.userInterjection,
+      answerRef: a.answerRef,
+    }));
 
     // Send single response packet with all questions (not PubChan events)
     const response: Q4HStateResponse = {
       type: 'q4h_state_response',
       questions,
+      answers,
     };
     ws.send(JSON.stringify(response));
   } catch (error) {
@@ -1634,6 +1665,57 @@ async function handleGetQ4HState(ws: WebSocket, _packet: GetQ4HStateRequest): Pr
       JSON.stringify({
         type: 'error',
         message: error instanceof Error ? error.message : 'Unknown error getting Q4H state',
+      }),
+    );
+  }
+}
+
+async function handleAckA2H(ws: WebSocket, packet: AckA2HRequest): Promise<void> {
+  try {
+    const dialogIdent = packet.dialog;
+    const answerId = packet.answerId;
+    if (!dialogIdent || typeof answerId !== 'string' || answerId.trim() === '') {
+      ws.send(
+        JSON.stringify({ type: 'error', message: 'dialog and answerId are required for A2H Ack' }),
+      );
+      return;
+    }
+
+    if (typeof dialogIdent.selfId !== 'string' || typeof dialogIdent.rootId !== 'string') {
+      ws.send(
+        JSON.stringify({
+          type: 'error',
+          message: 'Invalid dialog identifiers for A2H Ack: selfId/rootId must be strings',
+        }),
+      );
+      return;
+    }
+
+    const dialogId = new DialogID(dialogIdent.selfId, dialogIdent.rootId);
+    const removed = await DialogPersistence.acknowledgeAnswerToHumanState(dialogId, answerId);
+    if (!removed.found) {
+      ws.send(
+        JSON.stringify({
+          type: 'error',
+          message: `A2H answer ${answerId} not found in dialog ${dialogIdent.selfId}`,
+        }),
+      );
+      return;
+    }
+
+    const event: A2HAcknowledgedDialogEvent = {
+      type: 'a2h_acknowledged',
+      answerId,
+      selfId: dialogIdent.selfId,
+      rootId: dialogIdent.rootId,
+    };
+    postDialogEventById(dialogId, event);
+  } catch (error) {
+    log.error('Error processing A2H Ack:', error);
+    ws.send(
+      JSON.stringify({
+        type: 'error',
+        message: `Failed to acknowledge A2H answer: ${error instanceof Error ? error.message : 'Unknown error'}`,
       }),
     );
   }
@@ -2011,10 +2093,9 @@ async function handleResumeDialog(ws: WebSocket, packet: ResumeDialogRequest): P
     'resume_dialog',
   );
   // WARNING:
-  // Passing this gate only means "a manual Continue attempt is allowed". It does not mean the
-  // dialog is guaranteed to re-enter proceeding immediately. For the paused-interjection flow, the
-  // resumed drive itself performs a second fresh-fact decision and may land in true `blocked`
-  // instead of proceeding.
+  // Passing this gate only means "a Continue attempt is allowed". It does not mean the dialog is
+  // guaranteed to re-enter proceeding immediately; the resumed drive may still land in true
+  // `blocked` after re-reading fresh persistence facts.
   if (!isDialogLatestResumable(latest)) {
     const ineligible = buildResumeIneligibleMessage(latest);
     log.warn('resume_dialog rejected after fresh fact scan', undefined, {

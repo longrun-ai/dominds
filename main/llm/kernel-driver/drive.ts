@@ -1,5 +1,6 @@
 import { DEFAULT_DILIGENCE_PUSH_MAX } from '@longrun-ai/kernel/diligence';
 import type { ContextHealthSnapshot, LlmUsageStats } from '@longrun-ai/kernel/types/context-health';
+import type { NewA2HAnsweredEvent } from '@longrun-ai/kernel/types/dialog';
 import type {
   DialogDisplayState,
   DialogInterruptionReason,
@@ -13,11 +14,13 @@ import {
   toCallSiteGenseqNo,
   toDialogCourseNumber,
   toRootGenerationAnchor,
+  type AnswerToHumanItem,
   type DialogBusinessContinuation,
   type DialogCalleeReplyTarget,
   type DialogFbrState,
   type DialogFollowupReason,
   type DialogGenerationRunState,
+  type DialogPendingUserInterjectionReply,
   type FuncResultRecord,
   type TellaskAnchorRecord,
   type TellaskCalleeRecord,
@@ -51,6 +54,8 @@ import {
   formatReminderItemGuide,
   isAgentFacingCriticalUserInterjectionRemediationGuideContent,
   type ReminderContextFollowingDialogState,
+  type ReminderContextFooterState,
+  type ReminderContextReplyObligationState,
 } from '../../runtime/driver-messages';
 import {
   buildActiveReplyObligationContextText,
@@ -453,6 +458,34 @@ function resolveReminderContextFollowingDialogState(
   return prompt.origin === 'user' ? 'user_message' : 'runtime_notice';
 }
 
+async function resolveReminderContextFooterState(args: {
+  dlg: Dialog;
+  prompt: KernelDriverPrompt | undefined;
+  currentTurnDialogMsgsForContext: readonly ChatMessage[];
+}): Promise<ReminderContextFooterState> {
+  const latest = await DialogPersistence.loadDialogLatest(args.dlg.id, args.dlg.status);
+  const deferredReplyReassertion = latest?.deferredReplyReassertion;
+  const activeReplyObligation = await DialogPersistence.loadActiveTellaskReplyObligation(
+    args.dlg.id,
+    args.dlg.status,
+  );
+  const pendingUserInterjectionReply = latest?.pendingUserInterjectionReply !== undefined;
+  const interDialogReplyObligation: ReminderContextReplyObligationState =
+    deferredReplyReassertion?.reason === 'user_interjection_with_parked_original_task'
+      ? 'parked_by_user_interjection'
+      : activeReplyObligation !== undefined
+        ? 'active'
+        : 'none';
+  return {
+    followingDialogState: resolveReminderContextFollowingDialogState(
+      args.prompt,
+      args.currentTurnDialogMsgsForContext,
+    ),
+    pendingUserInterjectionReply,
+    interDialogReplyObligation,
+  };
+}
+
 function splitDialogMsgsForReminderInsertion(args: {
   msgs: readonly ChatMessage[];
   currentPrompt: KernelDriverPrompt | undefined;
@@ -487,6 +520,107 @@ function getUserOriginPromptMsgId(prompt: KernelDriverPrompt | undefined): strin
   return prompt.origin === 'user' && normalizeQ4HAnswerCallId(prompt.q4hAnswerCallId) === undefined
     ? prompt.msgId
     : undefined;
+}
+
+function samePendingUserInterjectionMsg(
+  pending: DialogPendingUserInterjectionReply,
+  msgId: string,
+): boolean {
+  return pending.msgId === msgId;
+}
+
+async function maybeResolveAnsweredUserInterjection(args: {
+  dlg: Dialog;
+  userPromptMsgId: string | undefined;
+  assistantSayingContent: string | null;
+  assistantSayingGenseq: number | null;
+  functionCallGenseqs: readonly number[];
+}): Promise<void> {
+  if (
+    args.userPromptMsgId === undefined ||
+    args.assistantSayingContent === null ||
+    args.assistantSayingContent.trim() === '' ||
+    args.assistantSayingGenseq === null
+  ) {
+    return;
+  }
+  for (const rawGenseq of args.functionCallGenseqs) {
+    if (!Number.isFinite(rawGenseq) || rawGenseq <= 0) {
+      continue;
+    }
+    if (args.assistantSayingGenseq <= Math.floor(rawGenseq)) {
+      return;
+    }
+  }
+
+  const latest = await DialogPersistence.loadDialogLatest(args.dlg.id, args.dlg.status);
+  const pending = latest?.pendingUserInterjectionReply;
+  if (pending === undefined || !samePendingUserInterjectionMsg(pending, args.userPromptMsgId)) {
+    return;
+  }
+
+  const course = args.dlg.activeGenCourseOrUndefined ?? args.dlg.currentCourse;
+  const answerIdSource = [
+    args.dlg.id.rootId,
+    args.dlg.id.selfId,
+    `c${String(course)}`,
+    `g${String(args.assistantSayingGenseq)}`,
+    pending.msgId,
+  ].join('|');
+  const answer: AnswerToHumanItem = {
+    id: `a2h-${Buffer.from(answerIdSource).toString('base64url')}`,
+    content: args.assistantSayingContent,
+    answeredAt: formatUnifiedTimestamp(new Date()),
+    userInterjection: {
+      msgId: pending.msgId,
+      course: pending.course,
+      genseq: pending.genseq,
+    },
+    answerRef: {
+      course,
+      genseq: args.assistantSayingGenseq,
+    },
+  };
+
+  const existingAnswers = await DialogPersistence.loadAnswersToHumanState(
+    args.dlg.id,
+    args.dlg.status,
+  );
+  if (!existingAnswers.some((item) => item.id === answer.id)) {
+    await DialogPersistence.appendAnswerToHumanState(args.dlg.id, answer, args.dlg.status);
+    const metadata = await DialogPersistence.loadDialogMetadata(args.dlg.id, args.dlg.status);
+    const taskDocPath = metadata?.taskDocPath ?? args.dlg.taskDocPath ?? '';
+    const event: NewA2HAnsweredEvent = {
+      type: 'new_a2h_answered',
+      answer: {
+        ...answer,
+        selfId: args.dlg.id.selfId,
+        rootId: args.dlg.id.rootId,
+        agentId: metadata?.agentId ?? args.dlg.agentId,
+        taskDocPath,
+      },
+    };
+    postDialogEvent(args.dlg, event);
+  }
+  await DialogPersistence.mutateDialogLatest(
+    args.dlg.id,
+    (previous) => {
+      const previousPending = previous.pendingUserInterjectionReply;
+      const userPromptMsgId = args.userPromptMsgId;
+      if (
+        previousPending === undefined ||
+        userPromptMsgId === undefined ||
+        !samePendingUserInterjectionMsg(previousPending, userPromptMsgId)
+      ) {
+        return { kind: 'noop' };
+      }
+      return {
+        kind: 'patch',
+        patch: { pendingUserInterjectionReply: undefined },
+      };
+    },
+    args.dlg.status,
+  );
 }
 
 async function persistAndEmitRuntimeGuide(dlg: Dialog, content: string): Promise<void> {
@@ -2696,6 +2830,8 @@ export async function driveDialogStreamCore(
         }
         lastBusinessContinuation = currentBusinessContinuation;
         let generationBodyError: unknown;
+        const q4hAnswerCallId = normalizeQ4HAnswerCallId(currentPrompt?.q4hAnswerCallId);
+        const isQ4HAnswerPrompt = q4hAnswerCallId !== undefined;
         try {
           if (currentPrompt) {
             if (currentPrompt.skipTaskdoc === true) {
@@ -2704,10 +2840,8 @@ export async function driveDialogStreamCore(
 
             const persistedUserLanguageCode =
               currentPrompt.userLanguageCode ?? dlg.getLastUserLanguageCode();
-            const q4hAnswerCallId = normalizeQ4HAnswerCallId(currentPrompt.q4hAnswerCallId);
             // `q4hAnswerCallId` marks a continuation input for an already-materialized askHuman
             // answer. It is not a second business-level user prompt that should re-enter transcript.
-            const isQ4HAnswerPrompt = q4hAnswerCallId !== undefined;
             const promptLanguage =
               persistedUserLanguageCode === 'zh' || persistedUserLanguageCode === 'en'
                 ? persistedUserLanguageCode
@@ -2726,12 +2860,12 @@ export async function driveDialogStreamCore(
               // User interjection suppression is a reversible state transition, not a one-shot
               // latch. The normal cycle is:
               // - user interjects -> suppress reply obligation
-              // - operator clicks Continue -> restore reply obligation
+              // - the visible local answer auto-reasserts the reply obligation
               // - user interjects again -> suppress it again
               //
-              // Therefore a repeated interjection after a blocked Continue MUST re-arm the deferred
-              // state and re-materialize the suppression guide, even when the underlying reply
-              // directive itself did not change.
+              // Legacy blocked-Continue paths may also re-enter here. A repeated interjection MUST
+              // re-arm the deferred state and re-materialize the suppression guide, even when the
+              // underlying reply directive itself did not change.
               const existingDeferredReplyReassertion =
                 await DialogPersistence.getDeferredReplyReassertion(dlg.id, dlg.status);
               const nextDeferredReplyReassertion = {
@@ -2781,6 +2915,24 @@ export async function driveDialogStreamCore(
             if (replyGuidance.promptContent === undefined) {
               throw new Error(
                 `kernel-driver reply guidance invariant violation: missing prompt content for dialog=${dlg.id.valueOf()} msgId=${currentPrompt.msgId}`,
+              );
+            }
+            if (currentPrompt.origin === 'user' && !replyGuidance.isQ4HAnswerPrompt) {
+              await DialogPersistence.mutateDialogLatest(
+                dlg.id,
+                () => ({
+                  kind: 'patch',
+                  patch: {
+                    pendingUserInterjectionReply: {
+                      msgId: currentPrompt.msgId,
+                      course: toDialogCourseNumber(
+                        dlg.activeGenCourseOrUndefined ?? dlg.currentCourse,
+                      ),
+                      genseq: toCallSiteGenseqNo(dlg.activeGenSeq),
+                    },
+                  },
+                }),
+                dlg.status,
               );
             }
             const renderPromptAsRuntimeGuideBubble =
@@ -2971,10 +3123,12 @@ export async function driveDialogStreamCore(
                     role: 'user',
                     content: formatReminderContextFooter(
                       getWorkLanguage(),
-                      resolveReminderContextFollowingDialogState(
-                        currentPrompt,
-                        splitDialogMsgs.currentTurnDialogMsgsForContext,
-                      ),
+                      await resolveReminderContextFooterState({
+                        dlg,
+                        prompt: currentPrompt,
+                        currentTurnDialogMsgsForContext:
+                          splitDialogMsgs.currentTurnDialogMsgsForContext,
+                      }),
                     ),
                   } satisfies ChatMessage,
                 ]
@@ -3408,10 +3562,13 @@ export async function driveDialogStreamCore(
             return { usage: res.usage, llmGenModel: res.llmGenModel };
           };
 
+          const previousAssistantSayingGenseq = lastAssistantSayingGenseq;
           const llmOutput = await streamOrBatch();
           if (typeof llmOutput.llmGenModel === 'string' && llmOutput.llmGenModel.trim() !== '') {
             llmGenModelForGen = llmOutput.llmGenModel.trim();
           }
+          let currentRoundAssistantSayingContent: string | null = null;
+          let currentRoundAssistantSayingGenseq: number | null = null;
 
           contextHealthForGen = computeContextHealthSnapshot({
             providerCfg,
@@ -3442,6 +3599,8 @@ export async function driveDialogStreamCore(
                   } else {
                     lastAssistantSayingContent = msg.content;
                     lastAssistantSayingGenseq = msg.genseq;
+                    currentRoundAssistantSayingContent = msg.content;
+                    currentRoundAssistantSayingGenseq = msg.genseq;
                     lastAssistantReplyTarget = currentReplyTarget;
                     await emitAssistantSaying(dlg, msg.content);
                   }
@@ -3569,10 +3728,12 @@ export async function driveDialogStreamCore(
           streamedFuncCalls.length = 0;
           streamedFuncCalls.push(...normalizedStreamedFuncCalls);
 
+          const currentRoundFunctionCallGenseqs: number[] = [];
           for (const call of streamedFuncCalls) {
             const rawCallGenseq = call.genseq;
             if (!Number.isFinite(rawCallGenseq) || rawCallGenseq <= 0) continue;
             const callGenseq = Math.floor(rawCallGenseq);
+            currentRoundFunctionCallGenseqs.push(callGenseq);
             if (lastFunctionCallGenseq === null || callGenseq > lastFunctionCallGenseq) {
               lastFunctionCallGenseq = callGenseq;
             }
@@ -3595,6 +3756,25 @@ export async function driveDialogStreamCore(
             newMsgs.push(...routed.pairedMessages);
           }
           await dlg.addChatMessages(...newMsgs);
+          const streamedCurrentRoundSayingContent =
+            batchOutputs.length === 0 && lastAssistantSayingGenseq !== previousAssistantSayingGenseq
+              ? lastAssistantSayingContent
+              : null;
+          const streamedCurrentRoundSayingGenseq =
+            batchOutputs.length === 0 && lastAssistantSayingGenseq !== previousAssistantSayingGenseq
+              ? lastAssistantSayingGenseq
+              : null;
+          if (currentPrompt?.origin === 'user' && !isQ4HAnswerPrompt) {
+            await maybeResolveAnsweredUserInterjection({
+              dlg,
+              userPromptMsgId: currentPrompt.msgId,
+              assistantSayingContent:
+                currentRoundAssistantSayingContent ?? streamedCurrentRoundSayingContent,
+              assistantSayingGenseq:
+                currentRoundAssistantSayingGenseq ?? streamedCurrentRoundSayingGenseq,
+              functionCallGenseqs: currentRoundFunctionCallGenseqs,
+            });
+          }
 
           const persistedFbrState = await loadDialogFbrState(dlg);
           if (persistedFbrState) {
@@ -3954,7 +4134,6 @@ export async function driveDialogStreamCore(
     }
     await setDialogDisplayState(dlg.id, finalDisplayState, dlg.status);
   }
-
   return {
     lastAssistantSayingContent,
     lastAssistantSayingGenseq,

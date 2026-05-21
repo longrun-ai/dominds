@@ -52,6 +52,8 @@ import type {
   ActiveCalleesReconciledRecord,
   AgentThoughtRecord,
   AgentWordsRecord,
+  AnswersToHumanFile,
+  AnswerToHumanItem,
   AskerDialogStackFrame,
   CallSiteCourseNo,
   CallSiteGenseqNo,
@@ -228,6 +230,9 @@ function summarizeLatestProjectionState(latest: DialogLatestFile): Record<string
     tellaskResultCount: latest.tellaskResults.results.length,
     latestAssignmentAnchor: latest.latestAssignmentAnchor ?? null,
     sideDialogFinalResponse: latest.sideDialogFinalResponse ?? null,
+    pendingUserInterjectionReplyMsgId: latest.pendingUserInterjectionReply?.msgId ?? null,
+    pendingUserInterjectionReplyCourse: latest.pendingUserInterjectionReply?.course ?? null,
+    pendingUserInterjectionReplyGenseq: latest.pendingUserInterjectionReply?.genseq ?? null,
     pendingRuntimePromptMsgId: latest.pendingRuntimePrompt?.msgId ?? null,
     pendingRuntimePromptOrigin: latest.pendingRuntimePrompt?.origin ?? null,
     pendingRuntimePromptGrammar: latest.pendingRuntimePrompt?.grammar ?? null,
@@ -273,6 +278,9 @@ function summarizeLatestMutationPatch(
     tellaskResultCount: patch.tellaskResults?.results.length ?? null,
     latestAssignmentAnchor: patch.latestAssignmentAnchor ?? null,
     sideDialogFinalResponse: patch.sideDialogFinalResponse ?? null,
+    pendingUserInterjectionReplyMsgId: patch.pendingUserInterjectionReply?.msgId ?? null,
+    pendingUserInterjectionReplyCourse: patch.pendingUserInterjectionReply?.course ?? null,
+    pendingUserInterjectionReplyGenseq: patch.pendingUserInterjectionReply?.genseq ?? null,
     pendingRuntimePromptMsgId: patch.pendingRuntimePrompt?.msgId ?? null,
     pendingRuntimePromptOrigin: patch.pendingRuntimePrompt?.origin ?? null,
     pendingRuntimePromptGrammar: patch.pendingRuntimePrompt?.grammar ?? null,
@@ -2388,6 +2396,32 @@ function parseDialogLatestFile(value: unknown): DialogLatestFile | null {
   })();
   if (sideDialogFinalResponse === null) return null;
 
+  const pendingUserInterjectionReplyRaw = (value as Record<string, unknown>)
+    .pendingUserInterjectionReply;
+  const pendingUserInterjectionReply:
+    | DialogLatestFile['pendingUserInterjectionReply']
+    | null
+    | undefined = (() => {
+    if (pendingUserInterjectionReplyRaw === undefined) return undefined;
+    if (!isRecord(pendingUserInterjectionReplyRaw)) return null;
+    const msgId = pendingUserInterjectionReplyRaw.msgId;
+    const course = pendingUserInterjectionReplyRaw.course;
+    const genseq = pendingUserInterjectionReplyRaw.genseq;
+    if (typeof msgId !== 'string' || msgId.trim() === '') return null;
+    if (typeof course !== 'number' || !Number.isFinite(course) || Math.floor(course) <= 0) {
+      return null;
+    }
+    if (typeof genseq !== 'number' || !Number.isFinite(genseq) || Math.floor(genseq) <= 0) {
+      return null;
+    }
+    return {
+      msgId,
+      course: toDialogCourseNumber(course),
+      genseq: toCallSiteGenseqNo(genseq),
+    };
+  })();
+  if (pendingUserInterjectionReply === null) return null;
+
   const latestAssignmentAnchorRaw = (value as Record<string, unknown>).latestAssignmentAnchor;
   const latestAssignmentAnchor: DialogLatestFile['latestAssignmentAnchor'] | null | undefined =
     (() => {
@@ -2492,6 +2526,7 @@ function parseDialogLatestFile(value: unknown): DialogLatestFile | null {
     sideDialogFinalResponse,
     fbrState,
     deferredReplyReassertion,
+    pendingUserInterjectionReply,
     pendingRuntimePrompt,
     disableDiligencePush: value.disableDiligencePush,
     diligencePushRemainingBudget: value.diligencePushRemainingBudget,
@@ -2609,6 +2644,32 @@ function isQuestions4HumanFile(value: unknown): value is Questions4HumanFile {
   if (!Array.isArray(value.questions)) return false;
   if (typeof value.updatedAt !== 'string') return false;
   return value.questions.every(isHumanQuestion);
+}
+
+function isAnswerToHumanItem(value: unknown): value is AnswerToHumanItem {
+  if (!isRecord(value)) return false;
+  if (typeof value.id !== 'string') return false;
+  if (typeof value.content !== 'string') return false;
+  if (typeof value.answeredAt !== 'string') return false;
+  if (!isRecord(value.userInterjection)) return false;
+  if (typeof value.userInterjection.msgId !== 'string') return false;
+  if (typeof value.userInterjection.course !== 'number') return false;
+  if (!Number.isFinite(value.userInterjection.course)) return false;
+  if (typeof value.userInterjection.genseq !== 'number') return false;
+  if (!Number.isFinite(value.userInterjection.genseq)) return false;
+  if (!isRecord(value.answerRef)) return false;
+  if (typeof value.answerRef.course !== 'number') return false;
+  if (!Number.isFinite(value.answerRef.course)) return false;
+  if (typeof value.answerRef.genseq !== 'number') return false;
+  if (!Number.isFinite(value.answerRef.genseq)) return false;
+  return true;
+}
+
+function isAnswersToHumanFile(value: unknown): value is AnswersToHumanFile {
+  if (!isRecord(value)) return false;
+  if (!Array.isArray(value.answers)) return false;
+  if (typeof value.updatedAt !== 'string') return false;
+  return value.answers.every(isAnswerToHumanItem);
 }
 
 export interface DialogPersistenceState {
@@ -3172,11 +3233,8 @@ export class DiskFileDialogStore extends DialogStore {
     course: number,
     event: PersistedDialogRecord,
   ): Promise<void> {
-    await DialogPersistence.appendEvent(
-      this.dialogId,
-      course,
-      attachRootGenerationRef(dialog, event),
-    );
+    const rootedEvent = attachRootGenerationRef(dialog, event);
+    await DialogPersistence.appendEvent(this.dialogId, course, rootedEvent);
   }
 
   private async appendEvents(
@@ -3208,6 +3266,7 @@ export class DiskFileDialogStore extends DialogStore {
       ts: startedAt,
       type: 'gen_start_record',
       genseq: genseq,
+      ...(typeof msgId === 'string' && msgId.trim() !== '' ? { msgId } : {}),
     };
     await this.appendEvent(dialog, course, ev);
 
@@ -5735,6 +5794,7 @@ type LatestWriteBackEntry =
     };
 
 type Q4HWriteBackState = { kind: 'file'; file: Questions4HumanFile } | { kind: 'deleted' };
+type A2HWriteBackState = { kind: 'file'; file: AnswersToHumanFile } | { kind: 'deleted' };
 
 type Q4HWriteBackEntry =
   | {
@@ -5753,6 +5813,23 @@ type Q4HWriteBackEntry =
       inFlight: Promise<void>;
     };
 
+type A2HWriteBackEntry =
+  | {
+      kind: 'scheduled';
+      dialogId: DialogID;
+      status: DialogStatusKind;
+      state: A2HWriteBackState;
+      timer: NodeJS.Timeout;
+    }
+  | {
+      kind: 'flushing';
+      dialogId: DialogID;
+      status: DialogStatusKind;
+      state: A2HWriteBackState;
+      dirty: boolean;
+      inFlight: Promise<void>;
+    };
+
 type Q4HMutation =
   | { kind: 'noop' }
   | { kind: 'append'; question: HumanQuestion }
@@ -5764,6 +5841,19 @@ type Q4HMutateOutcome = {
   previousQuestions: HumanQuestion[];
   questions: HumanQuestion[];
   removedQuestion?: HumanQuestion;
+};
+
+type A2HMutation =
+  | { kind: 'noop' }
+  | { kind: 'append'; answer: AnswerToHumanItem }
+  | { kind: 'remove'; answerId: string }
+  | { kind: 'replace'; answers: AnswerToHumanItem[] }
+  | { kind: 'clear' };
+
+type A2HMutateOutcome = {
+  previousAnswers: AnswerToHumanItem[];
+  answers: AnswerToHumanItem[];
+  removedAnswer?: AnswerToHumanItem;
 };
 
 type ActiveCalleeResolveOutcome = Readonly<{
@@ -6030,12 +6120,15 @@ export class DialogPersistence {
 
   private static readonly LATEST_WRITEBACK_WINDOW_MS = 300;
   private static readonly Q4H_WRITEBACK_WINDOW_MS = 300;
+  private static readonly A2H_WRITEBACK_WINDOW_MS = 300;
 
   private static readonly latestWriteBackMutexes: Map<string, AsyncFifoMutex> = new Map();
   private static readonly latestWriteBack: Map<string, LatestWriteBackEntry> = new Map();
 
   private static readonly q4hWriteBackMutexes: Map<string, AsyncFifoMutex> = new Map();
   private static readonly q4hWriteBack: Map<string, Q4HWriteBackEntry> = new Map();
+  private static readonly a2hWriteBackMutexes: Map<string, AsyncFifoMutex> = new Map();
+  private static readonly a2hWriteBack: Map<string, A2HWriteBackEntry> = new Map();
 
   private static readonly activeCalleesMutexes: Map<string, AsyncFifoMutex> = new Map();
   private static readonly wakeQueueMutexes: Map<string, AsyncFifoMutex> = new Map();
@@ -6057,6 +6150,14 @@ export class DialogPersistence {
     if (existing) return existing;
     const created = new AsyncFifoMutex();
     this.q4hWriteBackMutexes.set(key, created);
+    return created;
+  }
+
+  private static getA2HWriteBackMutex(key: string): AsyncFifoMutex {
+    const existing = this.a2hWriteBackMutexes.get(key);
+    if (existing) return existing;
+    const created = new AsyncFifoMutex();
+    this.a2hWriteBackMutexes.set(key, created);
     return created;
   }
 
@@ -6116,6 +6217,11 @@ export class DialogPersistence {
   private static getQ4HWriteBackKey(dialogId: DialogID, status: DialogStatusKind): string {
     // Include dialogs root dir to avoid cross-test/process.cwd collisions.
     return `${this.getDialogsRootDir()}|${status}|${dialogId.valueOf()}|q4h`;
+  }
+
+  private static getA2HWriteBackKey(dialogId: DialogID, status: DialogStatusKind): string {
+    // Include dialogs root dir to avoid cross-test/process.cwd collisions.
+    return `${this.getDialogsRootDir()}|${status}|${dialogId.valueOf()}|a2h`;
   }
 
   private static getActiveCalleesKey(dialogId: DialogID, status: DialogStatusKind): string {
@@ -6559,6 +6665,19 @@ export class DialogPersistence {
     for (const key of this.q4hWriteBackMutexes.keys()) {
       if (matchesMainDialogKey(key)) {
         this.q4hWriteBackMutexes.delete(key);
+      }
+    }
+
+    for (const [key, entry] of this.a2hWriteBack.entries()) {
+      if (!matchesMainDialogKey(key)) continue;
+      if (entry.kind === 'scheduled') {
+        clearTimeout(entry.timer);
+      }
+      this.a2hWriteBack.delete(key);
+    }
+    for (const key of this.a2hWriteBackMutexes.keys()) {
+      if (matchesMainDialogKey(key)) {
+        this.a2hWriteBackMutexes.delete(key);
       }
     }
 
@@ -7847,6 +7966,199 @@ export class DialogPersistence {
     };
   }
 
+  static async loadAnswersToHumanState(
+    dialogId: DialogID,
+    status: DialogStatusKind = 'running',
+  ): Promise<AnswerToHumanItem[]> {
+    const key = this.getA2HWriteBackKey(dialogId, status);
+    const staged = this.a2hWriteBack.get(key);
+    if (staged) {
+      if (staged.state.kind === 'deleted') return [];
+      return staged.state.file.answers;
+    }
+
+    try {
+      return await this.loadAnswersToHumanStateFromDisk(dialogId, status);
+    } catch (error: unknown) {
+      await this.rethrowAfterQuarantiningDialogPersistenceProblem(
+        dialogId,
+        status,
+        'loadAnswersToHumanState',
+        error,
+      );
+      throw new Error('unreachable after loadAnswersToHumanState persistence rethrow');
+    }
+  }
+
+  private static async loadAnswersToHumanStateFromDisk(
+    dialogId: DialogID,
+    status: DialogStatusKind,
+  ): Promise<AnswerToHumanItem[]> {
+    const dialogPath = this.getDialogEventsPath(dialogId, status);
+    const answersFilePath = path.join(dialogPath, 'a2h.yaml');
+
+    try {
+      const content = await readPersistenceTextFile({
+        filePath: answersFilePath,
+        source: 'answers2human_state',
+        format: 'yaml',
+      });
+      const parsed = parsePersistenceYaml({
+        content,
+        filePath: answersFilePath,
+        source: 'answers2human_state',
+      });
+      if (!isAnswersToHumanFile(parsed)) {
+        throw buildInvalidPersistenceFileError({
+          source: 'answers2human_state',
+          format: 'yaml',
+          filePath: answersFilePath,
+        });
+      }
+      return parsed.answers;
+    } catch (error: unknown) {
+      if (getErrorCode(error) === 'ENOENT') return [];
+      throw error;
+    }
+  }
+
+  static async mutateAnswersToHumanState(
+    dialogId: DialogID,
+    mutator: (previous: AnswerToHumanItem[]) => A2HMutation,
+    status: DialogStatusKind = 'running',
+  ): Promise<A2HMutateOutcome> {
+    const key = this.getA2HWriteBackKey(dialogId, status);
+    const mutex = this.getA2HWriteBackMutex(key);
+
+    const release = await mutex.acquire();
+    try {
+      const staged = this.a2hWriteBack.get(key);
+      const previousAnswers =
+        staged && staged.state.kind === 'file'
+          ? staged.state.file.answers
+          : staged && staged.state.kind === 'deleted'
+            ? []
+            : await this.loadAnswersToHumanStateFromDisk(dialogId, status);
+
+      const mutation = mutator(previousAnswers);
+
+      let removedAnswer: AnswerToHumanItem | undefined;
+      let nextState: A2HWriteBackState | undefined;
+      let nextAnswers: AnswerToHumanItem[] = previousAnswers;
+
+      if (mutation.kind === 'noop') {
+        return { previousAnswers, answers: previousAnswers };
+      } else if (mutation.kind === 'append') {
+        nextAnswers = [...previousAnswers, mutation.answer];
+      } else if (mutation.kind === 'remove') {
+        const idx = previousAnswers.findIndex((answer) => answer.id === mutation.answerId);
+        if (idx === -1) {
+          return { previousAnswers, answers: previousAnswers };
+        }
+        removedAnswer = previousAnswers[idx];
+        nextAnswers = previousAnswers.filter((answer) => answer.id !== mutation.answerId);
+      } else if (mutation.kind === 'replace') {
+        nextAnswers = [...mutation.answers];
+      } else if (mutation.kind === 'clear') {
+        nextAnswers = [];
+      } else {
+        const _exhaustive: never = mutation;
+        throw new Error(`Unhandled a2h mutation: ${String(_exhaustive)}`);
+      }
+
+      if (nextAnswers.length === 0) {
+        nextState = { kind: 'deleted' };
+      } else {
+        nextState = {
+          kind: 'file',
+          file: { answers: nextAnswers, updatedAt: formatUnifiedTimestamp(new Date()) },
+        };
+      }
+
+      const pending = this.a2hWriteBack.get(key);
+      if (!pending) {
+        const timer = setTimeout(() => {
+          void this.flushA2HWriteBack(key);
+        }, this.A2H_WRITEBACK_WINDOW_MS);
+
+        this.a2hWriteBack.set(key, {
+          kind: 'scheduled',
+          dialogId,
+          status,
+          state: nextState,
+          timer,
+        });
+        return { previousAnswers, answers: nextAnswers, removedAnswer };
+      }
+
+      pending.state = nextState;
+      if (pending.kind === 'flushing') {
+        pending.dirty = true;
+      }
+
+      return { previousAnswers, answers: nextAnswers, removedAnswer };
+    } finally {
+      release();
+    }
+  }
+
+  static async appendAnswerToHumanState(
+    dialogId: DialogID,
+    answer: AnswerToHumanItem,
+    status: DialogStatusKind = 'running',
+  ): Promise<void> {
+    const answerId = answer.id.trim();
+    if (answerId === '') {
+      throw new Error(
+        `A2H append invariant violation: empty answer id (dialog=${dialogId.valueOf()})`,
+      );
+    }
+    if (answer.content.trim() === '') {
+      throw new Error(
+        `A2H append invariant violation: empty answer content (dialog=${dialogId.valueOf()} answerId=${answer.id})`,
+      );
+    }
+
+    await this.mutateAnswersToHumanState(
+      dialogId,
+      (previousAnswers) => {
+        const existing = previousAnswers.find((item) => item.id === answer.id);
+        if (existing) {
+          throw new Error(
+            `A2H duplicate answer id violation: dialog=${dialogId.valueOf()} status=${status} answerId=${answer.id} existingAnsweredAt=${existing.answeredAt} incomingAnsweredAt=${answer.answeredAt}`,
+          );
+        }
+        return { kind: 'append', answer };
+      },
+      status,
+    );
+    await this.flushA2HWriteBack(this.getA2HWriteBackKey(dialogId, status));
+  }
+
+  static async acknowledgeAnswerToHumanState(
+    dialogId: DialogID,
+    answerId: string,
+    status: DialogStatusKind = 'running',
+  ): Promise<{
+    found: boolean;
+    remainingAnswers: AnswerToHumanItem[];
+    removedAnswer?: AnswerToHumanItem;
+  }> {
+    const out = await this.mutateAnswersToHumanState(
+      dialogId,
+      () => ({ kind: 'remove', answerId }),
+      status,
+    );
+    if (out.removedAnswer !== undefined) {
+      await this.flushA2HWriteBack(this.getA2HWriteBackKey(dialogId, status));
+    }
+    return {
+      found: typeof out.removedAnswer !== 'undefined',
+      remainingAnswers: out.answers,
+      removedAnswer: out.removedAnswer,
+    };
+  }
+
   private static async flushQ4HWriteBack(key: string): Promise<void> {
     const mutex = this.getQ4HWriteBackMutex(key);
 
@@ -7996,6 +8308,155 @@ export class DialogPersistence {
     await this.renameWithRetry(tempFile, questionsFilePath, 5, cancellationToken);
   }
 
+  private static async flushA2HWriteBack(key: string): Promise<void> {
+    const mutex = this.getA2HWriteBackMutex(key);
+
+    let captured:
+      | {
+          dialogId: DialogID;
+          status: DialogStatusKind;
+          stateToWrite: A2HWriteBackState;
+          inFlight: Promise<void>;
+        }
+      | undefined;
+
+    {
+      const release = await mutex.acquire();
+      try {
+        const entry = this.a2hWriteBack.get(key);
+        if (!entry) return;
+        if (entry.kind === 'flushing') return;
+        if (entry.kind !== 'scheduled') return;
+
+        clearTimeout(entry.timer);
+
+        const cancellationToken = this.createMainDialogWriteBackCancellationToken(
+          entry.dialogId,
+          entry.status,
+        );
+        const inFlight = this.writeA2HStateToDisk(
+          entry.dialogId,
+          entry.state,
+          entry.status,
+          cancellationToken,
+        );
+        captured = {
+          dialogId: entry.dialogId,
+          status: entry.status,
+          stateToWrite: entry.state,
+          inFlight,
+        };
+
+        this.a2hWriteBack.set(key, {
+          kind: 'flushing',
+          dialogId: entry.dialogId,
+          status: entry.status,
+          state: entry.state,
+          dirty: false,
+          inFlight,
+        });
+      } finally {
+        release();
+      }
+    }
+
+    if (!captured) return;
+
+    try {
+      await captured.inFlight;
+    } catch (error) {
+      const release = await mutex.acquire();
+      try {
+        const entry = this.a2hWriteBack.get(key);
+        if (!entry) return;
+        if (entry.kind !== 'flushing') return;
+        if (entry.inFlight !== captured.inFlight) return;
+        if (isDialogWriteBackCanceledError(error)) {
+          this.a2hWriteBack.delete(key);
+          return;
+        }
+
+        const timer = setTimeout(() => {
+          void this.flushA2HWriteBack(key);
+        }, this.A2H_WRITEBACK_WINDOW_MS);
+
+        this.a2hWriteBack.set(key, {
+          kind: 'scheduled',
+          dialogId: entry.dialogId,
+          status: entry.status,
+          state: entry.state,
+          timer,
+        });
+      } finally {
+        release();
+      }
+      return;
+    }
+
+    const release = await mutex.acquire();
+    try {
+      const entry = this.a2hWriteBack.get(key);
+      if (!entry) return;
+      if (entry.kind !== 'flushing') return;
+      if (entry.inFlight !== captured.inFlight) return;
+
+      if (!entry.dirty) {
+        this.a2hWriteBack.delete(key);
+        return;
+      }
+
+      const timer = setTimeout(() => {
+        void this.flushA2HWriteBack(key);
+      }, this.A2H_WRITEBACK_WINDOW_MS);
+
+      this.a2hWriteBack.set(key, {
+        kind: 'scheduled',
+        dialogId: entry.dialogId,
+        status: entry.status,
+        state: entry.state,
+        timer,
+      });
+    } finally {
+      release();
+    }
+  }
+
+  private static async writeA2HStateToDisk(
+    dialogId: DialogID,
+    state: A2HWriteBackState,
+    status: DialogStatusKind,
+    cancellationToken?: MainDialogWriteBackCancellationToken,
+  ): Promise<void> {
+    if (cancellationToken) {
+      this.assertMainDialogWriteBackNotCanceled(cancellationToken, 'writeA2HStateToDisk:start');
+    }
+    const dialogPath = this.getDialogEventsPath(dialogId, status);
+    const answersFilePath = path.join(dialogPath, 'a2h.yaml');
+
+    if (state.kind === 'deleted') {
+      await fs.promises.rm(answersFilePath, { force: true });
+      return;
+    }
+
+    const yamlContent = yaml.stringify(state.file);
+    const tempFile = path.join(
+      dialogPath,
+      `.${path.basename(answersFilePath)}.${process.pid}.${randomUUID()}.tmp`,
+    );
+    try {
+      await fs.promises.writeFile(tempFile, yamlContent, 'utf-8');
+    } catch (error: unknown) {
+      await this.rethrowWriteBackPathMissingAsCanceled(
+        error,
+        dialogPath,
+        cancellationToken,
+        'writeA2HStateToDisk:write-temp',
+      );
+      throw error;
+    }
+    await this.renameWithRetry(tempFile, answersFilePath, 5, cancellationToken);
+  }
+
   /**
    * Load all Q4H questions from all running dialogs (for global Q4H display)
    * Returns array of questions with their dialog context for frontend display
@@ -8056,6 +8517,65 @@ export class DialogPersistence {
       return allQuestions;
     } catch (error) {
       log.error('Failed to load all Q4H state:', error);
+      return [];
+    }
+  }
+
+  static async loadAllA2HState(): Promise<
+    Array<
+      AnswerToHumanItem & {
+        selfId: string;
+        rootId: string;
+        agentId: string;
+        taskDocPath: string;
+      }
+    >
+  > {
+    try {
+      const dialogIds = await this.listAllDialogIds('running');
+      const allAnswers: Array<
+        AnswerToHumanItem & {
+          selfId: string;
+          rootId: string;
+          agentId: string;
+          taskDocPath: string;
+        }
+      > = [];
+
+      for (const dialogIdObj of dialogIds) {
+        try {
+          const answers = await this.loadAnswersToHumanState(dialogIdObj, 'running');
+          if (answers.length === 0) {
+            continue;
+          }
+
+          const metadata = await this.loadDialogMetadata(dialogIdObj, 'running');
+          if (!metadata) {
+            continue;
+          }
+
+          for (const answer of answers) {
+            allAnswers.push({
+              ...answer,
+              selfId: dialogIdObj.selfId,
+              rootId: dialogIdObj.rootId,
+              agentId: metadata.agentId,
+              taskDocPath: metadata.taskDocPath,
+            });
+          }
+        } catch (err) {
+          log.warn(`Failed to load A2H for dialog ${dialogIdObj.valueOf()}:`, err);
+        }
+      }
+
+      return allAnswers.sort((a, b) => {
+        const ta = new Date(a.answeredAt).getTime();
+        const tb = new Date(b.answeredAt).getTime();
+        if (Number.isFinite(ta) && Number.isFinite(tb)) return tb - ta;
+        return b.answeredAt.localeCompare(a.answeredAt);
+      });
+    } catch (error) {
+      log.error('Failed to load all A2H state:', error);
       return [];
     }
   }
@@ -8870,6 +9390,9 @@ export class DialogPersistence {
       displayState: latest.displayState ?? null,
       executionMarker: latest.executionMarker ?? null,
       nextStepTriggers,
+      pendingUserInterjectionReplyMsgId: latest.pendingUserInterjectionReply?.msgId ?? null,
+      pendingUserInterjectionReplyCourse: latest.pendingUserInterjectionReply?.course ?? null,
+      pendingUserInterjectionReplyGenseq: latest.pendingUserInterjectionReply?.genseq ?? null,
       pendingRuntimePromptMsgId: latest.pendingRuntimePrompt?.msgId ?? null,
       generationRunState: latest.generationRunState ?? null,
       replyDelivery: latest.replyDelivery ?? null,
@@ -10463,7 +10986,11 @@ export class DialogPersistence {
       const key = this.getLatestWriteBackKey(dialogId, status);
       const staged = this.latestWriteBack.get(key);
       if (staged) {
-        return staged.latest;
+        return await this.normalizeDialogLatestPendingUserInterjectionReply(
+          dialogId,
+          status,
+          staged.latest,
+        );
       }
       const dialogPath = this.getDialogEventsPath(dialogId, status);
       const latestFilePath = path.join(dialogPath, 'latest.yaml');
@@ -10473,7 +11000,10 @@ export class DialogPersistence {
         source: 'dialog_latest',
         format: 'yaml',
       });
-      return this.parseDialogLatestYaml(content, latestFilePath);
+      const parsed = this.parseDialogLatestYaml(content, latestFilePath);
+      return parsed === null
+        ? null
+        : await this.normalizeDialogLatestPendingUserInterjectionReply(dialogId, status, parsed);
     } catch (error: unknown) {
       if (getErrorCode(error) === 'ENOENT') {
         return null;
@@ -10648,7 +11178,10 @@ export class DialogPersistence {
         source: 'dialog_latest',
         format: 'yaml',
       });
-      return this.parseDialogLatestYaml(content, latestFilePath);
+      const parsed = this.parseDialogLatestYaml(content, latestFilePath);
+      return parsed === null
+        ? null
+        : await this.normalizeDialogLatestPendingUserInterjectionReply(dialogId, status, parsed);
     } catch (error: unknown) {
       if (getErrorCode(error) === 'ENOENT') {
         return null;
@@ -11137,6 +11670,153 @@ export class DialogPersistence {
     status: DialogStatusKind = 'running',
   ): Promise<PersistedDialogRecord[]> {
     return await this.readCourseEvents(dialogId, course, status);
+  }
+
+  static resolvePendingUserInterjectionReplyFromCourseEvents(
+    events: readonly PersistedDialogRecord[],
+    course: number,
+  ): DialogLatestFile['pendingUserInterjectionReply'] {
+    let pendingUserInterjectionReply: DialogLatestFile['pendingUserInterjectionReply'];
+    let visibleReplySettled = false;
+    for (const event of events) {
+      if (event.type === 'human_text_record') {
+        if (event.origin !== 'user') continue;
+        if (typeof event.q4hAnswerCallId === 'string' && event.q4hAnswerCallId.trim() !== '') {
+          continue;
+        }
+        pendingUserInterjectionReply = {
+          msgId: event.msgId,
+          course: toDialogCourseNumber(course),
+          genseq: toCallSiteGenseqNo(event.genseq),
+        };
+        visibleReplySettled = false;
+        continue;
+      }
+      if (pendingUserInterjectionReply === undefined) {
+        continue;
+      }
+      if (event.type === 'agent_words_record') {
+        visibleReplySettled = true;
+        continue;
+      }
+      if (event.type === 'func_call_record' || event.type === 'tellask_call_record') {
+        visibleReplySettled = false;
+      }
+    }
+    return visibleReplySettled ? undefined : pendingUserInterjectionReply;
+  }
+
+  static resolveAnsweredUserInterjectionA2HFromCourseEvents(args: {
+    dialogId: DialogID;
+    events: readonly PersistedDialogRecord[];
+    course: number;
+    pending: DialogLatestFile['pendingUserInterjectionReply'];
+  }): AnswerToHumanItem | undefined {
+    let pendingUserInterjectionReply: DialogLatestFile['pendingUserInterjectionReply'];
+    let lastVisibleAnswer: { content: string; genseq: number } | undefined;
+    let visibleReplySettled = false;
+
+    for (const event of args.events) {
+      if (event.type === 'human_text_record') {
+        if (event.origin !== 'user') continue;
+        if (typeof event.q4hAnswerCallId === 'string' && event.q4hAnswerCallId.trim() !== '') {
+          continue;
+        }
+        pendingUserInterjectionReply = {
+          msgId: event.msgId,
+          course: toDialogCourseNumber(args.course),
+          genseq: toCallSiteGenseqNo(event.genseq),
+        };
+        visibleReplySettled = false;
+        lastVisibleAnswer = undefined;
+        continue;
+      }
+      if (pendingUserInterjectionReply === undefined) {
+        continue;
+      }
+      if (event.type === 'agent_words_record') {
+        visibleReplySettled = true;
+        lastVisibleAnswer = { content: event.content, genseq: event.genseq };
+        continue;
+      }
+      if (event.type === 'func_call_record' || event.type === 'tellask_call_record') {
+        visibleReplySettled = false;
+        lastVisibleAnswer = undefined;
+      }
+    }
+
+    if (!visibleReplySettled || pendingUserInterjectionReply === undefined || !lastVisibleAnswer) {
+      return undefined;
+    }
+    if (pendingUserInterjectionReply.msgId !== args.pending?.msgId) {
+      return undefined;
+    }
+
+    const answerIdSource = [
+      args.dialogId.rootId,
+      args.dialogId.selfId,
+      `c${String(args.course)}`,
+      `g${String(lastVisibleAnswer.genseq)}`,
+      pendingUserInterjectionReply.msgId,
+    ].join('|');
+    return {
+      id: `a2h-${Buffer.from(answerIdSource).toString('base64url')}`,
+      content: lastVisibleAnswer.content,
+      answeredAt: formatUnifiedTimestamp(new Date()),
+      userInterjection: {
+        msgId: pendingUserInterjectionReply.msgId,
+        course: pendingUserInterjectionReply.course,
+        genseq: pendingUserInterjectionReply.genseq,
+      },
+      answerRef: {
+        course: toDialogCourseNumber(args.course),
+        genseq: toCallSiteGenseqNo(lastVisibleAnswer.genseq),
+      },
+    };
+  }
+
+  private static async normalizeDialogLatestPendingUserInterjectionReply(
+    dialogId: DialogID,
+    status: DialogStatusKind,
+    latest: DialogLatestFile,
+  ): Promise<DialogLatestFile> {
+    if (latest.pendingUserInterjectionReply === undefined) {
+      return latest;
+    }
+    const events = await this.readCourseEvents(dialogId, latest.currentCourse, status);
+    const normalizedPending = this.resolvePendingUserInterjectionReplyFromCourseEvents(
+      events,
+      latest.currentCourse,
+    );
+    if (normalizedPending === undefined) {
+      const recoveredAnswer = this.resolveAnsweredUserInterjectionA2HFromCourseEvents({
+        dialogId,
+        events,
+        course: latest.currentCourse,
+        pending: latest.pendingUserInterjectionReply,
+      });
+      if (recoveredAnswer !== undefined) {
+        const existingAnswers = await this.loadAnswersToHumanState(dialogId, status);
+        if (!existingAnswers.some((item) => item.id === recoveredAnswer.id)) {
+          await this.appendAnswerToHumanState(dialogId, recoveredAnswer, status);
+        }
+        return {
+          ...latest,
+          pendingUserInterjectionReply: undefined,
+        };
+      }
+    }
+    if (
+      normalizedPending?.msgId === latest.pendingUserInterjectionReply.msgId &&
+      normalizedPending?.course === latest.pendingUserInterjectionReply.course &&
+      normalizedPending?.genseq === latest.pendingUserInterjectionReply.genseq
+    ) {
+      return latest;
+    }
+    return {
+      ...latest,
+      pendingUserInterjectionReply: normalizedPending,
+    };
   }
 
   /**

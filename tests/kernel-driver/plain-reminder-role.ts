@@ -48,7 +48,11 @@ async function main(): Promise<void> {
           {
             type: 'environment_msg',
             role: 'user',
-            content: formatReminderContextFooter('zh', 'user_message'),
+            content: formatReminderContextFooter('zh', {
+              followingDialogState: 'user_message',
+              pendingUserInterjectionReply: false,
+              interDialogReplyObligation: 'none',
+            }),
           },
         ]
       : [];

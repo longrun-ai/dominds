@@ -12,7 +12,6 @@ import {
 } from '../../apps/run-control';
 import { DialogID, SideDialog, type Dialog } from '../../dialog';
 import {
-  broadcastDisplayStateMarker,
   clearActiveRun,
   computeIdleDisplayState,
   createActiveRun,
@@ -37,10 +36,7 @@ import {
   formatNewCourseStartPrompt,
   isAgentFacingCriticalUserInterjectionRemediationGuideContent,
 } from '../../runtime/driver-messages';
-import {
-  buildUserInterjectionPauseStopReason,
-  isUserInterjectionPauseStopReason,
-} from '../../runtime/interjection-pause-stop';
+import { isUserInterjectionPauseStopReason } from '../../runtime/interjection-pause-stop';
 import {
   buildReplyToolReminderText,
   isReplyToolReminderPromptContent,
@@ -1501,8 +1497,8 @@ async function maybeSurfaceDeferredReplyReassertionGuideForBlockedContinue(
   // 3. emit runtime_guide_evt so the user immediately sees the reassertion bubble after Continue.
   //
   // Do not "optimize" this into only an event or only a deferred prompt. The whole point is that
-  // once blocked Continue is clicked, the guide becomes a first-class historical context fact and
-  // later real driving should need no special duplicate reassertion path.
+  // once a legacy blocked Continue path surfaces the guide, it becomes a first-class historical
+  // context fact and later real driving should need no special duplicate reassertion path.
   await surfaceRuntimeGuide(dialog, content);
   await DialogPersistence.setDeferredReplyReassertion(
     dialog.id,
@@ -1967,9 +1963,9 @@ export async function executeDriveRound(args: {
     if (!humanPrompt) {
       // WARNING:
       // `allowResumeFromInterrupted` covers multiple stop reasons, but the interjection-pause case
-      // is semantically special. Clicking Continue here does NOT mean "blindly clear stopped and
-      // drive". We must re-read the fresh persistence facts first because there are three distinct
-      // true-source cases behind the same visible resumption panel:
+      // is semantically special. Continue here does NOT mean "blindly clear stopped and drive". We
+      // must re-read the fresh persistence facts first because there are three distinct true-source
+      // cases behind the same visible resumption panel:
       // - no active reply obligation / not suspended anymore -> continue real driving now
       // - active reply obligation + suspended -> restore the true suspension state
       // - active reply obligation + still proceeding continuation (for example queued prompt) ->
@@ -2227,6 +2223,21 @@ export async function executeDriveRound(args: {
       !replyGuidance.isQ4HAnswerPrompt &&
       replyGuidance.suppressInterDialogReplyGuidance &&
       replyGuidance.deferredReplyReassertionDirective !== undefined;
+    if (
+      effectivePrompt?.origin === 'user' &&
+      !replyGuidance.isQ4HAnswerPrompt &&
+      !replyGuidance.suppressInterDialogReplyGuidance &&
+      replyGuidance.deferredReplyReassertionDirective !== undefined
+    ) {
+      await DialogPersistence.setDeferredReplyReassertion(
+        dialog.id,
+        {
+          reason: 'user_interjection_with_parked_original_task',
+          directive: replyGuidance.deferredReplyReassertionDirective,
+        },
+        dialog.status,
+      );
+    }
     activeTellaskReplyDirective =
       replyGuidance.activeReplyDirective ?? replyContinuationScope.directive();
     activePromptWasReplyToolReminder = isReplyToolReminderPrompt(effectivePrompt);
@@ -2588,6 +2599,46 @@ export async function executeDriveRound(args: {
         }
       }
 
+      if (
+        shouldPauseAfterLocalUserInterjection &&
+        !interruptedBySignal &&
+        followUp === undefined &&
+        driveResult?.lastAssistantSayingContent !== null
+      ) {
+        const deferredReplyReassertion = await DialogPersistence.getDeferredReplyReassertion(
+          dialog.id,
+          dialog.status,
+        );
+        if (deferredReplyReassertion?.reason === 'user_interjection_with_parked_original_task') {
+          const language = getWorkLanguage();
+          const prompt = await buildReplyObligationReassertionPrompt({
+            dlg: dialog,
+            directive: deferredReplyReassertion.directive,
+            language,
+          });
+          followUp = {
+            kind: 'runtime_reply_reminder',
+            prompt,
+            msgId: generateShortId(),
+            grammar: 'markdown',
+            origin: 'runtime',
+            userLanguageCode: language,
+            tellaskReplyDirective: deferredReplyReassertion.directive,
+          };
+          await DialogPersistence.setDeferredReplyReassertion(dialog.id, undefined, dialog.status);
+          log.debug(
+            'kernel-driver queued automatic reply-obligation reassertion after user interjection answer',
+            undefined,
+            {
+              dialogId: dialog.id.valueOf(),
+              rootId: dialog.id.rootId,
+              selfId: dialog.id.selfId,
+              targetCallId: deferredReplyReassertion.directive.targetCallId,
+            },
+          );
+        }
+      }
+
       if (followUp) {
         if (
           followUp.kind === 'runtime_reply_reminder' ||
@@ -2682,24 +2733,9 @@ export async function executeDriveRound(args: {
         shouldDriveQueuedPromptAfterCore = true;
         return driveResult;
       }
-      if (
-        shouldPauseAfterLocalUserInterjection &&
-        !interruptedBySignal &&
-        followUp === undefined &&
-        driveResult?.lastAssistantSayingContent !== null
-      ) {
-        const pauseReason = buildUserInterjectionPauseStopReason();
-        await setDialogDisplayState(dialog.id, {
-          kind: 'stopped',
-          reason: pauseReason,
-          continueEnabled: true,
-        });
-        broadcastDisplayStateMarker(dialog.id, {
-          kind: 'interrupted',
-          reason: pauseReason,
-        });
+      if (shouldPauseAfterLocalUserInterjection && !interruptedBySignal && followUp === undefined) {
         log.debug(
-          'kernel-driver paused original task after local user interjection reply',
+          'kernel-driver observed local user interjection pause condition, but continuation is now fully automatic',
           undefined,
           {
             dialogId: dialog.id.valueOf(),

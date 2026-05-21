@@ -67,6 +67,8 @@ class DialogEventRegistryImpl implements DialogEventRegistry {
     switch (evt.type) {
       case 'new_q4h_asked':
       case 'q4h_answered':
+      case 'new_a2h_answered':
+      case 'a2h_acknowledged':
       case 'sideDialog_created_evt':
       case 'dlg_background_callee_summary_evt':
       case 'dlg_touched_evt':
