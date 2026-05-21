@@ -68,7 +68,7 @@ function main(): void {
   );
   assert.ok(
     zhMainDialog.includes(
-      '只有长线诉请（`tellask` + `sessionSlug`）才有“更新任务安排”的通道；一次性诉请（`tellaskSessionless`）没有这个通道。',
+      '只有长线诉请（`tellask` + `sessionSlug`）能接着同一件事说、更新同一件正在做的事；一次性诉请（`tellaskSessionless`）做不到。',
     ),
     'zh Main Dialog prompt should explain tellaskSessionless has no assignment-update channel',
   );
@@ -100,7 +100,7 @@ function main(): void {
   );
   assert.ok(
     enMainDialog.includes(
-      'Only a sessioned Tellask (`tellask` + `sessionSlug`) has an assignment-update channel. A one-shot Tellask (`tellaskSessionless`) has no such channel:',
+      'Only a sessioned Tellask (`tellask` + `sessionSlug`) can continue the same task and update that task. A one-shot Tellask (`tellaskSessionless`) cannot:',
     ),
     'en Main Dialog prompt should explain tellaskSessionless has no assignment-update channel',
   );

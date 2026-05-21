@@ -44,8 +44,42 @@ async function main(): Promise<void> {
     'zh prompt should pin clear-headed review to the system-started new course',
   );
   assert.ok(
+    zh.includes('硬性顺序：先补 `progress`，再动 git'),
+    'zh prompt should state the progress-before-git rule in a low-friction way',
+  );
+  assert.ok(
+    zh.includes('改动会进仓库 + `progress` 还没跟上 = 先别动 git'),
+    'zh prompt should provide a simple mental check before git actions',
+  );
+  assert.ok(
+    zh.includes('不要把“提交了某个 commit”“push 了”写进 `progress`'),
+    'zh prompt should forbid recording VCS operation events as progress entries',
+  );
+  assert.ok(
+    zh.includes('`git status` 只用来确认，不是提交动作'),
+    'zh prompt should keep git status as a confirmation step only',
+  );
+  assert.ok(
     !zh.includes('若已吃紧/告急'),
     'zh prompt should avoid self-judged caution/critical wording',
+  );
+
+  const zhSide = buildMemorySystemPrompt({
+    language: 'zh',
+    agentId: 'tester',
+    isSideDialog: true,
+    taskdocMaintainerId: 'maintainer',
+    agentHasTeamMemoryTools: false,
+    agentHasPersonalMemoryTools: false,
+    agentIsShellSpecialist: false,
+    agentHasShellTools: false,
+    agentHasReadonlyShell: false,
+    shellSpecialistMemberIds: [],
+    contextHealthPromptMode: 'normal',
+  });
+  assert.ok(
+    !zhSide.includes('硬性顺序') && !zhSide.includes('`git status`') && !zhSide.includes('git'),
+    'zh side prompt should not mention pre-VCS progress ordering at all',
   );
 
   const en = buildMemorySystemPrompt({
@@ -99,6 +133,24 @@ async function main(): Promise<void> {
     ),
     'en prompt should pin clear-headed review to the system-started new course',
   );
+  assert.ok(
+    en.includes('Hard order: update `progress` first, then use git'),
+    'en prompt should state the progress-before-git rule in a low-friction way',
+  );
+  assert.ok(
+    en.includes(
+      'change will enter the repo + `progress` is behind = stop and update `progress` first',
+    ),
+    'en prompt should provide a simple mental check before git actions',
+  );
+  assert.ok(
+    en.includes('Do not write git events like “committed X” or “ran git push” into progress'),
+    'en prompt should forbid recording VCS operation events as progress entries',
+  );
+  assert.ok(
+    en.includes('`git status` is only for checking, not a commit step'),
+    'en prompt should keep git status as a confirmation step only',
+  );
 
   const enSide = buildMemorySystemPrompt({
     language: 'en',
@@ -128,6 +180,50 @@ async function main(): Promise<void> {
   assert.ok(
     !enSide.includes('When updating `progress`'),
     'en side critical prompt should not include progress-update instructions',
+  );
+  assert.ok(
+    !enSide.includes('git') && !enSide.includes('Hard order') && !enSide.includes('`git status`'),
+    'en side critical prompt should not mention pre-VCS progress ordering at all',
+  );
+
+  const enSideNormal = buildMemorySystemPrompt({
+    language: 'en',
+    agentId: 'tester',
+    isSideDialog: true,
+    taskdocMaintainerId: 'maintainer',
+    agentHasTeamMemoryTools: false,
+    agentHasPersonalMemoryTools: false,
+    agentIsShellSpecialist: false,
+    agentHasShellTools: false,
+    agentHasReadonlyShell: false,
+    shellSpecialistMemberIds: [],
+    contextHealthPromptMode: 'normal',
+  });
+  assert.ok(
+    !enSideNormal.includes('git') &&
+      !enSideNormal.includes('Hard order') &&
+      !enSideNormal.includes('`git status`'),
+    'en side normal prompt should not mention pre-VCS progress ordering at all',
+  );
+
+  const zhSideCritical = buildMemorySystemPrompt({
+    language: 'zh',
+    agentId: 'tester',
+    isSideDialog: true,
+    taskdocMaintainerId: 'maintainer',
+    agentHasTeamMemoryTools: false,
+    agentHasPersonalMemoryTools: false,
+    agentIsShellSpecialist: false,
+    agentHasShellTools: false,
+    agentHasReadonlyShell: false,
+    shellSpecialistMemberIds: [],
+    contextHealthPromptMode: 'critical',
+  });
+  assert.ok(
+    !zhSideCritical.includes('硬性顺序') &&
+      !zhSideCritical.includes('`git status`') &&
+      !zhSideCritical.includes('git'),
+    'zh side critical prompt should not mention pre-VCS progress ordering at all',
   );
 
   console.log('OK');

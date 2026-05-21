@@ -233,6 +233,7 @@ type MemoryPromptCopy = Readonly<{
   personalMemoryHintLine: string;
   sideDialogWorkflowLine: string;
   mainDialogWorkflowLine: string;
+  progressVcsOrderLine?: string;
   contextHealthLine: string;
   taskdocLogLine: string;
 }>;
@@ -326,6 +327,12 @@ function getMemoryPromptCopy(ctx: PromptdocContext): MemoryPromptCopy {
           : '工作流：停止扩张上下文 → 维护足够详尽的接续包提醒项（`add_reminder` 或 `update_reminder`，长度没有技术限制）→ 然后 `clear_mind` 开启新一程。',
       mainDialogWorkflowLine:
         '工作流：先做事 -> 再提炼（`update_reminder` + `mind_more(progress)`；需要压缩/删旧时先 `recall_taskdoc` 取得 `content_hash`，再用带 `previous_content_hash` 的 `change_mind`；要删除整章文件时用 `never_mind`）-> 然后 `clear_mind` 清空噪音。',
+      ...(ctx.isSideDialog
+        ? {}
+        : {
+            progressVcsOrderLine:
+              '硬性顺序：先补 `progress`，再动 git。只要这次代码/文档改动准备进 git（add / commit / push），先确认 `progress` 已经写清当前状态、决策、阻塞和下一步；如果还没写清，就先补写。简单判断：改动会进仓库 + `progress` 还没跟上 = 先别动 git。`git status` 只用来确认，不是提交动作。不要把“提交了某个 commit”“push 了”写进 `progress`。',
+          }),
       contextHealthLine: contextHealthLineZh,
       taskdocLogLine: taskdocLogLineZh,
     };
@@ -377,6 +384,12 @@ function getMemoryPromptCopy(ctx: PromptdocContext): MemoryPromptCopy {
         : 'Workflow: stop expanding context → maintain sufficiently detailed continuation-package reminders (`add_reminder` or `update_reminder`, with no technical length limit) → then `clear_mind` to start a new course.',
     mainDialogWorkflowLine:
       'Workflow: do work -> distill (`update_reminder` + `mind_more(progress)`; when compression/deletion is needed, first use `recall_taskdoc` to get `content_hash`, then use `change_mind` with `previous_content_hash`; use `never_mind` when removing a whole section file) -> then `clear_mind` to drop noise.',
+    ...(ctx.isSideDialog
+      ? {}
+      : {
+          progressVcsOrderLine:
+            'Hard order: update `progress` first, then use git. If this code/docs change is going into git (add / commit / push), make sure `progress` already says the current state, decisions, blockers, and next step; if not, write it first. Simple check: change will enter the repo + `progress` is behind = stop and update `progress` first. `git status` is only for checking, not a commit step. Do not write git events like “committed X” or “ran git push” into progress.',
+        }),
     contextHealthLine: contextHealthLineEn,
     taskdocLogLine: taskdocLogLineEn,
   };
@@ -404,6 +417,7 @@ export function buildMemorySystemPrompt(ctx: PromptdocContext): string {
     ...(ctx.agentHasTeamMemoryTools ? [copy.teamMemoryHintLine] : []),
     ...(ctx.agentHasPersonalMemoryTools ? [copy.personalMemoryHintLine] : []),
     ctx.isSideDialog ? copy.sideDialogWorkflowLine : copy.mainDialogWorkflowLine,
+    ...(copy.progressVcsOrderLine === undefined ? [] : [copy.progressVcsOrderLine]),
     copy.contextHealthLine,
     copy.taskdocLogLine,
   ].join('\n');
