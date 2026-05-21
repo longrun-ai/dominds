@@ -179,3 +179,24 @@ shell_cmd({
   command: 'free -m',
 });
 ```
+
+## Scenario 8: Windows Paths and PowerShell
+
+### Scenario Description
+
+Check files or run PowerShell commands on Windows.
+
+### Example
+
+```typescript
+// Default cmd.exe path: prefer forward slashes for no-space paths to avoid backslash and quote ambiguity
+shell_cmd({
+  command: 'if exist D:/AiWorks/chatgpt-workstation/dist/app.exe echo exists',
+});
+
+// Complex PowerShell command: choose PowerShell explicitly; Dominds encodes the command automatically
+shell_cmd({
+  command: 'Test-Path D:/AiWorks/chatgpt-workstation/dist/app.exe',
+  shell: 'powershell.exe',
+});
+```

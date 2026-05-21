@@ -30,6 +30,12 @@
 - `scrollbackLines`（可选）：滚动回看里保留的最近输出行数
 - `timeoutSeconds`（可选）：超时秒数；超时后转为守护进程追踪
 
+**Windows 提示：**
+
+- 默认 `cmd.exe` 路径下，优先使用不带空格的正斜杠路径，如 `D:/path/to/file`
+- 复杂 PowerShell 命令建议显式传 `shell: 'powershell.exe'` 或 `shell: 'pwsh'`；系统会自动用编码方式传递命令，避免引号和反斜杠歧义
+- 不要依赖 `cmd /c "..."`
+
 **返回：**
 
 ```yaml

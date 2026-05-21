@@ -179,3 +179,24 @@ shell_cmd({
   command: 'free -m',
 });
 ```
+
+## 场景 8：Windows 路径与 PowerShell
+
+### 场景描述
+
+在 Windows 上检查文件或运行 PowerShell 命令。
+
+### 示例
+
+```typescript
+// cmd.exe 默认路径：路径无空格时优先用正斜杠，避免反斜杠和引号歧义
+shell_cmd({
+  command: 'if exist D:/AiWorks/chatgpt-workstation/dist/app.exe echo exists',
+});
+
+// 复杂 PowerShell 命令：显式选择 PowerShell，系统会自动编码传递命令
+shell_cmd({
+  command: 'Test-Path D:/AiWorks/chatgpt-workstation/dist/app.exe',
+  shell: 'powershell.exe',
+});
+```

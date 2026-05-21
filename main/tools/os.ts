@@ -1158,10 +1158,18 @@ function parseGetDaemonOutputArgs(args: ToolArguments): GetDaemonOutputArgs {
   return { pid, stdout, stderr };
 }
 
-function resolveShellCmdSpawnSpec(command: string, shell: string | undefined): ShellSpawnSpec {
+function encodePowerShellCommand(command: string): string {
+  return Buffer.from(command, 'utf16le').toString('base64');
+}
+
+function resolveShellCmdSpawnSpec(
+  command: string,
+  shell: string | undefined,
+  platform: NodeJS.Platform = process.platform,
+): ShellSpawnSpec {
   const preferredShell =
     typeof shell === 'string' && shell.trim() !== '' ? shell.trim() : undefined;
-  if (process.platform === 'win32') {
+  if (platform === 'win32') {
     if (preferredShell) {
       const base = path.basename(preferredShell).toLowerCase();
       if (
@@ -1172,14 +1180,14 @@ function resolveShellCmdSpawnSpec(command: string, shell: string | undefined): S
       ) {
         return {
           command: preferredShell,
-          args: ['-NoLogo', '-NoProfile', '-Command', command],
+          args: ['-NoLogo', '-NoProfile', '-EncodedCommand', encodePowerShellCommand(command)],
           shellLabel: preferredShell,
         };
       }
       if (base === 'cmd' || base === 'cmd.exe') {
         return {
           command: preferredShell,
-          args: ['/d', '/s', '/c', command],
+          args: ['/d', '/c', command],
           shellLabel: preferredShell,
         };
       }
@@ -1191,7 +1199,7 @@ function resolveShellCmdSpawnSpec(command: string, shell: string | undefined): S
     }
     return {
       command: 'cmd.exe',
-      args: ['/d', '/s', '/c', command],
+      args: ['/d', '/c', command],
       shellLabel: 'cmd.exe',
     };
   }
@@ -1204,13 +1212,29 @@ function resolveShellCmdSpawnSpec(command: string, shell: string | undefined): S
   };
 }
 
+export function resolveShellCmdSpawnSpecForTests(
+  command: string,
+  shell: string | undefined,
+  platform: NodeJS.Platform,
+): ShellSpawnSpec {
+  return resolveShellCmdSpawnSpec(command, shell, platform);
+}
+
 function resolveReadonlyShellSpawnSpec(
   command: string,
+  platform: NodeJS.Platform = process.platform,
 ): Readonly<{ command: string; args: string[] }> {
-  if (process.platform === 'win32') {
-    return { command: 'cmd.exe', args: ['/d', '/s', '/c', command] };
+  if (platform === 'win32') {
+    return { command: 'cmd.exe', args: ['/d', '/c', command] };
   }
   return { command: 'bash', args: ['-c', command] };
+}
+
+export function resolveReadonlyShellSpawnSpecForTests(
+  command: string,
+  platform: NodeJS.Platform,
+): Readonly<{ command: string; args: string[] }> {
+  return resolveReadonlyShellSpawnSpec(command, platform);
 }
 
 type RunnerBackedDaemon = Readonly<{
@@ -1521,7 +1545,8 @@ const shellCmdSchema: JsonSchema = {
     },
     shell: {
       type: 'string',
-      description: 'Shell to use for execution (default: bash on Linux/macOS; cmd.exe on Windows)',
+      description:
+        'Shell to use for execution (default: bash on Linux/macOS; cmd.exe on Windows). On Windows, powershell.exe/pwsh commands are passed via -EncodedCommand.',
     },
     scrollbackLines: {
       type: 'number',

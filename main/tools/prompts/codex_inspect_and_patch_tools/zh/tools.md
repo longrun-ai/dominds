@@ -12,6 +12,11 @@
 - 只读 `git status` / `git diff` / `git log` / `git show`
 - 版本探针与简单文件系统检查
 
+Windows 注意：
+
+- 优先使用不带空格的正斜杠路径，如 `D:/path/to/file`
+- 避免嵌套 `cmd /c "..."`
+
 示例：
 
 ```typescript

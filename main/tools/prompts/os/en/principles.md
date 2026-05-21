@@ -71,7 +71,7 @@ Environment variables are system variables that affect process behavior.
 ### 1. Shell Command Security
 
 - **Validate input**: Use parameterized commands to avoid injection
-- **Use absolute paths**: Avoid relative path ambiguity
+- **Use explicit paths**: Avoid relative path ambiguity; on Windows, prefer forward-slash paths
 - **Check permissions**: Ensure sufficient permissions to execute commands
 
 ### 2. Process Management

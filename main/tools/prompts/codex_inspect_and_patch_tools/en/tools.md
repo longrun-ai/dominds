@@ -12,6 +12,11 @@ Typical uses:
 - read-only `git status` / `git diff` / `git log` / `git show`
 - version probes and simple filesystem inspection
 
+Windows notes:
+
+- Prefer no-space forward-slash paths such as `D:/path/to/file`
+- Avoid nested `cmd /c "..."`
+
 Example:
 
 ```typescript

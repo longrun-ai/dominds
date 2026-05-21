@@ -30,6 +30,12 @@ Execute Shell command.
 - `scrollbackLines` (optional): Number of recent output lines to retain in scrollback
 - `timeoutSeconds` (optional): Timeout in seconds before switching to daemon tracking
 
+**Windows notes:**
+
+- With the default `cmd.exe` path, prefer no-space forward-slash paths such as `D:/path/to/file`
+- For complex PowerShell commands, pass `shell: 'powershell.exe'` or `shell: 'pwsh'`; the command is encoded automatically to avoid quote and backslash ambiguity
+- Do not rely on nested `cmd /c "..."`
+
 **Returns:**
 
 ```yaml

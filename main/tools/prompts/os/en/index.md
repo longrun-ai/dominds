@@ -51,5 +51,5 @@ os is Dominds' **shell and process toolset** for executing system commands and m
 ⚠️ Shell command execution requires caution:
 
 - Avoid destructive commands (e.g., `rm -rf`)
-- Use absolute paths to avoid path injection
+- Use explicit paths to avoid path injection; on Windows, prefer forward-slash paths
 - Verify command output before executing follow-up operations
