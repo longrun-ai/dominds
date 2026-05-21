@@ -1207,6 +1207,28 @@ function prependShellWarning(content: string, warning: string | undefined): stri
   return `${warning}\n\n${content}`;
 }
 
+function formatShellExecutionError(
+  shell: string | undefined,
+  message: string,
+  language: LanguageCode,
+  platform: NodeJS.Platform = process.platform,
+): string {
+  if (platform !== 'win32' || typeof shell !== 'string') {
+    return message;
+  }
+
+  const base = path.basename(shell.trim()).toLowerCase();
+  const missingPid = message.includes('cmd_runner failed to spawn daemon command: missing pid');
+  const notFound = /\bENOENT\b|not found|cannot find/i.test(message);
+  if ((base !== 'pwsh' && base !== 'pwsh.exe') || (!missingPid && !notFound)) {
+    return message;
+  }
+
+  return language === 'zh'
+    ? '指定的 shell 为 pwsh (PowerShell 7+)，但系统未找到 pwsh 可执行文件。powershell.exe 是 Windows PowerShell 5.1，不等同于 pwsh。'
+    : 'The selected shell is pwsh (PowerShell 7+), but the pwsh executable was not found. powershell.exe is Windows PowerShell 5.1 and is not the same shell as pwsh.';
+}
+
 function resolveShellCmdSpawnSpec(
   command: string,
   shell: string | undefined,
@@ -1274,6 +1296,15 @@ export function detectWindowsShellUsageWarningForTests(
   platform: NodeJS.Platform,
 ): string | undefined {
   return detectWindowsShellUsageWarning(command, shell, language, platform);
+}
+
+export function formatShellExecutionErrorForTests(
+  shell: string | undefined,
+  message: string,
+  language: LanguageCode,
+  platform: NodeJS.Platform,
+): string {
+  return formatShellExecutionError(shell, message, language, platform);
 }
 
 function resolveReadonlyShellSpawnSpec(
@@ -2128,7 +2159,13 @@ export const shellCmdTool: FuncTool = {
     } catch (error: unknown) {
       return toolFailure(
         prependShellWarning(
-          t.failedToExecute(error instanceof Error ? error.message : String(error)),
+          t.failedToExecute(
+            formatShellExecutionError(
+              shell,
+              error instanceof Error ? error.message : String(error),
+              language,
+            ),
+          ),
           warning,
         ),
       );

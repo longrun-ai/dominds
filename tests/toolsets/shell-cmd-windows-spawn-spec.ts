@@ -3,6 +3,7 @@
 import assert from 'node:assert/strict';
 import {
   detectWindowsShellUsageWarningForTests,
+  formatShellExecutionErrorForTests,
   resolveReadonlyShellSpawnSpecForTests,
   resolveShellCmdSpawnSpecForTests,
 } from '../../main/tools/os';
@@ -149,6 +150,25 @@ assert.equal(
     'win32',
   ),
   undefined,
+);
+
+const pwshMissingMessage = formatShellExecutionErrorForTests(
+  'pwsh',
+  'cmd_runner failed to spawn daemon command: missing pid',
+  'zh',
+  'win32',
+);
+assert.match(pwshMissingMessage, /指定的 shell 为 pwsh \(PowerShell 7\+\)/);
+assert.match(pwshMissingMessage, /系统未找到 pwsh 可执行文件/);
+assert.match(pwshMissingMessage, /powershell\.exe 是 Windows PowerShell 5\.1/);
+assert.equal(
+  formatShellExecutionErrorForTests(
+    'powershell.exe',
+    'cmd_runner failed to spawn daemon command: missing pid',
+    'zh',
+    'win32',
+  ),
+  'cmd_runner failed to spawn daemon command: missing pid',
 );
 
 const readonlyShellSpec = resolveReadonlyShellSpawnSpecForTests(command, 'win32');
