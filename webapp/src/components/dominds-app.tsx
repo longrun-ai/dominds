@@ -2146,24 +2146,35 @@ export class DomindsApp extends HTMLElement {
     const currentVersion = this.backendVersion ? `v${this.backendVersion}` : 'unknown';
     const latestVersion =
       this.domindsSelfUpdate?.targetVersion ?? this.domindsSelfUpdate?.latestVersion ?? null;
-    const latestLabel = latestVersion ? `v${latestVersion}` : currentVersion;
+    const checkedAt = this.formatVersionCheckCheckedAt(this.domindsSelfUpdate?.checkedAt ?? null);
     const state = this.getDomindsVersionActionState();
+    const lines = [
+      t.domindsVersionCheckTitle,
+      `${t.domindsVersionTooltipCurrent}: ${currentVersion}`,
+      `${t.domindsVersionTooltipLastChecked}: ${checkedAt}`,
+    ];
+    if (latestVersion !== null && latestVersion.trim() !== '') {
+      lines.push(`${t.domindsVersionTooltipLatest}: v${latestVersion.trim()}`);
+    }
     switch (state.kind) {
       case 'install':
       case 'installing':
-        return `${t.domindsVersionUpdateAvailableTitle}\n${currentVersion} -> ${latestLabel}`;
+        lines.push(`${t.domindsVersionTooltipStatus}: ${t.domindsVersionUpdateAvailableTitle}`);
+        break;
       case 'restart':
       case 'restarting':
-        return `${t.domindsVersionRestartAvailableTitle}\n${currentVersion} -> ${latestLabel}`;
+        lines.push(`${t.domindsVersionTooltipStatus}: ${t.domindsVersionRestartAvailableTitle}`);
+        break;
       case 'idle':
         if (
           this.domindsSelfUpdate?.reason === 'latest_check_failed' &&
           this.domindsSelfUpdate.message
         ) {
-          return `${t.domindsVersionCheckTitle}\n${this.domindsSelfUpdate.message}`;
+          lines.push(`${t.domindsVersionTooltipStatus}: ${this.domindsSelfUpdate.message}`);
         }
-        return `${t.domindsVersionCheckTitle}\n${currentVersion}`;
+        break;
     }
+    return lines.join('\n');
   }
 
   private updateDomindsVersionUi(): void {
@@ -2229,6 +2240,44 @@ export class DomindsApp extends HTMLElement {
     const currentVersion = this.backendVersion !== '' ? this.backendVersion : 'unknown';
     const targetVersion = latestVersion ?? currentVersion;
     return template.split('<current>').join(currentVersion).split('<latest>').join(targetVersion);
+  }
+
+  private formatVersionCheckResult(template: string, status: DomindsSelfUpdateStatus): string {
+    const currentVersion =
+      status.currentVersion.trim() !== ''
+        ? status.currentVersion.trim()
+        : this.backendVersion !== ''
+          ? this.backendVersion
+          : 'unknown';
+    const targetVersion =
+      status.targetVersion?.trim() || status.latestVersion?.trim() || currentVersion;
+    return template.split('<current>').join(currentVersion).split('<latest>').join(targetVersion);
+  }
+
+  private formatVersionCheckCheckedAt(checkedAt: string | null): string {
+    if (checkedAt === null) {
+      return getUiStrings(this.uiLanguage).domindsVersionTooltipNeverChecked;
+    }
+    return checkedAt;
+  }
+
+  private showDomindsVersionCheckResult(status: DomindsSelfUpdateStatus): void {
+    const t = getUiStrings(this.uiLanguage);
+    if (status.action === 'install') {
+      this.showSuccess(this.formatVersionCheckResult(t.domindsVersionCheckUpdateAvailable, status));
+      return;
+    }
+    if (status.action === 'restart') {
+      this.showSuccess(
+        this.formatVersionCheckResult(t.domindsVersionCheckRestartAvailable, status),
+      );
+      return;
+    }
+    if (status.reason === 'latest_check_failed' && status.message) {
+      this.showToast(`${t.domindsVersionCheckFailedPrefix}${status.message}`, 'warning');
+      return;
+    }
+    this.showSuccess(this.formatVersionCheckResult(t.domindsVersionCheckUpToDate, status));
   }
 
   private async handleDomindsVersionAction(): Promise<void> {
@@ -2297,10 +2346,11 @@ export class DomindsApp extends HTMLElement {
         throw new Error('Missing Dominds self-update check payload');
       }
       this.domindsSelfUpdate = nextStatus;
+      this.showDomindsVersionCheckResult(nextStatus);
     } catch (error) {
       const t = getUiStrings(this.uiLanguage);
       const message = error instanceof Error ? error.message : t.unknownError;
-      this.showToast(`${t.domindsVersionActionFailedPrefix}${message}`, 'error');
+      this.showToast(`${t.domindsVersionCheckFailedPrefix}${message}`, 'error');
     } finally {
       this.domindsSelfUpdateCheckInFlight = false;
       this.updateDomindsVersionUi();

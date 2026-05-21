@@ -19,6 +19,15 @@ export type UiStrings = {
   domindsVersionRestartScheduled: string;
   domindsVersionRestartInProgress: string;
   domindsVersionActionFailedPrefix: string;
+  domindsVersionCheckUpdateAvailable: string;
+  domindsVersionCheckRestartAvailable: string;
+  domindsVersionCheckUpToDate: string;
+  domindsVersionCheckFailedPrefix: string;
+  domindsVersionTooltipCurrent: string;
+  domindsVersionTooltipLatest: string;
+  domindsVersionTooltipLastChecked: string;
+  domindsVersionTooltipNeverChecked: string;
+  domindsVersionTooltipStatus: string;
   loading: string;
   uiLanguageSelectTitle: string;
   themeToggleTitle: string;
@@ -426,6 +435,15 @@ export function getUiStrings(language: LanguageCode): UiStrings {
       domindsVersionRestartScheduled: 'Dominds 后台正在重启…',
       domindsVersionRestartInProgress: '后端正在重启，若页面没有自动刷新，可手动刷新看看。',
       domindsVersionActionFailedPrefix: 'Dominds 更新失败：',
+      domindsVersionCheckUpdateAvailable: '检查完成：发现新版本 v<latest>，点击版本号可安装。',
+      domindsVersionCheckRestartAvailable: '检查完成：新版本 v<latest> 已就绪，点击版本号可重启。',
+      domindsVersionCheckUpToDate: '检查完成：当前已是最新版本 v<current>。',
+      domindsVersionCheckFailedPrefix: 'Dominds 版本检查失败：',
+      domindsVersionTooltipCurrent: '当前版本',
+      domindsVersionTooltipLatest: '最新版本',
+      domindsVersionTooltipLastChecked: '最近检查',
+      domindsVersionTooltipNeverChecked: '尚未检查',
+      domindsVersionTooltipStatus: '状态',
       loading: '加载中…',
       uiLanguageSelectTitle: '界面语言（也用于提示 agent 用该语言回复）',
       themeToggleTitle: '切换主题',
@@ -848,6 +866,17 @@ export function getUiStrings(language: LanguageCode): UiStrings {
     domindsVersionRestartInProgress:
       'Backend is restarting. If the page does not refresh automatically, try a manual refresh.',
     domindsVersionActionFailedPrefix: 'Dominds update failed: ',
+    domindsVersionCheckUpdateAvailable:
+      'Check complete: v<latest> is available. Click the version to install.',
+    domindsVersionCheckRestartAvailable:
+      'Check complete: v<latest> is ready. Click the version to restart.',
+    domindsVersionCheckUpToDate: 'Check complete: v<current> is already the latest.',
+    domindsVersionCheckFailedPrefix: 'Dominds version check failed: ',
+    domindsVersionTooltipCurrent: 'Current version',
+    domindsVersionTooltipLatest: 'Latest version',
+    domindsVersionTooltipLastChecked: 'Last checked',
+    domindsVersionTooltipNeverChecked: 'Not checked yet',
+    domindsVersionTooltipStatus: 'Status',
     loading: 'Loading…',
     uiLanguageSelectTitle: 'UI language (also used to prompt agent replies)',
     themeToggleTitle: 'Switch theme',
