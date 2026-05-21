@@ -1,4 +1,4 @@
-import { execFile, spawn } from 'child_process';
+import { exec, spawn } from 'child_process';
 import fsPromises from 'fs/promises';
 import path from 'path';
 import { promisify } from 'util';
@@ -9,9 +9,12 @@ import { formatUnifiedTimestamp } from '@longrun-ai/kernel/utils/time';
 import { createLogger } from '../log';
 import { DOMINDS_RUNNING_VERSION } from './dominds-running-version';
 
-const execFileAsync = promisify(execFile);
+const execAsync = promisify(exec);
 const log = createLogger('dominds-self-update');
 const BACKGROUND_CHECK_INTERVAL_MS = 30 * 60 * 1000;
+const LATEST_VERSION_CHECK_TIMEOUT_MS = 15_000;
+const RESTART_PORT_RELEASE_TIMEOUT_MS = 15_000;
+const RESTART_PORT_PROBE_INTERVAL_MS = 150;
 
 type ServerMode = 'development' | 'production';
 type DomindsSelfUpdateRunKind = 'disabled' | 'npm_global' | 'npx_latest';
@@ -44,6 +47,8 @@ type RestartState =
   | Readonly<{ kind: 'restart_required'; installedVersion: string; globalCommandAbs: string }>
   | Readonly<{ kind: 'restarting'; targetVersion: string | null }>;
 
+type RestartStdioMode = 'inherit' | 'ignore';
+
 const IDLE_RESTART_STATE: RestartState = { kind: 'idle' };
 
 let runtimeConfig: RuntimeConfig | null = null;
@@ -53,14 +58,6 @@ let installPromise: Promise<DomindsSelfUpdateStatus> | null = null;
 let restartPromise: Promise<DomindsSelfUpdateStatus> | null = null;
 let restartState: RestartState = IDLE_RESTART_STATE;
 let broadcastStatusUpdate: ((status: DomindsSelfUpdateStatus) => void) | null = null;
-
-function getNpmBin(): string {
-  return process.platform === 'win32' ? 'npm.cmd' : 'npm';
-}
-
-function getNpxBin(): string {
-  return process.platform === 'win32' ? 'npx.cmd' : 'npx';
-}
 
 function normalizeVersionString(value: string): string {
   return value.trim().replace(/^v/i, '');
@@ -101,17 +98,32 @@ function detectRunKind(mode: ServerMode): DomindsSelfUpdateRunKind {
   return 'npm_global';
 }
 
+function hasInteractiveConsole(): boolean {
+  return Boolean(process.stdin.isTTY || process.stdout.isTTY || process.stderr.isTTY);
+}
+
+function getRestartHelperStdio(): RestartStdioMode {
+  return hasInteractiveConsole() ? 'inherit' : 'ignore';
+}
+
+function getRestartPortProbeHost(host: string): string {
+  if (host === '0.0.0.0') return '127.0.0.1';
+  if (host === '::') return '::1';
+  return host;
+}
+
 async function queryLatestVersion(): Promise<LatestQueryResult> {
   const checkedAt = formatUnifiedTimestamp(new Date());
   try {
-    const { stdout } = await execFileAsync(getNpmBin(), ['view', 'dominds', 'version', '--json'], {
+    const { stdout } = await execAsync('npm view dominds version --json', {
       cwd: process.cwd(),
       env: process.env,
       maxBuffer: 1024 * 1024,
-      timeout: 15_000,
+      timeout: LATEST_VERSION_CHECK_TIMEOUT_MS,
     });
     const trimmed = stdout.trim();
     if (trimmed === '') {
+      log.warn('Dominds latest-version check returned empty stdout', undefined, { checkedAt });
       return {
         kind: 'error',
         errorText: 'npm view dominds version returned empty stdout',
@@ -126,6 +138,10 @@ async function queryLatestVersion(): Promise<LatestQueryResult> {
     }
     const latestVersion = typeof parsed === 'string' ? parsed.trim() : '';
     if (latestVersion === '') {
+      log.warn('Dominds latest-version check returned an invalid payload', undefined, {
+        checkedAt,
+        stdout: trimmed,
+      });
       return {
         kind: 'error',
         errorText: `npm view dominds version returned non-string output: ${trimmed}`,
@@ -134,16 +150,23 @@ async function queryLatestVersion(): Promise<LatestQueryResult> {
     }
     return { kind: 'ok', latestVersion, checkedAt };
   } catch (error: unknown) {
+    const errorText =
+      error instanceof Error && error.name === 'AbortError'
+        ? 'npm view dominds version timed out'
+        : error instanceof Error
+          ? error.message
+          : String(error);
+    log.warn('Dominds latest-version check failed', error, { checkedAt, errorText });
     return {
       kind: 'error',
-      errorText: error instanceof Error ? error.message : String(error),
+      errorText,
       checkedAt,
     };
   }
 }
 
 async function resolveGlobalDomindsCommandAbs(): Promise<string> {
-  const { stdout } = await execFileAsync(getNpmBin(), ['prefix', '-g'], {
+  const { stdout } = await execAsync('npm prefix -g', {
     cwd: process.cwd(),
     env: process.env,
     maxBuffer: 1024 * 1024,
@@ -485,7 +508,7 @@ export async function installLatestDominds(): Promise<DomindsSelfUpdateStatus> {
     if (!hasUpdate) {
       throw new Error('No installable Dominds update is currently available');
     }
-    await execFileAsync(getNpmBin(), ['i', '-g', 'dominds@latest'], {
+    await execAsync('npm i -g dominds@latest', {
       cwd: process.cwd(),
       env: process.env,
       maxBuffer: 20 * 1024 * 1024,
@@ -498,10 +521,23 @@ export async function installLatestDominds(): Promise<DomindsSelfUpdateStatus> {
       globalCommandAbs,
     };
     return await getDomindsSelfUpdateStatus();
-  })().finally(() => {
-    installPromise = null;
-    publishStatusUpdateSoon();
-  });
+  })()
+    .catch((error: unknown) => {
+      const latestVersion =
+        latestObservation.kind === 'ok' ? latestObservation.latestVersion : null;
+      const checkedAt = latestObservation.kind === 'unknown' ? null : latestObservation.checkedAt;
+      log.error('Dominds version install failed', error, {
+        runKind,
+        currentVersion: getRunningVersion(),
+        latestVersion,
+        checkedAt,
+      });
+      throw error;
+    })
+    .finally(() => {
+      installPromise = null;
+      publishStatusUpdateSoon();
+    });
 
   publishStatusUpdateSoon();
   return await installPromise;
@@ -515,34 +551,75 @@ function spawnDetachedRestartHelper(params: {
   command: string;
   args: readonly string[];
   cwd: string;
+  host: string;
+  port: number;
 }): void {
+  const stdioMode = getRestartHelperStdio();
   const helperPayload = JSON.stringify({
     command: params.command,
     args: [...params.args],
     cwd: params.cwd,
-    delayMs: 800,
+    host: getRestartPortProbeHost(params.host),
+    port: params.port,
+    probeIntervalMs: RESTART_PORT_PROBE_INTERVAL_MS,
+    portReleaseTimeoutMs: RESTART_PORT_RELEASE_TIMEOUT_MS,
+    stdioMode,
   });
   const helperScript = [
+    "const net = require('net');",
     "const { spawn } = require('child_process');",
     'const payload = JSON.parse(process.argv[1]);',
-    'setTimeout(() => {',
+    'const detached = payload.stdioMode !== "inherit" || process.platform === "win32";',
+    'function isPortBusy() {',
+    '  return new Promise((resolve) => {',
+    '    const socket = net.createConnection({ host: payload.host, port: payload.port });',
+    '    let settled = false;',
+    '    const finish = (busy) => {',
+    '      if (settled) return;',
+    '      settled = true;',
+    '      socket.destroy();',
+    '      resolve(busy);',
+    '    };',
+    '    socket.once("connect", () => finish(true));',
+    '    socket.once("error", () => finish(false));',
+    '    socket.setTimeout(1000, () => finish(true));',
+    '  });',
+    '}',
+    'async function waitForPortRelease() {',
+    '  const deadline = Date.now() + payload.portReleaseTimeoutMs;',
+    '  let consecutiveIdle = 0;',
+    '  while (Date.now() < deadline) {',
+    '    if (await isPortBusy()) {',
+    '      consecutiveIdle = 0;',
+    '      await new Promise((resolve) => setTimeout(resolve, payload.probeIntervalMs));',
+    '      continue;',
+    '    }',
+    '    consecutiveIdle += 1;',
+    '    if (consecutiveIdle >= 2) return;',
+    '    await new Promise((resolve) => setTimeout(resolve, payload.probeIntervalMs));',
+    '  }',
+    '}',
+    '(async () => {',
     '  try {',
-    "    const child = spawn(payload.command, payload.args, { cwd: payload.cwd, env: process.env, detached: true, stdio: 'ignore' });",
-    '    child.unref();',
+    '    await waitForPortRelease();',
+    "    const child = spawn(payload.command, payload.args, { cwd: payload.cwd, env: process.env, detached, stdio: payload.stdioMode, shell: process.platform === 'win32' });",
+    '    if (detached) child.unref();',
     '    process.exit(0);',
     '  } catch (error) {',
     '    console.error(error instanceof Error ? error.message : String(error));',
     '    process.exit(1);',
     '  }',
-    '}, payload.delayMs);',
+    '})();',
   ].join('\n');
   const helper = spawn(process.execPath, ['-e', helperScript, helperPayload], {
     cwd: params.cwd,
     env: process.env,
-    detached: true,
-    stdio: 'ignore',
+    detached: stdioMode !== 'inherit' || process.platform === 'win32',
+    stdio: stdioMode,
   });
-  helper.unref();
+  if (stdioMode !== 'inherit' || process.platform === 'win32') {
+    helper.unref();
+  }
 }
 
 async function stopAndExitForRestart(): Promise<void> {
@@ -576,7 +653,7 @@ export async function restartDomindsIntoLatest(): Promise<DomindsSelfUpdateStatu
       restartState.kind === 'restart_required' ? restartState : null;
 
     if (runKind === 'npx_latest') {
-      command = getNpxBin();
+      command = 'npx';
       args.unshift('dominds@latest');
       args.unshift('-y');
     } else if (previousRestartRequiredState !== null) {
@@ -587,29 +664,50 @@ export async function restartDomindsIntoLatest(): Promise<DomindsSelfUpdateStatu
 
     restartState = { kind: 'restarting', targetVersion: status.targetVersion };
     publishStatusUpdateSoon();
-    spawnDetachedRestartHelper({
-      command,
-      args,
-      cwd: process.cwd(),
-    });
-    setImmediate(() => {
-      void stopAndExitForRestart().catch((error: unknown) => {
-        log.error('Failed to stop Dominds server during restart', error);
-        if (runKind === 'npm_global' && previousRestartRequiredState !== null) {
-          restartState = previousRestartRequiredState;
-          publishStatusUpdateSoon();
-          return;
-        }
-        restartState = IDLE_RESTART_STATE;
-        publishStatusUpdateSoon();
+    try {
+      spawnDetachedRestartHelper({
+        command,
+        args,
+        cwd: process.cwd(),
+        host: cfg.host,
+        port: cfg.port,
       });
-    });
+      setImmediate(() => {
+        void stopAndExitForRestart().catch((error: unknown) => {
+          log.error('Failed to stop Dominds server during restart', error);
+          if (runKind === 'npm_global' && previousRestartRequiredState !== null) {
+            restartState = previousRestartRequiredState;
+            publishStatusUpdateSoon();
+            return;
+          }
+          restartState = IDLE_RESTART_STATE;
+          publishStatusUpdateSoon();
+        });
+      });
+    } catch (error) {
+      if (previousRestartRequiredState !== null) {
+        restartState = previousRestartRequiredState;
+      } else {
+        restartState = IDLE_RESTART_STATE;
+      }
+      publishStatusUpdateSoon();
+      throw error;
+    }
 
     return await getDomindsSelfUpdateStatus();
-  })().finally(() => {
-    restartPromise = null;
-    publishStatusUpdateSoon();
-  });
+  })()
+    .catch((error: unknown) => {
+      const statusSnapshot = restartState.kind === 'restarting' ? restartState : null;
+      log.error('Dominds version restart failed', error, {
+        runKind: detectRunKind(cfg.mode),
+        restartState: statusSnapshot,
+      });
+      throw error;
+    })
+    .finally(() => {
+      restartPromise = null;
+      publishStatusUpdateSoon();
+    });
 
   return await restartPromise;
 }
