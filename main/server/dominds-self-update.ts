@@ -15,6 +15,7 @@ const BACKGROUND_CHECK_INTERVAL_MS = 30 * 60 * 1000;
 const LATEST_VERSION_CHECK_TIMEOUT_MS = 15_000;
 const RESTART_PORT_RELEASE_TIMEOUT_MS = 15_000;
 const RESTART_PORT_PROBE_INTERVAL_MS = 150;
+const COMMAND_OUTPUT_LOG_LIMIT = 2_000;
 
 type ServerMode = 'development' | 'production';
 type DomindsSelfUpdateRunKind = 'disabled' | 'npm_global' | 'npx_latest';
@@ -41,6 +42,18 @@ type LatestObservation =
   | Readonly<{ kind: 'error'; errorText: string; checkedAt: string }>;
 
 type LatestQueryResult = Exclude<LatestObservation, Readonly<{ kind: 'unknown' }>>;
+
+type CommandFailureDiagnostics = Readonly<{
+  message: string;
+  cmd: string | null;
+  code: string | number | null;
+  signal: string | null;
+  killed: boolean | null;
+  stdout: string;
+  stderr: string;
+  cwd: string;
+  pathEnv: string | null;
+}>;
 
 type RestartState =
   | Readonly<{ kind: 'idle' }>
@@ -112,6 +125,98 @@ function getRestartPortProbeHost(host: string): string {
   return host;
 }
 
+function truncateCommandOutput(value: unknown): string {
+  const raw = typeof value === 'string' ? value.trim() : '';
+  if (raw.length <= COMMAND_OUTPUT_LOG_LIMIT) return raw;
+  return `${raw.slice(0, COMMAND_OUTPUT_LOG_LIMIT)}...[truncated ${raw.length - COMMAND_OUTPUT_LOG_LIMIT} chars]`;
+}
+
+function formatPathEnvExcerpt(pathEnv: string | null): string | null {
+  if (pathEnv === null || pathEnv.trim() === '') return null;
+  const parts = pathEnv.split(path.delimiter).filter((part) => part.trim() !== '');
+  if (parts.length === 0) return null;
+  const visibleParts = parts.slice(0, 8);
+  const preview = visibleParts.join(path.delimiter);
+  if (parts.length <= visibleParts.length) return preview;
+  return `${preview}${path.delimiter}...[+${parts.length - visibleParts.length} more]`;
+}
+
+function getErrorProp(error: unknown, key: string): unknown {
+  if (typeof error !== 'object' || error === null) return undefined;
+  return (error as Record<string, unknown>)[key];
+}
+
+function extractCommandFailureDiagnostics(error: unknown): CommandFailureDiagnostics {
+  const code = getErrorProp(error, 'code');
+  const signal = getErrorProp(error, 'signal');
+  const killed = getErrorProp(error, 'killed');
+  const cmd = getErrorProp(error, 'cmd');
+  return {
+    message: error instanceof Error ? error.message : String(error),
+    cmd: typeof cmd === 'string' && cmd.trim() !== '' ? cmd : null,
+    code: typeof code === 'string' || typeof code === 'number' ? code : null,
+    signal: typeof signal === 'string' && signal.trim() !== '' ? signal : null,
+    killed: typeof killed === 'boolean' ? killed : null,
+    stdout: truncateCommandOutput(getErrorProp(error, 'stdout')),
+    stderr: truncateCommandOutput(getErrorProp(error, 'stderr')),
+    cwd: process.cwd(),
+    pathEnv: typeof process.env.PATH === 'string' ? process.env.PATH : null,
+  };
+}
+
+function formatCommandFailureForUi(diagnostics: CommandFailureDiagnostics): string {
+  const lines: string[] = [diagnostics.message];
+  if (diagnostics.cmd !== null) {
+    lines.push(`cmd: ${diagnostics.cmd}`);
+  }
+  if (diagnostics.code !== null) {
+    lines.push(`exit: ${String(diagnostics.code)}`);
+  }
+  if (diagnostics.signal !== null) {
+    lines.push(`signal: ${diagnostics.signal}`);
+  }
+  lines.push(`cwd: ${diagnostics.cwd}`);
+
+  if (diagnostics.stderr !== '') {
+    lines.push(`stderr: ${diagnostics.stderr}`);
+    return lines.join('\n');
+  }
+  if (diagnostics.stdout !== '') {
+    lines.push(`stdout: ${diagnostics.stdout}`);
+    return lines.join('\n');
+  }
+
+  const pathEnvExcerpt = formatPathEnvExcerpt(diagnostics.pathEnv);
+  if (pathEnvExcerpt !== null) {
+    lines.push(`PATH: ${pathEnvExcerpt}`);
+  }
+
+  const lowerMessage = diagnostics.message.toLowerCase();
+  if (
+    diagnostics.code === 'ENOENT' ||
+    lowerMessage.includes('not recognized as an internal or external command') ||
+    lowerMessage.includes('spawn npm enoent')
+  ) {
+    lines.push('hint: npm is not available to the server process on PATH');
+  } else if (
+    lowerMessage.includes('econn') ||
+    lowerMessage.includes('etimedout') ||
+    lowerMessage.includes('certificate') ||
+    lowerMessage.includes('self signed') ||
+    lowerMessage.includes('registry')
+  ) {
+    lines.push('hint: this looks like a registry, network, proxy, or certificate problem');
+  } else if (
+    diagnostics.code === 1 &&
+    diagnostics.stderr === '' &&
+    diagnostics.stdout === ''
+  ) {
+    lines.push('hint: npm exited without output; check registry access and npm config in the same shell');
+  }
+
+  return lines.join('\n');
+}
+
 async function queryLatestVersion(): Promise<LatestQueryResult> {
   const checkedAt = formatUnifiedTimestamp(new Date());
   try {
@@ -150,13 +255,12 @@ async function queryLatestVersion(): Promise<LatestQueryResult> {
     }
     return { kind: 'ok', latestVersion, checkedAt };
   } catch (error: unknown) {
+    const diagnostics = extractCommandFailureDiagnostics(error);
     const errorText =
       error instanceof Error && error.name === 'AbortError'
         ? 'npm view dominds version timed out'
-        : error instanceof Error
-          ? error.message
-          : String(error);
-    log.warn('Dominds latest-version check failed', error, { checkedAt, errorText });
+        : formatCommandFailureForUi(diagnostics);
+    log.warn('Dominds latest-version check failed', error, { checkedAt, errorText, diagnostics });
     return {
       kind: 'error',
       errorText,
