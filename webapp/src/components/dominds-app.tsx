@@ -7227,12 +7227,24 @@ export class DomindsApp extends HTMLElement {
     });
 
     this.shadowRoot.addEventListener('a2h-ack', (event) => {
+      const status = this.lookupVisibleDialogStatusByIds(
+        event.detail.rootId,
+        event.detail.dialogId,
+      );
+      const dialog =
+        status === null
+          ? {
+              selfId: event.detail.dialogId,
+              rootId: event.detail.rootId,
+            }
+          : {
+              selfId: event.detail.dialogId,
+              rootId: event.detail.rootId,
+              status,
+            };
       this.wsManager.sendRaw({
         type: 'ack_a2h',
-        dialog: {
-          selfId: event.detail.dialogId,
-          rootId: event.detail.rootId,
-        },
+        dialog,
         answerId: event.detail.answerId,
       });
     });
@@ -11815,6 +11827,7 @@ export class DomindsApp extends HTMLElement {
         // Another client moved dialogs between running/done/archived - refresh lists.
         // This ensures multi-tab/multi-browser updates stay consistent without polling.
         void this.loadDialogs();
+        this.wsManager.sendRaw({ type: 'get_q4h_state' });
         return true;
       }
       case 'dialogs_created': {
@@ -11830,10 +11843,12 @@ export class DomindsApp extends HTMLElement {
           this.clearCurrentDialogSelection();
         }
         void this.loadDialogs();
+        this.wsManager.sendRaw({ type: 'get_q4h_state' });
         return true;
       }
       case 'dialogs_quarantined': {
         this.removeQuarantinedMainDialog(message.rootId, message.fromStatus);
+        this.wsManager.sendRaw({ type: 'get_q4h_state' });
         return true;
       }
       case 'run_control_counts_evt': {

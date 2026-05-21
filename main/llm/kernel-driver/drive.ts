@@ -2851,11 +2851,13 @@ export async function driveDialogStreamCore(
               prompt: currentPrompt,
               language: promptLanguage,
             });
-            if (
+            const deferredReplyReassertionDirective =
+              replyGuidance.deferredReplyReassertionDirective;
+            const currentPromptIsUserInterjection =
               currentPrompt.origin === 'user' &&
               replyGuidance.suppressInterDialogReplyGuidance &&
-              replyGuidance.deferredReplyReassertionDirective !== undefined
-            ) {
+              deferredReplyReassertionDirective !== undefined;
+            if (currentPromptIsUserInterjection) {
               // WARNING:
               // User interjection suppression is a reversible state transition, not a one-shot
               // latch. The normal cycle is:
@@ -2870,7 +2872,7 @@ export async function driveDialogStreamCore(
                 await DialogPersistence.getDeferredReplyReassertion(dlg.id, dlg.status);
               const nextDeferredReplyReassertion = {
                 reason: 'user_interjection_with_parked_original_task' as const,
-                directive: replyGuidance.deferredReplyReassertionDirective,
+                directive: deferredReplyReassertionDirective,
               };
               const mustRearmDeferredReplyReassertion =
                 existingDeferredReplyReassertion === undefined ||
@@ -2917,7 +2919,7 @@ export async function driveDialogStreamCore(
                 `kernel-driver reply guidance invariant violation: missing prompt content for dialog=${dlg.id.valueOf()} msgId=${currentPrompt.msgId}`,
               );
             }
-            if (currentPrompt.origin === 'user' && !replyGuidance.isQ4HAnswerPrompt) {
+            if (currentPromptIsUserInterjection) {
               await DialogPersistence.mutateDialogLatest(
                 dlg.id,
                 () => ({

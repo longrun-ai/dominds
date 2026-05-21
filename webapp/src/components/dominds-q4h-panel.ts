@@ -32,6 +32,7 @@ export class DomindsQ4HPanel extends HTMLElement {
     answers: [],
   };
   private expandedQuestions: Set<string> = new Set();
+  private expandedAnswers: Set<string> = new Set();
   private selectedQuestionId: string | null = null;
 
   constructor() {
@@ -87,6 +88,10 @@ export class DomindsQ4HPanel extends HTMLElement {
     this.props.count = count;
     this.props.dialogContexts = dialogContexts;
     this.props.answers = answers;
+    const answerIds = new Set(answers.map((answer) => answer.id));
+    for (const answerId of [...this.expandedAnswers]) {
+      if (!answerIds.has(answerId)) this.expandedAnswers.delete(answerId);
+    }
     this.render();
   }
 
@@ -131,6 +136,16 @@ export class DomindsQ4HPanel extends HTMLElement {
     );
   }
 
+  private toggleAnswer(answerId: string): void {
+    const wasExpanded = this.expandedAnswers.has(answerId);
+    if (wasExpanded) {
+      this.expandedAnswers.delete(answerId);
+    } else {
+      this.expandedAnswers.add(answerId);
+    }
+    this.applyAnswerExpandedUi(answerId);
+  }
+
   public setSelectedQuestionIdFromApp(questionId: string | null): void {
     if (questionId === this.selectedQuestionId) return;
     this.selectedQuestionId = questionId;
@@ -149,6 +164,14 @@ export class DomindsQ4HPanel extends HTMLElement {
     );
     if (!(card instanceof HTMLElement)) return;
     card.classList.toggle('expanded', this.expandedQuestions.has(questionId));
+  }
+
+  private applyAnswerExpandedUi(answerId: string): void {
+    const root = this.shadowRoot;
+    if (!root) return;
+    const card = root.querySelector(`.a2h-card[data-answer-id="${CSS.escape(answerId)}"]`);
+    if (!(card instanceof HTMLElement)) return;
+    card.classList.toggle('expanded', this.expandedAnswers.has(answerId));
   }
 
   private applySelectionUi(): void {
@@ -288,7 +311,11 @@ export class DomindsQ4HPanel extends HTMLElement {
         e.stopPropagation();
         const target = e.currentTarget as HTMLElement;
         const card = target.closest('.q4h-question-card');
-        if (card?.classList.contains('a2h-card')) return;
+        if (card?.classList.contains('a2h-card')) {
+          const answerId = card.getAttribute('data-answer-id');
+          if (answerId) this.toggleAnswer(answerId);
+          return;
+        }
         const questionId = card?.getAttribute('data-question-id');
         if (questionId) {
           this.toggleQuestion(questionId);
@@ -310,10 +337,14 @@ export class DomindsQ4HPanel extends HTMLElement {
 
         const card = header.closest('.q4h-question-card');
         if (!card) return;
-        if (card.classList.contains('a2h-card')) return;
 
         e.preventDefault();
         e.stopPropagation();
+        if (card.classList.contains('a2h-card')) {
+          const answerId = card.getAttribute('data-answer-id');
+          if (answerId) this.toggleAnswer(answerId);
+          return;
+        }
         this.handleSelectFromCard(card);
       });
     });
@@ -325,7 +356,11 @@ export class DomindsQ4HPanel extends HTMLElement {
         e.stopPropagation();
         const card = el.closest('.q4h-question-card');
         if (!card) return;
-        if (card.classList.contains('a2h-card')) return;
+        if (card.classList.contains('a2h-card')) {
+          const answerId = card.getAttribute('data-answer-id');
+          if (answerId) this.toggleAnswer(answerId);
+          return;
+        }
 
         this.handleSelectFromCard(card);
       });
@@ -578,15 +613,20 @@ export class DomindsQ4HPanel extends HTMLElement {
       }
 
       .a2h-card .q4h-question-body {
+        display: none;
+      }
+
+      .a2h-card.expanded .q4h-question-body {
         display: block;
+        animation: expandIn 0.2s ease-out;
       }
 
       .a2h-header {
-        cursor: default;
+        cursor: pointer;
       }
 
       .a2h-header:hover {
-        background: transparent;
+        background: var(--color-bg-tertiary, #f8fafc);
       }
 
       /* Selected state for question card */
@@ -1032,9 +1072,11 @@ export class DomindsQ4HPanel extends HTMLElement {
 
   private renderAnswerCard(answer: GlobalAnswerToHumanItem): string {
     const t = getUiStrings(this.uiLanguage);
+    const expandedClass = this.expandedAnswers.has(answer.id) ? 'expanded' : '';
     return `
-      <div class="q4h-question-card a2h-card" data-answer-id="${this.escapeHtml(answer.id)}" data-dialog-id="${this.escapeHtml(answer.selfId)}" data-root-id="${this.escapeHtml(answer.rootId)}">
+      <div class="q4h-question-card a2h-card ${expandedClass}" data-answer-id="${this.escapeHtml(answer.id)}" data-dialog-id="${this.escapeHtml(answer.selfId)}" data-root-id="${this.escapeHtml(answer.rootId)}">
         <div class="q4h-question-header a2h-header">
+          <span class="q4h-expand-icon icon-mask" aria-hidden="true"></span>
           <span class="q4h-question-title">
             <span class="q4h-question-origin">@${this.escapeHtml(answer.agentId)}</span>
             <span class="q4h-question-origin-sep">•</span>

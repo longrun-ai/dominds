@@ -1,6 +1,10 @@
 import assert from 'node:assert/strict';
 
-import type { AgentWordsRecord, HumanTextRecord } from '@longrun-ai/kernel/types/storage';
+import type {
+  AgentWordsRecord,
+  AnswerToHumanItem,
+  HumanTextRecord,
+} from '@longrun-ai/kernel/types/storage';
 import { toCallSiteGenseqNo, toDialogCourseNumber } from '@longrun-ai/kernel/types/storage';
 import { hasDurableDriveWork } from '../../main/dialog-drive-work';
 import { DialogPersistence } from '../../main/persistence';
@@ -119,6 +123,100 @@ async function main(): Promise<void> {
       'Here is the answer after the tool result.',
       'recovered A2H content should match the post-tool visible assistant answer',
     );
+
+    const ordinaryDlg = await createMainDialog('tester');
+    await DialogPersistence.appendEvent(
+      ordinaryDlg.id,
+      1,
+      {
+        ts: '2026-05-21T00:01:00.000Z',
+        type: 'human_text_record',
+        genseq: 1,
+        msgId: 'ordinary-user-chat',
+        content: '普通追问，不是用户插话。',
+        grammar: 'markdown',
+        origin: 'user',
+      },
+      ordinaryDlg.status,
+    );
+    await DialogPersistence.appendEvent(
+      ordinaryDlg.id,
+      1,
+      {
+        ts: '2026-05-21T00:01:01.000Z',
+        type: 'agent_words_record',
+        genseq: 1,
+        content: '普通回答不应进入 A2H。',
+      },
+      ordinaryDlg.status,
+    );
+    const ordinaryLatest = await DialogPersistence.loadDialogLatest(
+      ordinaryDlg.id,
+      ordinaryDlg.status,
+    );
+    assert.equal(
+      ordinaryLatest?.pendingUserInterjectionReply,
+      undefined,
+      'ordinary user chat should not synthesize a pending interjection marker during recovery',
+    );
+    const ordinaryAnswers = await DialogPersistence.loadAnswersToHumanState(
+      ordinaryDlg.id,
+      ordinaryDlg.status,
+    );
+    assert.equal(
+      ordinaryAnswers.length,
+      0,
+      'ordinary user chat should not synthesize A2H during course JSONL recovery',
+    );
+
+    const archivedAnswer: AnswerToHumanItem = {
+      id: 'a2h-archived-ack-regression',
+      content: 'Archived answer awaiting ack.',
+      answeredAt: '2026-05-21T00:02:00.000Z',
+      userInterjection: {
+        msgId: userRecord.msgId,
+        course: toDialogCourseNumber(1),
+        genseq: toCallSiteGenseqNo(1),
+      },
+      answerRef: {
+        course: toDialogCourseNumber(1),
+        genseq: toCallSiteGenseqNo(2),
+      },
+    };
+    await DialogPersistence.appendAnswerToHumanState(dlg.id, archivedAnswer, dlg.status);
+    await DialogPersistence.moveDialogStatus(dlg.id, 'running', 'archived');
+    const runningAnswers = await DialogPersistence.loadAllA2HState();
+    assert.equal(
+      runningAnswers.some((answer) => answer.id === archivedAnswer.id),
+      false,
+      'global A2H state should only scan running dialogs after the source dialog is archived',
+    );
+    const archivedAnswersBeforeAck = await DialogPersistence.loadAnswersToHumanState(
+      dlg.id,
+      'archived',
+    );
+    assert.equal(
+      archivedAnswersBeforeAck.length,
+      2,
+      'archived dialog should retain all A2H answers until they are acknowledged',
+    );
+    for (const answer of archivedAnswersBeforeAck) {
+      const archivedAck = await DialogPersistence.acknowledgeAnswerToHumanState(
+        dlg.id,
+        answer.id,
+        'archived',
+      );
+      assert.equal(
+        archivedAck.found,
+        true,
+        `A2H Ack should work against archived dialog state for ${answer.id}`,
+      );
+    }
+    const archivedAnswersAfterAck = await DialogPersistence.loadAnswersToHumanState(
+      dlg.id,
+      'archived',
+    );
+    assert.equal(archivedAnswersAfterAck.length, 0, 'archived A2H should be removed after Ack');
   });
 
   console.log('kernel-driver pending-user-interjection-recovery: PASS');

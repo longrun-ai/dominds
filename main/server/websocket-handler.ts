@@ -365,8 +365,10 @@ const wsLiveDlg = new WeakMap<WebSocket, Dialog>();
 const wsSub = new WeakMap<WebSocket, { dialogKey: string; subChan: SubChan<DialogEvent> }>();
 const wsUiLanguage = new WeakMap<WebSocket, LanguageCode>();
 
-let broadcastDialogsIndexMessage: ((msg: WebSocketMessage) => void) | null = null;
 let broadcastRunControlRefreshMessage: ((msg: RunControlRefreshMessage) => void) | null = null;
+let broadcastDialogsIndexMessage: ((msg: WebSocketMessage) => void) | null = null;
+let broadcastDiligencePushUpdatedMessage: ((msg: DiligencePushUpdatedMessage) => void) | null =
+  null;
 
 function emitRunControlRefresh(reason: RunControlRefreshMessage['reason']): void {
   broadcastRunControlRefreshMessage?.({
@@ -987,7 +989,11 @@ async function handleSetDiligencePush(
       disableDiligencePush,
       timestamp: formatUnifiedTimestamp(new Date()),
     };
-    ws.send(JSON.stringify(msg));
+    if (broadcastDiligencePushUpdatedMessage) {
+      broadcastDiligencePushUpdatedMessage(msg);
+    } else {
+      ws.send(JSON.stringify(msg));
+    }
 
     const shouldTriggerImmediateDiligence =
       requestedStatus === 'running' &&
@@ -1692,8 +1698,43 @@ async function handleAckA2H(ws: WebSocket, packet: AckA2HRequest): Promise<void>
     }
 
     const dialogId = new DialogID(dialogIdent.selfId, dialogIdent.rootId);
-    const removed = await DialogPersistence.acknowledgeAnswerToHumanState(dialogId, answerId);
-    if (!removed.found) {
+    const requestedStatusInput = readOptionalPersistableDialogStatus(dialogIdent.status);
+    if (requestedStatusInput.kind === 'invalid') {
+      ws.send(
+        JSON.stringify({
+          type: 'error',
+          message:
+            'A2H Ack requires status running, completed, or archived when status is provided',
+        }),
+      );
+      return;
+    }
+    const candidateStatuses: DialogPersistenceStatus[] =
+      requestedStatusInput.kind === 'value'
+        ? [
+            requestedStatusInput.status,
+            ...(['running', 'completed', 'archived'] as const).filter(
+              (status) => status !== requestedStatusInput.status,
+            ),
+          ]
+        : ['running', 'completed', 'archived'];
+    let removed: Awaited<
+      ReturnType<typeof DialogPersistence.acknowledgeAnswerToHumanState>
+    > | null = null;
+    let removedStatus: DialogPersistenceStatus | null = null;
+    for (const status of candidateStatuses) {
+      const attempt = await DialogPersistence.acknowledgeAnswerToHumanState(
+        dialogId,
+        answerId,
+        status,
+      );
+      if (attempt.found) {
+        removed = attempt;
+        removedStatus = status;
+        break;
+      }
+    }
+    if (removed === null || !removed.found) {
       ws.send(
         JSON.stringify({
           type: 'error',
@@ -1701,6 +1742,9 @@ async function handleAckA2H(ws: WebSocket, packet: AckA2HRequest): Promise<void>
         }),
       );
       return;
+    }
+    if (removedStatus === null) {
+      throw new Error(`A2H Ack invariant violation: removed answer without status ${answerId}`);
     }
 
     const event: A2HAcknowledgedDialogEvent = {
@@ -2402,6 +2446,10 @@ export function setupWebSocketServer(
     broadcastToClients(msg);
   };
 
+  broadcastDiligencePushUpdatedMessage = (msg: DiligencePushUpdatedMessage) => {
+    broadcastToClients(msg);
+  };
+
   setPrepareDialogQuarantineHook(async ({ mainDialogId, status }) => {
     if (status !== 'running') {
       return;
@@ -2479,6 +2527,8 @@ export function setupWebSocketServer(
     setFinalizeDialogQuarantineHook(null);
     setPrepareDialogQuarantineHook(null);
     setDialogsQuarantinedBroadcaster(null);
+    broadcastDialogsIndexMessage = null;
+    broadcastDiligencePushUpdatedMessage = null;
     void wss.close();
   });
 
