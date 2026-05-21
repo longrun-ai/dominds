@@ -5,6 +5,7 @@ export type CmdRunnerSpawnSpec = Readonly<{
   command: string;
   args: string[];
   shellLabel: string;
+  windowsVerbatimArguments?: boolean;
 }>;
 
 export type CmdRunnerInitMessage = Readonly<{
@@ -197,12 +198,21 @@ export function parseCmdRunnerInitMessage(raw: unknown): CmdRunnerInitMessage {
   }
   const command = asString(spawnSpecRaw['command']);
   const shellLabel = asString(spawnSpecRaw['shellLabel']);
+  const windowsVerbatimArgumentsRaw = spawnSpecRaw['windowsVerbatimArguments'];
   const argsRaw = spawnSpecRaw['args'];
   if (command === null || command.trim() === '') {
     throw new Error('Invalid cmd_runner init message: spawnSpec.command required');
   }
   if (shellLabel === null || shellLabel.trim() === '') {
     throw new Error('Invalid cmd_runner init message: spawnSpec.shellLabel required');
+  }
+  if (
+    windowsVerbatimArgumentsRaw !== undefined &&
+    typeof windowsVerbatimArgumentsRaw !== 'boolean'
+  ) {
+    throw new Error(
+      'Invalid cmd_runner init message: spawnSpec.windowsVerbatimArguments must be boolean',
+    );
   }
   if (!Array.isArray(argsRaw) || !argsRaw.every((item) => typeof item === 'string')) {
     throw new Error('Invalid cmd_runner init message: spawnSpec.args must be string[]');
@@ -216,6 +226,7 @@ export function parseCmdRunnerInitMessage(raw: unknown): CmdRunnerInitMessage {
       command,
       args: [...argsRaw],
       shellLabel,
+      ...(windowsVerbatimArgumentsRaw === true ? { windowsVerbatimArguments: true } : {}),
     },
   };
 }

@@ -248,6 +248,7 @@ type ShellSpawnSpec = Readonly<{
   command: string;
   args: string[];
   shellLabel: string;
+  windowsVerbatimArguments?: boolean;
 }>;
 
 function resolveBestEffortDaemonSignalTarget(daemon: DaemonProcess): number {
@@ -1162,6 +1163,83 @@ function encodePowerShellCommand(command: string): string {
   return Buffer.from(command, 'utf16le').toString('base64');
 }
 
+function stripMatchingOuterQuotes(value: string): string {
+  const trimmed = value.trim();
+  if (trimmed.length < 2) {
+    return trimmed;
+  }
+  const first = trimmed[0] ?? '';
+  const last = trimmed[trimmed.length - 1] ?? '';
+  if ((first === '"' && last === '"') || (first === "'" && last === "'")) {
+    return trimmed.slice(1, -1);
+  }
+  return trimmed;
+}
+
+function resolveDirectWindowsPowerShellCommand(command: string): ShellSpawnSpec | null {
+  const match =
+    /^\s*(powershell(?:\.exe)?|pwsh(?:\.exe)?)\s+(?:-(?:NoLogo|NoProfile|NonInteractive)\s+)*(?:-|\/)(?:Command|c)\s+([\s\S]+?)\s*$/iu.exec(
+      command,
+    );
+  if (match === null) {
+    return null;
+  }
+
+  const shellCommand = match[1] ?? '';
+  const encodedCommand = encodePowerShellCommand(stripMatchingOuterQuotes(match[2] ?? ''));
+  return {
+    command: shellCommand,
+    args: ['-NoLogo', '-NoProfile', '-EncodedCommand', encodedCommand],
+    shellLabel: shellCommand,
+  };
+}
+
+function unwrapNestedWindowsCmd(command: string): string | null {
+  const match =
+    /^\s*cmd(?:\.exe)?\s+(?:\/d\s+)?(?:\/s\s+)?\/c\s+([\s\S]+?)\s*$/iu.exec(command);
+  if (match === null) {
+    return null;
+  }
+
+  const inner = (match[1] ?? '').trim();
+  if (inner.length < 2) {
+    return inner;
+  }
+  const first = inner[0] ?? '';
+  const last = inner[inner.length - 1] ?? '';
+  if ((first === '"' && last === '"') || (first === "'" && last === "'")) {
+    return inner.slice(1, -1);
+  }
+  return inner;
+}
+
+function normalizeWindowsCmdCommand(command: string): string {
+  const directPowerShell = resolveDirectWindowsPowerShellCommand(command);
+  if (directPowerShell !== null) {
+    return command;
+  }
+  const nestedCmd = unwrapNestedWindowsCmd(command);
+  if (nestedCmd !== null) {
+    return nestedCmd.replace(/\\"/g, '"').replace(
+      /^(\s*if\s+(?:not\s+)?exist\s+)'([^'\r\n]+)'/iu,
+      (_whole: string, prefix: string, quotedPath: string) =>
+        `${prefix}"${normalizeWindowsPathLiteral(quotedPath)}"`,
+    );
+  }
+  return command.replace(/\\"/g, '"').replace(
+    /^(\s*if\s+(?:not\s+)?exist\s+)'([^'\r\n]+)'/iu,
+    (_whole: string, prefix: string, quotedPath: string) =>
+      `${prefix}"${normalizeWindowsPathLiteral(quotedPath)}"`,
+  );
+}
+
+function normalizeWindowsPathLiteral(pathLiteral: string): string {
+  if (pathLiteral.startsWith('\\\\')) {
+    return pathLiteral;
+  }
+  return pathLiteral.replace(/\\{2,}/g, '\\');
+}
+
 function resolveShellCmdSpawnSpec(
   command: string,
   shell: string | undefined,
@@ -1170,6 +1248,13 @@ function resolveShellCmdSpawnSpec(
   const preferredShell =
     typeof shell === 'string' && shell.trim() !== '' ? shell.trim() : undefined;
   if (platform === 'win32') {
+    if (!preferredShell) {
+      const directPowerShell = resolveDirectWindowsPowerShellCommand(command);
+      if (directPowerShell !== null) {
+        return directPowerShell;
+      }
+    }
+
     if (preferredShell) {
       const base = path.basename(preferredShell).toLowerCase();
       if (
@@ -1187,8 +1272,9 @@ function resolveShellCmdSpawnSpec(
       if (base === 'cmd' || base === 'cmd.exe') {
         return {
           command: preferredShell,
-          args: ['/d', '/c', command],
+          args: ['/d', '/c', normalizeWindowsCmdCommand(command)],
           shellLabel: preferredShell,
+          windowsVerbatimArguments: true,
         };
       }
       return {
@@ -1199,8 +1285,9 @@ function resolveShellCmdSpawnSpec(
     }
     return {
       command: 'cmd.exe',
-      args: ['/d', '/c', command],
+      args: ['/d', '/c', normalizeWindowsCmdCommand(command)],
       shellLabel: 'cmd.exe',
+      windowsVerbatimArguments: true,
     };
   }
 
@@ -1223,17 +1310,22 @@ export function resolveShellCmdSpawnSpecForTests(
 function resolveReadonlyShellSpawnSpec(
   command: string,
   platform: NodeJS.Platform = process.platform,
-): Readonly<{ command: string; args: string[] }> {
+): ShellSpawnSpec {
   if (platform === 'win32') {
-    return { command: 'cmd.exe', args: ['/d', '/c', command] };
+    return {
+      command: 'cmd.exe',
+      args: ['/d', '/c', normalizeWindowsCmdCommand(command)],
+      shellLabel: 'cmd.exe',
+      windowsVerbatimArguments: true,
+    };
   }
-  return { command: 'bash', args: ['-c', command] };
+  return { command: 'bash', args: ['-c', command], shellLabel: 'bash' };
 }
 
 export function resolveReadonlyShellSpawnSpecForTests(
   command: string,
   platform: NodeJS.Platform,
-): Readonly<{ command: string; args: string[] }> {
+): ShellSpawnSpec {
   return resolveReadonlyShellSpawnSpec(command, platform);
 }
 
@@ -1977,6 +2069,9 @@ export const shellCmdTool: FuncTool = {
           command: spawnSpec.command,
           args: spawnSpec.args,
           shellLabel: spawnSpec.shellLabel,
+          ...(spawnSpec.windowsVerbatimArguments === true
+            ? { windowsVerbatimArguments: true }
+            : {}),
         },
         timeoutSeconds,
         scrollbackLines,
@@ -2768,6 +2863,7 @@ export const readonlyShellTool: FuncTool = {
       const childProcess = spawn(spawnSpec.command, spawnSpec.args, {
         stdio: ['ignore', 'pipe', 'pipe'],
         env: buildCapturedShellEnv(),
+        windowsVerbatimArguments: spawnSpec.windowsVerbatimArguments === true,
       });
 
       childProcess.stdout?.on('data', (data: Buffer) => {

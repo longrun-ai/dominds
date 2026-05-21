@@ -172,6 +172,7 @@ async function main(): Promise<void> {
     stdio: ['ignore', 'pipe', 'pipe'],
     detached: false,
     env: buildCapturedShellEnv(),
+    windowsVerbatimArguments: init.spawnSpec.windowsVerbatimArguments === true,
   });
   const daemonPid = childProcess.pid;
   if (typeof daemonPid !== 'number') {
