@@ -48,6 +48,7 @@ import { main as uninstallMain } from './cli/uninstall';
 import { main as updateMain } from './cli/update';
 import { main as validateTeamDefMain } from './cli/validate-team-def';
 import { main as webuiMain } from './cli/webui';
+import { setRtwsProcessTitle } from './process-title';
 import './tools/builtins';
 
 type HttpWithEnvProxy = typeof http & {
@@ -309,6 +310,8 @@ export async function main(): Promise<void> {
 
 async function runSubcommand(subcommand: string, args: string[]): Promise<void> {
   try {
+    setRtwsProcessTitle();
+
     // Save original argv
     const originalArgv = process.argv;
 

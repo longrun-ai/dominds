@@ -19,6 +19,7 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import { log } from '../log';
+import { setRtwsProcessTitle } from '../process-title';
 
 // Helper function to get package version
 function getPackageVersion(): string {
@@ -154,6 +155,7 @@ function parseArgs(argv: string[]) {
 
 async function main() {
   try {
+    setRtwsProcessTitle();
     const args = parseArgs(process.argv.slice(2));
 
     // Handle version flag

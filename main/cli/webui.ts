@@ -15,6 +15,7 @@
 
 import { spawn } from 'child_process';
 import { createLogger } from '../log';
+import { setRtwsProcessTitle } from '../process-title';
 import { getWorkLanguage, resolveWorkLanguage, setWorkLanguage } from '../runtime/work-language';
 import { startServer } from '../server';
 import { formatAutoAuthUrl } from '../server/auth';
@@ -66,6 +67,7 @@ function openInBrowser(url: string): void {
 }
 
 async function main(): Promise<void> {
+  setRtwsProcessTitle();
   const args = process.argv.slice(2);
   let port: number | undefined;
   let host = 'localhost';
