@@ -205,6 +205,23 @@ async function runBackgroundCheck(): Promise<void> {
   }
 }
 
+export async function checkLatestDomindsVersionNow(): Promise<DomindsSelfUpdateStatus> {
+  const cfg = assertRuntimeConfig();
+  if (cfg.mode !== 'production') {
+    return await getDomindsSelfUpdateStatus();
+  }
+  if (installPromise !== null || restartPromise !== null) {
+    return await getDomindsSelfUpdateStatus();
+  }
+  if (restartState.kind === 'restart_required' || restartState.kind === 'restarting') {
+    return await getDomindsSelfUpdateStatus();
+  }
+  latestObservation = await queryLatestVersion();
+  publishStatusUpdateSoon();
+  scheduleBackgroundCheck(BACKGROUND_CHECK_INTERVAL_MS);
+  return await getDomindsSelfUpdateStatus();
+}
+
 function assertRuntimeConfig(): RuntimeConfig {
   if (runtimeConfig === null) {
     throw new Error('Dominds self-update runtime is not configured');

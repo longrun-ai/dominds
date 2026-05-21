@@ -264,6 +264,8 @@ export class DomindsApp extends HTMLElement {
   private backendVersion: string = '';
   private backendMode: 'development' | 'production' | null = null;
   private domindsSelfUpdate: DomindsSelfUpdateStatus | null = null;
+  private domindsSelfUpdateCheckInFlight: boolean = false;
+  private domindsVersionClickTimer: number | null = null;
   private toolbarCurrentCourse: number = 1;
   private toolbarTotalCourses: number = 1;
   private toolbarReminders: ReminderContent[] = [];
@@ -1907,6 +1909,7 @@ export class DomindsApp extends HTMLElement {
     this.wsManager.disconnect();
     window.removeEventListener('resize', this.boundOnWindowResize);
     this.clearRetryCountdownTimer();
+    this.cancelDomindsVersionClickAction();
 
     for (const t of this.runControlRefreshTimers) {
       clearTimeout(t);
@@ -2077,6 +2080,7 @@ export class DomindsApp extends HTMLElement {
     const t = getUiStrings(this.uiLanguage);
     const versionText = this.backendVersion ? `v${this.backendVersion}` : '';
     const state = this.getDomindsVersionActionState();
+    const checking = this.domindsSelfUpdateCheckInFlight;
     const latestVersionText =
       state.kind !== 'idle' && state.latestVersion !== null && state.latestVersion.trim() !== ''
         ? `v${state.latestVersion.trim()}`
@@ -2105,8 +2109,16 @@ export class DomindsApp extends HTMLElement {
         showIcon = true;
         break;
     }
-    const versionHtml =
-      latestVersionText !== '' && latestVersionText !== versionText
+    const versionHtml = checking
+      ? `
+          <span class="dominds-version-checking" aria-hidden="true">
+            <span class="dominds-version-checking-base">${escapeHtml(versionText)}</span>
+            <span class="dominds-version-checking-dots">
+              <span>.</span><span>.</span><span>.</span>
+            </span>
+          </span>
+        `
+      : latestVersionText !== '' && latestVersionText !== versionText
         ? `
           <span class="dominds-version-roll" aria-hidden="true">
             <span class="dominds-version-roll-track">
@@ -2148,9 +2160,9 @@ export class DomindsApp extends HTMLElement {
           this.domindsSelfUpdate?.reason === 'latest_check_failed' &&
           this.domindsSelfUpdate.message
         ) {
-          return `${t.domindsVersionTitle}\n${this.domindsSelfUpdate.message}`;
+          return `${t.domindsVersionCheckTitle}\n${this.domindsSelfUpdate.message}`;
         }
-        return `${t.domindsVersionTitle}\n${currentVersion}`;
+        return `${t.domindsVersionCheckTitle}\n${currentVersion}`;
     }
   }
 
@@ -2165,10 +2177,11 @@ export class DomindsApp extends HTMLElement {
     const actionState = this.getDomindsVersionActionState();
     const isActionable = actionState.kind === 'install' || actionState.kind === 'restart';
     const needsAttention = isActionable;
-    versionIndicator.disabled = !isActionable;
+    versionIndicator.disabled = false;
     versionIndicator.dataset.actionable = isActionable ? 'true' : 'false';
     versionIndicator.dataset.attention = needsAttention ? 'true' : 'false';
     versionIndicator.dataset.state = actionState.kind;
+    versionIndicator.dataset.checking = this.domindsSelfUpdateCheckInFlight ? 'true' : 'false';
   }
 
   /**
@@ -2263,6 +2276,51 @@ export class DomindsApp extends HTMLElement {
       const message = error instanceof Error ? error.message : t.unknownError;
       this.showToast(`${t.domindsVersionActionFailedPrefix}${message}`, 'error');
     }
+  }
+
+  private async handleDomindsVersionCheck(): Promise<void> {
+    if (this.domindsSelfUpdateCheckInFlight) return;
+    this.domindsSelfUpdateCheckInFlight = true;
+    this.updateDomindsVersionUi();
+    try {
+      const resp = await this.apiClient.checkDomindsSelfUpdate();
+      if (!resp.success) {
+        if (resp.status === 401) {
+          this.onAuthRejected('api');
+          return;
+        }
+        const t = getUiStrings(this.uiLanguage);
+        throw new Error(resp.error || t.unknownError);
+      }
+      const nextStatus = resp.data?.update;
+      if (!nextStatus) {
+        throw new Error('Missing Dominds self-update check payload');
+      }
+      this.domindsSelfUpdate = nextStatus;
+    } catch (error) {
+      const t = getUiStrings(this.uiLanguage);
+      const message = error instanceof Error ? error.message : t.unknownError;
+      this.showToast(`${t.domindsVersionActionFailedPrefix}${message}`, 'error');
+    } finally {
+      this.domindsSelfUpdateCheckInFlight = false;
+      this.updateDomindsVersionUi();
+    }
+  }
+
+  private queueDomindsVersionClickAction(): void {
+    if (this.domindsVersionClickTimer !== null) {
+      window.clearTimeout(this.domindsVersionClickTimer);
+    }
+    this.domindsVersionClickTimer = window.setTimeout(() => {
+      this.domindsVersionClickTimer = null;
+      void this.handleDomindsVersionAction();
+    }, 420);
+  }
+
+  private cancelDomindsVersionClickAction(): void {
+    if (this.domindsVersionClickTimer === null) return;
+    window.clearTimeout(this.domindsVersionClickTimer);
+    this.domindsVersionClickTimer = null;
   }
 
   /**
@@ -3126,11 +3184,16 @@ export class DomindsApp extends HTMLElement {
         box-shadow: 0 0 0 1px color-mix(in srgb, var(--dominds-warning, #bb8009) 14%, transparent) inset;
       }
 
+      .dominds-version[data-checking='true'] {
+        cursor: progress;
+      }
+
       .dominds-version[data-actionable='true']:hover {
         border-color: color-mix(in srgb, var(--dominds-warning, #bb8009) 42%, var(--dominds-warning-border, #e6d2b4));
         background: color-mix(in srgb, var(--dominds-warning, #bb8009) 16%, var(--dominds-warning-bg, #fff4e5));
       }
 
+      .dominds-version-checking,
       .dominds-version-text,
       .dominds-version-action,
       .dominds-version-divider {
@@ -3140,6 +3203,41 @@ export class DomindsApp extends HTMLElement {
 
       .dominds-version-text {
         transform-origin: center bottom;
+      }
+
+      .dominds-version-checking {
+        display: inline-flex;
+        align-items: baseline;
+        gap: 0;
+        min-width: max-content;
+      }
+
+      .dominds-version-checking-base {
+        display: inline-block;
+      }
+
+      .dominds-version-checking-dots {
+        display: inline-flex;
+        align-items: baseline;
+        width: 1.4em;
+        overflow: hidden;
+        letter-spacing: 0;
+        font-weight: 700;
+      }
+
+      .dominds-version-checking-dots > span {
+        display: inline-block;
+        width: 0.46em;
+        opacity: 0.12;
+        animation: domindsVersionDotPulse 1.1s ease-in-out infinite;
+      }
+
+      .dominds-version-checking-dots > span:nth-child(2) {
+        animation-delay: 0.14s;
+      }
+
+      .dominds-version-checking-dots > span:nth-child(3) {
+        animation-delay: 0.28s;
       }
 
       .dominds-version-roll {
@@ -3203,6 +3301,17 @@ export class DomindsApp extends HTMLElement {
         }
       }
 
+      @keyframes domindsVersionDotPulse {
+        0%, 100% {
+          opacity: 0.14;
+          transform: translateY(0);
+        }
+        50% {
+          opacity: 1;
+          transform: translateY(-1px);
+        }
+      }
+
       .dominds-version[data-attention='true'] .dominds-version-roll-track {
         animation: domindsVersionTrackRoll 3s cubic-bezier(0.28, 0.78, 0.28, 1) infinite;
       }
@@ -3210,6 +3319,10 @@ export class DomindsApp extends HTMLElement {
       @media (prefers-reduced-motion: reduce) {
         .dominds-version[data-attention='true'] .dominds-version-roll-track {
           animation: none;
+        }
+        .dominds-version[data-checking='true'] .dominds-version-checking-dots > span {
+          animation: none;
+          opacity: 0.55;
         }
       }
 
@@ -6508,12 +6621,7 @@ export class DomindsApp extends HTMLElement {
 	            </a>
               <button type="button" id="dominds-version" class="dominds-version ${this.backendVersion ? '' : 'hidden'}" title="${escapeHtml(
                 this.getDomindsVersionTitle(),
-              )}" aria-label="${escapeHtml(this.getDomindsVersionTitle())}" data-actionable="false" data-attention="false" data-state="idle" ${
-                this.getDomindsVersionActionState().kind === 'install' ||
-                this.getDomindsVersionActionState().kind === 'restart'
-                  ? ''
-                  : 'disabled'
-              }>
+              )}" aria-label="${escapeHtml(this.getDomindsVersionTitle())}" data-actionable="false" data-attention="false" data-state="idle" data-checking="false">
                 ${this.renderDomindsVersionBadge()}
               </button>
 	          </div>
@@ -7107,6 +7215,17 @@ export class DomindsApp extends HTMLElement {
       }
     });
 
+    this.shadowRoot.addEventListener('dblclick', (evt: Event) => {
+      const target = evt.target;
+      if (!(target instanceof Element)) return;
+      const versionBtn = target.closest('#dominds-version') as HTMLButtonElement | null;
+      if (versionBtn === null) return;
+      evt.preventDefault();
+      evt.stopPropagation();
+      this.cancelDomindsVersionClickAction();
+      void this.handleDomindsVersionCheck();
+    });
+
     // ========== Delegated Click Handlers ==========
     this.shadowRoot.addEventListener('click', async (evt: Event) => {
       const target = evt.target;
@@ -7120,7 +7239,11 @@ export class DomindsApp extends HTMLElement {
 
       const versionBtn = target.closest('#dominds-version') as HTMLButtonElement | null;
       if (versionBtn) {
-        await this.handleDomindsVersionAction();
+        if (evt instanceof MouseEvent && evt.detail > 1) {
+          this.cancelDomindsVersionClickAction();
+          return;
+        }
+        this.queueDomindsVersionClickAction();
         return;
       }
 

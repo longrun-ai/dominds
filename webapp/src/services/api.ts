@@ -406,6 +406,13 @@ export class ApiClient {
     });
   }
 
+  async checkDomindsSelfUpdate(): Promise<ApiResponse<{ update: DomindsSelfUpdateStatus }>> {
+    return this.request('/api/dominds/self-update/check', {
+      method: 'POST',
+      body: {},
+    });
+  }
+
   /**
    * Get server information
    */

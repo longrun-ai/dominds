@@ -5,6 +5,7 @@ export type UiStrings = {
   backendWorkspaceTitle: string;
   backendWorkspaceLoading: string;
   domindsVersionTitle: string;
+  domindsVersionCheckTitle: string;
   domindsVersionUpdateLabel: string;
   domindsVersionRestartLabel: string;
   domindsVersionInstallingLabel: string;
@@ -409,6 +410,7 @@ export function getUiStrings(language: LanguageCode): UiStrings {
       backendWorkspaceTitle: '后端运行时工作区',
       backendWorkspaceLoading: '加载中…',
       domindsVersionTitle: 'Dominds 版本',
+      domindsVersionCheckTitle: 'Dominds 版本，双击立即检查更新',
       domindsVersionUpdateLabel: '更新',
       domindsVersionRestartLabel: '重启',
       domindsVersionInstallingLabel: '安装中',
@@ -829,6 +831,7 @@ export function getUiStrings(language: LanguageCode): UiStrings {
     backendWorkspaceTitle: 'Backend Runtime Workspace',
     backendWorkspaceLoading: 'Loading...',
     domindsVersionTitle: 'Dominds version',
+    domindsVersionCheckTitle: 'Dominds version. Double-click to check for updates now.',
     domindsVersionUpdateLabel: 'Update',
     domindsVersionRestartLabel: 'Restart',
     domindsVersionInstallingLabel: 'Installing',

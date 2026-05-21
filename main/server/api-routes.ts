@@ -62,7 +62,11 @@ import {
 } from '../utils/taskdoc-search-worker-client';
 import { makeCreateDialogFailure, parseCreateDialogInput } from './create-dialog-contract';
 import { getDomindsRuntimeStatus } from './dominds-runtime-status';
-import { installLatestDominds, restartDomindsIntoLatest } from './dominds-self-update';
+import {
+  checkLatestDomindsVersionNow,
+  installLatestDominds,
+  restartDomindsIntoLatest,
+} from './dominds-self-update';
 import { isTextLikeMimeType, sniffMimeType } from './mime-types';
 import {
   buildSetupFileResponse,
@@ -1192,6 +1196,20 @@ export async function handleApiRoute(
         }
         const status = await restartDomindsIntoLatest();
         respondJson(res, 202, { success: true, update: status });
+        return true;
+      } catch (error: unknown) {
+        respondJson(res, 409, {
+          success: false,
+          error: error instanceof Error ? error.message : String(error),
+        });
+        return true;
+      }
+    }
+
+    if (pathname === '/api/dominds/self-update/check' && req.method === 'POST') {
+      try {
+        const status = await checkLatestDomindsVersionNow();
+        respondJson(res, 200, { success: true, update: status });
         return true;
       } catch (error: unknown) {
         respondJson(res, 409, {
