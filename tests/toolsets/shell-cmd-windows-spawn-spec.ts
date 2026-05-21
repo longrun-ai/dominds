@@ -19,6 +19,19 @@ assert.equal(explicitCmdSpec.command, 'cmd.exe');
 assert.deepEqual(explicitCmdSpec.args, ['/d', '/c', command]);
 assert.equal(explicitCmdSpec.windowsVerbatimArguments, true);
 
+const quotedPath = resolveShellCmdSpawnSpecForTests(
+  'if exist "D:\\AiWorks\\chatgpt-workstation\\dist\\app.exe" echo yes',
+  undefined,
+  'win32',
+);
+assert.equal(quotedPath.command, 'cmd.exe');
+assert.deepEqual(quotedPath.args, [
+  '/d',
+  '/c',
+  'if exist "D:\\AiWorks\\chatgpt-workstation\\dist\\app.exe" echo yes',
+]);
+assert.equal(quotedPath.windowsVerbatimArguments, true);
+
 const quotedIfExist = resolveShellCmdSpawnSpecForTests(
   "if exist 'D:\\AiWorks\\chatgpt-workstation\\dist\\app.exe' echo yes",
   undefined,
