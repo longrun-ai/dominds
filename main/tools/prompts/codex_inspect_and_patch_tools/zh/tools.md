@@ -15,7 +15,8 @@
 Windows 注意：
 
 - 优先使用不带空格的正斜杠路径，如 `D:/path/to/file`
-- 避免嵌套 `cmd /c "..."`
+- `readonly_shell` 通过平台默认 shell 执行；请传入该 shell 的原生命令
+- 避免嵌套 `cmd /c` 或 `powershell -Command`；明显混套模式最多只会警告，不会被改写
 
 示例：
 

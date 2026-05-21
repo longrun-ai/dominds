@@ -32,9 +32,10 @@ Execute Shell command.
 
 **Windows notes:**
 
+- Use `shell` to choose the outer execution environment: `cmd.exe`, `powershell.exe`, or `pwsh`
+- Pass a command that is native to the selected shell; do not nest `cmd /c` or `powershell -Command` inside another shell command
 - With the default `cmd.exe` path, prefer no-space forward-slash paths such as `D:/path/to/file`
-- For complex PowerShell commands, pass `shell: 'powershell.exe'` or `shell: 'pwsh'`; the command is encoded automatically to avoid quote and backslash ambiguity
-- Do not rely on nested `cmd /c "..."`
+- Only very obvious nested-shell patterns may trigger a warning; the tool does not rewrite mixed shell syntax for you
 
 **Returns:**
 

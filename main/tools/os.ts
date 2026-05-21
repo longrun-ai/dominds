@@ -949,6 +949,7 @@ async function spawnCmdRunner(init: CmdRunnerInitMessage): Promise<SpawnedCmdRun
 function formatCompletedShellCommandOutput(
   message: Extract<CmdRunnerInitialIpcMessage, { type: 'completed' }>,
   t: OsToolMessages,
+  warning: string | undefined,
 ): ToolCallOutput {
   const stdoutHasScrolled = message.stdout.linesScrolledOut > 0;
   const stderrHasScrolled = message.stderr.linesScrolledOut > 0;
@@ -976,7 +977,7 @@ function formatCompletedShellCommandOutput(
   if (stderrContent !== '') {
     result += `${t.stderrLabel}\n${fenceConsole}\n${stderrContent}\n${fenceEnd}`;
   }
-  const content = result.trim();
+  const content = prependShellWarning(result.trim(), warning);
   return message.exitCode === 0 ? toolSuccess(content) : toolPartialFailure(content);
 }
 
@@ -1159,85 +1160,51 @@ function parseGetDaemonOutputArgs(args: ToolArguments): GetDaemonOutputArgs {
   return { pid, stdout, stderr };
 }
 
-function encodePowerShellCommand(command: string): string {
-  return Buffer.from(command, 'utf16le').toString('base64');
+function getWindowsShellLabel(shell: string | undefined): string {
+  if (typeof shell !== 'string') {
+    return 'cmd.exe';
+  }
+  const trimmed = shell.trim();
+  return trimmed === '' ? 'cmd.exe' : trimmed;
 }
 
-function stripMatchingOuterQuotes(value: string): string {
-  const trimmed = value.trim();
-  if (trimmed.length < 2) {
-    return trimmed;
+function detectWindowsShellUsageWarning(
+  command: string,
+  shell: string | undefined,
+  language: LanguageCode,
+  platform: NodeJS.Platform = process.platform,
+): string | undefined {
+  if (platform !== 'win32') {
+    return undefined;
   }
-  const first = trimmed[0] ?? '';
-  const last = trimmed[trimmed.length - 1] ?? '';
-  if ((first === '"' && last === '"') || (first === "'" && last === "'")) {
-    return trimmed.slice(1, -1);
-  }
-  return trimmed;
-}
 
-function resolveDirectWindowsPowerShellCommand(command: string): ShellSpawnSpec | null {
-  const match =
-    /^\s*(powershell(?:\.exe)?|pwsh(?:\.exe)?)\s+(?:-(?:NoLogo|NoProfile|NonInteractive)\s+)*(?:-|\/)(?:Command|c)\s+([\s\S]+?)\s*$/iu.exec(
-      command,
+  const trimmedCommand = command.trimStart();
+  const nestedCmd = /^cmd(?:\.exe)?\s+(?:\/d\s+)?(?:\/s\s+)?\/c\b/iu.test(trimmedCommand);
+  const nestedPowerShell =
+    /^(?:powershell(?:\.exe)?|pwsh(?:\.exe)?)\s+(?:-(?:NoLogo|NoProfile|NonInteractive)\s+)*(?:-|\/)(?:Command|c)\b/iu.test(
+      trimmedCommand,
     );
-  if (match === null) {
-    return null;
+  if (!nestedCmd && !nestedPowerShell) {
+    return undefined;
   }
 
-  const shellCommand = match[1] ?? '';
-  const encodedCommand = encodePowerShellCommand(stripMatchingOuterQuotes(match[2] ?? ''));
-  return {
-    command: shellCommand,
-    args: ['-NoLogo', '-NoProfile', '-EncodedCommand', encodedCommand],
-    shellLabel: shellCommand,
-  };
+  const shellLabel = getWindowsShellLabel(shell);
+  if (language === 'zh') {
+    return nestedCmd
+      ? `⚠️ 检测到嵌套 shell 写法：${trimmedCommand.startsWith('cmd.exe') ? 'cmd.exe /c' : 'cmd /c'}。shell 参数只负责选择外层执行环境；请直接传入 cmd 原生命令，不要再套一层 cmd /c。当前 shell：${shellLabel}`
+      : `⚠️ 检测到嵌套 shell 写法：${trimmedCommand.startsWith('pwsh') ? 'pwsh -Command' : 'powershell -Command'}。shell 参数只负责选择外层执行环境；请直接传入 PowerShell 原生命令，不要再套一层 -Command。当前 shell：${shellLabel}`;
+  }
+
+  return nestedCmd
+    ? `⚠️ Nested shell syntax detected: ${trimmedCommand.startsWith('cmd.exe') ? 'cmd.exe /c' : 'cmd /c'}. The shell parameter selects the outer execution environment only; pass a native cmd command and do not add another cmd /c layer. Current shell: ${shellLabel}`
+    : `⚠️ Nested shell syntax detected: ${trimmedCommand.startsWith('pwsh') ? 'pwsh -Command' : 'powershell -Command'}. The shell parameter selects the outer execution environment only; pass a native PowerShell command and do not add another -Command wrapper. Current shell: ${shellLabel}`;
 }
 
-function unwrapNestedWindowsCmd(command: string): string | null {
-  const match =
-    /^\s*cmd(?:\.exe)?\s+(?:\/d\s+)?(?:\/s\s+)?\/c\s+([\s\S]+?)\s*$/iu.exec(command);
-  if (match === null) {
-    return null;
+function prependShellWarning(content: string, warning: string | undefined): string {
+  if (!warning) {
+    return content;
   }
-
-  const inner = (match[1] ?? '').trim();
-  if (inner.length < 2) {
-    return inner;
-  }
-  const first = inner[0] ?? '';
-  const last = inner[inner.length - 1] ?? '';
-  if ((first === '"' && last === '"') || (first === "'" && last === "'")) {
-    return inner.slice(1, -1);
-  }
-  return inner;
-}
-
-function normalizeWindowsCmdCommand(command: string): string {
-  const directPowerShell = resolveDirectWindowsPowerShellCommand(command);
-  if (directPowerShell !== null) {
-    return command;
-  }
-  const nestedCmd = unwrapNestedWindowsCmd(command);
-  if (nestedCmd !== null) {
-    return nestedCmd.replace(/\\"/g, '"').replace(
-      /^(\s*if\s+(?:not\s+)?exist\s+)'([^'\r\n]+)'/iu,
-      (_whole: string, prefix: string, quotedPath: string) =>
-        `${prefix}"${normalizeWindowsPathLiteral(quotedPath)}"`,
-    );
-  }
-  return command.replace(/\\"/g, '"').replace(
-    /^(\s*if\s+(?:not\s+)?exist\s+)'([^'\r\n]+)'/iu,
-    (_whole: string, prefix: string, quotedPath: string) =>
-      `${prefix}"${normalizeWindowsPathLiteral(quotedPath)}"`,
-  );
-}
-
-function normalizeWindowsPathLiteral(pathLiteral: string): string {
-  if (pathLiteral.startsWith('\\\\')) {
-    return pathLiteral;
-  }
-  return pathLiteral.replace(/\\{2,}/g, '\\');
+  return `${warning}\n\n${content}`;
 }
 
 function resolveShellCmdSpawnSpec(
@@ -1248,13 +1215,6 @@ function resolveShellCmdSpawnSpec(
   const preferredShell =
     typeof shell === 'string' && shell.trim() !== '' ? shell.trim() : undefined;
   if (platform === 'win32') {
-    if (!preferredShell) {
-      const directPowerShell = resolveDirectWindowsPowerShellCommand(command);
-      if (directPowerShell !== null) {
-        return directPowerShell;
-      }
-    }
-
     if (preferredShell) {
       const base = path.basename(preferredShell).toLowerCase();
       if (
@@ -1265,14 +1225,14 @@ function resolveShellCmdSpawnSpec(
       ) {
         return {
           command: preferredShell,
-          args: ['-NoLogo', '-NoProfile', '-EncodedCommand', encodePowerShellCommand(command)],
+          args: ['-NoLogo', '-NoProfile', '-Command', command],
           shellLabel: preferredShell,
         };
       }
       if (base === 'cmd' || base === 'cmd.exe') {
         return {
           command: preferredShell,
-          args: ['/d', '/c', normalizeWindowsCmdCommand(command)],
+          args: ['/d', '/c', command],
           shellLabel: preferredShell,
           windowsVerbatimArguments: true,
         };
@@ -1285,7 +1245,7 @@ function resolveShellCmdSpawnSpec(
     }
     return {
       command: 'cmd.exe',
-      args: ['/d', '/c', normalizeWindowsCmdCommand(command)],
+      args: ['/d', '/c', command],
       shellLabel: 'cmd.exe',
       windowsVerbatimArguments: true,
     };
@@ -1307,6 +1267,15 @@ export function resolveShellCmdSpawnSpecForTests(
   return resolveShellCmdSpawnSpec(command, shell, platform);
 }
 
+export function detectWindowsShellUsageWarningForTests(
+  command: string,
+  shell: string | undefined,
+  language: LanguageCode,
+  platform: NodeJS.Platform,
+): string | undefined {
+  return detectWindowsShellUsageWarning(command, shell, language, platform);
+}
+
 function resolveReadonlyShellSpawnSpec(
   command: string,
   platform: NodeJS.Platform = process.platform,
@@ -1314,7 +1283,7 @@ function resolveReadonlyShellSpawnSpec(
   if (platform === 'win32') {
     return {
       command: 'cmd.exe',
-      args: ['/d', '/c', normalizeWindowsCmdCommand(command)],
+      args: ['/d', '/c', command],
       shellLabel: 'cmd.exe',
       windowsVerbatimArguments: true,
     };
@@ -1638,7 +1607,7 @@ const shellCmdSchema: JsonSchema = {
     shell: {
       type: 'string',
       description:
-        'Shell to use for execution (default: bash on Linux/macOS; cmd.exe on Windows). On Windows, powershell.exe/pwsh commands are passed via -EncodedCommand.',
+        'Shell to use for execution (default: bash on Linux/macOS; cmd.exe on Windows). On Windows, choose cmd.exe, powershell.exe, or pwsh explicitly; command must be native to the selected shell.',
     },
     scrollbackLines: {
       type: 'number',
@@ -2049,10 +2018,10 @@ export const shellCmdTool: FuncTool = {
   type: 'func',
   name: 'shell_cmd',
   description:
-    'Execute shell commands with optional timeout. If timeoutSeconds > 0 and command runs longer, it becomes a tracked daemon process. Daemons persist across messages and require explicit stop_daemon or get_daemon_output calls.',
+    'Execute shell commands with optional timeout. If timeoutSeconds > 0 and command runs longer, it becomes a tracked daemon process. On Windows, use shell to choose cmd.exe, powershell.exe, or pwsh, and pass a command that is native to that shell. Do not nest cmd /c or powershell -Command inside another shell command. Daemons persist across messages and require explicit stop_daemon or get_daemon_output calls.',
   descriptionI18n: {
-    en: 'Execute shell commands with optional timeout. If timeoutSeconds > 0 and command runs longer, it becomes a tracked daemon process. Daemons persist across messages and require explicit stop_daemon or get_daemon_output calls.',
-    zh: '执行 shell 命令（支持超时）。如果 timeoutSeconds > 0 且命令运行时间超过超时，将转为可追踪的后台守护进程。守护进程会跨消息持续存在，需要显式调用 stop_daemon 或 get_daemon_output 来管理与查看输出。',
+    en: 'Execute shell commands with optional timeout. If timeoutSeconds > 0 and command runs longer, it becomes a tracked daemon process. On Windows, use shell to choose cmd.exe, powershell.exe, or pwsh, and pass a command that is native to that shell. Do not nest cmd /c or powershell -Command inside another shell command. Daemons persist across messages and require explicit stop_daemon or get_daemon_output calls.',
+    zh: '执行 shell 命令（支持超时）。如果 timeoutSeconds > 0 且命令运行时间超过超时，将转为可追踪的后台守护进程。Windows 上请用 shell 明确选择 cmd.exe、powershell.exe 或 pwsh，并传入该 shell 的原生命令。不要在另一个 shell 命令里再嵌套 cmd /c 或 powershell -Command。守护进程会跨消息持续存在，需要显式调用 stop_daemon 或 get_daemon_output 来管理与查看输出。',
   },
   parameters: shellCmdSchema,
   async call(dlg: Dialog, caller: Team.Member, args: ToolArguments): Promise<ToolCallOutput> {
@@ -2061,6 +2030,7 @@ export const shellCmdTool: FuncTool = {
     const parsedArgs = parseShellCmdArgs(args);
     const { command, shell, scrollbackLines = 500, timeoutSeconds = 5 } = parsedArgs;
     const spawnSpec = resolveShellCmdSpawnSpec(command, shell);
+    const warning = detectWindowsShellUsageWarning(command, shell, language);
     try {
       const { runnerProcess, initialMessage } = await spawnCmdRunner({
         type: 'init',
@@ -2078,12 +2048,14 @@ export const shellCmdTool: FuncTool = {
       });
 
       if (initialMessage.type === 'completed') {
-        return formatCompletedShellCommandOutput(initialMessage, t);
+        return formatCompletedShellCommandOutput(initialMessage, t, warning);
       }
 
       if (initialMessage.type === 'failed') {
         disconnectRunnerProcess(runnerProcess);
-        return toolFailure(t.failedToExecute(initialMessage.errorText));
+        return toolFailure(
+          prependShellWarning(t.failedToExecute(initialMessage.errorText), warning),
+        );
       }
 
       const daemon: RunnerBackedDaemon = {
@@ -2136,17 +2108,30 @@ export const shellCmdTool: FuncTool = {
         await bestEffortKillDaemonProcessGroup(reminderSeedMeta);
         disconnectRunnerProcess(runnerProcess);
         return toolFailure(
-          t.failedToExecute(
-            error instanceof Error
-              ? `daemon reminder persistence failed: ${error.message}`
-              : `daemon reminder persistence failed: ${String(error)}`,
+          prependShellWarning(
+            t.failedToExecute(
+              error instanceof Error
+                ? `daemon reminder persistence failed: ${error.message}`
+                : `daemon reminder persistence failed: ${String(error)}`,
+            ),
+            warning,
           ),
         );
       }
       disconnectRunnerProcess(runnerProcess);
-      return toolSuccess(t.daemonStarted(initialMessage.daemonPid, timeoutSeconds, command));
+      return toolSuccess(
+        prependShellWarning(
+          t.daemonStarted(initialMessage.daemonPid, timeoutSeconds, command),
+          warning,
+        ),
+      );
     } catch (error: unknown) {
-      return toolFailure(t.failedToExecute(error instanceof Error ? error.message : String(error)));
+      return toolFailure(
+        prependShellWarning(
+          t.failedToExecute(error instanceof Error ? error.message : String(error)),
+          warning,
+        ),
+      );
     }
   },
 };
@@ -2803,12 +2788,16 @@ export const readonlyShellTool: FuncTool = {
     const t = getOsToolMessages(language);
     const parsedArgs = parseReadonlyShellArgs(args);
     const { command, timeoutMs = 10_000 } = parsedArgs;
+    const warning = detectWindowsShellUsageWarning(command, undefined, language);
 
     if (command.includes('\n') || command.includes('\r')) {
       return toolFailure(
-        language === 'zh'
-          ? `❌ readonly_shell 不建议执行多行脚本式命令（检测到换行符）。请用单行命令（允许 |、&&、||）。\n收到：${command}`
-          : `❌ readonly_shell does not allow multi-line script-style commands (newline detected). Use a single-line command (|, &&, || are allowed).\nGot: ${command}`,
+        prependShellWarning(
+          language === 'zh'
+            ? `❌ readonly_shell 不建议执行多行脚本式命令（检测到换行符）。请用单行命令（允许 |、&&、||）。\n收到：${command}`
+            : `❌ readonly_shell does not allow multi-line script-style commands (newline detected). Use a single-line command (|, &&, || are allowed).\nGot: ${command}`,
+          warning,
+        ),
       );
     }
 
@@ -2822,9 +2811,12 @@ export const readonlyShellTool: FuncTool = {
           ? getReadonlyShellSuggestionZh(validation.failure)
           : getReadonlyShellSuggestionEn(validation.failure);
       return toolFailure(
-        language === 'zh'
-          ? `❌ readonly_shell 仅允许以下命令前缀：${allowedList}\n另外允许（仅版本探针）：node --version|-v、python3 --version|-V\n脚本执行（如 node -e / python3 -c）一律拒绝。\n另外允许：git -C <相对路径> <show|status|diff|log|blame> ...\n另外允许：cd <相对路径> && <允许命令...>（或 ||）\n说明：通过 |/&&/|| 串联时会按子命令逐段校验。\n被拒子命令段：${rejectedSegmentOrCommand}\n允许的等价写法：${suggestion}\n收到：${command}`
-          : `❌ readonly_shell only allows these command prefixes: ${allowedList}\nAlso allowed (exact version probes only): node --version|-v, python3 --version|-V\nNode/python scripts (for example: node -e, python3 -c) are rejected.\nAlso allowed: git -C <relative-path> <show|status|diff|log|blame> ...\nAlso allowed: cd <relative-path> && <allowed command...> (or ||)\nNote: chains via |/&&/|| are validated segment-by-segment.\nRejected segment: ${rejectedSegmentOrCommand}\nAllowed equivalent: ${suggestion}\nGot: ${command}`,
+        prependShellWarning(
+          language === 'zh'
+            ? `❌ readonly_shell 仅允许以下命令前缀：${allowedList}\n另外允许（仅版本探针）：node --version|-v、python3 --version|-V\n脚本执行（如 node -e / python3 -c）一律拒绝。\n另外允许：git -C <相对路径> <show|status|diff|log|blame> ...\n另外允许：cd <相对路径> && <允许命令...>（或 ||）\n说明：通过 |/&&/|| 串联时会按子命令逐段校验。\n被拒子命令段：${rejectedSegmentOrCommand}\n允许的等价写法：${suggestion}\n收到：${command}`
+            : `❌ readonly_shell only allows these command prefixes: ${allowedList}\nAlso allowed (exact version probes only): node --version|-v, python3 --version|-V\nNode/python scripts (for example: node -e, python3 -c) are rejected.\nAlso allowed: git -C <relative-path> <show|status|diff|log|blame> ...\nAlso allowed: cd <relative-path> && <allowed command...> (or ||)\nNote: chains via |/&&/|| are validated segment-by-segment.\nRejected segment: ${rejectedSegmentOrCommand}\nAllowed equivalent: ${suggestion}\nGot: ${command}`,
+          warning,
+        ),
       );
     }
 
@@ -2896,7 +2888,7 @@ export const readonlyShellTool: FuncTool = {
               : `⚠️  Output truncated; ~${omittedBytes} bytes omitted\n`
             : '';
 
-        let result = `${timeoutMsg}${truncationNotice}`.trimEnd();
+        let result = prependShellWarning(`${timeoutMsg}${truncationNotice}`.trimEnd(), warning);
 
         const stdoutContent = truncateToolOutputText(stdoutBuffer.getContent(), {
           toolName: 'readonly_shell_stdout',
@@ -2936,7 +2928,7 @@ export const readonlyShellTool: FuncTool = {
 
         const fenceConsole = '```console';
         const fenceEnd = '```';
-        let result = t.commandCompleted(code, truncationNotice);
+        let result = prependShellWarning(t.commandCompleted(code, truncationNotice), warning);
 
         if (stdoutContent) {
           result += `${t.stdoutLabel}\n${fenceConsole}\n${stdoutContent}\n${fenceEnd}\n\n`;
@@ -2951,7 +2943,7 @@ export const readonlyShellTool: FuncTool = {
 
       childProcess.on('error', (error) => {
         clearTimeout(timeoutHandle);
-        finish(toolFailure(t.failedToExecute(error.message)));
+        finish(toolFailure(prependShellWarning(t.failedToExecute(error.message), warning)));
       });
     });
   },

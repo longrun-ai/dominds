@@ -194,7 +194,7 @@ shell_cmd({
   command: 'if exist D:/AiWorks/chatgpt-workstation/dist/app.exe echo exists',
 });
 
-// Complex PowerShell command: choose PowerShell explicitly; Dominds encodes the command automatically
+// Complex PowerShell command: choose PowerShell explicitly and keep the command native to that shell
 shell_cmd({
   command: 'Test-Path D:/AiWorks/chatgpt-workstation/dist/app.exe',
   shell: 'powershell.exe',

@@ -32,9 +32,10 @@
 
 **Windows 提示：**
 
+- 使用 `shell` 选择外层执行环境：`cmd.exe`、`powershell.exe` 或 `pwsh`
+- `command` 必须是所选 shell 的原生命令；不要在另一个 shell 命令里嵌套 `cmd /c` 或 `powershell -Command`
 - 默认 `cmd.exe` 路径下，优先使用不带空格的正斜杠路径，如 `D:/path/to/file`
-- 复杂 PowerShell 命令建议显式传 `shell: 'powershell.exe'` 或 `shell: 'pwsh'`；系统会自动用编码方式传递命令，避免引号和反斜杠歧义
-- 不要依赖 `cmd /c "..."`
+- 只有非常明显的混套模式可能触发警告；工具不会替你改写混合 shell 语法
 
 **返回：**
 

@@ -194,7 +194,7 @@ shell_cmd({
   command: 'if exist D:/AiWorks/chatgpt-workstation/dist/app.exe echo exists',
 });
 
-// 复杂 PowerShell 命令：显式选择 PowerShell，系统会自动编码传递命令
+// 复杂 PowerShell 命令：显式选择 PowerShell，并保持命令为该 shell 的原生命令
 shell_cmd({
   command: 'Test-Path D:/AiWorks/chatgpt-workstation/dist/app.exe',
   shell: 'powershell.exe',

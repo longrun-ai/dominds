@@ -1,8 +1,8 @@
 #!/usr/bin/env tsx
 
 import assert from 'node:assert/strict';
-import { Buffer } from 'node:buffer';
 import {
+  detectWindowsShellUsageWarningForTests,
   resolveReadonlyShellSpawnSpecForTests,
   resolveShellCmdSpawnSpecForTests,
 } from '../../main/tools/os';
@@ -41,7 +41,7 @@ assert.equal(quotedIfExist.command, 'cmd.exe');
 assert.deepEqual(quotedIfExist.args, [
   '/d',
   '/c',
-  'if exist "D:\\AiWorks\\chatgpt-workstation\\dist\\app.exe" echo yes',
+  "if exist 'D:\\AiWorks\\chatgpt-workstation\\dist\\app.exe' echo yes",
 ]);
 assert.equal(quotedIfExist.windowsVerbatimArguments, true);
 
@@ -54,7 +54,7 @@ assert.equal(nestedCmd.command, 'cmd.exe');
 assert.deepEqual(nestedCmd.args, [
   '/d',
   '/c',
-  'if exist "D:\\AiWorks\\chatgpt-workstation\\dist\\app.exe" echo yes',
+  'cmd /c "if exist \\"D:\\AiWorks\\chatgpt-workstation\\dist\\app.exe\\" echo yes"',
 ]);
 assert.equal(nestedCmd.windowsVerbatimArguments, true);
 
@@ -63,45 +63,93 @@ const powershellSpec = resolveShellCmdSpawnSpecForTests(
   undefined,
   'win32',
 );
-assert.equal(powershellSpec.command, 'powershell');
-assert.deepEqual(powershellSpec.args.slice(0, 3), ['-NoLogo', '-NoProfile', '-EncodedCommand']);
-assert.equal(
-  Buffer.from(powershellSpec.args[3] ?? '', 'base64').toString('utf16le'),
-  'Write-Host test',
+assert.equal(powershellSpec.command, 'cmd.exe');
+assert.deepEqual(powershellSpec.args, ['/d', '/c', 'powershell -Command "Write-Host test"']);
+assert.equal(powershellSpec.windowsVerbatimArguments, true);
+
+const powershellSingleQuotedSpec = resolveShellCmdSpawnSpecForTests(
+  "powershell -Command 'Write-Host test'",
+  undefined,
+  'win32',
 );
+assert.equal(powershellSingleQuotedSpec.command, 'cmd.exe');
+assert.deepEqual(powershellSingleQuotedSpec.args, [
+  '/d',
+  '/c',
+  "powershell -Command 'Write-Host test'",
+]);
+assert.equal(powershellSingleQuotedSpec.windowsVerbatimArguments, true);
 
 const powershellQuotedSpec = resolveShellCmdSpawnSpecForTests(
   "powershell.exe -Command 'Write-Host test'",
   undefined,
   'win32',
 );
-assert.equal(powershellQuotedSpec.command, 'powershell.exe');
-assert.deepEqual(powershellQuotedSpec.args.slice(0, 3), [
-  '-NoLogo',
-  '-NoProfile',
-  '-EncodedCommand',
+assert.equal(powershellQuotedSpec.command, 'cmd.exe');
+assert.deepEqual(powershellQuotedSpec.args, [
+  '/d',
+  '/c',
+  "powershell.exe -Command 'Write-Host test'",
 ]);
-assert.equal(
-  Buffer.from(powershellQuotedSpec.args[3] ?? '', 'base64').toString('utf16le'),
-  'Write-Host test',
-);
+assert.equal(powershellQuotedSpec.windowsVerbatimArguments, true);
 
 const powershellSpecExplicit = resolveShellCmdSpawnSpecForTests(command, 'powershell.exe', 'win32');
 assert.equal(powershellSpecExplicit.command, 'powershell.exe');
-assert.deepEqual(powershellSpecExplicit.args.slice(0, 3), [
+assert.deepEqual(powershellSpecExplicit.args, ['-NoLogo', '-NoProfile', '-Command', command]);
+
+const powershellNativeCommandSpec = resolveShellCmdSpawnSpecForTests(
+  'Write-Host test',
+  'powershell.exe',
+  'win32',
+);
+assert.equal(powershellNativeCommandSpec.command, 'powershell.exe');
+assert.deepEqual(powershellNativeCommandSpec.args, [
   '-NoLogo',
   '-NoProfile',
-  '-EncodedCommand',
+  '-Command',
+  'Write-Host test',
 ]);
-assert.equal(
-  Buffer.from(powershellSpecExplicit.args[3] ?? '', 'base64').toString('utf16le'),
-  command,
-);
 
 const pwshSpec = resolveShellCmdSpawnSpecForTests(command, 'pwsh', 'win32');
 assert.equal(pwshSpec.command, 'pwsh');
-assert.deepEqual(pwshSpec.args.slice(0, 3), ['-NoLogo', '-NoProfile', '-EncodedCommand']);
-assert.equal(Buffer.from(pwshSpec.args[3] ?? '', 'base64').toString('utf16le'), command);
+assert.deepEqual(pwshSpec.args, ['-NoLogo', '-NoProfile', '-Command', command]);
+
+assert.match(
+  detectWindowsShellUsageWarningForTests(
+    'cmd /c "if exist D:/AiWorks/chatgpt-workstation/dist/app.exe echo yes"',
+    undefined,
+    'en',
+    'win32',
+  ) ?? '',
+  /Nested shell syntax detected: cmd \/c/,
+);
+assert.match(
+  detectWindowsShellUsageWarningForTests(
+    'powershell -Command "Write-Host test"',
+    undefined,
+    'en',
+    'win32',
+  ) ?? '',
+  /Nested shell syntax detected: powershell -Command/,
+);
+assert.match(
+  detectWindowsShellUsageWarningForTests(
+    "powershell -Command 'Write-Host test'",
+    undefined,
+    'en',
+    'win32',
+  ) ?? '',
+  /Nested shell syntax detected: powershell -Command/,
+);
+assert.equal(
+  detectWindowsShellUsageWarningForTests(
+    'if exist D:/AiWorks/app.exe echo yes',
+    undefined,
+    'en',
+    'win32',
+  ),
+  undefined,
+);
 
 const readonlyShellSpec = resolveReadonlyShellSpawnSpecForTests(command, 'win32');
 assert.equal(readonlyShellSpec.command, 'cmd.exe');

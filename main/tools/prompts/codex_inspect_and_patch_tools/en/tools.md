@@ -15,7 +15,8 @@ Typical uses:
 Windows notes:
 
 - Prefer no-space forward-slash paths such as `D:/path/to/file`
-- Avoid nested `cmd /c "..."`
+- `readonly_shell` runs through the platform default shell; pass native commands for that shell
+- Avoid nested `cmd /c` or `powershell -Command`; obvious nested-shell patterns may only warn and are not rewritten
 
 Example:
 
