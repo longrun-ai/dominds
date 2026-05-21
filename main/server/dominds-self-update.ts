@@ -1,7 +1,6 @@
-import { exec, spawn } from 'child_process';
+import { spawn } from 'child_process';
 import fsPromises from 'fs/promises';
 import path from 'path';
-import { promisify } from 'util';
 
 import type { DomindsRuntimeMode, DomindsSelfUpdateStatus } from '@longrun-ai/kernel/types';
 import { formatUnifiedTimestamp } from '@longrun-ai/kernel/utils/time';
@@ -9,13 +8,20 @@ import { formatUnifiedTimestamp } from '@longrun-ai/kernel/utils/time';
 import { createLogger } from '../log';
 import { DOMINDS_RUNNING_VERSION } from './dominds-running-version';
 
-const execAsync = promisify(exec);
 const log = createLogger('dominds-self-update');
 const BACKGROUND_CHECK_INTERVAL_MS = 30 * 60 * 1000;
-const LATEST_VERSION_CHECK_TIMEOUT_MS = 15_000;
+const LATEST_VERSION_CHECK_TIMEOUT_MS = 60_000;
 const RESTART_PORT_RELEASE_TIMEOUT_MS = 15_000;
 const RESTART_PORT_PROBE_INTERVAL_MS = 150;
 const COMMAND_OUTPUT_LOG_LIMIT = 2_000;
+const PROXY_URL_ENV_KEYS = new Set([
+  'HTTP_PROXY',
+  'http_proxy',
+  'HTTPS_PROXY',
+  'https_proxy',
+  'npm_config_proxy',
+  'npm_config_https_proxy',
+]);
 
 type ServerMode = 'development' | 'production';
 type DomindsSelfUpdateRunKind = 'disabled' | 'npm_global' | 'npx_latest';
@@ -53,6 +59,24 @@ type CommandFailureDiagnostics = Readonly<{
   stderr: string;
   cwd: string;
   pathEnv: string | null;
+  durationMs: number | null;
+  timeoutMs: number | null;
+  timedOut: boolean;
+  outputExceeded: boolean;
+  capturedOutputChars: number | null;
+  maxBuffer: number | null;
+  proxyEnvSummary: Record<string, string>;
+}>;
+
+type NpmCommandSpec = Readonly<{
+  command: string;
+  args: readonly string[];
+  display: string;
+}>;
+
+type NpmCommandResult = Readonly<{
+  stdout: string;
+  stderr: string;
 }>;
 
 type RestartState =
@@ -141,9 +165,298 @@ function formatPathEnvExcerpt(pathEnv: string | null): string | null {
   return `${preview}${path.delimiter}...[+${parts.length - visibleParts.length} more]`;
 }
 
+function getEnvValue(env: NodeJS.ProcessEnv, upperKey: string, lowerKey: string): string | null {
+  const upperValue = env[upperKey];
+  if (typeof upperValue === 'string' && upperValue.trim() !== '') return upperValue;
+  const lowerValue = env[lowerKey];
+  if (typeof lowerValue === 'string' && lowerValue.trim() !== '') return lowerValue;
+  return null;
+}
+
+function redactProxyUrl(proxyUrl: string): string {
+  try {
+    const parsed = new URL(proxyUrl);
+    if (parsed.username !== '') parsed.username = '***';
+    if (parsed.password !== '') parsed.password = '***';
+    return parsed.toString();
+  } catch {
+    return proxyUrl.replace(/\/\/[^@/]+@/g, '//***@');
+  }
+}
+
+function buildNpmCommandEnv(): NodeJS.ProcessEnv {
+  const env: NodeJS.ProcessEnv = { ...process.env };
+  const httpProxy = getEnvValue(env, 'HTTP_PROXY', 'http_proxy');
+  const httpsProxy = getEnvValue(env, 'HTTPS_PROXY', 'https_proxy');
+  const noProxy = getEnvValue(env, 'NO_PROXY', 'no_proxy');
+
+  if (httpProxy !== null) {
+    env.HTTP_PROXY = httpProxy;
+    env.http_proxy = httpProxy;
+    env.npm_config_proxy = httpProxy;
+  }
+  if (httpsProxy !== null) {
+    env.HTTPS_PROXY = httpsProxy;
+    env.https_proxy = httpsProxy;
+    env.npm_config_https_proxy = httpsProxy;
+  }
+  if (noProxy !== null) {
+    env.NO_PROXY = noProxy;
+    env.no_proxy = noProxy;
+    env.npm_config_noproxy = noProxy;
+  }
+
+  env.npm_config_progress = 'false';
+  env.npm_config_update_notifier = 'false';
+  env.NO_UPDATE_NOTIFIER = '1';
+
+  return env;
+}
+
+function summarizeNpmProxyEnv(env: NodeJS.ProcessEnv): Record<string, string> {
+  const summary: Record<string, string> = {};
+  for (const key of [
+    'HTTP_PROXY',
+    'http_proxy',
+    'HTTPS_PROXY',
+    'https_proxy',
+    'NO_PROXY',
+    'no_proxy',
+    'npm_config_proxy',
+    'npm_config_https_proxy',
+    'npm_config_noproxy',
+  ]) {
+    const value = env[key];
+    if (typeof value !== 'string' || value.trim() === '') continue;
+    summary[key] = PROXY_URL_ENV_KEYS.has(key) ? redactProxyUrl(value) : value;
+  }
+  return summary;
+}
+
+async function resolveNpmCommandSpec(): Promise<NpmCommandSpec> {
+  const nodeDir = path.dirname(process.execPath);
+  const candidates =
+    process.platform === 'win32'
+      ? [path.join(nodeDir, 'node_modules', 'npm', 'bin', 'npm-cli.js')]
+      : [
+          path.join(nodeDir, '..', 'lib', 'node_modules', 'npm', 'bin', 'npm-cli.js'),
+          path.join(nodeDir, '..', 'share', 'nodejs', 'npm', 'bin', 'npm-cli.js'),
+        ];
+
+  for (const candidate of candidates) {
+    try {
+      await fsPromises.access(candidate);
+      return {
+        command: process.execPath,
+        args: [candidate],
+        display: `${process.execPath} ${candidate}`,
+      };
+    } catch {
+      continue;
+    }
+  }
+
+  if (process.platform === 'win32') {
+    throw new Error(
+      `Cannot find bundled npm CLI at ${candidates.join(', ')}. Dominds self-update avoids npm.cmd so the Windows console title is not hijacked.`,
+    );
+  }
+
+  return { command: 'npm', args: [], display: 'npm' };
+}
+
+function getStringOrNumberErrorProp(error: unknown, key: string): string | number | null {
+  const value = getErrorProp(error, key);
+  return typeof value === 'string' || typeof value === 'number' ? value : null;
+}
+
+function getStringErrorProp(error: unknown, key: string): string | null {
+  const value = getErrorProp(error, key);
+  return typeof value === 'string' ? value : null;
+}
+
+function getBooleanErrorProp(error: unknown, key: string): boolean | null {
+  const value = getErrorProp(error, key);
+  return typeof value === 'boolean' ? value : null;
+}
+
+function createCommandFailureError(params: {
+  cmd: string;
+  durationMs: number;
+  timeoutMs: number;
+  timedOut: boolean;
+  outputExceeded: boolean;
+  capturedOutputChars: number;
+  maxBuffer: number;
+  code: string | number | null;
+  signal: string | null;
+  killed: boolean | null;
+  stdout: string;
+  stderr: string;
+  proxyEnvSummary: Record<string, string>;
+  cause?: unknown;
+}): Error {
+  const reason = params.timedOut
+    ? `Command timed out after ${params.durationMs}ms: ${params.cmd}`
+    : params.outputExceeded
+      ? `Command exceeded output limit after capturing ${params.capturedOutputChars}/${params.maxBuffer} chars: ${params.cmd}`
+      : `Command failed: ${params.cmd}`;
+  const error = new Error(reason) as Error & Record<string, unknown>;
+  if (params.cause instanceof Error) {
+    error.cause = params.cause;
+  }
+  error.cmd = params.cmd;
+  error.code = params.code;
+  error.signal = params.signal;
+  error.killed = params.killed;
+  error.stdout = params.stdout;
+  error.stderr = params.stderr;
+  error.domindsDurationMs = params.durationMs;
+  error.domindsTimeoutMs = params.timeoutMs;
+  error.domindsTimedOut = params.timedOut;
+  error.domindsOutputExceeded = params.outputExceeded;
+  error.domindsCapturedOutputChars = params.capturedOutputChars;
+  error.domindsMaxBuffer = params.maxBuffer;
+  error.domindsProxyEnvSummary = params.proxyEnvSummary;
+  return error;
+}
+
+async function runNpmCommand(
+  args: readonly string[],
+  params: { timeoutMs: number; maxBuffer: number },
+): Promise<NpmCommandResult> {
+  const env = buildNpmCommandEnv();
+  const startedAtMs = Date.now();
+  let npm: NpmCommandSpec;
+  try {
+    npm = await resolveNpmCommandSpec();
+  } catch (error: unknown) {
+    const fallbackCmd = ['npm', ...args].join(' ');
+    throw createCommandFailureError({
+      cmd: fallbackCmd,
+      durationMs: Date.now() - startedAtMs,
+      timeoutMs: params.timeoutMs,
+      timedOut: false,
+      outputExceeded: false,
+      capturedOutputChars: 0,
+      maxBuffer: params.maxBuffer,
+      code: null,
+      signal: null,
+      killed: null,
+      stdout: '',
+      stderr: '',
+      proxyEnvSummary: summarizeNpmProxyEnv(env),
+      cause: error,
+    });
+  }
+  const cmd = [npm.display, ...args].join(' ');
+  return await new Promise<NpmCommandResult>((resolve, reject) => {
+    const child = spawn(npm.command, [...npm.args, ...args], {
+      cwd: process.cwd(),
+      env,
+      stdio: ['ignore', 'pipe', 'pipe'],
+      windowsHide: true,
+      shell: false,
+    });
+    let stdout = '';
+    let stderr = '';
+    let settled = false;
+    let timedOut = false;
+    let outputExceeded = false;
+    const finish = (fn: () => void): void => {
+      if (settled) return;
+      settled = true;
+      fn();
+    };
+    const timer = setTimeout(() => {
+      timedOut = true;
+      child.kill('SIGTERM');
+    }, params.timeoutMs);
+    const appendOutput = (stream: 'stdout' | 'stderr', chunk: Buffer): void => {
+      if (outputExceeded) return;
+      const next = chunk.toString('utf8');
+      if (stream === 'stdout') {
+        stdout += next;
+      } else {
+        stderr += next;
+      }
+      if (stdout.length + stderr.length <= params.maxBuffer) return;
+      outputExceeded = true;
+      child.kill('SIGTERM');
+    };
+    child.stdout?.on('data', (chunk: Buffer) => {
+      appendOutput('stdout', chunk);
+    });
+    child.stderr?.on('data', (chunk: Buffer) => {
+      appendOutput('stderr', chunk);
+    });
+    child.once('error', (error: Error) => {
+      clearTimeout(timer);
+      finish(() => {
+        reject(
+          createCommandFailureError({
+            cmd,
+            durationMs: Date.now() - startedAtMs,
+            timeoutMs: params.timeoutMs,
+            timedOut,
+            outputExceeded,
+            capturedOutputChars: stdout.length + stderr.length,
+            maxBuffer: params.maxBuffer,
+            code: getStringOrNumberErrorProp(error, 'code'),
+            signal: getStringErrorProp(error, 'signal'),
+            killed: getBooleanErrorProp(error, 'killed'),
+            stdout: truncateCommandOutput(stdout),
+            stderr: truncateCommandOutput(stderr),
+            proxyEnvSummary: summarizeNpmProxyEnv(env),
+          }),
+        );
+      });
+    });
+    child.once('close', (code, signal) => {
+      clearTimeout(timer);
+      finish(() => {
+        if (code === 0) {
+          resolve({ stdout, stderr });
+          return;
+        }
+        reject(
+          createCommandFailureError({
+            cmd,
+            durationMs: Date.now() - startedAtMs,
+            timeoutMs: params.timeoutMs,
+            timedOut,
+            outputExceeded,
+            capturedOutputChars: stdout.length + stderr.length,
+            maxBuffer: params.maxBuffer,
+            code: code === null ? null : code,
+            signal: signal === null ? null : signal,
+            killed: timedOut || child.killed || null,
+            stdout: truncateCommandOutput(stdout),
+            stderr: truncateCommandOutput(stderr),
+            proxyEnvSummary: summarizeNpmProxyEnv(env),
+          }),
+        );
+      });
+    });
+  });
+}
+
 function getErrorProp(error: unknown, key: string): unknown {
   if (typeof error !== 'object' || error === null) return undefined;
   return (error as Record<string, unknown>)[key];
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
+function stringRecordOnly(value: unknown): Record<string, string> {
+  if (!isRecord(value)) return {};
+  const result: Record<string, string> = {};
+  for (const [key, entry] of Object.entries(value)) {
+    if (typeof entry === 'string') result[key] = entry;
+  }
+  return result;
 }
 
 function extractCommandFailureDiagnostics(error: unknown): CommandFailureDiagnostics {
@@ -151,6 +464,12 @@ function extractCommandFailureDiagnostics(error: unknown): CommandFailureDiagnos
   const signal = getErrorProp(error, 'signal');
   const killed = getErrorProp(error, 'killed');
   const cmd = getErrorProp(error, 'cmd');
+  const durationMs = getErrorProp(error, 'domindsDurationMs');
+  const timeoutMs = getErrorProp(error, 'domindsTimeoutMs');
+  const timedOut = getErrorProp(error, 'domindsTimedOut');
+  const outputExceeded = getErrorProp(error, 'domindsOutputExceeded');
+  const capturedOutputChars = getErrorProp(error, 'domindsCapturedOutputChars');
+  const maxBuffer = getErrorProp(error, 'domindsMaxBuffer');
   return {
     message: error instanceof Error ? error.message : String(error),
     cmd: typeof cmd === 'string' && cmd.trim() !== '' ? cmd : null,
@@ -161,6 +480,13 @@ function extractCommandFailureDiagnostics(error: unknown): CommandFailureDiagnos
     stderr: truncateCommandOutput(getErrorProp(error, 'stderr')),
     cwd: process.cwd(),
     pathEnv: typeof process.env.PATH === 'string' ? process.env.PATH : null,
+    durationMs: typeof durationMs === 'number' ? durationMs : null,
+    timeoutMs: typeof timeoutMs === 'number' ? timeoutMs : null,
+    timedOut: typeof timedOut === 'boolean' ? timedOut : false,
+    outputExceeded: typeof outputExceeded === 'boolean' ? outputExceeded : false,
+    capturedOutputChars: typeof capturedOutputChars === 'number' ? capturedOutputChars : null,
+    maxBuffer: typeof maxBuffer === 'number' ? maxBuffer : null,
+    proxyEnvSummary: stringRecordOnly(getErrorProp(error, 'domindsProxyEnvSummary')),
   };
 }
 
@@ -174,6 +500,18 @@ function formatCommandFailureForUi(diagnostics: CommandFailureDiagnostics): stri
   }
   if (diagnostics.signal !== null) {
     lines.push(`signal: ${diagnostics.signal}`);
+  }
+  if (diagnostics.durationMs !== null) {
+    lines.push(`durationMs: ${diagnostics.durationMs}`);
+  }
+  if (diagnostics.timeoutMs !== null) {
+    lines.push(`timeoutMs: ${diagnostics.timeoutMs}`);
+  }
+  if (diagnostics.capturedOutputChars !== null) {
+    lines.push(`capturedOutputChars: ${diagnostics.capturedOutputChars}`);
+  }
+  if (diagnostics.maxBuffer !== null) {
+    lines.push(`maxBuffer: ${diagnostics.maxBuffer}`);
   }
   lines.push(`cwd: ${diagnostics.cwd}`);
 
@@ -190,9 +528,18 @@ function formatCommandFailureForUi(diagnostics: CommandFailureDiagnostics): stri
   if (pathEnvExcerpt !== null) {
     lines.push(`PATH: ${pathEnvExcerpt}`);
   }
+  for (const [key, value] of Object.entries(diagnostics.proxyEnvSummary)) {
+    lines.push(`${key}: ${value}`);
+  }
 
   const lowerMessage = diagnostics.message.toLowerCase();
-  if (
+  if (diagnostics.timedOut) {
+    lines.push(
+      'hint: npm view exceeded the Dominds latest-version check timeout before producing output',
+    );
+  } else if (diagnostics.outputExceeded) {
+    lines.push('hint: npm produced more output than Dominds expected for this command');
+  } else if (
     diagnostics.code === 'ENOENT' ||
     lowerMessage.includes('not recognized as an internal or external command') ||
     lowerMessage.includes('spawn npm enoent')
@@ -206,12 +553,10 @@ function formatCommandFailureForUi(diagnostics: CommandFailureDiagnostics): stri
     lowerMessage.includes('registry')
   ) {
     lines.push('hint: this looks like a registry, network, proxy, or certificate problem');
-  } else if (
-    diagnostics.code === 1 &&
-    diagnostics.stderr === '' &&
-    diagnostics.stdout === ''
-  ) {
-    lines.push('hint: npm exited without output; check registry access and npm config in the same shell');
+  } else if (diagnostics.code === 1 && diagnostics.stderr === '' && diagnostics.stdout === '') {
+    lines.push(
+      'hint: npm exited without output; check registry access and npm config in the same shell',
+    );
   }
 
   return lines.join('\n');
@@ -220,11 +565,9 @@ function formatCommandFailureForUi(diagnostics: CommandFailureDiagnostics): stri
 async function queryLatestVersion(): Promise<LatestQueryResult> {
   const checkedAt = formatUnifiedTimestamp(new Date());
   try {
-    const { stdout } = await execAsync('npm view dominds version --json', {
-      cwd: process.cwd(),
-      env: process.env,
+    const { stdout } = await runNpmCommand(['view', 'dominds', 'version', '--json'], {
       maxBuffer: 1024 * 1024,
-      timeout: LATEST_VERSION_CHECK_TIMEOUT_MS,
+      timeoutMs: LATEST_VERSION_CHECK_TIMEOUT_MS,
     });
     const trimmed = stdout.trim();
     if (trimmed === '') {
@@ -256,10 +599,7 @@ async function queryLatestVersion(): Promise<LatestQueryResult> {
     return { kind: 'ok', latestVersion, checkedAt };
   } catch (error: unknown) {
     const diagnostics = extractCommandFailureDiagnostics(error);
-    const errorText =
-      error instanceof Error && error.name === 'AbortError'
-        ? 'npm view dominds version timed out'
-        : formatCommandFailureForUi(diagnostics);
+    const errorText = formatCommandFailureForUi(diagnostics);
     log.warn('Dominds latest-version check failed', error, { checkedAt, errorText, diagnostics });
     return {
       kind: 'error',
@@ -270,11 +610,9 @@ async function queryLatestVersion(): Promise<LatestQueryResult> {
 }
 
 async function resolveGlobalDomindsCommandAbs(): Promise<string> {
-  const { stdout } = await execAsync('npm prefix -g', {
-    cwd: process.cwd(),
-    env: process.env,
+  const { stdout } = await runNpmCommand(['prefix', '-g'], {
     maxBuffer: 1024 * 1024,
-    timeout: 15_000,
+    timeoutMs: 15_000,
   });
   const prefix = stdout.trim();
   if (prefix === '') {
@@ -612,11 +950,9 @@ export async function installLatestDominds(): Promise<DomindsSelfUpdateStatus> {
     if (!hasUpdate) {
       throw new Error('No installable Dominds update is currently available');
     }
-    await execAsync('npm i -g dominds@latest', {
-      cwd: process.cwd(),
-      env: process.env,
+    await runNpmCommand(['i', '-g', 'dominds@latest'], {
       maxBuffer: 20 * 1024 * 1024,
-      timeout: 10 * 60 * 1000,
+      timeoutMs: 10 * 60 * 1000,
     });
     const globalCommandAbs = await resolveGlobalDomindsCommandAbs();
     restartState = {
