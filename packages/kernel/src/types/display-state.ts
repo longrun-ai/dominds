@@ -42,7 +42,7 @@ export type DialogInterruptionReason =
   | { kind: 'system_stop'; detail: string; i18nStopReason?: DialogDisplayTextI18n }
   | DialogLlmRetryExhaustedReason;
 
-export type DialogBlockedReason = { kind: 'needs_human_input' } | { kind: 'waiting_side_dialog' };
+export type DialogBlockedReason = { kind: 'needs_human_input' };
 
 export type DialogDeadReason = { kind: 'declared_by_user' } | { kind: 'system'; detail: string };
 
@@ -52,4 +52,5 @@ export type DialogDisplayState =
   | { kind: 'proceeding_stop_requested'; reason: 'user_stop' | 'emergency_stop' }
   | { kind: 'stopped'; reason: DialogInterruptionReason; continueEnabled: boolean }
   | { kind: 'blocked'; reason: DialogBlockedReason }
+  | { kind: 'waiting_side_dialog' }
   | { kind: 'dead'; reason: DialogDeadReason };

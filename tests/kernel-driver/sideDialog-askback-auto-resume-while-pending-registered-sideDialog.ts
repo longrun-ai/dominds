@@ -204,7 +204,7 @@ async function main(): Promise<void> {
     const latest = await DialogPersistence.loadDialogLatest(pangu.id, pangu.status);
     assert.deepEqual(
       latest?.displayState,
-      { kind: 'blocked', reason: { kind: 'waiting_side_dialog' } },
+      { kind: 'waiting_side_dialog' },
       'after the auto-resume round, the pending nested side dialog is the next natural continuation for the still-obligated tellasker',
     );
 

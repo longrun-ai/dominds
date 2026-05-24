@@ -283,7 +283,7 @@ async function main(): Promise<void> {
 
     const latest = await DialogPersistence.loadDialogLatest(root.id, root.status);
     assert.notEqual(
-      latest?.displayState?.kind === 'blocked' ? latest.displayState.reason.kind : 'not_blocked',
+      latest?.displayState?.kind,
       'waiting_side_dialog',
       'pending tellask must not project caller dialog into waiting_side_dialog',
     );

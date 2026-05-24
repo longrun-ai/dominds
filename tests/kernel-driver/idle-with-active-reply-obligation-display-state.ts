@@ -133,7 +133,7 @@ async function main(): Promise<void> {
     );
     assert.deepEqual(
       latestWaitingSideDialog?.displayState,
-      { kind: 'blocked', reason: { kind: 'waiting_side_dialog' } },
+      { kind: 'waiting_side_dialog' },
       'waiting for a side dialog must take precedence over pending reply obligation in run-control projection',
     );
     assert.equal(

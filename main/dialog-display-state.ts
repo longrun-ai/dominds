@@ -140,7 +140,7 @@ async function backgroundCalleeSuspensionDisplayState(
   if (!hasPendingBackgroundCallee) {
     return undefined;
   }
-  return { kind: 'blocked', reason: { kind: 'waiting_side_dialog' } };
+  return { kind: 'waiting_side_dialog' };
 }
 
 function pendingReplyObligationDisplayState(
@@ -1145,7 +1145,10 @@ export async function reconcileDisplayStatesAfterRestart(): Promise<void> {
         continue;
       }
       const next =
-        nextIdle.kind === 'blocked' || nextIdle.kind === 'stopped' || nextIdle.kind === 'dead'
+        nextIdle.kind === 'blocked' ||
+        nextIdle.kind === 'waiting_side_dialog' ||
+        nextIdle.kind === 'stopped' ||
+        nextIdle.kind === 'dead'
           ? nextIdle
           : ({
               kind: 'stopped',

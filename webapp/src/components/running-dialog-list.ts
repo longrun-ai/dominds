@@ -72,7 +72,7 @@ export class RunningDialogList extends HTMLElement {
     'state-proceeding-stop',
     'state-stopped',
     'state-blocked-q4h',
-    'state-blocked-waiting-side-dialog',
+    'state-waiting-side-dialog',
     'state-background-callee',
     'state-background-fbr',
   ];
@@ -276,13 +276,8 @@ export class RunningDialogList extends HTMLElement {
       case 'blocked_q4h':
         badges.push(this.renderRunBadge('blocked blocked-q4h', t.runBadgeWaitingHumanTitle));
         break;
-      case 'blocked_waiting_side_dialog':
-        badges.push(
-          this.renderRunBadge(
-            'blocked blocked-waiting-side-dialog',
-            t.runBadgeWaitingSideDialogTitle,
-          ),
-        );
+      case 'waiting_side_dialog':
+        badges.push(this.renderRunBadge('waiting-side-dialog', t.runBadgeWaitingSideDialogTitle));
         break;
       default: {
         const _exhaustive: never = visualState;
@@ -1855,7 +1850,7 @@ export class RunningDialogList extends HTMLElement {
         );
       }
 
-      .run-badge.blocked-waiting-side-dialog {
+      .run-badge.waiting-side-dialog {
         --run-badge-bg: var(
           --dominds-run-badge-background-callee-bg,
           color-mix(
@@ -1921,7 +1916,7 @@ export class RunningDialogList extends HTMLElement {
         --icon-mask: ${ICON_MASK_URLS.helpCircle};
       }
 
-      .run-badge.blocked-waiting-side-dialog .run-badge-icon {
+      .run-badge.waiting-side-dialog .run-badge-icon {
         --icon-mask: ${ICON_MASK_URLS.call};
       }
 

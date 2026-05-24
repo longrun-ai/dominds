@@ -402,24 +402,17 @@ function buildResumeIneligibleMessage(
   }
   switch (state.kind) {
     case 'blocked':
-      switch (state.reason.kind) {
-        case 'needs_human_input':
-          return {
-            reason: 'needs_human_input',
-            message:
-              'Fresh state scan shows this dialog is waiting for human input, so it cannot resume yet.',
-          };
-        case 'waiting_side_dialog':
-          return {
-            reason: 'waiting_side_dialog',
-            message:
-              'Fresh state scan shows this dialog is waiting for a side dialog, so it cannot resume yet.',
-          };
-        default: {
-          const _exhaustive: never = state.reason;
-          return _exhaustive;
-        }
-      }
+      return {
+        reason: 'needs_human_input',
+        message:
+          'Fresh state scan shows this dialog is waiting for human input, so it cannot resume yet.',
+      };
+    case 'waiting_side_dialog':
+      return {
+        reason: 'waiting_side_dialog',
+        message:
+          'Fresh state scan shows this dialog is waiting for a side dialog, so it cannot resume yet.',
+      };
     case 'idle_waiting_user':
       return {
         reason: 'idle_waiting_user',

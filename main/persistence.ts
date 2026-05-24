@@ -437,7 +437,7 @@ async function normalizeSideDialogIdleWhileReplyObligationPending(
     batch.callees.some((callee) => callee.status === 'pending'),
   );
   const healedDisplayState: DialogLatestFile['displayState'] = hasPendingBackgroundCallee
-    ? { kind: 'blocked', reason: { kind: 'waiting_side_dialog' } }
+    ? { kind: 'waiting_side_dialog' }
     : {
         kind: 'stopped',
         reason: { kind: 'pending_reply_obligation' },
@@ -2277,12 +2277,11 @@ function parseDialogLatestFile(value: unknown): DialogLatestFile | null {
       switch (reason.kind) {
         case 'needs_human_input':
           return { kind: 'blocked', reason: { kind: 'needs_human_input' } } as const;
-        case 'waiting_side_dialog':
-          return { kind: 'blocked', reason: { kind: 'waiting_side_dialog' } } as const;
         default:
           return null;
       }
     }
+    if (kind === 'waiting_side_dialog') return { kind: 'waiting_side_dialog' } as const;
     if (kind === 'dead') {
       const reason = displayStateRaw.reason;
       if (!isRecord(reason) || typeof reason.kind !== 'string') return null;
