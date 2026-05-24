@@ -11,8 +11,8 @@ import type { LanguageCode } from '@longrun-ai/kernel/types/language';
 import { parseUnifiedTimestampMs } from '@longrun-ai/kernel/utils/time';
 import { getUiStrings } from '../i18n/ui';
 import {
-  displayStateClassSuffixFromDisplayState,
   runControlVisualStateFromDisplayState,
+  visibleNonFbrBackgroundCalleeBadgeCount,
 } from '../utils/run-control-visual';
 import type { DialogCreateAction } from './create-dialog-flow';
 import { dispatchDomindsEvent, type DialogDeepLinkDetail } from './dom-events';
@@ -67,15 +67,6 @@ export class RunningDialogList extends HTMLElement {
   private visibleRootCountByTask: Map<string, number> = new Map();
   private visibleSideDialogCountByRoot: Map<string, number> = new Map();
   private static readonly SHOW_MORE_STEP = 5;
-  private static readonly RUN_STATE_CLASSES = [
-    'state-proceeding',
-    'state-proceeding-stop',
-    'state-stopped',
-    'state-blocked-q4h',
-    'state-waiting-side-dialog',
-    'state-background-callee',
-    'state-background-fbr',
-  ];
 
   constructor() {
     super();
@@ -276,9 +267,6 @@ export class RunningDialogList extends HTMLElement {
       case 'blocked_q4h':
         badges.push(this.renderRunBadge('blocked blocked-q4h', t.runBadgeWaitingHumanTitle));
         break;
-      case 'waiting_side_dialog':
-        badges.push(this.renderRunBadge('waiting-side-dialog', t.runBadgeWaitingSideDialogTitle));
-        break;
       default: {
         const _exhaustive: never = visualState;
         throw new Error(`Unhandled RunControlVisualState: ${String(_exhaustive)}`);
@@ -293,8 +281,10 @@ export class RunningDialogList extends HTMLElement {
         ),
       );
     }
-    const nonFbrBackgroundCalleeCount =
-      backgroundCalleeDialogCount - backgroundFreshBootsReasoningCalleeCount;
+    const nonFbrBackgroundCalleeCount = visibleNonFbrBackgroundCalleeBadgeCount({
+      backgroundCalleeDialogCount,
+      backgroundFreshBootsReasoningCalleeCount,
+    });
     if (nonFbrBackgroundCalleeCount > 0) {
       badges.push(
         this.renderRunBadge('background background-callee', t.runBadgeBackgroundCalleeTitle),
@@ -305,35 +295,7 @@ export class RunningDialogList extends HTMLElement {
     return `<span class="run-badges">${badges.join('')}</span>`;
   }
 
-  private getDisplayStateClass(dialog: ApiMainDialogResponse): string {
-    const classes: string[] = [];
-    const suffix = displayStateClassSuffixFromDisplayState(dialog.displayState);
-    if (suffix) {
-      classes.push(suffix);
-    }
-    if (this.getPositiveInt(dialog.backgroundFreshBootsReasoningCalleeCount) > 0) {
-      classes.push('state-background-fbr');
-    }
-    if (
-      this.getPositiveInt(dialog.backgroundCalleeDialogCount) >
-      this.getPositiveInt(dialog.backgroundFreshBootsReasoningCalleeCount)
-    ) {
-      classes.push('state-background-callee');
-    }
-    return classes.length > 0 ? ` ${classes.join(' ')}` : '';
-  }
-
   private updateDisplayStateForEntry(el: HTMLElement, dialog: ApiMainDialogResponse): void {
-    for (const cls of RunningDialogList.RUN_STATE_CLASSES) {
-      el.classList.remove(cls);
-    }
-    const classes = this.getDisplayStateClass(dialog)
-      .trim()
-      .split(/\s+/)
-      .filter((value) => value.length > 0);
-    for (const cls of classes) {
-      el.classList.add(cls);
-    }
     const badgesHtml = this.renderRunBadges(dialog);
     const meta = el.querySelector('.dialog-meta-right');
     if (!(meta instanceof HTMLElement)) return;
@@ -1103,7 +1065,6 @@ export class RunningDialogList extends HTMLElement {
   ): string {
     const t = getUiStrings(this.props.uiLanguage);
     const isSelected = this.isSelectedDialog(dialog, this.selectionState);
-    const displayStateClass = this.getDisplayStateClass(dialog);
     const badges = this.renderRunBadges(dialog);
     const dialogId = dialog.rootId;
     const updatedAt = dialog.lastModified || '';
@@ -1112,7 +1073,7 @@ export class RunningDialogList extends HTMLElement {
 
     return `
       <div
-        class="dialog-item main-dialog${isSelected ? ' selected' : ''}${displayStateClass}"
+        class="dialog-item main-dialog${isSelected ? ' selected' : ''}"
         data-root-id="${dialog.rootId}"
         data-self-id=""
         data-dialog-key="${dialogKey}"
@@ -1154,7 +1115,6 @@ export class RunningDialogList extends HTMLElement {
   private renderDialogRow(dialog: ApiMainDialogResponse, kind: 'main' | 'side'): string {
     const t = getUiStrings(this.props.uiLanguage);
     const isSelected = this.isSelectedDialog(dialog, this.selectionState);
-    const displayStateClass = this.getDisplayStateClass(dialog);
     const badges = this.renderRunBadges(dialog);
     const dialogId =
       kind === 'side' ? (dialog.selfId ?? '') : dialog.selfId ? dialog.selfId : dialog.rootId;
@@ -1168,7 +1128,7 @@ export class RunningDialogList extends HTMLElement {
       const callsign = this.getDialogDisplayCallsign(dialog);
       return `
         <div
-          class="${rowClass} sdlg-node${isSelected ? ' selected' : ''}${displayStateClass}"
+          class="${rowClass} sdlg-node${isSelected ? ' selected' : ''}"
           data-root-id="${dialog.rootId}"
           data-self-id="${dialog.selfId ?? ''}"
           data-dialog-key="${dialogKey}"
@@ -1198,7 +1158,7 @@ export class RunningDialogList extends HTMLElement {
 
     return `
       <div
-        class="${rowClass}${isSelected ? ' selected' : ''}${displayStateClass}"
+        class="${rowClass}${isSelected ? ' selected' : ''}"
         data-root-id="${dialog.rootId}"
         data-self-id="${dialog.selfId ?? ''}"
         data-dialog-key="${dialogKey}"
@@ -1850,25 +1810,6 @@ export class RunningDialogList extends HTMLElement {
         );
       }
 
-      .run-badge.waiting-side-dialog {
-        --run-badge-bg: var(
-          --dominds-run-badge-background-callee-bg,
-          color-mix(
-            in srgb,
-            var(--dominds-fg, #0f172a) 92%,
-            var(--dominds-bg-secondary, #ffffff) 8%
-          )
-        );
-        --run-badge-color: var(
-          --dominds-run-badge-background-callee-fg,
-          var(--dominds-info, #005fb8)
-        );
-        --run-badge-border: var(
-          --dominds-run-badge-background-callee-border,
-          var(--dominds-info-border, transparent)
-        );
-      }
-
       .run-badge.background-callee {
         --run-badge-bg: var(
           --dominds-run-badge-background-callee-bg,
@@ -1914,10 +1855,6 @@ export class RunningDialogList extends HTMLElement {
 
       .run-badge.blocked-q4h .run-badge-icon {
         --icon-mask: ${ICON_MASK_URLS.helpCircle};
-      }
-
-      .run-badge.waiting-side-dialog .run-badge-icon {
-        --icon-mask: ${ICON_MASK_URLS.call};
       }
 
       .run-badge.background-callee .run-badge-icon {

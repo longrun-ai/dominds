@@ -274,7 +274,6 @@ export type UiStrings = {
   runBadgeStoppedTitle: string;
   runBadgeRunningTitle: string;
   runBadgeWaitingHumanTitle: string;
-  runBadgeWaitingSideDialogTitle: string;
   runBadgeBackgroundCalleeTitle: string;
   runBadgeBackgroundFbrCalleeTitle: string;
 
@@ -707,7 +706,6 @@ export function getUiStrings(language: LanguageCode): UiStrings {
       runBadgeStoppedTitle: '对话已停止',
       runBadgeRunningTitle: '正在运行',
       runBadgeWaitingHumanTitle: '等待你的输入（Q4H）',
-      runBadgeWaitingSideDialogTitle: '等待支线对话回复',
       runBadgeBackgroundCalleeTitle: '后台被诉请对话进行中',
       runBadgeBackgroundFbrCalleeTitle: '后台 FBR 被诉请对话进行中',
 
@@ -1157,7 +1155,6 @@ export function getUiStrings(language: LanguageCode): UiStrings {
     runBadgeStoppedTitle: 'Stopped',
     runBadgeRunningTitle: 'Running',
     runBadgeWaitingHumanTitle: 'Waiting for human input (Q4H)',
-    runBadgeWaitingSideDialogTitle: 'Waiting for Side Dialog reply',
     runBadgeBackgroundCalleeTitle: 'Background callee dialog in progress',
     runBadgeBackgroundFbrCalleeTitle: 'Background FBR callee dialog in progress',
 

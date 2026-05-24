@@ -5,16 +5,16 @@ export type RunControlVisualState =
   | { kind: 'proceeding' }
   | { kind: 'proceeding_stop_requested' }
   | { kind: 'stopped' }
-  | { kind: 'blocked_q4h' }
-  | { kind: 'waiting_side_dialog' };
+  | { kind: 'blocked_q4h' };
 
-export type DisplayStateClassSuffix =
-  | ''
-  | 'state-proceeding'
-  | 'state-proceeding-stop'
-  | 'state-stopped'
-  | 'state-blocked-q4h'
-  | 'state-waiting-side-dialog';
+export type BackgroundCalleeBadgeCounts = Readonly<{
+  backgroundCalleeDialogCount: number | undefined;
+  backgroundFreshBootsReasoningCalleeCount: number | undefined;
+}>;
+
+function positiveInteger(value: number | undefined): number {
+  return typeof value === 'number' && Number.isInteger(value) && value > 0 ? value : 0;
+}
 
 export function runControlVisualStateFromDisplayState(
   displayState: DialogDisplayState | undefined,
@@ -33,7 +33,9 @@ export function runControlVisualStateFromDisplayState(
     case 'blocked':
       return { kind: 'blocked_q4h' };
     case 'waiting_side_dialog':
-      return { kind: 'waiting_side_dialog' };
+      // waiting_side_dialog is an idle projection: no row badge is rendered for it.
+      // Active callees are represented independently by the handset badge counts below.
+      return { kind: 'none' };
     default: {
       const _exhaustive: never = displayState;
       return { kind: 'none' };
@@ -41,26 +43,13 @@ export function runControlVisualStateFromDisplayState(
   }
 }
 
-export function displayStateClassSuffixFromDisplayState(
-  displayState: DialogDisplayState | undefined,
-): DisplayStateClassSuffix {
-  const visual = runControlVisualStateFromDisplayState(displayState);
-  switch (visual.kind) {
-    case 'none':
-      return '';
-    case 'proceeding':
-      return 'state-proceeding';
-    case 'proceeding_stop_requested':
-      return 'state-proceeding-stop';
-    case 'stopped':
-      return 'state-stopped';
-    case 'blocked_q4h':
-      return 'state-blocked-q4h';
-    case 'waiting_side_dialog':
-      return 'state-waiting-side-dialog';
-    default: {
-      const _exhaustive: never = visual;
-      return _exhaustive;
-    }
-  }
+export function visibleNonFbrBackgroundCalleeBadgeCount(
+  counts: BackgroundCalleeBadgeCounts,
+): number {
+  // Handset badges follow active callee counts only, independent from displayState.
+  const backgroundCalleeDialogCount = positiveInteger(counts.backgroundCalleeDialogCount);
+  const backgroundFreshBootsReasoningCalleeCount = positiveInteger(
+    counts.backgroundFreshBootsReasoningCalleeCount,
+  );
+  return Math.max(0, backgroundCalleeDialogCount - backgroundFreshBootsReasoningCalleeCount);
 }
