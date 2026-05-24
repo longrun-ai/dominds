@@ -620,13 +620,20 @@ async function main(): Promise<void> {
     );
     assert.deepEqual(
       initialGuardedPendingReplyLatest?.displayState,
-      { kind: 'idle_waiting_user' },
-      'new sideDialogs with active reply obligations should be born idle until a real suspension fact appears',
+      {
+        kind: 'stopped',
+        reason: { kind: 'pending_reply_obligation' },
+        continueEnabled: true,
+      },
+      'new sideDialogs with active reply obligations must start as pending-reply resumable work',
     );
     assert.deepEqual(
       initialGuardedPendingReplyLatest?.executionMarker,
-      undefined,
-      'new sideDialogs with active reply obligations should not persist a resumable execution marker',
+      {
+        kind: 'interrupted',
+        reason: { kind: 'pending_reply_obligation' },
+      },
+      'new sideDialogs with reply obligations must persist a resumable execution marker',
     );
     assert.equal(
       (
@@ -645,8 +652,12 @@ async function main(): Promise<void> {
     );
     assert.deepEqual(
       latestAfterAttemptedIdle?.displayState,
-      { kind: 'idle_waiting_user' },
-      'display-state writer should allow idle while only a sideDialog reply obligation is active',
+      {
+        kind: 'stopped',
+        reason: { kind: 'pending_reply_obligation' },
+        continueEnabled: true,
+      },
+      'display-state writer must reject idle while a sideDialog reply obligation is active',
     );
     await DialogPersistence.mutateDialogLatest(
       guardedPendingReplySideDialog.id,
@@ -665,13 +676,20 @@ async function main(): Promise<void> {
     );
     assert.deepEqual(
       latestAfterDirectIdleMutation?.displayState,
-      { kind: 'idle_waiting_user' },
-      'latest.yaml mutation guard should allow idle while only a sideDialog reply obligation is active',
+      {
+        kind: 'stopped',
+        reason: { kind: 'pending_reply_obligation' },
+        continueEnabled: true,
+      },
+      'latest.yaml mutation guard must reject idle while a sideDialog reply obligation is active',
     );
     assert.deepEqual(
       latestAfterDirectIdleMutation?.executionMarker,
-      undefined,
-      'latest.yaml mutation guard should not synthesize a resumable pending-reply execution marker',
+      {
+        kind: 'interrupted',
+        reason: { kind: 'pending_reply_obligation' },
+      },
+      'latest.yaml mutation guard must synthesize a resumable pending-reply execution marker',
     );
 
     await driveDialogStream(

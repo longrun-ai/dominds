@@ -72,6 +72,8 @@ async function main(): Promise<void> {
       originMemberId: 'tester',
       askerDialogId: rootId.selfId,
       callId: 'call-sub-1',
+      callSiteCourse: 1,
+      callSiteGenseq: 1,
     };
     await DialogPersistence.ensureSideDialogDirectory(subId, 'running');
     await DialogPersistence.saveSideDialogAskerStackState(
@@ -152,6 +154,23 @@ async function main(): Promise<void> {
       forkedAskerStackStateTop.tellaskReplyObligation?.targetDialogId,
       forkedRootId.selfId,
     );
+    const forkedSideDialogLatest = await DialogPersistence.loadDialogLatest(
+      new DialogID(subId.selfId, forkedRootId.selfId),
+      'running',
+    );
+    assert.deepEqual(
+      forkedSideDialogLatest?.displayState,
+      {
+        kind: 'stopped',
+        reason: { kind: 'pending_reply_obligation' },
+        continueEnabled: true,
+      },
+      'forked sideDialog with preserved reply obligation must not start as idle',
+    );
+    assert.deepEqual(forkedSideDialogLatest?.executionMarker, {
+      kind: 'interrupted',
+      reason: { kind: 'pending_reply_obligation' },
+    });
 
     await new Promise((resolve) => setTimeout(resolve, 700));
   });

@@ -10,7 +10,6 @@ import {
 import { driveDialogStream } from '../../main/llm/kernel-driver';
 import { buildReplyObligationReassertionPrompt } from '../../main/llm/kernel-driver/reply-guidance';
 import { DialogPersistence } from '../../main/persistence';
-import { isUserInterjectionPauseStopReason } from '../../main/runtime/interjection-pause-stop';
 import { buildReplyToolReminderText } from '../../main/runtime/reply-prompt-copy';
 import { setWorkLanguage } from '../../main/runtime/work-language';
 import {
@@ -161,42 +160,46 @@ async function main(): Promise<void> {
     );
     await waitForAllDialogsUnlocked(root, 2_000);
 
-    const deferredAfterInterjection = await DialogPersistence.getDeferredReplyReassertion(
+    const eventsAfterInterjection = await DialogPersistence.loadCourseEvents(
       sideDialog.id,
+      sideDialog.currentCourse,
       sideDialog.status,
     );
+    const reassertionPromptsAfterInterjection = eventsAfterInterjection.filter(
+      (
+        event,
+      ): event is Extract<
+        (typeof eventsAfterInterjection)[number],
+        { type: 'human_text_record' }
+      > =>
+        event.type === 'human_text_record' &&
+        event.origin === 'runtime' &&
+        event.content === reassertionPrompt,
+    );
+    assert.equal(
+      reassertionPromptsAfterInterjection.length,
+      1,
+      'user interjection should auto-reassert the pending reply obligation after the local answer',
+    );
     assert.deepEqual(
-      deferredAfterInterjection,
-      {
-        reason: 'user_interjection_with_parked_original_task',
-        directive: assignmentDirective,
-      },
-      'user interjection while nested sideDialog is pending should arm deferred reply reassertion',
+      await DialogPersistence.getDeferredReplyReassertion(sideDialog.id, sideDialog.status),
+      undefined,
+      'auto-reassertion should consume the deferred reply state in the same drive',
     );
     const latestAfterInterjection = await DialogPersistence.loadDialogLatest(
       sideDialog.id,
       sideDialog.status,
     );
-    assert.equal(
-      latestAfterInterjection?.displayState?.kind,
-      'stopped',
-      'local interjection reply should stop the original task until the user explicitly continues',
-    );
-    assert.equal(
-      latestAfterInterjection?.displayState?.continueEnabled,
-      true,
-      'interjection stop should expose Continue in the UI',
-    );
-    assert.ok(
-      latestAfterInterjection?.displayState?.kind === 'stopped' &&
-        isUserInterjectionPauseStopReason(latestAfterInterjection.displayState.reason),
-      'interjection stop should use the dedicated paused-original-task stop reason',
+    assert.deepEqual(
+      latestAfterInterjection?.displayState,
+      { kind: 'idle_waiting_user' },
+      'delivered reply should clear pending-reply projection after direct fallback completion',
     );
     const countsWhileInterjectionPaused = await getRunControlCountsSnapshot();
     assert.equal(
       countsWhileInterjectionPaused.resumable,
       1,
-      'only the interjection-paused sideDialog should count as resumable; active reply obligation alone is a completion fact',
+      'only the still-background nested sideDialog should remain resumable after parent reply delivery',
     );
     await setDialogDisplayState(sideDialog.id, { kind: 'idle_waiting_user' });
     const latestAfterAttemptedIdleWhileNestedPending = await DialogPersistence.loadDialogLatest(
@@ -206,7 +209,7 @@ async function main(): Promise<void> {
     assert.deepEqual(
       latestAfterAttemptedIdleWhileNestedPending?.displayState,
       { kind: 'idle_waiting_user' },
-      'active reply obligation should not project the sideDialog as stopped while nested pending work remains background state',
+      'idle writes are valid after the parent reply obligation has been delivered',
     );
     const refreshedWhileNestedPending = await refreshRunControlProjectionFromPersistenceFacts(
       sideDialog.id,
@@ -215,41 +218,8 @@ async function main(): Promise<void> {
     assert.deepEqual(
       refreshedWhileNestedPending?.displayState,
       { kind: 'idle_waiting_user' },
-      'run-control refresh should keep active reply obligation out of stopped UI projection',
+      'run-control refresh should keep the delivered parent sideDialog idle',
     );
-
-    await driveDialogStream(
-      sideDialog,
-      makeUserPrompt(followupInterjectPrompt, 'sideDialog-user-interject-while-stopped', {
-        userLanguageCode: 'en',
-      }),
-      true,
-      makeDriveOptions({
-        suppressDiligencePush: true,
-      }),
-    );
-    await waitForAllDialogsUnlocked(root, 2_000);
-    assert.deepEqual(
-      await DialogPersistence.getDeferredReplyReassertion(sideDialog.id, sideDialog.status),
-      {
-        reason: 'user_interjection_with_parked_original_task',
-        directive: assignmentDirective,
-      },
-      'new user messages while stopped should keep chatting locally instead of resuming the parent task',
-    );
-
-    await driveDialogStream(
-      sideDialog,
-      undefined,
-      true,
-      makeDriveOptions({
-        allowResumeFromInterrupted: true,
-        source: 'ws_resume_dialog',
-        reason: 'resume_dialog',
-        suppressDiligencePush: true,
-      }),
-    );
-    await waitForAllDialogsUnlocked(root, 2_000);
 
     const latestAfterContinue = await DialogPersistence.loadDialogLatest(
       sideDialog.id,
@@ -271,18 +241,18 @@ async function main(): Promise<void> {
     assert.equal(
       consumedReassertionPrompts.length,
       1,
-      'Continue should consume one reassertion runtime prompt',
+      'the first interjection drive should consume one reassertion runtime prompt',
     );
     assert.deepEqual(
       await DialogPersistence.getDeferredReplyReassertion(sideDialog.id, sideDialog.status),
       undefined,
-      'direct Continue should consume the deferred reply reassertion once it is delivered as a runtime prompt',
+      'deferred reply reassertion should be consumed once it is delivered as a runtime prompt',
     );
 
     assert.equal(
       await DialogPersistence.getDeferredReplyReassertion(sideDialog.id, sideDialog.status),
       undefined,
-      'deferred reply reassertion should be consumed on direct Continue',
+      'deferred reply reassertion should remain consumed after automatic reply delivery',
     );
 
     const events = await DialogPersistence.loadCourseEvents(
@@ -300,7 +270,7 @@ async function main(): Promise<void> {
     assert.equal(
       reassertionPromptsAfterContinue.length,
       1,
-      'later processing should not synthesize another reassertion prompt after Continue already consumed one',
+      'later processing should not synthesize another reassertion prompt after the first one was consumed',
     );
     const surfacedGuidesAfterResume = events.filter(
       (event): event is Extract<(typeof events)[number], { type: 'runtime_guide_record' }> =>
@@ -309,7 +279,7 @@ async function main(): Promise<void> {
     assert.equal(
       surfacedGuidesAfterResume.length,
       0,
-      'direct Continue should use runtime prompts rather than blocked-Continue guide surfacing',
+      'automatic reassertion should use runtime prompts rather than blocked-Continue guide surfacing',
     );
 
     const replyReminderEvent = events.find(
@@ -322,7 +292,7 @@ async function main(): Promise<void> {
       replyReminderEvent === undefined ? -1 : events.indexOf(replyReminderEvent);
     assert.ok(
       replyReminderIndex >= 0,
-      'first plain answer after direct Continue should queue and consume one replyTellask reminder before fallback',
+      'first plain answer after reassertion should queue and consume one replyTellask reminder before fallback',
     );
     assert.deepEqual(
       replyReminderEvent?.tellaskReplyDirective,
@@ -359,7 +329,7 @@ async function main(): Promise<void> {
     assert.equal(
       pendingAtSideDialog.length,
       1,
-      'direct Continue should not consume the still-background nested side dialog',
+      'parent reply delivery should not consume the still-background nested side dialog',
     );
   });
 

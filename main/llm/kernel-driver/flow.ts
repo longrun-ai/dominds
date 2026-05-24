@@ -505,19 +505,6 @@ async function loadFreshSuspensionStatusFromPersistence(dialog: Dialog): Promise
   };
 }
 
-function buildDisplayStateFromSuspensionStatus(args: {
-  q4h: boolean;
-  backgroundCalleeDialogs: boolean;
-}): DialogDisplayState {
-  if (args.q4h && args.backgroundCalleeDialogs) {
-    return { kind: 'blocked', reason: { kind: 'needs_human_input' } };
-  }
-  if (args.q4h) {
-    return { kind: 'blocked', reason: { kind: 'needs_human_input' } };
-  }
-  return { kind: 'idle_waiting_user' };
-}
-
 type PendingDiagnosticsSnapshot =
   | {
       kind: 'loaded';
@@ -676,6 +663,21 @@ async function clearStaleSideDialogRunControlForFinalResponse(args: {
     };
   }
 
+  const finalResponseCallId = latest.sideDialogFinalResponse?.callId.trim();
+  if (finalResponseCallId !== undefined && finalResponseCallId !== '') {
+    const activeReplyObligation = await DialogPersistence.loadActiveTellaskReplyObligation(
+      args.dialog.id,
+      args.dialog.status,
+    );
+    if (activeReplyObligation?.targetCallId.trim() === finalResponseCallId) {
+      await DialogPersistence.setActiveTellaskReplyObligation(
+        args.dialog.id,
+        undefined,
+        args.dialog.status,
+      );
+    }
+  }
+  const displayState = await computeIdleDisplayState(args.dialog);
   await DialogPersistence.mutateDialogLatest(
     args.dialog.id,
     () => ({
@@ -683,8 +685,11 @@ async function clearStaleSideDialogRunControlForFinalResponse(args: {
       patch: {
         generating: false,
         nextStep: createEmptyDialogNextStepState(),
-        displayState: { kind: 'idle_waiting_user' } as const,
-        executionMarker: undefined,
+        displayState,
+        executionMarker:
+          displayState.kind === 'stopped'
+            ? { kind: 'interrupted', reason: displayState.reason }
+            : undefined,
       },
     }),
     args.dialog.status,
@@ -1988,10 +1993,7 @@ export async function executeDriveRound(args: {
         dialog instanceof SideDialog && queuedPrompt !== undefined;
       if (!suspension.canDrive && !queuedSideDialogPromptCanResume) {
         if (resumeFromInterjectionPause) {
-          const restoredState = buildDisplayStateFromSuspensionStatus({
-            q4h: suspension.q4h,
-            backgroundCalleeDialogs: suspension.backgroundCalleeDialogs,
-          });
+          const restoredState = await computeIdleDisplayState(dialog);
           await setDialogDisplayState(dialog.id, restoredState);
           await maybeSurfaceDeferredReplyReassertionGuideForBlockedContinue(dialog);
           log.debug(

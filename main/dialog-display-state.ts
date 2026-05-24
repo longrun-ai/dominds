@@ -125,6 +125,19 @@ function q4hSuspensionDisplayState(hasQ4H: boolean): DialogDisplayState | undefi
   return undefined;
 }
 
+function pendingReplyObligationDisplayState(
+  activeReplyObligation: TellaskReplyDirective | undefined,
+): DialogDisplayState | undefined {
+  if (activeReplyObligation === undefined) {
+    return undefined;
+  }
+  return {
+    kind: 'stopped',
+    reason: { kind: 'pending_reply_obligation' },
+    continueEnabled: true,
+  };
+}
+
 type SideDialogFinalResponseClosure =
   | Readonly<{
       kind: 'no_final_response';
@@ -155,6 +168,7 @@ async function resolveSideDialogFinalResponseClosure(args: {
   if (!finalResponseAnchor) {
     return { kind: 'no_final_response' };
   }
+  const finalResponseCallId = finalResponseAnchor.callId.trim();
   const activeReplyObligation = await DialogPersistence.loadActiveTellaskReplyObligation(
     args.dialogId,
     'running',
@@ -162,21 +176,52 @@ async function resolveSideDialogFinalResponseClosure(args: {
   if (activeReplyObligation === undefined) {
     return {
       kind: 'closed_without_active_reply_obligation',
-      callId: finalResponseAnchor.callId,
+      callId: finalResponseCallId,
     };
   }
-  if (activeReplyObligation.targetCallId === finalResponseAnchor.callId) {
+  if (activeReplyObligation.targetCallId.trim() === finalResponseCallId) {
     return {
       kind: 'closed_with_matching_reply_obligation',
-      callId: finalResponseAnchor.callId,
+      callId: finalResponseCallId,
       activeReplyObligation,
     };
   }
   return {
     kind: 'blocked_by_different_reply_obligation',
-    callId: finalResponseAnchor.callId,
+    callId: finalResponseCallId,
     activeReplyObligation,
   };
+}
+
+async function clearMatchingFinalResponseReplyObligation(
+  dialogId: DialogID,
+  closure: SideDialogFinalResponseClosure,
+): Promise<boolean> {
+  if (closure.kind !== 'closed_with_matching_reply_obligation') {
+    return false;
+  }
+  await DialogPersistence.setActiveTellaskReplyObligation(dialogId, undefined, 'running');
+  return true;
+}
+
+async function settleFinalResponseClosureForIdleProjection(
+  dialogId: DialogID,
+  closure: SideDialogFinalResponseClosure,
+): Promise<boolean> {
+  switch (closure.kind) {
+    case 'no_final_response':
+    case 'blocked_by_different_reply_obligation':
+      return false;
+    case 'closed_without_active_reply_obligation':
+      return true;
+    case 'closed_with_matching_reply_obligation':
+      await clearMatchingFinalResponseReplyObligation(dialogId, closure);
+      return true;
+    default: {
+      const _exhaustive: never = closure;
+      throw new Error(`Unhandled final response closure kind: ${String(_exhaustive)}`);
+    }
+  }
 }
 
 function classifyRunControlBucket(state: DialogDisplayState | undefined): RunControlBucket {
@@ -464,6 +509,7 @@ export async function setDialogDisplayState(
     return;
   }
 
+  let nextDisplayState = displayState;
   let previousDisplayState: DialogDisplayState | undefined;
   let previousExecutionMarker: DialogExecutionMarker | undefined;
   // "dead" is irreversible. Once a dialog is marked dead, do not allow overwriting it with
@@ -491,18 +537,57 @@ export async function setDialogDisplayState(
       }
       return;
     }
+    if (status === 'running' && displayState.kind === 'idle_waiting_user') {
+      const finalResponseClosure = await resolveSideDialogFinalResponseClosure({
+        dialogId,
+        latest,
+      });
+      const finalResponseClosedForIdle = await settleFinalResponseClosureForIdleProjection(
+        dialogId,
+        finalResponseClosure,
+      );
+      if (!finalResponseClosedForIdle) {
+        const activeReplyObligation = await DialogPersistence.loadActiveTellaskReplyObligation(
+          dialogId,
+          status,
+        );
+        const pendingReplyObligation = pendingReplyObligationDisplayState(activeReplyObligation);
+        if (pendingReplyObligation) {
+          nextDisplayState = pendingReplyObligation;
+          log.warn(
+            'Redirecting idle displayState to pending reply obligation projection',
+            undefined,
+            {
+              dialogId: dialogId.valueOf(),
+              rootId: dialogId.rootId,
+              selfId: dialogId.selfId,
+              status,
+              targetCallId: activeReplyObligation?.targetCallId ?? null,
+              targetDialogId: activeReplyObligation?.targetDialogId.valueOf() ?? null,
+              previousDisplayState: latest?.displayState ?? null,
+              previousExecutionMarker: latest?.executionMarker ?? null,
+              sideDialogFinalResponseCallId: latest?.sideDialogFinalResponse?.callId ?? null,
+            },
+          );
+        }
+      }
+    }
   } catch (err) {
     log.warn('Failed to check existing displayState before setDialogDisplayState', err, {
       dialogId: dialogId.valueOf(),
       status,
+      intendedDisplayState: displayState,
     });
+    if (status === 'running' && displayState.kind === 'idle_waiting_user') {
+      return;
+    }
   }
 
   const nextExecutionMarker: DialogExecutionMarker | undefined =
-    displayState.kind === 'stopped'
-      ? { kind: 'interrupted', reason: displayState.reason }
-      : displayState.kind === 'dead'
-        ? { kind: 'dead', reason: displayState.reason }
+    nextDisplayState.kind === 'stopped'
+      ? { kind: 'interrupted', reason: nextDisplayState.reason }
+      : nextDisplayState.kind === 'dead'
+        ? { kind: 'dead', reason: nextDisplayState.reason }
         : previousExecutionMarker?.kind === 'interrupted'
           ? undefined
           : previousExecutionMarker;
@@ -512,7 +597,7 @@ export async function setDialogDisplayState(
       dialogId,
       () => ({
         kind: 'patch',
-        patch: { displayState, executionMarker: nextExecutionMarker },
+        patch: { displayState: nextDisplayState, executionMarker: nextExecutionMarker },
       }),
       status,
     );
@@ -523,12 +608,13 @@ export async function setDialogDisplayState(
       selfId: dialogId.selfId,
       status,
       intendedDisplayState: displayState,
+      persistedDisplayState: nextDisplayState,
     });
   }
 
   const typed = dialogEventRegistry.createTypedEvent(dialogId, {
     type: 'dlg_display_state_evt',
-    displayState,
+    displayState: nextDisplayState,
   });
 
   if (broadcastToClients) {
@@ -599,11 +685,16 @@ export async function computeIdleDisplayState(dlg: Dialog): Promise<DialogDispla
     dialogId: dlg.id,
     latest,
   });
-  if (
-    finalResponseClosure.kind === 'closed_without_active_reply_obligation' ||
-    finalResponseClosure.kind === 'closed_with_matching_reply_obligation'
-  ) {
+  if (await settleFinalResponseClosureForIdleProjection(dlg.id, finalResponseClosure)) {
     return { kind: 'idle_waiting_user' };
+  }
+  const activeReplyObligation = await DialogPersistence.loadActiveTellaskReplyObligation(
+    dlg.id,
+    dlg.status,
+  );
+  const pendingReplyObligation = pendingReplyObligationDisplayState(activeReplyObligation);
+  if (pendingReplyObligation) {
+    return pendingReplyObligation;
   }
   return { kind: 'idle_waiting_user' };
 }
@@ -648,11 +739,16 @@ async function computeIdleDisplayStateFromPersistence(
     return q4hSuspension;
   }
   const finalResponseClosure = await resolveSideDialogFinalResponseClosure({ dialogId, latest });
-  if (
-    finalResponseClosure.kind === 'closed_without_active_reply_obligation' ||
-    finalResponseClosure.kind === 'closed_with_matching_reply_obligation'
-  ) {
+  if (await settleFinalResponseClosureForIdleProjection(dialogId, finalResponseClosure)) {
     return { kind: 'idle_waiting_user' };
+  }
+  const activeReplyObligation = await DialogPersistence.loadActiveTellaskReplyObligation(
+    dialogId,
+    'running',
+  );
+  const pendingReplyObligation = pendingReplyObligationDisplayState(activeReplyObligation);
+  if (pendingReplyObligation) {
+    return pendingReplyObligation;
   }
   return { kind: 'idle_waiting_user' };
 }
@@ -681,19 +777,14 @@ async function healStaleSideDialogRunControlAfterFinalResponse(args: {
     dialogId: args.dialogId,
     latest: args.latest,
   });
-  switch (finalResponseClosure.kind) {
-    case 'no_final_response':
-    case 'blocked_by_different_reply_obligation':
-      return args.latest;
-    case 'closed_without_active_reply_obligation':
-      break;
-    case 'closed_with_matching_reply_obligation':
-      await DialogPersistence.setActiveTellaskReplyObligation(args.dialogId, undefined, 'running');
-      break;
-    default: {
-      const _exhaustive: never = finalResponseClosure;
-      throw new Error(`Unhandled final response closure kind: ${String(_exhaustive)}`);
-    }
+  if (
+    finalResponseClosure.kind !== 'closed_without_active_reply_obligation' &&
+    finalResponseClosure.kind !== 'closed_with_matching_reply_obligation'
+  ) {
+    return args.latest;
+  }
+  if (!(await settleFinalResponseClosureForIdleProjection(args.dialogId, finalResponseClosure))) {
+    return args.latest;
   }
   const clearedReplyObligation =
     finalResponseClosure.kind === 'closed_with_matching_reply_obligation';
@@ -797,11 +888,16 @@ export async function refreshRunControlProjectionFromPersistenceFacts(
       return q4hSuspension;
     }
     const finalResponseClosure = await resolveSideDialogFinalResponseClosure({ dialogId, latest });
-    if (
-      finalResponseClosure.kind === 'closed_without_active_reply_obligation' ||
-      finalResponseClosure.kind === 'closed_with_matching_reply_obligation'
-    ) {
+    if (await settleFinalResponseClosureForIdleProjection(dialogId, finalResponseClosure)) {
       return { kind: 'idle_waiting_user' };
+    }
+    const activeReplyObligation = await DialogPersistence.loadActiveTellaskReplyObligation(
+      dialogId,
+      'running',
+    );
+    const pendingReplyObligation = pendingReplyObligationDisplayState(activeReplyObligation);
+    if (pendingReplyObligation) {
+      return pendingReplyObligation;
     }
     if (
       latest.executionMarker?.kind === 'interrupted' &&

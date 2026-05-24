@@ -431,7 +431,16 @@ function countFunctionCalls(events: readonly PersistedDialogRecord[]): number {
 function computeRootForkDisplayState(args: {
   action: ForkDialogAction;
   questions: readonly HumanQuestion[];
+  askerStack: DialogAskerStackState | undefined;
 }): DialogDisplayState {
+  const topFrame = args.askerStack?.askerStack[args.askerStack.askerStack.length - 1];
+  if (topFrame?.tellaskReplyObligation !== undefined) {
+    return {
+      kind: 'stopped',
+      reason: { kind: 'pending_reply_obligation' },
+      continueEnabled: true,
+    };
+  }
   if (args.action.kind === 'draft_user_text') {
     return { kind: 'idle_waiting_user' };
   }
@@ -440,6 +449,20 @@ function computeRootForkDisplayState(args: {
     return { kind: 'blocked', reason: { kind: 'needs_human_input' } };
   }
   return { kind: 'stopped', reason: { kind: 'fork_continue_ready' }, continueEnabled: true };
+}
+
+function computeSideDialogForkDisplayState(
+  askerStack: DialogAskerStackState | undefined,
+): DialogDisplayState {
+  const topFrame = askerStack?.askerStack[askerStack.askerStack.length - 1];
+  if (topFrame?.tellaskReplyObligation !== undefined) {
+    return {
+      kind: 'stopped',
+      reason: { kind: 'pending_reply_obligation' },
+      continueEnabled: true,
+    };
+  }
+  return { kind: 'idle_waiting_user' };
 }
 
 async function copyArtifactsIfPresent(
@@ -787,6 +810,40 @@ async function persistForkPlan(args: {
     );
   }
 
+  const currentCourseEvents =
+    plan.retainedCourses.find((item) => item.course === plan.currentCourse)?.events ?? [];
+  const displayState =
+    plan.targetId.selfId === plan.targetId.rootId
+      ? computeRootForkDisplayState({
+          action: args.action,
+          questions: plan.questions,
+          askerStack: sourceAskerStack,
+        })
+      : computeSideDialogForkDisplayState(sourceAskerStack);
+
+  await DialogPersistence.mutateDialogLatest(plan.targetId, () => ({
+    kind: 'replace',
+    next: {
+      currentCourse: plan.currentCourse,
+      lastModified: args.now,
+      status: 'active',
+      messageCount: countMessages(currentCourseEvents),
+      functionCallCount: countFunctionCalls(currentCourseEvents),
+      sideDialogCount: plan.childCount,
+      generating: false,
+      nextStep: createEmptyDialogNextStepState(),
+      tellaskCalls: createEmptyDialogTellaskCallState(),
+      tellaskResults: createEmptyDialogTellaskResultState(),
+      displayState,
+      disableDiligencePush:
+        plan.targetId.selfId === plan.targetId.rootId ? args.latestDisableDiligencePush : false,
+      diligencePushRemainingBudget:
+        plan.targetId.selfId === plan.targetId.rootId
+          ? args.latestDiligencePushRemainingBudget
+          : undefined,
+    },
+  }));
+
   for (const course of plan.retainedCourses) {
     for (const event of course.events) {
       await DialogPersistence.appendEvent(
@@ -827,36 +884,18 @@ async function persistForkPlan(args: {
 
   await copyArtifactsIfPresent(plan.sourceId, plan.targetId, args.sourceStatus);
 
-  const currentCourseEvents =
-    plan.retainedCourses.find((item) => item.course === plan.currentCourse)?.events ?? [];
-  const displayState =
-    plan.targetId.selfId === plan.targetId.rootId
-      ? computeRootForkDisplayState({
-          action: args.action,
-          questions: plan.questions,
-        })
-      : { kind: 'idle_waiting_user' as const };
-
-  await DialogPersistence.mutateDialogLatest(plan.targetId, () => ({
-    kind: 'replace',
-    next: {
+  await DialogPersistence.mutateDialogLatest(plan.targetId, (previous) => ({
+    kind: 'patch',
+    patch: {
       currentCourse: plan.currentCourse,
-      lastModified: args.now,
-      status: 'active',
       messageCount: countMessages(currentCourseEvents),
       functionCallCount: countFunctionCalls(currentCourseEvents),
       sideDialogCount: plan.childCount,
-      generating: false,
-      nextStep: createEmptyDialogNextStepState(),
-      tellaskCalls: createEmptyDialogTellaskCallState(),
-      tellaskResults: createEmptyDialogTellaskResultState(),
       displayState,
-      disableDiligencePush:
-        plan.targetId.selfId === plan.targetId.rootId ? args.latestDisableDiligencePush : false,
-      diligencePushRemainingBudget:
-        plan.targetId.selfId === plan.targetId.rootId
-          ? args.latestDiligencePushRemainingBudget
-          : undefined,
+      executionMarker:
+        displayState.kind === 'stopped'
+          ? { kind: 'interrupted', reason: displayState.reason }
+          : previous.executionMarker,
     },
   }));
 }

@@ -194,6 +194,16 @@ async function main(): Promise<void> {
         executionMarker: undefined,
       },
     }));
+    await DialogPersistence.setActiveTellaskReplyObligation(
+      sideDialog.id,
+      {
+        expectedReplyCallName: 'replyTellask',
+        targetDialogId: dlg.id.selfId,
+        targetCallId: 'root-call-pangu-sticky',
+        tellaskContent: tellaskBody,
+      },
+      sideDialog.status,
+    );
 
     await driveDialogStream(
       sideDialog,
@@ -244,6 +254,11 @@ async function main(): Promise<void> {
       'stale queued auto-drive should clear stale final-response interruption projection',
     );
     assert.equal(latestAfter?.executionMarker, undefined);
+    assert.equal(
+      await DialogPersistence.loadActiveTellaskReplyObligation(sideDialog.id, sideDialog.status),
+      undefined,
+      'stale queued auto-drive final-response cleanup should clear matching active reply obligation',
+    );
 
     await DialogPersistence.setActiveTellaskReplyObligation(
       sideDialog.id,
@@ -330,8 +345,12 @@ async function main(): Promise<void> {
     );
     assert.deepEqual(
       preservedAfterMismatchedHeal?.displayState,
-      { kind: 'idle_waiting_user' },
-      'mismatched active reply obligation should remain completion state without keeping the sideDialog resumable',
+      {
+        kind: 'stopped',
+        reason: { kind: 'pending_reply_obligation' },
+        continueEnabled: true,
+      },
+      'mismatched active reply obligation should keep the sideDialog resumable for the pending reply',
     );
 
     await DialogPersistence.updateSideDialogAssignment(sideDialog.id, {
@@ -361,6 +380,7 @@ async function main(): Promise<void> {
       patch: {
         generating: true,
         displayState: { kind: 'proceeding' },
+        executionMarker: undefined,
         generationRunState: {
           kind: 'open',
           course: sideDialog.currentCourse,
@@ -412,6 +432,7 @@ async function main(): Promise<void> {
         nextStep: { nextSeq: 1, triggers: [] },
         sideDialogFinalResponse: undefined,
         displayState: { kind: 'idle_waiting_user' },
+        executionMarker: undefined,
       },
     }));
     await DialogPersistence.removeWakeQueueEntriesForDialog(sideDialog.id, sideDialog.status);
@@ -421,6 +442,7 @@ async function main(): Promise<void> {
       patch: {
         generating: true,
         displayState: { kind: 'proceeding' },
+        executionMarker: undefined,
         generationRunState: {
           kind: 'open',
           course: sideDialog.currentCourse,
@@ -474,6 +496,7 @@ async function main(): Promise<void> {
         latestAssignmentAnchor: undefined,
         sideDialogFinalResponse: undefined,
         displayState: { kind: 'idle_waiting_user' },
+        executionMarker: undefined,
       },
     }));
 

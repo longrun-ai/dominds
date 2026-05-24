@@ -28,6 +28,8 @@ import {
 } from '@longrun-ai/kernel/types/storage';
 import { generateShortId } from '@longrun-ai/kernel/utils/id';
 import { formatUnifiedTimestamp, parseUnifiedTimestampMs } from '@longrun-ai/kernel/utils/time';
+import fs from 'node:fs/promises';
+import path from 'node:path';
 import { Dialog, DialogID, MainDialog, SideDialog } from '../../dialog';
 import {
   broadcastDisplayStateMarker,
@@ -1689,8 +1691,242 @@ type RoutedFunctionResult = {
   tellaskToolOutputs: ChatMessage[];
 };
 
+type ToolRoundStopDiagnostics = Readonly<{
+  course: number;
+  genseq: number;
+  callIds: readonly string[];
+  callNames: readonly string[];
+  lastBusinessContinuation: DialogBusinessContinuation;
+  routed: Readonly<{
+    hasImmediateFollowupToolCalls: boolean;
+    hasImmediateTellaskOutputs: boolean;
+    immediateFollowupCallIds: readonly string[];
+    immediateTellaskOutputCallIds: readonly string[];
+    shouldStopAfterReplyTool: boolean;
+    shouldStopAfterPendingTellaskWait: boolean;
+    pairedMessageTypes: readonly string[];
+    tellaskToolOutputTypes: readonly string[];
+  }>;
+  decision: Readonly<{
+    shouldStartImmediatePostToolGeneration: boolean;
+    stopReason:
+      | 'queued_prompt_after_tool_round'
+      | 'suspended_after_tool_round'
+      | 'reply_tool'
+      | 'pending_tellask_wait'
+      | 'no_post_tool_continuation';
+    suspensionAfterToolRound?: Awaited<ReturnType<Dialog['getSuspensionStatus']>>;
+    queuedPromptAfterToolRound?: boolean;
+    remindersVer?: number;
+    pubRemindersVer?: number;
+  }>;
+}>;
+
 function resolveFuncToolFollowupMode(tool: FuncTool | undefined): FuncToolFollowupMode {
   return tool?.followupMode ?? 'immediate';
+}
+
+function summarizeRoutedFunctionResult(
+  routed: RoutedFunctionResult,
+): ToolRoundStopDiagnostics['routed'] {
+  return {
+    hasImmediateFollowupToolCalls: routed.hasImmediateFollowupToolCalls,
+    hasImmediateTellaskOutputs: routed.hasImmediateTellaskOutputs,
+    immediateFollowupCallIds: routed.immediateFollowupCallIds,
+    immediateTellaskOutputCallIds: routed.immediateTellaskOutputCallIds,
+    shouldStopAfterReplyTool: routed.shouldStopAfterReplyTool,
+    shouldStopAfterPendingTellaskWait: routed.shouldStopAfterPendingTellaskWait,
+    pairedMessageTypes: routed.pairedMessages.map((msg) => msg.type),
+    tellaskToolOutputTypes: routed.tellaskToolOutputs.map((msg) => msg.type),
+  };
+}
+
+function buildToolRoundStopDiagnostics(args: {
+  dlg: Dialog;
+  streamedFuncCalls: readonly FuncCallMsg[];
+  routed: RoutedFunctionResult;
+  lastBusinessContinuation: DialogBusinessContinuation;
+  shouldStartImmediatePostToolGeneration: boolean;
+  stopReason: ToolRoundStopDiagnostics['decision']['stopReason'];
+  suspensionAfterToolRound?: Awaited<ReturnType<Dialog['getSuspensionStatus']>>;
+  queuedPromptAfterToolRound?: boolean;
+  remindersVer?: number;
+  pubRemindersVer?: number;
+}): ToolRoundStopDiagnostics {
+  return {
+    course: args.dlg.activeGenCourseOrUndefined ?? args.dlg.currentCourse,
+    genseq: args.dlg.activeGenSeq,
+    callIds: args.streamedFuncCalls.map((call) => call.id),
+    callNames: args.streamedFuncCalls.map((call) => call.name),
+    lastBusinessContinuation: args.lastBusinessContinuation,
+    routed: summarizeRoutedFunctionResult(args.routed),
+    decision: {
+      shouldStartImmediatePostToolGeneration: args.shouldStartImmediatePostToolGeneration,
+      stopReason: args.stopReason,
+      ...(args.suspensionAfterToolRound === undefined
+        ? {}
+        : { suspensionAfterToolRound: args.suspensionAfterToolRound }),
+      ...(args.queuedPromptAfterToolRound === undefined
+        ? {}
+        : { queuedPromptAfterToolRound: args.queuedPromptAfterToolRound }),
+      ...(args.remindersVer === undefined ? {} : { remindersVer: args.remindersVer }),
+      ...(args.pubRemindersVer === undefined ? {} : { pubRemindersVer: args.pubRemindersVer }),
+    },
+  };
+}
+
+function shouldCaptureUnexpectedIdleAfterToolRound(args: {
+  finalDisplayState: DialogDisplayState;
+  latest: Awaited<ReturnType<typeof DialogPersistence.loadDialogLatest>>;
+  diagnostics: ToolRoundStopDiagnostics | undefined;
+}): boolean {
+  if (args.finalDisplayState.kind !== 'idle_waiting_user') return false;
+  const diagnostics = args.diagnostics;
+  if (diagnostics === undefined) return false;
+  if (diagnostics.callIds.length === 0) return false;
+  if ((args.latest?.nextStep.triggers.length ?? 0) > 0) return false;
+  if (
+    diagnostics.decision.stopReason === 'reply_tool' ||
+    diagnostics.decision.stopReason === 'pending_tellask_wait'
+  ) {
+    return false;
+  }
+
+  const continuation = diagnostics.lastBusinessContinuation;
+  if (continuation.kind !== 'none') return true;
+  if (diagnostics.routed.hasImmediateFollowupToolCalls) return true;
+  if (diagnostics.routed.hasImmediateTellaskOutputs) return true;
+  if (diagnostics.routed.immediateFollowupCallIds.length > 0) return true;
+  if (diagnostics.routed.immediateTellaskOutputCallIds.length > 0) return true;
+  return false;
+}
+
+function sanitizeDebugFileSegment(value: string): string {
+  const sanitized = value.replace(/[^A-Za-z0-9._-]+/g, '_').replace(/^_+|_+$/g, '');
+  return sanitized.length > 0 ? sanitized.slice(0, 80) : 'unknown';
+}
+
+async function maybeWriteUnexpectedIdleAfterToolRoundDebugDump(args: {
+  dlg: Dialog;
+  finalDisplayState: DialogDisplayState;
+  latest: Awaited<ReturnType<typeof DialogPersistence.loadDialogLatest>>;
+  diagnostics: ToolRoundStopDiagnostics | undefined;
+}): Promise<void> {
+  if (
+    !shouldCaptureUnexpectedIdleAfterToolRound({
+      finalDisplayState: args.finalDisplayState,
+      latest: args.latest,
+      diagnostics: args.diagnostics,
+    })
+  ) {
+    return;
+  }
+
+  const diagnostics = args.diagnostics;
+  if (diagnostics === undefined) {
+    throw new Error('unexpected idle debug invariant violation: diagnostics disappeared');
+  }
+
+  const capturedAt = formatUnifiedTimestamp(new Date());
+  const debugDir = path.resolve(process.cwd(), '.dislogs', 'debug');
+  const fileName = [
+    'kernel-driver-unexpected-idle-after-tool-round',
+    sanitizeDebugFileSegment(capturedAt),
+    sanitizeDebugFileSegment(args.dlg.id.rootId),
+    sanitizeDebugFileSegment(args.dlg.id.selfId),
+    `c${String(diagnostics.course)}`,
+    `g${String(diagnostics.genseq)}`,
+    `${generateShortId()}.json`,
+  ].join('-');
+  const activeCallees = await DialogPersistence.loadActiveCallees(args.dlg.id, args.dlg.status);
+  const suspension = await args.dlg.getSuspensionStatus();
+  const payload = {
+    kind: 'kernel_driver_unexpected_idle_after_tool_round',
+    capturedAt,
+    rtwsRootAbs: process.cwd(),
+    dialog: {
+      rootId: args.dlg.id.rootId,
+      selfId: args.dlg.id.selfId,
+      value: args.dlg.id.valueOf(),
+      agentId: args.dlg.agentId,
+      status: args.dlg.status,
+      currentCourse: args.dlg.currentCourse,
+      activeGenCourse: args.dlg.activeGenCourseOrUndefined ?? null,
+      activeGenSeq: args.dlg.activeGenSeqOrUndefined ?? null,
+      hasQueuedPrompt: args.dlg.hasQueuedPrompt(),
+      queuedPrompt: args.dlg.peekQueuedPrompt() ?? null,
+    },
+    finalDisplayState: args.finalDisplayState,
+    latest: args.latest,
+    activeCallees,
+    suspension,
+    diagnostics,
+    callstack: new Error('kernel-driver unexpected idle after tool round').stack ?? null,
+  };
+
+  await fs.mkdir(debugDir, { recursive: true });
+  await fs.writeFile(
+    path.join(debugDir, fileName),
+    `${JSON.stringify(payload, null, 2)}\n`,
+    'utf8',
+  );
+}
+
+async function maybeWriteIdleWithActiveReplyObligationDebugDump(args: {
+  dlg: Dialog;
+  finalDisplayState: DialogDisplayState;
+  latest: Awaited<ReturnType<typeof DialogPersistence.loadDialogLatest>>;
+  activeReplyObligation: TellaskReplyDirective | undefined;
+}): Promise<void> {
+  if (args.finalDisplayState.kind !== 'idle_waiting_user') {
+    return;
+  }
+  if (args.activeReplyObligation === undefined) {
+    return;
+  }
+
+  const capturedAt = formatUnifiedTimestamp(new Date());
+  const debugDir = path.resolve(process.cwd(), '.dislogs', 'debug');
+  const fileName = [
+    'kernel-driver-idle-with-active-reply-obligation',
+    sanitizeDebugFileSegment(capturedAt),
+    sanitizeDebugFileSegment(args.dlg.id.rootId),
+    sanitizeDebugFileSegment(args.dlg.id.selfId),
+    sanitizeDebugFileSegment(args.activeReplyObligation.targetCallId),
+    `${generateShortId()}.json`,
+  ].join('-');
+  const activeCallees = await DialogPersistence.loadActiveCallees(args.dlg.id, args.dlg.status);
+  const suspension = await args.dlg.getSuspensionStatus();
+  const payload = {
+    kind: 'kernel_driver_idle_with_active_reply_obligation',
+    capturedAt,
+    rtwsRootAbs: process.cwd(),
+    dialog: {
+      rootId: args.dlg.id.rootId,
+      selfId: args.dlg.id.selfId,
+      value: args.dlg.id.valueOf(),
+      agentId: args.dlg.agentId,
+      status: args.dlg.status,
+      currentCourse: args.dlg.currentCourse,
+      activeGenCourse: args.dlg.activeGenCourseOrUndefined ?? null,
+      activeGenSeq: args.dlg.activeGenSeqOrUndefined ?? null,
+      hasQueuedPrompt: args.dlg.hasQueuedPrompt(),
+      queuedPrompt: args.dlg.peekQueuedPrompt() ?? null,
+    },
+    finalDisplayState: args.finalDisplayState,
+    latest: args.latest,
+    activeCallees,
+    suspension,
+    activeReplyObligation: args.activeReplyObligation,
+    callstack: new Error('kernel-driver idle with active reply obligation').stack ?? null,
+  };
+
+  await fs.mkdir(debugDir, { recursive: true });
+  await fs.writeFile(
+    path.join(debugDir, fileName),
+    `${JSON.stringify(payload, null, 2)}\n`,
+    'utf8',
+  );
 }
 
 async function upsertImmediateFollowupTrigger(args: {
@@ -2527,6 +2763,7 @@ export async function driveDialogStreamCore(
       }
     | undefined;
   let pubRemindersVer = dlg.remindersVer;
+  let lastToolRoundStopDiagnostics: ToolRoundStopDiagnostics | undefined;
 
   let pendingPrompt: KernelDriverPrompt | undefined = humanPrompt;
   let resolvingImmediateToolResultForUserPrompt = false;
@@ -2813,6 +3050,7 @@ export async function driveDialogStreamCore(
         }
 
         const acceptedTriggers = await dlg.notifyGeneratingStart(currentPrompt?.msgId);
+        lastToolRoundStopDiagnostics = undefined;
         for (const trigger of acceptedTriggers) {
           if (trigger.kind === 'followup' && trigger.continuation !== undefined) {
             if (
@@ -3848,6 +4086,14 @@ export async function driveDialogStreamCore(
           }
 
           if (routed.shouldStopAfterReplyTool) {
+            lastToolRoundStopDiagnostics = buildToolRoundStopDiagnostics({
+              dlg,
+              streamedFuncCalls,
+              routed,
+              lastBusinessContinuation,
+              shouldStartImmediatePostToolGeneration: false,
+              stopReason: 'reply_tool',
+            });
             log.debug('kernel-driver stop round after explicit replyTellask* tool', undefined, {
               dialogId: dlg.id.valueOf(),
               toolNames: streamedFuncCalls
@@ -3863,6 +4109,17 @@ export async function driveDialogStreamCore(
           }
 
           if (dlg.hasQueuedPrompt()) {
+            lastToolRoundStopDiagnostics = buildToolRoundStopDiagnostics({
+              dlg,
+              streamedFuncCalls,
+              routed,
+              lastBusinessContinuation,
+              shouldStartImmediatePostToolGeneration: false,
+              stopReason: 'queued_prompt_after_tool_round',
+              queuedPromptAfterToolRound: true,
+              remindersVer: dlg.remindersVer,
+              pubRemindersVer,
+            });
             break;
           }
 
@@ -3875,6 +4132,18 @@ export async function driveDialogStreamCore(
           // background work, so only Q4H can suspend this same-drive continuation point.
           const suspensionAfterToolRound = await dlg.getSuspensionStatus();
           if (!suspensionAfterToolRound.canDrive) {
+            lastToolRoundStopDiagnostics = buildToolRoundStopDiagnostics({
+              dlg,
+              streamedFuncCalls,
+              routed,
+              lastBusinessContinuation,
+              shouldStartImmediatePostToolGeneration: false,
+              stopReason: 'suspended_after_tool_round',
+              suspensionAfterToolRound,
+              queuedPromptAfterToolRound: dlg.hasQueuedPrompt(),
+              remindersVer: dlg.remindersVer,
+              pubRemindersVer,
+            });
             await preserveDiligenceBudgetAcrossQ4H(dlg);
             break;
           }
@@ -3889,6 +4158,18 @@ export async function driveDialogStreamCore(
             invalidFuncCallCount > 0;
           if (!shouldStartImmediatePostToolGeneration) {
             if (routed.shouldStopAfterPendingTellaskWait) {
+              lastToolRoundStopDiagnostics = buildToolRoundStopDiagnostics({
+                dlg,
+                streamedFuncCalls,
+                routed,
+                lastBusinessContinuation,
+                shouldStartImmediatePostToolGeneration,
+                stopReason: 'pending_tellask_wait',
+                suspensionAfterToolRound,
+                queuedPromptAfterToolRound: dlg.hasQueuedPrompt(),
+                remindersVer: dlg.remindersVer,
+                pubRemindersVer,
+              });
               log.debug('kernel-driver stop round after pending tellask wait boundary', undefined, {
                 dialogId: dlg.id.valueOf(),
                 rootId: dlg.id.rootId,
@@ -3917,6 +4198,18 @@ export async function driveDialogStreamCore(
               pendingPrompt = next.prompt;
               continue;
             }
+            lastToolRoundStopDiagnostics = buildToolRoundStopDiagnostics({
+              dlg,
+              streamedFuncCalls,
+              routed,
+              lastBusinessContinuation,
+              shouldStartImmediatePostToolGeneration,
+              stopReason: 'no_post_tool_continuation',
+              suspensionAfterToolRound,
+              queuedPromptAfterToolRound: dlg.hasQueuedPrompt(),
+              remindersVer: dlg.remindersVer,
+              pubRemindersVer,
+            });
             break;
           }
           if (shouldStartImmediatePostToolGeneration) {
@@ -4110,6 +4403,32 @@ export async function driveDialogStreamCore(
           reason: 'newer_generation_active',
         },
       );
+    }
+    const activeReplyObligation = await DialogPersistence.loadActiveTellaskReplyObligation(
+      dlg.id,
+      dlg.status,
+    );
+    try {
+      await maybeWriteUnexpectedIdleAfterToolRoundDebugDump({
+        dlg,
+        finalDisplayState,
+        latest,
+        diagnostics: lastToolRoundStopDiagnostics,
+      });
+      await maybeWriteIdleWithActiveReplyObligationDebugDump({
+        dlg,
+        finalDisplayState,
+        latest,
+        activeReplyObligation,
+      });
+    } catch (debugErr) {
+      log.warn('kernel-driver failed to write idle debug dump', debugErr, {
+        dialogId: dlg.id.valueOf(),
+        rootId: dlg.id.rootId,
+        selfId: dlg.id.selfId,
+        course: lastToolRoundStopDiagnostics?.course ?? null,
+        genseq: lastToolRoundStopDiagnostics?.genseq ?? null,
+      });
     }
   } catch (err) {
     log.warn('kernel-driver failed to re-check displayState before finalizing', err, {

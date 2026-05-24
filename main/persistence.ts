@@ -408,13 +408,6 @@ function hasActiveReplyObligationInAskerStackState(state: DialogAskerStackState 
   return top?.tellaskReplyObligation !== undefined;
 }
 
-function q4hSuspensionDisplayState(hasQ4H: boolean): DialogLatestFile['displayState'] | undefined {
-  if (hasQ4H) {
-    return { kind: 'blocked', reason: { kind: 'needs_human_input' } };
-  }
-  return undefined;
-}
-
 async function normalizeSideDialogIdleWhileReplyObligationPending(
   dialogId: DialogID,
   status: DialogStatusKind,
@@ -438,15 +431,14 @@ async function normalizeSideDialogIdleWhileReplyObligationPending(
   if (!hasActiveReplyObligationInAskerStackState(askerStackState)) {
     return latest;
   }
-  const q4hSuspensionState = q4hSuspensionDisplayState(
-    (await DialogPersistence.loadQuestions4HumanState(dialogId, status)).length > 0,
-  );
-  if (!q4hSuspensionState) {
-    return latest;
-  }
   const top = askerStackState?.askerStack[askerStackState.askerStack.length - 1];
+  const healedDisplayState = {
+    kind: 'stopped',
+    reason: { kind: 'pending_reply_obligation' },
+    continueEnabled: true,
+  } satisfies DialogLatestFile['displayState'];
   log.debug(
-    'Dialog latest projection invariant warning: sideDialog awaiting Q4H attempted to enter idle displayState; healing from persistence facts',
+    'Dialog latest projection invariant warning: sideDialog with active reply obligation attempted to enter idle displayState; healing from persistence facts',
     undefined,
     {
       trigger: context.trigger,
@@ -459,12 +451,12 @@ async function normalizeSideDialogIdleWhileReplyObligationPending(
       selfId: dialogId.selfId,
       status,
       targetCallId: top?.tellaskReplyObligation?.targetCallId ?? null,
-      suspendedByQ4H: q4hSuspensionState?.kind === 'blocked',
+      targetDialogId: top?.tellaskReplyObligation?.targetDialogId ?? null,
       before: summarizeLatestProjectionState(previous),
       afterBeforeHealing: summarizeLatestProjectionState(latest),
       healedTo: {
-        displayState: q4hSuspensionState,
-        executionMarker: undefined,
+        displayState: healedDisplayState,
+        executionMarker: { kind: 'interrupted', reason: healedDisplayState.reason },
       },
       callStack: captureInvariantWarningStack(),
     },
@@ -472,8 +464,8 @@ async function normalizeSideDialogIdleWhileReplyObligationPending(
   return {
     ...latest,
     lastModified: formatUnifiedTimestamp(new Date()),
-    displayState: q4hSuspensionState,
-    executionMarker: undefined,
+    displayState: healedDisplayState,
+    executionMarker: { kind: 'interrupted', reason: healedDisplayState.reason },
   };
 }
 const quarantiningMainDialogs = new Set<string>();
@@ -2957,7 +2949,9 @@ export class DiskFileDialogStore extends DialogStore {
     };
     await this.appendEvent(askerDialog, callerCourse, sideDialogCreatedRecord);
     const initialSideDialogDisplayState = {
-      kind: 'idle_waiting_user',
+      kind: 'stopped',
+      reason: { kind: 'pending_reply_obligation' },
+      continueEnabled: true,
     } satisfies DialogDisplayState;
 
     // Initialize latest.yaml via the mutation API (write-back will flush).
@@ -2974,6 +2968,10 @@ export class DiskFileDialogStore extends DialogStore {
         tellaskCalls: createEmptyDialogTellaskCallState(),
         tellaskResults: createEmptyDialogTellaskResultState(),
         displayState: initialSideDialogDisplayState,
+        executionMarker: {
+          kind: 'interrupted',
+          reason: initialSideDialogDisplayState.reason,
+        },
         disableDiligencePush: false,
       },
     }));
