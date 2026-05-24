@@ -2,6 +2,8 @@ import assert from 'node:assert/strict';
 import * as fs from 'node:fs/promises';
 import path from 'node:path';
 
+import type { ActiveCalleeDispatchRecord } from '@longrun-ai/kernel/types/storage';
+import { formatUnifiedTimestamp } from '@longrun-ai/kernel/utils/time';
 import { setDialogDisplayState } from '../../main/dialog-display-state';
 import { driveDialogStream } from '../../main/llm/kernel-driver';
 import { DialogPersistence } from '../../main/persistence';
@@ -93,6 +95,51 @@ async function main(): Promise<void> {
         continueEnabled: true,
       },
       'direct idle displayState writes must be redirected while reply obligation remains active',
+    );
+
+    const sideDialog = await dlg.createSideDialog(
+      'helper',
+      ['@helper'],
+      'Please answer after the nested work returns.',
+      {
+        callName: 'tellaskSessionless',
+        originMemberId: dlg.agentId,
+        askerDialogId: dlg.id.selfId,
+        callId: 'root-to-helper-call',
+        callSiteCourse: 1,
+        callSiteGenseq: 1,
+        collectiveTargets: ['helper'],
+      },
+    );
+    const nestedCallee: ActiveCalleeDispatchRecord = {
+      calleeDialogId: 'bb/cc/nested-waiting-side-dialog',
+      createdAt: formatUnifiedTimestamp(new Date()),
+      batchId: 'nested-waiting-side-dialog-batch',
+      callName: 'tellaskSessionless',
+      mentionList: ['@reviewer'],
+      tellaskContent: 'Finish the nested side dialog.',
+      targetAgentId: 'reviewer',
+      callId: 'nested-waiting-side-dialog-call',
+      callSiteCourse: 1,
+      callSiteGenseq: 1,
+      callType: 'C',
+    };
+    await DialogPersistence.appendActiveCalleeDispatch(sideDialog.id, nestedCallee);
+
+    await setDialogDisplayState(sideDialog.id, { kind: 'idle_waiting_user' }, sideDialog.status);
+    const latestWaitingSideDialog = await DialogPersistence.loadDialogLatest(
+      sideDialog.id,
+      sideDialog.status,
+    );
+    assert.deepEqual(
+      latestWaitingSideDialog?.displayState,
+      { kind: 'blocked', reason: { kind: 'waiting_side_dialog' } },
+      'waiting for a side dialog must take precedence over pending reply obligation in run-control projection',
+    );
+    assert.equal(
+      latestWaitingSideDialog?.executionMarker,
+      undefined,
+      'blocked waiting-side-dialog projection must not keep a stale resumable interruption marker',
     );
   });
 

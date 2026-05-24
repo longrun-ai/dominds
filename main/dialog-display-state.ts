@@ -125,6 +125,24 @@ function q4hSuspensionDisplayState(hasQ4H: boolean): DialogDisplayState | undefi
   return undefined;
 }
 
+async function backgroundCalleeSuspensionDisplayState(
+  dialogId: DialogID,
+  status: 'running' | 'completed' | 'archived',
+  activeReplyObligation: TellaskReplyDirective | undefined,
+): Promise<DialogDisplayState | undefined> {
+  if (status !== 'running' || activeReplyObligation === undefined) {
+    return undefined;
+  }
+  const activeCallees = await DialogPersistence.loadActiveCallees(dialogId, status);
+  const hasPendingBackgroundCallee = activeCallees.batches.some((batch) =>
+    batch.callees.some((callee) => callee.status === 'pending'),
+  );
+  if (!hasPendingBackgroundCallee) {
+    return undefined;
+  }
+  return { kind: 'blocked', reason: { kind: 'waiting_side_dialog' } };
+}
+
 function pendingReplyObligationDisplayState(
   activeReplyObligation: TellaskReplyDirective | undefined,
 ): DialogDisplayState | undefined {
@@ -538,37 +556,71 @@ export async function setDialogDisplayState(
       return;
     }
     if (status === 'running' && displayState.kind === 'idle_waiting_user') {
-      const finalResponseClosure = await resolveSideDialogFinalResponseClosure({
-        dialogId,
-        latest,
-      });
-      const finalResponseClosedForIdle = await settleFinalResponseClosureForIdleProjection(
-        dialogId,
-        finalResponseClosure,
+      const q4hSuspension = q4hSuspensionDisplayState(
+        latest?.userWait?.kind === 'awaiting_user_answer',
       );
-      if (!finalResponseClosedForIdle) {
+      if (q4hSuspension) {
+        nextDisplayState = q4hSuspension;
+        log.warn('Redirecting idle displayState to suspension projection', undefined, {
+          dialogId: dialogId.valueOf(),
+          rootId: dialogId.rootId,
+          selfId: dialogId.selfId,
+          status,
+          suspensionDisplayState: nextDisplayState,
+          previousDisplayState: latest?.displayState ?? null,
+          previousExecutionMarker: latest?.executionMarker ?? null,
+        });
+      } else if (
+        !(await settleFinalResponseClosureForIdleProjection(
+          dialogId,
+          await resolveSideDialogFinalResponseClosure({
+            dialogId,
+            latest,
+          }),
+        ))
+      ) {
         const activeReplyObligation = await DialogPersistence.loadActiveTellaskReplyObligation(
           dialogId,
           status,
         );
-        const pendingReplyObligation = pendingReplyObligationDisplayState(activeReplyObligation);
-        if (pendingReplyObligation) {
-          nextDisplayState = pendingReplyObligation;
-          log.warn(
-            'Redirecting idle displayState to pending reply obligation projection',
-            undefined,
-            {
-              dialogId: dialogId.valueOf(),
-              rootId: dialogId.rootId,
-              selfId: dialogId.selfId,
-              status,
-              targetCallId: activeReplyObligation?.targetCallId ?? null,
-              targetDialogId: activeReplyObligation?.targetDialogId.valueOf() ?? null,
-              previousDisplayState: latest?.displayState ?? null,
-              previousExecutionMarker: latest?.executionMarker ?? null,
-              sideDialogFinalResponseCallId: latest?.sideDialogFinalResponse?.callId ?? null,
-            },
-          );
+        const backgroundCalleeSuspension = await backgroundCalleeSuspensionDisplayState(
+          dialogId,
+          status,
+          activeReplyObligation,
+        );
+        if (backgroundCalleeSuspension) {
+          nextDisplayState = backgroundCalleeSuspension;
+          log.warn('Redirecting idle displayState to suspension projection', undefined, {
+            dialogId: dialogId.valueOf(),
+            rootId: dialogId.rootId,
+            selfId: dialogId.selfId,
+            status,
+            suspensionDisplayState: nextDisplayState,
+            targetCallId: activeReplyObligation?.targetCallId ?? null,
+            targetDialogId: activeReplyObligation?.targetDialogId.valueOf() ?? null,
+            previousDisplayState: latest?.displayState ?? null,
+            previousExecutionMarker: latest?.executionMarker ?? null,
+          });
+        } else {
+          const pendingReplyObligation = pendingReplyObligationDisplayState(activeReplyObligation);
+          if (pendingReplyObligation) {
+            nextDisplayState = pendingReplyObligation;
+            log.warn(
+              'Redirecting idle displayState to pending reply obligation projection',
+              undefined,
+              {
+                dialogId: dialogId.valueOf(),
+                rootId: dialogId.rootId,
+                selfId: dialogId.selfId,
+                status,
+                targetCallId: activeReplyObligation?.targetCallId ?? null,
+                targetDialogId: activeReplyObligation?.targetDialogId.valueOf() ?? null,
+                previousDisplayState: latest?.displayState ?? null,
+                previousExecutionMarker: latest?.executionMarker ?? null,
+                sideDialogFinalResponseCallId: latest?.sideDialogFinalResponse?.callId ?? null,
+              },
+            );
+          }
         }
       }
     }
@@ -620,7 +672,7 @@ export async function setDialogDisplayState(
   if (broadcastToClients) {
     broadcastToClients(typed);
   }
-  if (shouldBroadcastRunControlCounts(previousDisplayState, displayState)) {
+  if (shouldBroadcastRunControlCounts(previousDisplayState, nextDisplayState)) {
     try {
       await broadcastRunControlCountsSnapshot();
     } catch (err) {
@@ -692,6 +744,14 @@ export async function computeIdleDisplayState(dlg: Dialog): Promise<DialogDispla
     dlg.id,
     dlg.status,
   );
+  const backgroundCalleeSuspension = await backgroundCalleeSuspensionDisplayState(
+    dlg.id,
+    dlg.status,
+    activeReplyObligation,
+  );
+  if (backgroundCalleeSuspension) {
+    return backgroundCalleeSuspension;
+  }
   const pendingReplyObligation = pendingReplyObligationDisplayState(activeReplyObligation);
   if (pendingReplyObligation) {
     return pendingReplyObligation;
@@ -746,6 +806,14 @@ async function computeIdleDisplayStateFromPersistence(
     dialogId,
     'running',
   );
+  const backgroundCalleeSuspension = await backgroundCalleeSuspensionDisplayState(
+    dialogId,
+    'running',
+    activeReplyObligation,
+  );
+  if (backgroundCalleeSuspension) {
+    return backgroundCalleeSuspension;
+  }
   const pendingReplyObligation = pendingReplyObligationDisplayState(activeReplyObligation);
   if (pendingReplyObligation) {
     return pendingReplyObligation;
@@ -895,6 +963,14 @@ export async function refreshRunControlProjectionFromPersistenceFacts(
       dialogId,
       'running',
     );
+    const backgroundCalleeSuspension = await backgroundCalleeSuspensionDisplayState(
+      dialogId,
+      'running',
+      activeReplyObligation,
+    );
+    if (backgroundCalleeSuspension) {
+      return backgroundCalleeSuspension;
+    }
     const pendingReplyObligation = pendingReplyObligationDisplayState(activeReplyObligation);
     if (pendingReplyObligation) {
       return pendingReplyObligation;

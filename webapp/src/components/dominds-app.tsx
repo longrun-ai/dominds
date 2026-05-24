@@ -9795,6 +9795,8 @@ export class DomindsApp extends HTMLElement {
     switch (reason) {
       case 'needs_human_input':
         return t.resumeRejectedResumptionPanelNeedsHumanInput;
+      case 'waiting_side_dialog':
+        return t.resumeRejectedResumptionPanelWaitingSideDialog;
       case 'idle_waiting_user':
         return t.resumeRejectedResumptionPanelIdleWaitingUser;
       case 'already_running':

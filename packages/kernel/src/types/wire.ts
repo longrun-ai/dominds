@@ -155,6 +155,7 @@ export interface DomindsRuntimeStatusMessage {
 export type ResumeNotEligibleReason =
   | 'missing'
   | 'needs_human_input'
+  | 'waiting_side_dialog'
   | 'idle_waiting_user'
   | 'already_running'
   | 'stopped_not_resumable'

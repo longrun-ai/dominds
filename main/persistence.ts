@@ -432,11 +432,21 @@ async function normalizeSideDialogIdleWhileReplyObligationPending(
     return latest;
   }
   const top = askerStackState?.askerStack[askerStackState.askerStack.length - 1];
-  const healedDisplayState = {
-    kind: 'stopped',
-    reason: { kind: 'pending_reply_obligation' },
-    continueEnabled: true,
-  } satisfies DialogLatestFile['displayState'];
+  const activeCallees = await DialogPersistence.loadActiveCallees(dialogId, status);
+  const hasPendingBackgroundCallee = activeCallees.batches.some((batch) =>
+    batch.callees.some((callee) => callee.status === 'pending'),
+  );
+  const healedDisplayState: DialogLatestFile['displayState'] = hasPendingBackgroundCallee
+    ? { kind: 'blocked', reason: { kind: 'waiting_side_dialog' } }
+    : {
+        kind: 'stopped',
+        reason: { kind: 'pending_reply_obligation' },
+        continueEnabled: true,
+      };
+  const healedExecutionMarker =
+    healedDisplayState.kind === 'stopped'
+      ? ({ kind: 'interrupted', reason: healedDisplayState.reason } as const)
+      : undefined;
   log.debug(
     'Dialog latest projection invariant warning: sideDialog with active reply obligation attempted to enter idle displayState; healing from persistence facts',
     undefined,
@@ -452,11 +462,12 @@ async function normalizeSideDialogIdleWhileReplyObligationPending(
       status,
       targetCallId: top?.tellaskReplyObligation?.targetCallId ?? null,
       targetDialogId: top?.tellaskReplyObligation?.targetDialogId ?? null,
+      hasPendingBackgroundCallee,
       before: summarizeLatestProjectionState(previous),
       afterBeforeHealing: summarizeLatestProjectionState(latest),
       healedTo: {
         displayState: healedDisplayState,
-        executionMarker: { kind: 'interrupted', reason: healedDisplayState.reason },
+        executionMarker: healedExecutionMarker ?? null,
       },
       callStack: captureInvariantWarningStack(),
     },
@@ -465,7 +476,7 @@ async function normalizeSideDialogIdleWhileReplyObligationPending(
     ...latest,
     lastModified: formatUnifiedTimestamp(new Date()),
     displayState: healedDisplayState,
-    executionMarker: { kind: 'interrupted', reason: healedDisplayState.reason },
+    executionMarker: healedExecutionMarker,
   };
 }
 const quarantiningMainDialogs = new Set<string>();
@@ -2266,6 +2277,8 @@ function parseDialogLatestFile(value: unknown): DialogLatestFile | null {
       switch (reason.kind) {
         case 'needs_human_input':
           return { kind: 'blocked', reason: { kind: 'needs_human_input' } } as const;
+        case 'waiting_side_dialog':
+          return { kind: 'blocked', reason: { kind: 'waiting_side_dialog' } } as const;
         default:
           return null;
       }

@@ -15,3 +15,7 @@ expectSuffix(
   'state-stopped',
 );
 expectSuffix({ kind: 'blocked', reason: { kind: 'needs_human_input' } }, 'state-blocked-q4h');
+expectSuffix(
+  { kind: 'blocked', reason: { kind: 'waiting_side_dialog' } },
+  'state-blocked-waiting-side-dialog',
+);

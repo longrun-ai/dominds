@@ -72,6 +72,7 @@ export class RunningDialogList extends HTMLElement {
     'state-proceeding-stop',
     'state-stopped',
     'state-blocked-q4h',
+    'state-blocked-waiting-side-dialog',
     'state-background-callee',
     'state-background-fbr',
   ];
@@ -274,6 +275,14 @@ export class RunningDialogList extends HTMLElement {
         break;
       case 'blocked_q4h':
         badges.push(this.renderRunBadge('blocked blocked-q4h', t.runBadgeWaitingHumanTitle));
+        break;
+      case 'blocked_waiting_side_dialog':
+        badges.push(
+          this.renderRunBadge(
+            'blocked blocked-waiting-side-dialog',
+            t.runBadgeWaitingSideDialogTitle,
+          ),
+        );
         break;
       default: {
         const _exhaustive: never = visualState;
@@ -1846,6 +1855,25 @@ export class RunningDialogList extends HTMLElement {
         );
       }
 
+      .run-badge.blocked-waiting-side-dialog {
+        --run-badge-bg: var(
+          --dominds-run-badge-background-callee-bg,
+          color-mix(
+            in srgb,
+            var(--dominds-fg, #0f172a) 92%,
+            var(--dominds-bg-secondary, #ffffff) 8%
+          )
+        );
+        --run-badge-color: var(
+          --dominds-run-badge-background-callee-fg,
+          var(--dominds-info, #005fb8)
+        );
+        --run-badge-border: var(
+          --dominds-run-badge-background-callee-border,
+          var(--dominds-info-border, transparent)
+        );
+      }
+
       .run-badge.background-callee {
         --run-badge-bg: var(
           --dominds-run-badge-background-callee-bg,
@@ -1891,6 +1919,10 @@ export class RunningDialogList extends HTMLElement {
 
       .run-badge.blocked-q4h .run-badge-icon {
         --icon-mask: ${ICON_MASK_URLS.helpCircle};
+      }
+
+      .run-badge.blocked-waiting-side-dialog .run-badge-icon {
+        --icon-mask: ${ICON_MASK_URLS.call};
       }
 
       .run-badge.background-callee .run-badge-icon {
