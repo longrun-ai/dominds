@@ -375,15 +375,8 @@ async function main(): Promise<void> {
     );
 
     const forkedLatest = await DialogPersistence.loadDialogLatest(forkedRootId, 'running');
-    assert.deepEqual(forkedLatest?.displayState, {
-      kind: 'stopped',
-      reason: { kind: 'pending_reply_obligation' },
-      continueEnabled: true,
-    });
-    assert.deepEqual(forkedLatest?.executionMarker, {
-      kind: 'interrupted',
-      reason: { kind: 'pending_reply_obligation' },
-    });
+    assert.deepEqual(forkedLatest?.displayState, { kind: 'proceeding' });
+    assert.equal(forkedLatest?.executionMarker, undefined);
 
     const forkedSubMeta = await DialogPersistence.loadDialogMetadata(
       new DialogID(subId.selfId, forkedRootId.selfId),
@@ -404,17 +397,10 @@ async function main(): Promise<void> {
     );
     assert.deepEqual(
       forkedSubLatest?.displayState,
-      {
-        kind: 'stopped',
-        reason: { kind: 'pending_reply_obligation' },
-        continueEnabled: true,
-      },
-      'forked sideDialog with preserved reply obligation must not start as idle',
+      { kind: 'proceeding' },
+      'forked sideDialog with preserved reply obligation must keep driving',
     );
-    assert.deepEqual(forkedSubLatest?.executionMarker, {
-      kind: 'interrupted',
-      reason: { kind: 'pending_reply_obligation' },
-    });
+    assert.equal(forkedSubLatest?.executionMarker, undefined);
     assert.equal(
       forkedSubAskerStackTop.askerDialogId,
       forkedRootId.selfId,
@@ -500,17 +486,10 @@ async function main(): Promise<void> {
     );
     assert.deepEqual(
       forkBeforeFirstLatest?.displayState,
-      {
-        kind: 'stopped',
-        reason: { kind: 'pending_reply_obligation' },
-        continueEnabled: true,
-      },
-      'forked root with preserved reply obligation must not start as idle even when draft text exists',
+      { kind: 'proceeding' },
+      'forked root with preserved reply obligation must keep driving even when draft text exists',
     );
-    assert.deepEqual(forkBeforeFirstLatest?.executionMarker, {
-      kind: 'interrupted',
-      reason: { kind: 'pending_reply_obligation' },
-    });
+    assert.equal(forkBeforeFirstLatest?.executionMarker, undefined);
   });
 }
 

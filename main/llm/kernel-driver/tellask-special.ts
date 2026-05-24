@@ -3135,6 +3135,10 @@ export async function processTellaskFunctionRound(args: {
           deliveryMode: isReplyTellaskCallName(handled.call.callName)
             ? 'func_call_requested'
             : 'tellask_call_start',
+          ...(isReplyTellaskCallName(handled.call.callName) &&
+          args.activePromptReplyDirective !== undefined
+            ? { replyDirective: args.activePromptReplyDirective }
+            : {}),
         },
       );
       tellaskCallMessages.push({

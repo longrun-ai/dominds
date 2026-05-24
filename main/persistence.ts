@@ -316,6 +316,43 @@ function chunkInvariantDiagnosticJson(value: string, maxChars: number): string[]
   return chunks;
 }
 
+function sanitizeDebugFileSegment(value: string): string {
+  const sanitized = value.replace(/[^A-Za-z0-9._-]+/g, '_').replace(/^_+|_+$/g, '');
+  return sanitized.length > 0 ? sanitized.slice(0, 80) : 'unknown';
+}
+
+async function writeInvariantDebugDump(args: {
+  kind: string;
+  prefix: string;
+  dialogId: DialogID;
+  details: Record<string, unknown>;
+}): Promise<void> {
+  const capturedAt = formatUnifiedTimestamp(new Date());
+  const debugDir = path.resolve(process.cwd(), '.dislogs', 'debug');
+  const fileName = [
+    args.prefix,
+    sanitizeDebugFileSegment(capturedAt),
+    sanitizeDebugFileSegment(args.dialogId.rootId),
+    sanitizeDebugFileSegment(args.dialogId.selfId),
+    `${randomUUID()}.json`,
+  ].join('-');
+  const payload = {
+    kind: args.kind,
+    capturedAt,
+    rtwsRootAbs: process.cwd(),
+    rootId: args.dialogId.rootId,
+    selfId: args.dialogId.selfId,
+    dialogId: args.dialogId.valueOf(),
+    details: args.details,
+  };
+  await fs.promises.mkdir(debugDir, { recursive: true });
+  await fs.promises.writeFile(
+    path.join(debugDir, fileName),
+    `${JSON.stringify(payload, null, 2)}\n`,
+    'utf-8',
+  );
+}
+
 function emitInvariantWarning(message: string, details: Record<string, unknown>): void {
   const diagnosticJson = stringifyInvariantWarningDetails(details);
   log.warn(message, undefined, {
@@ -408,7 +445,15 @@ function hasActiveReplyObligationInAskerStackState(state: DialogAskerStackState 
   return top?.tellaskReplyObligation !== undefined;
 }
 
-async function normalizeSideDialogIdleWhileReplyObligationPending(
+function hasSideDialogFinalResponseAnchor(dialogId: DialogID, latest: DialogLatestFile): boolean {
+  if (dialogId.selfId === dialogId.rootId) {
+    return false;
+  }
+  const finalResponseCallId = latest.sideDialogFinalResponse?.callId.trim();
+  return finalResponseCallId !== undefined && finalResponseCallId !== '';
+}
+
+async function normalizeIdleWhileReplyObligationPending(
   dialogId: DialogID,
   status: DialogStatusKind,
   previous: DialogLatestFile,
@@ -422,7 +467,7 @@ async function normalizeSideDialogIdleWhileReplyObligationPending(
     latestWriteBackKey: string;
   }>,
 ): Promise<DialogLatestFile> {
-  if (status !== 'running' || dialogId.selfId === dialogId.rootId) {
+  if (status !== 'running') {
     return latest;
   }
   if (latest.displayState?.kind !== 'idle_waiting_user') {
@@ -433,45 +478,53 @@ async function normalizeSideDialogIdleWhileReplyObligationPending(
   }
   const top = askerStackState?.askerStack[askerStackState.askerStack.length - 1];
   const activeCallees = await DialogPersistence.loadActiveCallees(dialogId, status);
-  const hasPendingBackgroundCallee = activeCallees.batches.some((batch) =>
+  const hasPendingSideDialog = activeCallees.batches.some((batch) =>
     batch.callees.some((callee) => callee.status === 'pending'),
   );
-  const healedDisplayState: DialogLatestFile['displayState'] = hasPendingBackgroundCallee
+  const healedDisplayState: DialogLatestFile['displayState'] = hasPendingSideDialog
     ? { kind: 'waiting_side_dialog' }
-    : {
-        kind: 'stopped',
-        reason: { kind: 'pending_reply_obligation' },
-        continueEnabled: true,
-      };
-  const healedExecutionMarker =
-    healedDisplayState.kind === 'stopped'
-      ? ({ kind: 'interrupted', reason: healedDisplayState.reason } as const)
-      : undefined;
+    : { kind: 'proceeding' };
+  const healedExecutionMarker = undefined;
+  const warningDetails: Record<string, unknown> = {
+    trigger: context.trigger,
+    mutationKind: context.mutationKind,
+    latestSource: context.latestSource,
+    latestWriteBackKey: context.latestWriteBackKey,
+    patchSummary: context.patchSummary,
+    dialogId: dialogId.valueOf(),
+    rootId: dialogId.rootId,
+    selfId: dialogId.selfId,
+    status,
+    targetCallId: top?.tellaskReplyObligation?.targetCallId ?? null,
+    targetDialogId: top?.tellaskReplyObligation?.targetDialogId ?? null,
+    hasPendingSideDialog,
+    before: summarizeLatestProjectionState(previous),
+    afterBeforeHealing: summarizeLatestProjectionState(latest),
+    healedTo: {
+      displayState: healedDisplayState,
+      executionMarker: healedExecutionMarker ?? null,
+    },
+    callStack: captureInvariantWarningStack(),
+  };
   log.debug(
-    'Dialog latest projection invariant warning: sideDialog with active reply obligation attempted to enter idle displayState; healing from persistence facts',
+    'Dialog latest projection invariant warning: dialog with active reply obligation attempted to enter idle displayState; healing from persistence facts',
     undefined,
-    {
-      trigger: context.trigger,
-      mutationKind: context.mutationKind,
-      latestSource: context.latestSource,
-      latestWriteBackKey: context.latestWriteBackKey,
-      patchSummary: context.patchSummary,
+    warningDetails,
+  );
+  await writeInvariantDebugDump({
+    kind: 'dialog_latest_idle_with_active_reply_obligation',
+    prefix: 'dialog-latest-idle-with-active-reply-obligation',
+    dialogId,
+    details: warningDetails,
+  }).catch((err: unknown) => {
+    log.warn('Failed to write idle-with-active-reply-obligation debug dump', err, {
       dialogId: dialogId.valueOf(),
       rootId: dialogId.rootId,
       selfId: dialogId.selfId,
       status,
       targetCallId: top?.tellaskReplyObligation?.targetCallId ?? null,
-      targetDialogId: top?.tellaskReplyObligation?.targetDialogId ?? null,
-      hasPendingBackgroundCallee,
-      before: summarizeLatestProjectionState(previous),
-      afterBeforeHealing: summarizeLatestProjectionState(latest),
-      healedTo: {
-        displayState: healedDisplayState,
-        executionMarker: healedExecutionMarker ?? null,
-      },
-      callStack: captureInvariantWarningStack(),
-    },
-  );
+    });
+  });
   return {
     ...latest,
     lastModified: formatUnifiedTimestamp(new Date()),
@@ -2960,12 +3013,7 @@ export class DiskFileDialogStore extends DialogStore {
       },
     };
     await this.appendEvent(askerDialog, callerCourse, sideDialogCreatedRecord);
-    const initialSideDialogDisplayState = {
-      kind: 'stopped',
-      reason: { kind: 'pending_reply_obligation' },
-      continueEnabled: true,
-    } satisfies DialogDisplayState;
-
+    const initialSideDialogDisplayState = { kind: 'proceeding' } satisfies DialogDisplayState;
     // Initialize latest.yaml via the mutation API (write-back will flush).
     await DialogPersistence.mutateDialogLatest(sideDialogId, () => ({
       kind: 'replace',
@@ -2980,10 +3028,6 @@ export class DiskFileDialogStore extends DialogStore {
         tellaskCalls: createEmptyDialogTellaskCallState(),
         tellaskResults: createEmptyDialogTellaskResultState(),
         displayState: initialSideDialogDisplayState,
-        executionMarker: {
-          kind: 'interrupted',
-          reason: initialSideDialogDisplayState.reason,
-        },
         disableDiligencePush: false,
       },
     }));
@@ -4268,6 +4312,7 @@ export class DiskFileDialogStore extends DialogStore {
     genseq: number,
     options?: {
       deliveryMode?: 'tellask_call_start' | 'func_call_requested';
+      replyDirective?: TellaskReplyDirective;
     },
   ): Promise<void> {
     const course = dialog.activeGenCourseOrUndefined ?? dialog.currentCourse;
@@ -4330,14 +4375,23 @@ export class DiskFileDialogStore extends DialogStore {
     await this.appendEvent(dialog, course, tellaskCallEvent);
 
     if (isReplyTellaskCallRecordName(name)) {
-      const activeReplyObligation = await DialogPersistence.loadActiveTellaskReplyObligation(
+      const activeReplyObligation =
+        options?.replyDirective ??
+        (await DialogPersistence.loadActiveTellaskReplyObligation(dialog.id, dialog.status));
+      const currentActiveReplyObligation = await DialogPersistence.loadActiveTellaskReplyObligation(
         dialog.id,
         dialog.status,
       );
       const parsed = parseTellaskReplyCallContent(tellaskCallEvent);
       if (
         activeReplyObligation &&
+        currentActiveReplyObligation &&
         activeReplyObligation.expectedReplyCallName === name &&
+        currentActiveReplyObligation.expectedReplyCallName ===
+          activeReplyObligation.expectedReplyCallName &&
+        currentActiveReplyObligation.targetDialogId === activeReplyObligation.targetDialogId &&
+        currentActiveReplyObligation.targetCallId === activeReplyObligation.targetCallId &&
+        currentActiveReplyObligation.tellaskContent === activeReplyObligation.tellaskContent &&
         parsed.ok
       ) {
         const replyDeliveryId = buildReplyDeliveryId(dialog.id, id);
@@ -11062,9 +11116,11 @@ export class DialogPersistence {
       const latestMissing = !staged && latestFromDisk === null;
       const existing = staged ? staged.latest : (latestFromDisk ?? bootstrapLatest);
       const askerStackState =
-        status === 'running' && dialogId.selfId !== dialogId.rootId
-          ? await this.loadSideDialogAskerStackState(dialogId, status)
-          : null;
+        status !== 'running'
+          ? null
+          : dialogId.selfId === dialogId.rootId
+            ? await this.loadDialogAskerStack(dialogId, status)
+            : await this.loadSideDialogAskerStackState(dialogId, status);
       const mutation = mutator(existing);
       if (latestMissing && mutation.kind !== 'replace') {
         const dialogPath = this.getDialogEventsPath(dialogId, status);
@@ -11096,7 +11152,7 @@ export class DialogPersistence {
 
       let updated: DialogLatestFile;
       if (mutation.kind === 'noop') {
-        updated = await normalizeSideDialogIdleWhileReplyObligationPending(
+        updated = await normalizeIdleWhileReplyObligationPending(
           dialogId,
           status,
           existing,
@@ -11124,14 +11180,16 @@ export class DialogPersistence {
         throw new Error(`Unhandled dialog latest mutation: ${String(_exhaustive)}`);
       }
 
-      updated = normalizeGeneratingDisplayStateMismatch(
-        dialogId,
-        status,
-        existing,
-        updated,
-        mutationContext,
-      );
-      updated = await normalizeSideDialogIdleWhileReplyObligationPending(
+      if (!hasSideDialogFinalResponseAnchor(dialogId, updated)) {
+        updated = normalizeGeneratingDisplayStateMismatch(
+          dialogId,
+          status,
+          existing,
+          updated,
+          mutationContext,
+        );
+      }
+      updated = await normalizeIdleWhileReplyObligationPending(
         dialogId,
         status,
         existing,

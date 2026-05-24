@@ -1591,6 +1591,24 @@ export abstract class Dialog {
     return this._queuedPrompts.shift();
   }
 
+  public removeQueuedPromptByMsgId(msgId: string): boolean {
+    const normalized = msgId.trim();
+    if (normalized === '') {
+      return false;
+    }
+    const before = this._queuedPrompts.length;
+    this._queuedPrompts = this._queuedPrompts.filter((prompt) => prompt.msgId !== normalized);
+    return this._queuedPrompts.length !== before;
+  }
+
+  public removeQueuedPromptsMatching(
+    predicate: (prompt: DialogQueuedPromptState) => boolean,
+  ): number {
+    const before = this._queuedPrompts.length;
+    this._queuedPrompts = this._queuedPrompts.filter((prompt) => !predicate(prompt));
+    return before - this._queuedPrompts.length;
+  }
+
   public setActiveRunControlSpec(spec?: DialogRunControlSpec): void {
     this._activeRunControlSpec = spec;
   }
@@ -2205,6 +2223,7 @@ export abstract class Dialog {
     genseq: number,
     options?: {
       deliveryMode?: 'tellask_call_start' | 'func_call_requested';
+      replyDirective?: TellaskReplyDirective;
     },
   ): Promise<void> {
     return await this.dlgStore.persistTellaskCall(
@@ -2942,6 +2961,7 @@ export abstract class DialogStore {
     _genseq: number,
     _options?: {
       deliveryMode?: 'tellask_call_start' | 'func_call_requested';
+      replyDirective?: TellaskReplyDirective;
     },
   ): Promise<void> {}
 

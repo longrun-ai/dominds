@@ -118,14 +118,14 @@ function hasPendingNextStepTriggers(latest: DialogLatestFile | null | undefined)
   return (latest?.nextStep.triggers.length ?? 0) > 0;
 }
 
-function q4hSuspensionDisplayState(hasQ4H: boolean): DialogDisplayState | undefined {
+function waitingHumanInputDisplayState(hasQ4H: boolean): DialogDisplayState | undefined {
   if (hasQ4H) {
     return { kind: 'blocked', reason: { kind: 'needs_human_input' } };
   }
   return undefined;
 }
 
-async function backgroundCalleeSuspensionDisplayState(
+async function waitingSideDialogDisplayState(
   dialogId: DialogID,
   status: 'running' | 'completed' | 'archived',
   activeReplyObligation: TellaskReplyDirective | undefined,
@@ -134,10 +134,10 @@ async function backgroundCalleeSuspensionDisplayState(
     return undefined;
   }
   const activeCallees = await DialogPersistence.loadActiveCallees(dialogId, status);
-  const hasPendingBackgroundCallee = activeCallees.batches.some((batch) =>
+  const hasPendingSideDialog = activeCallees.batches.some((batch) =>
     batch.callees.some((callee) => callee.status === 'pending'),
   );
-  if (!hasPendingBackgroundCallee) {
+  if (!hasPendingSideDialog) {
     return undefined;
   }
   return { kind: 'waiting_side_dialog' };
@@ -149,11 +149,7 @@ function pendingReplyObligationDisplayState(
   if (activeReplyObligation === undefined) {
     return undefined;
   }
-  return {
-    kind: 'stopped',
-    reason: { kind: 'pending_reply_obligation' },
-    continueEnabled: true,
-  };
+  return { kind: 'proceeding' };
 }
 
 type SideDialogFinalResponseClosure =
@@ -297,7 +293,7 @@ export async function getRunControlCountsSnapshot(): Promise<RunControlCountsSna
         isStoppedReasonResumable(latest.executionMarker.reason)
       ) {
         // Keep run-control counts aligned with actual Continue affordance:
-        // - ordinary interrupted dialogs count as resumable only when no Q4H suspension remains
+        // - ordinary interrupted dialogs count as resumable only when no Q4H human-input wait remains
         // - legacy interjection-paused dialogs still count as resumable even if Q4H remains,
         //   because Continue only re-evaluates the original task from fresh facts
         if (isUserInterjectionPauseStopReason(latest.executionMarker.reason)) {
@@ -556,17 +552,17 @@ export async function setDialogDisplayState(
       return;
     }
     if (status === 'running' && displayState.kind === 'idle_waiting_user') {
-      const q4hSuspension = q4hSuspensionDisplayState(
+      const waitingHumanInput = waitingHumanInputDisplayState(
         latest?.userWait?.kind === 'awaiting_user_answer',
       );
-      if (q4hSuspension) {
-        nextDisplayState = q4hSuspension;
-        log.warn('Redirecting idle displayState to suspension projection', undefined, {
+      if (waitingHumanInput) {
+        nextDisplayState = waitingHumanInput;
+        log.warn('Redirecting idle displayState to waiting-human-input state', undefined, {
           dialogId: dialogId.valueOf(),
           rootId: dialogId.rootId,
           selfId: dialogId.selfId,
           status,
-          suspensionDisplayState: nextDisplayState,
+          nextDisplayState,
           previousDisplayState: latest?.displayState ?? null,
           previousExecutionMarker: latest?.executionMarker ?? null,
         });
@@ -583,19 +579,19 @@ export async function setDialogDisplayState(
           dialogId,
           status,
         );
-        const backgroundCalleeSuspension = await backgroundCalleeSuspensionDisplayState(
+        const waitingSideDialog = await waitingSideDialogDisplayState(
           dialogId,
           status,
           activeReplyObligation,
         );
-        if (backgroundCalleeSuspension) {
-          nextDisplayState = backgroundCalleeSuspension;
-          log.warn('Redirecting idle displayState to suspension projection', undefined, {
+        if (waitingSideDialog) {
+          nextDisplayState = waitingSideDialog;
+          log.warn('Redirecting idle displayState to waiting-side-dialog state', undefined, {
             dialogId: dialogId.valueOf(),
             rootId: dialogId.rootId,
             selfId: dialogId.selfId,
             status,
-            suspensionDisplayState: nextDisplayState,
+            nextDisplayState,
             targetCallId: activeReplyObligation?.targetCallId ?? null,
             targetDialogId: activeReplyObligation?.targetDialogId.valueOf() ?? null,
             previousDisplayState: latest?.displayState ?? null,
@@ -605,21 +601,18 @@ export async function setDialogDisplayState(
           const pendingReplyObligation = pendingReplyObligationDisplayState(activeReplyObligation);
           if (pendingReplyObligation) {
             nextDisplayState = pendingReplyObligation;
-            log.warn(
-              'Redirecting idle displayState to pending reply obligation projection',
-              undefined,
-              {
-                dialogId: dialogId.valueOf(),
-                rootId: dialogId.rootId,
-                selfId: dialogId.selfId,
-                status,
-                targetCallId: activeReplyObligation?.targetCallId ?? null,
-                targetDialogId: activeReplyObligation?.targetDialogId.valueOf() ?? null,
-                previousDisplayState: latest?.displayState ?? null,
-                previousExecutionMarker: latest?.executionMarker ?? null,
-                sideDialogFinalResponseCallId: latest?.sideDialogFinalResponse?.callId ?? null,
-              },
-            );
+            log.warn('Redirecting idle displayState to active reply obligation state', undefined, {
+              dialogId: dialogId.valueOf(),
+              rootId: dialogId.rootId,
+              selfId: dialogId.selfId,
+              status,
+              nextDisplayState,
+              targetCallId: activeReplyObligation?.targetCallId ?? null,
+              targetDialogId: activeReplyObligation?.targetDialogId.valueOf() ?? null,
+              previousDisplayState: latest?.displayState ?? null,
+              previousExecutionMarker: latest?.executionMarker ?? null,
+              sideDialogFinalResponseCallId: latest?.sideDialogFinalResponse?.callId ?? null,
+            });
           }
         }
       }
@@ -727,11 +720,11 @@ export async function computeIdleDisplayState(dlg: Dialog): Promise<DialogDispla
       continueEnabled: true,
     };
   }
-  const q4hSuspension = q4hSuspensionDisplayState(
+  const waitingHumanInput = waitingHumanInputDisplayState(
     latest?.userWait?.kind === 'awaiting_user_answer',
   );
-  if (q4hSuspension) {
-    return q4hSuspension;
+  if (waitingHumanInput) {
+    return waitingHumanInput;
   }
   const finalResponseClosure = await resolveSideDialogFinalResponseClosure({
     dialogId: dlg.id,
@@ -744,13 +737,13 @@ export async function computeIdleDisplayState(dlg: Dialog): Promise<DialogDispla
     dlg.id,
     dlg.status,
   );
-  const backgroundCalleeSuspension = await backgroundCalleeSuspensionDisplayState(
+  const waitingSideDialog = await waitingSideDialogDisplayState(
     dlg.id,
     dlg.status,
     activeReplyObligation,
   );
-  if (backgroundCalleeSuspension) {
-    return backgroundCalleeSuspension;
+  if (waitingSideDialog) {
+    return waitingSideDialog;
   }
   const pendingReplyObligation = pendingReplyObligationDisplayState(activeReplyObligation);
   if (pendingReplyObligation) {
@@ -792,11 +785,11 @@ async function computeIdleDisplayStateFromPersistence(
       continueEnabled: true,
     };
   }
-  const q4hSuspension = q4hSuspensionDisplayState(
+  const waitingHumanInput = waitingHumanInputDisplayState(
     latest?.userWait?.kind === 'awaiting_user_answer',
   );
-  if (q4hSuspension) {
-    return q4hSuspension;
+  if (waitingHumanInput) {
+    return waitingHumanInput;
   }
   const finalResponseClosure = await resolveSideDialogFinalResponseClosure({ dialogId, latest });
   if (await settleFinalResponseClosureForIdleProjection(dialogId, finalResponseClosure)) {
@@ -806,13 +799,13 @@ async function computeIdleDisplayStateFromPersistence(
     dialogId,
     'running',
   );
-  const backgroundCalleeSuspension = await backgroundCalleeSuspensionDisplayState(
+  const waitingSideDialog = await waitingSideDialogDisplayState(
     dialogId,
     'running',
     activeReplyObligation,
   );
-  if (backgroundCalleeSuspension) {
-    return backgroundCalleeSuspension;
+  if (waitingSideDialog) {
+    return waitingSideDialog;
   }
   const pendingReplyObligation = pendingReplyObligationDisplayState(activeReplyObligation);
   if (pendingReplyObligation) {
@@ -926,15 +919,15 @@ export async function refreshRunControlProjectionFromPersistenceFacts(
     ) {
       // WARNING:
       // This is the one place where the projection intentionally preserves legacy
-      // paused-interjection stopped state ahead of the current suspension facts. That is not a bug:
+      // paused-interjection stopped state ahead of the current wait facts. That is not a bug:
       // the UI may still need to show that the original task was paused even if the underlying
       // dialog is now waiting on Q4H.
       //
       // The true source-of-truth decision about what Continue should do next lives in `flow.ts`'s
       // resume path, which performs a fresh fact scan at resume time and then either restores the
-      // Q4H suspension projection or keeps driving immediately.
+      // Q4H waiting-human-input state or keeps driving immediately.
       //
-      // Do not "heal" this branch away by prioritizing suspension facts here; that would collapse the
+      // Do not "heal" this branch away by prioritizing wait facts here; that would collapse the
       // temporary interjection UX and make repeated interjection turns revert too early.
       return {
         kind: 'stopped',
@@ -949,11 +942,11 @@ export async function refreshRunControlProjectionFromPersistenceFacts(
         continueEnabled: true,
       };
     }
-    const q4hSuspension = q4hSuspensionDisplayState(
+    const waitingHumanInput = waitingHumanInputDisplayState(
       latest.userWait?.kind === 'awaiting_user_answer',
     );
-    if (q4hSuspension) {
-      return q4hSuspension;
+    if (waitingHumanInput) {
+      return waitingHumanInput;
     }
     const finalResponseClosure = await resolveSideDialogFinalResponseClosure({ dialogId, latest });
     if (await settleFinalResponseClosureForIdleProjection(dialogId, finalResponseClosure)) {
@@ -963,13 +956,13 @@ export async function refreshRunControlProjectionFromPersistenceFacts(
       dialogId,
       'running',
     );
-    const backgroundCalleeSuspension = await backgroundCalleeSuspensionDisplayState(
+    const waitingSideDialog = await waitingSideDialogDisplayState(
       dialogId,
       'running',
       activeReplyObligation,
     );
-    if (backgroundCalleeSuspension) {
-      return backgroundCalleeSuspension;
+    if (waitingSideDialog) {
+      return waitingSideDialog;
     }
     const pendingReplyObligation = pendingReplyObligationDisplayState(activeReplyObligation);
     if (pendingReplyObligation) {

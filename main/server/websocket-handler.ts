@@ -386,12 +386,12 @@ function buildResumeIneligibleMessage(
 } {
   // WARNING:
   // `resume_dialog` eligibility is intentionally based on the freshly healed projection, not on a
-  // naive local check of raw suspension facts. In particular, the paused-interjection stopped state
+  // naive local check of raw wait facts. In particular, the paused-interjection stopped state
   // remains resumable here so explicit Continue can re-evaluate the true state even while the
-  // underlying dialog may still be suspended by Q4H.
+  // underlying dialog may still be waiting for human input or a side dialog.
   //
   // The actual outcome of that Continue attempt is decided later in `flow.ts` from fresh facts:
-  // it may restore Q4H suspension, or it may immediately continue driving. Do not reinterpret a
+  // it may restore the concrete wait state, or it may immediately continue driving. Do not reinterpret a
   // resumable stopped state here as "guaranteed to run now".
   const state = latest?.displayState;
   if (!state) {

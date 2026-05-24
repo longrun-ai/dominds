@@ -19,6 +19,7 @@ import {
 } from '../../dialog-display-state';
 import { postDialogEvent } from '../../evt-registry';
 import { extractErrorDetails, log } from '../../log';
+import { DialogPersistence } from '../../persistence';
 import { removeProblem, upsertProblem } from '../../problems';
 import {
   formatDiligenceAutoContinuePrompt,
@@ -106,6 +107,7 @@ export type DiligenceAutoContinueGateDecision =
         | 'execution_interrupted'
         | 'execution_dead'
         | 'q4h'
+        | 'active_reply_obligation'
         | 'active_callee_dispatches';
     };
 
@@ -194,6 +196,13 @@ export async function evaluateDiligenceAutoContinueGate(options: {
   if (!suspension.canDrive) {
     return { kind: 'blocked', reason: 'q4h' };
   }
+  const activeReplyObligation = await DialogPersistence.loadActiveTellaskReplyObligation(
+    options.dlg.id,
+    options.dlg.status,
+  );
+  if (activeReplyObligation !== undefined) {
+    return { kind: 'blocked', reason: 'active_reply_obligation' };
+  }
   if (suspension.backgroundCalleeDialogs) {
     return { kind: 'blocked', reason: 'active_callee_dispatches' };
   }
@@ -216,6 +225,17 @@ export async function maybePrepareDiligenceAutoContinuePrompt(options: {
   }
 
   if (options.dlg.disableDiligencePush || options.suppressDiligencePush === true) {
+    return {
+      kind: 'disabled',
+      nextRemainingBudget: normalizeDiligenceRemainingBudget(options.remainingBudget),
+    };
+  }
+
+  const activeReplyObligation = await DialogPersistence.loadActiveTellaskReplyObligation(
+    options.dlg.id,
+    options.dlg.status,
+  );
+  if (activeReplyObligation !== undefined) {
     return {
       kind: 'disabled',
       nextRemainingBudget: normalizeDiligenceRemainingBudget(options.remainingBudget),

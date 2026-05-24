@@ -345,12 +345,13 @@ async function main(): Promise<void> {
     );
     assert.deepEqual(
       preservedAfterMismatchedHeal?.displayState,
-      {
-        kind: 'stopped',
-        reason: { kind: 'pending_reply_obligation' },
-        continueEnabled: true,
-      },
-      'mismatched active reply obligation should keep the sideDialog resumable for the pending reply',
+      { kind: 'proceeding' },
+      'mismatched active reply obligation should keep the sideDialog driveable for the pending reply',
+    );
+    assert.equal(
+      preservedAfterMismatchedHeal?.executionMarker,
+      undefined,
+      'mismatched active reply obligation should not keep a stale pending-reply interruption marker',
     );
 
     await DialogPersistence.updateSideDialogAssignment(sideDialog.id, {

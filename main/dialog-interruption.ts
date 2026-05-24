@@ -25,11 +25,12 @@ export function isInterruptionReasonManualResumeEligible(
     case 'emergency_stop':
     case 'server_restart':
     case 'pending_runtime_prompt':
-    case 'pending_reply_obligation':
     case 'fork_continue_ready':
     case 'system_stop':
     case 'llm_retry_stopped':
       return true;
+    case 'pending_reply_obligation':
+      return false;
     default: {
       const _exhaustive: never = reason;
       return _exhaustive;

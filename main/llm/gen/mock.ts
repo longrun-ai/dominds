@@ -403,6 +403,17 @@ export class MockGen implements LlmGenerator {
     return null;
   }
 
+  private extractCurrentPromptMsgId(context: ReadonlyArray<ChatMessage>): string | undefined {
+    for (let index = context.length - 1; index >= 0; index -= 1) {
+      const msg = context[index];
+      if (msg?.type === 'prompting_msg') {
+        const trimmed = msg.msgId.trim();
+        return trimmed === '' ? undefined : trimmed;
+      }
+    }
+    return undefined;
+  }
+
   private buildReplyToolReminderAutoResponse(
     input: string,
     role: string,
@@ -419,12 +430,14 @@ export class MockGen implements LlmGenerator {
     if (!replyContent) {
       return null;
     }
+    const promptMsgId = this.extractCurrentPromptMsgId(context);
     return {
       message: input,
       role,
       response: '',
       funcCalls: [
         {
+          id: promptMsgId ? `mock_reply_${promptMsgId}` : undefined,
           name: toolMatch[1]!,
           arguments: { replyContent },
         },

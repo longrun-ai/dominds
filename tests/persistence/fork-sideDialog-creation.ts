@@ -160,17 +160,10 @@ async function main(): Promise<void> {
     );
     assert.deepEqual(
       forkedSideDialogLatest?.displayState,
-      {
-        kind: 'stopped',
-        reason: { kind: 'pending_reply_obligation' },
-        continueEnabled: true,
-      },
-      'forked sideDialog with preserved reply obligation must not start as idle',
+      { kind: 'proceeding' },
+      'forked sideDialog with preserved reply obligation must keep driving',
     );
-    assert.deepEqual(forkedSideDialogLatest?.executionMarker, {
-      kind: 'interrupted',
-      reason: { kind: 'pending_reply_obligation' },
-    });
+    assert.equal(forkedSideDialogLatest?.executionMarker, undefined);
 
     await new Promise((resolve) => setTimeout(resolve, 700));
   });

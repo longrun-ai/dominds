@@ -435,11 +435,7 @@ function computeRootForkDisplayState(args: {
 }): DialogDisplayState {
   const topFrame = args.askerStack?.askerStack[args.askerStack.askerStack.length - 1];
   if (topFrame?.tellaskReplyObligation !== undefined) {
-    return {
-      kind: 'stopped',
-      reason: { kind: 'pending_reply_obligation' },
-      continueEnabled: true,
-    };
+    return { kind: 'proceeding' };
   }
   if (args.action.kind === 'draft_user_text') {
     return { kind: 'idle_waiting_user' };
@@ -456,11 +452,7 @@ function computeSideDialogForkDisplayState(
 ): DialogDisplayState {
   const topFrame = askerStack?.askerStack[askerStack.askerStack.length - 1];
   if (topFrame?.tellaskReplyObligation !== undefined) {
-    return {
-      kind: 'stopped',
-      reason: { kind: 'pending_reply_obligation' },
-      continueEnabled: true,
-    };
+    return { kind: 'proceeding' };
   }
   return { kind: 'idle_waiting_user' };
 }

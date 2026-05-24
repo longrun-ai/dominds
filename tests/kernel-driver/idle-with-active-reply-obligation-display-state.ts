@@ -26,7 +26,7 @@ async function main(): Promise<void> {
     dlg.disableDiligencePush = true;
 
     const activeReplyObligation = {
-      expectedReplyCallName: 'replyTellask' as const,
+      expectedReplyCallName: 'replyTellaskBack' as const,
       targetDialogId: dlg.id.selfId,
       targetCallId: 'idle-with-active-reply-call',
       tellaskContent: 'Please complete the reply after this local work finishes.',
@@ -51,22 +51,24 @@ async function main(): Promise<void> {
 
     const latest = await DialogPersistence.loadDialogLatest(dlg.id, dlg.status);
     assert.ok(latest, 'expected latest dialog state to exist');
-    assert.deepEqual(latest.displayState, {
-      kind: 'stopped',
-      reason: { kind: 'pending_reply_obligation' },
-      continueEnabled: true,
-    });
+    assert.deepEqual(latest.displayState, { kind: 'proceeding' });
+    assert.equal(
+      latest.executionMarker,
+      undefined,
+      'active reply obligation must keep driving instead of becoming an interrupted Continue marker',
+    );
 
     const persistedObligation = await DialogPersistence.loadActiveTellaskReplyObligation(
       dlg.id,
       dlg.status,
     );
-    assert.ok(persistedObligation, 'expected active reply obligation to remain active');
-    assert.equal(
-      persistedObligation.targetCallId,
-      activeReplyObligation.targetCallId,
-      'expected the same active reply obligation to remain active',
-    );
+    if (persistedObligation !== undefined) {
+      assert.equal(
+        persistedObligation.targetCallId,
+        activeReplyObligation.targetCallId,
+        'expected any still-active reply obligation to keep the same target',
+      );
+    }
 
     const debugDir = path.join(tmpRoot, '.dislogs', 'debug');
     const files = await fs.readdir(debugDir).catch((err: unknown) => {
@@ -85,16 +87,18 @@ async function main(): Promise<void> {
     );
     assert.equal(debugFiles.length, 0, 'fixed path should not need an idle-with-active-reply dump');
 
+    await DialogPersistence.setActiveTellaskReplyObligation(dlg.id, activeReplyObligation);
     await setDialogDisplayState(dlg.id, { kind: 'idle_waiting_user' }, dlg.status);
     const latestAfterDirectIdleSet = await DialogPersistence.loadDialogLatest(dlg.id, dlg.status);
     assert.deepEqual(
       latestAfterDirectIdleSet?.displayState,
-      {
-        kind: 'stopped',
-        reason: { kind: 'pending_reply_obligation' },
-        continueEnabled: true,
-      },
+      { kind: 'proceeding' },
       'direct idle displayState writes must be redirected while reply obligation remains active',
+    );
+    assert.equal(
+      latestAfterDirectIdleSet?.executionMarker,
+      undefined,
+      'direct idle displayState writes must not synthesize a pending-reply interruption marker',
     );
 
     const sideDialog = await dlg.createSideDialog(
@@ -139,7 +143,7 @@ async function main(): Promise<void> {
     assert.equal(
       latestWaitingSideDialog?.executionMarker,
       undefined,
-      'blocked waiting-side-dialog projection must not keep a stale resumable interruption marker',
+      'waiting-side-dialog state must not keep a stale resumable interruption marker',
     );
   });
 

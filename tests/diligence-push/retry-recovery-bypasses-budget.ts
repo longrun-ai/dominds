@@ -1,93 +1,125 @@
 import assert from 'node:assert/strict';
+import fs from 'node:fs/promises';
+import os from 'node:os';
+import path from 'node:path';
 
 import { DialogID, MainDialog } from '../../main/dialog';
 import { maybePrepareDiligenceAutoContinuePrompt } from '../../main/llm/kernel-driver/runtime';
-import { DiskFileDialogStore } from '../../main/persistence';
+import { DialogPersistence, DiskFileDialogStore } from '../../main/persistence';
+
+async function withTempRtws(fn: () => Promise<void>): Promise<void> {
+  const previousCwd = process.cwd();
+  const tmpRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'dominds-diligence-retry-budget-'));
+  try {
+    process.chdir(tmpRoot);
+    await fn();
+  } finally {
+    process.chdir(previousCwd);
+    await fs.rm(tmpRoot, { recursive: true, force: true });
+  }
+}
 
 async function main(): Promise<void> {
-  const dlg = new MainDialog(
-    new DiskFileDialogStore(new DialogID('diligence-retry-recovery-budget-test')),
-    'task.md',
-    new DialogID('diligence-retry-recovery-budget-test'),
-    'tester',
-  );
-  dlg.disableDiligencePush = false;
-
-  const ordinary = await maybePrepareDiligenceAutoContinuePrompt({
-    dlg,
-    remainingBudget: 0,
-    diligencePushMax: 2,
-  });
-  assert.equal(ordinary.kind, 'budget_exhausted');
-  assert.equal(ordinary.nextRemainingBudget, 0);
-
-  const recovery = await maybePrepareDiligenceAutoContinuePrompt({
-    dlg,
-    remainingBudget: 0,
-    diligencePushMax: 2,
-    ignoreBudgetExhaustion: true,
-  });
-  assert.equal(recovery.kind, 'prompt');
-  if (recovery.kind !== 'prompt') {
-    throw new Error(`Expected retry recovery to prepare a prompt, got ${recovery.kind}`);
-  }
-  assert.equal(recovery.nextRemainingBudget, 0);
-  assert.equal(recovery.prompt.origin, 'diligence_push');
-  assert.match(recovery.prompt.content, /不是新的用户诉求|not a new user request/u);
-
-  dlg.disableDiligencePush = true;
-  const disabled = await maybePrepareDiligenceAutoContinuePrompt({
-    dlg,
-    remainingBudget: 0,
-    diligencePushMax: 2,
-    ignoreBudgetExhaustion: true,
-  });
-  assert.equal(disabled.kind, 'disabled');
-
-  dlg.disableDiligencePush = false;
-  const zeroRemainingWithZeroDefault = await maybePrepareDiligenceAutoContinuePrompt({
-    dlg,
-    remainingBudget: 0,
-    diligencePushMax: 0,
-  });
-  assert.equal(zeroRemainingWithZeroDefault.kind, 'disabled');
-  assert.equal(zeroRemainingWithZeroDefault.nextRemainingBudget, 0);
-
-  const manuallyRefilledWithZeroDefault = await maybePrepareDiligenceAutoContinuePrompt({
-    dlg,
-    remainingBudget: 3,
-    diligencePushMax: 0,
-  });
-  assert.equal(manuallyRefilledWithZeroDefault.kind, 'prompt');
-  if (manuallyRefilledWithZeroDefault.kind !== 'prompt') {
-    throw new Error(
-      `Expected manual dialog budget to prepare a prompt, got ${manuallyRefilledWithZeroDefault.kind}`,
+  await withTempRtws(async () => {
+    const dlg = new MainDialog(
+      new DiskFileDialogStore(new DialogID('diligence-retry-recovery-budget-test')),
+      'task.md',
+      new DialogID('diligence-retry-recovery-budget-test'),
+      'tester',
     );
-  }
-  assert.equal(manuallyRefilledWithZeroDefault.maxInjectCount, 0);
-  assert.equal(manuallyRefilledWithZeroDefault.nextRemainingBudget, 2);
+    dlg.disableDiligencePush = false;
 
-  const manuallyExpandedAbovePositiveDefault = await maybePrepareDiligenceAutoContinuePrompt({
-    dlg,
-    remainingBudget: 7,
-    diligencePushMax: 2,
-  });
-  assert.equal(manuallyExpandedAbovePositiveDefault.kind, 'prompt');
-  if (manuallyExpandedAbovePositiveDefault.kind !== 'prompt') {
-    throw new Error(
-      `Expected expanded dialog budget to prepare a prompt, got ${manuallyExpandedAbovePositiveDefault.kind}`,
-    );
-  }
-  assert.equal(manuallyExpandedAbovePositiveDefault.maxInjectCount, 2);
-  assert.equal(manuallyExpandedAbovePositiveDefault.nextRemainingBudget, 6);
+    const ordinary = await maybePrepareDiligenceAutoContinuePrompt({
+      dlg,
+      remainingBudget: 0,
+      diligencePushMax: 2,
+    });
+    assert.equal(ordinary.kind, 'budget_exhausted');
+    assert.equal(ordinary.nextRemainingBudget, 0);
 
-  const recoveryWithOrdinaryKeepGoingDisabled = await maybePrepareDiligenceAutoContinuePrompt({
-    dlg,
-    remainingBudget: 0,
-    diligencePushMax: 0,
-    ignoreBudgetExhaustion: true,
+    const recovery = await maybePrepareDiligenceAutoContinuePrompt({
+      dlg,
+      remainingBudget: 0,
+      diligencePushMax: 2,
+      ignoreBudgetExhaustion: true,
+    });
+    assert.equal(recovery.kind, 'prompt');
+    if (recovery.kind !== 'prompt') {
+      throw new Error(`Expected retry recovery to prepare a prompt, got ${recovery.kind}`);
+    }
+    assert.equal(recovery.nextRemainingBudget, 0);
+    assert.equal(recovery.prompt.origin, 'diligence_push');
+    assert.match(recovery.prompt.content, /不是新的用户诉求|not a new user request/u);
+
+    dlg.disableDiligencePush = true;
+    const disabled = await maybePrepareDiligenceAutoContinuePrompt({
+      dlg,
+      remainingBudget: 0,
+      diligencePushMax: 2,
+      ignoreBudgetExhaustion: true,
+    });
+    assert.equal(disabled.kind, 'disabled');
+
+    dlg.disableDiligencePush = false;
+    const zeroRemainingWithZeroDefault = await maybePrepareDiligenceAutoContinuePrompt({
+      dlg,
+      remainingBudget: 0,
+      diligencePushMax: 0,
+    });
+    assert.equal(zeroRemainingWithZeroDefault.kind, 'disabled');
+    assert.equal(zeroRemainingWithZeroDefault.nextRemainingBudget, 0);
+
+    const manuallyRefilledWithZeroDefault = await maybePrepareDiligenceAutoContinuePrompt({
+      dlg,
+      remainingBudget: 3,
+      diligencePushMax: 0,
+    });
+    assert.equal(manuallyRefilledWithZeroDefault.kind, 'prompt');
+    if (manuallyRefilledWithZeroDefault.kind !== 'prompt') {
+      throw new Error(
+        `Expected manual dialog budget to prepare a prompt, got ${manuallyRefilledWithZeroDefault.kind}`,
+      );
+    }
+    assert.equal(manuallyRefilledWithZeroDefault.maxInjectCount, 0);
+    assert.equal(manuallyRefilledWithZeroDefault.nextRemainingBudget, 2);
+
+    const manuallyExpandedAbovePositiveDefault = await maybePrepareDiligenceAutoContinuePrompt({
+      dlg,
+      remainingBudget: 7,
+      diligencePushMax: 2,
+    });
+    assert.equal(manuallyExpandedAbovePositiveDefault.kind, 'prompt');
+    if (manuallyExpandedAbovePositiveDefault.kind !== 'prompt') {
+      throw new Error(
+        `Expected expanded dialog budget to prepare a prompt, got ${manuallyExpandedAbovePositiveDefault.kind}`,
+      );
+    }
+    assert.equal(manuallyExpandedAbovePositiveDefault.maxInjectCount, 2);
+    assert.equal(manuallyExpandedAbovePositiveDefault.nextRemainingBudget, 6);
+
+    const recoveryWithOrdinaryKeepGoingDisabled = await maybePrepareDiligenceAutoContinuePrompt({
+      dlg,
+      remainingBudget: 0,
+      diligencePushMax: 0,
+      ignoreBudgetExhaustion: true,
+    });
+    assert.equal(recoveryWithOrdinaryKeepGoingDisabled.kind, 'prompt');
+
+    await DialogPersistence.setActiveTellaskReplyObligation(dlg.id, {
+      expectedReplyCallName: 'replyTellaskBack',
+      targetDialogId: dlg.id.selfId,
+      targetCallId: 'active-reply-obligation-blocks-diligence',
+      tellaskContent: 'Finish this reply obligation before any Diligence Push.',
+    });
+    const activeReplyObligation = await maybePrepareDiligenceAutoContinuePrompt({
+      dlg,
+      remainingBudget: 3,
+      diligencePushMax: 2,
+      ignoreBudgetExhaustion: true,
+    });
+    assert.equal(activeReplyObligation.kind, 'disabled');
+    assert.equal(activeReplyObligation.nextRemainingBudget, 3);
   });
-  assert.equal(recoveryWithOrdinaryKeepGoingDisabled.kind, 'prompt');
 
   console.log('diligence retry recovery bypasses budget: PASS');
 }

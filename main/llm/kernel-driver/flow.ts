@@ -653,8 +653,7 @@ async function clearStaleSideDialogRunControlForFinalResponse(args: {
       latest.generating !== true &&
       latest.executionMarker?.kind !== 'interrupted' &&
       !isNonIdleDisplayProjection(latest.displayState)) ||
-    latest.executionMarker?.kind === 'dead' ||
-    latest.pendingRuntimePrompt
+    latest.executionMarker?.kind === 'dead'
   ) {
     return {
       cleared: false,
@@ -664,20 +663,30 @@ async function clearStaleSideDialogRunControlForFinalResponse(args: {
   }
 
   const finalResponseCallId = latest.sideDialogFinalResponse?.callId.trim();
-  if (finalResponseCallId !== undefined && finalResponseCallId !== '') {
-    const activeReplyObligation = await DialogPersistence.loadActiveTellaskReplyObligation(
+  if (finalResponseCallId === undefined || finalResponseCallId === '') {
+    return {
+      cleared: false,
+      previousGenerating: latest.generating ?? null,
+      previousNextStepTriggerCount: latest.nextStep.triggers.length,
+    };
+  }
+  const pendingRuntimePromptMsgId = latest.pendingRuntimePrompt?.msgId;
+  const activeReplyObligation = await DialogPersistence.loadActiveTellaskReplyObligation(
+    args.dialog.id,
+    args.dialog.status,
+  );
+  if (activeReplyObligation?.targetCallId.trim() === finalResponseCallId) {
+    await DialogPersistence.setActiveTellaskReplyObligation(
       args.dialog.id,
+      undefined,
       args.dialog.status,
     );
-    if (activeReplyObligation?.targetCallId.trim() === finalResponseCallId) {
-      await DialogPersistence.setActiveTellaskReplyObligation(
-        args.dialog.id,
-        undefined,
-        args.dialog.status,
-      );
-    }
   }
-  const displayState = await computeIdleDisplayState(args.dialog);
+  const displayState: DialogDisplayState = { kind: 'idle_waiting_user' };
+  if (pendingRuntimePromptMsgId !== undefined) {
+    args.dialog.removeQueuedPromptByMsgId(pendingRuntimePromptMsgId);
+  }
+  args.dialog.removeQueuedPromptsMatching((prompt) => isPendingRuntimePromptFollowUp(prompt));
   await DialogPersistence.mutateDialogLatest(
     args.dialog.id,
     () => ({
@@ -685,11 +694,9 @@ async function clearStaleSideDialogRunControlForFinalResponse(args: {
       patch: {
         generating: false,
         nextStep: createEmptyDialogNextStepState(),
+        pendingRuntimePrompt: undefined,
         displayState,
-        executionMarker:
-          displayState.kind === 'stopped'
-            ? { kind: 'interrupted', reason: displayState.reason }
-            : undefined,
+        executionMarker: undefined,
       },
     }),
     args.dialog.status,
@@ -1331,6 +1338,7 @@ async function inspectSideDialogBusinessContinuationDrive(args: {
   requestedWorkReplyClaim: RequestedWorkReplyContinuationClaim;
   replyDeliveryRecoveryClaim: ReplyDeliveryRecoveryContinuationClaim;
   toolFollowupClaim: ToolFollowupContinuationClaim;
+  hasQueuedPrompt: boolean;
 }): Promise<
   | {
       shouldReject: false;
@@ -1388,6 +1396,15 @@ async function inspectSideDialogBusinessContinuationDrive(args: {
       shouldReject: true,
       source,
       rejection: 'finalized_after_response_anchor',
+      displayState,
+      currentCourse,
+      sideDialogFinalResponseCallId,
+    };
+  }
+  if (args.hasQueuedPrompt) {
+    return {
+      shouldReject: false,
+      source,
       displayState,
       currentCourse,
       sideDialogFinalResponseCallId,
@@ -1896,13 +1913,14 @@ export async function executeDriveRound(args: {
         driveOptions,
       });
     }
-    if (!humanPrompt && dialog instanceof SideDialog && !dialog.hasQueuedPrompt()) {
+    if (!humanPrompt && dialog instanceof SideDialog) {
       const inspection = await inspectSideDialogBusinessContinuationDrive({
         dialog,
         driveOptions,
         requestedWorkReplyClaim,
         replyDeliveryRecoveryClaim,
         toolFollowupClaim,
+        hasQueuedPrompt: dialog.hasQueuedPrompt(),
       });
       if (inspection.shouldReject) {
         if (inspection.rejection === 'finalized_after_response_anchor') {
@@ -2278,6 +2296,25 @@ export async function executeDriveRound(args: {
     if (!interruptedBySignal) {
       const queuedFollowUp = dialog.peekQueuedPrompt();
       if (queuedFollowUp && isPendingRuntimePromptFollowUp(queuedFollowUp)) {
+        const claim = await claimPendingRuntimePromptForDrive({
+          dialog,
+          prompt: queuedFollowUp,
+        });
+        if (claim.status === 'stale') {
+          const discarded = dialog.takeQueuedPrompt();
+          if (!discarded || discarded.msgId !== queuedFollowUp.msgId) {
+            throw new Error(
+              `pending runtime prompt invariant violation: expected queued prompt ${queuedFollowUp.msgId} before stale discard after core`,
+            );
+          }
+          log.debug('kernel-driver dropped stale pending runtime prompt after core', undefined, {
+            dialogId: dialog.id.valueOf(),
+            rootId: dialog.id.rootId,
+            selfId: dialog.id.selfId,
+            msgId: queuedFollowUp.msgId,
+            kind: queuedFollowUp.kind,
+          });
+        }
         followUp = undefined;
       } else if (queuedFollowUp && isQueuedReplyObligationContinuation(queuedFollowUp)) {
         const claim = await claimQueuedReplyObligationContinuation({
@@ -2540,13 +2577,13 @@ export async function executeDriveRound(args: {
         driveResult &&
         !interruptedBySignal &&
         resolveDirectFallbackResponse({ driveResult, dialog }) !== undefined &&
-        activeTellaskReplyDirective?.expectedReplyCallName === 'replyTellaskBack' &&
+        activeTellaskReplyDirective !== undefined &&
         followUp === undefined
       ) {
         const directFallbackResponse = resolveDirectFallbackResponse({ driveResult, dialog });
         if (directFallbackResponse === undefined) {
           throw new Error(
-            `replyTellaskBack fallback invariant violation: missing direct fallback response for dialog=${dialog.id.valueOf()}`,
+            `reply fallback invariant violation: missing direct fallback response for dialog=${dialog.id.valueOf()}`,
           );
         }
         const hasInProgressFunctionCall =
@@ -2573,14 +2610,22 @@ export async function executeDriveRound(args: {
               tellaskReplyDirective: activeTellaskReplyDirective,
             };
             log.debug(
-              'kernel-driver queued replyTellaskBack reminder prompt after plain reply',
+              'kernel-driver queued replyTellask reminder prompt after plain reply',
               undefined,
               {
                 dialogId: dialog.id.valueOf(),
+                expectedReplyCallName: activeTellaskReplyDirective.expectedReplyCallName,
                 targetCallId: activeTellaskReplyDirective.targetCallId,
               },
             );
           } else {
+            if (activeTellaskReplyDirective.expectedReplyCallName !== 'replyTellaskBack') {
+              throw new Error(
+                `reply fallback invariant violation: unsupported non-sideDialog reply tool ` +
+                  `${activeTellaskReplyDirective.expectedReplyCallName} for dialog=${dialog.id.valueOf()}`,
+              );
+            }
+            const directFallbackCallId = `direct-fallback-${generateShortId()}`;
             await deliverTellaskBackReplyFromDirective({
               replyingDialog: dialog,
               directive: activeTellaskReplyDirective,
@@ -2593,8 +2638,8 @@ export async function executeDriveRound(args: {
               directFallbackSource: directFallbackResponse.source,
             });
             await dialog.appendTellaskReplyResolution({
-              callId: `direct-fallback-${generateShortId()}`,
-              replyCallName: 'replyTellaskBack',
+              callId: directFallbackCallId,
+              replyCallName: activeTellaskReplyDirective.expectedReplyCallName,
               targetCallId: activeTellaskReplyDirective.targetCallId,
             });
           }

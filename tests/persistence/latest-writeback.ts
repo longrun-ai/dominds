@@ -9,7 +9,10 @@
  * This script is intentionally small and self-contained; it runs against a temp rtws.
  */
 
-import type { MainDialogMetadataFile } from '@longrun-ai/kernel/types/storage';
+import type {
+  ActiveCalleeDispatchRecord,
+  MainDialogMetadataFile,
+} from '@longrun-ai/kernel/types/storage';
 import { formatUnifiedTimestamp } from '@longrun-ai/kernel/utils/time';
 import assert from 'node:assert/strict';
 import * as fsNode from 'node:fs';
@@ -55,6 +58,12 @@ async function withTempCwd<T>(fn: (sandboxDir: string) => Promise<T>): Promise<T
     process.chdir(previousCwd);
     await fs.rm(sandboxDir, { recursive: true, force: true });
   }
+}
+
+function assertRecord(value: unknown, label: string): asserts value is Record<string, unknown> {
+  assert.equal(typeof value, 'object', `${label} should be an object`);
+  assert.notEqual(value, null, `${label} should not be null`);
+  assert.equal(Array.isArray(value), false, `${label} should not be an array`);
 }
 
 async function main(): Promise<void> {
@@ -176,7 +185,117 @@ async function main(): Promise<void> {
       reason: { kind: 'declared_by_user' },
     });
 
-    // Invariant 6: clearing a pending runtime prompt must not regress a live generating round
+    // Invariant 6: waiting_side_dialog is a first-class persisted display state.
+    await DialogPersistence.mutateDialogLatest(dialogId, () => ({
+      kind: 'replace',
+      next: {
+        currentCourse: 4,
+        lastModified: formatUnifiedTimestamp(new Date('2026-04-12T00:02:30.000Z')),
+        status: 'active',
+        generating: false,
+        nextStep: createEmptyDialogNextStepState(),
+        tellaskCalls: createEmptyDialogTellaskCallState(),
+        tellaskResults: createEmptyDialogTellaskResultState(),
+        displayState: { kind: 'waiting_side_dialog' },
+      },
+    }));
+    const preservedWaitingSideDialog = await DialogPersistence.loadDialogLatest(dialogId);
+    assert.ok(
+      preservedWaitingSideDialog,
+      'Expected latest after waiting_side_dialog displayState write',
+    );
+    assert.deepEqual(preservedWaitingSideDialog.displayState, { kind: 'waiting_side_dialog' });
+    assert.equal(preservedWaitingSideDialog.executionMarker, undefined);
+
+    // Invariant 7: any dialog with an active reply obligation must not persist idle_waiting_user.
+    await DialogPersistence.setActiveTellaskReplyObligation(dialogId, {
+      expectedReplyCallName: 'replyTellask',
+      targetDialogId: 'aa/bb/ask-back-requester',
+      targetCallId: 'root-owes-reply-call',
+      tellaskContent: 'Please answer the ask-back before idling.',
+    });
+    await DialogPersistence.mutateDialogLatest(dialogId, () => ({
+      kind: 'replace',
+      next: {
+        currentCourse: 4,
+        lastModified: formatUnifiedTimestamp(new Date('2026-04-12T00:02:45.000Z')),
+        status: 'active',
+        generating: false,
+        nextStep: createEmptyDialogNextStepState(),
+        tellaskCalls: createEmptyDialogTellaskCallState(),
+        tellaskResults: createEmptyDialogTellaskResultState(),
+        displayState: { kind: 'idle_waiting_user' },
+      },
+    }));
+    const rootPendingReplyObligation = await DialogPersistence.loadDialogLatest(dialogId);
+    assert.ok(
+      rootPendingReplyObligation,
+      'Expected latest after root pending reply obligation healing',
+    );
+    assert.deepEqual(rootPendingReplyObligation.displayState, { kind: 'proceeding' });
+    assert.equal(rootPendingReplyObligation.executionMarker, undefined);
+    const debugDir = path.join(sandboxDir, '.dislogs', 'debug');
+    const debugFilesAfterPendingReply = await fs.readdir(debugDir);
+    const pendingReplyDebugFiles = debugFilesAfterPendingReply.filter((file) =>
+      file.startsWith('dialog-latest-idle-with-active-reply-obligation-'),
+    );
+    assert.equal(
+      pendingReplyDebugFiles.length,
+      1,
+      'expected idle-with-active-reply-obligation debug dump',
+    );
+    const pendingReplyDebugRaw = await fs.readFile(
+      path.join(debugDir, pendingReplyDebugFiles[0] ?? ''),
+      'utf-8',
+    );
+    const pendingReplyDebug: unknown = JSON.parse(pendingReplyDebugRaw);
+    assertRecord(pendingReplyDebug, 'pending reply debug payload');
+    assert.equal(pendingReplyDebug.kind, 'dialog_latest_idle_with_active_reply_obligation');
+    assertRecord(pendingReplyDebug.details, 'pending reply debug details');
+    assert.equal(pendingReplyDebug.details.targetCallId, 'root-owes-reply-call');
+    assertRecord(pendingReplyDebug.details.healedTo, 'pending reply debug healedTo');
+
+    const rootPendingSideDialog: ActiveCalleeDispatchRecord = {
+      calleeDialogId: 'aa/bb/root-waits-side-dialog',
+      createdAt: formatUnifiedTimestamp(new Date('2026-04-12T00:02:50.000Z')),
+      batchId: 'root-waits-side-dialog-batch',
+      callName: 'tellaskSessionless',
+      mentionList: ['@helper'],
+      tellaskContent: 'Finish the side work before the root can answer.',
+      targetAgentId: 'helper',
+      callId: 'root-waits-side-dialog-call',
+      callSiteCourse: 4,
+      callSiteGenseq: 1,
+      callType: 'C',
+    };
+    await DialogPersistence.appendActiveCalleeDispatch(dialogId, rootPendingSideDialog);
+    await DialogPersistence.mutateDialogLatest(dialogId, () => ({
+      kind: 'patch',
+      patch: {
+        displayState: { kind: 'idle_waiting_user' },
+        executionMarker: {
+          kind: 'interrupted',
+          reason: { kind: 'pending_reply_obligation' },
+        },
+      },
+    }));
+    const rootWaitingSideDialog = await DialogPersistence.loadDialogLatest(dialogId);
+    assert.ok(rootWaitingSideDialog, 'Expected latest after root waiting-side-dialog healing');
+    assert.deepEqual(rootWaitingSideDialog.displayState, { kind: 'waiting_side_dialog' });
+    assert.equal(rootWaitingSideDialog.executionMarker, undefined);
+    const debugFilesAfterWaitingSideDialog = await fs.readdir(debugDir);
+    const allReplyDebugFiles = debugFilesAfterWaitingSideDialog.filter((file) =>
+      file.startsWith('dialog-latest-idle-with-active-reply-obligation-'),
+    );
+    assert.equal(
+      allReplyDebugFiles.length,
+      2,
+      'expected second idle-with-active-reply-obligation debug dump',
+    );
+
+    await DialogPersistence.setActiveTellaskReplyObligation(dialogId, undefined);
+
+    // Invariant 8: clearing a pending runtime prompt must not regress a live generating round
     // back to idle if a newer write has already reasserted proceeding.
     await DialogPersistence.mutateDialogLatest(dialogId, () => ({
       kind: 'replace',
@@ -210,7 +329,7 @@ async function main(): Promise<void> {
     assert.equal(clearedPendingRuntimePrompt.pendingRuntimePrompt, undefined);
     assert.equal(clearedPendingRuntimePrompt.executionMarker, undefined);
 
-    // Invariant 7: startNewCourse during an active generation must only queue the pending prompt;
+    // Invariant 9: startNewCourse during an active generation must only queue the pending prompt;
     // it must not regress the live round into pending_runtime_prompt before the generation finishes.
     const activeDialogId = new DialogID('71/6b/eb9d1270');
     const activeMetadata: MainDialogMetadataFile = {
@@ -266,7 +385,7 @@ async function main(): Promise<void> {
       'pending-active-runtime-prompt-msg',
     );
 
-    // Invariant 8: a finished generation must not keep poisoning later startNewCourse writes.
+    // Invariant 10: a finished generation must not keep poisoning later startNewCourse writes.
     // activeGenSeq is monotonic across generations and remains defined after finish, so the
     // runtime must key "currently generating" off live generation state instead.
     const settledDialogId = new DialogID('72/6c/fc0a2381');
