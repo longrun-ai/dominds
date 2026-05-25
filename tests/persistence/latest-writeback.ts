@@ -234,7 +234,7 @@ async function main(): Promise<void> {
     );
     assert.deepEqual(rootPendingReplyObligation.displayState, { kind: 'proceeding' });
     assert.equal(rootPendingReplyObligation.executionMarker, undefined);
-    const debugDir = path.join(sandboxDir, '.dislogs', 'debug');
+    const debugDir = path.join(sandboxDir, '.dialogs', 'debug');
     const debugFilesAfterPendingReply = await fs.readdir(debugDir);
     const pendingReplyDebugFiles = debugFilesAfterPendingReply.filter((file) =>
       file.startsWith('dialog-latest-idle-with-active-reply-obligation-'),

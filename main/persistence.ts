@@ -328,7 +328,7 @@ async function writeInvariantDebugDump(args: {
   details: Record<string, unknown>;
 }): Promise<void> {
   const capturedAt = formatUnifiedTimestamp(new Date());
-  const debugDir = path.resolve(process.cwd(), '.dislogs', 'debug');
+  const debugDir = path.resolve(process.cwd(), '.dialogs', 'debug');
   const fileName = [
     args.prefix,
     sanitizeDebugFileSegment(capturedAt),

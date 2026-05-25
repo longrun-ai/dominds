@@ -91,7 +91,7 @@ async function main(): Promise<void> {
         'test setup should leave no nextStep trigger',
       );
 
-      const debugDir = path.join(tmpRoot, '.dislogs', 'debug');
+      const debugDir = path.join(tmpRoot, '.dialogs', 'debug');
       const files = await fs.readdir(debugDir);
       const debugFiles = files.filter((file) =>
         file.startsWith('kernel-driver-unexpected-idle-after-tool-round-'),

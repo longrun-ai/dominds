@@ -70,7 +70,7 @@ async function main(): Promise<void> {
       );
     }
 
-    const debugDir = path.join(tmpRoot, '.dislogs', 'debug');
+    const debugDir = path.join(tmpRoot, '.dialogs', 'debug');
     const files = await fs.readdir(debugDir).catch((err: unknown) => {
       if (
         typeof err === 'object' &&

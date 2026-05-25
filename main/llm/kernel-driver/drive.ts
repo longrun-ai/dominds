@@ -1828,7 +1828,7 @@ async function maybeWriteUnexpectedIdleAfterToolRoundDebugDump(args: {
   }
 
   const capturedAt = formatUnifiedTimestamp(new Date());
-  const debugDir = path.resolve(process.cwd(), '.dislogs', 'debug');
+  const debugDir = path.resolve(process.cwd(), '.dialogs', 'debug');
   const fileName = [
     'kernel-driver-unexpected-idle-after-tool-round',
     sanitizeDebugFileSegment(capturedAt),
@@ -1886,7 +1886,7 @@ async function maybeWriteIdleWithActiveReplyObligationDebugDump(args: {
   }
 
   const capturedAt = formatUnifiedTimestamp(new Date());
-  const debugDir = path.resolve(process.cwd(), '.dislogs', 'debug');
+  const debugDir = path.resolve(process.cwd(), '.dialogs', 'debug');
   const fileName = [
     'kernel-driver-idle-with-active-reply-obligation',
     sanitizeDebugFileSegment(capturedAt),
