@@ -13,6 +13,7 @@ const BACKGROUND_CHECK_INTERVAL_MS = 30 * 60 * 1000;
 const LATEST_VERSION_CHECK_TIMEOUT_MS = 60_000;
 const RESTART_PORT_RELEASE_TIMEOUT_MS = 15_000;
 const RESTART_PORT_PROBE_INTERVAL_MS = 150;
+const RESTART_EXIT_GRACE_MS = 1_000;
 const COMMAND_OUTPUT_LOG_LIMIT = 2_000;
 const PROXY_URL_ENV_KEYS = new Set([
   'HTTP_PROXY',
@@ -39,6 +40,7 @@ type RuntimeConfig = Readonly<{
   host: string;
   port: number;
   mode: ServerMode;
+  closeWebSocketClients: () => void;
   stopServer: () => Promise<void>;
 }>;
 
@@ -153,6 +155,10 @@ function truncateCommandOutput(value: unknown): string {
   const raw = typeof value === 'string' ? value.trim() : '';
   if (raw.length <= COMMAND_OUTPUT_LOG_LIMIT) return raw;
   return `${raw.slice(0, COMMAND_OUTPUT_LOG_LIMIT)}...[truncated ${raw.length - COMMAND_OUTPUT_LOG_LIMIT} chars]`;
+}
+
+function delayMs(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
 function formatPathEnvExcerpt(pathEnv: string | null): string | null {
@@ -727,12 +733,14 @@ export function configureDomindsSelfUpdate(params: {
   host: string;
   port: number;
   mode: ServerMode;
+  closeWebSocketClients: () => void;
   stopServer: () => Promise<void>;
 }): void {
   runtimeConfig = {
     host: params.host,
     port: params.port,
     mode: params.mode,
+    closeWebSocketClients: params.closeWebSocketClients,
     stopServer: params.stopServer,
   };
   latestObservation = { kind: 'unknown' };
@@ -1064,7 +1072,32 @@ function spawnDetachedRestartHelper(params: {
 
 async function stopAndExitForRestart(): Promise<void> {
   const cfg = assertRuntimeConfig();
-  await cfg.stopServer();
+  let stopSettled = false;
+  void cfg
+    .stopServer()
+    .then(() => {
+      stopSettled = true;
+    })
+    .catch((error: unknown) => {
+      stopSettled = true;
+      log.error('Failed to stop Dominds HTTP server during restart grace window', error, {
+        host: cfg.host,
+        port: cfg.port,
+      });
+    });
+  cfg.closeWebSocketClients();
+  await delayMs(RESTART_EXIT_GRACE_MS);
+  if (!stopSettled) {
+    log.warn(
+      'Exiting Dominds process before graceful HTTP server stop completed during restart',
+      undefined,
+      {
+        host: cfg.host,
+        port: cfg.port,
+        graceMs: RESTART_EXIT_GRACE_MS,
+      },
+    );
+  }
   process.exit(0);
 }
 

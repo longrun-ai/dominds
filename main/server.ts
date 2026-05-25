@@ -266,6 +266,17 @@ export async function startServer(opts: ServerOptions = {}): Promise<StartedServ
       host,
       port: boundPort,
       mode: serverMode,
+      closeWebSocketClients: () => {
+        if (clients.size === 0) return;
+        log.info(`Closing ${clients.size} WebSocket client(s) for Dominds restart`);
+        for (const ws of clients) {
+          try {
+            ws.close(1012, 'server_restart');
+          } catch (error: unknown) {
+            log.warn('Failed to close WebSocket client for Dominds restart', error);
+          }
+        }
+      },
       stopServer: async () => {
         await httpServer.stop();
       },
