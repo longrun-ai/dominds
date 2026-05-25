@@ -1,7 +1,7 @@
 import type { DialogRuntimePrompt } from '@longrun-ai/kernel/types/drive-intent';
 import { generateShortId } from '@longrun-ai/kernel/utils/id';
 import { formatUnifiedTimestamp } from '@longrun-ai/kernel/utils/time';
-import { Dialog, DialogID } from '../../dialog';
+import { Dialog, DialogID, type VisibleReminderTarget } from '../../dialog';
 import { hasActiveRun } from '../../dialog-display-state';
 import { log } from '../../log';
 import { DialogPersistence } from '../../persistence';
@@ -120,9 +120,60 @@ ${body}
 Continue according to the current task context; if these events do not affect the work, do not send a placeholder acknowledgement.`;
 }
 
+type CurrentWakeEvents = Readonly<{
+  events: readonly ReminderWakeEvent[];
+  targetsByReminderId: ReadonlyMap<string, readonly VisibleReminderTarget[]>;
+}>;
+
+async function loadCurrentWakeEvents(
+  dialog: Dialog,
+  events: readonly ReminderWakeEvent[],
+): Promise<CurrentWakeEvents> {
+  const targets = await dialog.listVisibleReminderTargets();
+  const targetsByReminderId = new Map<string, VisibleReminderTarget[]>();
+  for (const target of targets) {
+    const existing = targetsByReminderId.get(target.reminder.id);
+    if (existing) {
+      existing.push(target);
+      continue;
+    }
+    targetsByReminderId.set(target.reminder.id, [target]);
+  }
+
+  const currentEvents: ReminderWakeEvent[] = [];
+  const staleEvents: ReminderWakeEvent[] = [];
+  for (const event of events) {
+    if (targetsByReminderId.has(event.reminderId)) {
+      currentEvents.push(event);
+      continue;
+    }
+    staleEvents.push(event);
+  }
+
+  if (staleEvents.length > 0) {
+    log.warn(
+      'idle reminder wake dropped stale event because reminder target disappeared',
+      undefined,
+      {
+        dialogId: dialog.id.valueOf(),
+        rootId: dialog.id.rootId,
+        selfId: dialog.id.selfId,
+        droppedEventCount: staleEvents.length,
+        droppedEvents: staleEvents.map((event) => ({
+          eventId: event.eventId,
+          reminderId: event.reminderId,
+        })),
+      },
+    );
+  }
+
+  return { events: currentEvents, targetsByReminderId };
+}
+
 async function applyWakeEventUpdates(
   dialog: Dialog,
   events: readonly ReminderWakeEvent[],
+  targetsByReminderId: ReadonlyMap<string, readonly VisibleReminderTarget[]>,
 ): Promise<void> {
   const eventsWithUpdates = events.filter(
     (event) => event.updatedContent !== undefined || event.updatedMeta !== undefined,
@@ -140,46 +191,51 @@ async function applyWakeEventUpdates(
     byReminderId.set(event.reminderId, event);
   }
 
-  const targets = await dialog.listVisibleReminderTargets();
   const appliedReminderIds = new Set<string>();
-  for (const target of targets) {
-    const event = byReminderId.get(target.reminder.id);
-    if (!event) continue;
-    appliedReminderIds.add(event.reminderId);
-    const nextContent = event.updatedContent ?? target.reminder.content;
-    const nextMeta = event.updatedMeta !== undefined ? event.updatedMeta : target.reminder.meta;
-    if (target.source === 'dialog') {
-      dialog.updateReminder(target.index, nextContent, nextMeta, {
-        renderMode: target.reminder.renderMode,
-      });
-      continue;
+  for (const [reminderId, event] of byReminderId.entries()) {
+    const targets = targetsByReminderId.get(reminderId);
+    if (targets === undefined) {
+      throw new Error(
+        `idle reminder wake invariant violation: current wake event lost target mapping (${reminderId})`,
+      );
     }
-    await mutateSharedReminders(target.target, (reminders) => {
-      const index = reminders.findIndex((reminder) => reminder.id === target.reminder.id);
-      if (index < 0) {
-        throw new Error(
-          `idle reminder wake invariant violation: shared reminder ${target.reminder.id} disappeared before update`,
-        );
+    appliedReminderIds.add(reminderId);
+    for (const target of targets) {
+      const nextContent = event.updatedContent ?? target.reminder.content;
+      const nextMeta = event.updatedMeta !== undefined ? event.updatedMeta : target.reminder.meta;
+      if (target.source === 'dialog') {
+        dialog.updateReminder(target.index, nextContent, nextMeta, {
+          renderMode: target.reminder.renderMode,
+        });
+        continue;
       }
-      const previous = reminders[index];
-      if (!previous) {
-        throw new Error(
-          `idle reminder wake invariant violation: shared reminder ${target.reminder.id} missing at resolved index`,
-        );
-      }
-      reminders[index] = materializeReminder({
-        id: previous.id,
-        content: nextContent,
-        owner: previous.owner,
-        meta: nextMeta,
-        echoback: previous.echoback,
-        scope: previous.scope,
-        createdAt: previous.createdAt,
-        priority: previous.priority,
-        renderMode: previous.renderMode,
+      await mutateSharedReminders(target.target, (reminders) => {
+        const index = reminders.findIndex((reminder) => reminder.id === target.reminder.id);
+        if (index < 0) {
+          throw new Error(
+            `idle reminder wake invariant violation: shared reminder ${target.reminder.id} disappeared before update`,
+          );
+        }
+        const previous = reminders[index];
+        if (!previous) {
+          throw new Error(
+            `idle reminder wake invariant violation: shared reminder ${target.reminder.id} missing at resolved index`,
+          );
+        }
+        reminders[index] = materializeReminder({
+          id: previous.id,
+          content: nextContent,
+          owner: previous.owner,
+          meta: nextMeta,
+          echoback: previous.echoback,
+          scope: previous.scope,
+          createdAt: previous.createdAt,
+          priority: previous.priority,
+          renderMode: previous.renderMode,
+        });
       });
-    });
-    dialog.touchReminders();
+      dialog.touchReminders();
+    }
   }
   for (const reminderId of byReminderId.keys()) {
     if (appliedReminderIds.has(reminderId)) continue;
@@ -309,20 +365,27 @@ async function runIdleReminderWakeTask(
   const events = dedupeAndSortWakeEvents(collected);
   if (events.length === 0) return;
 
-  await applyWakeEventUpdates(dialog, events);
+  const currentWakeEvents = await loadCurrentWakeEvents(dialog, events);
+  if (currentWakeEvents.events.length === 0) return;
+
+  await applyWakeEventUpdates(
+    dialog,
+    currentWakeEvents.events,
+    currentWakeEvents.targetsByReminderId,
+  );
   if (task.controller.signal.aborted || !isCurrentTask(dialog.id, task)) return;
   if (!(await loadFreshIdleWakeEligibility(dialog))) {
     log.debug('idle reminder wake dropped because dialog is no longer eligible', undefined, {
       dialogId: dialog.id.valueOf(),
       rootId: dialog.id.rootId,
       selfId: dialog.id.selfId,
-      eventIds: events.map((event) => event.eventId),
+      eventIds: currentWakeEvents.events.map((event) => event.eventId),
     });
     return;
   }
 
   const prompt: DialogRuntimePrompt = {
-    content: buildAggregatedWakePromptContent(events),
+    content: buildAggregatedWakePromptContent(currentWakeEvents.events),
     msgId: generateShortId(),
     grammar: 'markdown',
     origin: 'runtime',
