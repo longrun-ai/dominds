@@ -78,6 +78,14 @@ type CalleeAssignmentLinkTarget = {
 
 type AutoScrollMode = 'following' | 'paused';
 type AutoScrollKeyboardIntent = 'none' | 'toward_latest';
+type TargetScrollLock = {
+  course: number;
+  selector: string;
+  expiresAtMs: number;
+  resizeObserver: ResizeObserver | null;
+  observedTarget: HTMLElement | null;
+  alignRaf: number | null;
+};
 
 function isObjectRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null;
@@ -181,7 +189,7 @@ export class DomindsDialogContainer extends HTMLElement {
   private autoScrollKeyboardIntent: AutoScrollKeyboardIntent = 'none';
   private autoScrollKeyboardIntentRaf: number | null = null;
   private scrollToBottomRafIds: number[] = [];
-  private targetScrollLock: { course: number; expiresAtMs: number } | null = null;
+  private targetScrollLock: TargetScrollLock | null = null;
 
   // Best-effort cache to recover teammate-call streaming sections by genseq.
   // Chunk events don't carry callId, so this is scoped to per-genseq recovery only.
@@ -260,13 +268,31 @@ export class DomindsDialogContainer extends HTMLElement {
     const target = messages.querySelector(pending.selector);
     if (!(target instanceof HTMLElement)) return;
     this.applyHighlightWithToken(target, pending.token, pending.expiresAtMs);
+    const lock = this.targetScrollLock;
+    if (lock && lock.selector === pending.selector) {
+      this.observeTargetScrollLockElement(lock, target);
+      this.scheduleTargetScrollLockAlignment('auto');
+    }
+  }
+
+  private releaseTargetScrollLock(lock: TargetScrollLock | null = this.targetScrollLock): void {
+    if (!lock) return;
+    if (lock.alignRaf !== null) {
+      cancelAnimationFrame(lock.alignRaf);
+      lock.alignRaf = null;
+    }
+    lock.resizeObserver?.disconnect();
+    if (this.targetScrollLock === lock) {
+      this.targetScrollLock = null;
+      this.updateScrollToBottomButton();
+    }
   }
 
   private clearTargetScrollLockIfExpired(): void {
     const lock = this.targetScrollLock;
     if (!lock) return;
     if (Date.now() < lock.expiresAtMs) return;
-    this.targetScrollLock = null;
+    this.releaseTargetScrollLock(lock);
   }
 
   private hasActiveTargetScrollLock(): boolean {
@@ -279,20 +305,89 @@ export class DomindsDialogContainer extends HTMLElement {
     const lock = this.targetScrollLock;
     if (!lock) return false;
     if (lock.course === course) return true;
-    this.targetScrollLock = null;
+    this.releaseTargetScrollLock(lock);
     return false;
   }
 
-  private armTargetScrollLock(course: number, expiresAtMs: number): void {
-    this.targetScrollLock = { course, expiresAtMs };
+  private armTargetScrollLock(
+    course: number,
+    selector: string,
+    target: HTMLElement,
+    expiresAtMs: number,
+  ): void {
+    this.releaseTargetScrollLock();
+    const lock: TargetScrollLock = {
+      course,
+      selector,
+      expiresAtMs,
+      resizeObserver: null,
+      observedTarget: null,
+      alignRaf: null,
+    };
+    this.targetScrollLock = lock;
+    this.observeTargetScrollLockElement(lock, target);
     const durationMs = Math.max(0, expiresAtMs - Date.now());
     setTimeout(() => {
-      const lock = this.targetScrollLock;
-      if (!lock) return;
-      if (lock.course !== course || lock.expiresAtMs !== expiresAtMs) return;
-      this.targetScrollLock = null;
-      this.updateScrollToBottomButton();
+      if (this.targetScrollLock !== lock) return;
+      this.releaseTargetScrollLock(lock);
     }, durationMs);
+  }
+
+  private resolveTargetScrollLockElement(lock: TargetScrollLock): HTMLElement | null {
+    const root = this.shadowRoot;
+    if (!root) return null;
+    const messages = root.querySelector('.messages');
+    if (!(messages instanceof HTMLElement)) return null;
+    const target = messages.querySelector(lock.selector);
+    return target instanceof HTMLElement ? target : null;
+  }
+
+  private observeTargetScrollLockElement(lock: TargetScrollLock, target: HTMLElement): void {
+    if (lock.observedTarget === target && lock.resizeObserver) return;
+    lock.resizeObserver?.disconnect();
+    lock.observedTarget = target;
+    if (typeof ResizeObserver === 'undefined') {
+      lock.resizeObserver = null;
+      return;
+    }
+    lock.resizeObserver = new ResizeObserver(() => {
+      this.scheduleTargetScrollLockAlignment('auto');
+    });
+    lock.resizeObserver.observe(target);
+  }
+
+  private scrollTargetIntoBestView(target: HTMLElement, behavior: ScrollBehavior): void {
+    this.ensureScrollContainerListener();
+    const container = this.scrollContainer;
+    if (!container) return;
+
+    const containerRect = container.getBoundingClientRect();
+    const targetRect = target.getBoundingClientRect();
+    const targetTop = container.scrollTop + targetRect.top - containerRect.top;
+    const maxScrollTop = Math.max(0, container.scrollHeight - container.clientHeight);
+    const desiredTop =
+      targetRect.height >= container.clientHeight
+        ? targetTop
+        : targetTop - Math.max(0, (container.clientHeight - targetRect.height) / 2);
+    const scrollTop = Math.max(0, Math.min(maxScrollTop, desiredTop));
+    if (Math.abs(container.scrollTop - scrollTop) <= 1) return;
+    container.scrollTo({ top: scrollTop, behavior });
+  }
+
+  private scheduleTargetScrollLockAlignment(behavior: ScrollBehavior): void {
+    const lock = this.targetScrollLock;
+    if (!lock) return;
+    if (lock.alignRaf !== null) return;
+    lock.alignRaf = requestAnimationFrame(() => {
+      if (this.targetScrollLock !== lock) return;
+      lock.alignRaf = null;
+      this.clearTargetScrollLockIfExpired();
+      if (this.targetScrollLock !== lock) return;
+      const target = this.resolveTargetScrollLockElement(lock);
+      if (!target) return;
+      this.observeTargetScrollLockElement(lock, target);
+      this.scrollTargetIntoBestView(target, behavior);
+    });
   }
 
   private applyHighlightWhenVisible(target: HTMLElement): void {
@@ -701,7 +796,6 @@ export class DomindsDialogContainer extends HTMLElement {
     // immediately snap back to the bottom while the dialog continues streaming/replaying.
     this.resetAutoScrollState(false);
     this.cancelScheduledScrollToBottom();
-    target.scrollIntoView({ behavior: 'smooth', block: 'center' });
 
     // Persist highlight intent for a short period. External deeplinks can trigger DOM replacement
     // after we've already applied the highlight, making it appear as "no flash". Reapply on the
@@ -721,7 +815,8 @@ export class DomindsDialogContainer extends HTMLElement {
       const expiresAtMs = Date.now() + 5200;
       const token = `hl-${String(Date.now())}-${String((this.highlightSeq += 1))}`;
       this.pendingHighlight = { selector, token, expiresAtMs };
-      this.armTargetScrollLock(req.course, expiresAtMs);
+      this.armTargetScrollLock(req.course, selector, target, expiresAtMs);
+      this.scrollTargetIntoBestView(target, 'smooth');
       // Apply immediately to the current node too.
       this.applyHighlightWithToken(target, token, expiresAtMs);
     } else {
@@ -795,9 +890,11 @@ export class DomindsDialogContainer extends HTMLElement {
       this.refreshAutoScrollStateFromScroll(current);
     };
     this.boundOnScrollContainerWheel = (event: WheelEvent) => {
+      this.releaseTargetScrollLock();
       this.handleAutoScrollWheel(event);
     };
     this.boundOnScrollContainerPointerDown = () => {
+      this.releaseTargetScrollLock();
       this.autoScrollPointerActive = true;
     };
     container.addEventListener('scroll', this.boundOnScrollContainerScroll, { passive: true });
@@ -877,7 +974,7 @@ export class DomindsDialogContainer extends HTMLElement {
   }
 
   private resumeAutoScroll(): void {
-    this.targetScrollLock = null;
+    this.releaseTargetScrollLock();
     this.autoScrollMode = 'following';
     this.autoScrollPinnedToBottom = true;
     this.autoScrollLastRemainingPx = 0;
@@ -936,6 +1033,7 @@ export class DomindsDialogContainer extends HTMLElement {
     if (event.defaultPrevented) return;
     if (event.metaKey || event.ctrlKey || event.altKey) return;
     if (this.isEditableTarget(event.target)) return;
+    this.releaseTargetScrollLock();
     if (this.isTowardLatestNavigationKey(event) && this.tryResumeAutoScrollFromBottom()) {
       return;
     }
@@ -1005,7 +1103,7 @@ export class DomindsDialogContainer extends HTMLElement {
       this.resumeAutoScroll();
       return;
     }
-    this.targetScrollLock = null;
+    this.releaseTargetScrollLock();
     this.stopAutoScrollObservation();
     this.autoScrollMode = 'paused';
     this.autoScrollPinnedToBottom = false;
@@ -1197,7 +1295,7 @@ export class DomindsDialogContainer extends HTMLElement {
     this.resetPendingStreamChunkFlush();
     this.stopAutoScrollObservation();
     this.resetAutoScrollTransientState();
-    this.targetScrollLock = null;
+    this.releaseTargetScrollLock();
     this.clearViewportPanel();
     this.previousDialog = undefined;
     this.displayState = null;
