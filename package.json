@@ -1,6 +1,6 @@
 {
   "name": "dominds",
-  "version": "1.25.10",
+  "version": "1.25.11",
   "description": "Dominds CLI and aggregation shell for the LongRun AI kernel/runtime packages.",
   "type": "commonjs",
   "publishConfig": {
