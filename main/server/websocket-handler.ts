@@ -1436,9 +1436,29 @@ async function handleDisplayDialog(ws: WebSocket, packet: DisplayDialogRequest):
       dialogIdObj.selfId === dialogIdObj.rootId ? getMainDialogPrimingConfig(metadata) : undefined;
     const showPrimingEventsInUi = rootPrimingConfig?.showInUi !== false;
 
-    const decidedCourse =
+    if (packet.course !== undefined && (!Number.isInteger(packet.course) || packet.course <= 0)) {
+      ws.send(
+        JSON.stringify({
+          type: 'error',
+          message: 'display_dialog course must be a positive integer when provided',
+        }),
+      );
+      return;
+    }
+
+    const latestCourse =
       (await DialogPersistence.getCurrentCourseNumber(dialogIdObj, requestedStatus)) ||
       (dialogState.currentCourse ?? 1);
+    const decidedCourse = packet.course ?? latestCourse;
+    if (decidedCourse > latestCourse) {
+      ws.send(
+        JSON.stringify({
+          type: 'error',
+          message: `display_dialog course ${String(decidedCourse)} exceeds latest course ${String(latestCourse)}`,
+        }),
+      );
+      return;
+    }
 
     const enableLive = requestedStatus === 'running';
     const mainDialog = await getOrRestoreMainDialog(dialogIdObj.rootId, requestedStatus);
@@ -1478,7 +1498,7 @@ async function handleDisplayDialog(ws: WebSocket, packet: DisplayDialogRequest):
           ws,
           dialog,
           decidedCourse,
-          decidedCourse,
+          latestCourse,
           requestedStatus,
           { showPrimingEventsInUi },
         );
@@ -1804,6 +1824,15 @@ async function handleDisplayCourse(ws: WebSocket, packet: DisplayCourseRequest):
     if (!dialog || typeof course !== 'number') {
       throw new Error('dialog and course are required');
     }
+    if (!Number.isInteger(course) || course <= 0) {
+      ws.send(
+        JSON.stringify({
+          type: 'error',
+          message: 'display_course course must be a positive integer',
+        }),
+      );
+      return;
+    }
 
     // Extract dialog ID from DialogIdent
     let dialogIdStr = dialog.selfId;
@@ -1846,6 +1875,15 @@ async function handleDisplayCourse(ws: WebSocket, packet: DisplayCourseRequest):
 
       const totalCourses =
         (await DialogPersistence.getCurrentCourseNumber(dialogId, requestedStatus)) || course;
+      if (course > totalCourses) {
+        ws.send(
+          JSON.stringify({
+            type: 'error',
+            message: `display_course course ${String(course)} exceeds latest course ${String(totalCourses)}`,
+          }),
+        );
+        return;
+      }
 
       const mainDialog = await getOrRestoreMainDialog(dialogId.rootId, requestedStatus);
       if (!mainDialog) return;

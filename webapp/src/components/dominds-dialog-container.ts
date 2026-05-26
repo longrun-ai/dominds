@@ -180,6 +180,8 @@ export class DomindsDialogContainer extends HTMLElement {
   private autoScrollPointerActive = false;
   private autoScrollKeyboardIntent: AutoScrollKeyboardIntent = 'none';
   private autoScrollKeyboardIntentRaf: number | null = null;
+  private scrollToBottomRafIds: number[] = [];
+  private targetScrollLock: { course: number; expiresAtMs: number } | null = null;
 
   // Best-effort cache to recover teammate-call streaming sections by genseq.
   // Chunk events don't carry callId, so this is scoped to per-genseq recovery only.
@@ -258,6 +260,39 @@ export class DomindsDialogContainer extends HTMLElement {
     const target = messages.querySelector(pending.selector);
     if (!(target instanceof HTMLElement)) return;
     this.applyHighlightWithToken(target, pending.token, pending.expiresAtMs);
+  }
+
+  private clearTargetScrollLockIfExpired(): void {
+    const lock = this.targetScrollLock;
+    if (!lock) return;
+    if (Date.now() < lock.expiresAtMs) return;
+    this.targetScrollLock = null;
+  }
+
+  private hasActiveTargetScrollLock(): boolean {
+    this.clearTargetScrollLockIfExpired();
+    return this.targetScrollLock !== null;
+  }
+
+  private shouldSuppressCourseResetForTargetLock(course: number): boolean {
+    this.clearTargetScrollLockIfExpired();
+    const lock = this.targetScrollLock;
+    if (!lock) return false;
+    if (lock.course === course) return true;
+    this.targetScrollLock = null;
+    return false;
+  }
+
+  private armTargetScrollLock(course: number, expiresAtMs: number): void {
+    this.targetScrollLock = { course, expiresAtMs };
+    const durationMs = Math.max(0, expiresAtMs - Date.now());
+    setTimeout(() => {
+      const lock = this.targetScrollLock;
+      if (!lock) return;
+      if (lock.course !== course || lock.expiresAtMs !== expiresAtMs) return;
+      this.targetScrollLock = null;
+      this.updateScrollToBottomButton();
+    }, durationMs);
   }
 
   private applyHighlightWhenVisible(target: HTMLElement): void {
@@ -665,6 +700,7 @@ export class DomindsDialogContainer extends HTMLElement {
     // This navigation is explicit (deeplink / internal jump). Disable auto-scroll so we don't
     // immediately snap back to the bottom while the dialog continues streaming/replaying.
     this.resetAutoScrollState(false);
+    this.cancelScheduledScrollToBottom();
     target.scrollIntoView({ behavior: 'smooth', block: 'center' });
 
     // Persist highlight intent for a short period. External deeplinks can trigger DOM replacement
@@ -685,6 +721,7 @@ export class DomindsDialogContainer extends HTMLElement {
       const expiresAtMs = Date.now() + 5200;
       const token = `hl-${String(Date.now())}-${String((this.highlightSeq += 1))}`;
       this.pendingHighlight = { selector, token, expiresAtMs };
+      this.armTargetScrollLock(req.course, expiresAtMs);
       // Apply immediately to the current node too.
       this.applyHighlightWithToken(target, token, expiresAtMs);
     } else {
@@ -834,11 +871,13 @@ export class DomindsDialogContainer extends HTMLElement {
 
   private pauseAutoScroll(): void {
     this.autoScrollMode = 'paused';
+    this.stopAutoScrollObservation();
     this.resetAutoScrollWheelResistance();
     this.updateScrollToBottomButton();
   }
 
   private resumeAutoScroll(): void {
+    this.targetScrollLock = null;
     this.autoScrollMode = 'following';
     this.autoScrollPinnedToBottom = true;
     this.autoScrollLastRemainingPx = 0;
@@ -966,6 +1005,8 @@ export class DomindsDialogContainer extends HTMLElement {
       this.resumeAutoScroll();
       return;
     }
+    this.targetScrollLock = null;
+    this.stopAutoScrollObservation();
     this.autoScrollMode = 'paused';
     this.autoScrollPinnedToBottom = false;
     this.autoScrollLastRemainingPx = AUTO_SCROLL_FOLLOW_THRESHOLD_PX + 1;
@@ -1115,6 +1156,7 @@ export class DomindsDialogContainer extends HTMLElement {
    * it relies on live events that follow the course_update event.
    */
   public resetForCourse(course: number): void {
+    if (this.shouldSuppressCourseResetForTargetLock(course)) return;
     this.stopAutoScrollObservation();
     this.resetAutoScrollTransientState();
     this.clearViewportPanel();
@@ -1155,6 +1197,7 @@ export class DomindsDialogContainer extends HTMLElement {
     this.resetPendingStreamChunkFlush();
     this.stopAutoScrollObservation();
     this.resetAutoScrollTransientState();
+    this.targetScrollLock = null;
     this.clearViewportPanel();
     this.previousDialog = undefined;
     this.displayState = null;
@@ -1512,7 +1555,25 @@ export class DomindsDialogContainer extends HTMLElement {
     return true;
   }
 
+  private scheduleScrollToBottomFrame(callback: () => void): void {
+    const rafId = requestAnimationFrame(() => {
+      this.scrollToBottomRafIds = this.scrollToBottomRafIds.filter(
+        (scheduledId) => scheduledId !== rafId,
+      );
+      callback();
+    });
+    this.scrollToBottomRafIds.push(rafId);
+  }
+
+  private cancelScheduledScrollToBottom(): void {
+    for (const rafId of this.scrollToBottomRafIds) {
+      cancelAnimationFrame(rafId);
+    }
+    this.scrollToBottomRafIds = [];
+  }
+
   private stopAutoScrollObservation(): void {
+    this.cancelScheduledScrollToBottom();
     if (this.autoScrollRealignRaf !== null) {
       cancelAnimationFrame(this.autoScrollRealignRaf);
       this.autoScrollRealignRaf = null;
@@ -7216,6 +7277,7 @@ export class DomindsDialogContainer extends HTMLElement {
     this.ensureScrollContainerListener();
     const scrollContainer = this.scrollContainer;
     if (!scrollContainer) return;
+    if (this.hasActiveTargetScrollLock()) return;
     // Default behavior: do not "steal" scroll unless the user is already at the bottom.
     // When the user explicitly clicks the jump button, we force the scroll.
     const forceScroll = options !== undefined && options.force === true;
@@ -7229,11 +7291,11 @@ export class DomindsDialogContainer extends HTMLElement {
     };
 
     doScroll();
-    requestAnimationFrame(doScroll);
-    requestAnimationFrame(() => {
+    this.scheduleScrollToBottomFrame(doScroll);
+    this.scheduleScrollToBottomFrame(() => {
       doScroll();
       if (this.generationBubble) {
-        requestAnimationFrame(doScroll);
+        this.scheduleScrollToBottomFrame(doScroll);
       }
     });
   }

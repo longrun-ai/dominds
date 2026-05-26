@@ -8636,12 +8636,14 @@ export class DomindsApp extends HTMLElement {
       };
       const ensureDialogSelectedWithoutAddressSync = async (
         dialogInfo: DialogInfo,
-      ): Promise<void> => {
+        initialCourse?: number,
+      ): Promise<boolean> => {
         const status = this.toPersistableStatus(dialogInfo.status);
         if (status === null) {
           throw new Error('Deep-link dialog is missing a persisted status');
         }
-        await this.openDeepLinkedDialog(dialogInfo, status);
+        const openOptions = typeof initialCourse === 'number' ? { initialCourse } : undefined;
+        return await this.openDeepLinkedDialog(dialogInfo, status, openOptions);
       };
 
       if (intent.kind === 'dialog') {
@@ -8655,12 +8657,15 @@ export class DomindsApp extends HTMLElement {
         }
         const dialogInfo = dialogLookup.dialogInfo;
 
-        await ensureDialogSelectedWithoutAddressSync(dialogInfo);
+        const openedDialog = await ensureDialogSelectedWithoutAddressSync(
+          dialogInfo,
+          intent.course,
+        );
         if (typeof intent.course === 'number') {
           const dialogContainer = this.shadowRoot?.querySelector(
             '#dialog-container',
           ) as DomindsDialogContainer | null;
-          if (dialogContainer) {
+          if (dialogContainer && !openedDialog) {
             await dialogContainer.setCurrentCourse(intent.course);
           }
         }
@@ -8681,12 +8686,17 @@ export class DomindsApp extends HTMLElement {
         }
         const dialogInfo = dialogLookup.dialogInfo;
 
-        await ensureDialogSelectedWithoutAddressSync(dialogInfo);
+        const openedDialog = await ensureDialogSelectedWithoutAddressSync(
+          dialogInfo,
+          intent.course,
+        );
         const dialogContainer = this.shadowRoot?.querySelector(
           '#dialog-container',
         ) as DomindsDialogContainer | null;
         if (dialogContainer) {
-          await dialogContainer.setCurrentCourse(intent.course);
+          if (!openedDialog) {
+            await dialogContainer.setCurrentCourse(intent.course);
+          }
           dispatchDomindsEvent(
             dialogContainer,
             'scroll-to-call-id',
@@ -8712,12 +8722,17 @@ export class DomindsApp extends HTMLElement {
         }
         const dialogInfo = dialogLookup.dialogInfo;
 
-        await ensureDialogSelectedWithoutAddressSync(dialogInfo);
+        const openedDialog = await ensureDialogSelectedWithoutAddressSync(
+          dialogInfo,
+          intent.course,
+        );
         const dialogContainer = this.shadowRoot?.querySelector(
           '#dialog-container',
         ) as DomindsDialogContainer | null;
         if (dialogContainer) {
-          await dialogContainer.setCurrentCourse(intent.course);
+          if (!openedDialog) {
+            await dialogContainer.setCurrentCourse(intent.course);
+          }
           dispatchDomindsEvent(
             dialogContainer,
             'scroll-to-genseq',
@@ -8752,12 +8767,14 @@ export class DomindsApp extends HTMLElement {
       }
       const dialogInfo = dialogLookup.dialogInfo;
 
-      await ensureDialogSelectedWithoutAddressSync(dialogInfo);
+      const openedDialog = await ensureDialogSelectedWithoutAddressSync(dialogInfo, course);
       const dialogContainer = this.shadowRoot?.querySelector(
         '#dialog-container',
       ) as DomindsDialogContainer | null;
       if (dialogContainer) {
-        await dialogContainer.setCurrentCourse(course);
+        if (!openedDialog) {
+          await dialogContainer.setCurrentCourse(course);
+        }
         if (typeof callId === 'string' && callId.trim() !== '') {
           dispatchDomindsEvent(
             dialogContainer,
@@ -10122,7 +10139,7 @@ export class DomindsApp extends HTMLElement {
   private async openDialogWithKnownStatus(
     dialog: DialogInfo,
     status: PersistableDialogStatus,
-    options: { syncAddressBar: boolean; showLoadedToast: boolean },
+    options: { syncAddressBar: boolean; showLoadedToast: boolean; initialCourse?: number },
   ): Promise<void> {
     // This is the single "open dialog" primitive for user-visible flows.
     // The status is part of the business input; if a caller does not know it yet,
@@ -10168,13 +10185,24 @@ export class DomindsApp extends HTMLElement {
         });
       }
 
-      this.wsManager.sendRaw({
-        type: 'display_dialog',
-        dialog: {
-          ...normalizedDialog,
-          status,
-        },
-      });
+      const displayDialogRequest =
+        typeof options.initialCourse === 'number'
+          ? {
+              type: 'display_dialog' as const,
+              dialog: {
+                ...normalizedDialog,
+                status,
+              },
+              course: options.initialCourse,
+            }
+          : {
+              type: 'display_dialog' as const,
+              dialog: {
+                ...normalizedDialog,
+                status,
+              },
+            };
+      this.wsManager.sendRaw(displayDialogRequest);
 
       const dialogTitle = this.shadowRoot?.querySelector('#current-dialog-title') as HTMLElement;
       if (dialogTitle) {
@@ -10304,11 +10332,12 @@ export class DomindsApp extends HTMLElement {
   private async openDeepLinkedDialog(
     dialog: DialogInfo,
     status: PersistableDialogStatus,
-  ): Promise<void> {
+    options?: { initialCourse?: number },
+  ): Promise<boolean> {
     const normalizedDialog = this.normalizeDialogSelectionTarget(dialog);
     if (!normalizedDialog) {
       this.showError('Invalid dialog identifiers: selfId and rootId are required', 'error');
-      return;
+      return false;
     }
     const current = this.currentDialog;
     if (
@@ -10316,12 +10345,21 @@ export class DomindsApp extends HTMLElement {
       current.rootId === normalizedDialog.rootId &&
       current.selfId === normalizedDialog.selfId
     ) {
-      return;
+      return false;
     }
-    await this.openDialogWithKnownStatus(normalizedDialog, status, {
-      syncAddressBar: false,
-      showLoadedToast: false,
-    });
+    const openOptions =
+      typeof options?.initialCourse === 'number'
+        ? {
+            syncAddressBar: false,
+            showLoadedToast: false,
+            initialCourse: options.initialCourse,
+          }
+        : {
+            syncAddressBar: false,
+            showLoadedToast: false,
+          };
+    await this.openDialogWithKnownStatus(normalizedDialog, status, openOptions);
+    return true;
   }
 
   async selectDialog(dialog: DialogInfo): Promise<void> {

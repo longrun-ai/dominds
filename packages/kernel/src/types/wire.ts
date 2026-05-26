@@ -243,6 +243,7 @@ export type CreateDialogResult = CreateDialogSuccess | CreateDialogFailure;
 export interface DisplayDialogRequest {
   type: 'display_dialog';
   dialog: DialogIdent;
+  course?: number;
 }
 
 export interface SetDiligencePushRequest {
