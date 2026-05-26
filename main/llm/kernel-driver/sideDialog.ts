@@ -879,6 +879,7 @@ export async function supplySideDialogResponseToAssignedAskerIfPendingV2(args: {
     callId: string;
     replyCallName: 'replyTellask' | 'replyTellaskSessionless' | 'replyTellaskBack';
   };
+  allowExplicitReplyWithoutAssignmentAnchor?: boolean;
   scheduleDrive: ScheduleDriveFn;
 }): Promise<boolean> {
   const { sideDialog, responseText, responseGenseq, scheduleDrive } = args;
@@ -923,23 +924,42 @@ export async function supplySideDialogResponseToAssignedAskerIfPendingV2(args: {
       status: sideDialog.status,
     });
     if (!assignmentAnchorRef) {
-      log.debug(
-        'Skip assigned Type B response supply before updated assignment is rendered locally',
-        undefined,
-        {
+      const replyResolution = args.replyResolution;
+      if (
+        args.allowExplicitReplyWithoutAssignmentAnchor === true &&
+        args.deliveryMode === 'reply_tool' &&
+        replyResolution !== undefined
+      ) {
+        log.warn('Delivering assigned Type B reply without local assignment anchor', undefined, {
           rootId: sideDialog.mainDialog.id.rootId,
           sideDialogId: sideDialog.id.selfId,
           askerDialogId: askerDialog.id.selfId,
           callId: activeCalleeDispatch.callId,
+          replyCallId: replyResolution.callId,
+          replyCallName: replyResolution.replyCallName,
+          responseCourse: sideDialog.currentCourse,
           responseGenseq,
-        },
-      );
-      return false;
+        });
+      } else {
+        log.debug(
+          'Skip assigned Type B response supply before updated assignment is rendered locally',
+          undefined,
+          {
+            rootId: sideDialog.mainDialog.id.rootId,
+            sideDialogId: sideDialog.id.selfId,
+            askerDialogId: askerDialog.id.selfId,
+            callId: activeCalleeDispatch.callId,
+            responseGenseq,
+          },
+        );
+        return false;
+      }
     }
     if (
-      sideDialog.currentCourse < assignmentAnchorRef.course ||
-      (sideDialog.currentCourse === assignmentAnchorRef.course &&
-        responseGenseq < assignmentAnchorRef.genseq)
+      assignmentAnchorRef !== undefined &&
+      (sideDialog.currentCourse < assignmentAnchorRef.course ||
+        (sideDialog.currentCourse === assignmentAnchorRef.course &&
+          responseGenseq < assignmentAnchorRef.genseq))
     ) {
       log.debug(
         'Skip assigned stale Type B response supply from before latest local assignment',

@@ -295,6 +295,44 @@ async function main(): Promise<void> {
 
     await DialogPersistence.setActiveTellaskReplyObligation(dialogId, undefined);
 
+    // Invariant 7b: failed reply delivery must not leave a recovery trigger spinning forever.
+    await DialogPersistence.mutateDialogLatest(dialogId, () => ({
+      kind: 'patch',
+      patch: {
+        replyDelivery: {
+          replyDeliveryId: 'reply-delivery:61/5a/da8d0169:61/5a/da8d0169:reply-call-stale',
+          status: 'pending',
+          toolResultStatus: 'recorded',
+          expectedReplyCallName: 'replyTellask',
+          targetDialogId: 'aa/bb/asker-dialog',
+          targetCallId: 'asker-call-stale',
+          replyCallId: 'reply-call-stale',
+          replyGenseq: 44,
+          replyContent: 'This reply no longer has a valid asker target.',
+          createdAt: formatUnifiedTimestamp(new Date('2026-04-12T00:02:55.000Z')),
+        },
+        nextStep: {
+          nextSeq: 2,
+          triggers: [
+            {
+              triggerId:
+                'reply-delivery-recovery:reply-delivery:61/5a/da8d0169:61/5a/da8d0169:reply-call-stale',
+              kind: 'reply_delivery_recovery',
+              replyDeliveryId: 'reply-delivery:61/5a/da8d0169:61/5a/da8d0169:reply-call-stale',
+              targetDialogId: 'aa/bb/asker-dialog',
+              createdAt: formatUnifiedTimestamp(new Date('2026-04-12T00:02:55.000Z')),
+              seq: 1,
+            },
+          ],
+        },
+      },
+    }));
+    await DialogPersistence.clearPendingReplyDeliveryForCall(dialogId, 'reply-call-stale');
+    const afterStaleReplyDeliveryClear = await DialogPersistence.loadDialogLatest(dialogId);
+    assert.ok(afterStaleReplyDeliveryClear, 'Expected latest after stale reply delivery cleanup');
+    assert.equal(afterStaleReplyDeliveryClear.replyDelivery, undefined);
+    assert.equal(afterStaleReplyDeliveryClear.nextStep.triggers.length, 0);
+
     // Invariant 8: clearing a pending runtime prompt must not regress a live generating round
     // back to idle if a newer write has already reasserted proceeding.
     await DialogPersistence.mutateDialogLatest(dialogId, () => ({

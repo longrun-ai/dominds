@@ -2650,13 +2650,20 @@ async function executeReplyTellaskCall(args: {
         sideDialog: args.dlg,
         responseText: args.call.replyContent,
         responseGenseq: genseq,
+        deliveryMode: 'reply_tool',
         replyResolution: {
           callId: args.call.callId,
           replyCallName: args.call.callName,
         },
+        allowExplicitReplyWithoutAssignmentAnchor: true,
         scheduleDrive: args.callbacks.scheduleDrive,
       });
       if (!supplied) {
+        await DialogPersistence.clearPendingReplyDeliveryForCall(
+          args.dlg.id,
+          args.call.callId,
+          args.dlg.status,
+        );
         return {
           delivered: false,
           messages: [

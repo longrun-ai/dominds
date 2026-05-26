@@ -10648,6 +10648,39 @@ export class DialogPersistence {
     );
   }
 
+  static async clearPendingReplyDeliveryForCall(
+    dialogId: DialogID,
+    replyCallId: string,
+    status: DialogStatusKind = 'running',
+  ): Promise<void> {
+    await this.mutateDialogLatest(
+      dialogId,
+      (previous) => {
+        const replyDelivery = previous.replyDelivery;
+        if (
+          !replyDelivery ||
+          replyDelivery.replyCallId !== replyCallId ||
+          replyDelivery.status !== 'pending'
+        ) {
+          return { kind: 'noop' };
+        }
+        return {
+          kind: 'patch',
+          patch: {
+            replyDelivery: undefined,
+            nextStep: removeNextStepTrigger(
+              previous.nextStep,
+              (trigger) =>
+                trigger.kind === 'reply_delivery_recovery' &&
+                trigger.replyDeliveryId === replyDelivery.replyDeliveryId,
+            ),
+          },
+        };
+      },
+      status,
+    );
+  }
+
   static async lookupRecordedTellaskCall(
     dialogId: DialogID,
     callId: string,

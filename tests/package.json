@@ -66,6 +66,7 @@
     "kernel-driver:root-tellask-background-callee-badge-event": "pnpm run rtws -- -C script-rtws kernel-driver/root-tellask-background-callee-badge-event.ts",
     "kernel-driver:sideDialog-caller-result-arrival-backend-wake-queue": "pnpm run rtws -- -C script-rtws kernel-driver/sideDialog-caller-result-arrival-backend-wake-queue.ts",
     "kernel-driver:sideDialog-reply-delivery-marked-delivered": "pnpm run rtws -- -C script-rtws kernel-driver/sideDialog-reply-delivery-marked-delivered.ts",
+    "kernel-driver:sideDialog-reply-missing-assignment-anchor": "tsx kernel-driver/sideDialog-reply-missing-assignment-anchor.ts",
     "kernel-driver:sideDialog-mixed-tool-round-honors-suspension": "pnpm run rtws -- -C script-rtws kernel-driver/sideDialog-mixed-tool-round-honors-suspension.ts",
     "kernel-driver:user-interject-active-callee-tool-followup": "pnpm run rtws -- -C script-rtws kernel-driver/user-interject-active-callee-tool-followup.ts",
     "kernel-driver:sideDialog-resume-after-user-interject-reasserts-reply-obligation": "pnpm run rtws -- -C script-rtws kernel-driver/sideDialog-resume-after-user-interject-reasserts-reply-obligation.ts",
