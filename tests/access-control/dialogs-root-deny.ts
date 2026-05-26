@@ -22,8 +22,14 @@ async function run(): Promise<void> {
 
     assert.equal(hasReadAccess(caller, '.dialogs'), false);
     assert.equal(hasReadAccess(caller, '.dialogs/root.txt'), false);
+    assert.equal(hasReadAccess(caller, '.DIALOGS/root.txt'), process.platform !== 'win32');
+    assert.equal(hasReadAccess(caller, '.MINDS/team.yaml'), process.platform !== 'win32');
+    assert.equal(hasReadAccess(caller, 'TASK.TSK/progress.md'), process.platform !== 'win32');
     assert.equal(hasWriteAccess(caller, '.dialogs'), false);
     assert.equal(hasWriteAccess(caller, '.dialogs/root.txt'), false);
+    assert.equal(hasWriteAccess(caller, '.DIALOGS/root.txt'), process.platform !== 'win32');
+    assert.equal(hasWriteAccess(caller, '.MINDS/team.yaml'), process.platform !== 'win32');
+    assert.equal(hasWriteAccess(caller, 'TASK.TSK/progress.md'), process.platform !== 'win32');
 
     assert.equal(hasReadAccess(caller, 'ux-rtws/.dialogs'), true);
     assert.equal(hasReadAccess(caller, 'ux-rtws/.dialogs/nested.txt'), true);

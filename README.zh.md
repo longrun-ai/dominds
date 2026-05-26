@@ -190,7 +190,7 @@ dominds
 
 平台说明：
 
-- Windows 运行时不会注册 `codex_inspect_and_patch_tools` 工具集。在 Windows 主机上的 `.minds/team.yaml` 中不要授予 `codex_inspect_and_patch_tools`。
+- Windows 也会注册 `codex_inspect_and_patch_tools`；其中 `readonly_shell` 通过 `cmd.exe` 执行，因此优先使用该 shell/PATH 中可用的白名单命令，例如 `rg`、`git`、`dir`、`type` 和 `where`。
 
 ## 从零开始（空文件夹启动）
 

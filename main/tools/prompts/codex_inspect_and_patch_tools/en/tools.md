@@ -15,7 +15,8 @@ Typical uses:
 Windows notes:
 
 - Prefer no-space forward-slash paths such as `D:/path/to/file`
-- `readonly_shell` runs through the platform default shell; pass native commands for that shell
+- `readonly_shell` runs through `cmd.exe`; pass allowlisted commands available in `cmd.exe`/PATH
+- Useful Windows-native allowlisted commands include `dir`, `type`, `where`, `findstr`, `more`, `fc`, and `ver`
 - Avoid nested `cmd /c` or `powershell -Command`; obvious nested-shell patterns may only warn and are not rewritten
 
 Example:

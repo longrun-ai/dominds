@@ -15,7 +15,8 @@
 Windows 注意：
 
 - 优先使用不带空格的正斜杠路径，如 `D:/path/to/file`
-- `readonly_shell` 通过平台默认 shell 执行；请传入该 shell 的原生命令
+- `readonly_shell` 通过 `cmd.exe` 执行；请传入 `cmd.exe`/PATH 中可用的白名单命令
+- Windows 原生可用的白名单命令包括 `dir`、`type`、`where`、`findstr`、`more`、`fc` 和 `ver`
 - 避免嵌套 `cmd /c` 或 `powershell -Command`；明显混套模式最多只会警告，不会被改写
 
 示例：

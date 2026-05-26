@@ -398,22 +398,20 @@ setToolsetMeta('ws_mod', {
 });
 
 // Inspect-and-patch helpers (function tools only; useful for GPT-5.x coding agents)
-if (process.platform !== 'win32') {
-  registerToolset('codex_inspect_and_patch_tools', [readonlyShellTool, applyPatchTool]);
-  setToolsetMeta('codex_inspect_and_patch_tools', {
-    source: 'dominds',
-    descriptionI18n: {
-      en: 'Inspect-and-patch helpers: use readonly_shell for lightweight inspection and apply_patch for reviewable edits.',
-      zh: '检查与补丁工具：用 readonly_shell 做轻量检查，用 apply_patch 做可审查修改。',
-    },
-    promptI18n: {
-      en: 'Use `apply_patch` (apply_patch patch format) to modify files. Use `readonly_shell` for simple rtws (runtime workspace) inspection via its small allowlist; commands outside the allowlist are rejected. For node/python, only exact version probes are allowed (no scripts). Chains via |/&&/|| are validated segment-by-segment. You are explicitly authorized to call `readonly_shell` yourself; do not delegate it to a shell specialist. Avoid multi-line script-style commands; single-line is preferred (|, &&, || are ok). Paths must be relative to the rtws (runtime workspace). Hard denies: `readonly_shell` refuses rtws-root `.minds/` and `.dialogs/`; `apply_patch` is subject to the same access-control (including hard denies for `*.tsk/`, `.minds/`, and rtws-root `.dialogs/`).',
-      zh: '使用 `apply_patch`（apply_patch patch 格式）修改文件；使用 `readonly_shell` 做少量只读命令行检查，仅允许白名单命令前缀，白名单之外的命令会被拒绝。对 node/python 仅允许版本探针（不允许脚本执行）。通过 |/&&/|| 串联命令时会按子命令逐段校验。你已被明确授权自行调用 `readonly_shell`，不要把它委派给 shell 专员。不建议多行脚本式命令，优先单行（允许 |、&&、||）。路径必须相对 rtws（运行时工作区）根目录。硬拒绝点：`readonly_shell` 无条件拒绝访问 rtws root 的 `.minds/` 与 `.dialogs/`；`apply_patch` 也受相同的访问控制约束（包含对 `*.tsk/`、`.minds/`、rtws root `.dialogs/` 的硬拒绝）。',
-    },
-    promptFilesI18n: promptFilesFor('codex_inspect_and_patch_tools'),
-    manualSpec: manualSpecFor('codex_inspect_and_patch_tools'),
-  });
-}
+registerToolset('codex_inspect_and_patch_tools', [readonlyShellTool, applyPatchTool]);
+setToolsetMeta('codex_inspect_and_patch_tools', {
+  source: 'dominds',
+  descriptionI18n: {
+    en: 'Inspect-and-patch helpers: use readonly_shell for lightweight inspection and apply_patch for reviewable edits.',
+    zh: '检查与补丁工具：用 readonly_shell 做轻量检查，用 apply_patch 做可审查修改。',
+  },
+  promptI18n: {
+    en: 'Use `apply_patch` (apply_patch patch format) to modify files. Use `readonly_shell` for simple rtws (runtime workspace) inspection via its small allowlist; commands outside the allowlist are rejected. On Windows, `readonly_shell` runs through `cmd.exe`; use allowlisted commands available in that shell/PATH such as `rg`, `git`, `dir`, `type`, or `where`. For node/python, only exact version probes are allowed (no scripts). Chains via |/&&/|| are validated segment-by-segment. You are explicitly authorized to call `readonly_shell` yourself; do not delegate it to a shell specialist. Avoid multi-line script-style commands; single-line is preferred (|, &&, || are ok). Paths must be relative to the rtws (runtime workspace). Hard denies: `readonly_shell` refuses rtws-root `.minds/` and `.dialogs/`; `apply_patch` is subject to the same access-control (including hard denies for `*.tsk/`, `.minds/`, and rtws-root `.dialogs/`).',
+    zh: '使用 `apply_patch`（apply_patch patch 格式）修改文件；使用 `readonly_shell` 做少量只读命令行检查，仅允许白名单命令前缀，白名单之外的命令会被拒绝。Windows 上 `readonly_shell` 通过 `cmd.exe` 执行；请使用该 shell/PATH 中可用的白名单命令，例如 `rg`、`git`、`dir`、`type` 或 `where`。对 node/python 仅允许版本探针（不允许脚本执行）。通过 |/&&/|| 串联命令时会按子命令逐段校验。你已被明确授权自行调用 `readonly_shell`，不要把它委派给 shell 专员。不建议多行脚本式命令，优先单行（允许 |、&&、||）。路径必须相对 rtws（运行时工作区）根目录。硬拒绝点：`readonly_shell` 无条件拒绝访问 rtws root 的 `.minds/` 与 `.dialogs/`；`apply_patch` 也受相同的访问控制约束（包含对 `*.tsk/`、`.minds/`、rtws root `.dialogs/` 的硬拒绝）。',
+  },
+  promptFilesI18n: promptFilesFor('codex_inspect_and_patch_tools'),
+  manualSpec: manualSpecFor('codex_inspect_and_patch_tools'),
+});
 registerToolset('team_mgmt', [...teamMgmtTools]);
 setToolsetMeta('team_mgmt', {
   source: 'dominds',

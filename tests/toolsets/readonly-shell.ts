@@ -88,6 +88,38 @@ async function main(): Promise<void> {
       assertIncludes(out, '.minds/', 'Expected .minds path to be mentioned');
     });
 
+    await runTest('rejects .minds/.dialogs access via Windows-native readers', async () => {
+      if (process.platform !== 'win32') return;
+
+      const outType = await readonlyShellTool.call(dlg, caller, {
+        command: 'type .minds/nested.txt',
+        timeout_ms: 2_000,
+      });
+      assertIncludes(outType, 'ACCESS_DENIED', 'Expected type .minds to be hard-denied');
+
+      const outDir = await readonlyShellTool.call(dlg, caller, {
+        command: 'dir .dialogs',
+        timeout_ms: 2_000,
+      });
+      assertIncludes(outDir, 'ACCESS_DENIED', 'Expected dir .dialogs to be hard-denied');
+
+      const outFindstr = await readonlyShellTool.call(dlg, caller, {
+        command: 'findstr ok .minds/nested.txt',
+        timeout_ms: 2_000,
+      });
+      assertIncludes(outFindstr, 'ACCESS_DENIED', 'Expected findstr .minds to be hard-denied');
+
+      const outChainedType = await readonlyShellTool.call(dlg, caller, {
+        command: 'echo ok && type .minds/nested.txt',
+        timeout_ms: 2_000,
+      });
+      assertIncludes(
+        outChainedType,
+        'ACCESS_DENIED',
+        'Expected chained type .minds to be hard-denied',
+      );
+    });
+
     await runTest('allows nested rtws .minds/.dialogs', async () => {
       const outMinds = await readonlyShellTool.call(dlg, caller, {
         command: `cd ${tmpRtws} && ls .minds`,
@@ -210,6 +242,15 @@ async function main(): Promise<void> {
       assertIncludes(out, 'git -C <relative-path>', 'Expected hint about git -C usage');
     });
 
+    await runTest('rejects git -C Windows rooted path', async () => {
+      const out = await readonlyShellTool.call(dlg, caller, {
+        command: 'git -C \\tmp status',
+        timeout_ms: 2_000,
+      });
+      assertIncludes(out, '❌ readonly_shell', 'Expected rooted Windows -C path to be rejected');
+      assertIncludes(out, 'git -C <relative-path>', 'Expected hint about git -C usage');
+    });
+
     await runTest('allows cd && chain inside rtws', async () => {
       const out = await readonlyShellTool.call(dlg, caller, {
         command: 'cd dominds && git status --porcelain',
@@ -256,6 +297,15 @@ async function main(): Promise<void> {
       assertIncludes(out, 'sha256sum', 'Expected allowlist to mention sha256sum');
       assertIncludes(out, 'md5sum', 'Expected allowlist to mention md5sum');
       assertIncludes(out, 'uuid', 'Expected allowlist to mention uuid');
+      if (process.platform === 'win32') {
+        assertIncludes(out, 'where', 'Expected allowlist to mention where');
+        assertIncludes(out, 'fc', 'Expected allowlist to mention fc');
+        assertIncludes(out, 'findstr', 'Expected allowlist to mention findstr');
+        assertIncludes(out, 'dir', 'Expected allowlist to mention dir');
+        assertIncludes(out, 'type', 'Expected allowlist to mention type');
+        assertIncludes(out, 'more', 'Expected allowlist to mention more');
+        assertIncludes(out, 'ver', 'Expected allowlist to mention ver');
+      }
     });
   } finally {
     await fs.rm(tmpRtws, { recursive: true, force: true });

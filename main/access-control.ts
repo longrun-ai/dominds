@@ -12,20 +12,25 @@ import { log } from './log';
 import { Team } from './team';
 
 function isEncapsulatedTaskPath(targetPath: string): boolean {
-  const normalized = targetPath.replace(/\\/g, '/');
+  const normalized = normalizeAccessControlPath(targetPath);
   // Matches: "foo.tsk", "foo.tsk/", "a/b/foo.tsk/x", etc.
   return /(^|\/)[^/]+\.tsk(\/|$)/.test(normalized);
 }
 
 function isMindsPath(targetPath: string): boolean {
-  const normalized = targetPath.replace(/\\/g, '/').replace(/^\/+/, '');
+  const normalized = normalizeAccessControlPath(targetPath).replace(/^\/+/, '');
   return normalized === '.minds' || normalized.startsWith('.minds/');
 }
 
 function isMainDialogsPath(targetPath: string): boolean {
   // Only deny `.dialogs/**` at rtws root; allow nested `foo/.dialogs/**` for dev rtws layouts.
-  const normalized = targetPath.replace(/\\/g, '/').replace(/^\/+/, '');
+  const normalized = normalizeAccessControlPath(targetPath).replace(/^\/+/, '');
   return normalized === '.dialogs' || normalized.startsWith('.dialogs/');
+}
+
+function normalizeAccessControlPath(targetPath: string): string {
+  const normalized = targetPath.replace(/\\/g, '/');
+  return process.platform === 'win32' ? normalized.toLowerCase() : normalized;
 }
 
 function normalizeFileExtName(raw: string): string {
@@ -98,8 +103,9 @@ function resolveRtwsRelativePath(targetPath: string): string | null {
  */
 export function matchesPattern(targetPath: string, dirPattern: string): boolean {
   // Normalize paths - remove leading/trailing slashes, convert to forward slashes, handle empty paths
-  const normalizedTarget = targetPath.replace(/\\/g, '/').replace(/^\/+|\/+$/g, '') || '.';
-  let normalizedDirPattern = dirPattern.replace(/\\/g, '/').replace(/^\/+|\/+$/g, '') || '.';
+  const normalizedTarget = normalizeAccessControlPath(targetPath).replace(/^\/+|\/+$/g, '') || '.';
+  let normalizedDirPattern =
+    normalizeAccessControlPath(dirPattern).replace(/^\/+|\/+$/g, '') || '.';
 
   // Patterns ending in `/**` represent a directory scope and should match the directory itself too.
   // Example: `.minds/**` must match both `.minds` and `.minds/team.yaml`.

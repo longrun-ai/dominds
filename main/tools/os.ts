@@ -1659,7 +1659,7 @@ const readonlyShellSchema: JsonSchema = {
     command: {
       type: 'string',
       description:
-        'Read-only shell command (allowed prefixes: cat, rg, sed, ls, nl, wc, head, tail, stat, file, uname, whoami, id, echo, pwd, which, date, diff, realpath, readlink, printf, cut, sort, uniq, tr, awk, shasum, sha256sum, md5sum, uuid, git show, git status, git diff, git log, git blame, find, tree, jq, true; exact version probes: node --version|-v, python3 --version|-V; also allows: git -C <relative-path> <show|status|diff|log|blame> ...; also allows: cd <relative-path> && <allowed command...> (or ||); command chains via |/&&/|| are validated segment-by-segment)',
+        'Read-only shell command (common allowed prefixes: cat, rg, sed, ls, nl, wc, head, tail, stat, file, uname, whoami, id, echo, pwd, which, date, diff, realpath, readlink, printf, cut, sort, uniq, tr, awk, shasum, sha256sum, md5sum, uuid, git show, git status, git diff, git log, git blame, find, tree, jq, true; Windows also allows: where, fc, findstr, dir, type, more, ver; exact version probes: node --version|-v, python3/python/py --version|-V; also allows: git -C <relative-path> <show|status|diff|log|blame> ...; also allows: cd <relative-path> && <allowed command...> (or ||); command chains via |/&&/|| are validated segment-by-segment)',
     },
     timeout_ms: {
       type: 'number',
@@ -2173,7 +2173,7 @@ export const shellCmdTool: FuncTool = {
   },
 };
 
-const readonlyShellAllowedPrefixes = [
+const readonlyShellCommonAllowedPrefixes = [
   'cat',
   'rg',
   'sed',
@@ -2215,15 +2215,40 @@ const readonlyShellAllowedPrefixes = [
   'true',
 ] as const;
 
-function isAllowedReadonlyShellVersionProbe(command: string): boolean {
-  const tokens = splitShellTokens(command);
+const readonlyShellWindowsAllowedPrefixes = [
+  'where',
+  'fc',
+  'findstr',
+  'dir',
+  'type',
+  'more',
+  'ver',
+] as const;
+
+function getReadonlyShellAllowedPrefixes(
+  platform: NodeJS.Platform = process.platform,
+): readonly string[] {
+  if (platform === 'win32') {
+    return [...readonlyShellCommonAllowedPrefixes, ...readonlyShellWindowsAllowedPrefixes];
+  }
+  return readonlyShellCommonAllowedPrefixes;
+}
+
+function isAllowedReadonlyShellVersionProbe(
+  command: string,
+  platform: NodeJS.Platform = process.platform,
+): boolean {
+  const tokens = splitShellTokens(command, platform);
   if (tokens.length !== 2) return false;
 
-  const cmd = tokens[0]?.text ?? '';
+  const cmdRaw = tokens[0]?.text ?? '';
+  const cmd = platform === 'win32' ? cmdRaw.toLowerCase() : cmdRaw;
   const flag = tokens[1]?.text ?? '';
 
   if (cmd === 'node') return flag === '--version' || flag === '-v';
-  if (cmd === 'python3') return flag === '--version' || flag === '-V';
+  if (cmd === 'python3' || cmd === 'python' || cmd === 'py') {
+    return flag === '--version' || flag === '-V';
+  }
   return false;
 }
 
@@ -2235,6 +2260,7 @@ type ReadonlyShellValidationFailureReason =
   | 'CHAIN_PARSE_UNSUPPORTED_OPERATOR'
   | 'CHAIN_PARSE_UNTERMINATED_QUOTE'
   | 'CHAIN_PARSE_TRAILING_ESCAPE'
+  | 'UNSAFE_SHELL_SYNTAX'
   | 'GIT_C_INVALID'
   | 'GIT_C_UNSAFE_PATH'
   | 'GIT_C_UNSUPPORTED_SUBCOMMAND'
@@ -2253,12 +2279,23 @@ type ReadonlyShellChainParseResult =
   | Readonly<{ ok: true; segments: string[] }>
   | Readonly<{ ok: false; reason: ReadonlyShellValidationFailureReason; rejectedSegment: string }>;
 
-function validateReadonlyShellCommand(command: string): ReadonlyShellValidationResult {
-  return validateReadonlyShellCommandInternal(command.trimStart(), 0);
+function validateReadonlyShellCommand(
+  command: string,
+  platform: NodeJS.Platform = process.platform,
+): ReadonlyShellValidationResult {
+  return validateReadonlyShellCommandInternal(command.trimStart(), platform, 0);
+}
+
+export function validateReadonlyShellCommandForTests(
+  command: string,
+  platform: NodeJS.Platform,
+): ReadonlyShellValidationResult {
+  return validateReadonlyShellCommand(command, platform);
 }
 
 function validateReadonlyShellCommandInternal(
   command: string,
+  platform: NodeJS.Platform,
   depth: number,
 ): ReadonlyShellValidationResult {
   if (depth > 8) {
@@ -2272,8 +2309,8 @@ function validateReadonlyShellCommandInternal(
   }
   const trimmed = command.trimStart();
 
-  if (trimmed.startsWith('cd ')) {
-    const parsed = parseCdChain(trimmed);
+  if (startsWithReadonlyShellCommand(trimmed, 'cd', platform)) {
+    const parsed = parseCdChain(trimmed, platform);
     if (!parsed) {
       return { ok: false, failure: { reason: 'INVALID_CD_SYNTAX', rejectedSegment: trimmed } };
     }
@@ -2289,10 +2326,10 @@ function validateReadonlyShellCommandInternal(
       };
     }
 
-    return validateReadonlyShellCommandInternal(parsed.rest, depth + 1);
+    return validateReadonlyShellCommandInternal(parsed.rest, platform, depth + 1);
   }
 
-  const chainParsed = splitTopLevelReadonlyShellChain(trimmed);
+  const chainParsed = splitTopLevelReadonlyShellChain(trimmed, platform);
   if (!chainParsed.ok) {
     return {
       ok: false,
@@ -2304,7 +2341,7 @@ function validateReadonlyShellCommandInternal(
   }
   if (chainParsed.segments.length > 1) {
     for (const segment of chainParsed.segments) {
-      const segmentValidation = validateReadonlyShellCommandInternal(segment, depth + 1);
+      const segmentValidation = validateReadonlyShellCommandInternal(segment, platform, depth + 1);
       if (!segmentValidation.ok) {
         return segmentValidation;
       }
@@ -2312,16 +2349,21 @@ function validateReadonlyShellCommandInternal(
     return { ok: true };
   }
 
-  if (trimmed.startsWith('git -C ')) {
+  if (startsWithReadonlyShellCommand(trimmed, 'git', platform) && /^git\s+-C\s+/iu.test(trimmed)) {
     // Allow a narrow, read-only subset of `git -C <dir> <subcommand> ...` as long as <dir> looks
     // like a safe *relative* path (no absolute paths / parent traversal). This avoids accidentally
     // inspecting outside the rtws with `git -C /...`.
     const tokens = trimmed.split(/\s+/g);
     // Expected: git -C <dir> <subcommand> ...
-    if (tokens.length >= 4 && tokens[0] === 'git' && tokens[1] === '-C') {
+    const gitCommand = tokens[0] ?? '';
+    const gitFlag = tokens[1] ?? '';
+    const isGitCommand =
+      platform === 'win32' ? gitCommand.toLowerCase() === 'git' : gitCommand === 'git';
+    if (tokens.length >= 4 && isGitCommand && gitFlag === '-C') {
       const dirRaw = tokens[2] ?? '';
       const dir = dirRaw.replace(/^["']|["']$/g, '');
-      const subcommand = tokens[3] ?? '';
+      const subcommandRaw = tokens[3] ?? '';
+      const subcommand = platform === 'win32' ? subcommandRaw.toLowerCase() : subcommandRaw;
 
       if (!isSafeRelativePath(dir)) {
         return { ok: false, failure: { reason: 'GIT_C_UNSAFE_PATH', rejectedSegment: trimmed } };
@@ -2334,6 +2376,12 @@ function validateReadonlyShellCommandInternal(
         subcommand === 'log' ||
         subcommand === 'blame'
       ) {
+        if (hasUnsafeReadonlyShellCommandOptions(trimmed, platform)) {
+          return {
+            ok: false,
+            failure: { reason: 'UNSAFE_SHELL_SYNTAX', rejectedSegment: trimmed },
+          };
+        }
         return { ok: true };
       }
 
@@ -2346,12 +2394,18 @@ function validateReadonlyShellCommandInternal(
     return { ok: false, failure: { reason: 'GIT_C_INVALID', rejectedSegment: trimmed } };
   }
 
-  if (isAllowedReadonlyShellVersionProbe(trimmed)) {
+  if (isAllowedReadonlyShellVersionProbe(trimmed, platform)) {
     return { ok: true };
   }
 
-  for (const prefix of readonlyShellAllowedPrefixes) {
-    if (trimmed === prefix || trimmed.startsWith(`${prefix} `)) {
+  for (const prefix of getReadonlyShellAllowedPrefixes(platform)) {
+    if (matchesReadonlyShellPrefix(trimmed, prefix, platform)) {
+      if (hasUnsafeReadonlyShellCommandOptions(trimmed, platform)) {
+        return {
+          ok: false,
+          failure: { reason: 'UNSAFE_SHELL_SYNTAX', rejectedSegment: trimmed },
+        };
+      }
       return { ok: true };
     }
   }
@@ -2359,7 +2413,103 @@ function validateReadonlyShellCommandInternal(
   return { ok: false, failure: { reason: 'COMMAND_NOT_ALLOWLISTED', rejectedSegment: trimmed } };
 }
 
-function splitTopLevelReadonlyShellChain(command: string): ReadonlyShellChainParseResult {
+function hasUnsafeReadonlyShellCommandOptions(command: string, platform: NodeJS.Platform): boolean {
+  const tokens = splitShellTokens(command, platform);
+  const cmdRaw = tokens[0]?.text ?? '';
+  const cmd = platform === 'win32' ? cmdRaw.toLowerCase() : cmdRaw;
+  const args = tokens.slice(1).map((token) => token.text);
+
+  if (cmd === 'awk') {
+    return args.some(
+      (arg) =>
+        /\bsystem\s*\(/.test(arg) ||
+        arg.includes('>') ||
+        arg.includes('|') ||
+        arg === '-i' ||
+        arg.startsWith('-i') ||
+        arg === '--include' ||
+        arg.startsWith('--include=') ||
+        arg === '-l' ||
+        arg.startsWith('-l') ||
+        arg === '--load' ||
+        arg.startsWith('--load='),
+    );
+  }
+  if (cmd === 'sed') {
+    return args.some(
+      (arg) =>
+        arg === '-i' ||
+        arg.startsWith('-i') ||
+        arg === '--in-place' ||
+        arg.startsWith('--in-place=') ||
+        looksLikeSedWriteScript(arg),
+    );
+  }
+  if (cmd === 'find') {
+    return args.some((arg) =>
+      [
+        '-delete',
+        '-exec',
+        '-execdir',
+        '-ok',
+        '-okdir',
+        '-fprint',
+        '-fprint0',
+        '-fprintf',
+        '-fls',
+      ].includes(arg),
+    );
+  }
+  if (cmd === 'git') {
+    return args.some(
+      (arg) =>
+        arg === '-c' ||
+        arg === '--config-env' ||
+        arg.startsWith('--config-env=') ||
+        arg === '--exec-path' ||
+        arg.startsWith('--exec-path=') ||
+        arg === '--paginate' ||
+        arg === '--output' ||
+        arg.startsWith('--output=') ||
+        arg === '--ext-diff' ||
+        arg === '--external-diff' ||
+        arg === '--textconv',
+    );
+  }
+  if (cmd === 'sort') {
+    return args.some((arg) => arg === '-o' || arg.startsWith('-o') || arg.startsWith('--output'));
+  }
+  if (cmd === 'rg') {
+    return args.some(
+      (arg) =>
+        arg === '--pre' ||
+        arg.startsWith('--pre=') ||
+        arg === '--hostname-bin' ||
+        arg.startsWith('--hostname-bin='),
+    );
+  }
+  if (cmd === 'date') {
+    return args.some(
+      (arg) => arg === '-s' || arg.startsWith('-s') || arg === '--set' || arg.startsWith('--set='),
+    );
+  }
+
+  return false;
+}
+
+function looksLikeSedWriteScript(script: string): boolean {
+  const commandParts = script.split(/[;{}]/g);
+  return commandParts.some(
+    (part) =>
+      /^\s*(?:[0-9,$!+~\/\\-]+|\/(?:\\.|[^/])*\/)?w(?:\s|$)/.test(part) ||
+      /s(.)(?:\\.|(?!\1).)*\1(?:\\.|(?!\1).)*\1[0-9gIpMew]*w/.test(part),
+  );
+}
+
+function splitTopLevelReadonlyShellChain(
+  command: string,
+  platform: NodeJS.Platform = process.platform,
+): ReadonlyShellChainParseResult {
   const segments: string[] = [];
   let quote: "'" | '"' | null = null;
   let escape = false;
@@ -2374,6 +2524,7 @@ function splitTopLevelReadonlyShellChain(command: string): ReadonlyShellChainPar
 
   for (let i = 0; i < command.length; i++) {
     const ch = command[i] ?? '';
+    const next = command[i + 1] ?? '';
 
     if (escape) {
       escape = false;
@@ -2383,23 +2534,45 @@ function splitTopLevelReadonlyShellChain(command: string): ReadonlyShellChainPar
     if (quote) {
       if (ch === quote) {
         quote = null;
-      } else if (ch === '\\' && quote === '"') {
+      } else if (
+        quote === '"' &&
+        (ch === '`' || (ch === '$' && next === '(') || (platform === 'win32' && ch === '%'))
+      ) {
+        return {
+          ok: false,
+          reason: 'UNSAFE_SHELL_SYNTAX',
+          rejectedSegment: command.slice(segmentStart).trim() || command.trim(),
+        };
+      } else if (ch === '\\' && quote === '"' && platform !== 'win32') {
         escape = true;
       }
       continue;
     }
 
-    if (ch === '\\') {
+    if (ch === '\\' && platform !== 'win32') {
       escape = true;
       continue;
     }
 
-    if (ch === "'" || ch === '"') {
+    if (ch === '"' || (ch === "'" && platform !== 'win32')) {
       quote = ch;
       continue;
     }
 
-    const next = command[i + 1] ?? '';
+    if (
+      ch === '`' ||
+      (ch === '$' && next === '(') ||
+      ch === '<' ||
+      ch === '>' ||
+      (platform === 'win32' && ch === '%')
+    ) {
+      return {
+        ok: false,
+        reason: 'UNSAFE_SHELL_SYNTAX',
+        rejectedSegment: command.slice(segmentStart).trim() || command.trim(),
+      };
+    }
+
     if ((ch === '&' && next === '&') || (ch === '|' && next === '|')) {
       if (!pushSegment(i)) {
         return {
@@ -2467,16 +2640,45 @@ function isSafeRelativePath(dir: string): boolean {
   const hasParentTraversal = /(^|[\\/])\.\.([\\/]|$)/.test(dir);
   const isAbsoluteOrHome =
     dir.startsWith('/') ||
+    dir.startsWith('\\') ||
     dir.startsWith('~') ||
-    /^[A-Za-z]:[\\/]/.test(dir) ||
+    /^[A-Za-z]:/.test(dir) ||
     dir.startsWith('\\\\');
   return !isAbsoluteOrHome && !hasParentTraversal && dir.trim() !== '';
 }
 
-function parseCdChain(command: string): Readonly<{ dir: string; rest: string }> | null {
+function startsWithReadonlyShellCommand(
+  command: string,
+  executable: string,
+  platform: NodeJS.Platform,
+): boolean {
+  return matchesReadonlyShellPrefix(command, executable, platform);
+}
+
+function matchesReadonlyShellPrefix(
+  command: string,
+  prefix: string,
+  platform: NodeJS.Platform,
+): boolean {
+  const normalizedCommand = platform === 'win32' ? command.toLowerCase() : command;
+  const normalizedPrefix = platform === 'win32' ? prefix.toLowerCase() : prefix;
+  return (
+    normalizedCommand === normalizedPrefix ||
+    new RegExp(`^${escapeRegexLiteral(normalizedPrefix)}\\s`, 'u').test(normalizedCommand)
+  );
+}
+
+function escapeRegexLiteral(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+function parseCdChain(
+  command: string,
+  platform: NodeJS.Platform,
+): Readonly<{ dir: string; rest: string }> | null {
   // Supports: cd <dir> && <rest>   or   cd <dir> || <rest>
-  // `<dir>` may be single/double-quoted; `<rest>` must be non-empty.
-  if (!command.startsWith('cd ')) return null;
+  // `<dir>` may be quoted; Windows cmd.exe only treats double quotes as quotes.
+  if (!/^cd\s+/iu.test(command)) return null;
 
   let i = 2;
   while (i < command.length && /\s/.test(command[i] ?? '')) i++;
@@ -2484,7 +2686,7 @@ function parseCdChain(command: string): Readonly<{ dir: string; rest: string }> 
 
   const start = i;
   const first = command[i] ?? '';
-  if (first === '"' || first === "'") {
+  if (first === '"' || (first === "'" && platform !== 'win32')) {
     const quote = first;
     i++;
     while (i < command.length && command[i] !== quote) i++;
@@ -2509,7 +2711,10 @@ function parseCdChain(command: string): Readonly<{ dir: string; rest: string }> 
 
 type ShellToken = Readonly<{ text: string; quoted: boolean }>;
 
-function splitShellTokens(command: string): ShellToken[] {
+function splitShellTokens(
+  command: string,
+  platform: NodeJS.Platform = process.platform,
+): ShellToken[] {
   const out: Array<{ text: string; quoted: boolean }> = [];
   let buf = '';
   let quote: "'" | '"' | null = null;
@@ -2533,7 +2738,7 @@ function splitShellTokens(command: string): ShellToken[] {
       continue;
     }
 
-    if (ch === "'" || ch === '"') {
+    if (ch === '"' || (ch === "'" && platform !== 'win32')) {
       quote = ch;
       tokenQuoted = true;
       continue;
@@ -2551,9 +2756,13 @@ function splitShellTokens(command: string): ShellToken[] {
   return out;
 }
 
+function normalizeReadonlyShellToken(token: string, platform: NodeJS.Platform): string {
+  return platform === 'win32' ? token.toLowerCase() : token;
+}
+
 function firstReadonlyShellToken(segment: string): string {
   const tokens = splitShellTokens(segment.trim());
-  return tokens[0]?.text ?? '';
+  return normalizeReadonlyShellToken(tokens[0]?.text ?? '', process.platform);
 }
 
 function getReadonlyShellSuggestionEn(failure: ReadonlyShellValidationFailure): string {
@@ -2571,6 +2780,9 @@ function getReadonlyShellSuggestionEn(failure: ReadonlyShellValidationFailure): 
   ) {
     return 'Fix shell quoting first, then run an allowlisted segment (for example: `ls` or `rg <pattern>`).';
   }
+  if (failure.reason === 'UNSAFE_SHELL_SYNTAX') {
+    return 'Do not use redirects, command substitution, or Windows environment expansion in `readonly_shell`; run a plain allowlisted inspection command.';
+  }
   if (failure.reason === 'INVALID_CD_SYNTAX' || failure.reason === 'UNSAFE_RELATIVE_PATH') {
     return 'Use `cd <relative-path> && <allowed command...>`.';
   }
@@ -2586,8 +2798,8 @@ function getReadonlyShellSuggestionEn(failure: ReadonlyShellValidationFailure): 
   }
 
   if (token === 'node') return 'Only version probes are allowed: `node --version || true`.';
-  if (token === 'python3' || token === 'python') {
-    return 'Only version probes are allowed: `python3 --version || true`.';
+  if (token === 'python3' || token === 'python' || token === 'py') {
+    return 'Only version probes are allowed: `python3 --version || true` (or `python --version` / `py --version` on Windows).';
   }
   if (token === 'false') return 'Use `true` as fallback (for example: `ls || true`).';
   if (token === 'git') {
@@ -2613,6 +2825,9 @@ function getReadonlyShellSuggestionZh(failure: ReadonlyShellValidationFailure): 
   ) {
     return '先修正引号/转义，再执行白名单子命令（例如：`ls` 或 `rg <pattern>`）。';
   }
+  if (failure.reason === 'UNSAFE_SHELL_SYNTAX') {
+    return '请勿在 `readonly_shell` 中使用重定向或命令替换；请直接运行白名单检查命令。';
+  }
   if (failure.reason === 'INVALID_CD_SYNTAX' || failure.reason === 'UNSAFE_RELATIVE_PATH') {
     return '请使用 `cd <相对路径> && <允许命令...>`。';
   }
@@ -2628,8 +2843,8 @@ function getReadonlyShellSuggestionZh(failure: ReadonlyShellValidationFailure): 
   }
 
   if (token === 'node') return '仅允许版本探针：`node --version || true`。';
-  if (token === 'python3' || token === 'python') {
-    return '仅允许版本探针：`python3 --version || true`。';
+  if (token === 'python3' || token === 'python' || token === 'py') {
+    return '仅允许版本探针：`python3 --version || true`（Windows 上也可用 `python --version` / `py --version`）。';
   }
   if (token === 'false') return '兜底请用 `true`（例如：`ls || true`）。';
   if (token === 'git') {
@@ -2646,8 +2861,12 @@ function normalizeRelFromRtwsRoot(relPath: string): string {
 
 type ForbiddenHiddenDir = '.minds' | '.dialogs';
 
-function detectForbiddenRtwsRootHiddenDir(relFromRoot: string): ForbiddenHiddenDir | null {
-  const normalized = normalizeRelFromRtwsRoot(relFromRoot);
+function detectForbiddenRtwsRootHiddenDir(
+  relFromRoot: string,
+  platform: NodeJS.Platform = process.platform,
+): ForbiddenHiddenDir | null {
+  const rawNormalized = normalizeRelFromRtwsRoot(relFromRoot);
+  const normalized = platform === 'win32' ? rawNormalized.toLowerCase() : rawNormalized;
   if (normalized === '.minds' || normalized.startsWith('.minds/')) return '.minds';
   if (normalized === '.dialogs' || normalized.startsWith('.dialogs/')) return '.dialogs';
   return null;
@@ -2665,6 +2884,7 @@ function resolveRelFromRtwsRoot(
 function detectReadonlyShellForbiddenHiddenDirAccess(
   workspaceRootAbs: string,
   command: string,
+  platform: NodeJS.Platform = process.platform,
 ): ForbiddenHiddenDir | null {
   // Deny access to rtws-root `.minds/**` and `.dialogs/**` only.
   // Nested rtws (e.g. `ux-rtws/.minds/**`, `ux-rtws/.dialogs/**`) remains allowed.
@@ -2672,19 +2892,56 @@ function detectReadonlyShellForbiddenHiddenDirAccess(
   let rest = command.trimStart();
 
   // Evaluate chained `cd ... && ...` prefixes and track base dir.
-  while (rest.startsWith('cd ')) {
-    const parsed = parseCdChain(rest);
+  while (startsWithReadonlyShellCommand(rest, 'cd', platform)) {
+    const parsed = parseCdChain(rest, platform);
     if (!parsed) break;
     const dir = parsed.dir.replace(/^["']|["']$/g, '');
     const relFromRoot = resolveRelFromRtwsRoot(workspaceRootAbs, baseDirRel, dir);
-    const forbidden = detectForbiddenRtwsRootHiddenDir(relFromRoot);
+    const forbidden = detectForbiddenRtwsRootHiddenDir(relFromRoot, platform);
     if (forbidden) return forbidden;
     baseDirRel = path.join(baseDirRel, dir);
     rest = parsed.rest.trimStart();
   }
 
-  const tokens = splitShellTokens(rest);
-  const cmd = tokens[0]?.text ?? '';
+  const chainParsed = splitTopLevelReadonlyShellChain(rest, platform);
+  if (chainParsed.ok && chainParsed.segments.length > 1) {
+    for (const segment of chainParsed.segments) {
+      const forbidden = detectReadonlyShellForbiddenHiddenDirAccessInSegment(
+        workspaceRootAbs,
+        baseDirRel,
+        segment,
+        platform,
+      );
+      if (forbidden) return forbidden;
+    }
+    return null;
+  }
+
+  return detectReadonlyShellForbiddenHiddenDirAccessInSegment(
+    workspaceRootAbs,
+    baseDirRel,
+    rest,
+    platform,
+  );
+}
+
+export function detectReadonlyShellForbiddenHiddenDirAccessForTests(
+  workspaceRootAbs: string,
+  command: string,
+  platform: NodeJS.Platform,
+): ForbiddenHiddenDir | null {
+  return detectReadonlyShellForbiddenHiddenDirAccess(workspaceRootAbs, command, platform);
+}
+
+function detectReadonlyShellForbiddenHiddenDirAccessInSegment(
+  workspaceRootAbs: string,
+  baseDirRel: string,
+  segment: string,
+  platform: NodeJS.Platform,
+): ForbiddenHiddenDir | null {
+  const tokens = splitShellTokens(segment, platform);
+  const cmdRaw = tokens[0]?.text ?? '';
+  const cmd = platform === 'win32' ? cmdRaw.toLowerCase() : cmdRaw;
   if (!cmd) return null;
 
   const tokenText = (i: number): string | null => {
@@ -2693,94 +2950,307 @@ function detectReadonlyShellForbiddenHiddenDirAccess(
     return v.text;
   };
 
-  // Handle the special allowed form: `git -C <dir> <subcommand> ...`
-  if (cmd === 'git' && tokenText(1) === '-C') {
-    const dirToken = tokenText(2);
-    if (dirToken) {
-      const relFromRoot = resolveRelFromRtwsRoot(workspaceRootAbs, baseDirRel, dirToken);
-      const forbidden = detectForbiddenRtwsRootHiddenDir(relFromRoot);
+  const checkPathToken = (raw: string): ForbiddenHiddenDir | null => {
+    const trimmed = raw.trim();
+    if (trimmed === '' || trimmed === '-' || trimmed === '--') return null;
+    const relFromRoot = resolveRelFromRtwsRoot(workspaceRootAbs, baseDirRel, trimmed);
+    return detectForbiddenRtwsRootHiddenDir(relFromRoot, platform);
+  };
+
+  const checkGitPathspecToken = (raw: string, gitBaseDirRel: string): ForbiddenHiddenDir | null => {
+    let pathspec = raw.trim();
+    if (pathspec === '' || pathspec === '-' || pathspec === '--') return null;
+    if (pathspec.startsWith(':(')) {
+      const magicEnd = pathspec.indexOf(')');
+      if (magicEnd >= 0) pathspec = pathspec.slice(magicEnd + 1);
+    }
+    if (pathspec.startsWith(':/')) pathspec = pathspec.slice(2);
+    if (pathspec.startsWith(':')) pathspec = pathspec.slice(1);
+    const relFromRoot = resolveRelFromRtwsRoot(workspaceRootAbs, gitBaseDirRel, pathspec);
+    return detectForbiddenRtwsRootHiddenDir(relFromRoot, platform);
+  };
+
+  if (cmd === 'git') {
+    let gitBaseDirRel = baseDirRel;
+    let argsStart = 2;
+    if (tokenText(1) === '-C') {
+      const dirToken = tokenText(2);
+      if (dirToken) {
+        const relFromRoot = resolveRelFromRtwsRoot(workspaceRootAbs, baseDirRel, dirToken);
+        const forbidden = detectForbiddenRtwsRootHiddenDir(relFromRoot, platform);
+        if (forbidden) return forbidden;
+        gitBaseDirRel = path.join(baseDirRel, dirToken);
+      }
+      argsStart = 4;
+    }
+    for (let index = argsStart; index < tokens.length; index++) {
+      const token = tokenText(index);
+      if (!token || token === '--' || token.startsWith('-')) continue;
+      const forbidden = checkGitPathspecToken(token, gitBaseDirRel);
       if (forbidden) return forbidden;
     }
     return null;
   }
 
-  const checkPathToken = (raw: string): ForbiddenHiddenDir | null => {
-    const trimmed = raw.trim();
-    if (trimmed === '' || trimmed === '-' || trimmed === '--') return null;
-    const relFromRoot = resolveRelFromRtwsRoot(workspaceRootAbs, baseDirRel, trimmed);
-    return detectForbiddenRtwsRootHiddenDir(relFromRoot);
-  };
-
   // Command-specific parsing to avoid false-positives where `.minds` is just a pattern/filter.
   if (cmd === 'rg') {
-    // `rg [OPTIONS] PATTERN [PATH ...]`
-    let i = 1;
-    while (i < tokens.length) {
-      const t = tokenText(i);
-      if (!t) break;
-      if (t === '--') {
-        i += 1;
+    // `rg [OPTIONS] PATTERN [PATH ...]`; `rg --files [PATH ...]` has no pattern.
+    let index = 1;
+    let filesMode = false;
+    let patternConsumed = false;
+    while (index < tokens.length) {
+      const token = tokenText(index);
+      if (!token) break;
+      if (token === '--') {
+        index += 1;
         break;
       }
-      if (t.startsWith('-')) {
-        i += 1;
+      if (token === '--files') {
+        filesMode = true;
+        index += 1;
         continue;
       }
-      // First non-flag token is PATTERN (do not treat as a path).
-      i += 1;
-      break;
+      if (token === '-g' || token === '--glob' || token === '--iglob' || token === '-f') {
+        const optionValue = tokenText(index + 1);
+        if (optionValue) {
+          const forbidden = checkPathToken(optionValue);
+          if (forbidden) return forbidden;
+        }
+        index += 2;
+        continue;
+      }
+      if ((token.startsWith('-g') || token.startsWith('-f')) && token.length > 2) {
+        const optionValue = token.slice(2);
+        const forbidden = checkPathToken(optionValue);
+        if (forbidden) return forbidden;
+        index += 1;
+        continue;
+      }
+      if (
+        token.startsWith('--glob=') ||
+        token.startsWith('--iglob=') ||
+        token.startsWith('--file=')
+      ) {
+        const optionValue = token.slice(token.indexOf('=') + 1);
+        const forbidden = checkPathToken(optionValue);
+        if (forbidden) return forbidden;
+        index += 1;
+        continue;
+      }
+      if (token === '-e' || token === '--regexp') {
+        index += 2;
+        continue;
+      }
+      if (token.startsWith('--regexp=')) {
+        index += 1;
+        continue;
+      }
+      if (token.startsWith('-')) {
+        index += 1;
+        continue;
+      }
+      if (!filesMode && !patternConsumed) {
+        patternConsumed = true;
+        index += 1;
+        continue;
+      }
+      const forbidden = checkPathToken(token);
+      if (forbidden) return forbidden;
+      index += 1;
     }
-    for (; i < tokens.length; i++) {
-      const t = tokenText(i);
-      if (!t) continue;
-      const forbidden = checkPathToken(t);
+    for (; index < tokens.length; index++) {
+      const token = tokenText(index);
+      if (!token) continue;
+      const forbidden = checkPathToken(token);
       if (forbidden) return forbidden;
     }
     return null;
   }
 
   if (cmd === 'jq') {
-    // `jq [OPTIONS] FILTER [FILE ...]`
-    let i = 1;
-    while (i < tokens.length) {
-      const t = tokenText(i);
-      if (!t) break;
-      if (t === '--') {
-        i += 1;
+    // `jq [OPTIONS] FILTER [FILE ...]`; some options read files before FILTER.
+    let index = 1;
+    while (index < tokens.length) {
+      const token = tokenText(index);
+      if (!token) break;
+      if (token === '--') {
+        index += 1;
         break;
       }
-      if (t.startsWith('-')) {
-        i += 1;
+      if (token === '-f' || token === '--from-file') {
+        const optionValue = tokenText(index + 1);
+        if (optionValue) {
+          const forbidden = checkPathToken(optionValue);
+          if (forbidden) return forbidden;
+        }
+        index += 2;
+        continue;
+      }
+      if (token.startsWith('--from-file=')) {
+        const optionValue = token.slice(token.indexOf('=') + 1);
+        const forbidden = checkPathToken(optionValue);
+        if (forbidden) return forbidden;
+        index += 1;
+        continue;
+      }
+      if (token === '--slurpfile' || token === '--rawfile' || token === '--argfile') {
+        const fileValue = tokenText(index + 2);
+        if (fileValue) {
+          const forbidden = checkPathToken(fileValue);
+          if (forbidden) return forbidden;
+        }
+        index += 3;
+        continue;
+      }
+      if (token === '--arg' || token === '--argjson') {
+        index += 3;
+        continue;
+      }
+      if (token.startsWith('-')) {
+        index += 1;
         continue;
       }
       // First non-flag token is FILTER (do not treat as a file path).
-      i += 1;
+      index += 1;
       break;
     }
-    for (; i < tokens.length; i++) {
-      const t = tokenText(i);
-      if (!t) continue;
-      const forbidden = checkPathToken(t);
+    for (; index < tokens.length; index++) {
+      const token = tokenText(index);
+      if (!token) continue;
+      const forbidden = checkPathToken(token);
       if (forbidden) return forbidden;
     }
     return null;
   }
 
+  if (cmd === 'where') {
+    // Windows `where /r <dir> <pattern>` recursively searches a directory.
+    for (let index = 1; index < tokens.length; index++) {
+      const token = tokenText(index);
+      if (!token) continue;
+      if (token.toLowerCase() === '/r' || token.toLowerCase() === '-r') {
+        const optionValue = tokenText(index + 1);
+        if (optionValue) {
+          const forbidden = checkPathToken(optionValue);
+          if (forbidden) return forbidden;
+        }
+        index += 1;
+      }
+    }
+    return null;
+  }
+
+  if (cmd === 'findstr') {
+    // `findstr [OPTIONS] STRINGS [FILE ...]` — treat the first non-option as the pattern.
+    let index = 1;
+    while (index < tokens.length) {
+      const token = tokenText(index);
+      if (!token) break;
+      const findstrOptionPath = /^[/\-](?:f|g|d):(.+)$/iu.exec(token);
+      if (findstrOptionPath) {
+        const optionValue = findstrOptionPath[1] ?? '';
+        const optionPaths = /^[/\-]d:/iu.test(token) ? optionValue.split(';') : [optionValue];
+        for (const optionPath of optionPaths) {
+          const forbidden = checkPathToken(optionPath);
+          if (forbidden) return forbidden;
+        }
+        index += 1;
+        continue;
+      }
+      if (token.startsWith('/') || token.startsWith('-')) {
+        index += 1;
+        continue;
+      }
+      index += 1;
+      break;
+    }
+    for (; index < tokens.length; index++) {
+      const token = tokenText(index);
+      if (!token) continue;
+      const forbidden = checkPathToken(token);
+      if (forbidden) return forbidden;
+    }
+    return null;
+  }
+
+  if (cmd === 'awk') {
+    let index = 1;
+    let programConsumed = false;
+    while (index < tokens.length) {
+      const token = tokenText(index);
+      if (!token) break;
+      if (token === '-f' || token === '--file') {
+        const optionValue = tokenText(index + 1);
+        if (optionValue) {
+          const forbidden = checkPathToken(optionValue);
+          if (forbidden) return forbidden;
+        }
+        programConsumed = true;
+        index += 2;
+        continue;
+      }
+      if (token.startsWith('-f') && token.length > 2) {
+        const optionValue = token.slice(2);
+        const forbidden = checkPathToken(optionValue);
+        if (forbidden) return forbidden;
+        programConsumed = true;
+        index += 1;
+        continue;
+      }
+      if (token.startsWith('--file=')) {
+        const optionValue = token.slice(token.indexOf('=') + 1);
+        const forbidden = checkPathToken(optionValue);
+        if (forbidden) return forbidden;
+        programConsumed = true;
+        index += 1;
+        continue;
+      }
+      if (token === '-v' || token === '-F') {
+        index += 2;
+        continue;
+      }
+      if (token.startsWith('-F') && token.length > 2) {
+        index += 1;
+        continue;
+      }
+      if (token.startsWith('-')) {
+        index += 1;
+        continue;
+      }
+      if (!programConsumed) {
+        programConsumed = true;
+        index += 1;
+        continue;
+      }
+      const forbidden = checkPathToken(token);
+      if (forbidden) return forbidden;
+      index += 1;
+    }
+    return null;
+  }
+
   if (cmd === 'find') {
-    // `find [path ...] [expression]` — only treat the initial paths as path roots.
-    for (let i = 1; i < tokens.length; i++) {
-      const t = tokenText(i);
-      if (!t) continue;
-      if (t.startsWith('-')) break;
-      if (t === '!' || t === '(' || t === ')') break;
-      const forbidden = checkPathToken(t);
+    // `find [global-options] [path ...] [expression]` — treat only initial roots as paths.
+    for (let index = 1; index < tokens.length; index++) {
+      const token = tokenText(index);
+      if (!token) continue;
+      if (token === '-H' || token === '-L' || token === '-P' || /^-O[0-9]$/.test(token)) {
+        continue;
+      }
+      if (token === '-D') {
+        index += 1;
+        continue;
+      }
+      if (token.startsWith('-')) break;
+      if (token === '!' || token === '(' || token === ')') break;
+      const forbidden = checkPathToken(token);
       if (forbidden) return forbidden;
     }
     return null;
   }
 
   // Default conservative: treat non-flag args as potential paths for common file-inspection commands.
-  // This intentionally does NOT block `echo/printf/awk/...` where args are data, not paths.
+  // This intentionally does NOT block `echo/printf/...` where args are data, not paths.
   const pathLikeCommands = new Set([
     'cat',
     'ls',
@@ -2793,8 +3263,18 @@ function detectReadonlyShellForbiddenHiddenDirAccess(
     'diff',
     'realpath',
     'readlink',
+    'cut',
+    'sort',
+    'uniq',
+    'shasum',
+    'sha256sum',
+    'md5sum',
     'tree',
     'sed',
+    'dir',
+    'type',
+    'more',
+    'fc',
   ]);
 
   if (pathLikeCommands.has(cmd)) {
@@ -2814,10 +3294,10 @@ export const readonlyShellTool: FuncTool = {
   type: 'func',
   name: 'readonly_shell',
   description:
-    'Execute a read-only shell command from a small allowlist. Only exact version probes are allowed for node/python (no scripts such as `node -e` or `python3 -c`). Command chains via |/&&/|| are validated segment-by-segment. Commands outside the allowlist are rejected.',
+    'Execute a read-only shell command from a small allowlist. On Windows this runs through cmd.exe, so use allowlisted cmd/PATH commands such as `rg`, `git`, `dir`, `type`, or `where`. Only exact version probes are allowed for node/python (no scripts such as `node -e` or `python3 -c`). Command chains via |/&&/|| are validated segment-by-segment. Commands outside the allowlist are rejected.',
   descriptionI18n: {
-    en: 'Execute a read-only shell command from a small allowlist. Only exact version probes are allowed for node/python (no scripts such as `node -e` or `python3 -c`). Command chains via |/&&/|| are validated segment-by-segment. You are explicitly authorized to call this tool yourself (no delegation). Commands outside the allowlist are rejected.',
-    zh: '执行只读 shell 命令，仅允许少量白名单命令前缀。对 node/python 仅允许版本探针（不允许 `node -e` / `python3 -c` 这类脚本）。通过 |/&&/|| 串联时会按子命令逐段校验。你已被明确授权自行调用该工具（无需委派）。不在允许列表内的命令会被拒绝。',
+    en: 'Execute a read-only shell command from a small allowlist. On Windows this runs through cmd.exe, so use allowlisted cmd/PATH commands such as `rg`, `git`, `dir`, `type`, or `where`. Only exact version probes are allowed for node/python (no scripts such as `node -e` or `python3 -c`). Command chains via |/&&/|| are validated segment-by-segment. You are explicitly authorized to call this tool yourself (no delegation). Commands outside the allowlist are rejected.',
+    zh: '执行只读 shell 命令，仅允许少量白名单命令前缀。Windows 上通过 cmd.exe 执行，请使用白名单内且 cmd/PATH 可用的命令，例如 `rg`、`git`、`dir`、`type` 或 `where`。对 node/python 仅允许版本探针（不允许 `node -e` / `python3 -c` 这类脚本）。通过 |/&&/|| 串联时会按子命令逐段校验。你已被明确授权自行调用该工具（无需委派）。不在允许列表内的命令会被拒绝。',
   },
   parameters: readonlyShellSchema,
   async call(dlg: Dialog, caller: Team.Member, args: ToolArguments): Promise<ToolCallOutput> {
@@ -2840,7 +3320,7 @@ export const readonlyShellTool: FuncTool = {
 
     const validation = validateReadonlyShellCommand(command);
     if (!validation.ok) {
-      const allowedList = readonlyShellAllowedPrefixes.join(', ');
+      const allowedList = getReadonlyShellAllowedPrefixes().join(', ');
       const rejectedSegment = validation.failure.rejectedSegment.trim();
       const rejectedSegmentOrCommand = rejectedSegment === '' ? command : rejectedSegment;
       const suggestion =
@@ -2850,8 +3330,8 @@ export const readonlyShellTool: FuncTool = {
       return toolFailure(
         prependShellWarning(
           language === 'zh'
-            ? `❌ readonly_shell 仅允许以下命令前缀：${allowedList}\n另外允许（仅版本探针）：node --version|-v、python3 --version|-V\n脚本执行（如 node -e / python3 -c）一律拒绝。\n另外允许：git -C <相对路径> <show|status|diff|log|blame> ...\n另外允许：cd <相对路径> && <允许命令...>（或 ||）\n说明：通过 |/&&/|| 串联时会按子命令逐段校验。\n被拒子命令段：${rejectedSegmentOrCommand}\n允许的等价写法：${suggestion}\n收到：${command}`
-            : `❌ readonly_shell only allows these command prefixes: ${allowedList}\nAlso allowed (exact version probes only): node --version|-v, python3 --version|-V\nNode/python scripts (for example: node -e, python3 -c) are rejected.\nAlso allowed: git -C <relative-path> <show|status|diff|log|blame> ...\nAlso allowed: cd <relative-path> && <allowed command...> (or ||)\nNote: chains via |/&&/|| are validated segment-by-segment.\nRejected segment: ${rejectedSegmentOrCommand}\nAllowed equivalent: ${suggestion}\nGot: ${command}`,
+            ? `❌ readonly_shell 仅允许以下命令前缀：${allowedList}\n另外允许（仅版本探针）：node --version|-v、python3/python/py --version|-V\n脚本执行（如 node -e / python3 -c）一律拒绝。\n另外允许：git -C <相对路径> <show|status|diff|log|blame> ...\n另外允许：cd <相对路径> && <允许命令...>（或 ||）\nWindows 上通过 cmd.exe 执行；请使用该 shell/PATH 中可用的白名单命令。\n说明：通过 |/&&/|| 串联时会按子命令逐段校验。\n被拒子命令段：${rejectedSegmentOrCommand}\n允许的等价写法：${suggestion}\n收到：${command}`
+            : `❌ readonly_shell only allows these command prefixes: ${allowedList}\nAlso allowed (exact version probes only): node --version|-v, python3/python/py --version|-V\nNode/python scripts (for example: node -e, python3 -c) are rejected.\nAlso allowed: git -C <relative-path> <show|status|diff|log|blame> ...\nAlso allowed: cd <relative-path> && <allowed command...> (or ||)\nOn Windows this runs through cmd.exe; use allowlisted commands available in that shell/PATH.\nNote: chains via |/&&/|| are validated segment-by-segment.\nRejected segment: ${rejectedSegmentOrCommand}\nAllowed equivalent: ${suggestion}\nGot: ${command}`,
           warning,
         ),
       );

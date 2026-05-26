@@ -280,14 +280,6 @@ async function main(): Promise<void> {
 
   await runTest('codex_inspect_and_patch_tools platform behavior', () => {
     const codexTools = getToolset('codex_inspect_and_patch_tools');
-    if (process.platform === 'win32') {
-      assertEqual(
-        codexTools,
-        undefined,
-        'codex_inspect_and_patch_tools should not be registered on Windows',
-      );
-      return;
-    }
     assertTrue(Array.isArray(codexTools), 'codex_inspect_and_patch_tools should be an array');
     if (!codexTools) throw new Error('unreachable');
     const names = codexTools.map((t) => t.name);

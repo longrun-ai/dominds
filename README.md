@@ -251,7 +251,7 @@ Then:
 
 Platform note:
 
-- On Windows, the runtime does not register the `codex_inspect_and_patch_tools` toolset. Do not grant `codex_inspect_and_patch_tools` in `.minds/team.yaml` for Windows hosts.
+- Windows also registers `codex_inspect_and_patch_tools`; its `readonly_shell` tool runs through `cmd.exe`, so prefer allowlisted commands available in that shell/PATH, such as `rg`, `git`, `dir`, `type`, and `where`.
 
 ## Start from scratch
 

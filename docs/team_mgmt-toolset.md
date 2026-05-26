@@ -559,7 +559,7 @@ Best practices:
 
 - Make `member_defaults` conservative. Grant additional tools/dirs on a per-member basis.
 - Prefer toolsets over individually enumerating tools unless you need a one-off tool.
-- Platform note: Windows runtime intentionally does not register `codex_inspect_and_patch_tools`; do not grant that toolset in `.minds/team.yaml` on Windows hosts.
+- Platform note: Windows also supports `codex_inspect_and_patch_tools`; `readonly_shell` runs through `cmd.exe`, so prefer allowlisted commands available in that shell/PATH.
 - Keep `.minds/team.yaml` ownership tight; only the team manager should be able to edit it.
 - Avoid repeating built-in constraints in `team.yaml`:
   - `*.tsk/**` (encapsulated Taskdocs) are hard-denied for all general file tools.
