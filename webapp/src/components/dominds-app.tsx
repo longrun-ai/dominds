@@ -2096,26 +2096,32 @@ export class DomindsApp extends HTMLElement {
         : '';
     let actionLabel = '';
     let showIcon = false;
+    let showBusyDots = false;
     switch (state.kind) {
       case 'idle':
         actionLabel = '';
         showIcon = false;
+        showBusyDots = false;
         break;
       case 'install':
         actionLabel = t.domindsVersionUpdateLabel;
         showIcon = true;
+        showBusyDots = false;
         break;
       case 'restart':
         actionLabel = t.domindsVersionRestartLabel;
         showIcon = true;
+        showBusyDots = false;
         break;
       case 'installing':
         actionLabel = t.domindsVersionInstallingLabel;
-        showIcon = true;
+        showIcon = false;
+        showBusyDots = true;
         break;
       case 'restarting':
         actionLabel = t.domindsVersionRestartingLabel;
-        showIcon = true;
+        showIcon = false;
+        showBusyDots = true;
         break;
     }
     const versionHtml = checking
@@ -2139,11 +2145,18 @@ export class DomindsApp extends HTMLElement {
         `
         : `<span class="dominds-version-text">${escapeHtml(versionText)}</span>`;
 
+    const actionHtml =
+      actionLabel !== ''
+        ? `<span class="dominds-version-divider" aria-hidden="true">·</span><span class="dominds-version-action">${escapeHtml(actionLabel)}${
+            showBusyDots
+              ? '<span class="dominds-version-busy-dots" aria-hidden="true"><span>.</span><span>.</span><span>.</span></span>'
+              : ''
+          }</span>`
+        : '';
+
     return [
       versionHtml,
-      actionLabel !== ''
-        ? `<span class="dominds-version-divider" aria-hidden="true">·</span><span class="dominds-version-action">${escapeHtml(actionLabel)}</span>`
-        : '',
+      actionHtml,
       showIcon
         ? '<span class="icon-mask app-icon-refresh dominds-version-icon" aria-hidden="true"></span>'
         : '',
@@ -3255,6 +3268,7 @@ export class DomindsApp extends HTMLElement {
       .dominds-version-checking,
       .dominds-version-text,
       .dominds-version-action,
+      .dominds-version-busy-dots,
       .dominds-version-divider {
         display: inline-block;
         line-height: 1;
@@ -3284,18 +3298,31 @@ export class DomindsApp extends HTMLElement {
         font-weight: 700;
       }
 
-      .dominds-version-checking-dots > span {
+      .dominds-version-busy-dots {
+        display: inline-flex;
+        align-items: baseline;
+        width: 1.25em;
+        margin-left: 1px;
+        overflow: hidden;
+        letter-spacing: 0;
+        font-weight: 700;
+      }
+
+      .dominds-version-checking-dots > span,
+      .dominds-version-busy-dots > span {
         display: inline-block;
         width: 0.46em;
         opacity: 0.12;
         animation: domindsVersionDotPulse 1.1s ease-in-out infinite;
       }
 
-      .dominds-version-checking-dots > span:nth-child(2) {
+      .dominds-version-checking-dots > span:nth-child(2),
+      .dominds-version-busy-dots > span:nth-child(2) {
         animation-delay: 0.14s;
       }
 
-      .dominds-version-checking-dots > span:nth-child(3) {
+      .dominds-version-checking-dots > span:nth-child(3),
+      .dominds-version-busy-dots > span:nth-child(3) {
         animation-delay: 0.28s;
       }
 
@@ -3379,7 +3406,8 @@ export class DomindsApp extends HTMLElement {
         .dominds-version[data-attention='true'] .dominds-version-roll-track {
           animation: none;
         }
-        .dominds-version[data-checking='true'] .dominds-version-checking-dots > span {
+        .dominds-version[data-checking='true'] .dominds-version-checking-dots > span,
+        .dominds-version-busy-dots > span {
           animation: none;
           opacity: 0.55;
         }
