@@ -6,6 +6,7 @@ import type {
   DialogInterruptionReason,
   DialogLlmRetryExhaustedReason,
 } from '@longrun-ai/kernel/types/display-state';
+import type { DialogQueuedPromptState } from '@longrun-ai/kernel/types/drive-intent';
 import {
   toAssignmentCourseNumber,
   toAssignmentGenerationSeqNumber,
@@ -155,6 +156,7 @@ import type {
   KernelDriverDriveCallbacks,
   KernelDriverPrompt,
   KernelDriverRuntimeGuidePrompt,
+  KernelDriverRuntimePrompt,
 } from './types';
 
 type KernelDriverRetryPolicy = Readonly<{
@@ -940,6 +942,7 @@ const TELLASK_SPECIAL_VIRTUAL_TOOLS: readonly FuncTool[] = [
   {
     type: 'func',
     name: 'replyTellask',
+    followupMode: 'deferred',
     description: 'Deliver final reply for the current tellask session.',
     parameters: {
       type: 'object',
@@ -956,6 +959,7 @@ const TELLASK_SPECIAL_VIRTUAL_TOOLS: readonly FuncTool[] = [
   {
     type: 'func',
     name: 'replyTellaskSessionless',
+    followupMode: 'deferred',
     description: 'Deliver final reply for the current one-shot tellask.',
     parameters: {
       type: 'object',
@@ -974,6 +978,7 @@ const TELLASK_SPECIAL_VIRTUAL_TOOLS: readonly FuncTool[] = [
   {
     type: 'func',
     name: 'replyTellaskBack',
+    followupMode: 'deferred',
     description: 'Deliver final reply for the current tellaskBack request.',
     parameters: {
       type: 'object',
@@ -1686,6 +1691,7 @@ type RoutedFunctionResult = {
   hasImmediateTellaskOutputs: boolean;
   immediateFollowupCallIds: readonly string[];
   immediateTellaskOutputCallIds: readonly string[];
+  invalidTellaskCallIds: readonly string[];
   shouldStopAfterReplyTool: boolean;
   shouldStopAfterPendingTellaskWait: boolean;
   pairedMessages: ChatMessage[];
@@ -1703,6 +1709,7 @@ type ToolRoundStopDiagnostics = Readonly<{
     hasImmediateTellaskOutputs: boolean;
     immediateFollowupCallIds: readonly string[];
     immediateTellaskOutputCallIds: readonly string[];
+    invalidTellaskCallIds: readonly string[];
     shouldStopAfterReplyTool: boolean;
     shouldStopAfterPendingTellaskWait: boolean;
     pairedMessageTypes: readonly string[];
@@ -1736,6 +1743,69 @@ type ImmediateFollowupTriggerExpectation = Readonly<{
 
 type ImmediateFollowupTriggerRepairOutcome = 'repaired' | 'repair_failed';
 
+type QueuedNewCourseRuntimePrompt = Extract<
+  DialogQueuedPromptState,
+  {
+    kind: 'new_course_runtime_guide' | 'new_course_runtime_reply' | 'new_course_runtime_sideDialog';
+  }
+>;
+
+function isQueuedNewCourseRuntimePrompt(
+  prompt: DialogQueuedPromptState | undefined,
+): prompt is QueuedNewCourseRuntimePrompt {
+  return (
+    prompt?.kind === 'new_course_runtime_guide' ||
+    prompt?.kind === 'new_course_runtime_reply' ||
+    prompt?.kind === 'new_course_runtime_sideDialog'
+  );
+}
+
+function queuedNewCourseRuntimePromptToKernelPrompt(
+  prompt: QueuedNewCourseRuntimePrompt,
+): KernelDriverRuntimePrompt {
+  const common = {
+    content: prompt.prompt,
+    msgId: prompt.msgId,
+    grammar: prompt.grammar ?? ('markdown' as const),
+    userLanguageCode: prompt.userLanguageCode,
+    runControl: prompt.runControl,
+    origin: 'runtime' as const,
+    ...(prompt.skipTaskdoc === undefined ? {} : { skipTaskdoc: prompt.skipTaskdoc }),
+  };
+  switch (prompt.kind) {
+    case 'new_course_runtime_guide':
+      return common;
+    case 'new_course_runtime_reply':
+      return {
+        ...common,
+        tellaskReplyDirective: prompt.tellaskReplyDirective,
+      };
+    case 'new_course_runtime_sideDialog':
+      return {
+        ...common,
+        tellaskReplyDirective: prompt.tellaskReplyDirective,
+        calleeDialogReplyTarget: prompt.calleeDialogReplyTarget,
+      };
+  }
+}
+
+async function consumeQueuedNewCourseRuntimePromptForSameDrive(
+  dlg: Dialog,
+): Promise<KernelDriverRuntimePrompt | undefined> {
+  const queuedPrompt = dlg.peekQueuedPrompt();
+  if (!isQueuedNewCourseRuntimePrompt(queuedPrompt)) {
+    return undefined;
+  }
+  const consumedPrompt = dlg.takeQueuedPrompt();
+  if (!consumedPrompt || consumedPrompt.msgId !== queuedPrompt.msgId) {
+    throw new Error(
+      `queued new-course prompt invariant violation: expected queued prompt ${queuedPrompt.msgId} before same-drive continuation`,
+    );
+  }
+  await DialogPersistence.clearPendingRuntimePrompt(dlg.id, queuedPrompt.msgId, dlg.status);
+  return queuedNewCourseRuntimePromptToKernelPrompt(queuedPrompt);
+}
+
 function resolveFuncToolFollowupMode(tool: FuncTool | undefined): FuncToolFollowupMode {
   return tool?.followupMode ?? 'immediate';
 }
@@ -1748,6 +1818,7 @@ function summarizeRoutedFunctionResult(
     hasImmediateTellaskOutputs: routed.hasImmediateTellaskOutputs,
     immediateFollowupCallIds: routed.immediateFollowupCallIds,
     immediateTellaskOutputCallIds: routed.immediateTellaskOutputCallIds,
+    invalidTellaskCallIds: routed.invalidTellaskCallIds,
     shouldStopAfterReplyTool: routed.shouldStopAfterReplyTool,
     shouldStopAfterPendingTellaskWait: routed.shouldStopAfterPendingTellaskWait,
     pairedMessageTypes: routed.pairedMessages.map((msg) => msg.type),
@@ -2025,14 +2096,22 @@ function buildImmediateFollowupTriggerExpectation(args: {
       replyCallId: args.routed.immediateTellaskOutputCallIds[0]!,
     });
   }
+  const invalidRecoveryCallIds = new Set<string>(args.routed.invalidTellaskCallIds);
   if (args.invalidFuncCallCount > 0) {
-    const callIds = args.streamedFuncCalls.map((call) => call.id);
-    // Invalid provider tool payloads are a same-turn recovery fact, not a generic retry hint.
-    // Keep them inside the follow-up trigger so the next generation can repair the current turn
-    // immediately, while the invalid payload itself stays loud in runtime guides and logs.
+    for (const call of args.streamedFuncCalls) {
+      invalidRecoveryCallIds.add(call.id);
+    }
+    if (args.streamedFuncCalls.length === 0) {
+      invalidRecoveryCallIds.add(`invalid-tool:${args.invalidFuncCallCount}`);
+    }
+  }
+  if (invalidRecoveryCallIds.size > 0) {
+    // Invalid provider tool payloads and invalid tellask specials are same-turn recovery facts,
+    // not generic retry hints. Keep them inside the follow-up trigger so the next generation can
+    // repair the current turn immediately, while the invalid payload itself stays loud.
     reasons.push({
       kind: 'invalid_tool_recovery',
-      callIds: callIds.length > 0 ? callIds : [`invalid-tool:${args.invalidFuncCallCount}`],
+      callIds: [...invalidRecoveryCallIds],
     });
   }
   if (reasons.length === 0) {
@@ -2523,6 +2602,7 @@ async function executeFunctionRound(args: {
       hasImmediateTellaskOutputs: false,
       immediateFollowupCallIds: [],
       immediateTellaskOutputCallIds: [],
+      invalidTellaskCallIds: [],
       shouldStopAfterReplyTool: false,
       shouldStopAfterPendingTellaskWait: false,
       pairedMessages: [],
@@ -2656,6 +2736,7 @@ async function executeFunctionRound(args: {
     hasImmediateTellaskOutputs: tellaskRound.hasImmediateTellaskOutputs,
     immediateFollowupCallIds,
     immediateTellaskOutputCallIds: tellaskRound.immediateTellaskOutputCallIds,
+    invalidTellaskCallIds: tellaskRound.invalidTellaskCallIds,
     shouldStopAfterReplyTool: tellaskRound.shouldStopAfterReplyTool,
     shouldStopAfterPendingTellaskWait: tellaskRound.shouldStopAfterPendingTellaskWait,
     pairedMessages,
@@ -4273,6 +4354,13 @@ export async function driveDialogStreamCore(
                 .map((call) => call.name),
             });
             break;
+          }
+
+          const queuedNewCoursePrompt = await consumeQueuedNewCourseRuntimePromptForSameDrive(dlg);
+          if (queuedNewCoursePrompt !== undefined) {
+            pendingPrompt = queuedNewCoursePrompt;
+            skipTaskdocForThisDrive = false;
+            continue;
           }
 
           // Start an immediate post-tool generation only when this round produced tool outputs that

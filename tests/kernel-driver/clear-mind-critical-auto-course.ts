@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 
 import { driveDialogStream } from '../../main/llm/kernel-driver';
+import { DialogPersistence } from '../../main/persistence';
 import { formatNewCourseStartPrompt } from '../../main/runtime/driver-messages';
 import { setWorkLanguage } from '../../main/runtime/work-language';
 
@@ -84,6 +85,23 @@ async function main(): Promise<void> {
     assert.ok(
       promptingContents.includes(course2Prompt),
       `expected course-2 queued prompt to be consumed, got: ${JSON.stringify(promptingContents)}`,
+    );
+
+    const latest = await DialogPersistence.loadDialogLatest(dlg.id, dlg.status);
+    assert.deepEqual(
+      latest?.displayState,
+      { kind: 'idle_waiting_user' },
+      'clear_mind should not leave the dialog stopped on a pending runtime prompt',
+    );
+    assert.equal(
+      latest?.pendingRuntimePrompt,
+      undefined,
+      'clear_mind queued new-course prompt should be consumed in the same drive',
+    );
+    assert.equal(
+      latest?.nextStep.triggers.some((trigger) => trigger.kind === 'queued_prompt'),
+      false,
+      'clear_mind should not leave a queued_prompt trigger after same-drive continuation',
     );
   });
 

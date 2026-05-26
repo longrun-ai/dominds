@@ -75,6 +75,7 @@ export function buildFbrConclusionTools(language: LanguageCode): readonly FuncTo
     {
       type: 'func',
       name: FBR_LOW_NOISE_CONCLUSION_TOOL_NAME,
+      followupMode: 'deferred',
       description: buildFbrConclusionToolDescription({ language, kind: 'low_noise' }),
       parameters: {
         type: 'object',
@@ -95,6 +96,7 @@ export function buildFbrConclusionTools(language: LanguageCode): readonly FuncTo
     {
       type: 'func',
       name: FBR_UNREASONABLE_SITUATION_TOOL_NAME,
+      followupMode: 'deferred',
       description: buildFbrConclusionToolDescription({ language, kind: 'unreasonable' }),
       parameters: {
         type: 'object',

@@ -784,6 +784,7 @@ export const updateReminderTool: FuncTool = {
 export const clearMindTool: FuncTool = {
   type: 'func',
   name: 'clear_mind',
+  followupMode: 'deferred',
   description: 'Start a new dialog course, optionally carrying one extra continuation reminder.',
   descriptionI18n: {
     en: 'Start a new dialog course, optionally carrying one extra continuation reminder.',

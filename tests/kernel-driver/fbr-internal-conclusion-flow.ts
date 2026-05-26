@@ -5,10 +5,12 @@ import path from 'node:path';
 import { SideDialog } from '../../main/dialog';
 import { driveDialogStream } from '../../main/llm/kernel-driver';
 import {
+  buildFbrConclusionTools,
   buildFbrConvergencePrompt,
   buildFbrFinalizationPrompt,
   buildProgrammaticFbrUnreasonableSituationContent,
   FBR_LOW_NOISE_CONCLUSION_TOOL_NAME,
+  FBR_UNREASONABLE_SITUATION_TOOL_NAME,
 } from '../../main/llm/kernel-driver/fbr';
 import { DialogPersistence } from '../../main/persistence';
 import { appendDistinctPerspectiveFbrBody } from '../../main/runtime/fbr-body';
@@ -70,6 +72,14 @@ async function main(): Promise<void> {
     await writeFbrTeamYaml(tmpRoot, 2);
 
     const language = getWorkLanguage();
+    assert.deepEqual(
+      buildFbrConclusionTools(language).map((tool) => [tool.name, tool.followupMode]),
+      [
+        [FBR_LOW_NOISE_CONCLUSION_TOOL_NAME, 'deferred'],
+        [FBR_UNREASONABLE_SITUATION_TOOL_NAME, 'deferred'],
+      ],
+      'FBR conclusion tools should not request immediate post-tool follow-up',
+    );
 
     const successTrigger = '发起一次会正常收口的 FBR。';
     const successBody = [

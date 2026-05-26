@@ -3022,6 +3022,7 @@ export type TellaskFunctionRoundResult = Readonly<{
   hasInvalidTellaskCalls: boolean;
   hasImmediateTellaskOutputs: boolean;
   immediateTellaskOutputCallIds: readonly string[];
+  invalidTellaskCallIds: readonly string[];
   shouldStopAfterReplyTool: boolean;
   shouldStopAfterPendingTellaskWait: boolean;
 }>;
@@ -3246,6 +3247,10 @@ export async function processTellaskFunctionRound(args: {
       const result: FuncResultMsg = output;
       tellaskFuncResultByCallId.set(result.id, result);
       tellaskFuncResults.push(result);
+      const originatingCall = specialCallById.get(result.id);
+      if (originatingCall !== undefined && isReplyTellaskCallName(originatingCall.callName)) {
+        continue;
+      }
       hasImmediateTellaskOutputs = true;
       immediateTellaskOutputCallIds.push(result.id);
       continue;
@@ -3317,8 +3322,8 @@ export async function processTellaskFunctionRound(args: {
     hasInvalidTellaskCalls: orderedInvalidCalls.length > 0,
     hasImmediateTellaskOutputs,
     immediateTellaskOutputCallIds,
-    shouldStopAfterReplyTool:
-      orderedInvalidCalls.length === 0 && tellaskExecution.successfulReplyCallIds.length > 0,
+    invalidTellaskCallIds: orderedInvalidCalls.map((issue) => issue.originalCall.id),
+    shouldStopAfterReplyTool: tellaskExecution.successfulReplyCallIds.length > 0,
     shouldStopAfterPendingTellaskWait,
   };
 }

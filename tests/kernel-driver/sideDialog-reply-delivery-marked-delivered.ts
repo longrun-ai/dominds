@@ -8,7 +8,11 @@ import {
   toCallSiteGenseqNo,
 } from '@longrun-ai/kernel/types/storage';
 import { formatUnifiedTimestamp } from '@longrun-ai/kernel/utils/time';
-import { executeTellaskCalls } from '../../main/llm/kernel-driver/tellask-special';
+import {
+  executeTellaskCalls,
+  processTellaskFunctionRound,
+  type TellaskCallFunctionName,
+} from '../../main/llm/kernel-driver/tellask-special';
 import { DialogPersistence } from '../../main/persistence';
 import { createMainDialog, withTempRtws, writeMockDb, writeStandardMinds } from './helpers';
 
@@ -128,6 +132,76 @@ async function main(): Promise<void> {
       'stale pending reply delivery should not stop a newer valid reply call',
     );
     assert.equal(replacedLatest?.replyDelivery?.targetCallId, replacementTargetCallId);
+
+    const sessionlessRoot = await createMainDialog('tester');
+    const sessionlessCallId = 'root-sessionless-assignment-call';
+    const sessionlessTellaskContent = 'Please finish this sessionless assignment.';
+    const sessionlessSideDialog = await sessionlessRoot.createSideDialog(
+      'pangu',
+      ['@pangu'],
+      sessionlessTellaskContent,
+      {
+        callName: 'tellaskSessionless',
+        originMemberId: 'tester',
+        askerDialogId: sessionlessRoot.id.selfId,
+        callId: sessionlessCallId,
+        callSiteCourse: 1,
+        callSiteGenseq: 1,
+        collectiveTargets: ['pangu'],
+      },
+    );
+    await DialogPersistence.appendActiveCalleeDispatch(sessionlessRoot.id, {
+      batchId: 'reply-delivery-sessionless-batch',
+      calleeDialogId: sessionlessSideDialog.id.selfId,
+      callId: sessionlessCallId,
+      callName: 'tellaskSessionless',
+      callSiteCourse: toCallSiteCourseNo(1),
+      callSiteGenseq: toCallSiteGenseqNo(1),
+      callType: 'C',
+      createdAt: formatUnifiedTimestamp(new Date()),
+      mentionList: ['@pangu'],
+      targetAgentId: 'pangu',
+      tellaskContent: sessionlessTellaskContent,
+    });
+    const sessionlessRound = await processTellaskFunctionRound({
+      dlg: sessionlessSideDialog,
+      funcCalls: [
+        {
+          type: 'func_call_msg',
+          role: 'assistant',
+          genseq: 1,
+          id: 'sessionless-reply-call',
+          name: 'replyTellaskSessionless',
+          arguments: JSON.stringify({ replyContent: 'Sessionless done.' }),
+        },
+      ],
+      allowedSpecials: new Set<TellaskCallFunctionName>(['replyTellaskSessionless']),
+      callbacks: {
+        scheduleDrive: () => {},
+        driveDialog: async () => {},
+      },
+      activePromptReplyDirective: {
+        expectedReplyCallName: 'replyTellaskSessionless',
+        targetDialogId: sessionlessRoot.id.selfId,
+        targetCallId: sessionlessCallId,
+        tellaskContent: sessionlessTellaskContent,
+      },
+    });
+    assert.equal(
+      sessionlessRound.shouldStopAfterReplyTool,
+      true,
+      'successful replyTellaskSessionless delivery should stop the side dialog drive',
+    );
+    assert.equal(
+      sessionlessRound.hasImmediateTellaskOutputs,
+      false,
+      'successful replyTellaskSessionless delivery must not request same-drive follow-up',
+    );
+    assert.deepEqual(
+      sessionlessRound.immediateTellaskOutputCallIds,
+      [],
+      'successful replyTellaskSessionless delivery must not record immediate output call ids',
+    );
   });
 
   console.log('kernel-driver sideDialog-reply-delivery-marked-delivered: PASS');
