@@ -20,6 +20,7 @@ import {
   type DialogFbrState,
   type DialogFollowupReason,
   type DialogGenerationRunState,
+  type DialogNextStepTriggerDraft,
   type DialogPendingUserInterjectionReply,
   type FuncResultRecord,
   type TellaskAnchorRecord,
@@ -1722,6 +1723,19 @@ type ToolRoundStopDiagnostics = Readonly<{
   }>;
 }>;
 
+type ImmediateFollowupTriggerDraft = Extract<DialogNextStepTriggerDraft, { kind: 'followup' }>;
+
+type ImmediateFollowupTriggerExpectation = Readonly<{
+  trigger: ImmediateFollowupTriggerDraft;
+  callIds: readonly string[];
+  callNames: readonly string[];
+  routed: ToolRoundStopDiagnostics['routed'];
+  continuation: DialogBusinessContinuation;
+  invalidFuncCallCount: number;
+}>;
+
+type ImmediateFollowupTriggerRepairOutcome = 'repaired' | 'repair_failed';
+
 function resolveFuncToolFollowupMode(tool: FuncTool | undefined): FuncToolFollowupMode {
   return tool?.followupMode ?? 'immediate';
 }
@@ -1872,6 +1886,67 @@ async function maybeWriteUnexpectedIdleAfterToolRoundDebugDump(args: {
   );
 }
 
+async function writeMissingImmediateFollowupTriggerDebugDump(args: {
+  dlg: Dialog;
+  expectation: ImmediateFollowupTriggerExpectation;
+  latestBeforeRepair: Awaited<ReturnType<typeof DialogPersistence.loadDialogLatest>>;
+  latestAfterRepair: Awaited<ReturnType<typeof DialogPersistence.loadDialogLatest>>;
+  checkPoint: string;
+  repairOutcome: ImmediateFollowupTriggerRepairOutcome;
+}): Promise<string> {
+  const capturedAt = formatUnifiedTimestamp(new Date());
+  const debugDir = path.resolve(process.cwd(), '.dialogs', 'debug');
+  const trigger = args.expectation.trigger;
+  const fileName = [
+    'kernel-driver-missing-immediate-followup-trigger',
+    sanitizeDebugFileSegment(capturedAt),
+    sanitizeDebugFileSegment(args.dlg.id.rootId),
+    sanitizeDebugFileSegment(args.dlg.id.selfId),
+    sanitizeDebugFileSegment(trigger.triggerId),
+    `${generateShortId()}.json`,
+  ].join('-');
+  const activeCallees = await DialogPersistence.loadActiveCallees(args.dlg.id, args.dlg.status);
+  const suspension = await args.dlg.getSuspensionStatus();
+  const payload = {
+    kind:
+      args.repairOutcome === 'repaired'
+        ? 'kernel_driver_missing_immediate_followup_trigger_repaired'
+        : 'kernel_driver_missing_immediate_followup_trigger_repair_failed',
+    capturedAt,
+    rtwsRootAbs: process.cwd(),
+    repairOutcome: args.repairOutcome,
+    checkPoint: args.checkPoint,
+    dialog: {
+      rootId: args.dlg.id.rootId,
+      selfId: args.dlg.id.selfId,
+      value: args.dlg.id.valueOf(),
+      agentId: args.dlg.agentId,
+      status: args.dlg.status,
+      currentCourse: args.dlg.currentCourse,
+      activeGenCourse: args.dlg.activeGenCourseOrUndefined ?? null,
+      activeGenSeq: args.dlg.activeGenSeqOrUndefined ?? null,
+      hasQueuedPrompt: args.dlg.hasQueuedPrompt(),
+      queuedPrompt: args.dlg.peekQueuedPrompt() ?? null,
+    },
+    expectation: args.expectation,
+    latestBeforeRepair: args.latestBeforeRepair,
+    latestAfterRepair: args.latestAfterRepair,
+    activeCallees,
+    suspension,
+    callstack:
+      new Error(
+        args.repairOutcome === 'repaired'
+          ? 'kernel-driver missing immediate followup trigger repaired'
+          : 'kernel-driver missing immediate followup trigger repair failed',
+      ).stack ?? null,
+  };
+
+  await fs.mkdir(debugDir, { recursive: true });
+  const debugPath = path.join(debugDir, fileName);
+  await fs.writeFile(debugPath, `${JSON.stringify(payload, null, 2)}\n`, 'utf8');
+  return debugPath;
+}
+
 async function maybeWriteIdleWithActiveReplyObligationDebugDump(args: {
   dlg: Dialog;
   finalDisplayState: DialogDisplayState;
@@ -1929,13 +2004,13 @@ async function maybeWriteIdleWithActiveReplyObligationDebugDump(args: {
   );
 }
 
-async function upsertImmediateFollowupTrigger(args: {
+function buildImmediateFollowupTriggerExpectation(args: {
   dlg: Dialog;
   routed: RoutedFunctionResult;
   invalidFuncCallCount: number;
   streamedFuncCalls: readonly FuncCallMsg[];
   continuation: DialogBusinessContinuation;
-}): Promise<void> {
+}): ImmediateFollowupTriggerExpectation | undefined {
   const reasons: DialogFollowupReason[] = [];
   if (args.routed.immediateFollowupCallIds.length > 0) {
     reasons.push({
@@ -1961,11 +2036,11 @@ async function upsertImmediateFollowupTrigger(args: {
     });
   }
   if (reasons.length === 0) {
-    return;
+    return undefined;
   }
   const course = args.dlg.activeGenCourseOrUndefined ?? args.dlg.currentCourse;
   const genseq = args.dlg.activeGenSeq;
-  await DialogPersistence.upsertNextStepTrigger(args.dlg.id, {
+  const trigger: ImmediateFollowupTriggerDraft = {
     triggerId: `followup:c${String(course)}:g${String(genseq)}`,
     kind: 'followup',
     sourceGeneration: {
@@ -1974,7 +2049,98 @@ async function upsertImmediateFollowupTrigger(args: {
     },
     reasons,
     continuation: args.continuation,
+  };
+  return {
+    trigger,
+    callIds: args.streamedFuncCalls.map((call) => call.id),
+    callNames: args.streamedFuncCalls.map((call) => call.name),
+    routed: summarizeRoutedFunctionResult(args.routed),
+    continuation: args.continuation,
+    invalidFuncCallCount: args.invalidFuncCallCount,
+  };
+}
+
+async function upsertImmediateFollowupTrigger(
+  dlg: Dialog,
+  expectation: ImmediateFollowupTriggerExpectation,
+): Promise<void> {
+  await DialogPersistence.upsertNextStepTrigger(dlg.id, expectation.trigger, dlg.status);
+}
+
+function hasExpectedImmediateFollowupTrigger(
+  latest: Awaited<ReturnType<typeof DialogPersistence.loadDialogLatest>>,
+  expectation: ImmediateFollowupTriggerExpectation,
+): boolean {
+  return (
+    latest?.nextStep.triggers.some(
+      (trigger) =>
+        trigger.kind === 'followup' && trigger.triggerId === expectation.trigger.triggerId,
+    ) === true
+  );
+}
+
+async function repairMissingImmediateFollowupTrigger(args: {
+  dlg: Dialog;
+  expectation: ImmediateFollowupTriggerExpectation | undefined;
+  checkPoint: string;
+}): Promise<void> {
+  const expectation = args.expectation;
+  if (expectation === undefined) {
+    return;
+  }
+  const latestBeforeRepair = await DialogPersistence.loadDialogLatest(args.dlg.id, args.dlg.status);
+  if (hasExpectedImmediateFollowupTrigger(latestBeforeRepair, expectation)) {
+    return;
+  }
+
+  await DialogPersistence.upsertNextStepTrigger(args.dlg.id, expectation.trigger, args.dlg.status);
+  const latestAfterRepair = await DialogPersistence.loadDialogLatest(args.dlg.id, args.dlg.status);
+  const repairSucceeded = hasExpectedImmediateFollowupTrigger(latestAfterRepair, expectation);
+  const repairOutcome: ImmediateFollowupTriggerRepairOutcome = repairSucceeded
+    ? 'repaired'
+    : 'repair_failed';
+  const debugPath = await writeMissingImmediateFollowupTriggerDebugDump({
+    dlg: args.dlg,
+    expectation,
+    latestBeforeRepair,
+    latestAfterRepair,
+    checkPoint: args.checkPoint,
+    repairOutcome,
   });
+  const message =
+    `${repairSucceeded ? 'Repaired' : 'Failed to repair'} missing immediate follow-up trigger after function results ` +
+    `(triggerId=${expectation.trigger.triggerId}, checkPoint=${args.checkPoint})`;
+  log.error(
+    message,
+    new Error(`kernel_driver_missing_immediate_followup_trigger_${repairOutcome}`),
+    {
+      rootId: args.dlg.id.rootId,
+      selfId: args.dlg.id.selfId,
+      dialogId: args.dlg.id.valueOf(),
+      status: args.dlg.status,
+      triggerId: expectation.trigger.triggerId,
+      checkPoint: args.checkPoint,
+      repairSucceeded,
+      sourceGeneration: expectation.trigger.sourceGeneration,
+      reasonKinds: expectation.trigger.reasons.map((reason) => reason.kind),
+      callIds: expectation.callIds,
+      callNames: expectation.callNames,
+      invalidFuncCallCount: expectation.invalidFuncCallCount,
+      continuation: expectation.continuation,
+      routed: expectation.routed,
+      latestBeforeRepairNextStep: latestBeforeRepair?.nextStep ?? null,
+      latestBeforeRepairGenerationRunState: latestBeforeRepair?.generationRunState ?? null,
+      latestBeforeRepairDisplayState: latestBeforeRepair?.displayState ?? null,
+      latestAfterRepairNextStep: latestAfterRepair?.nextStep ?? null,
+      latestAfterRepairGenerationRunState: latestAfterRepair?.generationRunState ?? null,
+      latestAfterRepairDisplayState: latestAfterRepair?.displayState ?? null,
+      debugPath,
+    },
+  );
+  await args.dlg.streamError(`${message}; debug=${debugPath}`);
+  if (!repairSucceeded) {
+    throw new Error(`${message}; debug=${debugPath}`);
+  }
 }
 
 function shouldImmediatelyFollowUpSuccessfulToolResult(tool: FuncTool | undefined): boolean {
@@ -3068,6 +3234,7 @@ export async function driveDialogStreamCore(
         }
         lastBusinessContinuation = currentBusinessContinuation;
         let generationBodyError: unknown;
+        let immediateFollowupTriggerExpectation: ImmediateFollowupTriggerExpectation | undefined;
         const q4hAnswerCallId = normalizeQ4HAnswerCallId(currentPrompt?.q4hAnswerCallId);
         const isQ4HAnswerPrompt = q4hAnswerCallId !== undefined;
         try {
@@ -4108,13 +4275,42 @@ export async function driveDialogStreamCore(
             break;
           }
 
+          // Start an immediate post-tool generation only when this round produced tool outputs that
+          // warrant same-drive LLM reaction right away. Provider-native side-channel UI events are
+          // meaningful output, but they are not transcript/context inputs and therefore must not
+          // trigger another immediate generation round by themselves.
+          const shouldStartImmediatePostToolGeneration =
+            routed.hasImmediateFollowupToolCalls ||
+            routed.hasImmediateTellaskOutputs ||
+            invalidFuncCallCount > 0;
+          if (shouldStartImmediatePostToolGeneration) {
+            const expectation = buildImmediateFollowupTriggerExpectation({
+              dlg,
+              routed,
+              invalidFuncCallCount,
+              streamedFuncCalls,
+              continuation: currentBusinessContinuation,
+            });
+            if (expectation === undefined) {
+              throw new Error(
+                `Immediate follow-up trigger invariant violation: expected trigger reasons missing ` +
+                  `(dialog=${dlg.id.valueOf()}, course=${String(dlg.activeGenCourseOrUndefined ?? dlg.currentCourse)}, ` +
+                  `genseq=${String(dlg.activeGenSeq)}, immediateToolCalls=${String(routed.hasImmediateFollowupToolCalls)}, ` +
+                  `immediateTellaskOutputs=${String(routed.hasImmediateTellaskOutputs)}, ` +
+                  `invalidFuncCallCount=${String(invalidFuncCallCount)})`,
+              );
+            }
+            immediateFollowupTriggerExpectation = expectation;
+            await upsertImmediateFollowupTrigger(dlg, immediateFollowupTriggerExpectation);
+          }
+
           if (dlg.hasQueuedPrompt()) {
             lastToolRoundStopDiagnostics = buildToolRoundStopDiagnostics({
               dlg,
               streamedFuncCalls,
               routed,
               lastBusinessContinuation,
-              shouldStartImmediatePostToolGeneration: false,
+              shouldStartImmediatePostToolGeneration,
               stopReason: 'queued_prompt_after_tool_round',
               queuedPromptAfterToolRound: true,
               remindersVer: dlg.remindersVer,
@@ -4137,7 +4333,7 @@ export async function driveDialogStreamCore(
               streamedFuncCalls,
               routed,
               lastBusinessContinuation,
-              shouldStartImmediatePostToolGeneration: false,
+              shouldStartImmediatePostToolGeneration,
               stopReason: 'suspended_after_tool_round',
               suspensionAfterToolRound,
               queuedPromptAfterToolRound: dlg.hasQueuedPrompt(),
@@ -4148,14 +4344,6 @@ export async function driveDialogStreamCore(
             break;
           }
 
-          // Start an immediate post-tool generation only when this round produced tool outputs that
-          // warrant same-drive LLM reaction right away. Provider-native side-channel UI events are
-          // meaningful output, but they are not transcript/context inputs and therefore must not
-          // trigger another immediate generation round by themselves.
-          const shouldStartImmediatePostToolGeneration =
-            routed.hasImmediateFollowupToolCalls ||
-            routed.hasImmediateTellaskOutputs ||
-            invalidFuncCallCount > 0;
           if (!shouldStartImmediatePostToolGeneration) {
             if (routed.shouldStopAfterPendingTellaskWait) {
               lastToolRoundStopDiagnostics = buildToolRoundStopDiagnostics({
@@ -4212,28 +4400,31 @@ export async function driveDialogStreamCore(
             });
             break;
           }
-          if (shouldStartImmediatePostToolGeneration) {
-            await upsertImmediateFollowupTrigger({
-              dlg,
-              routed,
-              invalidFuncCallCount,
-              streamedFuncCalls,
-              continuation: currentBusinessContinuation,
-            });
-            resolvingImmediateToolResultForUserPrompt =
-              currentGenerationBelongsToUserPrompt ||
-              currentGenerationBelongsToUserToolChain ||
-              isUserOriginPrompt(currentPrompt);
-            resolvingImmediateToolResultUserPromptMsgId = resolvingImmediateToolResultForUserPrompt
-              ? currentUserPromptMsgId
-              : undefined;
-            continue;
-          }
+          await repairMissingImmediateFollowupTrigger({
+            dlg,
+            expectation: immediateFollowupTriggerExpectation,
+            checkPoint: 'before_immediate_post_tool_generation_continue',
+          });
+          resolvingImmediateToolResultForUserPrompt =
+            currentGenerationBelongsToUserPrompt ||
+            currentGenerationBelongsToUserToolChain ||
+            isUserOriginPrompt(currentPrompt);
+          resolvingImmediateToolResultUserPromptMsgId = resolvingImmediateToolResultForUserPrompt
+            ? currentUserPromptMsgId
+            : undefined;
+          continue;
         } catch (err) {
           generationBodyError = err;
           throw err;
         } finally {
           try {
+            if (generationBodyError === undefined) {
+              await repairMissingImmediateFollowupTrigger({
+                dlg,
+                expectation: immediateFollowupTriggerExpectation,
+                checkPoint: 'before_notify_generating_finish',
+              });
+            }
             await dlg.notifyGeneratingFinish(contextHealthForGen, llmGenModelForGen);
           } catch (finishErr) {
             if (generationBodyError !== undefined) {
