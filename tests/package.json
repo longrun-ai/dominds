@@ -202,7 +202,8 @@
     "team_mgmt-manual-codex-teammate-guidance": "tsx team_mgmt-manual/codex-teammate-guidance.ts",
     "team_mgmt-manual-team-gofor-shapes": "tsx team_mgmt-manual/team-gofor-shapes.ts",
     "team_mgmt-mcp-hot-reload-manual-problems": "tsx team_mgmt-manual/mcp-hot-reload-manual-problems.ts",
-    "team_mgmt-validate-mcp-manual-errors": "tsx team_mgmt-manual/mcp-validate-manual-errors.ts"
+    "team_mgmt-validate-mcp-manual-errors": "tsx team_mgmt-manual/mcp-validate-manual-errors.ts",
+    "server-dialog-forensics-zip": "tsx server-dialog-forensics-zip.ts"
   },
   "devDependencies": {
     "tsx": "^4.21.0",

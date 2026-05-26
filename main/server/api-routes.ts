@@ -61,6 +61,7 @@ import {
   searchTaskDocumentSuggestionsInWorker,
 } from '../utils/taskdoc-search-worker-client';
 import { makeCreateDialogFailure, parseCreateDialogInput } from './create-dialog-contract';
+import { handleDialogForensicsZipRoute } from './dialog-forensics-routes';
 import { getDomindsRuntimeStatus } from './dominds-runtime-status';
 import {
   checkLatestDomindsVersionNow,
@@ -1171,6 +1172,14 @@ export async function handleApiRoute(
       return await handleGetRuntimeInfo(res, context);
     }
 
+    if (pathname === '/api/dialog-forensics.zip' && req.method === 'GET') {
+      return await handleDialogForensicsZipRoute(req.url, res);
+    }
+
+    if (pathname === '/api/rtws/raw' && req.method === 'GET') {
+      return await handleGetRtwsRaw(req, res);
+    }
+
     if (pathname === '/api/dominds/self-update' && req.method === 'POST') {
       const body = await readRequestBody(req);
       let parsed: unknown;
@@ -1558,6 +1567,70 @@ export async function handleApiRoute(
   } catch (error) {
     log.error('Error handling API route:', error);
     respondJson(res, 500, { error: 'Internal server error' });
+    return true;
+  }
+}
+
+function encodeContentDispositionFilenameStar(name: string): string {
+  return encodeURIComponent(name).replace(
+    /['()*]/g,
+    (char) => `%${char.charCodeAt(0).toString(16).toUpperCase()}`,
+  );
+}
+
+function contentDispositionInlineFilename(name: string): string {
+  const fallback = name.replace(/[^\x20-\x7e]|[\r\n\\"]/g, '_');
+  return `inline; filename="${fallback}"; filename*=UTF-8''${encodeContentDispositionFilenameStar(name)}`;
+}
+
+async function handleGetRtwsRaw(req: IncomingMessage, res: ServerResponse): Promise<boolean> {
+  const urlObj = new URL(req.url ?? '', 'http://127.0.0.1');
+  const rawPath = urlObj.searchParams.get('path');
+  if (rawPath === null || rawPath.trim() === '') {
+    respondJson(res, 400, { success: false, error: '`path` is required' });
+    return true;
+  }
+  const pathRel = normalizeRtwsRelativePath(rawPath, { allowRoot: false });
+  if (pathRel === null) {
+    respondJson(res, 400, { success: false, error: 'Invalid rtws path' });
+    return true;
+  }
+
+  try {
+    const resolved = await resolveWorkspacePreviewPath(pathRel);
+    const stat = await fsPromises.stat(resolved.candidateAbsPath);
+    if (!stat.isFile()) {
+      respondJson(res, 400, {
+        success: false,
+        error: 'Path must resolve to a file',
+        path: pathRel,
+      });
+      return true;
+    }
+    const headBytes = await readFileHead(resolved.candidateAbsPath, 512);
+    const mimeType = sniffMimeType(pathRel, headBytes);
+    const data = await fsPromises.readFile(resolved.candidateAbsPath);
+    res.writeHead(200, {
+      'Content-Type': mimeType,
+      'Content-Length': data.byteLength,
+      'Content-Disposition': contentDispositionInlineFilename(path.basename(pathRel)),
+      'Cache-Control': 'no-store',
+      'X-Content-Type-Options': 'nosniff',
+    });
+    res.end(data);
+    return true;
+  } catch (error: unknown) {
+    const code = getErrorCode(error);
+    if (code === 'ENOENT') {
+      respondJson(res, 404, { success: false, error: 'Path not found', path: pathRel });
+      return true;
+    }
+    if (code === 'OUTSIDE_RTWS') {
+      respondJson(res, 403, { success: false, error: 'Path resolves outside rtws', path: pathRel });
+      return true;
+    }
+    log.error('Failed to read rtws raw file', error, { path: pathRel });
+    respondJson(res, 500, { success: false, error: 'Failed to read rtws raw file', path: pathRel });
     return true;
   }
 }
