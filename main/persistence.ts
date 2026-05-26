@@ -3347,7 +3347,7 @@ export class DiskFileDialogStore extends DialogStore {
       acceptedTriggers = triggerSelection.acceptedTriggers;
       if (triggerSelection.supersededTriggers.length > 0) {
         log.debug(
-          'Superseded stale next-step triggers while starting queued runtime prompt generation',
+          'Superseded stale next-step triggers while starting prompt-driven generation',
           undefined,
           {
             dialogId: this.dialogId.valueOf(),
@@ -3360,7 +3360,7 @@ export class DiskFileDialogStore extends DialogStore {
             supersededTriggerIds: triggerSelection.supersededTriggers.map(
               (trigger) => trigger.triggerId,
             ),
-            reason: 'queued_runtime_prompt_new_course_takes_precedence',
+            reason: 'prompt_generation_takes_precedence',
           },
         );
       }
@@ -5995,27 +5995,17 @@ function filterNextStepTriggersForGenerationStart(args: {
     return { acceptedTriggers: orderedTriggers, supersededTriggers: [] };
   }
 
-  const promptTrigger = orderedTriggers.find(
-    (trigger) =>
-      trigger.kind === 'queued_prompt' &&
-      trigger.promptId === args.msgId &&
-      trigger.course === args.currentCourse,
-  );
-  if (promptTrigger === undefined) {
-    return { acceptedTriggers: orderedTriggers, supersededTriggers: [] };
-  }
-
   const acceptedTriggers: DialogNextStepTrigger[] = [];
   const supersededTriggers: DialogNextStepTrigger[] = [];
   for (const trigger of orderedTriggers) {
-    const belongsToPromptCourse = (() => {
+    const shouldAcceptTrigger = (() => {
       switch (trigger.kind) {
         case 'queued_prompt':
         case 'user_input':
         case 'open_generation_recovery':
           return trigger.course === args.currentCourse;
         case 'followup':
-          return trigger.sourceGeneration.course === args.currentCourse;
+          return false;
         case 'mainline_diligence':
         case 'result_arrival':
         case 'reply_delivery_recovery':
@@ -6028,7 +6018,7 @@ function filterNextStepTriggersForGenerationStart(args: {
         }
       }
     })();
-    if (belongsToPromptCourse) {
+    if (shouldAcceptTrigger) {
       acceptedTriggers.push(trigger);
     } else {
       supersededTriggers.push(trigger);

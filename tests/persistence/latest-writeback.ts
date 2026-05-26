@@ -591,6 +591,180 @@ async function main(): Promise<void> {
       'queued runtime prompt should remain as the live continuation for the new course',
     );
 
+    // Invariant 11b: a prompt-driven generation should supersede same-course immediate
+    // followups. Otherwise an ordinary post-tool followup can collide with the prompt's explicit
+    // business continuation when a registered side dialog receives an updated assignment while a
+    // tool round is finishing.
+    const sameCoursePromptDialogId = new DialogID('74/6e/da2d0179');
+    const sameCoursePromptMetadata: MainDialogMetadataFile = {
+      id: sameCoursePromptDialogId.selfId,
+      agentId: 'tester',
+      taskDocPath: 'plans/latest-writeback-same-course-prompt.tsk',
+      createdAt: formatUnifiedTimestamp(new Date('2026-04-12T00:05:40.000Z')),
+    };
+    await DialogPersistence.saveMainDialogMetadata(
+      sameCoursePromptDialogId,
+      sameCoursePromptMetadata,
+      'running',
+    );
+    await DialogPersistence.mutateDialogLatest(sameCoursePromptDialogId, () => ({
+      kind: 'replace',
+      next: {
+        currentCourse: 21,
+        lastModified: formatUnifiedTimestamp(new Date('2026-04-12T00:05:41.000Z')),
+        status: 'active',
+        generating: false,
+        nextStep: {
+          nextSeq: 3,
+          triggers: [
+            {
+              triggerId: 'queued-prompt:updated-assignment-msg',
+              kind: 'queued_prompt',
+              promptId: 'updated-assignment-msg',
+              course: 21,
+              createdAt: formatUnifiedTimestamp(new Date('2026-04-12T00:05:41.000Z')),
+              seq: 1,
+            },
+            {
+              triggerId: 'followup:c21:g1558',
+              kind: 'followup',
+              sourceGeneration: {
+                course: 21,
+                genseq: 1558,
+              },
+              reasons: [
+                {
+                  kind: 'ordinary_tool_result',
+                  callIds: ['call-update-reminder'],
+                },
+              ],
+              continuation: { kind: 'none' },
+              createdAt: formatUnifiedTimestamp(new Date('2026-04-12T00:05:42.000Z')),
+              seq: 2,
+            },
+          ],
+        },
+        tellaskCalls: createEmptyDialogTellaskCallState(),
+        tellaskResults: createEmptyDialogTellaskResultState(),
+        displayState: { kind: 'proceeding' },
+        messageCount: 0,
+        functionCallCount: 0,
+        sideDialogCount: 0,
+        disableDiligencePush: false,
+        diligencePushRemainingBudget: 0,
+      },
+    }));
+    const sameCoursePromptStore = new DiskFileDialogStore(sameCoursePromptDialogId);
+    const sameCoursePromptDialog = new MainDialog(
+      sameCoursePromptStore,
+      'plans/latest-writeback-same-course-prompt.tsk',
+      sameCoursePromptDialogId,
+      'tester',
+      { currentCourse: 21 },
+    );
+    const acceptedSameCourseTriggers =
+      await sameCoursePromptDialog.notifyGeneratingStart('updated-assignment-msg');
+    assert.deepEqual(
+      acceptedSameCourseTriggers.map((trigger) => trigger.triggerId),
+      ['queued-prompt:updated-assignment-msg'],
+      'prompt-driven generation must supersede same-course immediate followups',
+    );
+    const latestAfterSameCoursePrompt =
+      await DialogPersistence.loadDialogLatest(sameCoursePromptDialogId);
+    assert.ok(latestAfterSameCoursePrompt, 'Expected latest after same-course prompt start');
+    assert.deepEqual(latestAfterSameCoursePrompt.generationRunState?.acceptedTriggerIds, [
+      'queued-prompt:updated-assignment-msg',
+    ]);
+    assert.equal(
+      latestAfterSameCoursePrompt.nextStep.triggers.some(
+        (trigger) => trigger.triggerId === 'followup:c21:g1558',
+      ),
+      false,
+      'same-course immediate followup should be consumed as superseded by prompt generation',
+    );
+
+    const missingQueuedPromptDialogId = new DialogID('74/6e/da2d0180');
+    const missingQueuedPromptMetadata: MainDialogMetadataFile = {
+      id: missingQueuedPromptDialogId.selfId,
+      agentId: 'tester',
+      taskDocPath: 'plans/latest-writeback-missing-queued-prompt.tsk',
+      createdAt: formatUnifiedTimestamp(new Date('2026-04-12T00:05:50.000Z')),
+    };
+    await DialogPersistence.saveMainDialogMetadata(
+      missingQueuedPromptDialogId,
+      missingQueuedPromptMetadata,
+      'running',
+    );
+    await DialogPersistence.mutateDialogLatest(missingQueuedPromptDialogId, () => ({
+      kind: 'replace',
+      next: {
+        currentCourse: 21,
+        lastModified: formatUnifiedTimestamp(new Date('2026-04-12T00:05:51.000Z')),
+        status: 'active',
+        generating: false,
+        nextStep: {
+          nextSeq: 2,
+          triggers: [
+            {
+              triggerId: 'followup:c21:g1558',
+              kind: 'followup',
+              sourceGeneration: {
+                course: 21,
+                genseq: 1558,
+              },
+              reasons: [
+                {
+                  kind: 'ordinary_tool_result',
+                  callIds: ['call-update-reminder'],
+                },
+              ],
+              continuation: { kind: 'none' },
+              createdAt: formatUnifiedTimestamp(new Date('2026-04-12T00:05:51.000Z')),
+              seq: 1,
+            },
+          ],
+        },
+        tellaskCalls: createEmptyDialogTellaskCallState(),
+        tellaskResults: createEmptyDialogTellaskResultState(),
+        displayState: { kind: 'proceeding' },
+        messageCount: 0,
+        functionCallCount: 0,
+        sideDialogCount: 0,
+        disableDiligencePush: false,
+        diligencePushRemainingBudget: 0,
+      },
+    }));
+    const missingQueuedPromptStore = new DiskFileDialogStore(missingQueuedPromptDialogId);
+    const missingQueuedPromptDialog = new MainDialog(
+      missingQueuedPromptStore,
+      'plans/latest-writeback-missing-queued-prompt.tsk',
+      missingQueuedPromptDialogId,
+      'tester',
+      { currentCourse: 21 },
+    );
+    const acceptedMissingQueuedPromptTriggers =
+      await missingQueuedPromptDialog.notifyGeneratingStart('updated-assignment-msg');
+    assert.deepEqual(
+      acceptedMissingQueuedPromptTriggers.map((trigger) => trigger.triggerId),
+      [],
+      'prompt-driven start must not accept same-course immediate followup when queued_prompt was already cleared',
+    );
+    const latestAfterMissingQueuedPrompt = await DialogPersistence.loadDialogLatest(
+      missingQueuedPromptDialogId,
+    );
+    assert.ok(
+      latestAfterMissingQueuedPrompt,
+      'Expected latest after missing queued_prompt generation start',
+    );
+    assert.deepEqual(latestAfterMissingQueuedPrompt.generationRunState?.acceptedTriggerIds, []);
+    assert.equal(
+      latestAfterMissingQueuedPrompt.nextStep.triggers.some(
+        (trigger) => trigger.triggerId === 'followup:c21:g1558',
+      ),
+      false,
+      'prompt start with missing queued_prompt should discard competing same-course followup',
+    );
+
     // Invariant 12: transient Windows-style filesystem failures must be retried for wake queue.
     const driveRootId = new DialogID('73/6d/da1d0177');
     const driveSideId = new DialogID('74/6d/da1d0177', driveRootId.selfId);
