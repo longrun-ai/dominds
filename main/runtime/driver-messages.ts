@@ -343,7 +343,9 @@ function getReminderMaintenanceInstructions(
       ? deleteValue['altInstruction'].trim()
       : undefined;
   const daemonCompleted =
-    metaKind === 'daemon' && isReminderGuideMetaRecord(metaValue) && metaValue['completed'] === true;
+    metaKind === 'daemon' &&
+    isReminderGuideMetaRecord(metaValue) &&
+    metaValue['completed'] === true;
   const deleteInstruction =
     language === 'zh'
       ? isPendingTellaskReminder && pendingTellaskCount !== undefined && pendingTellaskCount > 0
@@ -384,22 +386,30 @@ export function formatReminderMaintenanceReference(
     );
     if (language === 'zh') {
       if (updateInstruction) {
-        lines.push(`- reminder_id=${reminder.id}：我若要更新/调整这条提醒项，参考：${updateInstruction}`);
+        lines.push(
+          `- reminder_id=${reminder.id}：我若要更新/调整这条提醒项，参考：${updateInstruction}`,
+        );
       } else {
         lines.push(
           `- reminder_id=${reminder.id}：我若要更新/调整这条提醒项，参考：update_reminder({ "reminder_id": "${reminder.id}", "content": "..." })`,
         );
       }
-      lines.push(`- reminder_id=${reminder.id}：我若要删除/清理这条提醒项，参考：${deleteInstruction}`);
+      lines.push(
+        `- reminder_id=${reminder.id}：我若要删除/清理这条提醒项，参考：${deleteInstruction}`,
+      );
     } else {
       if (updateInstruction) {
-        lines.push(`- reminder_id=${reminder.id}: if I update/change this reminder, I follow: ${updateInstruction}`);
+        lines.push(
+          `- reminder_id=${reminder.id}: if I update/change this reminder, I follow: ${updateInstruction}`,
+        );
       } else {
         lines.push(
           `- reminder_id=${reminder.id}: if I update/change this reminder, I follow: update_reminder({ "reminder_id": "${reminder.id}", "content": "..." })`,
         );
       }
-      lines.push(`- reminder_id=${reminder.id}: if I delete/clean up this reminder, I follow: ${deleteInstruction}`);
+      lines.push(
+        `- reminder_id=${reminder.id}: if I delete/clean up this reminder, I follow: ${deleteInstruction}`,
+      );
     }
   }
   if (lines.length === 0) return undefined;
