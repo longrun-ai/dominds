@@ -104,7 +104,7 @@ export type WebSocketMessage =
 // Connection and Status Messages
 export type DomindsRuntimeMode = 'development' | 'production';
 
-export type DomindsSelfUpdateRunKind = 'disabled' | 'npm_global' | 'npx_latest';
+export type DomindsSelfUpdateRunKind = 'disabled' | 'global' | 'npx';
 export type DomindsSelfUpdateAction = 'none' | 'install' | 'restart';
 export type DomindsSelfUpdateBusy = 'idle' | 'installing' | 'restarting';
 export type DomindsSelfUpdateReason =
@@ -113,8 +113,11 @@ export type DomindsSelfUpdateReason =
   | 'install_available'
   | 'install_failed'
   | 'install_verified_after_command_failure'
+  | 'manual_restart_required'
+  | 'global_install_target_unsupported'
+  | 'npx_fixed_version_unsupported'
+  | 'npx_versionless_unsupported'
   | 'restart_required'
-  | 'restart_available_via_npx'
   | null;
 
 export interface DomindsSelfUpdateStatus {

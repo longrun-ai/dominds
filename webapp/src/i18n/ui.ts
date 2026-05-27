@@ -22,6 +22,10 @@ export type UiStrings = {
   domindsVersionActionFailedPrefix: string;
   domindsVersionCheckUpdateAvailable: string;
   domindsVersionCheckRestartAvailable: string;
+  domindsVersionCheckManualRestartRequired: string;
+  domindsVersionCheckGlobalTargetUnsupported: string;
+  domindsVersionCheckNpxFixedUnsupported: string;
+  domindsVersionCheckNpxVersionlessUnsupported: string;
   domindsVersionCheckUpToDate: string;
   domindsVersionCheckFailedPrefix: string;
   domindsVersionTooltipCurrent: string;
@@ -442,6 +446,14 @@ export function getUiStrings(language: LanguageCode): UiStrings {
       domindsVersionActionFailedPrefix: 'Dominds 更新失败：',
       domindsVersionCheckUpdateAvailable: '检查完成：发现新版本 v<latest>，点击版本号可安装。',
       domindsVersionCheckRestartAvailable: '检查完成：新版本 v<latest> 已就绪，点击版本号可重启。',
+      domindsVersionCheckManualRestartRequired:
+        '检查完成：发现新版本 v<latest>。请从原启动方式重新启动 Dominds 以更新当前会话。',
+      domindsVersionCheckGlobalTargetUnsupported:
+        '检查完成：发现新版本 v<latest>。但无法确认 npm/pnpm 全局安装会覆盖当前 Dominds 启动位置，已停止自动升级；请从原安装方式手动升级。',
+      domindsVersionCheckNpxFixedUnsupported:
+        '检查完成：发现新版本 v<latest>。当前是 npx 固定版本启动，不支持自动重启升级；如需自动升级，请用 dominds@latest 启动。',
+      domindsVersionCheckNpxVersionlessUnsupported:
+        '检查完成：发现新版本 v<latest>。当前是 npx 未指定版本启动，不承诺重启后解析到最新版本；如需自动升级，请用 dominds@latest 启动。',
       domindsVersionCheckUpToDate: '检查完成：当前已是最新版本 v<current>。',
       domindsVersionCheckFailedPrefix: 'Dominds 版本检查失败：',
       domindsVersionTooltipCurrent: '当前版本',
@@ -880,6 +892,14 @@ export function getUiStrings(language: LanguageCode): UiStrings {
       'Check complete: v<latest> is available. Click the version to install.',
     domindsVersionCheckRestartAvailable:
       'Check complete: v<latest> is ready. Click the version to restart.',
+    domindsVersionCheckManualRestartRequired:
+      'Check complete: v<latest> is available. Restart Dominds from the original launcher to update this session.',
+    domindsVersionCheckGlobalTargetUnsupported:
+      'Check complete: v<latest> is available, but npm/pnpm global install was not verified to overwrite the current Dominds launch location. Automatic update is disabled; update manually from the original install method.',
+    domindsVersionCheckNpxFixedUnsupported:
+      'Check complete: v<latest> is available. This npx session uses a fixed Dominds version, so automatic restart updates are not supported. Launch with dominds@latest to enable them.',
+    domindsVersionCheckNpxVersionlessUnsupported:
+      'Check complete: v<latest> is available. This npx session did not specify a version, so restart-to-latest is not guaranteed. Launch with dominds@latest to enable automatic restart updates.',
     domindsVersionCheckUpToDate: 'Check complete: v<current> is already the latest.',
     domindsVersionCheckFailedPrefix: 'Dominds version check failed: ',
     domindsVersionTooltipCurrent: 'Current version',

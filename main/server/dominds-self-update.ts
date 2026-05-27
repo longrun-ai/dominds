@@ -67,13 +67,13 @@ type CommandFailureDiagnostics = Readonly<{
   proxyEnvSummary: Record<string, string>;
 }>;
 
-type NpmCommandSpec = Readonly<{
+type PackageManagerCommandSpec = Readonly<{
   command: string;
   args: readonly string[];
   display: string;
 }>;
 
-type NpmCommandResult = Readonly<{
+type PackageManagerCommandResult = Readonly<{
   stdout: string;
   stderr: string;
 }>;
@@ -83,17 +83,41 @@ type DomindsCommandResult = Readonly<{
   stderr: string;
 }>;
 
+type RestartLaunchSpec = Readonly<{
+  command: string;
+  args: readonly string[];
+}>;
+
+type NpxDomindsSpec =
+  | Readonly<{ kind: 'latest' }>
+  | Readonly<{ kind: 'versionless' }>
+  | Readonly<{ kind: 'fixed'; spec: string }>;
+
+type GlobalInstallManager = 'npm' | 'pnpm';
+
+type GlobalInstallTargetVerification =
+  | Readonly<{
+      kind: 'ok';
+      manager: GlobalInstallManager;
+      currentPackageRootAbs: string;
+      managerPackageRootAbs: string;
+    }>
+  | Readonly<{
+      kind: 'unsupported';
+      message: string;
+      currentPackageRootAbs: string | null;
+      checkedTargets: readonly string[];
+    }>;
+
 type InstalledDomindsVerification =
   | Readonly<{
       kind: 'ok';
-      globalCommandAbs: string;
       packageVersion: string;
       probeVersion: string;
     }>
   | Readonly<{
       kind: 'failed';
       message: string;
-      globalCommandAbs: string | null;
       packageVersion: string | null;
       probeVersion: string | null;
     }>;
@@ -103,7 +127,6 @@ type RestartState =
   | Readonly<{
       kind: 'restart_required';
       installedVersion: string;
-      globalCommandAbs: string;
       installReport: string | null;
       reason: Extract<
         DomindsSelfUpdateReason,
@@ -117,6 +140,7 @@ type InstallFailureObservation = Readonly<{ errorText: string; failedAt: string 
 type RestartStdioMode = 'inherit' | 'ignore';
 
 const IDLE_RESTART_STATE: RestartState = { kind: 'idle' };
+const PROCESS_START_CWD = process.cwd();
 
 let runtimeConfig: RuntimeConfig | null = null;
 let latestObservation: LatestObservation = { kind: 'unknown' };
@@ -161,9 +185,9 @@ function detectRunKind(mode: ServerMode): DomindsSelfUpdateRunKind {
   if (mode !== 'production') return 'disabled';
   const scriptPath = (process.argv[1] ?? '').replace(/\\/g, '/');
   if (scriptPath.includes('/_npx/') && scriptPath.includes('/node_modules/dominds/')) {
-    return 'npx_latest';
+    return 'npx';
   }
-  return 'npm_global';
+  return 'global';
 }
 
 function hasInteractiveConsole(): boolean {
@@ -178,6 +202,91 @@ function getRestartPortProbeHost(host: string): string {
   if (host === '0.0.0.0') return '127.0.0.1';
   if (host === '::') return '::1';
   return host;
+}
+
+function normalizeComparablePath(value: string): string {
+  const normalized = path.normalize(value);
+  return process.platform === 'win32' ? normalized.toLowerCase() : normalized;
+}
+
+async function getComparableRealPath(absPath: string): Promise<string> {
+  try {
+    return normalizeComparablePath(await fsPromises.realpath(absPath));
+  } catch (error: unknown) {
+    const code = getStringErrorProp(error, 'code');
+    if (code === 'ENOENT') return normalizeComparablePath(path.resolve(absPath));
+    throw error;
+  }
+}
+
+function getCurrentProcessEntrypoint(): string {
+  const entrypoint = process.argv[1];
+  if (typeof entrypoint !== 'string' || entrypoint.trim() === '') {
+    throw new Error('Cannot restart Dominds because the current process entrypoint is unavailable');
+  }
+  return entrypoint;
+}
+
+function buildCurrentProcessRestartArgs(): string[] {
+  getCurrentProcessEntrypoint();
+  return [...process.execArgv, ...process.argv.slice(1)];
+}
+
+function buildCurrentDomindsCliArgs(): string[] {
+  return process.argv.slice(2);
+}
+
+function getNpxWorkspaceDirAbs(): string | null {
+  const entrypoint = getCurrentProcessEntrypoint().replace(/\\/g, '/');
+  const marker = '/node_modules/dominds/';
+  const markerIndex = entrypoint.indexOf(marker);
+  if (markerIndex < 0) return null;
+  const nodeModulesPrefix = entrypoint.slice(0, markerIndex);
+  const nodeModulesSuffix = '/node_modules';
+  if (!nodeModulesPrefix.endsWith(nodeModulesSuffix)) return null;
+  const workspaceDir = nodeModulesPrefix.slice(0, -nodeModulesSuffix.length);
+  if (workspaceDir.trim() === '') return null;
+  return path.resolve(PROCESS_START_CWD, workspaceDir);
+}
+
+function parseNpxDomindsPackageSpec(spec: string): NpxDomindsSpec | null {
+  if (spec === 'dominds@latest') return { kind: 'latest' };
+  if (spec === 'dominds') return { kind: 'versionless' };
+  if (spec.startsWith('dominds@')) return { kind: 'fixed', spec };
+  return null;
+}
+
+async function readNpxDomindsSpec(): Promise<NpxDomindsSpec | null> {
+  const workspaceDir = getNpxWorkspaceDirAbs();
+  if (workspaceDir === null) return null;
+  const packageJsonPath = path.join(workspaceDir, 'package.json');
+  const raw = await fsPromises.readFile(packageJsonPath, 'utf8');
+  const parsed = JSON.parse(raw) as unknown;
+  if (!isRecord(parsed)) throw new Error(`Invalid npx package metadata at ${packageJsonPath}`);
+  const npxValue = parsed['_npx'];
+  const packagesValue = isRecord(npxValue) ? npxValue['packages'] : undefined;
+  if (!Array.isArray(packagesValue)) return null;
+  for (const packageSpec of packagesValue) {
+    if (typeof packageSpec !== 'string') continue;
+    const parsedSpec = parseNpxDomindsPackageSpec(packageSpec.trim());
+    if (parsedSpec !== null) return parsedSpec;
+  }
+  return null;
+}
+
+async function buildNpxLatestRestartLaunchSpec(): Promise<RestartLaunchSpec> {
+  const npm = await resolveNpmCommandSpec();
+  return {
+    command: npm.command,
+    args: [...npm.args, 'exec', '-y', '--', 'dominds@latest', ...buildCurrentDomindsCliArgs()],
+  };
+}
+
+function buildCurrentProcessRestartLaunchSpec(): RestartLaunchSpec {
+  return {
+    command: process.execPath,
+    args: buildCurrentProcessRestartArgs(),
+  };
 }
 
 function truncateCommandOutput(value: unknown): string {
@@ -219,7 +328,7 @@ function redactProxyUrl(proxyUrl: string): string {
   }
 }
 
-function buildNpmCommandEnv(): NodeJS.ProcessEnv {
+function buildPackageManagerCommandEnv(): NodeJS.ProcessEnv {
   const env: NodeJS.ProcessEnv = { ...process.env };
   const httpProxy = getEnvValue(env, 'HTTP_PROXY', 'http_proxy');
   const httpsProxy = getEnvValue(env, 'HTTPS_PROXY', 'https_proxy');
@@ -268,7 +377,7 @@ function summarizeNpmProxyEnv(env: NodeJS.ProcessEnv): Record<string, string> {
   return summary;
 }
 
-async function resolveNpmCommandSpec(): Promise<NpmCommandSpec> {
+async function resolveNpmCommandSpec(): Promise<PackageManagerCommandSpec> {
   const nodeDir = path.dirname(process.execPath);
   const candidates =
     process.platform === 'win32'
@@ -284,7 +393,7 @@ async function resolveNpmCommandSpec(): Promise<NpmCommandSpec> {
       return {
         command: process.execPath,
         args: [candidate],
-        display: `${process.execPath} ${candidate}`,
+        display: process.execPath + ' ' + candidate,
       };
     } catch {
       continue;
@@ -293,11 +402,63 @@ async function resolveNpmCommandSpec(): Promise<NpmCommandSpec> {
 
   if (process.platform === 'win32') {
     throw new Error(
-      `Cannot find bundled npm CLI at ${candidates.join(', ')}. Dominds self-update avoids npm.cmd so the Windows console title is not hijacked.`,
+      'Cannot find bundled npm CLI at ' +
+        candidates.join(', ') +
+        '. Dominds self-update avoids npm.cmd so the Windows console title is not hijacked.',
     );
   }
 
   return { command: 'npm', args: [], display: 'npm' };
+}
+
+async function resolveCorepackPnpmCommandSpec(): Promise<PackageManagerCommandSpec | null> {
+  const nodeDir = path.dirname(process.execPath);
+  const candidates =
+    process.platform === 'win32'
+      ? [path.join(nodeDir, 'node_modules', 'corepack', 'dist', 'corepack.js')]
+      : [
+          path.join(nodeDir, '..', 'lib', 'node_modules', 'corepack', 'dist', 'corepack.js'),
+          path.join(nodeDir, '..', 'share', 'nodejs', 'corepack', 'dist', 'corepack.js'),
+        ];
+
+  for (const candidate of candidates) {
+    try {
+      await fsPromises.access(candidate);
+      return {
+        command: process.execPath,
+        args: [candidate, 'pnpm'],
+        display: process.execPath + ' ' + candidate + ' pnpm',
+      };
+    } catch {
+      continue;
+    }
+  }
+
+  return null;
+}
+
+async function resolvePnpmCommandSpec(): Promise<PackageManagerCommandSpec> {
+  const userAgent = process.env.npm_config_user_agent;
+  if (typeof userAgent === 'string' && userAgent.startsWith('pnpm/')) {
+    const npmExecpath = process.env.npm_execpath;
+    if (typeof npmExecpath === 'string' && npmExecpath.trim() !== '') {
+      return {
+        command: process.execPath,
+        args: [npmExecpath],
+        display: process.execPath + ' ' + npmExecpath,
+      };
+    }
+  }
+
+  const corepackPnpm = await resolveCorepackPnpmCommandSpec();
+  if (corepackPnpm !== null) return corepackPnpm;
+
+  if (process.platform === 'win32') {
+    throw new Error(
+      'Cannot resolve pnpm CLI without pnpm npm_execpath or bundled Corepack on Windows',
+    );
+  }
+  return { command: 'pnpm', args: [], display: 'pnpm' };
 }
 
 function getStringOrNumberErrorProp(error: unknown, key: string): string | number | null {
@@ -356,38 +517,17 @@ function createCommandFailureError(params: {
   return error;
 }
 
-async function runNpmCommand(
+async function runPackageManagerCommand(
+  commandSpec: PackageManagerCommandSpec,
   args: readonly string[],
   params: { timeoutMs: number; maxBuffer: number },
-): Promise<NpmCommandResult> {
-  const env = buildNpmCommandEnv();
+): Promise<PackageManagerCommandResult> {
+  const env = buildPackageManagerCommandEnv();
   const startedAtMs = Date.now();
-  let npm: NpmCommandSpec;
-  try {
-    npm = await resolveNpmCommandSpec();
-  } catch (error: unknown) {
-    const fallbackCmd = ['npm', ...args].join(' ');
-    throw createCommandFailureError({
-      cmd: fallbackCmd,
-      durationMs: Date.now() - startedAtMs,
-      timeoutMs: params.timeoutMs,
-      timedOut: false,
-      outputExceeded: false,
-      capturedOutputChars: 0,
-      maxBuffer: params.maxBuffer,
-      code: null,
-      signal: null,
-      killed: null,
-      stdout: '',
-      stderr: '',
-      proxyEnvSummary: summarizeNpmProxyEnv(env),
-      cause: error,
-    });
-  }
-  const cmd = [npm.display, ...args].join(' ');
-  return await new Promise<NpmCommandResult>((resolve, reject) => {
-    const child = spawn(npm.command, [...npm.args, ...args], {
-      cwd: process.cwd(),
+  const cmd = [commandSpec.display, ...args].join(' ');
+  return await new Promise<PackageManagerCommandResult>((resolve, reject) => {
+    const child = spawn(commandSpec.command, [...commandSpec.args, ...args], {
+      cwd: PROCESS_START_CWD,
       env,
       stdio: ['ignore', 'pipe', 'pipe'],
       windowsHide: true,
@@ -476,16 +616,16 @@ async function runNpmCommand(
   });
 }
 
-async function runDomindsVersionProbe(globalCommandAbs: string): Promise<DomindsCommandResult> {
+async function runCurrentDomindsVersionProbe(): Promise<DomindsCommandResult> {
   const startedAtMs = Date.now();
   const timeoutMs = 15_000;
   return await new Promise<DomindsCommandResult>((resolve, reject) => {
-    const child = spawn(globalCommandAbs, ['--version'], {
-      cwd: process.cwd(),
+    const child = spawn(process.execPath, [getCurrentProcessEntrypoint(), '--version'], {
+      cwd: PROCESS_START_CWD,
       env: process.env,
       stdio: ['ignore', 'pipe', 'pipe'],
       windowsHide: true,
-      shell: process.platform === 'win32',
+      shell: false,
     });
     let stdout = '';
     let stderr = '';
@@ -522,7 +662,7 @@ async function runDomindsVersionProbe(globalCommandAbs: string): Promise<Dominds
           : `exited with code=${String(code)} signal=${String(signal)}`;
         reject(
           new Error(
-            `dominds --version probe ${detail}; stdout=${truncateCommandOutput(stdout)} stderr=${truncateCommandOutput(stderr)}`,
+            `current Dominds entrypoint --version probe ${detail}; stdout=${truncateCommandOutput(stdout)} stderr=${truncateCommandOutput(stderr)}`,
           ),
         );
       });
@@ -654,10 +794,14 @@ function formatCommandFailureForUi(diagnostics: CommandFailureDiagnostics): stri
 async function queryLatestVersion(): Promise<LatestQueryResult> {
   const checkedAt = formatUnifiedTimestamp(new Date());
   try {
-    const { stdout } = await runNpmCommand(['view', 'dominds', 'version', '--json'], {
-      maxBuffer: 1024 * 1024,
-      timeoutMs: LATEST_VERSION_CHECK_TIMEOUT_MS,
-    });
+    const { stdout } = await runPackageManagerCommand(
+      await resolveNpmCommandSpec(),
+      ['view', 'dominds', 'version', '--json'],
+      {
+        maxBuffer: 1024 * 1024,
+        timeoutMs: LATEST_VERSION_CHECK_TIMEOUT_MS,
+      },
+    );
     const trimmed = stdout.trim();
     if (trimmed === '') {
       log.warn('Dominds latest-version check returned empty stdout', undefined, { checkedAt });
@@ -698,59 +842,13 @@ async function queryLatestVersion(): Promise<LatestQueryResult> {
   }
 }
 
-async function resolveGlobalDomindsCommandAbs(): Promise<string> {
-  let npmPrefixError: unknown = null;
-  try {
-    const { stdout } = await runNpmCommand(['prefix', '-g'], {
-      maxBuffer: 1024 * 1024,
-      timeoutMs: 15_000,
-    });
-    const prefix = stdout.trim();
-    if (prefix === '') {
-      throw new Error('npm prefix -g returned empty output');
-    }
-    const commandAbs =
-      process.platform === 'win32'
-        ? path.join(prefix, 'dominds.cmd')
-        : path.join(prefix, 'bin', 'dominds');
-    await fsPromises.access(commandAbs);
-    return commandAbs;
-  } catch (error: unknown) {
-    npmPrefixError = error;
-  }
-
-  const runningPackageRoot = await findRunningDomindsPackageRootAbs();
-  if (runningPackageRoot !== null) {
-    const fallbackCandidates = getGlobalDomindsCommandCandidatesFromPackageRoot(runningPackageRoot);
-    for (const candidate of fallbackCandidates) {
-      try {
-        await fsPromises.access(candidate);
-        log.warn(
-          'Resolved Dominds global command from running package path after npm prefix failed',
-          npmPrefixError,
-          {
-            runningPackageRoot,
-            commandAbs: candidate,
-          },
-        );
-        return candidate;
-      } catch (error: unknown) {
-        const code = getStringErrorProp(error, 'code');
-        if (code === 'ENOENT') continue;
-        throw error;
-      }
-    }
-  }
-
-  throw new Error(
-    `Cannot resolve Dominds global command; npm prefix failed: ${formatErrorForUi(npmPrefixError)}`,
-  );
-}
-
 async function findRunningDomindsPackageRootAbs(): Promise<string | null> {
   const scriptPath = process.argv[1];
   if (typeof scriptPath !== 'string' || scriptPath.trim() === '') return null;
-  let currentDir = path.dirname(path.resolve(scriptPath));
+  const scriptPathAbs = path.isAbsolute(scriptPath)
+    ? scriptPath
+    : path.resolve(PROCESS_START_CWD, scriptPath);
+  let currentDir = path.dirname(scriptPathAbs);
   for (let depth = 0; depth < 8; depth++) {
     const packageJsonPath = path.join(currentDir, 'package.json');
     try {
@@ -768,19 +866,6 @@ async function findRunningDomindsPackageRootAbs(): Promise<string | null> {
   return null;
 }
 
-function getGlobalDomindsCommandCandidatesFromPackageRoot(packageRootAbs: string): string[] {
-  if (process.platform === 'win32') {
-    return [path.join(path.dirname(path.dirname(packageRootAbs)), 'dominds.cmd')];
-  }
-  const nodeModulesDir = path.dirname(packageRootAbs);
-  const prefixFromLibNodeModules = path.dirname(path.dirname(nodeModulesDir));
-  const prefixFromNodeModules = path.dirname(nodeModulesDir);
-  return [
-    path.join(prefixFromLibNodeModules, 'bin', 'dominds'),
-    path.join(prefixFromNodeModules, 'bin', 'dominds'),
-  ];
-}
-
 async function readPackageVersionFromPackageJson(packageJsonPath: string): Promise<string | null> {
   try {
     const raw = await fsPromises.readFile(packageJsonPath, 'utf8');
@@ -796,43 +881,133 @@ async function readPackageVersionFromPackageJson(packageJsonPath: string): Promi
   }
 }
 
-async function readInstalledDomindsPackageVersion(globalCommandAbs: string): Promise<string> {
-  const commandRealPath = await fsPromises.realpath(globalCommandAbs).catch((error: unknown) => {
-    const code = getStringErrorProp(error, 'code');
-    if (code === 'ENOENT') return globalCommandAbs;
-    throw error;
-  });
-  const packageJsonCandidates = new Set<string>();
-  if (process.platform === 'win32') {
-    packageJsonCandidates.add(
-      path.join(path.dirname(globalCommandAbs), 'node_modules', 'dominds', 'package.json'),
-    );
-    packageJsonCandidates.add(
-      path.join(path.dirname(commandRealPath), 'node_modules', 'dominds', 'package.json'),
-    );
-  } else {
-    for (const commandPath of [globalCommandAbs, commandRealPath]) {
-      const prefix = path.dirname(path.dirname(commandPath));
-      packageJsonCandidates.add(
-        path.join(prefix, 'lib', 'node_modules', 'dominds', 'package.json'),
-      );
-      packageJsonCandidates.add(path.join(prefix, 'node_modules', 'dominds', 'package.json'));
-    }
-  }
-
+async function readCurrentDomindsPackageRootAbs(): Promise<string> {
   const runningPackageRoot = await findRunningDomindsPackageRootAbs();
-  if (runningPackageRoot !== null) {
-    packageJsonCandidates.add(path.join(runningPackageRoot, 'package.json'));
+  if (runningPackageRoot === null) {
+    throw new Error('Cannot find package.json for the current Dominds process entrypoint');
   }
+  return runningPackageRoot;
+}
 
-  for (const packageJsonPath of packageJsonCandidates) {
-    const version = await readPackageVersionFromPackageJson(packageJsonPath);
-    if (version !== null) return version;
+async function readCurrentDomindsPackageVersion(): Promise<string> {
+  const runningPackageRoot = await readCurrentDomindsPackageRootAbs();
+  const packageJsonPath = path.join(runningPackageRoot, 'package.json');
+  const version = await readPackageVersionFromPackageJson(packageJsonPath);
+  if (version === null) {
+    throw new Error(`Cannot read current Dominds package metadata at ${packageJsonPath}`);
   }
+  return version;
+}
 
-  throw new Error(
-    `Cannot find installed Dominds package metadata near ${globalCommandAbs}: ${[...packageJsonCandidates].join(', ')}`,
-  );
+function parsePackageManagerRoot(stdout: string): string {
+  const lines = stdout
+    .split(/\r?\n/u)
+    .map((line) => line.trim())
+    .filter((line) => line !== '');
+  const npmRoot = lines[lines.length - 1];
+  if (npmRoot === undefined) {
+    throw new Error('package manager root -g returned empty stdout');
+  }
+  return npmRoot;
+}
+
+async function readSymlinkTargetAbs(absPath: string): Promise<string | null> {
+  try {
+    const stat = await fsPromises.lstat(absPath);
+    if (!stat.isSymbolicLink()) return null;
+    const target = await fsPromises.readlink(absPath);
+    return path.isAbsolute(target) ? target : path.resolve(path.dirname(absPath), target);
+  } catch (error: unknown) {
+    const code = getStringErrorProp(error, 'code');
+    if (code === 'ENOENT') return null;
+    throw error;
+  }
+}
+
+function isSameOrInsidePath(childAbs: string, parentAbs: string): boolean {
+  const childComparable = normalizeComparablePath(path.resolve(childAbs));
+  const parentComparable = normalizeComparablePath(path.resolve(parentAbs));
+  if (childComparable === parentComparable) return true;
+  const relative = path.relative(parentComparable, childComparable);
+  return relative !== '' && !relative.startsWith('..') && !path.isAbsolute(relative);
+}
+
+async function readGlobalRootAbs(commandSpec: PackageManagerCommandSpec): Promise<string> {
+  const rootResult = await runPackageManagerCommand(commandSpec, ['root', '-g'], {
+    maxBuffer: 1024 * 1024,
+    timeoutMs: 15_000,
+  });
+  return path.resolve(PROCESS_START_CWD, parsePackageManagerRoot(rootResult.stdout));
+}
+
+async function verifyGlobalInstallTargetsCurrentPackage(): Promise<GlobalInstallTargetVerification> {
+  let currentPackageRootAbs: string | null = null;
+  const checkedTargets: string[] = [];
+  try {
+    currentPackageRootAbs = await readCurrentDomindsPackageRootAbs();
+    const currentComparable = await getComparableRealPath(currentPackageRootAbs);
+    const managers: readonly GlobalInstallManager[] = ['npm', 'pnpm'];
+
+    for (const manager of managers) {
+      try {
+        const commandSpec =
+          manager === 'pnpm' ? await resolvePnpmCommandSpec() : await resolveNpmCommandSpec();
+        const managerGlobalRootAbs = await readGlobalRootAbs(commandSpec);
+        const managerPackageRootAbs = path.join(managerGlobalRootAbs, 'dominds');
+        checkedTargets.push(manager + ':' + managerPackageRootAbs);
+        const symlinkTargetAbs = await readSymlinkTargetAbs(managerPackageRootAbs);
+        if (
+          symlinkTargetAbs !== null &&
+          !isSameOrInsidePath(symlinkTargetAbs, managerGlobalRootAbs)
+        ) {
+          checkedTargets.push(manager + ':linked:' + symlinkTargetAbs);
+          continue;
+        }
+        const managerComparable = await getComparableRealPath(managerPackageRootAbs);
+        if (currentComparable === managerComparable) {
+          return {
+            kind: 'ok',
+            manager,
+            currentPackageRootAbs,
+            managerPackageRootAbs,
+          };
+        }
+      } catch (error: unknown) {
+        checkedTargets.push(manager + ':error:' + formatErrorForUi(error));
+      }
+    }
+
+    return {
+      kind: 'unsupported',
+      currentPackageRootAbs,
+      checkedTargets,
+      message:
+        'Automatic global update is disabled because neither npm nor pnpm global install target safely matches the current Dominds process at ' +
+        currentPackageRootAbs +
+        '. Checked: ' +
+        checkedTargets.join('; ') +
+        '.',
+    };
+  } catch (error: unknown) {
+    return {
+      kind: 'unsupported',
+      currentPackageRootAbs,
+      checkedTargets,
+      message:
+        'Automatic global update is disabled because the global install target could not be verified: ' +
+        formatErrorForUi(error),
+    };
+  }
+}
+
+function buildGlobalInstallArgs(manager: GlobalInstallManager): readonly string[] {
+  return manager === 'pnpm' ? ['add', '-g', 'dominds@latest'] : ['i', '-g', 'dominds@latest'];
+}
+
+async function buildGlobalInstallCommandSpec(
+  manager: GlobalInstallManager,
+): Promise<PackageManagerCommandSpec> {
+  return manager === 'pnpm' ? await resolvePnpmCommandSpec() : await resolveNpmCommandSpec();
 }
 
 function parseDomindsVersionProbe(stdout: string, stderr: string): string | null {
@@ -855,19 +1030,16 @@ function formatErrorForUi(error: unknown): string {
 async function verifyInstalledDominds(
   targetVersion: string,
 ): Promise<InstalledDomindsVerification> {
-  let globalCommandAbs: string | null = null;
   let packageVersion: string | null = null;
   let probeVersion: string | null = null;
   try {
-    globalCommandAbs = await resolveGlobalDomindsCommandAbs();
-    packageVersion = await readInstalledDomindsPackageVersion(globalCommandAbs);
-    const probe = await runDomindsVersionProbe(globalCommandAbs);
+    packageVersion = await readCurrentDomindsPackageVersion();
+    const probe = await runCurrentDomindsVersionProbe();
     probeVersion = parseDomindsVersionProbe(probe.stdout, probe.stderr);
     if (probeVersion === null) {
       return {
         kind: 'failed',
-        message: `Installed Dominds command did not report a parseable version; stdout=${truncateCommandOutput(probe.stdout)} stderr=${truncateCommandOutput(probe.stderr)}`,
-        globalCommandAbs,
+        message: `Current Dominds entrypoint did not report a parseable version; stdout=${truncateCommandOutput(probe.stdout)} stderr=${truncateCommandOutput(probe.stderr)}`,
         packageVersion,
         probeVersion,
       };
@@ -889,19 +1061,17 @@ async function verifyInstalledDominds(
     if (!versionsMatch || !packageAtLeastTarget || !probeAtLeastTarget) {
       return {
         kind: 'failed',
-        message: `Installed Dominds version verification failed; target=${targetVersion} package=${packageVersion} probe=${probeVersion}`,
-        globalCommandAbs,
+        message: `Current Dominds entrypoint version verification failed; target=${targetVersion} package=${packageVersion} probe=${probeVersion}`,
         packageVersion,
         probeVersion,
       };
     }
 
-    return { kind: 'ok', globalCommandAbs, packageVersion, probeVersion };
+    return { kind: 'ok', packageVersion, probeVersion };
   } catch (error: unknown) {
     return {
       kind: 'failed',
       message: error instanceof Error ? error.message : String(error),
-      globalCommandAbs,
       packageVersion,
       probeVersion,
     };
@@ -1189,7 +1359,30 @@ export async function getDomindsSelfUpdateStatus(): Promise<DomindsSelfUpdateSta
     });
   }
 
-  if (runKind === 'npx_latest') {
+  if (runKind === 'npx') {
+    const npxSpec = await readNpxDomindsSpec();
+    if (npxSpec?.kind === 'latest') {
+      return buildStatus({
+        currentVersion: runningVersion,
+        installedVersion: runningVersion,
+        latestVersion: latestObservation.latestVersion,
+        checkedAt: latestObservation.checkedAt,
+        mode: cfg.mode,
+        runKind,
+        action: 'restart',
+        busy: 'idle',
+        reason: 'restart_required',
+        message: 'Restart to relaunch Dominds via npx dominds@latest',
+        targetVersion: latestObservation.latestVersion,
+      });
+    }
+
+    const reason =
+      npxSpec?.kind === 'fixed' ? 'npx_fixed_version_unsupported' : 'npx_versionless_unsupported';
+    const message =
+      npxSpec?.kind === 'fixed'
+        ? `A newer Dominds version is available, but this npx session was launched with ${npxSpec.spec}; use dominds@latest to enable automatic restart updates.`
+        : 'A newer Dominds version is available, but this npx session was launched without a verified dominds@latest spec; use dominds@latest to enable automatic restart updates.';
     return buildStatus({
       currentVersion: runningVersion,
       installedVersion: runningVersion,
@@ -1197,10 +1390,27 @@ export async function getDomindsSelfUpdateStatus(): Promise<DomindsSelfUpdateSta
       checkedAt: latestObservation.checkedAt,
       mode: cfg.mode,
       runKind,
-      action: 'restart',
+      action: 'none',
       busy: 'idle',
-      reason: 'restart_available_via_npx',
-      message: 'Restart to relaunch Dominds via npx latest',
+      reason,
+      message,
+      targetVersion: latestObservation.latestVersion,
+    });
+  }
+
+  const globalTargetVerification = await verifyGlobalInstallTargetsCurrentPackage();
+  if (globalTargetVerification.kind === 'unsupported') {
+    return buildStatus({
+      currentVersion: runningVersion,
+      installedVersion: runningVersion,
+      latestVersion: latestObservation.latestVersion,
+      checkedAt: latestObservation.checkedAt,
+      mode: cfg.mode,
+      runKind,
+      action: 'none',
+      busy: 'idle',
+      reason: 'global_install_target_unsupported',
+      message: globalTargetVerification.message,
       targetVersion: latestObservation.latestVersion,
     });
   }
@@ -1226,7 +1436,7 @@ export async function installLatestDominds(): Promise<DomindsSelfUpdateStatus> {
     throw new Error('Dominds self-update install is disabled in development mode');
   }
   const runKind = detectRunKind(cfg.mode);
-  if (runKind !== 'npm_global') {
+  if (runKind !== 'global') {
     throw new Error(`Install action is not supported for runKind=${runKind}`);
   }
   if (restartState.kind === 'restart_required') {
@@ -1269,12 +1479,20 @@ export async function installLatestDominds(): Promise<DomindsSelfUpdateStatus> {
     if (!hasUpdate) {
       throw new Error('No installable Dominds update is currently available');
     }
+    const globalTargetVerification = await verifyGlobalInstallTargetsCurrentPackage();
+    if (globalTargetVerification.kind === 'unsupported') {
+      throw new Error(globalTargetVerification.message);
+    }
     let installCommandError: unknown = null;
     try {
-      await runNpmCommand(['i', '-g', 'dominds@latest'], {
-        maxBuffer: 20 * 1024 * 1024,
-        timeoutMs: 10 * 60 * 1000,
-      });
+      await runPackageManagerCommand(
+        await buildGlobalInstallCommandSpec(globalTargetVerification.manager),
+        buildGlobalInstallArgs(globalTargetVerification.manager),
+        {
+          maxBuffer: 20 * 1024 * 1024,
+          timeoutMs: 10 * 60 * 1000,
+        },
+      );
     } catch (error: unknown) {
       installCommandError = error;
       log.warn(
@@ -1301,7 +1519,6 @@ export async function installLatestDominds(): Promise<DomindsSelfUpdateStatus> {
         installCommandError,
         {
           targetVersion,
-          globalCommandAbs: installedVerification.globalCommandAbs,
           packageVersion: installedVerification.packageVersion,
           probeVersion: installedVerification.probeVersion,
         },
@@ -1310,11 +1527,10 @@ export async function installLatestDominds(): Promise<DomindsSelfUpdateStatus> {
     const installReport =
       installCommandError === null
         ? null
-        : `Dominds install command reported failure, but installed files and dominds --version confirmed v${installedVerification.probeVersion}. Restart is available.`;
+        : `Dominds install command reported failure, but the current entrypoint version probe confirmed v${installedVerification.probeVersion}. Restart is available.`;
     restartState = {
       kind: 'restart_required',
       installedVersion: installedVerification.probeVersion,
-      globalCommandAbs: installedVerification.globalCommandAbs,
       installReport,
       reason:
         installCommandError === null
@@ -1349,10 +1565,6 @@ export async function installLatestDominds(): Promise<DomindsSelfUpdateStatus> {
   return await getDomindsSelfUpdateStatus();
 }
 
-function buildRestartArgs(cfg: RuntimeConfig): string[] {
-  return ['webui', '-p', String(cfg.port), '-h', cfg.host, '--mode', 'prod', '--nobrowser'];
-}
-
 function spawnDetachedRestartHelper(params: {
   command: string;
   args: readonly string[];
@@ -1377,7 +1589,7 @@ function spawnDetachedRestartHelper(params: {
     "const net = require('net');",
     "const { spawn } = require('child_process');",
     'const payload = JSON.parse(process.argv[1]);',
-    'const detached = payload.stdioMode !== "inherit" || process.platform === "win32";',
+    'const detached = payload.stdioMode !== "inherit";',
     'function isPortBusy() {',
     '  return new Promise((resolve) => {',
     '    const socket = net.createConnection({ host: payload.host, port: payload.port });',
@@ -1439,7 +1651,7 @@ function spawnDetachedRestartHelper(params: {
     '}',
     'function runBestEffortKiller(command, args) {',
     '  return new Promise((resolve) => {',
-    '    const killer = spawn(command, args, { stdio: payload.stdioMode });',
+    '    const killer = spawn(command, args, { stdio: payload.stdioMode, windowsHide: payload.stdioMode !== "inherit" });',
     "    killer.once('error', () => resolve());",
     "    killer.once('exit', () => resolve());",
     '  });',
@@ -1460,22 +1672,7 @@ function spawnDetachedRestartHelper(params: {
     '(async () => {',
     '  try {',
     '    const forceKillDeadline = Date.now() + payload.forceKillAfterMs;',
-    '    let portReleased = await waitForPortReleaseUntil(forceKillDeadline);',
-    '    if (!portReleased) {',
-    '      await forceKillRetiringProcess();',
-    '      const exitedAfterKill = await waitForRetiringProcessExit(payload.portReleaseTimeoutMs);',
-    '      if (!exitedAfterKill) {',
-    '        throw new Error(`Dominds retiring process is still alive after force-killing pid ${String(payload.retiringPid)}`);',
-    '      }',
-    '      portReleased = await waitForPortReleaseUntil(Date.now() + payload.portReleaseTimeoutMs);',
-    '      if (!portReleased) {',
-    '        throw new Error(`Dominds restart port is still busy after force-killing pid ${String(payload.retiringPid)}; port=${String(payload.host)}:${String(payload.port)}`);',
-    '      }',
-    '    }',
-    "    const child = spawn(payload.command, payload.args, { cwd: payload.cwd, env: process.env, detached, stdio: payload.stdioMode, shell: process.platform === 'win32' });",
-    '    if (detached) child.unref();',
-    '    const remainingGraceMs = Math.max(0, forceKillDeadline - Date.now());',
-    '    const exitedGracefully = await waitForRetiringProcessExit(remainingGraceMs);',
+    '    const exitedGracefully = await waitForRetiringProcessExit(payload.forceKillAfterMs);',
     '    if (!exitedGracefully) {',
     '      await forceKillRetiringProcess();',
     '      const exitedAfterKill = await waitForRetiringProcessExit(payload.portReleaseTimeoutMs);',
@@ -1483,6 +1680,17 @@ function spawnDetachedRestartHelper(params: {
     '        throw new Error(`Dominds retiring process is still alive after force-killing pid ${String(payload.retiringPid)}`);',
     '      }',
     '    }',
+    '    const portReleaseDeadline = Math.max(forceKillDeadline, Date.now() + payload.portReleaseTimeoutMs);',
+    '    const portReleased = await waitForPortReleaseUntil(portReleaseDeadline);',
+    '    if (!portReleased) {',
+    '      throw new Error(`Dominds restart port is still busy after retiring pid ${String(payload.retiringPid)} exited; port=${String(payload.host)}:${String(payload.port)}`);',
+    '    }',
+    '    const child = spawn(payload.command, payload.args, { cwd: payload.cwd, env: process.env, detached, stdio: payload.stdioMode, shell: false, windowsHide: payload.stdioMode !== "inherit" });',
+    '    if (detached) child.unref();',
+    '    await new Promise((resolve, reject) => {',
+    "      child.once('error', reject);",
+    "      child.once('spawn', resolve);",
+    '    });',
     '    process.exit(0);',
     '  } catch (error) {',
     '    console.error(error instanceof Error ? error.message : String(error));',
@@ -1493,10 +1701,11 @@ function spawnDetachedRestartHelper(params: {
   const helper = spawn(process.execPath, ['-e', helperScript, helperPayload], {
     cwd: params.cwd,
     env: process.env,
-    detached: stdioMode !== 'inherit' || process.platform === 'win32',
+    detached: stdioMode !== 'inherit',
     stdio: stdioMode,
+    windowsHide: stdioMode !== 'inherit',
   });
-  if (stdioMode !== 'inherit' || process.platform === 'win32') {
+  if (stdioMode !== 'inherit') {
     helper.unref();
   }
 }
@@ -1551,49 +1760,41 @@ export async function restartDomindsIntoLatest(): Promise<DomindsSelfUpdateStatu
     }
 
     const runKind = detectRunKind(cfg.mode);
-    const args = buildRestartArgs(cfg);
-    let command: string;
+    let launchSpec: RestartLaunchSpec;
     const previousRestartRequiredState =
       restartState.kind === 'restart_required' ? restartState : null;
 
-    if (runKind === 'npx_latest') {
-      command = 'npx';
-      args.unshift('dominds@latest');
-      args.unshift('-y');
-    } else if (previousRestartRequiredState !== null) {
-      command = previousRestartRequiredState.globalCommandAbs;
+    if (previousRestartRequiredState !== null) {
+      launchSpec = buildCurrentProcessRestartLaunchSpec();
+    } else if (runKind === 'npx') {
+      const npxSpec = await readNpxDomindsSpec();
+      if (npxSpec?.kind !== 'latest') {
+        throw new Error('Dominds npx restart requires launching Dominds with dominds@latest');
+      }
+      launchSpec = await buildNpxLatestRestartLaunchSpec();
     } else {
-      throw new Error('Dominds restart requires a completed install or an npx latest session');
+      throw new Error('Dominds restart requires a completed install or a restartable session');
     }
 
     restartState = { kind: 'restarting', targetVersion: status.targetVersion };
     publishStatusUpdateSoon();
     try {
       spawnDetachedRestartHelper({
-        command,
-        args,
-        cwd: process.cwd(),
+        command: launchSpec.command,
+        args: launchSpec.args,
+        cwd: PROCESS_START_CWD,
         host: cfg.host,
         port: cfg.port,
       });
       setImmediate(() => {
         void stopAndExitForRestart().catch((error: unknown) => {
           log.error('Failed to stop Dominds server during restart', error);
-          if (runKind === 'npm_global' && previousRestartRequiredState !== null) {
-            restartState = previousRestartRequiredState;
-            publishStatusUpdateSoon();
-            return;
-          }
-          restartState = IDLE_RESTART_STATE;
+          restartState = previousRestartRequiredState ?? IDLE_RESTART_STATE;
           publishStatusUpdateSoon();
         });
       });
     } catch (error) {
-      if (previousRestartRequiredState !== null) {
-        restartState = previousRestartRequiredState;
-      } else {
-        restartState = IDLE_RESTART_STATE;
-      }
+      restartState = previousRestartRequiredState ?? IDLE_RESTART_STATE;
       publishStatusUpdateSoon();
       throw error;
     }

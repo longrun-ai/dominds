@@ -2207,6 +2207,11 @@ export class DomindsApp extends HTMLElement {
           this.domindsSelfUpdate.message
         ) {
           lines.push(`${t.domindsVersionTooltipStatus}: ${this.domindsSelfUpdate.message}`);
+        } else if (this.domindsSelfUpdate !== null) {
+          const noActionMessage = this.formatDomindsVersionNoActionMessage(this.domindsSelfUpdate);
+          if (noActionMessage !== null) {
+            lines.push(`${t.domindsVersionTooltipStatus}: ${noActionMessage}`);
+          }
         }
         break;
     }
@@ -2309,6 +2314,23 @@ export class DomindsApp extends HTMLElement {
     return checkedAt;
   }
 
+  private formatDomindsVersionNoActionMessage(status: DomindsSelfUpdateStatus): string | null {
+    const t = getUiStrings(this.uiLanguage);
+    if (status.reason === 'manual_restart_required') {
+      return this.formatVersionCheckResult(t.domindsVersionCheckManualRestartRequired, status);
+    }
+    if (status.reason === 'global_install_target_unsupported') {
+      return this.formatVersionCheckResult(t.domindsVersionCheckGlobalTargetUnsupported, status);
+    }
+    if (status.reason === 'npx_fixed_version_unsupported') {
+      return this.formatVersionCheckResult(t.domindsVersionCheckNpxFixedUnsupported, status);
+    }
+    if (status.reason === 'npx_versionless_unsupported') {
+      return this.formatVersionCheckResult(t.domindsVersionCheckNpxVersionlessUnsupported, status);
+    }
+    return null;
+  }
+
   private showDomindsVersionCheckResult(status: DomindsSelfUpdateStatus): void {
     const t = getUiStrings(this.uiLanguage);
     if (status.action === 'install') {
@@ -2325,6 +2347,11 @@ export class DomindsApp extends HTMLElement {
     }
     if (status.reason === 'latest_check_failed' && status.message) {
       this.showToast(`${t.domindsVersionCheckFailedPrefix}${status.message}`, 'warning');
+      return;
+    }
+    const noActionMessage = this.formatDomindsVersionNoActionMessage(status);
+    if (noActionMessage !== null) {
+      this.showToast(noActionMessage, 'info');
       return;
     }
     this.showSuccess(this.formatVersionCheckResult(t.domindsVersionCheckUpToDate, status));
