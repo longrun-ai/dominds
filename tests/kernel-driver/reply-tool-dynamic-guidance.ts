@@ -136,8 +136,10 @@ async function main(): Promise<void> {
     );
     assert.equal(wrongReply.toolOutputs.length, 1, 'expected one tool result for wrong reply tool');
     assert.equal(wrongReply.toolOutputs[0]?.type, 'func_result_msg');
+    const wrongReplyToolOutput = wrongReply.toolOutputs[0];
+    assert.ok(wrongReplyToolOutput, 'expected wrong reply tool output');
     assert.match(
-      wrongReply.toolOutputs[0]?.content ?? '',
+      wrongReplyToolOutput.content,
       /exact reply tool for the current state is `replyTellask`, not `replyTellaskBack`/u,
     );
 
@@ -168,8 +170,10 @@ async function main(): Promise<void> {
     );
     assert.equal(staleReply.toolOutputs.length, 1, 'expected one tool result for stale reply call');
     assert.equal(staleReply.toolOutputs[0]?.type, 'func_result_msg');
+    const staleReplyToolOutput = staleReply.toolOutputs[0];
+    assert.ok(staleReplyToolOutput, 'expected stale reply tool output');
     assert.match(
-      staleReply.toolOutputs[0]?.content ?? '',
+      staleReplyToolOutput.content,
       /there is no active inter-dialog reply obligation right now/u,
     );
 
@@ -222,8 +226,10 @@ async function main(): Promise<void> {
       'expected one tool result for already resolved replyTellaskBack target',
     );
     assert.equal(duplicateAskBackReply.toolOutputs[0]?.type, 'func_result_msg');
+    const duplicateAskBackToolOutput = duplicateAskBackReply.toolOutputs[0];
+    assert.ok(duplicateAskBackToolOutput, 'expected duplicate ask-back reply tool output');
     assert.match(
-      duplicateAskBackReply.toolOutputs[0]?.content ?? '',
+      duplicateAskBackToolOutput.content,
       /there is no longer a pending inter-dialog reply obligation/u,
     );
     const duplicateAskBackEvents = await collectEvents(duplicateAskBackCh, 300);
@@ -313,6 +319,11 @@ async function main(): Promise<void> {
       {
         reason: 'user_interjection_with_parked_original_task',
         directive: deferredDirective,
+        userInterjection: {
+          msgId: 'deferred-reply-guidance-user-interjection',
+          course: 1,
+          genseq: 1,
+        },
       },
       deferredSideDialog.status,
     );
@@ -434,7 +445,7 @@ async function main(): Promise<void> {
         ev.type === 'func_result_evt' && ev.name === 'replyTellask',
     );
     assert.ok(funcResultEvt, 'expected live sideDialog to emit func_result_evt for replyTellask');
-    assert.match(funcResultEvt?.content ?? '', /replyTellask/u);
+    assert.match(funcResultEvt.content, /replyTellask/u);
   });
 
   console.log('kernel-driver reply-tool-dynamic-guidance: PASS');

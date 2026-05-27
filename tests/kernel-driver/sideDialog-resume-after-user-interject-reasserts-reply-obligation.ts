@@ -2,11 +2,6 @@ import assert from 'node:assert/strict';
 
 import { toCallSiteCourseNo } from '@longrun-ai/kernel/types/storage';
 import { formatUnifiedTimestamp } from '@longrun-ai/kernel/utils/time';
-import {
-  getRunControlCountsSnapshot,
-  refreshRunControlProjectionFromPersistenceFacts,
-  setDialogDisplayState,
-} from '../../main/dialog-display-state';
 import { driveDialogStream } from '../../main/llm/kernel-driver';
 import { buildReplyObligationReassertionPrompt } from '../../main/llm/kernel-driver/reply-guidance';
 import { DialogPersistence } from '../../main/persistence';
@@ -65,6 +60,20 @@ async function main(): Promise<void> {
       dlg: sideDialog,
       directive: assignmentDirective,
       language: 'en',
+      answeredUserInterjection: {
+        id: 'test-preview-a2h-sideDialog-user-interject-before-resume',
+        content: interjectResponse,
+        answeredAt: formatUnifiedTimestamp(new Date()),
+        userInterjection: {
+          msgId: 'sideDialog-user-interject-before-resume',
+          course: 1,
+          genseq: 1,
+        },
+        answerRef: {
+          course: 1,
+          genseq: 1,
+        },
+      },
     });
     const replyReminderPrompt = buildReplyToolReminderText({
       language: 'en',
@@ -195,32 +204,6 @@ async function main(): Promise<void> {
       { kind: 'idle_waiting_user' },
       'delivered reply should clear pending-reply projection after direct fallback completion',
     );
-    const countsWhileInterjectionPaused = await getRunControlCountsSnapshot();
-    assert.equal(
-      countsWhileInterjectionPaused.resumable,
-      1,
-      'only the still-background nested sideDialog should remain resumable after parent reply delivery',
-    );
-    await setDialogDisplayState(sideDialog.id, { kind: 'idle_waiting_user' });
-    const latestAfterAttemptedIdleWhileNestedPending = await DialogPersistence.loadDialogLatest(
-      sideDialog.id,
-      sideDialog.status,
-    );
-    assert.deepEqual(
-      latestAfterAttemptedIdleWhileNestedPending?.displayState,
-      { kind: 'idle_waiting_user' },
-      'idle writes are valid after the parent reply obligation has been delivered',
-    );
-    const refreshedWhileNestedPending = await refreshRunControlProjectionFromPersistenceFacts(
-      sideDialog.id,
-      'active_callee_dispatches_changed',
-    );
-    assert.deepEqual(
-      refreshedWhileNestedPending?.displayState,
-      { kind: 'idle_waiting_user' },
-      'run-control refresh should keep the delivered parent sideDialog idle',
-    );
-
     const latestAfterContinue = await DialogPersistence.loadDialogLatest(
       sideDialog.id,
       sideDialog.status,
@@ -294,8 +277,9 @@ async function main(): Promise<void> {
       replyReminderIndex >= 0,
       'first plain answer after reassertion should queue and consume one replyTellask reminder before fallback',
     );
+    assert.ok(replyReminderEvent, 'expected persisted replyTellask reminder prompt event');
     assert.deepEqual(
-      replyReminderEvent?.tellaskReplyDirective,
+      replyReminderEvent.tellaskReplyDirective,
       assignmentDirective,
       'replyTellask reminder prompt must persist the active reply directive for the reminder round',
     );

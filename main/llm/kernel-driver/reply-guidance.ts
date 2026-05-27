@@ -1,4 +1,4 @@
-import type { TellaskReplyDirective } from '@longrun-ai/kernel/types/storage';
+import type { AnswerToHumanItem, TellaskReplyDirective } from '@longrun-ai/kernel/types/storage';
 import { Dialog, DialogID, MainDialog, SideDialog } from '../../dialog';
 import { ensureDialogLoaded } from '../../dialog-instance-registry';
 import { DialogPersistence } from '../../persistence';
@@ -147,15 +147,19 @@ async function resolveFreshCurrentSideDialogAssignmentDirective(args: {
   dlg: Dialog;
   prompt: KernelDriverPrompt | undefined;
 }): Promise<KernelDriverPrompt['tellaskReplyDirective']> {
-  if (!(args.dlg instanceof SideDialog) || args.prompt?.origin !== 'runtime') {
-    return undefined;
-  }
-  const promptDirective = args.prompt.tellaskReplyDirective;
-  if (!promptDirective) {
+  if (!(args.dlg instanceof SideDialog)) {
     return undefined;
   }
   const currentAssignmentDirective = buildCurrentSideDialogAssignmentDirective(args.dlg);
-  if (!hasSameReplyDirective(promptDirective, currentAssignmentDirective)) {
+  if (args.prompt?.origin === 'runtime') {
+    const promptDirective = args.prompt.tellaskReplyDirective;
+    if (!promptDirective) {
+      return undefined;
+    }
+    if (!hasSameReplyDirective(promptDirective, currentAssignmentDirective)) {
+      return undefined;
+    }
+  } else if (args.prompt?.origin !== 'user') {
     return undefined;
   }
   const latest = await DialogPersistence.loadDialogLatest(args.dlg.id, args.dlg.status);
@@ -390,6 +394,7 @@ export async function buildReplyObligationReassertionPrompt(args: {
   dlg: Dialog;
   directive: NonNullable<KernelDriverPrompt['tellaskReplyDirective']>;
   language: 'zh' | 'en';
+  answeredUserInterjection: AnswerToHumanItem;
 }): Promise<string> {
   return buildReplyObligationReassertionText({
     language: args.language,

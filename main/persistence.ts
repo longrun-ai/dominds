@@ -857,6 +857,27 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null;
 }
 
+function parseDialogPendingUserInterjectionReply(
+  value: unknown,
+): NonNullable<DialogLatestFile['pendingUserInterjectionReply']> | null {
+  if (!isRecord(value)) return null;
+  const msgId = value.msgId;
+  const course = value.course;
+  const genseq = value.genseq;
+  if (typeof msgId !== 'string' || msgId.trim() === '') return null;
+  if (typeof course !== 'number' || !Number.isInteger(course) || course <= 0) {
+    return null;
+  }
+  if (typeof genseq !== 'number' || !Number.isInteger(genseq) || genseq <= 0) {
+    return null;
+  }
+  return {
+    msgId,
+    course: toDialogCourseNumber(course),
+    genseq: toCallSiteGenseqNo(genseq),
+  };
+}
+
 function parseDisplayTextI18n(
   value: unknown,
 ): Partial<Record<LanguageCode, string>> | undefined | null {
@@ -2460,22 +2481,7 @@ function parseDialogLatestFile(value: unknown): DialogLatestFile | null {
     | null
     | undefined = (() => {
     if (pendingUserInterjectionReplyRaw === undefined) return undefined;
-    if (!isRecord(pendingUserInterjectionReplyRaw)) return null;
-    const msgId = pendingUserInterjectionReplyRaw.msgId;
-    const course = pendingUserInterjectionReplyRaw.course;
-    const genseq = pendingUserInterjectionReplyRaw.genseq;
-    if (typeof msgId !== 'string' || msgId.trim() === '') return null;
-    if (typeof course !== 'number' || !Number.isFinite(course) || Math.floor(course) <= 0) {
-      return null;
-    }
-    if (typeof genseq !== 'number' || !Number.isFinite(genseq) || Math.floor(genseq) <= 0) {
-      return null;
-    }
-    return {
-      msgId,
-      course: toDialogCourseNumber(course),
-      genseq: toCallSiteGenseqNo(genseq),
-    };
+    return parseDialogPendingUserInterjectionReply(pendingUserInterjectionReplyRaw);
   })();
   if (pendingUserInterjectionReply === null) return null;
 
@@ -2541,6 +2547,10 @@ function parseDialogLatestFile(value: unknown): DialogLatestFile | null {
     }
     const directive = parseTellaskReplyDirective(deferredReplyReassertionRaw.directive);
     if (directive === null) return null;
+    const userInterjection = parseDialogPendingUserInterjectionReply(
+      deferredReplyReassertionRaw.userInterjection,
+    );
+    if (userInterjection === null) return null;
     const resumeGuideSurfacedRaw = deferredReplyReassertionRaw.resumeGuideSurfaced;
     if (resumeGuideSurfacedRaw !== undefined && typeof resumeGuideSurfacedRaw !== 'boolean') {
       return null;
@@ -2548,6 +2558,7 @@ function parseDialogLatestFile(value: unknown): DialogLatestFile | null {
     return {
       reason: 'user_interjection_with_parked_original_task',
       directive,
+      userInterjection,
       ...(resumeGuideSurfacedRaw === undefined
         ? {}
         : { resumeGuideSurfaced: resumeGuideSurfacedRaw }),
@@ -2711,14 +2722,18 @@ function isAnswerToHumanItem(value: unknown): value is AnswerToHumanItem {
   if (!isRecord(value.userInterjection)) return false;
   if (typeof value.userInterjection.msgId !== 'string') return false;
   if (typeof value.userInterjection.course !== 'number') return false;
-  if (!Number.isFinite(value.userInterjection.course)) return false;
+  if (!Number.isInteger(value.userInterjection.course) || value.userInterjection.course <= 0) {
+    return false;
+  }
   if (typeof value.userInterjection.genseq !== 'number') return false;
-  if (!Number.isFinite(value.userInterjection.genseq)) return false;
+  if (!Number.isInteger(value.userInterjection.genseq) || value.userInterjection.genseq <= 0) {
+    return false;
+  }
   if (!isRecord(value.answerRef)) return false;
   if (typeof value.answerRef.course !== 'number') return false;
-  if (!Number.isFinite(value.answerRef.course)) return false;
+  if (!Number.isInteger(value.answerRef.course) || value.answerRef.course <= 0) return false;
   if (typeof value.answerRef.genseq !== 'number') return false;
-  if (!Number.isFinite(value.answerRef.genseq)) return false;
+  if (!Number.isInteger(value.answerRef.genseq) || value.answerRef.genseq <= 0) return false;
   return true;
 }
 
@@ -11604,7 +11619,17 @@ export class DialogPersistence {
   ): Promise<void> {
     await this.mutateDialogLatest(
       dialogId,
-      () => ({ kind: 'patch', patch: { deferredReplyReassertion } }),
+      (previous) => {
+        if (deferredReplyReassertion !== undefined) {
+          return { kind: 'patch', patch: { deferredReplyReassertion } };
+        }
+        if (previous.deferredReplyReassertion === undefined) {
+          return { kind: 'noop' };
+        }
+        const next = { ...previous };
+        delete next.deferredReplyReassertion;
+        return { kind: 'replace', next };
+      },
       status,
     );
   }
@@ -11891,10 +11916,9 @@ export class DialogPersistence {
         if (!existingAnswers.some((item) => item.id === recoveredAnswer.id)) {
           await this.appendAnswerToHumanState(dialogId, recoveredAnswer, status);
         }
-        return {
-          ...latest,
-          pendingUserInterjectionReply: undefined,
-        };
+        const next = { ...latest };
+        delete next.pendingUserInterjectionReply;
+        return next;
       }
     }
     if (
@@ -11903,6 +11927,11 @@ export class DialogPersistence {
       normalizedPending?.genseq === latest.pendingUserInterjectionReply.genseq
     ) {
       return latest;
+    }
+    if (normalizedPending === undefined) {
+      const next = { ...latest };
+      delete next.pendingUserInterjectionReply;
+      return next;
     }
     return {
       ...latest,

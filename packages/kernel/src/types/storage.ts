@@ -118,6 +118,7 @@ export interface DialogAskerStackState {
 export type DialogDeferredReplyReassertion = Readonly<{
   reason: 'user_interjection_with_parked_original_task';
   directive: TellaskReplyDirective;
+  userInterjection: DialogPendingUserInterjectionReply;
   resumeGuideSurfaced?: boolean;
 }>;
 

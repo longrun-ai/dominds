@@ -129,16 +129,18 @@ export function buildReplyObligationSuppressionGuideText(language: LanguageCode)
   if (language === 'zh') {
     return [
       REPLY_SUPPRESSION_PREFIX_ZH,
-      '先把用户刚插进来的这轮正常接住，按眼前的话题继续回答。',
-      '原来那条长线先放一放，别急着顺着它往下收口。',
-      '等原任务允许恢复时，运行时会再提醒你把那条线接回去。',
+      '本轮最新用户消息是真实用户插话；先按这条最新用户消息回答，让用户看到你已经接住了当前话题。',
+      '原来的长线诉请、回复工具义务、技能/SOP 触发条件都已暂存；不要在回答当前用户消息前切回旧任务、旧工具流程或旧收口。',
+      '只有当前用户消息本身需要，才使用工具；不要因为旧长线任务、旧技能提示或旧提醒项去调用工具。',
+      '等当前用户插话已经得到可见回复后，运行时会再提醒你接回原来的长线。',
     ].join('\n');
   }
   return [
     REPLY_SUPPRESSION_PREFIX_EN,
-    "First, handle the user's interjection normally and keep answering the topic in front of you.",
-    'Set the earlier long-line thread aside for now; do not rush to close it yet.',
-    'When the original task becomes resumable again, runtime will remind you to pick that thread up again.',
+    'The latest user message in this turn is a real user interjection; answer that latest user message first so the user can see you handled the current topic.',
+    'The earlier long-line request, reply-tool obligation, and skill/SOP triggers are parked; do not switch back to the old task, old tool flow, or old closure before answering the current user message.',
+    'Use tools only if the current user message itself requires them; do not call tools because of the earlier long-line task, old skill hints, or old reminders.',
+    'After the current user interjection has a visible reply, runtime will remind you to resume the earlier long-line thread.',
   ].join('\n');
 }
 

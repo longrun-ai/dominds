@@ -13,6 +13,7 @@ import type {
   DialogUserPrompt,
 } from '@longrun-ai/kernel/types/drive-intent';
 import type {
+  AnswerToHumanItem,
   CallSiteCourseNo,
   CallSiteGenseqNo,
   DialogBusinessContinuation,
@@ -157,6 +158,7 @@ export type KernelDriverCoreResult = {
   lastFunctionCallGenseq: number | null;
   lastAssistantReplyTarget?: KernelDriverCalleeReplyTarget;
   lastBusinessContinuation: DialogBusinessContinuation;
+  answeredUserInterjection?: AnswerToHumanItem;
   fbrConclusion?: {
     responseText: string;
     responseGenseq: number;
