@@ -2,6 +2,7 @@ import type { DialogLatestFile } from '@longrun-ai/kernel/types/storage';
 import { toDialogCourseNumber } from '@longrun-ai/kernel/types/storage';
 import type { DialogsQuarantinedMessage } from '@longrun-ai/kernel/types/wire';
 import assert from 'node:assert/strict';
+import * as fsNode from 'node:fs';
 import * as fs from 'node:fs/promises';
 import * as os from 'node:os';
 import * as path from 'node:path';
@@ -146,22 +147,30 @@ async function seedSideDialogWithAsker(args: {
   await fs.writeFile(path.join(sideRoot, 'course-001.jsonl'), '', 'utf-8');
 }
 
-type DialogPersistencePrivate = typeof DialogPersistence & {
-  getLatestWriteBackKey(dialogId: DialogID, status: 'running' | 'completed' | 'archived'): string;
+type PersistableStatusForTest = 'running' | 'completed' | 'archived';
+
+type DialogPersistencePrivate = {
+  quarantinedMainDialogScopes: Set<string>;
+  getMainDialogWriteBackCancelScopeKey(
+    mainDialogId: DialogID,
+    status: PersistableStatusForTest,
+  ): string;
+  getLatestWriteBackKey(dialogId: DialogID, status: PersistableStatusForTest): string;
   flushLatestWriteBack(key: string): Promise<void>;
+  renameWithRetry(source: string, destination: string): Promise<void>;
   writeDialogLatestToDisk(
     dialogId: DialogID,
     latest: DialogLatestFile,
-    status: 'running' | 'completed' | 'archived',
+    status: PersistableStatusForTest,
     cancellationToken?: unknown,
   ): Promise<void>;
 };
 
 async function main(): Promise<void> {
   await withTempCwd(async (sandboxDir) => {
-    let capturedQuarantineMessage: DialogsQuarantinedMessage | null = null;
+    const capturedQuarantineMessage: { value: DialogsQuarantinedMessage | null } = { value: null };
     setDialogsQuarantinedBroadcaster((msg) => {
-      capturedQuarantineMessage = msg;
+      capturedQuarantineMessage.value = msg;
     });
     try {
       {
@@ -178,16 +187,17 @@ async function main(): Promise<void> {
 
         await assertPersistenceFailure(DialogPersistence.loadDialogLatest(dialogId, 'archived'));
         await assertQuarantined({ sourceRoot, malformedRoot });
-        assert.deepEqual(capturedQuarantineMessage, {
+        assert.ok(capturedQuarantineMessage.value);
+        assert.deepEqual(capturedQuarantineMessage.value, {
           type: 'dialogs_quarantined',
           status: 'quarantining',
           fromStatus: 'archived',
           rootId: dialogId.selfId,
           dialogId: dialogId.selfId,
           reason: 'loadDialogLatest',
-          timestamp: capturedQuarantineMessage?.timestamp ?? '',
+          timestamp: capturedQuarantineMessage.value.timestamp,
         });
-        assert.match(capturedQuarantineMessage?.timestamp ?? '', /\d{4}/);
+        assert.match(capturedQuarantineMessage.value.timestamp, /\d{4}/);
 
         const idsAfterQuarantine = await DialogPersistence.listDialogs('archived');
         assert.deepEqual(idsAfterQuarantine, []);
@@ -196,6 +206,191 @@ async function main(): Promise<void> {
           'archived',
         );
         assert.equal(metadataAfterQuarantine, null);
+      }
+
+      {
+        capturedQuarantineMessage.value = null;
+        const dialogId = new DialogID('2b/19/rename01');
+        const { sourceRoot, malformedRoot } = await seedMainDialog({
+          sandboxDir,
+          dialogId,
+          statusDir: 'run',
+        });
+        await fs.writeFile(path.join(sourceRoot, 'latest.yaml'), 'currentCourse: nope\n', 'utf-8');
+
+        const internals = DialogPersistence as unknown as DialogPersistencePrivate;
+        const originalRenameWithRetry = internals.renameWithRetry.bind(DialogPersistence);
+        const eperm = new Error('simulated Windows rename lock') as Error & { code: string };
+        eperm.code = 'EPERM';
+        internals.renameWithRetry = async (): Promise<void> => {
+          throw eperm;
+        };
+
+        let latestError: unknown;
+        try {
+          latestError = await DialogPersistence.loadDialogLatest(dialogId, 'running').then(
+            () => null,
+            (error: unknown) => error,
+          );
+        } finally {
+          internals.renameWithRetry = originalRenameWithRetry;
+        }
+        assert.ok(latestError instanceof DomindsPersistenceFileError);
+
+        await fs.access(sourceRoot);
+        await assert.rejects(fs.access(malformedRoot), { code: 'ENOENT' });
+        assert.equal(
+          capturedQuarantineMessage.value,
+          null,
+          'quarantine broadcast must only fire after the malformed dialog is actually moved',
+        );
+        const writeBackCancelScopeKey = internals.getMainDialogWriteBackCancelScopeKey(
+          dialogId,
+          'running',
+        );
+        assert.equal(
+          internals.quarantinedMainDialogScopes.has(writeBackCancelScopeKey),
+          false,
+          'failed quarantine move must not leave the source dialog permanently writeback-canceled',
+        );
+
+        internals.renameWithRetry = async (): Promise<void> => {
+          throw eperm;
+        };
+        try {
+          await assert.rejects(
+            DialogPersistence.quarantineMalformedRuntimeState(
+              dialogId,
+              'running',
+              'test_runtime_state_quarantine_rename_failure',
+              'runtime state quarantine should fail loudly when the malformed directory cannot move',
+            ),
+            /Failed to quarantine malformed runtime state/,
+          );
+        } finally {
+          internals.renameWithRetry = originalRenameWithRetry;
+        }
+        await fs.access(sourceRoot);
+        assert.equal(
+          capturedQuarantineMessage.value,
+          null,
+          'runtime-state quarantine failure must not broadcast a quarantine that did not move',
+        );
+        assert.equal(
+          internals.quarantinedMainDialogScopes.has(writeBackCancelScopeKey),
+          false,
+          'runtime-state quarantine failure must not leave the source dialog writeback-canceled',
+        );
+
+        capturedQuarantineMessage.value = null;
+        const concurrentDialogId = new DialogID('2b/19/rename02');
+        const { sourceRoot: concurrentSourceRoot, malformedRoot: concurrentMalformedRoot } =
+          await seedMainDialog({
+            sandboxDir,
+            dialogId: concurrentDialogId,
+            statusDir: 'run',
+          });
+        await fs.writeFile(
+          path.join(concurrentSourceRoot, 'latest.yaml'),
+          'currentCourse: nope\n',
+          'utf-8',
+        );
+
+        let releaseRename: (() => void) | undefined;
+        const renameMayFinish = new Promise<void>((resolve) => {
+          releaseRename = resolve;
+        });
+        let signalRenameStarted: (() => void) | undefined;
+        const renameStarted = new Promise<void>((resolve) => {
+          signalRenameStarted = resolve;
+        });
+        internals.renameWithRetry = async (): Promise<void> => {
+          signalRenameStarted?.();
+          await renameMayFinish;
+          throw eperm;
+        };
+        try {
+          const latestPromise = DialogPersistence.loadDialogLatest(
+            concurrentDialogId,
+            'running',
+          ).then(
+            () => null,
+            (error: unknown) => error,
+          );
+          await renameStarted;
+          const runtimeQuarantinePromise = DialogPersistence.quarantineMalformedRuntimeState(
+            concurrentDialogId,
+            'running',
+            'test_concurrent_runtime_state_quarantine_rename_failure',
+            'concurrent runtime state quarantine should observe the active quarantine result',
+          ).then(
+            () => null,
+            (error: unknown) => error,
+          );
+
+          releaseRename?.();
+          const latestConcurrentError = await latestPromise;
+          const runtimeConcurrentError = await runtimeQuarantinePromise;
+          assert.ok(latestConcurrentError instanceof DomindsPersistenceFileError);
+          assert.ok(runtimeConcurrentError instanceof Error);
+          assert.match(
+            runtimeConcurrentError.message,
+            /Failed to quarantine malformed runtime state/,
+          );
+        } finally {
+          internals.renameWithRetry = originalRenameWithRetry;
+        }
+        await fs.access(concurrentSourceRoot);
+        await assert.rejects(fs.access(concurrentMalformedRoot), { code: 'ENOENT' });
+        assert.equal(
+          capturedQuarantineMessage.value,
+          null,
+          'concurrent quarantine failure must not broadcast a quarantine that did not move',
+        );
+        const concurrentWriteBackCancelScopeKey = internals.getMainDialogWriteBackCancelScopeKey(
+          concurrentDialogId,
+          'running',
+        );
+        assert.equal(
+          internals.quarantinedMainDialogScopes.has(concurrentWriteBackCancelScopeKey),
+          false,
+          'concurrent quarantine failure must not leave the source dialog writeback-canceled',
+        );
+      }
+
+      {
+        capturedQuarantineMessage.value = null;
+        const transientRootDialogId = new DialogID('2b/19/transient01');
+        await seedMainDialog({
+          sandboxDir,
+          dialogId: transientRootDialogId,
+          statusDir: 'run',
+        });
+        const originalReaddir = fsNode.promises.readdir.bind(fsNode.promises);
+        let remainingTransientFailures = 3;
+        const transientEnoent = new Error('simulated disappearing directory') as Error & {
+          code: string;
+        };
+        transientEnoent.code = 'ENOENT';
+        fsNode.promises.readdir = (async (...args: Parameters<typeof fsNode.promises.readdir>) => {
+          if (remainingTransientFailures > 0) {
+            remainingTransientFailures -= 1;
+            throw transientEnoent;
+          }
+          return await originalReaddir(...args);
+        }) as typeof fsNode.promises.readdir;
+        try {
+          assert.deepEqual(await DialogPersistence.listDialogs('running'), []);
+          assert.deepEqual(await DialogPersistence.listMainDialogIds('running'), []);
+          assert.deepEqual(await DialogPersistence.listAllDialogIds('running'), []);
+        } finally {
+          fsNode.promises.readdir = originalReaddir as typeof fsNode.promises.readdir;
+        }
+        assert.equal(
+          capturedQuarantineMessage.value,
+          null,
+          'transient ENOENT during directory scans must not quarantine dialogs',
+        );
       }
 
       {
@@ -271,14 +466,19 @@ async function main(): Promise<void> {
         await assertQuarantined({ sourceRoot, malformedRoot });
       }
 
-      for (const fixture of [
+      const registryRestoreFixtures: readonly {
+        dialogId: DialogID;
+        status: 'running' | 'completed';
+        statusDir: 'run' | 'done';
+      }[] = [
         { dialogId: new DialogID('4c/61/cycle01'), status: 'running' as const, statusDir: 'run' },
         {
           dialogId: new DialogID('4c/61/cycledone'),
           status: 'completed' as const,
           statusDir: 'done',
         },
-      ]) {
+      ];
+      for (const fixture of registryRestoreFixtures) {
         const dialogId = fixture.dialogId;
         const { sourceRoot } = await seedMainDialog({
           sandboxDir,

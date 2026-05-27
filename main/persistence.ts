@@ -532,7 +532,7 @@ async function normalizeIdleWhileReplyObligationPending(
     executionMarker: healedExecutionMarker,
   };
 }
-const quarantiningMainDialogs = new Set<string>();
+const quarantiningMainDialogs = new Map<string, Promise<boolean>>();
 const PERSISTABLE_DIALOG_STATUSES = ['running', 'completed', 'archived'] as const;
 type PersistableDialogStatus = (typeof PERSISTABLE_DIALOG_STATUSES)[number];
 const RUN_STATUS_DIR = 'run';
@@ -6774,80 +6774,110 @@ export class DialogPersistence {
     status: DialogStatusKind,
     reason: string,
     error: Error,
-  ): Promise<void> {
+  ): Promise<boolean> {
     const mainDialogId =
       dialogId.rootId === dialogId.selfId ? dialogId : new DialogID(dialogId.rootId);
     const quarantineKey = `${status}|${mainDialogId.selfId}`;
-    if (quarantiningMainDialogs.has(quarantineKey)) {
-      return;
+    const activeQuarantine = quarantiningMainDialogs.get(quarantineKey);
+    if (activeQuarantine) {
+      return await activeQuarantine;
     }
-    quarantiningMainDialogs.add(quarantineKey);
-    let quarantined = false;
-    try {
-      await prepareDialogQuarantineHook?.({
-        dialogId,
-        mainDialogId,
-        status,
-        reason,
-        error,
-      });
-      this.quarantinedMainDialogScopes.add(
-        this.getMainDialogWriteBackCancelScopeKey(mainDialogId, status),
-      );
-      this.cancelMainDialogWriteBacks(mainDialogId, status);
 
-      const sourcePath = this.getMainDialogPath(mainDialogId, status);
-      if (!(await this.pathExists(sourcePath))) {
-        return;
-      }
-
-      let destinationPath = this.getMalformedMainDialogPath(mainDialogId, status);
-      if (await this.pathExists(destinationPath)) {
-        destinationPath = path.join(
-          this.getDialogsRootDir(),
-          this.MALFORMED_DIR,
-          `${mainDialogId.selfId}__${randomUUID()}`,
-        );
-      }
-
-      await fs.promises.mkdir(path.dirname(destinationPath), { recursive: true });
-      await fs.promises.rename(sourcePath, destinationPath);
-      quarantined = true;
-      log.warn(`Quarantined malformed dialog ${mainDialogId.selfId}`, undefined, {
-        status,
-        reason,
-        sourcePath,
-        destinationPath,
-        errorMessage: error.message,
-        dialogId: dialogId.valueOf(),
-        mainDialogId: mainDialogId.valueOf(),
-      });
-      dialogsQuarantinedBroadcaster?.({
-        type: 'dialogs_quarantined',
-        status: 'quarantining',
-        fromStatus: assertPersistableDialogStatus(
-          status,
-          'DialogPersistence.quarantineMalformedDialog(fromStatus)',
-        ),
-        rootId: mainDialogId.selfId,
-        dialogId: dialogId.selfId,
-        reason,
-        timestamp: formatUnifiedTimestamp(new Date()),
-      });
-    } finally {
+    const quarantinePromise = Promise.resolve().then(async (): Promise<boolean> => {
+      let quarantined = false;
+      let writeBackCancelScopeKey: string | null = null;
       try {
-        await finalizeDialogQuarantineHook?.({
+        await prepareDialogQuarantineHook?.({
           dialogId,
           mainDialogId,
           status,
           reason,
           error,
-          quarantined,
+        });
+        writeBackCancelScopeKey = this.getMainDialogWriteBackCancelScopeKey(mainDialogId, status);
+        this.quarantinedMainDialogScopes.add(writeBackCancelScopeKey);
+        this.cancelMainDialogWriteBacks(mainDialogId, status);
+
+        const sourcePath = this.getMainDialogPath(mainDialogId, status);
+        if (!(await this.pathExists(sourcePath))) {
+          return true;
+        }
+
+        let destinationPath = this.getMalformedMainDialogPath(mainDialogId, status);
+        if (await this.pathExists(destinationPath)) {
+          destinationPath = path.join(
+            this.getDialogsRootDir(),
+            this.MALFORMED_DIR,
+            `${mainDialogId.selfId}__${randomUUID()}`,
+          );
+        }
+
+        await fs.promises.mkdir(path.dirname(destinationPath), { recursive: true });
+        try {
+          await this.renameWithRetry(sourcePath, destinationPath);
+        } catch (renameError: unknown) {
+          log.error(
+            'Failed to quarantine malformed dialog; dialog remains in its source status',
+            renameError,
+            {
+              status,
+              reason,
+              sourcePath,
+              destinationPath,
+              errorMessage: error.message,
+              dialogId: dialogId.valueOf(),
+              mainDialogId: mainDialogId.valueOf(),
+              renameErrorCode: getErrorCode(renameError),
+            },
+          );
+          return false;
+        }
+        quarantined = true;
+        log.warn(`Quarantined malformed dialog ${mainDialogId.selfId}`, undefined, {
+          status,
+          reason,
+          sourcePath,
+          destinationPath,
+          errorMessage: error.message,
+          dialogId: dialogId.valueOf(),
+          mainDialogId: mainDialogId.valueOf(),
+        });
+        dialogsQuarantinedBroadcaster?.({
+          type: 'dialogs_quarantined',
+          status: 'quarantining',
+          fromStatus: assertPersistableDialogStatus(
+            status,
+            'DialogPersistence.quarantineMalformedDialog(fromStatus)',
+          ),
+          rootId: mainDialogId.selfId,
+          dialogId: dialogId.selfId,
+          reason,
+          timestamp: formatUnifiedTimestamp(new Date()),
         });
       } finally {
-        quarantiningMainDialogs.delete(quarantineKey);
+        try {
+          if (!quarantined && writeBackCancelScopeKey) {
+            this.quarantinedMainDialogScopes.delete(writeBackCancelScopeKey);
+          }
+          await finalizeDialogQuarantineHook?.({
+            dialogId,
+            mainDialogId,
+            status,
+            reason,
+            error,
+            quarantined,
+          });
+        } finally {
+          const active = quarantiningMainDialogs.get(quarantineKey);
+          if (active === quarantinePromise) {
+            quarantiningMainDialogs.delete(quarantineKey);
+          }
+        }
       }
-    }
+      return quarantined;
+    });
+    quarantiningMainDialogs.set(quarantineKey, quarantinePromise);
+    return await quarantinePromise;
   }
 
   static async quarantineMalformedRuntimeState(
@@ -6856,7 +6886,19 @@ export class DialogPersistence {
     reason: string,
     detail: string,
   ): Promise<void> {
-    await this.quarantineMalformedDialog(dialogId, status, reason, new Error(detail));
+    const quarantined = await this.quarantineMalformedDialog(
+      dialogId,
+      status,
+      reason,
+      new Error(detail),
+    );
+    if (!quarantined) {
+      throw new Error(
+        `Failed to quarantine malformed runtime state ` +
+          `(rootId=${dialogId.rootId}, selfId=${dialogId.selfId}, status=${status}, reason=${reason}): ` +
+          detail,
+      );
+    }
   }
 
   private static async rethrowAfterQuarantiningDialogPersistenceProblem(
@@ -6867,7 +6909,18 @@ export class DialogPersistence {
   ): Promise<never> {
     const persistenceError = findDomindsPersistenceFileError(error);
     if (persistenceError) {
-      await this.quarantineMalformedDialog(dialogId, status, reason, persistenceError);
+      try {
+        await this.quarantineMalformedDialog(dialogId, status, reason, persistenceError);
+      } catch (quarantineError: unknown) {
+        log.error('Failed to complete malformed dialog quarantine', quarantineError, {
+          status,
+          reason,
+          dialogId: dialogId.valueOf(),
+          mainDialogId: dialogId.rootId,
+          persistenceErrorMessage: persistenceError.message,
+          quarantineErrorCode: getErrorCode(quarantineError),
+        });
+      }
       throw persistenceError;
     }
     throw error;
@@ -7030,7 +7083,18 @@ export class DialogPersistence {
               }
             }
           }
-        } catch (error) {
+        } catch (error: unknown) {
+          if (getErrorCode(error) === 'ENOENT') {
+            log.debug(
+              `🔍 listDialogs: Directory disappeared while scanning ${dirPath}`,
+              undefined,
+              {
+                status,
+                dirPath,
+              },
+            );
+            return;
+          }
           // Directory enumeration failures are filesystem-level access/I/O problems, not evidence
           // that a specific dialog record is malformed. If we cannot even read this directory,
           // attempting to quarantine a child dialog via move/rename is unlikely to be reliable.
@@ -7077,6 +7141,17 @@ export class DialogPersistence {
       try {
         entries = await fs.promises.readdir(dirPath, { withFileTypes: true });
       } catch (error: unknown) {
+        if (getErrorCode(error) === 'ENOENT') {
+          log.debug(
+            `listMainDialogIds: Directory disappeared while scanning ${dirPath}`,
+            undefined,
+            {
+              status,
+              dirPath,
+            },
+          );
+          return;
+        }
         log.warn(`listMainDialogIds: Error reading directory ${dirPath}:`, error);
         return;
       }
@@ -7252,7 +7327,18 @@ export class DialogPersistence {
       let entries: fs.Dirent[];
       try {
         entries = await fs.promises.readdir(dirPath, { withFileTypes: true });
-      } catch (err) {
+      } catch (err: unknown) {
+        if (getErrorCode(err) === 'ENOENT') {
+          log.debug(
+            `🔍 listAllDialogIds: Directory disappeared while scanning ${dirPath}`,
+            undefined,
+            {
+              status,
+              dirPath,
+            },
+          );
+          return;
+        }
         // This is an environment/filesystem failure rather than confirmed dialog corruption. We log
         // loudly and keep enumeration partial instead of fabricating a quarantine target that may
         // not even be reachable through the same broken directory path.
