@@ -66,9 +66,8 @@ function openInBrowser(url: string): void {
   spawn('xdg-open', [url], { stdio: 'ignore', detached: true }).unref();
 }
 
-async function main(): Promise<void> {
+async function main(args: readonly string[] = process.argv.slice(2)): Promise<void> {
   setRtwsProcessTitle();
-  const args = process.argv.slice(2);
   let port: number | undefined;
   let host = 'localhost';
   let mode: 'dev' | 'prod' = process.env.NODE_ENV === 'dev' ? 'dev' : 'prod';

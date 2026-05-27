@@ -70,7 +70,7 @@ function showHelp() {
   console.log('      or prompts, ensuring no conflicts with user files.');
 }
 
-function parseArgs(argv: string[]) {
+function parseArgs(argv: readonly string[]) {
   const out: {
     member?: string;
     taskDocPath?: string;
@@ -153,10 +153,10 @@ function parseArgs(argv: string[]) {
   return out;
 }
 
-async function main() {
+async function main(argv: readonly string[] = process.argv.slice(2)): Promise<void> {
   try {
     setRtwsProcessTitle();
-    const args = parseArgs(process.argv.slice(2));
+    const args = parseArgs(argv);
 
     // Handle version flag
     if (args.version) {

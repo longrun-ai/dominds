@@ -140,6 +140,8 @@ type InstallFailureObservation = Readonly<{ errorText: string; failedAt: string 
 type RestartStdioMode = 'inherit' | 'ignore';
 
 const IDLE_RESTART_STATE: RestartState = { kind: 'idle' };
+const PROCESS_START_ARGV = [...process.argv];
+const PROCESS_START_EXEC_ARGV = [...process.execArgv];
 const PROCESS_START_CWD = process.cwd();
 
 let runtimeConfig: RuntimeConfig | null = null;
@@ -183,7 +185,7 @@ function compareVersions(a: string, b: string): number | null {
 
 function detectRunKind(mode: ServerMode): DomindsSelfUpdateRunKind {
   if (mode !== 'production') return 'disabled';
-  const scriptPath = (process.argv[1] ?? '').replace(/\\/g, '/');
+  const scriptPath = (PROCESS_START_ARGV[1] ?? '').replace(/\\/g, '/');
   if (scriptPath.includes('/_npx/') && scriptPath.includes('/node_modules/dominds/')) {
     return 'npx';
   }
@@ -220,7 +222,7 @@ async function getComparableRealPath(absPath: string): Promise<string> {
 }
 
 function getCurrentProcessEntrypoint(): string {
-  const entrypoint = process.argv[1];
+  const entrypoint = PROCESS_START_ARGV[1];
   if (typeof entrypoint !== 'string' || entrypoint.trim() === '') {
     throw new Error('Cannot restart Dominds because the current process entrypoint is unavailable');
   }
@@ -229,11 +231,11 @@ function getCurrentProcessEntrypoint(): string {
 
 function buildCurrentProcessRestartArgs(): string[] {
   getCurrentProcessEntrypoint();
-  return [...process.execArgv, ...process.argv.slice(1)];
+  return [...PROCESS_START_EXEC_ARGV, ...PROCESS_START_ARGV.slice(1)];
 }
 
 function buildCurrentDomindsCliArgs(): string[] {
-  return process.argv.slice(2);
+  return PROCESS_START_ARGV.slice(2);
 }
 
 function getNpxWorkspaceDirAbs(): string | null {
@@ -843,7 +845,7 @@ async function queryLatestVersion(): Promise<LatestQueryResult> {
 }
 
 async function findRunningDomindsPackageRootAbs(): Promise<string | null> {
-  const scriptPath = process.argv[1];
+  const scriptPath = PROCESS_START_ARGV[1];
   if (typeof scriptPath !== 'string' || scriptPath.trim() === '') return null;
   const scriptPathAbs = path.isAbsolute(scriptPath)
     ? scriptPath

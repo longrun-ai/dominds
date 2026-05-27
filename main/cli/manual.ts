@@ -167,9 +167,9 @@ function listAvailableToolsets(): void {
   console.log(`Available toolsets: ${names.map((name) => `\`${name}\``).join(', ')}`);
 }
 
-export async function main(): Promise<void> {
+export async function main(argv: readonly string[] = process.argv.slice(2)): Promise<void> {
   try {
-    const parsed = parseArgs(process.argv.slice(2));
+    const parsed = parseArgs(argv);
 
     if (parsed.list || !parsed.toolsetId) {
       listAvailableToolsets();

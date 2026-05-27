@@ -138,11 +138,11 @@ function printVersion(): void {
   }
 }
 
-export async function main(): Promise<void> {
+export async function main(argv: readonly string[] = process.argv.slice(2)): Promise<void> {
   const baseCwd = process.cwd();
   let parsed: { chdir?: string; argv: ReadonlyArray<string> };
   try {
-    parsed = extractGlobalRtwsChdir({ argv: process.argv.slice(2), baseCwd });
+    parsed = extractGlobalRtwsChdir({ argv, baseCwd });
   } catch (err) {
     console.error('Error:', err instanceof Error ? err.message : String(err));
     process.exit(1);
@@ -308,47 +308,38 @@ export async function main(): Promise<void> {
   }
 }
 
-async function runSubcommand(subcommand: string, args: string[]): Promise<void> {
+async function runSubcommand(subcommand: string, args: readonly string[]): Promise<void> {
   try {
     setRtwsProcessTitle();
 
-    // Save original argv
-    const originalArgv = process.argv;
-
-    // Set argv to simulate direct execution of the subcommand
-    process.argv = ['node', subcommand, ...args];
-
     if (subcommand === 'webui') {
-      await webuiMain();
+      await webuiMain(args);
     } else if (subcommand === 'tui') {
-      await tuiMain();
+      await tuiMain(args);
     } else if (subcommand === 'read') {
-      await readMain();
+      await readMain(args);
     } else if (subcommand === 'manual') {
-      await manualMain();
+      await manualMain(args);
     } else if (subcommand === 'validate_team_def') {
-      await validateTeamDefMain();
+      await validateTeamDefMain(args);
     } else if (subcommand === 'create') {
-      await createMain();
+      await createMain(args);
     } else if (subcommand === 'install') {
-      await installMain();
+      await installMain(args);
     } else if (subcommand === 'doctor') {
-      await doctorMain();
+      await doctorMain(args);
     } else if (subcommand === 'enable') {
-      await enableMain();
+      await enableMain(args);
     } else if (subcommand === 'disable') {
-      await disableMain();
+      await disableMain(args);
     } else if (subcommand === 'uninstall') {
-      await uninstallMain();
+      await uninstallMain(args);
     } else if (subcommand === 'update') {
-      await updateMain();
+      await updateMain(args);
     } else {
       console.error(`Error: Subcommand '${subcommand}' not implemented`);
       process.exit(1);
     }
-
-    // Restore original argv
-    process.argv = originalArgv;
   } catch (err) {
     console.error(`Failed to execute subcommand '${subcommand}':`, err);
     process.exit(1);

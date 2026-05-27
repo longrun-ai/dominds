@@ -426,7 +426,7 @@ function printFindResults(
   }
 }
 
-function parseArgs(args: string[]): ReadArgs {
+function parseArgs(args: readonly string[]): ReadArgs {
   let memberId: string | undefined;
   let onlyPrompt = false;
   let onlyMem = false;
@@ -488,8 +488,7 @@ function resolveTargetMemberIds(team: Team, memberId: string | undefined): strin
   return [fallback.id];
 }
 
-async function main(): Promise<void> {
-  const args = process.argv.slice(2);
+async function main(args: readonly string[] = process.argv.slice(2)): Promise<void> {
   let parsed: ReadArgs;
   try {
     parsed = parseArgs(args);

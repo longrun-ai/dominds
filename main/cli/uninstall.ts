@@ -58,10 +58,10 @@ function parseArgs(argv: readonly string[]): UninstallArgs {
   return { appId: positional[0], purge };
 }
 
-async function main(): Promise<void> {
+async function main(argv: readonly string[] = process.argv.slice(2)): Promise<void> {
   let args: UninstallArgs;
   try {
-    args = parseArgs(process.argv.slice(2));
+    args = parseArgs(argv);
   } catch (err: unknown) {
     console.error(err instanceof Error ? err.message : String(err));
     printHelp();

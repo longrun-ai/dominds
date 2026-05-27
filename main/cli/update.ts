@@ -37,10 +37,10 @@ function parseArgs(argv: readonly string[]): UpdateArgs {
   return { appId: positional[0] ?? null };
 }
 
-async function main(): Promise<void> {
+async function main(argv: readonly string[] = process.argv.slice(2)): Promise<void> {
   let args: UpdateArgs;
   try {
-    args = parseArgs(process.argv.slice(2));
+    args = parseArgs(argv);
   } catch (err: unknown) {
     console.error(err instanceof Error ? err.message : String(err));
     printHelp();

@@ -202,9 +202,9 @@ async function runGit(args: ReadonlyArray<string>, cwd: string): Promise<void> {
   throw new Error(`git failed (${detail}): ${res.cmd}`);
 }
 
-async function main(): Promise<void> {
+async function main(argv: readonly string[] = process.argv.slice(2)): Promise<void> {
   try {
-    const parsed = parseArgs(process.argv.slice(2));
+    const parsed = parseArgs(argv);
     switch (parsed.kind) {
       case 'help':
         printHelp();

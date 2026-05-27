@@ -31,7 +31,7 @@ function printUsage(): void {
   console.log('  dominds validate_team_def mentor');
 }
 
-function parseArgs(args: string[]): ParsedArgs {
+function parseArgs(args: readonly string[]): ParsedArgs {
   let memberId: string | undefined;
   for (const arg of args) {
     if (arg === '-h' || arg === '--help') {
@@ -63,10 +63,10 @@ function resolveTargetMemberIds(team: Team, memberId: string | undefined): strin
   return [fallback.id];
 }
 
-export async function main(): Promise<void> {
+export async function main(argv: readonly string[] = process.argv.slice(2)): Promise<void> {
   let parsed: ParsedArgs;
   try {
-    parsed = parseArgs(process.argv.slice(2));
+    parsed = parseArgs(argv);
   } catch (err: unknown) {
     console.error('Error:', err instanceof Error ? err.message : String(err));
     printUsage();
