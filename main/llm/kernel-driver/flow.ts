@@ -2292,6 +2292,9 @@ export async function executeDriveRound(args: {
       replyContinuationScope.target() ??
       calleeDialogReplyTarget;
     activeTellaskReplyDirective = activeTellaskReplyDirective ?? replyContinuationScope.directive();
+    if (driveResult.lastFunctionCallGenseq !== null) {
+      activePromptWasReplyToolReminder = false;
+    }
     interruptedBySignal = getActiveRunSignal(dialog.id)?.aborted === true;
     if (!interruptedBySignal) {
       const queuedFollowUp = dialog.peekQueuedPrompt();

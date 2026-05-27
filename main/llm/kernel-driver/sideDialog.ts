@@ -15,7 +15,7 @@ import {
 } from '@longrun-ai/kernel/types/storage';
 import { formatUnifiedTimestamp } from '@longrun-ai/kernel/utils/time';
 import { Dialog, DialogID, MainDialog, SideDialog } from '../../dialog';
-import { computeIdleDisplayState } from '../../dialog-display-state';
+import { computeIdleDisplayState, setDialogDisplayState } from '../../dialog-display-state';
 import { globalDialogRegistry } from '../../dialog-global-registry';
 import { ensureDialogLoaded, type DialogPersistenceStatus } from '../../dialog-instance-registry';
 import { log } from '../../log';
@@ -548,20 +548,7 @@ export async function supplyResponseToAskerDialog(args: {
       );
       if (maybeSideDialog) {
         const displayState = await computeIdleDisplayState(maybeSideDialog);
-        await DialogPersistence.mutateDialogLatest(
-          sideDialogId,
-          () => ({
-            kind: 'patch',
-            patch: {
-              displayState,
-              executionMarker:
-                displayState.kind === 'stopped'
-                  ? { kind: 'interrupted', reason: displayState.reason }
-                  : undefined,
-            },
-          }),
-          callerDialog.status,
-        );
+        await setDialogDisplayState(sideDialogId, displayState, callerDialog.status);
       }
     }
 

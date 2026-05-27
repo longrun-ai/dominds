@@ -65,8 +65,8 @@ export function getRunControlCountsSnapshotEpoch(): string {
   return runControlCountsSnapshotEpoch;
 }
 
-export function setDisplayStateBroadcaster(fn: (msg: WebSocketMessage) => void): void {
-  broadcastToClients = fn;
+export function setDisplayStateBroadcaster(fn: ((msg: WebSocketMessage) => void) | null): void {
+  broadcastToClients = fn ?? undefined;
 }
 
 function syncRunControlCountsAfterActiveRunChange(

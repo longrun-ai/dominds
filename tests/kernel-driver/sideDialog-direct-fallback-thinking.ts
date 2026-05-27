@@ -96,6 +96,39 @@ async function main(): Promise<void> {
       language,
     });
 
+    const triggerReminderThenTool = 'Start reminder-then-tool side dialog.';
+    const reminderThenToolCallId = 'root-call-coder-reminder-then-tool';
+    const reminderThenToolBody =
+      'First say progress without replying, then after the reminder use a tool and report progress.';
+    const reminderThenToolMentionList = ['@coder'];
+    const reminderThenToolPrompt = wrapPromptWithExpectedReplyTool({
+      prompt: formatAssignmentFromAskerDialog({
+        callName: 'tellaskSessionless',
+        fromAgentId: 'tester',
+        toAgentId: 'coder',
+        mentionList: reminderThenToolMentionList,
+        tellaskContent: reminderThenToolBody,
+        language,
+        collectiveTargets: ['coder'],
+      }),
+      expectedReplyToolName: 'replyTellaskSessionless',
+      language,
+    });
+    const reminderThenToolReplyReminder = buildReplyToolReminderText({
+      language,
+      directive: {
+        expectedReplyCallName: 'replyTellaskSessionless',
+        targetDialogId: '',
+        targetCallId: reminderThenToolCallId,
+        tellaskContent: reminderThenToolBody,
+      },
+      replyTargetAgentId: 'tester',
+    });
+    const reminderThenToolFirstProgress = 'I am not ready to reply yet.';
+    const reminderThenToolProbeResult = "Tool 'readonly_shell' not found";
+    const reminderThenToolPostToolProgress =
+      'The reminder probe finished; I still need one more step before replying.';
+
     const triggerSayingWins = 'Start saying-wins direct fallback side dialog.';
     const sayingWinsCallId = 'root-call-coder-saying-wins';
     const sayingWinsBody = 'Please answer 2+2. Do not call replyTellaskSessionless.';
@@ -292,6 +325,47 @@ async function main(): Promise<void> {
         message: expectedFirstThinkingOnlyMirror,
         role: 'tool',
         response: 'Root received first-turn thinking-only fallback.',
+      },
+      {
+        message: triggerReminderThenTool,
+        role: 'user',
+        response: 'Starting reminder-then-tool side dialog.',
+        funcCalls: [
+          {
+            id: reminderThenToolCallId,
+            name: 'tellaskSessionless',
+            arguments: {
+              targetAgentId: 'coder',
+              tellaskContent: reminderThenToolBody,
+            },
+          },
+        ],
+      },
+      {
+        message: reminderThenToolPrompt,
+        role: 'user',
+        response: reminderThenToolFirstProgress,
+      },
+      {
+        message: reminderThenToolReplyReminder,
+        role: 'user',
+        response: 'I will run one probe before replying.',
+        contextContains: [reminderThenToolBody],
+        funcCalls: [
+          {
+            id: 'coder-reminder-reset-probe',
+            name: 'readonly_shell',
+            arguments: {
+              command: 'printf reminder-reset',
+            },
+          },
+        ],
+      },
+      {
+        message: reminderThenToolProbeResult,
+        role: 'tool',
+        response: reminderThenToolPostToolProgress,
+        contextContains: [reminderThenToolBody],
       },
       {
         message: triggerThinkingOnly,
@@ -596,6 +670,106 @@ async function main(): Promise<void> {
       'consumed durable reply reminder must be cleared after fallback',
     );
     root = restoredRoot;
+
+    const scheduledReminderThenToolDrives: ScheduledDrive[] = [];
+    await executeDriveRound({
+      runtime: createKernelDriverRuntimeState(),
+      driveArgs: [
+        root,
+        makeUserPrompt(triggerReminderThenTool, 'kernel-driver-sideDialog-reminder-then-tool'),
+        true,
+        makeDriveOptions({ suppressDiligencePush: true }),
+      ],
+      scheduleDrive: (dialog, options) => {
+        assert.ok(
+          dialog instanceof SideDialog,
+          'expected reminder-then-tool sideDialog scheduling',
+        );
+        scheduledReminderThenToolDrives.push({ dialog, options });
+      },
+      driveDialog: async () => {},
+    });
+    const reminderThenToolSideDialog = root
+      .getAllDialogs()
+      .find(
+        (dialog): dialog is SideDialog =>
+          dialog instanceof SideDialog &&
+          dialog.assignmentFromAsker.callId === reminderThenToolCallId,
+      );
+    assert.ok(reminderThenToolSideDialog, 'expected reminder-then-tool side dialog to exist');
+    assert.equal(
+      scheduledReminderThenToolDrives.length,
+      1,
+      'root drive should schedule the reminder-then-tool side dialog once',
+    );
+
+    await executeDriveRound({
+      runtime: createKernelDriverRuntimeState(),
+      driveArgs: [
+        reminderThenToolSideDialog,
+        scheduledReminderThenToolDrives[0].options.humanPrompt,
+        scheduledReminderThenToolDrives[0].options.waitInQue,
+        scheduledReminderThenToolDrives[0].options.driveOptions,
+      ],
+      scheduleDrive: (dialog, options) => {
+        assert.equal(
+          dialog,
+          reminderThenToolSideDialog,
+          'first plain progress should schedule the reminder-then-tool side dialog again',
+        );
+        scheduledReminderThenToolDrives.push({ dialog: reminderThenToolSideDialog, options });
+      },
+      driveDialog: async () => {},
+    });
+    const initialReminderThenToolReminder = reminderThenToolSideDialog.peekQueuedPrompt();
+    assert.equal(
+      initialReminderThenToolReminder?.kind,
+      'new_course_runtime_sideDialog',
+      'first plain progress must queue the reply reminder before fallback is allowed',
+    );
+    assert.equal(initialReminderThenToolReminder.prompt, reminderThenToolReplyReminder);
+    assert.equal(
+      scheduledReminderThenToolDrives.length,
+      2,
+      'first reminder should schedule one follow-up drive',
+    );
+
+    await executeDriveRound({
+      runtime: createKernelDriverRuntimeState(),
+      driveArgs: [
+        reminderThenToolSideDialog,
+        undefined,
+        scheduledReminderThenToolDrives[1].options.waitInQue,
+        scheduledReminderThenToolDrives[1].options.driveOptions ??
+          makeDriveOptions({ source: 'kernel_driver_follow_up', reason: 'follow_up_prompt' }),
+      ],
+      scheduleDrive: (dialog, options) => {
+        assert.equal(
+          dialog,
+          reminderThenToolSideDialog,
+          'post-tool progress after reminder should schedule another reminder drive',
+        );
+        scheduledReminderThenToolDrives.push({ dialog: reminderThenToolSideDialog, options });
+      },
+      driveDialog: async () => {},
+    });
+    assert.equal(
+      findTellaskResult(root.msgs, reminderThenToolCallId),
+      undefined,
+      'a tool call after the reply reminder must reset direct-fallback eligibility',
+    );
+    const reminderThenToolReminderAfterTool = reminderThenToolSideDialog.peekQueuedPrompt();
+    assert.equal(
+      reminderThenToolReminderAfterTool?.kind,
+      'new_course_runtime_sideDialog',
+      'post-tool plain progress should remind again instead of direct-fallback delivery',
+    );
+    assert.equal(reminderThenToolReminderAfterTool.prompt, reminderThenToolReplyReminder);
+    assert.equal(
+      scheduledReminderThenToolDrives.length,
+      3,
+      'post-tool plain progress should schedule a fresh reply reminder follow-up',
+    );
 
     const guardedPendingReplyCallId = 'root-call-coder-guarded-pending-reply';
     const guardedPendingReplyBody =

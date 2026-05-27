@@ -3,6 +3,7 @@ import type {
   MainDialogMetadataFile,
 } from '@longrun-ai/kernel/types/storage';
 import { toCallSiteCourseNo, toCallSiteGenseqNo } from '@longrun-ai/kernel/types/storage';
+import type { WebSocketMessage } from '@longrun-ai/kernel/types/wire';
 import { formatUnifiedTimestamp } from '@longrun-ai/kernel/utils/time';
 import assert from 'node:assert/strict';
 import * as fs from 'node:fs/promises';
@@ -13,6 +14,7 @@ import {
   installRecordingGlobalDialogEventBroadcaster,
 } from '../../main/bootstrap/global-dialog-event-broadcaster';
 import { DialogID, MainDialog } from '../../main/dialog';
+import { setDisplayStateBroadcaster } from '../../main/dialog-display-state';
 import {
   createEmptyDialogNextStepState,
   createEmptyDialogTellaskCallState,
@@ -113,19 +115,28 @@ async function main(): Promise<void> {
       side.status,
     );
     assert.equal(activeObligationBefore?.targetCallId, 'call-root-asks-side');
-
-    const supplied = await supplySideDialogResponseToAssignedAskerIfPendingV2({
-      sideDialog: side,
-      responseText: 'done',
-      responseGenseq: 2,
-      deliveryMode: 'reply_tool',
-      replyResolution: {
-        callId: 'call-side-replies-root',
-        replyCallName: 'replyTellask',
-      },
-      allowExplicitReplyWithoutAssignmentAnchor: true,
-      scheduleDrive: () => undefined,
+    const displayStateMessages: WebSocketMessage[] = [];
+    setDisplayStateBroadcaster((message) => {
+      displayStateMessages.push(message);
     });
+
+    let supplied = false;
+    try {
+      supplied = await supplySideDialogResponseToAssignedAskerIfPendingV2({
+        sideDialog: side,
+        responseText: 'done',
+        responseGenseq: 2,
+        deliveryMode: 'reply_tool',
+        replyResolution: {
+          callId: 'call-side-replies-root',
+          replyCallName: 'replyTellask',
+        },
+        allowExplicitReplyWithoutAssignmentAnchor: true,
+        scheduleDrive: () => undefined,
+      });
+    } finally {
+      setDisplayStateBroadcaster(null);
+    }
 
     assert.equal(supplied, true);
     const activeAfter = await DialogPersistence.loadActiveCalleeDispatches(rootId, 'running');
@@ -139,6 +150,15 @@ async function main(): Promise<void> {
     assert.equal(sideLatestAfter?.replyDelivery?.status, 'delivered');
     assert.equal(sideLatestAfter?.replyDelivery?.toolResultStatus, 'pending');
     assert.equal(sideLatestAfter?.sideDialogFinalResponse?.callId, 'call-root-asks-side');
+    const displayStateEvents = displayStateMessages.filter(
+      (event) => event.type === 'dlg_display_state_evt',
+    );
+    assert.equal(displayStateEvents.length, 1);
+    const [displayStateEvent] = displayStateEvents;
+    assert.ok(displayStateEvent);
+    assert.equal(displayStateEvent.dialog.rootId, side.id.rootId);
+    assert.equal(displayStateEvent.dialog.selfId, side.id.selfId);
+    assert.deepEqual(displayStateEvent.displayState, { kind: 'idle_waiting_user' });
   });
 }
 
