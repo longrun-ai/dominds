@@ -111,6 +111,8 @@ export type DomindsSelfUpdateReason =
   | 'dev_mode'
   | 'latest_check_failed'
   | 'install_available'
+  | 'install_failed'
+  | 'install_verified_after_command_failure'
   | 'restart_required'
   | 'restart_available_via_npx'
   | null;

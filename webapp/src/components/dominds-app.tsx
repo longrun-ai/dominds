@@ -272,6 +272,7 @@ export class DomindsApp extends HTMLElement {
   private backendMode: 'development' | 'production' | null = null;
   private domindsSelfUpdate: DomindsSelfUpdateStatus | null = null;
   private domindsSelfUpdateCheckInFlight: boolean = false;
+  private domindsSelfUpdateInstallFailureToastKey: string | null = null;
   private domindsVersionClickTimer: number | null = null;
   private toolbarCurrentCourse: number = 1;
   private toolbarTotalCourses: number = 1;
@@ -2189,7 +2190,16 @@ export class DomindsApp extends HTMLElement {
         break;
       case 'restart':
       case 'restarting':
-        lines.push(`${t.domindsVersionTooltipStatus}: ${t.domindsVersionRestartAvailableTitle}`);
+        lines.push(
+          `${t.domindsVersionTooltipStatus}: ${
+            this.domindsSelfUpdate?.reason === 'install_verified_after_command_failure'
+              ? this.formatVersionCheckResult(
+                  t.domindsVersionInstallVerifiedAfterCommandFailure,
+                  this.domindsSelfUpdate,
+                )
+              : t.domindsVersionRestartAvailableTitle
+          }`,
+        );
         break;
       case 'idle':
         if (
@@ -2242,6 +2252,7 @@ export class DomindsApp extends HTMLElement {
     this.backendVersion = status.version.trim();
     this.backendMode = status.mode;
     this.domindsSelfUpdate = status.selfUpdate;
+    this.showDomindsSelfUpdateFailureIfNeeded(status.selfUpdate);
 
     if (workspace !== '') {
       document.documentElement.setAttribute('data-dominds-rtws', workspace);
@@ -2260,6 +2271,17 @@ export class DomindsApp extends HTMLElement {
     }
 
     this.updateRtwsInfo();
+  }
+
+  private showDomindsSelfUpdateFailureIfNeeded(status: DomindsSelfUpdateStatus): void {
+    if (status.reason !== 'install_failed' || !status.message) return;
+    const key = `${status.checkedAt ?? ''}:${status.message}`;
+    if (this.domindsSelfUpdateInstallFailureToastKey === key) return;
+    this.domindsSelfUpdateInstallFailureToastKey = key;
+    this.showToast(
+      `${getUiStrings(this.uiLanguage).domindsVersionActionFailedPrefix}${status.message}`,
+      'error',
+    );
   }
 
   private formatVersionActionPrompt(template: string, latestVersion: string | null): string {
@@ -2294,9 +2316,11 @@ export class DomindsApp extends HTMLElement {
       return;
     }
     if (status.action === 'restart') {
-      this.showSuccess(
-        this.formatVersionCheckResult(t.domindsVersionCheckRestartAvailable, status),
-      );
+      const messageTemplate =
+        status.reason === 'install_verified_after_command_failure'
+          ? t.domindsVersionInstallVerifiedAfterCommandFailure
+          : t.domindsVersionCheckRestartAvailable;
+      this.showSuccess(this.formatVersionCheckResult(messageTemplate, status));
       return;
     }
     if (status.reason === 'latest_check_failed' && status.message) {
@@ -2343,7 +2367,14 @@ export class DomindsApp extends HTMLElement {
         return;
       }
       if (status.action === 'install' && nextStatus.action === 'restart') {
-        this.showSuccess(t.domindsVersionInstallSuccess);
+        this.showSuccess(
+          nextStatus.reason === 'install_verified_after_command_failure'
+            ? this.formatVersionCheckResult(
+                t.domindsVersionInstallVerifiedAfterCommandFailure,
+                nextStatus,
+              )
+            : t.domindsVersionInstallSuccess,
+        );
         return;
       }
       this.showInfo(t.domindsVersionRestartScheduled);

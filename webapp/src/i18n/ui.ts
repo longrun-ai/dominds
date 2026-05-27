@@ -15,6 +15,7 @@ export type UiStrings = {
   domindsVersionInstallConfirm: string;
   domindsVersionRestartConfirm: string;
   domindsVersionInstallSuccess: string;
+  domindsVersionInstallVerifiedAfterCommandFailure: string;
   domindsVersionInstallInProgress: string;
   domindsVersionRestartScheduled: string;
   domindsVersionRestartInProgress: string;
@@ -433,6 +434,8 @@ export function getUiStrings(language: LanguageCode): UiStrings {
       domindsVersionRestartConfirm:
         '将以最新可用版本重启 Dominds 后台。\n\n当前: v<current>\n目标: v<latest>\n\n是否继续？',
       domindsVersionInstallSuccess: '最新版 Dominds 已安装完成，请点击重启。',
+      domindsVersionInstallVerifiedAfterCommandFailure:
+        '安装命令返回异常，但磁盘文件和版本探针已确认 v<latest> 安装成功，请点击重启。',
       domindsVersionInstallInProgress: '后端正在安装……',
       domindsVersionRestartScheduled: 'Dominds 后台正在重启…',
       domindsVersionRestartInProgress: '后端正在重启，若页面没有自动刷新，可手动刷新看看。',
@@ -866,6 +869,8 @@ export function getUiStrings(language: LanguageCode): UiStrings {
     domindsVersionRestartConfirm:
       'Dominds backend will restart into the latest available version.\n\nCurrent: v<current>\nTarget: v<latest>\n\nContinue?',
     domindsVersionInstallSuccess: 'Latest Dominds is installed. Click restart when ready.',
+    domindsVersionInstallVerifiedAfterCommandFailure:
+      'The install command returned an error, but installed files and version probe confirmed v<latest>. Click restart when ready.',
     domindsVersionInstallInProgress: 'Backend is installing…',
     domindsVersionRestartScheduled: 'Dominds backend is restarting…',
     domindsVersionRestartInProgress:

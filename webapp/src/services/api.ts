@@ -448,10 +448,57 @@ export class ApiClient {
   async actDomindsSelfUpdate(
     action: 'install' | 'restart',
   ): Promise<ApiResponse<{ update: DomindsSelfUpdateStatus }>> {
-    return this.request('/api/dominds/self-update', {
-      method: 'POST',
-      body: { action },
-    });
+    const url = `${this.baseURL}/api/dominds/self-update`;
+    const method = 'POST';
+    const body = { action };
+
+    try {
+      const response = await fetch(url, {
+        method,
+        headers: { ...this.defaultHeaders },
+        body: JSON.stringify(body),
+        cache: 'no-store',
+      });
+      const contentType = response.headers.get('content-type');
+      const data: unknown = contentType?.includes('application/json')
+        ? await response.json()
+        : await response.text();
+
+      if (!response.ok) {
+        const error = new Error(
+          getApiErrorMessage(response.status, response.statusText, data),
+        ) as ApiError;
+        error.status = response.status;
+        error.response = data;
+        error.requestBody = body;
+        throw error;
+      }
+
+      return {
+        success: true,
+        status: response.status,
+        data: data as { update: DomindsSelfUpdateStatus },
+        timestamp: formatUnifiedTimestamp(new Date()),
+      };
+    } catch (error) {
+      const apiError: ApiError =
+        error instanceof Error ? (error as ApiError) : (new Error('Unknown error') as ApiError);
+      console.error('API request failed', {
+        method,
+        url,
+        status: apiError.status ?? null,
+        error: apiError.message,
+        requestBody: apiError.requestBody ?? body,
+        response: apiError.response,
+      });
+
+      return {
+        success: false,
+        error: apiError.message,
+        status: apiError.status,
+        timestamp: formatUnifiedTimestamp(new Date()),
+      };
+    }
   }
 
   async checkDomindsSelfUpdate(): Promise<ApiResponse<{ update: DomindsSelfUpdateStatus }>> {
