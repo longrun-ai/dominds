@@ -163,7 +163,9 @@ async function main() {
       meta: {
         kind: 'pending_tellask',
         pendingCount: 1,
-        update: { altInstruction: '只有长线诉请能更新特定诉请的“任务安排”；一次性诉请没有这个通道' },
+        update: {
+          altInstruction: '只有长线诉请能更新特定诉请的“任务安排”；一次性诉请没有这个通道',
+        },
         delete: {
           altInstruction:
             '当前仍有进行中诉请；我不能用 delete_reminder 删除。只有长线诉请能更新特定诉请的“任务安排”；一次性诉请没有这个通道',
@@ -206,7 +208,9 @@ async function main() {
     'Expected zh maintenance reference to preserve manager-tool update path',
   );
   assert(
-    zhMaintenanceReference.includes('清理噪音时我可删除：delete_reminder({ "reminder_id": "rem07abc" })'),
+    zhMaintenanceReference.includes(
+      '清理噪音时我可删除：delete_reminder({ "reminder_id": "rem07abc" })',
+    ),
     'Expected zh zero-inflight tellask maintenance reference to allow optional noise cleanup',
   );
   assert(
@@ -218,7 +222,9 @@ async function main() {
     'Expected zh running daemon maintenance reference to use stop_daemon instead of delete_reminder',
   );
   assert(
-    zhMaintenanceReference.includes('确认已知悉 daemon 终态后，可清理：delete_reminder({ "reminder_id": "rem11abc" })'),
+    zhMaintenanceReference.includes(
+      '确认已知悉 daemon 终态后，可清理：delete_reminder({ "reminder_id": "rem11abc" })',
+    ),
     'Expected zh completed daemon maintenance reference to allow cleanup after terminal state acknowledgement',
   );
   assert(
@@ -510,11 +516,15 @@ async function main() {
     'Expected en maintenance reference to preserve manager-tool update path',
   );
   assert(
-    enMaintenanceReference.includes('Noise cleanup delete path: I may run delete_reminder({ "reminder_id": "rem07abc" })'),
+    enMaintenanceReference.includes(
+      'Noise cleanup delete path: I may run delete_reminder({ "reminder_id": "rem07abc" })',
+    ),
     'Expected en zero-inflight tellask maintenance reference to allow optional noise cleanup',
   );
   assert(
-    enMaintenanceReference.includes('there are still in-flight Tellasks; I cannot delete this reminder with delete_reminder'),
+    enMaintenanceReference.includes(
+      'there are still in-flight Tellasks; I cannot delete this reminder with delete_reminder',
+    ),
     'Expected en active tellask maintenance reference to distinguish cannot-delete state',
   );
   assert(
