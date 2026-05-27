@@ -50,6 +50,7 @@ import {
   type CmdRunnerResponse,
 } from './cmd-runner-protocol';
 import { truncateToolOutputText } from './output-limit';
+import { bestEffortKillPid, bestEffortKillWindowsProcessTree, sleepMs } from './process-kill';
 import { buildCapturedShellEnv } from './shell-capture-env';
 
 const execFileAsync = promisify(execFile);
@@ -1128,13 +1129,9 @@ function parseStopDaemonArgs(args: ToolArguments): StopDaemonArgs {
     throw new Error('stop_daemon.entire_pg must be a boolean if provided');
   }
 
-  if (process.platform === 'win32' && entirePg === true) {
-    throw new Error('stop_daemon.entire_pg=true is unsupported on Windows');
-  }
-
   return {
     pid,
-    entirePg: entirePg ?? process.platform !== 'win32',
+    entirePg: entirePg ?? true,
   };
 }
 
@@ -1466,13 +1463,20 @@ async function bestEffortKillDaemonProcessGroup(
   options?: Readonly<{ includeEntirePg: boolean }>,
 ): Promise<void> {
   const includeEntirePg = options?.includeEntirePg ?? true;
+  if (includeEntirePg && process.platform === 'win32') {
+    await bestEffortKillWindowsProcessTree(meta.pid);
+    if (meta.runnerPid !== undefined && meta.runnerPid !== meta.pid) {
+      bestEffortKillPid(meta.runnerPid);
+    }
+    return;
+  }
   if (includeEntirePg && process.platform !== 'win32' && meta.processGroupId !== undefined) {
     try {
       process.kill(-meta.processGroupId, 'SIGTERM');
     } catch {
       // Best effort only.
     }
-    await new Promise((resolve) => setTimeout(resolve, 1_000));
+    await sleepMs(1_000);
     try {
       process.kill(-meta.processGroupId, 'SIGKILL');
     } catch {
@@ -1484,7 +1488,7 @@ async function bestEffortKillDaemonProcessGroup(
   } catch {
     // Best effort only.
   }
-  await new Promise((resolve) => setTimeout(resolve, 250));
+  await sleepMs(250);
   try {
     process.kill(meta.pid, 'SIGKILL');
   } catch {
@@ -1681,7 +1685,7 @@ const stopDaemonSchema: JsonSchema = {
     entire_pg: {
       type: 'boolean',
       description:
-        'Whether to signal the entire process group instead of only the tracked PID (default: true on Unix-like systems; false on Windows)',
+        'Whether to stop the entire process group/process tree instead of only the tracked PID (default: true)',
     },
   },
   required: ['pid'],
@@ -3506,7 +3510,7 @@ export const stopDaemonTool: FuncTool = {
         try {
           const stopResponse = await callRunner(
             reminder.meta.runnerEndpoint,
-            { type: 'stop' },
+            { type: 'stop', entirePg },
             10_000,
           );
           if (stopResponse.ok && runnerResponseMatchesReminder(reminder.meta, stopResponse)) {

@@ -55,7 +55,7 @@ executed_at: <执行时间戳>
 **参数：**
 
 - `pid`（必需）：守护进程 PID（数字）
-- `entire_pg`（可选）：是否对整个进程组发终止信号（默认：Linux/macOS 为 `true`，Windows 为 `false`；Windows 不支持显式传 `true`）
+- `entire_pg`（可选）：是否停止整个进程组/进程树（默认：`true`；Windows 上会停止被追踪的 shell 进程及其子进程）
 
 **返回：**
 
@@ -151,7 +151,7 @@ stop_daemon({
   pid: 12345,
 });
 
-// Unix-like 平台可显式要求终止整个进程组
+// 显式要求停止整个进程组/进程树
 stop_daemon({
   pid: 12345,
   entire_pg: true,

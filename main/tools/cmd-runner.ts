@@ -14,6 +14,7 @@ import {
   type CmdRunnerStatusPayload,
   type CmdRunnerStreamSnapshot,
 } from './cmd-runner-protocol';
+import { bestEffortKillWindowsProcessTree, sleepMs } from './process-kill';
 import { buildCapturedShellEnv } from './shell-capture-env';
 
 const execFileAsync = promisify(execFile);
@@ -141,8 +142,12 @@ async function ensureSocketParentDir(endpoint: string): Promise<void> {
   }
 }
 
-function writeSocketResponse(socket: net.Socket, response: CmdRunnerResponse): void {
-  socket.end(`${JSON.stringify(response)}\n`);
+function writeSocketResponse(
+  socket: net.Socket,
+  response: CmdRunnerResponse,
+  callback?: () => void,
+): void {
+  socket.end(`${JSON.stringify(response)}\n`, callback);
 }
 
 function isProcessAlive(pid: number): boolean {
@@ -154,6 +159,12 @@ function isProcessAlive(pid: number): boolean {
       typeof error === 'object' && error !== null ? (error as { code?: unknown }).code : undefined;
     return code !== 'ESRCH';
   }
+}
+
+function markDaemonMissing(state: RunnerState): void {
+  state.isRunning = false;
+  state.exitCode = null;
+  state.exitSignal = 'SIGKILL';
 }
 
 async function main(): Promise<void> {
@@ -372,11 +383,16 @@ async function main(): Promise<void> {
             return;
           }
           await handleStopRequest(request, state, childProcess);
-          writeSocketResponse(socket, {
-            type: 'stop_result',
-            ok: true,
-            ...buildStatusPayload(state),
-          });
+          const shouldExitAfterResponse = !state.isRunning;
+          writeSocketResponse(
+            socket,
+            {
+              type: 'stop_result',
+              ok: true,
+              ...buildStatusPayload(state),
+            },
+            shouldExitAfterResponse ? () => closeServerAndExit(0) : undefined,
+          );
         } catch (error: unknown) {
           writeSocketResponse(socket, {
             type: 'error',
@@ -447,15 +463,30 @@ async function main(): Promise<void> {
 }
 
 async function handleStopRequest(
-  request: CmdRunnerRequest,
+  request: Extract<CmdRunnerRequest, { type: 'stop' }>,
   state: RunnerState,
   childProcess: ChildProcess,
 ): Promise<void> {
   if (!state.isRunning) {
     return;
   }
-  process.kill(state.daemonPid, 'SIGTERM');
-  await new Promise((resolve) => setTimeout(resolve, 1000));
+  if (request.entirePg && process.platform === 'win32') {
+    await bestEffortKillWindowsProcessTree(state.daemonPid);
+    await sleepMs(100);
+    if (!state.isRunning || !isProcessAlive(state.daemonPid)) {
+      if (!state.isRunning) {
+        return;
+      }
+      markDaemonMissing(state);
+      return;
+    }
+  }
+  try {
+    process.kill(state.daemonPid, 'SIGTERM');
+  } catch {
+    return;
+  }
+  await sleepMs(1000);
   if (!state.isRunning) {
     return;
   }
@@ -464,12 +495,16 @@ async function handleStopRequest(
   } catch {
     // Process may have exited during grace period.
   }
-  await new Promise((resolve) => setTimeout(resolve, 100));
+  await sleepMs(100);
   if (!state.isRunning) {
     return;
   }
   if (typeof childProcess.kill === 'function') {
     childProcess.kill('SIGKILL');
+  }
+  await sleepMs(100);
+  if (state.isRunning && !isProcessAlive(state.daemonPid)) {
+    markDaemonMissing(state);
   }
 }
 

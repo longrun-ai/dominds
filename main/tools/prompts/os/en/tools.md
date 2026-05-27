@@ -55,7 +55,7 @@ Stop daemon process.
 **Parameters:**
 
 - `pid` (required): Daemon process ID (number)
-- `entire_pg` (optional): Whether to signal the entire process group (default: `true` on Unix-like systems, `false` on Windows; Windows does not support explicitly passing `true`)
+- `entire_pg` (optional): Whether to stop the entire process group/process tree (default: `true`; on Windows this stops the tracked shell process and its child processes)
 
 **Returns:**
 
@@ -151,7 +151,7 @@ stop_daemon({
   pid: 12345,
 });
 
-// On Unix-like systems, you can explicitly terminate the whole process group
+// Explicitly stop the whole process group/process tree
 stop_daemon({
   pid: 12345,
   entire_pg: true,

@@ -43,7 +43,7 @@ export type CmdRunnerRequest =
   | Readonly<{ type: 'ping' }>
   | Readonly<{ type: 'get_status' }>
   | Readonly<{ type: 'get_output'; stdout: boolean; stderr: boolean }>
-  | Readonly<{ type: 'stop' }>;
+  | Readonly<{ type: 'stop'; entirePg: boolean }>;
 
 export type CmdRunnerStreamSnapshot = Readonly<{
   content: string;
@@ -311,8 +311,15 @@ export function parseCmdRunnerRequestLine(line: string): CmdRunnerRequest {
     throw new Error('Invalid cmd_runner request: expected object');
   }
   const type = asString(raw['type']);
-  if (type === 'ping' || type === 'get_status' || type === 'stop') {
+  if (type === 'ping' || type === 'get_status') {
     return { type };
+  }
+  if (type === 'stop') {
+    const entirePg = asBoolean(raw['entirePg']);
+    if (entirePg === null) {
+      throw new Error('Invalid cmd_runner stop request: entirePg must be boolean');
+    }
+    return { type, entirePg };
   }
   if (type === 'get_output') {
     const stdout = asBoolean(raw['stdout']);
