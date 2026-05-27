@@ -19,7 +19,7 @@ async function main(): Promise<void> {
   const dialog = createDialog();
   const reminder = materializeReminder({
     id: 'daemon001',
-    content: `🟢 pnpm dev 运行中（系统维护 / 实时真源 / 不可删除）
+    content: `🟢 pnpm dev 运行中（系统维护 / 实时真源）
 
 后台进程 PID: 999999
 命令: pnpm dev
@@ -46,12 +46,12 @@ Shell: bash
   }
   assert.match(
     result.updatedContent,
-    /🟡 pnpm dev 已退出（退出事件提示 \/ 确认看到后可删除）/,
+    /🟡 pnpm dev 已退出（退出事件提示）/,
     'Expected exited reminder to expose explicit exited phase summary',
   );
   assert.doesNotMatch(
     result.updatedContent,
-    /🟢 pnpm dev 运行中（系统维护 \/ 实时真源 \/ 不可删除）/,
+    /🟢 pnpm dev 运行中（系统维护 \/ 实时真源）/,
     'Expected exited snapshot to strip stale running phase summary from the retained snapshot body',
   );
   assert.match(

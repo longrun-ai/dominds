@@ -274,10 +274,7 @@ export const mcpLeaseReminderOwner: ReminderOwner = {
               `你当前看到的是系统维护的 MCP 租约状态。该 MCP server 被视为非“真正无状态”；当前对话持有一个 MCP 运行时实例（HTTP 连接或 stdio 进程）。`,
               formatAutoMaintainedReminderManualMirrorBan(workLanguage),
               '',
-              `当你确认近期不再需要这个运行时实例时，请释放它，以停止/回收底层 MCP 进程或连接：`,
-              `- \`mcp_release({\"serverId\":\"${serverId}\"})\``,
-              '',
-              `这只影响当前对话持有的运行时实例，不决定该 server 的全局工具注册/可见性。`,
+              `该提醒项只说明当前对话持有的运行时实例；它不决定该 server 的全局工具注册/可见性。`,
             ].join('\n')
           : [
               `${prefix} MCP toolset lease [${reminder.id}]: \`${serverId}\``,
@@ -285,10 +282,7 @@ export const mcpLeaseReminderOwner: ReminderOwner = {
               `You are looking at system-maintained MCP lease state. This MCP server is treated as non-stateless, and the current dialog holds one MCP runtime instance for it (an HTTP connection or stdio process).`,
               formatAutoMaintainedReminderManualMirrorBan(workLanguage),
               '',
-              `When you are confident you will not need this runtime instance soon, release it to stop the underlying MCP process/connection:`,
-              `- \`mcp_release({\"serverId\":\"${serverId}\"})\``,
-              '',
-              `This only affects the runtime instance held by the current dialog; it does not determine global tool registration/visibility for that server.`,
+              `This reminder only describes the runtime instance held by the current dialog; it does not determine global tool registration/visibility for that server.`,
             ].join('\n'),
     };
   },

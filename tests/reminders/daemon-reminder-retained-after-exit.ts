@@ -72,18 +72,18 @@ async function main(): Promise<void> {
       const finalizedReminder = await requireReminder(dialog);
       assert.match(
         finalizedReminder.content,
-        /🟡 .* 已退出（退出事件提示 \/ 确认看到后可删除）/,
+        /🟡 .* 已退出（退出事件提示）/,
         'Expected exited daemon reminder to expose explicit exited phase summary',
       );
-      assert.match(
+      assert.doesNotMatch(
         finalizedReminder.content,
-        /(手动删除|delete this reminder manually)/,
-        'Expected exited daemon reminder to require manual deletion',
+        /(手动删除|delete this reminder manually|get_daemon_output)/,
+        'Expected exited daemon reminder content not to carry maintenance action instructions',
       );
       assert.match(
         finalizedReminder.content,
-        /get_daemon_output/,
-        'Expected exited daemon reminder to mention optional final stdout/stderr inspection',
+        /最后一次已知 stdout\/stderr 快照|last known stdout\/stderr snapshot/,
+        'Expected exited daemon reminder to retain the final stdout/stderr snapshot as state',
       );
       const finalizedMeta =
         finalizedReminder.meta && typeof finalizedReminder.meta === 'object'

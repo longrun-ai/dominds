@@ -62,9 +62,9 @@ function main(): void {
   assert.ok(!zhMainDialog.includes('Dominds 会自动注入回贴标记，禁止手写标记'));
   assert.ok(
     zhMainDialog.includes(
-      '“⏳ 进行中诉请”提醒项只是系统状态窗，不是控制面：内容不可手改；当存在非 0 路进行中诉请时，不可删除，误删会被拒绝并返回引导文案。',
+      '“⏳ 进行中诉请”提醒项只是系统状态窗，不是控制面；用它判断是否确实存在仍在执行的诉请。',
     ),
-    'zh Main Dialog prompt should explain active pending-tellask reminders are non-deletable',
+    'zh Main Dialog prompt should explain pending-tellask reminders are status windows',
   );
   assert.ok(
     zhMainDialog.includes(
@@ -94,9 +94,9 @@ function main(): void {
   );
   assert.ok(
     enMainDialog.includes(
-      'The “⏳ In-flight Tellasks” reminder is only a system status window, not a control surface: its content is not hand-editable; while any Tellask is still active, it is not deletable, and mistaken deletion will be rejected with guidance.',
+      'The “⏳ In-flight Tellasks” reminder is only a system status window, not a control surface; use it to determine whether any Tellask is truly still in flight.',
     ),
-    'en Main Dialog prompt should explain active pending-tellask reminders are non-deletable',
+    'en Main Dialog prompt should explain pending-tellask reminders are status windows',
   );
   assert.ok(
     enMainDialog.includes(

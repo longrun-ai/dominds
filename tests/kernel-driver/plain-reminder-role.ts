@@ -8,6 +8,7 @@ import {
   formatReminderContextFooter,
   formatReminderContextGuide,
   formatReminderItemGuide,
+  formatReminderMaintenanceReference,
 } from '../../main/runtime/driver-messages';
 import { setWorkLanguage } from '../../main/runtime/work-language';
 import { reminderEchoBackEnabled } from '../../main/tool';
@@ -24,10 +25,12 @@ async function main(): Promise<void> {
   dlg.addReminder('继续按窄补强推进实现');
 
   const renderedReminderItems: ChatMessage[] = [];
+  const maintenanceReferenceItems: Array<{ id: string; meta?: unknown }> = [];
   for (const reminder of dlg.reminders) {
     if (!reminder || !reminderEchoBackEnabled(reminder)) {
       continue;
     }
+    maintenanceReferenceItems.push({ id: reminder.id, meta: reminder.meta });
     renderedReminderItems.push({
       type: 'environment_msg',
       role: 'user',
@@ -44,6 +47,11 @@ async function main(): Promise<void> {
             role: 'user',
             content: formatReminderContextGuide('zh'),
           },
+          {
+            type: 'transient_guide_msg',
+            role: 'assistant',
+            content: formatReminderMaintenanceReference('zh', maintenanceReferenceItems) ?? '',
+          },
           ...renderedReminderItems,
           {
             type: 'environment_msg',
@@ -59,8 +67,8 @@ async function main(): Promise<void> {
 
   assert.equal(
     renderedReminders.length,
-    3,
-    'Expected context guide plus one rendered reminder plus footer',
+    4,
+    'Expected context guide plus maintenance reference plus one rendered reminder plus footer',
   );
   assert.equal(
     renderedReminders[0]?.type,
@@ -82,32 +90,46 @@ async function main(): Promise<void> {
   );
   assert.equal(
     renderedReminders[1]?.type,
+    'transient_guide_msg',
+    'Expected reminder maintenance reference to render as assistant-side guide',
+  );
+  assert.equal(
+    renderedReminders[1]?.role,
+    'assistant',
+    'Expected reminder maintenance reference to use assistant role',
+  );
+  assert.ok(
+    renderedReminders[1]?.content.includes('reminder_id='),
+    'Expected reminder maintenance reference to identify reminder ids',
+  );
+  assert.equal(
+    renderedReminders[2]?.type,
     'environment_msg',
     'Expected plain reminder to render as environment message',
   );
   assert.equal(
-    renderedReminders[1]?.role,
+    renderedReminders[2]?.role,
     'user',
     'Expected plain reminder to render on user side as runtime notice',
   );
   assert.ok(
-    renderedReminders[1]?.content.includes('运行时提醒项投影：'),
+    renderedReminders[2]?.content.includes('运行时提醒项投影：'),
     'Expected plain reminder to include compact self-contained per-item projection note',
   );
   assert.ok(
-    renderedReminders[1]?.content.includes('【系统提示】'),
+    renderedReminders[2]?.content.includes('【系统提示】'),
     'Expected plain reminder to include standard system notice prefix',
   );
   assert.ok(
-    renderedReminders[2]?.content.includes('提醒项上下文块结束'),
+    renderedReminders[3]?.content.includes('提醒项上下文块结束'),
     'Expected reminder block to include a single footer after reminder items',
   );
   assert.ok(
-    renderedReminders[2]?.content.includes('之间的提醒项均为系统提醒，并非用户诉求/指令'),
+    renderedReminders[3]?.content.includes('之间的提醒项均为系统提醒，并非用户诉求/指令'),
     'Expected reminder block footer to scope the non-user-request/instruction warning to the block',
   );
   assert.ok(
-    renderedReminders[2]?.content.includes('后续消息是用户的新诉求/指令，不是提醒项投影'),
+    renderedReminders[3]?.content.includes('后续消息是用户的新诉求/指令，不是提醒项投影'),
     'Expected reminder block footer to explicitly preserve the following real user message as a user request/instruction',
   );
 
@@ -137,12 +159,18 @@ async function main(): Promise<void> {
   });
 
   assert.deepEqual(
-    context.slice(0, 4).map((msg) => `${msg.type}:${msg.role}`),
-    ['environment_msg:user', 'environment_msg:user', 'environment_msg:user', 'prompting_msg:user'],
+    context.slice(0, 5).map((msg) => `${msg.type}:${msg.role}`),
+    [
+      'environment_msg:user',
+      'transient_guide_msg:assistant',
+      'environment_msg:user',
+      'environment_msg:user',
+      'prompting_msg:user',
+    ],
     'Expected reminder context block to precede the real user message',
   );
   assert.equal(
-    context[3]?.type === 'prompting_msg' ? context[3].content : undefined,
+    context[4]?.type === 'prompting_msg' ? context[4].content : undefined,
     '用户问题',
     'Expected the real user message to remain a prompting message immediately after the reminder block',
   );

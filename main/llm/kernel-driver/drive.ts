@@ -56,7 +56,9 @@ import {
   formatReminderContextFooter,
   formatReminderContextGuide,
   formatReminderItemGuide,
+  formatReminderMaintenanceReference,
   isAgentFacingCriticalUserInterjectionRemediationGuideContent,
+  type ReminderMaintenanceReferenceItem,
   type ReminderContextFollowingDialogState,
   type ReminderContextFooterState,
   type ReminderContextReplyObligationState,
@@ -1132,10 +1134,15 @@ async function renderRemindersForContext(dlg: Dialog): Promise<ChatMessage[]> {
   if (reminders.length === 0) return [];
   const language = getWorkLanguage();
   const renderedItems: ChatMessage[] = [];
+  const maintenanceReferenceItems: ReminderMaintenanceReferenceItem[] = [];
   for (const reminder of reminders) {
     if (!reminder || !reminderEchoBackEnabled(reminder)) {
       continue;
     }
+    maintenanceReferenceItems.push({
+      id: reminder.id,
+      meta: reminder.meta,
+    });
     if (reminder.owner) {
       renderedItems.push(await reminder.owner.renderReminder(dlg, reminder));
       continue;
@@ -1150,12 +1157,25 @@ async function renderRemindersForContext(dlg: Dialog): Promise<ChatMessage[]> {
     });
   }
   if (renderedItems.length === 0) return [];
+  const maintenanceReference = formatReminderMaintenanceReference(
+    language,
+    maintenanceReferenceItems,
+  );
   return [
     {
       type: 'environment_msg',
       role: 'user',
       content: formatReminderContextGuide(language),
     },
+    ...(maintenanceReference === undefined
+      ? []
+      : [
+          {
+            type: 'transient_guide_msg' as const,
+            role: 'assistant' as const,
+            content: maintenanceReference,
+          },
+        ]),
     ...renderedItems,
   ];
 }

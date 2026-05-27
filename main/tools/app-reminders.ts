@@ -230,20 +230,24 @@ function fallbackRenderedReminder(reminder: Reminder): ChatMessage {
   };
 }
 
-function formatAppReminderWrapperPrelude(language: ReturnType<typeof getWorkLanguage>): string {
+function formatAppReminderWrapperPrelude(
+  language: ReturnType<typeof getWorkLanguage>,
+  reminderId: string,
+): string {
   return language === 'zh'
-    ? `这是 app 自动维护的状态提醒，不是你自己写的工作便签。${formatAutoMaintainedReminderManualMirrorBan(language)}`
-    : `This is app-maintained state, not a work note you wrote. ${formatAutoMaintainedReminderManualMirrorBan(language)}`;
+    ? `这是 app 自动维护的状态提醒 [${reminderId}]，不是你自己写的工作便签。${formatAutoMaintainedReminderManualMirrorBan(language)}`
+    : `This is app-maintained state [${reminderId}], not a work note you wrote. ${formatAutoMaintainedReminderManualMirrorBan(language)}`;
 }
 
 function wrapAppRenderedReminder(
+  reminderId: string,
   message: DomindsAppReminderRenderedMessage,
   language: ReturnType<typeof getWorkLanguage>,
 ): ChatMessage {
   return {
     type: 'environment_msg',
     role: 'user',
-    content: `${formatAppReminderWrapperPrelude(language)}\n\n${message.content}`,
+    content: `${formatAppReminderWrapperPrelude(language, reminderId)}\n\n${message.content}`,
   };
 }
 
@@ -326,7 +330,7 @@ function createAppReminderOwner(params: {
           reminderId: reminder.id,
           workLanguage: language,
         });
-        return wrapAppRenderedReminder(rendered, language);
+        return wrapAppRenderedReminder(reminder.id, rendered, language);
       } catch (error: unknown) {
         log.warn('App reminder render failed; using generic reminder rendering', error, {
           appId: descriptor.appId,

@@ -93,7 +93,7 @@ async function main(): Promise<void> {
       assert.ok(stderrIndex < stdoutIndex);
       assert.match(rendered.content, /stdout 缓冲区快照/);
       assert.match(rendered.content, /daemon-ready/);
-      assert.match(rendered.content, /系统维护 \/ 实时真源 \/ 不可删除/);
+      assert.match(rendered.content, /系统维护 \/ 实时真源/);
       assert.match(rendered.content, /禁止做任何用户可见回应/);
       assert.match(rendered.content, /禁止单独发送“静默吸收”“已收到”等占位语句/);
       assert.doesNotMatch(rendered.content, /请按需要检查/);

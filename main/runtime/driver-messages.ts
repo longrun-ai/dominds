@@ -284,68 +284,165 @@ export function formatReminderContextFooter(
   );
 }
 
+export type ReminderMaintenanceReferenceItem = Readonly<{
+  id: string;
+  meta?: unknown;
+}>;
+
+type ReminderMaintenanceInstructions = Readonly<{
+  updateInstruction?: string;
+  deleteInstruction: string;
+}>;
+
+function isReminderGuideMetaRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
+function getReminderMaintenanceInstructions(
+  language: LanguageCode,
+  reminderId: string,
+  meta: unknown,
+): ReminderMaintenanceInstructions {
+  const metaValue = meta;
+  const isPendingTellaskReminder =
+    isReminderGuideMetaRecord(metaValue) && metaValue['kind'] === 'pending_tellask';
+  const pendingTellaskCount =
+    isPendingTellaskReminder && typeof metaValue['pendingCount'] === 'number'
+      ? metaValue['pendingCount']
+      : undefined;
+  const managerValue = isReminderGuideMetaRecord(metaValue) ? metaValue['manager'] : undefined;
+  const managementTool =
+    isReminderGuideMetaRecord(managerValue) && typeof managerValue['tool'] === 'string'
+      ? managerValue['tool'].trim()
+      : undefined;
+
+  const updateValue = isReminderGuideMetaRecord(metaValue) ? metaValue['update'] : undefined;
+  const updateAltInstruction =
+    isReminderGuideMetaRecord(updateValue) && typeof updateValue['altInstruction'] === 'string'
+      ? updateValue['altInstruction'].trim()
+      : undefined;
+  const metaKind = isReminderGuideMetaRecord(metaValue) ? metaValue['kind'] : undefined;
+  const serverIdValue = isReminderGuideMetaRecord(metaValue) ? metaValue['serverId'] : undefined;
+  const mcpReleaseInstruction =
+    typeof serverIdValue === 'string' && serverIdValue.trim() !== ''
+      ? `mcp_release({"serverId":"${serverIdValue.trim()}"})`
+      : 'mcp_release({"serverId":"<serverId>"})';
+  const updateInstruction =
+    metaKind === 'mcp_lease'
+      ? language === 'zh'
+        ? 'MCP lease 状态由系统维护，不用 update_reminder 修改'
+        : 'MCP lease state is system-maintained; I do not edit it with update_reminder'
+      : updateAltInstruction && updateAltInstruction.length > 0
+        ? updateAltInstruction
+        : managementTool
+          ? `${managementTool}({ ... })`
+          : undefined;
+  const deleteValue = isReminderGuideMetaRecord(metaValue) ? metaValue['delete'] : undefined;
+  const deleteAltInstruction =
+    isReminderGuideMetaRecord(deleteValue) && typeof deleteValue['altInstruction'] === 'string'
+      ? deleteValue['altInstruction'].trim()
+      : undefined;
+  const daemonCompleted =
+    metaKind === 'daemon' && isReminderGuideMetaRecord(metaValue) && metaValue['completed'] === true;
+  const deleteInstruction =
+    language === 'zh'
+      ? isPendingTellaskReminder && pendingTellaskCount !== undefined && pendingTellaskCount > 0
+        ? '删除通道：当前仍有进行中诉请；我不能用 delete_reminder 删除。要改变某一路长线诉请时，我复用同一 sessionSlug 再发 tellask；tellaskSessionless 不能修改或停止旧任务。'
+        : deleteAltInstruction
+          ? `删除通道：我不用 delete_reminder；我执行：${deleteAltInstruction}`
+          : metaKind === 'mcp_lease'
+            ? `删除通道：我不用 delete_reminder 释放资源；确认当前对话近期不再需要该 MCP runtime 时，我执行：${mcpReleaseInstruction}`
+            : daemonCompleted
+              ? `删除通道：确认已知悉 daemon 终态后，可清理：delete_reminder({ "reminder_id": "${reminderId}" })`
+              : isPendingTellaskReminder && pendingTellaskCount === 0
+                ? `清理噪音时我可删除：delete_reminder({ "reminder_id": "${reminderId}" })`
+                : `删除通道：delete_reminder({ "reminder_id": "${reminderId}" })`
+      : isPendingTellaskReminder && pendingTellaskCount !== undefined && pendingTellaskCount > 0
+        ? 'Delete path: there are still in-flight Tellasks; I cannot delete this reminder with delete_reminder. To change a sessioned tellask, I send another tellask with the same sessionSlug; tellaskSessionless cannot modify or stop an earlier task.'
+        : deleteAltInstruction
+          ? `Delete path: I do not use delete_reminder; I run: ${deleteAltInstruction}`
+          : metaKind === 'mcp_lease'
+            ? `Delete path: I do not release resources by deleting the reminder; when this dialog will not need the MCP runtime soon, I run: ${mcpReleaseInstruction}`
+            : daemonCompleted
+              ? `Delete path: after I have acknowledged the daemon terminal state, I may clean up: delete_reminder({ "reminder_id": "${reminderId}" })`
+              : isPendingTellaskReminder && pendingTellaskCount === 0
+                ? `Noise cleanup delete path: I may run delete_reminder({ "reminder_id": "${reminderId}" })`
+                : `Delete path: delete_reminder({ "reminder_id": "${reminderId}" })`;
+  return { updateInstruction, deleteInstruction };
+}
+
+export function formatReminderMaintenanceReference(
+  language: LanguageCode,
+  reminders: readonly ReminderMaintenanceReferenceItem[],
+): string | undefined {
+  const lines: string[] = [];
+  for (const reminder of reminders) {
+    const { updateInstruction, deleteInstruction } = getReminderMaintenanceInstructions(
+      language,
+      reminder.id,
+      reminder.meta,
+    );
+    if (language === 'zh') {
+      if (updateInstruction) {
+        lines.push(`- reminder_id=${reminder.id}：我若要更新/调整这条提醒项，参考：${updateInstruction}`);
+      } else {
+        lines.push(
+          `- reminder_id=${reminder.id}：我若要更新/调整这条提醒项，参考：update_reminder({ "reminder_id": "${reminder.id}", "content": "..." })`,
+        );
+      }
+      lines.push(`- reminder_id=${reminder.id}：我若要删除/清理这条提醒项，参考：${deleteInstruction}`);
+    } else {
+      if (updateInstruction) {
+        lines.push(`- reminder_id=${reminder.id}: if I update/change this reminder, I follow: ${updateInstruction}`);
+      } else {
+        lines.push(
+          `- reminder_id=${reminder.id}: if I update/change this reminder, I follow: update_reminder({ "reminder_id": "${reminder.id}", "content": "..." })`,
+        );
+      }
+      lines.push(`- reminder_id=${reminder.id}: if I delete/clean up this reminder, I follow: ${deleteInstruction}`);
+    }
+  }
+  if (lines.length === 0) return undefined;
+
+  if (language === 'zh') {
+    return [
+      `${formatSystemNoticePrefix(language)} 我把下面的提醒项维护通道仅作为操作参考；如果我需要维护某条 reminder，我会按对应 reminder_id 选择工具。我不会把这些参考当成当前轮必须立即执行的动作，也不会因此延迟回应后续真实用户消息。`,
+      '',
+      ...lines,
+    ].join('\n');
+  }
+
+  return [
+    `${formatSystemNoticePrefix(language)} I treat the following reminder-maintenance channels as an operational reference only. If I need to maintain a reminder, I match the corresponding reminder_id and choose the tool from there. I do not treat these references as actions I must perform immediately in this turn, and I do not let them delay my response to any following real user message.`,
+    '',
+    ...lines,
+  ].join('\n');
+}
+
 export function formatReminderItemGuide(
   language: LanguageCode,
   reminderId: string,
   content: string,
   options?: { meta?: unknown; scope?: 'dialog' | 'task' | 'agent' | 'runtime' },
 ): string {
-  function isRecord(value: unknown): value is Record<string, unknown> {
-    return typeof value === 'object' && value !== null && !Array.isArray(value);
-  }
-
   // `options.meta` is persisted JSON coming from tools. Runtime shape checks are unavoidable here
   // to keep reminder ownership/management loosely coupled and extensible.
   const metaValue = options && 'meta' in options ? options.meta : undefined;
   const scope = options?.scope;
   const isContinuationPackageReminder =
-    isRecord(metaValue) && metaValue['kind'] === 'continuation_package';
-  const isPendingTellaskReminder = isRecord(metaValue) && metaValue['kind'] === 'pending_tellask';
-  const pendingTellaskCount =
-    isPendingTellaskReminder && typeof metaValue['pendingCount'] === 'number'
-      ? metaValue['pendingCount']
-      : undefined;
-  const managerValue = isRecord(metaValue) ? metaValue['manager'] : undefined;
+    isReminderGuideMetaRecord(metaValue) && metaValue['kind'] === 'continuation_package';
+  const managerValue = isReminderGuideMetaRecord(metaValue) ? metaValue['manager'] : undefined;
   const managementTool =
-    isRecord(managerValue) && typeof managerValue['tool'] === 'string'
+    isReminderGuideMetaRecord(managerValue) && typeof managerValue['tool'] === 'string'
       ? managerValue['tool'].trim()
       : undefined;
-
-  const updateValue = isRecord(metaValue) ? metaValue['update'] : undefined;
-  const updateAltInstruction =
-    isRecord(updateValue) && typeof updateValue['altInstruction'] === 'string'
-      ? updateValue['altInstruction'].trim()
-      : undefined;
-  const updateInstruction =
-    updateAltInstruction && updateAltInstruction.length > 0
-      ? updateAltInstruction
-      : managementTool
-        ? `${managementTool}({ ... })`
-        : undefined;
-  const deleteValue = isRecord(metaValue) ? metaValue['delete'] : undefined;
-  const deleteAltInstruction =
-    isRecord(deleteValue) && typeof deleteValue['altInstruction'] === 'string'
-      ? deleteValue['altInstruction'].trim()
-      : undefined;
-  const deleteInstruction =
-    language === 'zh'
-      ? deleteAltInstruction
-        ? `删除通道：不要用 delete_reminder；请执行：${deleteAltInstruction}`
-        : isPendingTellaskReminder && pendingTellaskCount === 0
-          ? `清理噪音时可删除：delete_reminder({ "reminder_id": "${reminderId}" })`
-          : `删除通道：delete_reminder({ "reminder_id": "${reminderId}" })`
-      : deleteAltInstruction
-        ? `Delete path: do not use delete_reminder; run: ${deleteAltInstruction}`
-        : isPendingTellaskReminder && pendingTellaskCount === 0
-          ? `Noise cleanup delete path: delete_reminder({ "reminder_id": "${reminderId}" })`
-          : `Delete path: delete_reminder({ "reminder_id": "${reminderId}" })`;
+  const { updateInstruction } = getReminderMaintenanceInstructions(language, reminderId, metaValue);
   const projectionNote = formatReminderItemProjectionNote(language);
   const enProjectionPrefix = `${projectionNote} `;
   const systemPrefix = formatSystemNoticePrefix(language);
 
   if (language === 'zh') {
     if (managementTool) {
-      const updateInstructionSafe = updateInstruction ?? `${managementTool}({ ... })`;
       return [
         `${systemPrefix} 提醒项 [${reminderId}]（工具状态）`,
         '',
@@ -353,11 +450,6 @@ export function formatReminderItemGuide(
         formatAutoMaintainedReminderManualMirrorBan(language),
         '',
         '默认不要在对外回复里专门确认、复述或总结它；只有它实际改变你的判断、计划或风险时，才提炼真正相关的部分。',
-        '',
-        `调整通道：使用 ${managementTool}；不要用 update_reminder。`,
-        '',
-        `更新通道：${updateInstructionSafe}`,
-        deleteInstruction,
         '',
         '---',
         content,
@@ -367,11 +459,8 @@ export function formatReminderItemGuide(
       return [
         `${systemPrefix} 提醒项 [${reminderId}]`,
         '',
-        `${projectionNote}当前运行环境中有一条带有 meta 控制更新规则的提醒项。请把它当作状态参考，不要用 update_reminder 直接改写内容。`,
+        `${projectionNote}当前运行环境中有一条带有 meta 控制更新规则的提醒项。请把它当作状态参考，具体维护通道以前置维护参考为准。`,
         formatAutoMaintainedReminderManualMirrorBan(language),
-        '',
-        `更新通道：不要用 update_reminder；请按此处理：${updateInstruction}`,
-        deleteInstruction,
         '',
         '---',
         content,
@@ -384,9 +473,6 @@ export function formatReminderItemGuide(
         `${projectionNote}你设置了换程接续提醒项，让运行时系统在新一程提醒你恢复工作。请把它当作快速恢复工作的接续包，不要自动当成当前必须立刻执行的新指令。`,
         '',
         '你应优先保留下一步行动、关键定位、运行/验证信息、容易丢的临时细节；不要重复差遣牒已覆盖的内容。进入新一程后，你的第一步是以清醒头脑重新审视并整理更新：删除冗余、纠正偏激/失真思路、压缩成高质量提醒项。若目前只是粗略过桥笔记，进入新一程后必须尽快收敛。',
-        '',
-        `如果你要更新这份接续包，可执行：update_reminder({ "reminder_id": "${reminderId}", "content": "..." })`,
-        deleteInstruction,
         '',
         '---',
         content,
@@ -413,16 +499,12 @@ export function formatReminderItemGuide(
       '',
       scopeMaintenance,
       '',
-      `如果你要更新这条提醒项，可执行：update_reminder({ "reminder_id": "${reminderId}", "content": "..." })`,
-      deleteInstruction,
-      '',
       '---',
       content,
     ].join('\n');
   }
 
   if (managementTool) {
-    const updateInstructionSafe = updateInstruction ?? `${managementTool}({ ... })`;
     return `${systemPrefix} REMINDER [${reminderId}] (TOOL STATE)
 
 ${enProjectionPrefix}The current runtime environment has a tool-managed state reminder from ${managementTool}. Treat it as environment/tool state, not as your self-authored work note.
@@ -431,22 +513,16 @@ ${formatAutoMaintainedReminderManualMirrorBan(language)}
 
 By default, do not explicitly acknowledge, restate, or summarize it in your outward reply; only extract the parts that materially change your current judgment, plan, or risk.
 
-Change path: use ${managementTool}; do not use update_reminder.
-
-Update path: ${updateInstructionSafe}
-${deleteInstruction}
 ---
 ${content}`;
   }
   if (updateInstruction) {
     return `${systemPrefix} REMINDER [${reminderId}]
 
-${enProjectionPrefix}The current runtime environment has a reminder with a meta-controlled update path. Treat it as state/reference, and do not rewrite it directly with update_reminder.
+${enProjectionPrefix}The current runtime environment has a reminder with a meta-controlled update path. Treat it as state/reference; use the preceding maintenance reference for its maintenance channel.
 
 ${formatAutoMaintainedReminderManualMirrorBan(language)}
 
-Update path: do not use update_reminder; follow instead: ${updateInstruction}
-${deleteInstruction}
 ---
 ${content}`;
   }
@@ -457,8 +533,6 @@ ${enProjectionPrefix}You set a continuation reminder so the runtime system can r
 
 Keep the next step, key pointers, run/verify info, and easy-to-lose volatile details here. Do not duplicate Taskdoc content. In the new course, your first step is to review and rewrite this with a clear head: remove redundancy, correct biased or distorted bridge notes, and compress it into a high-quality reminder. If this is only a rough bridge note, reconcile it early in the new course.
 
-Update path: update_reminder({ "reminder_id": "${reminderId}", "content": "..." })
-${deleteInstruction}
 ---
 ${content}`;
   }
@@ -482,8 +556,6 @@ ${scopeGuide}
 
 ${scopeMaintenance}
 
-Update path: update_reminder({ "reminder_id": "${reminderId}", "content": "..." })
-${deleteInstruction}
 ---
 ${content}`;
 }

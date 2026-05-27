@@ -2,6 +2,7 @@ import {
   formatReminderContextFooter,
   formatReminderContextGuide,
   formatReminderItemGuide,
+  formatReminderMaintenanceReference,
 } from '../../main/runtime/driver-messages';
 
 function assert(condition: boolean, message: string): void {
@@ -140,10 +141,90 @@ async function main() {
   );
   assert(!zh.includes('可选操作：'), 'Expected zh reminder guide to omit action section labels');
   assert(
-    zh.includes('如果你要更新这条提醒项'),
-    'Expected zh reminder guide to use conditional update wording',
+    !zh.includes('update_reminder({ "reminder_id": "rem02abc"'),
+    'Expected zh reminder item guide not to carry update_reminder action text',
   );
-
+  assert(
+    !zh.includes('delete_reminder({ "reminder_id": "rem02abc"'),
+    'Expected zh reminder item guide not to carry delete_reminder action text',
+  );
+  const zhMaintenanceReference = formatReminderMaintenanceReference('zh', [
+    { id: 'rem01abc', meta: { manager: { tool: 'some_tool' } } },
+    {
+      id: 'rem07abc',
+      meta: {
+        kind: 'pending_tellask',
+        pendingCount: 0,
+        update: { altInstruction: '等待系统自动刷新' },
+      },
+    },
+    {
+      id: 'rem08abc',
+      meta: {
+        kind: 'pending_tellask',
+        pendingCount: 1,
+        update: { altInstruction: '只有长线诉请能更新特定诉请的“任务安排”；一次性诉请没有这个通道' },
+        delete: {
+          altInstruction:
+            '当前仍有进行中诉请；我不能用 delete_reminder 删除。只有长线诉请能更新特定诉请的“任务安排”；一次性诉请没有这个通道',
+        },
+      },
+    },
+    {
+      id: 'rem10abc',
+      meta: {
+        kind: 'daemon',
+        update: { altInstruction: 'get_daemon_output({ "pid": 321 })' },
+        delete: { altInstruction: 'stop_daemon({ "pid": 321 })' },
+      },
+    },
+    {
+      id: 'rem11abc',
+      meta: {
+        kind: 'daemon',
+        completed: true,
+        update: { altInstruction: 'get_daemon_output({ "pid": 654 })' },
+      },
+    },
+    { id: 'rem13abc', meta: { kind: 'mcp_lease', serverId: 'sdk_stdio' } },
+  ]);
+  assert(zhMaintenanceReference !== undefined, 'Expected zh reminder maintenance reference');
+  assert(
+    zhMaintenanceReference.includes('我把下面的提醒项维护通道仅作为操作参考'),
+    'Expected zh maintenance reference to use first-person assistant framing',
+  );
+  assert(
+    !zhMaintenanceReference.includes('只有你已经决定'),
+    'Expected zh maintenance reference not to use second-person wording',
+  );
+  assert(
+    zhMaintenanceReference.includes('reminder_id=rem01abc'),
+    'Expected zh maintenance reference to identify reminder_id for tool-managed reminder',
+  );
+  assert(
+    zhMaintenanceReference.includes('some_tool({ ... })'),
+    'Expected zh maintenance reference to preserve manager-tool update path',
+  );
+  assert(
+    zhMaintenanceReference.includes('清理噪音时我可删除：delete_reminder({ "reminder_id": "rem07abc" })'),
+    'Expected zh zero-inflight tellask maintenance reference to allow optional noise cleanup',
+  );
+  assert(
+    zhMaintenanceReference.includes('当前仍有进行中诉请；我不能用 delete_reminder 删除'),
+    'Expected zh active tellask maintenance reference to distinguish cannot-delete state',
+  );
+  assert(
+    zhMaintenanceReference.includes('stop_daemon({ "pid": 321 })'),
+    'Expected zh running daemon maintenance reference to use stop_daemon instead of delete_reminder',
+  );
+  assert(
+    zhMaintenanceReference.includes('确认已知悉 daemon 终态后，可清理：delete_reminder({ "reminder_id": "rem11abc" })'),
+    'Expected zh completed daemon maintenance reference to allow cleanup after terminal state acknowledgement',
+  );
+  assert(
+    zhMaintenanceReference.includes('mcp_release({"serverId":"sdk_stdio"})'),
+    'Expected zh MCP lease maintenance reference to use mcp_release instead of delete_reminder',
+  );
   const zhTask = formatReminderItemGuide('zh', 'rem09abc', '记住当前任务部署命令\n', {
     scope: 'task',
   });
@@ -190,85 +271,6 @@ async function main() {
     'Expected zh tool-managed reminder to include compact self-contained per-item projection note',
   );
 
-  const zhUpdateInstruction = formatReminderItemGuide('zh', 'rem04abc', 'Managed content\n', {
-    meta: { manager: { tool: 'some_tool' }, update: { altInstruction: 'some_tool({ \"x\": 1 })' } },
-  });
-  assert(
-    zhUpdateInstruction.includes('some_tool({ "x": 1 })'),
-    'Expected reminder meta update.altInstruction to be used (zh)',
-  );
-
-  const zhDeleteExample = formatReminderItemGuide('zh', 'rem06abc', 'Managed content\n', {
-    meta: { delete: { altInstruction: 'stop_daemon({ "pid": 321 })' } },
-  });
-  assert(
-    zhDeleteExample.includes('stop_daemon({ "pid": 321 })'),
-    'Expected reminder meta delete.altInstruction to be used (zh)',
-  );
-  assert(
-    !zhDeleteExample.includes('delete_reminder({ "reminder_id": "rem06abc" })'),
-    'Expected reminder with meta delete.altInstruction not to suggest delete_reminder (zh)',
-  );
-
-  const zhDaemonRunning = formatReminderItemGuide('zh', 'rem10abc', 'daemon running\n', {
-    meta: {
-      kind: 'daemon',
-      update: { altInstruction: 'get_daemon_output({ "pid": 321 })' },
-      delete: { altInstruction: 'stop_daemon({ "pid": 321 })' },
-    },
-  });
-  assert(
-    zhDaemonRunning.includes('get_daemon_output({ "pid": 321 })'),
-    'Expected daemon reminder to guide updates via get_daemon_output (zh)',
-  );
-  assert(
-    !zhDaemonRunning.includes('如果你要更新这条提醒项，可执行：update_reminder'),
-    'Expected daemon reminder not to suggest update_reminder while running (zh)',
-  );
-
-  const zhDaemonCompleted = formatReminderItemGuide('zh', 'rem11abc', 'daemon exited\n', {
-    meta: {
-      kind: 'daemon',
-      completed: true,
-      update: { altInstruction: 'get_daemon_output({ "pid": 321 })' },
-    },
-  });
-  assert(
-    zhDaemonCompleted.includes('get_daemon_output({ "pid": 321 })'),
-    'Expected completed daemon reminder to keep optional output inspection guidance (zh)',
-  );
-  assert(
-    zhDaemonCompleted.includes('delete_reminder({ "reminder_id": "rem11abc" })'),
-    'Expected completed daemon reminder to allow manual delete_reminder (zh)',
-  );
-
-  const zhMetaControlledUpdate = formatReminderItemGuide(
-    'zh',
-    'rem07abc',
-    'Auto-managed content\n',
-    {
-      meta: {
-        kind: 'pending_tellask',
-        pendingCount: 0,
-        update: { altInstruction: '等待系统自动刷新' },
-      },
-    },
-  );
-  assert(
-    zhMetaControlledUpdate.includes('等待系统自动刷新'),
-    'Expected reminder meta update.altInstruction to work without manager.tool (zh)',
-  );
-  assert(
-    !zhMetaControlledUpdate.includes('如果你要更新这条提醒项，可执行：update_reminder'),
-    'Expected meta-controlled reminder not to suggest update_reminder (zh)',
-  );
-  assert(
-    zhMetaControlledUpdate.includes(
-      '清理噪音时可删除：delete_reminder({ "reminder_id": "rem07abc" })',
-    ),
-    'Expected zh zero-inflight pending-tellask guide to use noise-cleanup delete path wording',
-  );
-
   const zhPendingActiveGuard = formatReminderItemGuide('zh', 'rem08abc', '进行中诉请内容\n', {
     meta: {
       update: {
@@ -276,16 +278,10 @@ async function main() {
       },
       delete: {
         altInstruction:
-          '当前仍有进行中诉请；不可删除。只有长线诉请能更新特定诉请的“任务安排”；一次性诉请没有这个通道',
+          '当前仍有进行中诉请；我不能用 delete_reminder 删除。只有长线诉请能更新特定诉请的“任务安排”；一次性诉请没有这个通道',
       },
     },
   });
-  assert(
-    zhPendingActiveGuard.includes(
-      '当前仍有进行中诉请；不可删除。只有长线诉请能更新特定诉请的“任务安排”；一次性诉请没有这个通道',
-    ),
-    'Expected zh reminder guide to show active pending-tellask delete guard',
-  );
   assert(
     !zhPendingActiveGuard.includes('delete_reminder({ "reminder_id": "rem08abc" })'),
     'Expected zh active pending-tellask guide not to suggest delete_reminder',
@@ -450,10 +446,89 @@ async function main() {
     'Expected en reminder guide to omit action section labels',
   );
   assert(
-    en.includes('Update path: update_reminder'),
-    'Expected en reminder guide to present update action as a path',
+    !en.includes('update_reminder({ "reminder_id": "rem02abc"'),
+    'Expected en reminder item guide not to carry update_reminder action text',
   );
-
+  assert(
+    !en.includes('delete_reminder({ "reminder_id": "rem02abc"'),
+    'Expected en reminder item guide not to carry delete_reminder action text',
+  );
+  const enMaintenanceReference = formatReminderMaintenanceReference('en', [
+    { id: 'rem03abc', meta: { manager: { tool: 'some_tool' } } },
+    {
+      id: 'rem07abc',
+      meta: {
+        kind: 'pending_tellask',
+        pendingCount: 0,
+        update: { altInstruction: 'wait for system refresh' },
+      },
+    },
+    {
+      id: 'rem08abc',
+      meta: {
+        kind: 'pending_tellask',
+        pendingCount: 1,
+        update: {
+          altInstruction:
+            'only a sessioned tellask can update that specific tellask assignment; a one-shot tellask cannot',
+        },
+        delete: {
+          altInstruction:
+            'there are still in-flight Tellasks; I cannot delete this reminder with delete_reminder. Only a sessioned tellask can update that specific tellask assignment; a one-shot tellask cannot',
+        },
+      },
+    },
+    {
+      id: 'rem10abc',
+      meta: {
+        kind: 'daemon',
+        update: { altInstruction: 'get_daemon_output({ "pid": 321 })' },
+        delete: { altInstruction: 'stop_daemon({ "pid": 321 })' },
+      },
+    },
+    {
+      id: 'rem11abc',
+      meta: {
+        kind: 'daemon',
+        completed: true,
+        update: { altInstruction: 'get_daemon_output({ "pid": 654 })' },
+      },
+    },
+    { id: 'rem13abc', meta: { kind: 'mcp_lease', serverId: 'sdk_stdio' } },
+  ]);
+  assert(enMaintenanceReference !== undefined, 'Expected en reminder maintenance reference');
+  assert(
+    enMaintenanceReference.includes('I treat the following reminder-maintenance channels'),
+    'Expected en maintenance reference to use first-person assistant framing',
+  );
+  assert(
+    enMaintenanceReference.includes('reminder_id=rem03abc'),
+    'Expected en maintenance reference to identify reminder_id for tool-managed reminder',
+  );
+  assert(
+    enMaintenanceReference.includes('some_tool({ ... })'),
+    'Expected en maintenance reference to preserve manager-tool update path',
+  );
+  assert(
+    enMaintenanceReference.includes('Noise cleanup delete path: I may run delete_reminder({ "reminder_id": "rem07abc" })'),
+    'Expected en zero-inflight tellask maintenance reference to allow optional noise cleanup',
+  );
+  assert(
+    enMaintenanceReference.includes('there are still in-flight Tellasks; I cannot delete this reminder with delete_reminder'),
+    'Expected en active tellask maintenance reference to distinguish cannot-delete state',
+  );
+  assert(
+    enMaintenanceReference.includes('stop_daemon({ "pid": 321 })'),
+    'Expected en running daemon maintenance reference to use stop_daemon instead of delete_reminder',
+  );
+  assert(
+    enMaintenanceReference.includes('after I have acknowledged the daemon terminal state'),
+    'Expected en completed daemon maintenance reference to allow cleanup after terminal state acknowledgement',
+  );
+  assert(
+    enMaintenanceReference.includes('mcp_release({"serverId":"sdk_stdio"})'),
+    'Expected en MCP lease maintenance reference to use mcp_release instead of delete_reminder',
+  );
   const enTask = formatReminderItemGuide('en', 'rem09abc', 'Remember the deploy command\n', {
     scope: 'task',
   });
@@ -480,10 +555,6 @@ async function main() {
     meta: { manager: { tool: 'some_tool' } },
   });
   assert(
-    enToolManaged.includes('Change path: use some_tool; do not use update_reminder.'),
-    'Expected en tool-managed reminder to mention management tool in the change path',
-  );
-  assert(
     enToolManaged.includes('do not explicitly acknowledge, restate, or summarize it'),
     'Expected en tool-managed reminder to discourage standalone acknowledgment',
   );
@@ -500,85 +571,6 @@ async function main() {
     'Expected en tool-managed reminder to use tool-state framing',
   );
 
-  const enUpdateInstruction = formatReminderItemGuide('en', 'rem04abc', 'Managed content\n', {
-    meta: { manager: { tool: 'some_tool' }, update: { altInstruction: 'some_tool({ \"x\": 1 })' } },
-  });
-  assert(
-    enUpdateInstruction.includes('some_tool({ "x": 1 })'),
-    'Expected reminder meta update.altInstruction to be used (en)',
-  );
-
-  const enDeleteExample = formatReminderItemGuide('en', 'rem06abc', 'Managed content\n', {
-    meta: { delete: { altInstruction: 'stop_daemon({ "pid": 321 })' } },
-  });
-  assert(
-    enDeleteExample.includes('stop_daemon({ "pid": 321 })'),
-    'Expected reminder meta delete.altInstruction to be used (en)',
-  );
-  assert(
-    !enDeleteExample.includes('delete_reminder({ "reminder_id": "rem06abc" })'),
-    'Expected reminder with meta delete.altInstruction not to suggest delete_reminder (en)',
-  );
-
-  const enDaemonRunning = formatReminderItemGuide('en', 'rem10abc', 'daemon running\n', {
-    meta: {
-      kind: 'daemon',
-      update: { altInstruction: 'get_daemon_output({ "pid": 321 })' },
-      delete: { altInstruction: 'stop_daemon({ "pid": 321 })' },
-    },
-  });
-  assert(
-    enDaemonRunning.includes('get_daemon_output({ "pid": 321 })'),
-    'Expected daemon reminder to guide updates via get_daemon_output (en)',
-  );
-  assert(
-    !enDaemonRunning.includes('If you need to update this reminder, run: update_reminder'),
-    'Expected daemon reminder not to suggest update_reminder while running (en)',
-  );
-
-  const enDaemonCompleted = formatReminderItemGuide('en', 'rem11abc', 'daemon exited\n', {
-    meta: {
-      kind: 'daemon',
-      completed: true,
-      update: { altInstruction: 'get_daemon_output({ "pid": 321 })' },
-    },
-  });
-  assert(
-    enDaemonCompleted.includes('get_daemon_output({ "pid": 321 })'),
-    'Expected completed daemon reminder to keep optional output inspection guidance (en)',
-  );
-  assert(
-    enDaemonCompleted.includes('delete_reminder({ "reminder_id": "rem11abc" })'),
-    'Expected completed daemon reminder to allow manual delete_reminder (en)',
-  );
-
-  const enMetaControlledUpdate = formatReminderItemGuide(
-    'en',
-    'rem07abc',
-    'Auto-managed content\n',
-    {
-      meta: {
-        kind: 'pending_tellask',
-        pendingCount: 0,
-        update: { altInstruction: 'wait for system refresh' },
-      },
-    },
-  );
-  assert(
-    enMetaControlledUpdate.includes('wait for system refresh'),
-    'Expected reminder meta update.altInstruction to work without manager.tool (en)',
-  );
-  assert(
-    !enMetaControlledUpdate.includes('If you need to update this reminder, run: update_reminder'),
-    'Expected meta-controlled reminder not to suggest update_reminder (en)',
-  );
-  assert(
-    enMetaControlledUpdate.includes(
-      'Noise cleanup delete path: delete_reminder({ "reminder_id": "rem07abc" })',
-    ),
-    'Expected en zero-inflight pending-tellask guide to use optional noise-cleanup delete wording',
-  );
-
   const enPendingActiveGuard = formatReminderItemGuide(
     'en',
     'rem08abc',
@@ -591,16 +583,10 @@ async function main() {
         },
         delete: {
           altInstruction:
-            'There are still in-flight Tellasks; do not delete this reminder. Only a sessioned tellask can update that specific tellask assignment; a one-shot tellask cannot',
+            'there are still in-flight Tellasks; I cannot delete this reminder with delete_reminder. Only a sessioned tellask can update that specific tellask assignment; a one-shot tellask cannot',
         },
       },
     },
-  );
-  assert(
-    enPendingActiveGuard.includes(
-      'There are still in-flight Tellasks; do not delete this reminder. Only a sessioned tellask can update that specific tellask assignment; a one-shot tellask cannot',
-    ),
-    'Expected en reminder guide to show active pending-tellask delete guard',
   );
   assert(
     !enPendingActiveGuard.includes('delete_reminder({ "reminder_id": "rem08abc" })'),

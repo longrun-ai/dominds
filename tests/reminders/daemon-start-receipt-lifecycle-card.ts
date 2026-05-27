@@ -62,7 +62,7 @@ async function main(): Promise<void> {
     );
     assert.match(
       output,
-      /生命周期提醒持续刷新：系统维护 \/ 实时真源 \/ 不可删除/,
+      /生命周期提醒持续刷新：系统维护 \/ 实时真源/,
       'Expected daemon start receipt to describe the lifecycle reminder semantics directly',
     );
     assert.match(

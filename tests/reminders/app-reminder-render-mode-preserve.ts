@@ -128,6 +128,7 @@ async function main(): Promise<void> {
     const rendered = await owner.renderReminder(dlg, reminder);
     assert.equal(renderCalls, 1);
     assert.equal(rendered.type, 'environment_msg');
+    assert.match(rendered.content, new RegExp(`\\[${reminder.id}\\]`));
     assert.match(
       rendered.content,
       /This state is system-maintained; do not copy, rewrite, or separately maintain it in manual reminders/,

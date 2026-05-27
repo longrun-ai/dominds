@@ -62,14 +62,14 @@ function isPendingTellaskReminderMeta(value: unknown): value is PendingTellaskRe
 
 function getPendingTellaskUpdateAltInstruction(language: LanguageCode): string {
   return language === 'zh'
-    ? '不要手改这条系统提醒。诉请更改规则很简单：同一路长线诉请要改要求，就复用同一 `sessionSlug` 再发 `tellask`；`tellaskSessionless` 是另一件一次性独立任务，不能改旧任务，也不能要求旧任务停止。其它情况等待系统按真实诉请状态自动刷新。'
-    : 'Do not hand-edit this system reminder. The change rule is simple: to change a sessioned task, send another `tellask` with the same `sessionSlug`; `tellaskSessionless` is another one-shot independent task, so it cannot change or stop an earlier task. Otherwise wait for system refresh from real tellask state.';
+    ? '我不手改这条系统提醒。诉请更改规则：同一路长线诉请要改要求时，我复用同一 `sessionSlug` 再发 `tellask`；`tellaskSessionless` 是另一件一次性独立任务，不能改旧任务，也不能要求旧任务停止。其它情况我等待系统按真实诉请状态自动刷新。'
+    : 'I do not hand-edit this system reminder. To change a sessioned task, I send another `tellask` with the same `sessionSlug`; `tellaskSessionless` is another one-shot independent task, so it cannot change or stop an earlier task. Otherwise I wait for system refresh from real tellask state.';
 }
 
 function getPendingTellaskDeleteAltInstruction(language: LanguageCode): string {
   return language === 'zh'
-    ? '这条系统提醒不可删除。诉请更改规则很简单：同一路长线诉请要改要求，就复用同一 `sessionSlug` 再发 `tellask`；`tellaskSessionless` 是另一件一次性独立任务，不能改旧任务，也不能要求旧任务停止。其它情况等待系统按真实诉请状态自动刷新。'
-    : 'This system reminder is not deletable. The change rule is simple: to change a sessioned task, send another `tellask` with the same `sessionSlug`; `tellaskSessionless` is another one-shot independent task, so it cannot change or stop an earlier task. Otherwise wait for system refresh from real tellask state.';
+    ? '我不能删除这条系统提醒。诉请更改规则：同一路长线诉请要改要求时，我复用同一 `sessionSlug` 再发 `tellask`；`tellaskSessionless` 是另一件一次性独立任务，不能改旧任务，也不能要求旧任务停止。其它情况我等待系统按真实诉请状态自动刷新。'
+    : 'I cannot delete this system reminder. To change a sessioned task, I send another `tellask` with the same `sessionSlug`; `tellaskSessionless` is another one-shot independent task, so it cannot change or stop an earlier task. Otherwise I wait for system refresh from real tellask state.';
 }
 
 function callKindLabel(language: LanguageCode, view: ActiveCalleeDispatchView): string {
@@ -159,21 +159,21 @@ function buildReminderContent(
 ): string {
   const heading =
     language === 'zh'
-      ? `⏳ 进行中诉请（共 ${pending.length} 路，自动维护${pending.length === 0 ? '，0 路时可手动删除' : '，进行中不可删除'}）`
-      : `⏳ In-flight Tellasks (${pending.length} total, auto-maintained${pending.length === 0 ? ', deletable only at zero in-flight' : ', non-deletable while active'})`;
+      ? `⏳ 进行中诉请（共 ${pending.length} 路，自动维护）`
+      : `⏳ In-flight Tellasks (${pending.length} total, auto-maintained)`;
 
   if (pending.length === 0) {
     const noneRunningText =
       language === 'zh'
-        ? '当前没有任何执行中的诉请，没有其祂智能体仍在后台工作，任何“等待”想法和行为都是错误的。该提醒项仍是系统状态窗，内容不可手改；但因为当前为 0 路进行中，若你已明确知晓这一点，可手动删除以免碍眼。后续需要推进时，只能直接执行下一步本地动作，或发起新的诉请。'
-        : 'There are no in-flight Tellasks, and no other agents are still working in the background. Any “wait” thought or behavior is wrong. This reminder is still a system status window and its content must not be hand-edited; however, because there are currently zero in-flight Tellasks, you may delete it manually once you are sure. To continue later, take the next local action directly or issue a new Tellask.';
+        ? '当前没有任何执行中的诉请，没有其祂智能体仍在后台工作，任何“等待”想法和行为都是错误的。该提醒项只是系统状态窗；后续需要推进时，只能直接执行下一步本地动作，或发起新的诉请。'
+        : 'There are no in-flight Tellasks, and no other agents are still working in the background. Any “wait” thought or behavior is wrong. This reminder is only a system status window; to continue later, take the next local action directly or issue a new Tellask.';
     return [heading, '', noneRunningText].join('\n');
   }
 
   const summary =
     language === 'zh'
-      ? '以下诉请仍在执行中；除这些条目外，当前没有其它仍在执行中的诉请。该提醒项只是系统状态窗，不是控制面：自动维护、不可手改，且在非 0 路进行中时不可删除。不要把智能体队友当成真人同事：同一个队友可以同时做多件独立任务。简单规则：同一个队友 + 同一个 `sessionSlug` = 接着同一件事说，并更新那件正在做的事；`tellaskSessionless` 或不同 `sessionSlug` = 另一件独立任务，不会影响旧任务，也不能要求旧任务停止。误删会被拒绝，并返回同样的引导文案。'
-      : 'Only the Tellasks listed below are still in flight; besides them, no other Tellasks are currently executing. This reminder is only a system status window, not a control surface: auto-maintained, not hand-editable, and non-deletable while any tellask is still active. Do not treat an agent teammate like a human coworker who can only handle one conversation at a time: the same teammate can work on several independent tasks at once. Simple rule: same teammate + same `sessionSlug` = continue the same task and update that task; `tellaskSessionless` or a different `sessionSlug` = another independent task, so it will not affect or stop the earlier task. Mistaken deletion will be rejected with the same guidance.';
+      ? '以下诉请仍在执行中；除这些条目外，当前没有其它仍在执行中的诉请。该提醒项只是系统状态窗，不是控制面。不要把智能体队友当成真人同事：同一个队友可以同时做多件独立任务。'
+      : 'Only the Tellasks listed below are still in flight; besides them, no other Tellasks are currently executing. This reminder is only a system status window, not a control surface. Do not treat an agent teammate like a human coworker who can only handle one conversation at a time: the same teammate can work on several independent tasks at once.';
 
   const lines = pending.map((p, idx) => {
     const base =

@@ -126,14 +126,12 @@ function ensureLeaseReminder(dlg: Dialog, serverId: string): void {
       ? [
           `已租用 MCP 工具集：${serverId}`,
           '',
-          '该 MCP server 被视为非“真正无状态”。当你确认短期内不再需要它时，请释放以回收底层进程/连接：',
-          `mcp_release({"serverId":"${serverId}"})`,
+          '该 MCP server 被视为非“真正无状态”；当前对话持有一个需要显式生命周期管理的底层进程/连接。',
         ].join('\n')
       : [
           `MCP toolset leased: ${serverId}`,
           '',
-          `This MCP server is treated as non-stateless. When you are confident you won't need it again soon, release it:`,
-          `mcp_release({"serverId":"${serverId}"})`,
+          `This MCP server is treated as non-stateless; the current dialog holds an underlying process/connection with explicit lifecycle management.`,
         ].join('\n');
   dlg.addReminder(content, owner, makeLeaseReminderMeta(serverId));
 }
