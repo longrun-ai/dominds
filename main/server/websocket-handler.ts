@@ -65,8 +65,9 @@ import { Dialog, DialogID, MainDialog } from '../dialog';
 import {
   clearMainDialogQuarantining,
   clearMainDialogQuarantiningIfIdle,
+  createRunControlCountsMessage,
   forceStopActiveRunsForMainDialog,
-  getRunControlCountsSnapshot,
+  getRunControlCountsSnapshotEpoch,
   isDialogLatestResumable,
   markMainDialogQuarantining,
   refreshRunControlProjectionFromPersistenceFacts,
@@ -2518,14 +2519,9 @@ export function setupWebSocketServer(
     if (msg.fromStatus !== 'running') {
       return;
     }
-    void getRunControlCountsSnapshot()
-      .then((counts) => {
-        broadcastToClients({
-          type: 'run_control_counts_evt',
-          proceeding: counts.proceeding,
-          resumable: counts.resumable,
-          timestamp: formatUnifiedTimestamp(new Date()),
-        });
+    void createRunControlCountsMessage()
+      .then((message) => {
+        broadcastToClients(message);
       })
       .catch((error: unknown) => {
         log.warn('Failed to broadcast run-control counts after dialog quarantine', error, {
@@ -2594,6 +2590,7 @@ export function setupWebSocketServer(
             message: 'Connected to dialog server',
             serverWorkLanguage,
             supportedLanguageCodes: [...supportedLanguageCodes],
+            runControlCountsSnapshotEpoch: getRunControlCountsSnapshotEpoch(),
             runtimeStatus,
             timestamp: formatUnifiedTimestamp(new Date()),
           }),
@@ -2624,15 +2621,7 @@ export function setupWebSocketServer(
       })();
 
       try {
-        const counts = await getRunControlCountsSnapshot();
-        ws.send(
-          JSON.stringify({
-            type: 'run_control_counts_evt',
-            proceeding: counts.proceeding,
-            resumable: counts.resumable,
-            timestamp: formatUnifiedTimestamp(new Date()),
-          }),
-        );
+        ws.send(JSON.stringify(await createRunControlCountsMessage()));
       } catch (error) {
         log.warn('Failed to send initial run-control counts snapshot', error);
       }

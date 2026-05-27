@@ -142,6 +142,7 @@ export interface WelcomeMessage {
   message: string;
   serverWorkLanguage: LanguageCode;
   supportedLanguageCodes: LanguageCode[];
+  runControlCountsSnapshotEpoch: string;
   runtimeStatus: DomindsRuntimeStatus;
   timestamp: string;
 }
@@ -443,6 +444,8 @@ export interface RunControlCountsMessage {
   type: 'run_control_counts_evt';
   proceeding: number;
   resumable: number;
+  snapshotEpoch: string;
+  snapshotSeq: number;
   timestamp: string;
 }
 

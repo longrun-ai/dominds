@@ -2,20 +2,52 @@ import { parseWebSocketMessage, type WebSocketMessage } from '@longrun-ai/kernel
 import assert from 'node:assert/strict';
 import * as http from 'node:http';
 import { WebSocket } from 'ws';
+import { configureDomindsSelfUpdate } from '../main/server/dominds-self-update';
 import { setupWebSocketServer } from '../main/server/websocket-handler';
 
-function waitForMessage(ws: WebSocket): Promise<WebSocketMessage> {
-  return new Promise((resolve, reject) => {
-    const onMessage = (data: Buffer) => {
-      try {
-        resolve(parseWebSocketMessage(data.toString('utf-8')));
-      } catch (err) {
-        reject(err);
+class WebSocketMessageQueue {
+  private readonly messages: WebSocketMessage[] = [];
+  private readonly waiters: Array<(message: WebSocketMessage) => void> = [];
+
+  constructor(private readonly ws: WebSocket) {
+    this.ws.on('message', (data: Buffer) => {
+      const message = parseWebSocketMessage(data.toString('utf-8'));
+      const waiter = this.waiters.shift();
+      if (waiter) {
+        waiter(message);
+        return;
       }
-    };
-    ws.once('message', onMessage);
-    ws.once('error', reject);
-  });
+      this.messages.push(message);
+    });
+  }
+
+  async waitForMessage(): Promise<WebSocketMessage> {
+    const message = this.messages.shift();
+    if (message) {
+      return message;
+    }
+    return await new Promise((resolve, reject) => {
+      const onError = (error: Error) => {
+        reject(error);
+      };
+      this.ws.once('error', onError);
+      this.waiters.push((nextMessage) => {
+        this.ws.off('error', onError);
+        resolve(nextMessage);
+      });
+    });
+  }
+
+  async waitForMessageType<T extends WebSocketMessage['type']>(
+    type: T,
+  ): Promise<Extract<WebSocketMessage, { type: T }>> {
+    for (;;) {
+      const message = await this.waitForMessage();
+      if (message.type === type) {
+        return message as Extract<WebSocketMessage, { type: T }>;
+      }
+    }
+  }
 }
 
 async function run(): Promise<void> {
@@ -40,36 +72,46 @@ async function run(): Promise<void> {
   const port = addr.port;
 
   const clients = new Set<WebSocket>();
-  setupWebSocketServer(server, clients, { kind: 'disabled' }, 'zh');
+  configureDomindsSelfUpdate({
+    host: '127.0.0.1',
+    port,
+    mode: 'development',
+    closeWebSocketClients: () => undefined,
+    stopServer: async () => undefined,
+  });
+  setupWebSocketServer(server, clients, { kind: 'disabled' }, 'zh', 'development');
 
   const ws = new WebSocket(`ws://127.0.0.1:${port}/ws`);
+  const messages = new WebSocketMessageQueue(ws);
 
   {
-    const msg = await waitForMessage(ws);
-    assert.equal(msg.type, 'welcome');
-    if (msg.type !== 'welcome') {
-      throw new Error(`Expected welcome message, got ${msg.type}`);
-    }
-    const welcome = msg;
+    const welcome = await messages.waitForMessageType('welcome');
     assert.equal(welcome.serverWorkLanguage, 'zh');
     assert.ok(Array.isArray(welcome.supportedLanguageCodes));
     assert.ok(welcome.supportedLanguageCodes.includes('en'));
     assert.ok(welcome.supportedLanguageCodes.includes('zh'));
+    assert.equal(typeof welcome.runControlCountsSnapshotEpoch, 'string');
+    assert.ok(welcome.runControlCountsSnapshotEpoch.length > 0);
     assert.equal(typeof welcome.timestamp, 'string');
+
+    const counts = await messages.waitForMessageType('run_control_counts_evt');
+    assert.equal(counts.snapshotEpoch, welcome.runControlCountsSnapshotEpoch);
+    assert.ok(counts.snapshotSeq > 0);
+    assert.equal(counts.proceeding, 0);
+    assert.equal(counts.resumable, 0);
+    assert.equal(typeof counts.timestamp, 'string');
   }
 
   ws.send(JSON.stringify({ type: 'set_ui_language', uiLanguage: 'en' }));
   {
-    const msg = await waitForMessage(ws);
-    assert.equal(msg.type, 'ui_language_set');
-    assert.equal((msg as { uiLanguage?: unknown }).uiLanguage, 'en');
+    const msg = await messages.waitForMessageType('ui_language_set');
+    assert.equal(msg.uiLanguage, 'en');
   }
 
   ws.send(JSON.stringify({ type: 'unknown_packet_type' }));
   {
-    const msg = await waitForMessage(ws);
-    assert.equal(msg.type, 'error');
-    assert.equal(typeof (msg as { message?: unknown }).message, 'string');
+    const msg = await messages.waitForMessageType('error');
+    assert.equal(typeof msg.message, 'string');
   }
 
   ws.close();

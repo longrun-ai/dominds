@@ -31,6 +31,7 @@ import {
   type CreateDialogInput,
   type CreateDialogResult,
   type DialogStatusKind,
+  type RunControlCountsMessage,
 } from '@longrun-ai/kernel/types';
 import type { LanguageCode } from '@longrun-ai/kernel/types/language';
 import type {
@@ -99,6 +100,53 @@ export type DeleteDiligenceResponse = {
   missing?: string[];
   error?: string;
 };
+
+type RunControlCountsApiSnapshot = Pick<
+  RunControlCountsMessage,
+  'proceeding' | 'resumable' | 'snapshotEpoch' | 'snapshotSeq' | 'timestamp'
+>;
+
+function parseRunControlCountsPayload(value: unknown): Record<string, unknown> {
+  if (typeof value !== 'object' || value === null || Array.isArray(value)) {
+    throw new Error('Invalid run-control counts response: payload must be an object');
+  }
+  const payload = value as Record<string, unknown>;
+  const counts = payload['counts'];
+  if (typeof counts !== 'object' || counts === null || Array.isArray(counts)) {
+    throw new Error('Invalid run-control counts response: counts must be an object');
+  }
+  return counts as Record<string, unknown>;
+}
+
+function parseRunControlCount(value: unknown, field: string): number {
+  if (typeof value !== 'number' || !Number.isInteger(value) || value < 0) {
+    throw new Error(`Invalid run-control counts response: ${field} must be a non-negative integer`);
+  }
+  return value;
+}
+
+function parseRunControlSnapshotEpoch(value: unknown): string {
+  if (typeof value !== 'string' || value.trim() === '') {
+    throw new Error(
+      'Invalid run-control counts response: snapshotEpoch must be a non-empty string',
+    );
+  }
+  return value;
+}
+
+function parseRunControlSnapshotSeq(value: unknown): number {
+  if (typeof value !== 'number' || !Number.isInteger(value) || value <= 0) {
+    throw new Error('Invalid run-control counts response: snapshotSeq must be a positive integer');
+  }
+  return value;
+}
+
+function parseRunControlTimestamp(value: unknown): string {
+  if (typeof value !== 'string' || value.trim() === '') {
+    throw new Error('Invalid run-control counts response: timestamp must be a non-empty string');
+  }
+  return value;
+}
 
 export type DocsReadResponse = {
   success: boolean;
@@ -454,32 +502,29 @@ export class ApiClient {
     return await this.getMainDialogsByStatus('running');
   }
 
-  async getRunControlCounts(): Promise<
-    ApiResponse<{
-      proceeding: number;
-      resumable: number;
-    }>
-  > {
-    const response = await this.request('/api/dialogs/run-control-counts');
+  async getRunControlCounts(): Promise<ApiResponse<RunControlCountsApiSnapshot>> {
+    const response = await this.request<unknown>('/api/dialogs/run-control-counts');
     if (response.success && response.data) {
-      const payload = response.data as Record<string, unknown>;
-      const countsRec =
-        typeof payload['counts'] === 'object' && payload['counts'] !== null
-          ? (payload['counts'] as Record<string, unknown>)
-          : payload;
+      const countsRec = parseRunControlCountsPayload(response.data);
       const proceedingRaw = countsRec['proceeding'];
       const resumableRaw = countsRec['resumable'];
+      const snapshotEpochRaw = countsRec['snapshotEpoch'];
+      const snapshotSeqRaw = countsRec['snapshotSeq'];
+      const timestampRaw = countsRec['timestamp'];
       return {
         success: true,
         status: response.status,
         data: {
-          proceeding: typeof proceedingRaw === 'number' ? proceedingRaw : 0,
-          resumable: typeof resumableRaw === 'number' ? resumableRaw : 0,
+          proceeding: parseRunControlCount(proceedingRaw, 'proceeding'),
+          resumable: parseRunControlCount(resumableRaw, 'resumable'),
+          snapshotEpoch: parseRunControlSnapshotEpoch(snapshotEpochRaw),
+          snapshotSeq: parseRunControlSnapshotSeq(snapshotSeqRaw),
+          timestamp: parseRunControlTimestamp(timestampRaw),
         },
         timestamp: response.timestamp,
       };
     }
-    return response as ApiResponse<{ proceeding: number; resumable: number }>;
+    return response as ApiResponse<RunControlCountsApiSnapshot>;
   }
 
   /**

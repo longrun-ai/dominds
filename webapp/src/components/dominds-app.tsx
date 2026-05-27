@@ -51,6 +51,7 @@ import type {
   ErrorMessage,
   ProblemsSnapshotMessage,
   Q4HStateResponse,
+  RunControlCountsMessage,
   RunControlRefreshReason,
   WebSocketMessage,
   WelcomeMessage,
@@ -256,6 +257,9 @@ export class DomindsApp extends HTMLElement {
   private dialogDisplayStatesByKey = new Map<string, DialogDisplayState>();
   private proceedingDialogsCount: number = 0;
   private resumableDialogsCount: number = 0;
+  private lastRunControlCountsSnapshotEpoch: string | null = null;
+  private lastRunControlCountsSnapshotSeq: number = 0;
+  private runControlCountsApiRefreshSeq: number = 0;
   private currentDialog: DialogInfo | null = null; // Track currently selected dialog
   private currentDialogStatus: PersistableDialogStatus | null = null;
   private viewportPanelState: DialogViewportPanelState = { kind: 'hidden' };
@@ -2393,6 +2397,69 @@ export class DomindsApp extends HTMLElement {
     if (this.domindsVersionClickTimer === null) return;
     window.clearTimeout(this.domindsVersionClickTimer);
     this.domindsVersionClickTimer = null;
+  }
+
+  private applyRunControlCountsSnapshot(
+    counts: Pick<
+      RunControlCountsMessage,
+      'proceeding' | 'resumable' | 'snapshotEpoch' | 'snapshotSeq'
+    >,
+    source: 'api' | 'ws',
+  ): void {
+    if (
+      counts.snapshotEpoch !== this.lastRunControlCountsSnapshotEpoch &&
+      this.lastRunControlCountsSnapshotEpoch !== null
+    ) {
+      console.warn('Ignoring run-control counts snapshot from unexpected server epoch', {
+        source,
+        expectedSnapshotEpoch: this.lastRunControlCountsSnapshotEpoch,
+        actualSnapshotEpoch: counts.snapshotEpoch,
+        snapshotSeq: counts.snapshotSeq,
+      });
+      return;
+    }
+    if (counts.snapshotEpoch !== this.lastRunControlCountsSnapshotEpoch) {
+      this.lastRunControlCountsSnapshotEpoch = counts.snapshotEpoch;
+      this.lastRunControlCountsSnapshotSeq = 0;
+    }
+    if (counts.snapshotSeq <= this.lastRunControlCountsSnapshotSeq) {
+      return;
+    }
+    this.lastRunControlCountsSnapshotSeq = counts.snapshotSeq;
+    this.proceedingDialogsCount = counts.proceeding;
+    this.resumableDialogsCount = counts.resumable;
+    this.updateToolbarDisplay();
+  }
+
+  private async refreshRunControlCountsFromApi(): Promise<void> {
+    const refreshSeq = ++this.runControlCountsApiRefreshSeq;
+    try {
+      const response = await this.apiClient.getRunControlCounts();
+      if (refreshSeq !== this.runControlCountsApiRefreshSeq) {
+        return;
+      }
+      if (response.success && response.data) {
+        this.applyRunControlCountsSnapshot(response.data, 'api');
+        return;
+      }
+      if (response.status === 401) {
+        this.onAuthRejected('api');
+        return;
+      }
+      console.warn('Failed to refresh run-control counts via API', response.error);
+    } catch (error) {
+      console.warn('Failed to refresh run-control counts via API', error);
+    }
+  }
+
+  private invalidatePendingRunControlCountsApiRefresh(): void {
+    this.runControlCountsApiRefreshSeq += 1;
+  }
+
+  private setRunControlCountsSnapshotEpoch(snapshotEpoch: string): void {
+    if (snapshotEpoch === this.lastRunControlCountsSnapshotEpoch) return;
+    this.lastRunControlCountsSnapshotEpoch = snapshotEpoch;
+    this.lastRunControlCountsSnapshotSeq = 0;
   }
 
   /**
@@ -7563,7 +7630,7 @@ export class DomindsApp extends HTMLElement {
 
   private scheduleRunControlRefresh(reason: RunControlRefreshReason): boolean {
     // This addresses a known flake where resumable count can remain stale even after dialogs resume.
-    // Refreshing from the authoritative persisted index (GET /api/dialogs) makes multi-tab views converge.
+    // Refreshing from the authoritative persisted run-control snapshot makes multi-tab views converge.
     const now = Date.now();
     const last = this.runControlRefreshLastScheduledAtMsByReason.get(reason) ?? 0;
     if (now - last < 200) return false;
@@ -7587,7 +7654,7 @@ export class DomindsApp extends HTMLElement {
     })();
     for (const delay of delaysMs) {
       const t = setTimeout(() => {
-        void this.loadDialogs();
+        void this.refreshRunControlCountsFromApi();
       }, delay);
       this.runControlRefreshTimers.push(t);
     }
@@ -9023,11 +9090,10 @@ export class DomindsApp extends HTMLElement {
   private async loadDialogs(): Promise<void> {
     try {
       const api = getApiClient();
-      const [runningResp, doneResp, archivedResp, runControlCountsResp] = await Promise.all([
+      const [runningResp, doneResp, archivedResp] = await Promise.all([
         api.getMainDialogsByStatus('running'),
         api.getMainDialogsByStatus('completed'),
         api.getMainDialogsByStatus('archived'),
-        api.getRunControlCounts(),
       ]);
 
       const responses = [runningResp, doneResp, archivedResp];
@@ -9059,13 +9125,7 @@ export class DomindsApp extends HTMLElement {
         if (root.status !== 'running' || !root.displayState) continue;
         this.dialogDisplayStatesByKey.set(this.dialogKey(root.rootId, selfId), root.displayState);
       }
-      if (runControlCountsResp.success && runControlCountsResp.data) {
-        this.proceedingDialogsCount = runControlCountsResp.data.proceeding;
-        this.resumableDialogsCount = runControlCountsResp.data.resumable;
-        this.updateToolbarDisplay();
-      } else {
-        console.warn('Failed to refresh run-control counts via API', runControlCountsResp.error);
-      }
+      void this.refreshRunControlCountsFromApi();
       this.markDialogListBootstrapReady();
       if (this.currentDialog) {
         const effectiveStatus = this.lookupVisibleDialogStatus(this.currentDialog);
@@ -11706,6 +11766,8 @@ export class DomindsApp extends HTMLElement {
     // Handle global events that don't need dialog filtering using discriminated unions
     switch (message.type) {
       case 'welcome': {
+        this.invalidatePendingRunControlCountsApiRefresh();
+        this.setRunControlCountsSnapshotEpoch(message.runControlCountsSnapshotEpoch);
         this.serverWorkLanguage = message.serverWorkLanguage;
         const dialogContainer = this.shadowRoot?.querySelector('#dialog-container');
         if (dialogContainer instanceof DomindsDialogContainer) {
@@ -11920,9 +11982,7 @@ export class DomindsApp extends HTMLElement {
         return true;
       }
       case 'run_control_counts_evt': {
-        this.proceedingDialogsCount = message.proceeding;
-        this.resumableDialogsCount = message.resumable;
-        this.updateToolbarDisplay();
+        this.applyRunControlCountsSnapshot(message, 'ws');
         return true;
       }
       case 'run_control_refresh': {

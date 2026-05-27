@@ -32,7 +32,7 @@ import * as path from 'path';
 import type { WebSocket } from 'ws';
 import { registerEnabledAppsToolProxies } from '../apps/runtime';
 import { DialogID, DialogStore, MainDialog } from '../dialog';
-import { getRunControlCountsSnapshot } from '../dialog-display-state';
+import { createRunControlCountsMessage } from '../dialog-display-state';
 import { forkMainDialogTreeAtGeneration } from '../dialog-fork';
 import { globalDialogRegistry } from '../dialog-global-registry';
 import {
@@ -2597,12 +2597,15 @@ async function handleGetDialogs(
 
 async function handleGetRunControlCounts(res: ServerResponse): Promise<boolean> {
   try {
-    const counts = await getRunControlCountsSnapshot();
+    const counts = await createRunControlCountsMessage();
     respondJson(res, 200, {
       success: true,
       counts: {
         proceeding: counts.proceeding,
         resumable: counts.resumable,
+        snapshotEpoch: counts.snapshotEpoch,
+        snapshotSeq: counts.snapshotSeq,
+        timestamp: counts.timestamp,
       },
     });
     return true;
@@ -3239,13 +3242,7 @@ function broadcastDialogDeletes(
 
 async function broadcastRunControlCounts(clients: Set<WebSocket> | undefined): Promise<void> {
   if (!clients) return;
-  const counts = await getRunControlCountsSnapshot();
-  const data = JSON.stringify({
-    type: 'run_control_counts_evt',
-    proceeding: counts.proceeding,
-    resumable: counts.resumable,
-    timestamp: formatUnifiedTimestamp(new Date()),
-  });
+  const data = JSON.stringify(await createRunControlCountsMessage());
   for (const ws of clients) {
     if (ws.readyState === 1) {
       ws.send(data);

@@ -25,8 +25,9 @@ import type {
   DialogLatestFile,
   TellaskReplyDirective,
 } from '@longrun-ai/kernel/types/storage';
-import type { WebSocketMessage } from '@longrun-ai/kernel/types/wire';
+import type { RunControlCountsMessage, WebSocketMessage } from '@longrun-ai/kernel/types/wire';
 import { formatUnifiedTimestamp } from '@longrun-ai/kernel/utils/time';
+import { randomUUID } from 'crypto';
 import { DialogID, type Dialog } from './dialog';
 import { getRecoverableGenerationRunState } from './dialog-generation-run';
 import { globalDialogRegistry } from './dialog-global-registry';
@@ -51,11 +52,18 @@ let broadcastToClients: ((msg: WebSocketMessage) => void) | undefined;
 
 const activeRunsByDialogKey: Map<string, ActiveRun> = new Map();
 const quarantiningMainDialogIds: Set<string> = new Set();
+const runControlCountsSnapshotEpoch = randomUUID();
+let runControlCountsSnapshotSeq = 0;
+let runControlCountsSnapshotQueue: Promise<void> = Promise.resolve();
 
 export type RunControlCountsSnapshot = {
   proceeding: number;
   resumable: number;
 };
+
+export function getRunControlCountsSnapshotEpoch(): string {
+  return runControlCountsSnapshotEpoch;
+}
 
 export function setDisplayStateBroadcaster(fn: (msg: WebSocketMessage) => void): void {
   broadcastToClients = fn;
@@ -329,15 +337,33 @@ export async function getRunControlCountsSnapshot(): Promise<RunControlCountsSna
   return { proceeding, resumable };
 }
 
-export async function broadcastRunControlCountsSnapshot(): Promise<void> {
-  if (!broadcastToClients) return;
+async function createRunControlCountsMessageUnqueued(): Promise<RunControlCountsMessage> {
   const counts = await getRunControlCountsSnapshot();
-  broadcastToClients({
+  const snapshotSeq = ++runControlCountsSnapshotSeq;
+  return {
     type: 'run_control_counts_evt',
     proceeding: counts.proceeding,
     resumable: counts.resumable,
+    snapshotEpoch: runControlCountsSnapshotEpoch,
+    snapshotSeq,
     timestamp: formatUnifiedTimestamp(new Date()),
-  });
+  };
+}
+
+export function createRunControlCountsMessage(): Promise<RunControlCountsMessage> {
+  const nextSnapshot = runControlCountsSnapshotQueue.then(() =>
+    createRunControlCountsMessageUnqueued(),
+  );
+  runControlCountsSnapshotQueue = nextSnapshot.then(
+    () => undefined,
+    () => undefined,
+  );
+  return nextSnapshot;
+}
+
+export async function broadcastRunControlCountsSnapshot(): Promise<void> {
+  if (!broadcastToClients) return;
+  broadcastToClients(await createRunControlCountsMessage());
 }
 
 export function hasActiveRun(dialogId: DialogID): boolean {
