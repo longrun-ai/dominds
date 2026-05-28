@@ -44,7 +44,7 @@ Usage:
   dominds webui [options]
 
 Note:
-  rtws (runtime workspace) directory is \`process.cwd()\`. Use 'dominds -C <abs-dir> webui' to run in another rtws.
+  rtws (runtime workspace) directory is \`process.cwd()\`. Use 'dominds -C <dir> webui' to run in another rtws.
 
 Options:
   -p, --port <port>    Port to listen on. Bare port is strict; suffix + tries higher ports; suffix - tries lower ports.

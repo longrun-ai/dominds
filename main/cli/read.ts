@@ -71,7 +71,7 @@ function printUsage(): void {
   console.log('When <member-id> is omitted, reads all visible team members.');
   console.log('');
   console.log(
-    "Note: rtws (runtime workspace) directory is `process.cwd()`. Use 'dominds -C <abs-dir> read' to run in another rtws.",
+    "Note: rtws (runtime workspace) directory is `process.cwd()`. Use 'dominds -C <dir> read' to run in another rtws.",
   );
   console.log('');
   console.log('Examples:');

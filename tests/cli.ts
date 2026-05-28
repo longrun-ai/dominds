@@ -12,13 +12,13 @@ function printHelp(): void {
 Dominds Tests CLI
 
 Usage:
-  pnpm -C tests run rtws -- [--shared-rtws] [-C <abs-dir>] <script.ts> [script args...]
+  pnpm -C tests run rtws -- [--shared-rtws] [-C <dir>] <script.ts> [script args...]
 
 Notes:
   - Default mode is isolated: each run copies tests/script-rtws into a unique temp rtws.
   - This avoids cross-test pollution and allows safe parallel runs.
   - Use --shared-rtws only for debugging (runs directly in tests/script-rtws).
-  - -C is parsed for parity with dominds CLI, but only the absolute tests/script-rtws path is accepted.
+  - -C is parsed for parity with dominds CLI, but only tests/script-rtws is accepted after path resolution.
   - Set DOMINDS_TEST_RTWS_KEEP_TMP=1 to keep isolated temp rtws after run.
 
 	  Examples:

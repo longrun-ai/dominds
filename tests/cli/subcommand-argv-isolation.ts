@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { main as cliMain } from '../../main/cli';
+import { main as cliMain } from '../../main/cli-runner';
 
 async function main(): Promise<void> {
   const originalArgv = process.argv;

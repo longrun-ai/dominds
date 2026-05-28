@@ -1,361 +1,656 @@
 #!/usr/bin/env node
 
-/**
- * Main CLI entry point for dominds
- *
- * Usage:
- *   dominds [subcommand] [options]
- *
- * Subcommands:
- *   webui    - Start WebUI server (default)
- *   tui      - Start Text User Interface
- *   run      - Run task dialog (alias for tui)
- *   read     - Read team configuration
- *   man      - Render toolset manual to stdout
- *   manual   - Alias for man
- *   validate_team_def - Validate explicit team toolset declarations
- *   cert     - Create and inspect local HTTPS certificates
- *   create   - Create a new runtime workspace (rtws) from a template
- *   install  - Install a Dominds App into this rtws
- *   doctor   - Diagnose Dominds App state in this rtws
- *   enable   - Enable an installed Dominds App in this rtws
- *   disable  - Disable an installed Dominds App in this rtws
- *   uninstall- Uninstall a Dominds App from this rtws
- *   update   - Update installed Dominds App(s)
- *   new      - Alias for create
- *   help     - Show help
- *
- * Global installation:
- *   pnpm add -g dominds
- *   dominds webui
- */
+import { spawn, type ChildProcess } from 'child_process';
+import fsPromises from 'fs/promises';
+import net from 'net';
+import path from 'path';
 
-import * as fs from 'fs';
-import * as http from 'node:http';
-import * as path from 'path';
+import { formatUnifiedTimestamp } from '@longrun-ai/kernel/utils/time';
 
-import { initAppsRuntime, registerEnabledAppsToolProxies } from './apps/runtime';
-import { loadRtwsDotenv } from './bootstrap/dotenv';
 import { extractGlobalRtwsChdir } from './bootstrap/rtws-cli';
-import { main as certMain } from './cli/cert';
-import { main as createMain } from './cli/create';
-import { main as disableMain } from './cli/disable';
-import { main as doctorMain } from './cli/doctor';
-import { main as enableMain } from './cli/enable';
-import { main as installMain } from './cli/install';
-import { main as manualMain } from './cli/manual';
-import { main as readMain } from './cli/read';
-import { main as tuiMain } from './cli/tui';
-import { main as uninstallMain } from './cli/uninstall';
-import { main as updateMain } from './cli/update';
-import { main as validateTeamDefMain } from './cli/validate-team-def';
-import { main as webuiMain } from './cli/webui';
-import { setRtwsProcessTitle } from './process-title';
-import './tools/builtins';
+import {
+  DOMINDS_SUPERVISOR_RESTART_WEBUI,
+  type DomindsSupervisorRestartWebuiMessage,
+} from './supervisor-protocol';
 
-type HttpWithEnvProxy = typeof http & {
-  setGlobalProxyFromEnv(env?: NodeJS.ProcessEnv): void;
+const RUNNER_JS_FILENAME = 'cli-runner.js';
+const RUNNER_TS_FILENAME = 'cli-runner.ts';
+const INITIAL_RESTART_BACKOFF_MS = 1_000;
+const MAX_RESTART_BACKOFF_MS = 30 * 60 * 1_000;
+const PORT_RELEASE_TIMEOUT_MS = 15_000;
+const PORT_PROBE_INTERVAL_MS = 150;
+const RESTART_RUNNER_EXIT_GRACE_MS = 30_000;
+const RESTART_RUNNER_KILL_GRACE_MS = 5_000;
+
+type ParsedSupervisorArgs = Readonly<{
+  cwd: string;
+  runnerArgv: readonly string[];
+}>;
+
+type RunnerExit = Readonly<{
+  code: number | null;
+  signal: NodeJS.Signals | null;
+}>;
+
+type StopState = {
+  stopping: boolean;
 };
 
-export function configureEnvProxySupport(): void {
-  const domindsUseEnvProxy = process.env.DOMINDS_USE_ENV_PROXY?.trim();
-  if (domindsUseEnvProxy === '0') {
-    return;
-  }
+type CommandSpec = Readonly<{
+  command: string;
+  args: readonly string[];
+}>;
 
+type RunnerMessageParseResult =
+  | Readonly<{ kind: 'ignore' }>
+  | Readonly<{ kind: 'invalid'; reason: string; traceFile: string | null; debugDir: string | null }>
+  | Readonly<{ kind: 'restart'; message: DomindsSupervisorRestartWebuiMessage }>;
+
+function getDefaultRunnerCommandSpec(): CommandSpec {
+  if (__filename.endsWith('.ts')) {
+    return {
+      command: process.execPath,
+      args: [
+        require.resolve('tsx/cli'),
+        '--tsconfig',
+        path.resolve(__dirname, 'tsconfig.dev.json'),
+        path.resolve(__dirname, RUNNER_TS_FILENAME),
+      ],
+    };
+  }
+  return { command: process.execPath, args: [path.resolve(__dirname, RUNNER_JS_FILENAME)] };
+}
+
+function isLongRunningCommand(argv: readonly string[]): boolean {
+  return argv.length === 0 || argv[0] === 'webui';
+}
+
+function isDevelopmentMode(argv: readonly string[]): boolean {
+  if (process.env.NODE_ENV === 'dev') return true;
+  for (let i = 0; i < argv.length; i++) {
+    const arg = argv[i];
+    if (arg === '--mode') return argv[i + 1] === 'dev';
+    if (arg === '--mode=dev') return true;
+  }
+  return false;
+}
+
+function parseSupervisorArgs(argv: readonly string[]): ParsedSupervisorArgs {
+  const launchCwd = process.cwd();
+  const parsed = extractGlobalRtwsChdir({ argv, baseCwd: launchCwd });
+  return {
+    cwd: parsed.chdir ?? launchCwd,
+    runnerArgv: parsed.argv,
+  };
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
+function isRestartRunKind(
+  value: unknown,
+): value is DomindsSupervisorRestartWebuiMessage['runKind'] {
+  return value === 'global' || value === 'npx';
+}
+
+function parseRunnerMessage(message: unknown): RunnerMessageParseResult {
+  if (!isRecord(message)) return { kind: 'ignore' };
+  if (message['type'] !== DOMINDS_SUPERVISOR_RESTART_WEBUI) return { kind: 'ignore' };
+  const cwd = message['cwd'];
+  const host = message['host'];
+  const port = message['port'];
+  const traceFile = message['traceFile'];
+  const debugDir = message['debugDir'];
+  const currentVersion = message['currentVersion'];
+  const targetVersion = message['targetVersion'];
+  const runKind = message['runKind'];
+  const invalid = (reason: string): RunnerMessageParseResult => ({
+    kind: 'invalid',
+    reason,
+    traceFile: typeof traceFile === 'string' ? traceFile : null,
+    debugDir: typeof debugDir === 'string' ? debugDir : null,
+  });
+  if (typeof cwd !== 'string') return invalid('cwd must be a string');
+  if (typeof host !== 'string') return invalid('host must be a string');
+  if (typeof port !== 'number' || !Number.isInteger(port) || port <= 0 || port > 65535) {
+    return invalid('port must be an integer in 1..65535');
+  }
+  if (typeof traceFile !== 'string') return invalid('traceFile must be a string');
+  if (typeof debugDir !== 'string') return invalid('debugDir must be a string');
+  if (typeof currentVersion !== 'string') return invalid('currentVersion must be a string');
+  if (targetVersion !== null && typeof targetVersion !== 'string') {
+    return invalid('targetVersion must be a string or null');
+  }
+  if (!isRestartRunKind(runKind)) return invalid('runKind must be global or npx');
+  return {
+    kind: 'restart',
+    message: {
+      type: DOMINDS_SUPERVISOR_RESTART_WEBUI,
+      cwd,
+      host,
+      port,
+      traceFile,
+      debugDir,
+      currentVersion,
+      targetVersion,
+      runKind,
+    },
+  };
+}
+
+async function appendSupervisorTrace(
+  message: DomindsSupervisorRestartWebuiMessage,
+  event: string,
+  details: Record<string, unknown> = {},
+): Promise<void> {
+  const record = {
+    ...details,
+    event,
+    capturedAt: formatUnifiedTimestamp(new Date()),
+    supervisorPid: process.pid,
+    platform: process.platform,
+  };
+  await fsPromises.mkdir(message.debugDir, { recursive: true });
+  await fsPromises.appendFile(message.traceFile, `${JSON.stringify(record)}\n`, 'utf8');
+}
+
+function appendSupervisorTraceSoon(
+  message: DomindsSupervisorRestartWebuiMessage,
+  event: string,
+  details: Record<string, unknown> = {},
+): void {
+  void appendSupervisorTrace(message, event, details).catch((error: unknown) => {
+    const text = error instanceof Error ? error.message : String(error);
+    console.error(`Failed to write Dominds supervisor trace: ${text}`);
+  });
+}
+
+async function appendSupervisorTraceBestEffort(
+  message: DomindsSupervisorRestartWebuiMessage,
+  event: string,
+  details: Record<string, unknown> = {},
+): Promise<void> {
   try {
-    const setGlobalProxyFromEnv = (http as Partial<HttpWithEnvProxy>).setGlobalProxyFromEnv;
-    if (typeof setGlobalProxyFromEnv !== 'function') {
-      console.error(
-        'Error: DOMINDS_USE_ENV_PROXY requires Node.js 24.5+ because http.setGlobalProxyFromEnv() is unavailable.',
-      );
-      process.exit(1);
+    await appendSupervisorTrace(message, event, details);
+  } catch (error: unknown) {
+    const text = error instanceof Error ? error.message : String(error);
+    console.error(`Failed to write Dominds supervisor trace: ${text}`);
+  }
+}
+
+function appendInvalidSupervisorTraceSoon(
+  parsed: Extract<RunnerMessageParseResult, { kind: 'invalid' }>,
+  event = 'supervisor.invalid_restart_message',
+  details: Record<string, unknown> = {},
+): void {
+  if (parsed.traceFile === null || parsed.debugDir === null) return;
+  const message: DomindsSupervisorRestartWebuiMessage = {
+    type: DOMINDS_SUPERVISOR_RESTART_WEBUI,
+    cwd: process.cwd(),
+    host: 'unknown',
+    port: 1,
+    traceFile: parsed.traceFile,
+    debugDir: parsed.debugDir,
+    currentVersion: 'unknown',
+    targetVersion: null,
+    runKind: 'global',
+  };
+  appendSupervisorTraceSoon(message, event, {
+    ...details,
+    reason: parsed.reason,
+  });
+}
+
+async function delayUnlessStopping(ms: number, stopState: StopState): Promise<void> {
+  if (stopState.stopping) return;
+  await new Promise<void>((resolve) => {
+    let settled = false;
+    const finish = (): void => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      clearInterval(poll);
+      resolve();
+    };
+    const timer = setTimeout(finish, ms);
+    const poll = setInterval(() => {
+      if (!stopState.stopping) return;
+      finish();
+    }, 100);
+  });
+}
+
+function getPortProbeHost(host: string): string {
+  if (host === '0.0.0.0') return '127.0.0.1';
+  if (host === '::') return '::1';
+  return host;
+}
+
+function isPortBusy(host: string, port: number): Promise<boolean> {
+  return new Promise((resolve) => {
+    const socket = net.createConnection({ host, port });
+    let settled = false;
+    const finish = (busy: boolean) => {
+      if (settled) return;
+      settled = true;
+      socket.destroy();
+      resolve(busy);
+    };
+    socket.once('connect', () => finish(true));
+    socket.once('error', () => finish(false));
+    socket.setTimeout(1000, () => finish(true));
+  });
+}
+
+async function waitForPortRelease(
+  params: Readonly<{ host: string; port: number; stopState: StopState }>,
+): Promise<boolean> {
+  const probeHost = getPortProbeHost(params.host);
+  const deadline = Date.now() + PORT_RELEASE_TIMEOUT_MS;
+  let consecutiveReady = 0;
+  while (!params.stopState.stopping && Date.now() < deadline) {
+    if (!(await isPortBusy(probeHost, params.port))) {
+      consecutiveReady += 1;
+      if (consecutiveReady >= 2) return true;
+    } else {
+      consecutiveReady = 0;
     }
-    setGlobalProxyFromEnv(process.env);
-  } catch (err) {
-    console.error(
-      'Error: invalid proxy environment configuration:',
-      err instanceof Error ? err.message : String(err),
-    );
-    process.exit(1);
+    await delayUnlessStopping(PORT_PROBE_INTERVAL_MS, params.stopState);
+  }
+  return false;
+}
+
+async function resolveNpmCommandSpec(): Promise<CommandSpec> {
+  const nodeDir = path.dirname(process.execPath);
+  const candidates =
+    process.platform === 'win32'
+      ? [path.join(nodeDir, 'node_modules', 'npm', 'bin', 'npm-cli.js')]
+      : [
+          path.join(nodeDir, '..', 'lib', 'node_modules', 'npm', 'bin', 'npm-cli.js'),
+          path.join(nodeDir, '..', 'share', 'nodejs', 'npm', 'bin', 'npm-cli.js'),
+        ];
+
+  for (const candidate of candidates) {
+    try {
+      await fsPromises.access(candidate);
+      return { command: process.execPath, args: [candidate] };
+    } catch {
+      continue;
+    }
+  }
+
+  if (process.platform === 'win32') {
+    throw new Error(`Cannot find bundled npm CLI at ${candidates.join(', ')}`);
+  }
+
+  return { command: 'npm', args: [] };
+}
+
+async function captureCommandStdout(command: string, args: readonly string[]): Promise<string> {
+  return await new Promise<string>((resolve, reject) => {
+    let stdout = '';
+    let stderr = '';
+    const child = spawn(command, [...args], {
+      stdio: ['ignore', 'pipe', 'pipe'],
+      windowsHide: true,
+    });
+    child.stdout?.setEncoding('utf8');
+    child.stderr?.setEncoding('utf8');
+    child.stdout?.on('data', (chunk: string) => {
+      stdout += chunk;
+    });
+    child.stderr?.on('data', (chunk: string) => {
+      stderr += chunk;
+    });
+    child.once('error', reject);
+    child.once('exit', (code, signal) => {
+      if (code === 0 && signal === null) {
+        resolve(stdout);
+        return;
+      }
+      reject(
+        new Error(
+          `Command failed while resolving dominds@latest runner (code=${String(code)}, signal=${String(signal)}): ${stderr.trim()}`,
+        ),
+      );
+    });
+  });
+}
+
+async function resolveNpxLatestRunnerEntrypoint(): Promise<string> {
+  const npm = await resolveNpmCommandSpec();
+  const packageJsonPath = (
+    await captureCommandStdout(npm.command, [
+      ...npm.args,
+      'exec',
+      '-y',
+      '--package',
+      'dominds@latest',
+      '--',
+      process.execPath,
+      '-e',
+      [
+        "const fs=require('fs');",
+        "const path=require('path');",
+        "for (const dir of (process.env.PATH||'').split(path.delimiter)) {",
+        "  if (path.basename(dir) !== '.bin') continue;",
+        "  const candidate=path.join(path.dirname(dir),'dominds','package.json');",
+        '  if (fs.existsSync(candidate)) {',
+        '    process.stdout.write(fs.realpathSync(candidate));',
+        '    process.exit(0);',
+        '  }',
+        '}',
+        "process.stderr.write('Cannot find dominds package in npm exec PATH');",
+        'process.exit(1);',
+      ].join(' '),
+    ])
+  ).trim();
+  if (packageJsonPath === '') {
+    throw new Error('npm exec dominds@latest did not return a package path');
+  }
+  const packageRoot = path.dirname(packageJsonPath);
+  const runnerEntrypoint = path.join(packageRoot, 'dist', RUNNER_JS_FILENAME);
+  await fsPromises.access(runnerEntrypoint);
+  return runnerEntrypoint;
+}
+
+function spawnRunner(
+  params: Readonly<{ cwd: string; argv: readonly string[]; commandSpec: CommandSpec }>,
+): ChildProcess {
+  return spawn(params.commandSpec.command, [...params.commandSpec.args, ...params.argv], {
+    cwd: params.cwd,
+    env: {
+      ...process.env,
+      DOMINDS_SUPERVISOR_PID: String(process.pid),
+    },
+    stdio: ['inherit', 'inherit', 'inherit', 'ipc'],
+    windowsHide: false,
+  });
+}
+
+function isRunningChild(child: ChildProcess): boolean {
+  return child.exitCode === null && child.signalCode === null;
+}
+
+async function runOneShot(params: ParsedSupervisorArgs): Promise<number> {
+  const commandSpec = getDefaultRunnerCommandSpec();
+  const child = spawn(commandSpec.command, [...commandSpec.args, ...params.runnerArgv], {
+    cwd: params.cwd,
+    env: process.env,
+    stdio: 'inherit',
+    windowsHide: false,
+  });
+  return await new Promise<number>((resolve) => {
+    child.once('error', (error: Error) => {
+      console.error(`Failed to start dominds-runner: ${error.message}`);
+      resolve(1);
+    });
+    child.once('exit', (code, signal) => {
+      if (signal !== null) {
+        console.error(`dominds-runner terminated by signal: ${signal}`);
+        resolve(1);
+        return;
+      }
+      resolve(code ?? 1);
+    });
+  });
+}
+
+async function runDevelopmentRunner(params: ParsedSupervisorArgs): Promise<number> {
+  try {
+    process.chdir(params.cwd);
+    const { main: runnerMain } = await import('./cli-runner');
+    await runnerMain(params.runnerArgv);
+    return 0;
+  } catch (error: unknown) {
+    const message = error instanceof Error ? error.message : String(error);
+    console.error(`dominds development runner failed: ${message}`);
+    return 1;
   }
 }
 
-function printHelp(): void {
-  console.log(`
-Dominds CLI - AI-driven DevOps framework with persistent memory
+async function runSupervised(params: ParsedSupervisorArgs): Promise<number> {
+  let backoffMs = INITIAL_RESTART_BACKOFF_MS;
+  const stopState: StopState = { stopping: false };
+  let activeChild: ChildProcess | null = null;
+  const restartState: { pending: DomindsSupervisorRestartWebuiMessage | null } = {
+    pending: null,
+  };
+  const invalidRestartState: { pending: string | null } = { pending: null };
+  let runnerCommandSpec = getDefaultRunnerCommandSpec();
 
-Usage:
-  dominds [-C <abs-dir>] [subcommand] [options]
+  const stopFromSignal = (signal: NodeJS.Signals): void => {
+    if (stopState.stopping) return;
+    stopState.stopping = true;
+    const child = activeChild;
+    if (child !== null && child.exitCode === null && child.signalCode === null) {
+      child.kill(signal);
+    }
+  };
 
-Global Options:
-  -C <abs-dir>        Change to absolute runtime workspace directory (rtws) before running
+  process.once('SIGINT', stopFromSignal);
+  process.once('SIGTERM', stopFromSignal);
+  if (process.platform === 'win32') {
+    process.once('SIGBREAK', stopFromSignal);
+  }
 
-Subcommands:
-  webui [options]    Start WebUI server (default)
-  tui [options]      Start Text User Interface
-  run [options]      Run task dialog (alias for tui)
-  read [options]     Read team configuration
-  man [options]      Render toolset manual to stdout
-  manual [options]   Alias for man
-  validate_team_def [options] Validate explicit team toolset declarations
-  cert [options]     Create and inspect local HTTPS certificates
-  create [options]   Create a new runtime workspace (rtws) from a template
-  install [options]  Install a Dominds App into this rtws
-  doctor [options]   Read-only diagnosis across manifest/lock/configuration/resolution/handshake
-  enable [options]   Enable an installed Dominds App in this rtws
-  disable [options]  Disable an installed Dominds App in this rtws
-  uninstall [options] Uninstall a Dominds App from this rtws
-  update [options]   Update installed Dominds App(s)
-  new [options]      Alias for create
-  help               Show this help message
+  while (true) {
+    let restartExitTimer: ReturnType<typeof setTimeout> | null = null;
+    let restartKillTimer: ReturnType<typeof setTimeout> | null = null;
+    const clearRestartExitEnforcement = (): void => {
+      if (restartExitTimer !== null) {
+        clearTimeout(restartExitTimer);
+        restartExitTimer = null;
+      }
+      if (restartKillTimer !== null) {
+        clearTimeout(restartKillTimer);
+        restartKillTimer = null;
+      }
+    };
+    const scheduleRestartExitEnforcement = (
+      child: ChildProcess,
+      message: DomindsSupervisorRestartWebuiMessage,
+    ): void => {
+      clearRestartExitEnforcement();
+      restartExitTimer = setTimeout(() => {
+        if (!isRunningChild(child)) return;
+        appendSupervisorTraceSoon(message, 'supervisor.restart_runner_exit_timeout', {
+          runnerPid: child.pid ?? null,
+          graceMs: RESTART_RUNNER_EXIT_GRACE_MS,
+        });
+        console.error(
+          `dominds-runner did not exit within ${String(RESTART_RUNNER_EXIT_GRACE_MS)}ms after restart request; sending SIGTERM`,
+        );
+        child.kill('SIGTERM');
+        restartKillTimer = setTimeout(() => {
+          if (!isRunningChild(child)) return;
+          appendSupervisorTraceSoon(message, 'supervisor.restart_runner_kill_timeout', {
+            runnerPid: child.pid ?? null,
+            graceMs: RESTART_RUNNER_KILL_GRACE_MS,
+          });
+          console.error(
+            `dominds-runner still did not exit after SIGTERM; sending SIGKILL before restart`,
+          );
+          child.kill('SIGKILL');
+        }, RESTART_RUNNER_KILL_GRACE_MS);
+      }, RESTART_RUNNER_EXIT_GRACE_MS);
+    };
+    const scheduleInvalidRestartExitEnforcement = (
+      child: ChildProcess,
+      parsed: Extract<RunnerMessageParseResult, { kind: 'invalid' }>,
+    ): void => {
+      clearRestartExitEnforcement();
+      restartKillTimer = setTimeout(() => {
+        if (!isRunningChild(child)) return;
+        appendInvalidSupervisorTraceSoon(parsed, 'supervisor.invalid_restart_runner_kill_timeout', {
+          runnerPid: child.pid ?? null,
+          graceMs: RESTART_RUNNER_KILL_GRACE_MS,
+        });
+        console.error(`dominds-runner did not exit after invalid restart message; sending SIGKILL`);
+        child.kill('SIGKILL');
+      }, RESTART_RUNNER_KILL_GRACE_MS);
+    };
+    const child = spawnRunner({
+      cwd: params.cwd,
+      argv: params.runnerArgv,
+      commandSpec: runnerCommandSpec,
+    });
+    activeChild = child;
 
-Examples:
-  dominds                    # Start WebUI server (default)
-  dominds webui              # Start WebUI server
-  dominds -C /path/to/my-ws webui # Start in specific rtws
-  dominds tui --help         # Show TUI help
-  dominds run task.tsk       # Run task dialog
-  dominds read               # Read team configuration
-  dominds man ws_read --lang zh --all
-  dominds validate_team_def  # Validate toolset references in .minds/team.yaml
-  dominds cert create --host 192.168.1.10
-  dominds cert status        # Inspect detected LAN HTTPS certificate status
-  dominds create web-scaffold my-project   # Create rtws from a template
-  dominds doctor @longrun-ai/web-dev       # Diagnose a single app across all app-state layers
+    const exit = await new Promise<RunnerExit>((resolve) => {
+      child.once('error', (error: Error) => {
+        console.error(`Failed to start dominds-runner: ${error.message}`);
+        resolve({ code: 1, signal: null });
+      });
+      child.on('message', (raw: unknown) => {
+        const parsed = parseRunnerMessage(raw);
+        if (parsed.kind === 'ignore') return;
+        if (parsed.kind === 'invalid') {
+          if (invalidRestartState.pending !== null) return;
+          console.error(`Invalid dominds-runner restart message: ${parsed.reason}`);
+          invalidRestartState.pending = parsed.reason;
+          appendInvalidSupervisorTraceSoon(parsed);
+          child.kill('SIGTERM');
+          scheduleInvalidRestartExitEnforcement(child, parsed);
+          return;
+        }
+        const { message } = parsed;
+        restartState.pending = message;
+        appendSupervisorTraceSoon(message, 'supervisor.restart_requested', {
+          runnerPid: child.pid ?? null,
+          cwd: message.cwd,
+          host: message.host,
+          port: message.port,
+        });
+        scheduleRestartExitEnforcement(child, message);
+      });
+      child.once('exit', (code, signal) => {
+        clearRestartExitEnforcement();
+        resolve({ code, signal });
+      });
+    });
 
-Installation:
-  pnpm add -g dominds
+    activeChild = null;
 
-For detailed help on a specific subcommand:
-  dominds <subcommand> --help
-`);
-}
+    if (stopState.stopping) {
+      return exit.signal === null ? (exit.code ?? 0) : 1;
+    }
 
-function printVersion(): void {
-  try {
-    const packageJson = JSON.parse(
-      fs.readFileSync(path.join(__dirname, '..', 'package.json'), 'utf8'),
+    if (invalidRestartState.pending !== null) {
+      console.error(
+        `dominds supervisor stopped after invalid restart message: ${invalidRestartState.pending}`,
+      );
+      return 1;
+    }
+
+    if (restartState.pending !== null) {
+      const restart = restartState.pending;
+      restartState.pending = null;
+      while (true) {
+        await appendSupervisorTraceBestEffort(restart, 'supervisor.wait_port_release.start', {
+          host: restart.host,
+          port: restart.port,
+          timeoutMs: PORT_RELEASE_TIMEOUT_MS,
+        });
+        const released = await waitForPortRelease({
+          host: restart.host,
+          port: restart.port,
+          stopState,
+        });
+        await appendSupervisorTraceBestEffort(restart, 'supervisor.wait_port_release.finish', {
+          host: restart.host,
+          port: restart.port,
+          released,
+        });
+        if (stopState.stopping) return 0;
+        if (released) break;
+        await appendSupervisorTraceBestEffort(restart, 'supervisor.restart_blocked_port_busy', {
+          host: restart.host,
+          port: restart.port,
+          retryDelayMs: backoffMs,
+        });
+        console.error(
+          `Dominds restart is waiting because port ${restart.host}:${String(restart.port)} is still busy; retrying in ${String(backoffMs)}ms`,
+        );
+        await delayUnlessStopping(backoffMs, stopState);
+        if (stopState.stopping) return 0;
+        backoffMs = Math.min(backoffMs * 2, MAX_RESTART_BACKOFF_MS);
+      }
+      if (restart.runKind === 'npx') {
+        while (true) {
+          try {
+            const runnerEntrypoint = await resolveNpxLatestRunnerEntrypoint();
+            runnerCommandSpec = { command: process.execPath, args: [runnerEntrypoint] };
+            await appendSupervisorTraceBestEffort(
+              restart,
+              'supervisor.npx_latest_runner_resolved',
+              {
+                runnerEntrypoint,
+              },
+            );
+            break;
+          } catch (error: unknown) {
+            const message = error instanceof Error ? error.message : String(error);
+            await appendSupervisorTraceBestEffort(restart, 'supervisor.npx_latest_runner_error', {
+              message,
+              retryDelayMs: backoffMs,
+            });
+            console.error(
+              `Dominds restart could not resolve dominds@latest runner: ${message}; retrying in ${String(backoffMs)}ms`,
+            );
+            await delayUnlessStopping(backoffMs, stopState);
+            if (stopState.stopping) return 0;
+            backoffMs = Math.min(backoffMs * 2, MAX_RESTART_BACKOFF_MS);
+          }
+        }
+      } else {
+        runnerCommandSpec = getDefaultRunnerCommandSpec();
+      }
+      backoffMs = INITIAL_RESTART_BACKOFF_MS;
+      continue;
+    }
+
+    console.error(
+      `dominds-runner exited unexpectedly (code=${String(exit.code)}, signal=${String(exit.signal)}); restarting in ${String(backoffMs)}ms`,
     );
-    console.log(`dominds v${packageJson.version}`);
-  } catch {
-    console.log('dominds (version unknown)');
+    await delayUnlessStopping(backoffMs, stopState);
+    if (stopState.stopping) return 0;
+    backoffMs = Math.min(backoffMs * 2, MAX_RESTART_BACKOFF_MS);
   }
 }
 
 export async function main(argv: readonly string[] = process.argv.slice(2)): Promise<void> {
-  let parsed: { chdir?: string; argv: ReadonlyArray<string> };
+  let parsed: ParsedSupervisorArgs;
   try {
-    parsed = extractGlobalRtwsChdir({ argv });
-  } catch (err) {
-    console.error('Error:', err instanceof Error ? err.message : String(err));
-    process.exit(1);
-  }
-
-  const args = parsed.argv;
-
-  // Handle no arguments - default to webui
-  if (args.length === 0) {
-    if (parsed.chdir) {
-      try {
-        process.chdir(parsed.chdir);
-      } catch (err) {
-        console.error(`Error: failed to change directory to '${parsed.chdir}':`, err);
-        process.exit(1);
-      }
+    parsed = parseSupervisorArgs(argv);
+    const stat = await fsPromises.stat(parsed.cwd);
+    if (!stat.isDirectory()) {
+      throw new Error(`rtws path is not a directory: ${parsed.cwd}`);
     }
-    loadRtwsDotenv({ cwd: process.cwd() });
-    configureEnvProxySupport();
-    await runSubcommand('webui', []);
+  } catch (error: unknown) {
+    const message = error instanceof Error ? error.message : String(error);
+    console.error(`Error: ${message}`);
+    process.exit(1);
     return;
   }
 
-  const subcommand = args[0];
-  const subcommandArgs = args.slice(1);
-
-  // Handle help and version flags
-  if (subcommand === '-h' || subcommand === '--help' || subcommand === 'help') {
-    printHelp();
-    process.exit(0);
+  if (isLongRunningCommand(parsed.runnerArgv) && isDevelopmentMode(parsed.runnerArgv)) {
+    const exitCode = await runDevelopmentRunner(parsed);
+    if (exitCode !== 0) process.exit(exitCode);
+    return;
   }
 
-  if (subcommand === '-v' || subcommand === '--version') {
-    printVersion();
-    process.exit(0);
-  }
-
-  const shouldSkipRtwsSetup =
-    subcommand === 'cert' ||
-    subcommandArgs.includes('--help') ||
-    (subcommand === 'tui' && subcommandArgs.includes('-h')) ||
-    (subcommand === 'run' && subcommandArgs.includes('-h')) ||
-    (subcommand === 'read' && subcommandArgs.includes('-h')) ||
-    (subcommand === 'validate_team_def' && subcommandArgs.includes('-h')) ||
-    (subcommand === 'man' && subcommandArgs.includes('-h')) ||
-    (subcommand === 'manual' && subcommandArgs.includes('-h')) ||
-    ((subcommand === 'create' || subcommand === 'new') && subcommandArgs.includes('-h')) ||
-    (subcommand === 'install' &&
-      (subcommandArgs.includes('--help') || subcommandArgs.includes('-h'))) ||
-    (subcommand === 'doctor' &&
-      (subcommandArgs.includes('--help') || subcommandArgs.includes('-h'))) ||
-    (subcommand === 'enable' &&
-      (subcommandArgs.includes('--help') || subcommandArgs.includes('-h'))) ||
-    (subcommand === 'disable' &&
-      (subcommandArgs.includes('--help') || subcommandArgs.includes('-h'))) ||
-    (subcommand === 'uninstall' &&
-      (subcommandArgs.includes('--help') || subcommandArgs.includes('-h'))) ||
-    (subcommand === 'update' &&
-      (subcommandArgs.includes('--help') || subcommandArgs.includes('-h')));
-
-  if (!shouldSkipRtwsSetup) {
-    if (parsed.chdir) {
-      try {
-        process.chdir(parsed.chdir);
-      } catch (err) {
-        console.error(`Error: failed to change directory to '${parsed.chdir}':`, err);
-        process.exit(1);
-      }
-    }
-
-    // Load runtime workspace env files into process.env once, in the main entry.
-    // Precedence: `.env` then `.env.local` (later overwrites earlier), and both
-    // overwrite any existing process.env values.
-    loadRtwsDotenv({ cwd: process.cwd() });
-    configureEnvProxySupport();
-  }
-
-  const shouldLoadApps =
-    subcommand !== 'webui' &&
-    subcommand !== 'cert' &&
-    subcommand !== 'create' &&
-    subcommand !== 'new' &&
-    subcommand !== 'install' &&
-    subcommand !== 'doctor' &&
-    subcommand !== 'enable' &&
-    subcommand !== 'disable' &&
-    subcommand !== 'uninstall' &&
-    subcommand !== 'update';
-
-  if (!shouldSkipRtwsSetup && shouldLoadApps) {
-    try {
-      // Register toolset proxies so Team.load() can validate toolset bindings (read/man/manual included).
-      await registerEnabledAppsToolProxies({ rtwsRootAbs: process.cwd() });
-
-      // Start apps-host only for interactive runtime commands (do not auto-start app frontends for read/man/manual).
-      const shouldStartAppsHost = subcommand === 'tui' || subcommand === 'run';
-      if (shouldStartAppsHost) {
-        await initAppsRuntime({
-          rtwsRootAbs: process.cwd(),
-          kernel: { scheme: 'http', host: '127.0.0.1', port: 0 },
-        });
-      }
-    } catch (err) {
-      console.error(
-        'Error: failed to load enabled apps:',
-        err instanceof Error ? err.message : String(err),
-      );
-      process.exit(1);
-    }
-  }
-
-  // Route to appropriate subcommand
-  switch (subcommand) {
-    case 'webui':
-      await runSubcommand('webui', subcommandArgs);
-      break;
-    case 'tui':
-    case 'run':
-      await runSubcommand('tui', subcommandArgs);
-      break;
-    case 'read':
-      await runSubcommand('read', subcommandArgs);
-      break;
-    case 'man':
-      await runSubcommand('manual', subcommandArgs);
-      break;
-    case 'manual':
-      await runSubcommand('manual', subcommandArgs);
-      break;
-    case 'validate_team_def':
-      await runSubcommand('validate_team_def', subcommandArgs);
-      break;
-    case 'cert':
-      await runSubcommand('cert', subcommandArgs);
-      break;
-    case 'create':
-    case 'new':
-      await runSubcommand('create', subcommandArgs);
-      break;
-    case 'install':
-      await runSubcommand('install', subcommandArgs);
-      break;
-    case 'doctor':
-      await runSubcommand('doctor', subcommandArgs);
-      break;
-    case 'enable':
-      await runSubcommand('enable', subcommandArgs);
-      break;
-    case 'disable':
-      await runSubcommand('disable', subcommandArgs);
-      break;
-    case 'uninstall':
-      await runSubcommand('uninstall', subcommandArgs);
-      break;
-    case 'update':
-      await runSubcommand('update', subcommandArgs);
-      break;
-    default:
-      console.error(`Error: Unknown subcommand '${subcommand}'`);
-      console.error(`Run 'dominds help' for usage information.`);
-      process.exit(1);
-  }
-}
-
-async function runSubcommand(subcommand: string, args: readonly string[]): Promise<void> {
-  try {
-    setRtwsProcessTitle();
-
-    if (subcommand === 'webui') {
-      await webuiMain(args);
-    } else if (subcommand === 'tui') {
-      await tuiMain(args);
-    } else if (subcommand === 'read') {
-      await readMain(args);
-    } else if (subcommand === 'manual') {
-      await manualMain(args);
-    } else if (subcommand === 'validate_team_def') {
-      await validateTeamDefMain(args);
-    } else if (subcommand === 'cert') {
-      await certMain(args);
-    } else if (subcommand === 'create') {
-      await createMain(args);
-    } else if (subcommand === 'install') {
-      await installMain(args);
-    } else if (subcommand === 'doctor') {
-      await doctorMain(args);
-    } else if (subcommand === 'enable') {
-      await enableMain(args);
-    } else if (subcommand === 'disable') {
-      await disableMain(args);
-    } else if (subcommand === 'uninstall') {
-      await uninstallMain(args);
-    } else if (subcommand === 'update') {
-      await updateMain(args);
-    } else {
-      console.error(`Error: Subcommand '${subcommand}' not implemented`);
-      process.exit(1);
-    }
-  } catch (err) {
-    console.error(
-      `Failed to execute subcommand '${subcommand}': ${err instanceof Error ? err.message : String(err)}`,
-    );
-    process.exit(1);
-  }
+  const exitCode = isLongRunningCommand(parsed.runnerArgv)
+    ? await runSupervised(parsed)
+    : await runOneShot(parsed);
+  process.exit(exitCode);
 }
 
 if (require.main === module) {
-  main().catch((err) => {
-    console.error('Unhandled error:', err);
+  main().catch((error: unknown) => {
+    const message = error instanceof Error ? error.message : String(error);
+    console.error(`Unhandled dominds supervisor error: ${message}`);
     process.exit(1);
   });
 }

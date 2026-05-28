@@ -4,6 +4,7 @@ import * as path from 'node:path';
 import { extractGlobalRtwsChdir } from '../../main/bootstrap/rtws-cli';
 
 function main(): void {
+  const baseCwd = path.join(path.sep, 'base');
   const absWs = path.join(path.sep, 'abs', 'ws');
   const absFirst = path.join(path.sep, 'abs', 'first');
   const absSecond = path.join(path.sep, 'abs', 'second');
@@ -48,21 +49,23 @@ function main(): void {
     assert.deepEqual(parsed.argv, ['webui']);
   }
 
-  assert.throws(
-    () =>
-      extractGlobalRtwsChdir({
-        argv: ['webui', '-C', './ws'],
-      }),
-    /-C requires an absolute directory path: \.\/ws/,
-  );
+  {
+    const parsed = extractGlobalRtwsChdir({
+      argv: ['webui', '-C', './ws'],
+      baseCwd,
+    });
+    assert.equal(parsed.chdir, path.join(baseCwd, 'ws'));
+    assert.deepEqual(parsed.argv, ['webui']);
+  }
 
-  assert.throws(
-    () =>
-      extractGlobalRtwsChdir({
-        argv: ['read', '--cwd=relative/ws'],
-      }),
-    /--cwd requires an absolute directory path: relative\/ws/,
-  );
+  {
+    const parsed = extractGlobalRtwsChdir({
+      argv: ['read', '--cwd=relative/ws'],
+      baseCwd,
+    });
+    assert.equal(parsed.chdir, path.join(baseCwd, 'relative', 'ws'));
+    assert.deepEqual(parsed.argv, ['read']);
+  }
 }
 
 main();

@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { configureEnvProxySupport } from '../../main/cli';
+import { configureEnvProxySupport } from '../../main/cli-runner';
 const http = require('node:http') as typeof import('node:http') & {
   setGlobalProxyFromEnv: (env?: NodeJS.ProcessEnv) => void;
 };

@@ -4,7 +4,9 @@ Chinese version: [中文版](./cli-usage.zh.md)
 
 The `dominds` CLI provides a unified entry point, but the **primary interaction experience is the Web UI** (the default `dominds` command). This guide focuses on the Web UI workflow.
 
-> Note: In this document, **rtws (runtime workspace)** refers to the runtime root directory Dominds uses (by default `process.cwd()`, switchable via `-C <abs-dir>`; `-C` only accepts absolute paths).
+> Note: In this document, **rtws (runtime workspace)** refers to the runtime root directory Dominds uses (by default the directory where `dominds` is launched, switchable via `-C <dir>`). Relative `-C` paths are resolved against the original launch directory by the `dominds` supervisor before the runner starts.
+
+> Process model: in production, `dominds` is a lightweight supervisor. It parses global options such as `-C`, starts `dominds-runner` in the resolved rtws, keeps the terminal stdio attached to the runner, and restarts long-running WebUI runners after crashes with exponential backoff starting at 1 second and capped at 30 minutes. Self-update restarts are coordinated by this supervisor, so the old runner can fully exit and release server resources before the new runner starts; if the old runner does not exit after a restart request, the supervisor terminates it before starting the next runner. Development WebUI runs (`NODE_ENV=dev` or `--mode dev`, including `dev-server.sh`) bypass the supervisor and are managed by the development launcher instead.
 
 > Note: `dominds tui` / `dominds run` are currently reserved subcommand names and do not have a stable implementation yet. As a result, this guide does not document TUI options or detailed usage.
 
@@ -89,7 +91,7 @@ Start the web-based user interface for the current rtws. This provides a graphic
 
 - `-p, --port <port>` - Port to listen on; a bare port binds strictly, suffix `+` tries higher ports, and suffix `-` tries lower ports (omitting `--port` is equivalent to `5666-`)
 - `-h, --host <host>` - Host to bind to (default: localhost)
-- `-C, --cwd <abs-dir>` - Change to rtws directory before starting; absolute paths only
+- `-C, --cwd <dir>` - Change to rtws directory before starting; relative paths are resolved against the original launch directory
 - `--help` - Show help message
 
 **Examples:**
@@ -99,6 +101,7 @@ dominds
 dominds webui -p 8080
 dominds webui -p 8080+
 dominds webui -C /path/to/my-rtws
+dominds -C ux-rtws webui
 ```
 
 **Common use cases:**
@@ -128,7 +131,7 @@ Read and inspect agent prompts/configuration for the rtws. This is commonly used
 
 **Options:**
 
-- `-C, --cwd <abs-dir>` - Change to rtws directory before reading; absolute paths only
+- `-C, --cwd <dir>` - Change to rtws directory before reading; relative paths are resolved against the original launch directory
 - `--only-prompt` - Show only system prompts
 - `--only-mem` - Show only memory
 - `--help` - Show help message

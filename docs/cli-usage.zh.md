@@ -4,7 +4,9 @@
 
 `dominds` 提供统一的命令行入口，但**主要交互界面是 Web UI**（默认命令 `dominds`）。本文档以 Web UI 工作流为主。
 
-> 注：本文统一使用 **rtws（运行时工作区）** 表示 Dominds 运行时使用的根目录（默认等于 `process.cwd()`，可通过 `-C <abs-dir>` 切换；`-C` 只接受绝对路径）。
+> 注：本文统一使用 **rtws（运行时工作区）** 表示 Dominds 运行时使用的根目录（默认是启动 `dominds` 时所在目录，可通过 `-C <dir>` 切换）。相对路径形式的 `-C` 由 `dominds` supervisor 按原始启动目录解析为绝对路径，再启动 runner。
+
+> 进程模型：生产模式下，`dominds` 是轻量 supervisor，负责解析 `-C` 等全局选项、在解析后的 rtws 中启动 `dominds-runner`、让 runner 继承当前终端 stdio，并在长期运行的 WebUI runner 崩溃后用指数退避保活重启（初始 1 秒，最长 30 分钟）。self-update 重启也由 supervisor 协调，因此旧 runner 可以完整退出并释放 server 资源，再启动新版 runner；如果旧 runner 在发出重启请求后仍不退出，supervisor 会终止它再启动下一轮 runner。开发模式 WebUI（`NODE_ENV=dev` 或 `--mode dev`，包括 `dev-server.sh`）不走 supervisor，由开发启动器自行管理。
 
 > 说明：`dominds tui` / `dominds run` 相关功能目前尚未提供稳定实现（子命令名保留用于未来规划），因此本指南不再展开 TUI 的命令选项与用法细节。
 
@@ -89,7 +91,7 @@ dominds webui [options]
 
 - `-p, --port <port>` - 监听端口；裸端口严格绑定，后缀 `+` 向更大端口自动尝试，后缀 `-` 向更小端口自动尝试（未指定时等价于 `5666-`）
 - `-h, --host <host>` - 绑定的主机（默认：localhost）
-- `-C, --cwd <abs-dir>` - 启动前更改 rtws 目录；只接受绝对路径
+- `-C, --cwd <dir>` - 启动前更改 rtws 目录；相对路径按原始启动目录解析
 - `--help` - 显示帮助消息
 
 **示例：**
@@ -106,6 +108,7 @@ dominds webui -p 8080+
 
 # 在特定 rtws 启动 Web UI
 dominds webui -C /path/to/my-rtws
+dominds -C ux-rtws webui
 ```
 
 **常见用途：**
@@ -135,7 +138,7 @@ dominds read [options] [member-id]
 
 **选项：**
 
-- `-C, --cwd <abs-dir>` - 读取前更改 rtws 目录；只接受绝对路径
+- `-C, --cwd <dir>` - 读取前更改 rtws 目录；相对路径按原始启动目录解析
 - `--only-prompt` - 仅显示系统提示词
 - `--only-mem` - 仅显示内存
 - `--help` - 显示帮助消息

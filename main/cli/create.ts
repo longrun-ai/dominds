@@ -9,7 +9,7 @@
  *
  * Notes:
  * - Template can be a short name (resolved via DOMINDS_TEMPLATE_BASE) or a git URL.
- * - rtws directory is `process.cwd()`. Use 'dominds -C <abs-dir> create ...' to create under another base dir.
+ * - rtws directory is `process.cwd()`. Use 'dominds -C <dir> create ...' to create under another base dir.
  */
 
 import { spawn } from 'child_process';

@@ -4,11 +4,8 @@
  * HTTP/WebSocket server for both development and production modes:
  * - Serves static files with MIME detection and SPA fallback (production)
  * - Provides `/api/*` endpoints and `/ws` WebSocket communication
- * - CLI bootstrap with optional cwd/port/host/mode parameters
- * - Development mode: `tsx --watch src/server.ts -p <port> --mode dev`
- * - Production mode: `node dist/server.js` (default port behavior: 5666-)
+ * - Development/debug launchers call startServer() after their own CLI parsing
  */
-import * as path from 'path';
 import { WebSocket } from 'ws';
 import { initAppsRuntime, shutdownAppsRuntime } from './apps/runtime';
 import { reconcileDisplayStatesAfterRestart } from './dialog-display-state';
@@ -26,7 +23,6 @@ import {
   buildWebuiPortCandidates,
   DEFAULT_WEBUI_PORT,
   formatWebuiPortScanBound,
-  parseWebuiPortSpec,
   type WebuiPortAutoDirection,
 } from './server/port-selection';
 import { createHttpServer, HttpServerCore, ServerConfig } from './server/server-core';
@@ -57,46 +53,6 @@ process.on('uncaughtException', (error) => {
   // Optionally, exit with code 1
   // process.exit(1);
 });
-
-function parseArgs(argv: string[]) {
-  const out: Record<string, string | boolean> = {};
-  for (let i = 0; i < argv.length; i++) {
-    const a = argv[i];
-    if (a === '-C' || a === '--chdir') {
-      out['C'] = argv[i + 1];
-      i++;
-      continue;
-    }
-    if (a === '-p' || a === '--port') {
-      out['p'] = argv[i + 1];
-      i++;
-      continue;
-    }
-    if (a.startsWith('--port=')) {
-      out['p'] = a.slice('--port='.length);
-      continue;
-    }
-    if (a === '-H' || a === '--host') {
-      out['H'] = argv[i + 1];
-      i++;
-      continue;
-    }
-    if (a.startsWith('--host=')) {
-      out['H'] = a.slice('--host='.length);
-      continue;
-    }
-    if (a === '--mode') {
-      out['mode'] = argv[i + 1];
-      i++;
-      continue;
-    }
-    if (a.startsWith('--mode=')) {
-      out['mode'] = a.slice('--mode='.length);
-      continue;
-    }
-  }
-  return out;
-}
 
 export type ServerOptions = {
   port?: number;
@@ -428,48 +384,4 @@ export async function startServer(opts: ServerOptions = {}): Promise<StartedServ
     httpsUrlHost,
     mode,
   };
-}
-
-// Main function for CLI execution
-async function main() {
-  const cliArgs = parseArgs(process.argv.slice(2));
-
-  // Handle working directory change from -C flag
-  const wsDir = cliArgs['C'] as string;
-  if (wsDir) {
-    if (!path.isAbsolute(wsDir)) {
-      throw new Error(`-C requires an absolute directory path: ${wsDir}`);
-    }
-    try {
-      process.chdir(wsDir);
-    } catch (err) {
-      throw new Error(
-        `Failed to change working directory to ${wsDir}: ${err instanceof Error ? err.message : String(err)}`,
-      );
-    }
-  }
-
-  // Get port, host, and mode from CLI args
-  const portSpecRaw = cliArgs['p'];
-  const parsedPort = typeof portSpecRaw === 'string' ? parseWebuiPortSpec(portSpecRaw) : undefined;
-  if (portSpecRaw !== undefined && parsedPort === null) {
-    throw new Error(
-      'Invalid --port value: expected a port number, optionally suffixed with + or -',
-    );
-  }
-  const port = parsedPort?.port;
-  const strictPort = parsedPort?.strictPort;
-  const portAutoDirection = parsedPort?.portAutoDirection;
-  const host = (cliArgs['H'] as string) || undefined;
-  const mode = (cliArgs['mode'] as 'dev' | 'prod') || undefined;
-
-  await startServer({ port, host, mode, strictPort, portAutoDirection, returnAfterListen: true });
-}
-
-// Start server if this file is run directly
-if (require.main === module) {
-  main().catch((error) => {
-    log.error('Web UI startup failed', error);
-    process.exit(1);
-  });
 }

@@ -14,16 +14,16 @@ import type {
 import { formatUnifiedTimestamp } from '@longrun-ai/kernel/utils/time';
 
 import { createLogger } from '../log';
+import {
+  DOMINDS_SUPERVISOR_RESTART_WEBUI,
+  type DomindsSupervisorRestartRunKind,
+  type DomindsSupervisorRestartWebuiMessage,
+} from '../supervisor-protocol';
 import { DOMINDS_RUNNING_VERSION } from './dominds-running-version';
-import type { RestartHelperPayload } from './dominds-self-update-restart-helper';
 
 const log = createLogger('dominds-self-update');
 const BACKGROUND_CHECK_INTERVAL_MS = 30 * 60 * 1000;
 const LATEST_VERSION_CHECK_TIMEOUT_MS = 60_000;
-const RESTART_PORT_RELEASE_TIMEOUT_MS = 15_000;
-const RESTART_PORT_PROBE_INTERVAL_MS = 150;
-const RESTART_EXIT_GRACE_MS = 1_000;
-const RESTART_FORCE_KILL_AFTER_MS = 30_000;
 const COMMAND_OUTPUT_LOG_LIMIT = 2_000;
 const PROXY_URL_ENV_KEYS = new Set([
   'HTTP_PROXY',
@@ -85,11 +85,6 @@ type DomindsCommandResult = Readonly<{
   stderr: string;
 }>;
 
-type RestartLaunchSpec = Readonly<{
-  command: string;
-  args: readonly string[];
-}>;
-
 type NpxDomindsSpec =
   | Readonly<{ kind: 'latest' }>
   | Readonly<{ kind: 'versionless' }>
@@ -139,7 +134,6 @@ type RestartState =
 
 type InstallFailureObservation = Readonly<{ errorText: string; failedAt: string }>;
 
-type RestartStdioMode = 'inherit' | 'ignore';
 type RestartTraceContext = Readonly<{
   debugDir: string;
   traceFile: string;
@@ -147,7 +141,6 @@ type RestartTraceContext = Readonly<{
 
 const IDLE_RESTART_STATE: RestartState = { kind: 'idle' };
 const PROCESS_START_ARGV = [...process.argv];
-const PROCESS_START_EXEC_ARGV = [...process.execArgv];
 const PROCESS_START_CWD = process.cwd();
 
 let runtimeConfig: RuntimeConfig | null = null;
@@ -199,20 +192,6 @@ function detectRunKind(mode: ServerMode): DomindsSelfUpdateRunKind {
   return 'global';
 }
 
-function hasInteractiveConsole(): boolean {
-  return Boolean(process.stdin.isTTY || process.stdout.isTTY || process.stderr.isTTY);
-}
-
-function getRestartHelperStdio(): RestartStdioMode {
-  return hasInteractiveConsole() ? 'inherit' : 'ignore';
-}
-
-function getRestartPortProbeHost(host: string): string {
-  if (host === '0.0.0.0') return '127.0.0.1';
-  if (host === '::') return '::1';
-  return host;
-}
-
 function normalizeComparablePath(value: string): string {
   const normalized = path.normalize(value);
   return process.platform === 'win32' ? normalized.toLowerCase() : normalized;
@@ -236,10 +215,6 @@ function buildRestartTraceContext(): RestartTraceContext {
     ].join('-'),
   );
   return { debugDir, traceFile };
-}
-
-function getRestartHelperEntrypoint(): string {
-  return path.resolve(__dirname, 'dominds-self-update-restart-helper.js');
 }
 
 async function appendRestartTrace(
@@ -305,15 +280,6 @@ function getCurrentProcessEntrypoint(): string {
   return entrypoint;
 }
 
-function buildCurrentProcessRestartArgs(): string[] {
-  getCurrentProcessEntrypoint();
-  return [...PROCESS_START_EXEC_ARGV, ...PROCESS_START_ARGV.slice(1)];
-}
-
-function buildCurrentDomindsCliArgs(): string[] {
-  return PROCESS_START_ARGV.slice(2);
-}
-
 function getNpxWorkspaceDirAbs(): string | null {
   const entrypoint = getCurrentProcessEntrypoint().replace(/\\/g, '/');
   const marker = '/node_modules/dominds/';
@@ -352,29 +318,10 @@ async function readNpxDomindsSpec(): Promise<NpxDomindsSpec | null> {
   return null;
 }
 
-async function buildNpxLatestRestartLaunchSpec(): Promise<RestartLaunchSpec> {
-  const npm = await resolveNpmCommandSpec();
-  return {
-    command: npm.command,
-    args: [...npm.args, 'exec', '-y', '--', 'dominds@latest', ...buildCurrentDomindsCliArgs()],
-  };
-}
-
-function buildCurrentProcessRestartLaunchSpec(): RestartLaunchSpec {
-  return {
-    command: process.execPath,
-    args: buildCurrentProcessRestartArgs(),
-  };
-}
-
 function truncateCommandOutput(value: unknown): string {
   const raw = typeof value === 'string' ? value.trim() : '';
   if (raw.length <= COMMAND_OUTPUT_LOG_LIMIT) return raw;
   return `${raw.slice(0, COMMAND_OUTPUT_LOG_LIMIT)}...[truncated ${raw.length - COMMAND_OUTPUT_LOG_LIMIT} chars]`;
-}
-
-function delayMs(ms: number): Promise<void> {
-  return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
 function formatPathEnvExcerpt(pathEnv: string | null): string | null {
@@ -1643,64 +1590,38 @@ export async function installLatestDominds(): Promise<DomindsSelfUpdateStatus> {
   return await getDomindsSelfUpdateStatus();
 }
 
-async function spawnDetachedRestartHelper(params: {
-  command: string;
-  args: readonly string[];
-  cwd: string;
-  host: string;
-  port: number;
+async function requestSupervisorRestart(params: {
   trace: RestartTraceContext;
-}): Promise<number | null> {
-  const stdioMode = getRestartHelperStdio();
-  const helperEntrypoint = getRestartHelperEntrypoint();
-  await fsPromises.access(helperEntrypoint);
-  const helperPayload: RestartHelperPayload = {
-    command: params.command,
-    args: [...params.args],
-    cwd: params.cwd,
-    host: getRestartPortProbeHost(params.host),
-    port: params.port,
-    retiringPid: process.pid,
-    forceKillAfterMs: RESTART_FORCE_KILL_AFTER_MS,
-    probeIntervalMs: RESTART_PORT_PROBE_INTERVAL_MS,
-    portReleaseTimeoutMs: RESTART_PORT_RELEASE_TIMEOUT_MS,
-    stdioMode,
+  runKind: DomindsSupervisorRestartRunKind;
+  currentVersion: string;
+  targetVersion: string | null;
+}): Promise<void> {
+  if (typeof process.send !== 'function') {
+    throw new Error(
+      'Dominds restart requires the dominds supervisor process; this runner has no supervisor IPC channel',
+    );
+  }
+  const cfg = assertRuntimeConfig();
+  const message: DomindsSupervisorRestartWebuiMessage = {
+    type: DOMINDS_SUPERVISOR_RESTART_WEBUI,
+    cwd: process.cwd(),
+    host: cfg.host,
+    port: cfg.port,
     traceFile: params.trace.traceFile,
     debugDir: params.trace.debugDir,
+    currentVersion: params.currentVersion,
+    targetVersion: params.targetVersion,
+    runKind: params.runKind,
   };
-  const helper = spawn(process.execPath, [helperEntrypoint, JSON.stringify(helperPayload)], {
-    cwd: params.cwd,
-    env: process.env,
-    detached: stdioMode !== 'inherit',
-    stdio: stdioMode,
-    windowsHide: stdioMode !== 'inherit',
-  });
-  const helperPid = typeof helper.pid === 'number' ? helper.pid : null;
-  const helperSpawned = new Promise<number | null>((resolve, reject) => {
-    helper.once('spawn', () => {
-      appendRestartTraceSoon(params.trace, 'parent.helper_spawn_event', {
-        helperPid,
-      });
-      resolve(helperPid);
-    });
-    helper.once('error', (error: Error) => {
-      appendRestartTraceSoon(params.trace, 'parent.helper_error_event', {
-        message: error.message,
-        stack: error.stack ?? null,
-      });
-      reject(error);
+  await new Promise<void>((resolve, reject) => {
+    process.send?.(message, (error: Error | null) => {
+      if (error !== null) {
+        reject(error);
+        return;
+      }
+      resolve();
     });
   });
-  helper.once('exit', (code, signal) => {
-    appendRestartTraceSoon(params.trace, 'parent.helper_exit_event', {
-      code,
-      signal,
-    });
-  });
-  if (stdioMode !== 'inherit') {
-    helper.unref();
-  }
-  return await helperSpawned;
 }
 
 async function stopAndExitForRestart(): Promise<void> {
@@ -1714,7 +1635,6 @@ async function stopAndExitForRestart(): Promise<void> {
     await appendRestartTraceBestEffort(trace, 'parent.stop_and_exit.start', {
       host: cfg.host,
       port: cfg.port,
-      exitGraceMs: RESTART_EXIT_GRACE_MS,
     });
   }
   const stopPromise = cfg
@@ -1751,22 +1671,8 @@ async function stopAndExitForRestart(): Promise<void> {
       return undefined;
     });
   cfg.closeWebSocketClients();
-  await delayMs(RESTART_EXIT_GRACE_MS);
-  if (!stopSettled) {
-    log.warn(
-      'Exiting Dominds process before graceful HTTP server stop completed during restart',
-      undefined,
-      {
-        host: cfg.host,
-        port: cfg.port,
-        graceMs: RESTART_EXIT_GRACE_MS,
-      },
-    );
-  }
+  await stopPromise;
   if (trace !== null) {
-    if (stopSettled) {
-      await stopPromise;
-    }
     await appendRestartTraceBestEffort(trace, 'parent.process_exit', {
       host: cfg.host,
       port: cfg.port,
@@ -1796,19 +1702,18 @@ export async function restartDomindsIntoLatest(): Promise<DomindsSelfUpdateStatu
     }
 
     const runKind = detectRunKind(cfg.mode);
-    let launchSpec: RestartLaunchSpec;
+    if (runKind === 'disabled') {
+      throw new Error('Dominds restart requires a production run kind');
+    }
     const previousRestartRequiredState =
       restartState.kind === 'restart_required' ? restartState : null;
 
-    if (previousRestartRequiredState !== null) {
-      launchSpec = buildCurrentProcessRestartLaunchSpec();
-    } else if (runKind === 'npx') {
+    if (previousRestartRequiredState === null && runKind === 'npx') {
       const npxSpec = await readNpxDomindsSpec();
       if (npxSpec?.kind !== 'latest') {
         throw new Error('Dominds npx restart requires launching Dominds with dominds@latest');
       }
-      launchSpec = await buildNpxLatestRestartLaunchSpec();
-    } else {
+    } else if (previousRestartRequiredState === null) {
       throw new Error('Dominds restart requires a completed install or a restartable session');
     }
 
@@ -1822,29 +1727,23 @@ export async function restartDomindsIntoLatest(): Promise<DomindsSelfUpdateStatu
         runKind,
         currentVersion: status.currentVersion,
         targetVersion: status.targetVersion,
-        launchCommand: launchSpec.command,
-        launchArgs: launchSpec.args,
         restartCwd,
         host: cfg.host,
         port: cfg.port,
         traceFile: trace.traceFile,
       });
-      const helperPid = await spawnDetachedRestartHelper({
-        command: launchSpec.command,
-        args: launchSpec.args,
-        cwd: restartCwd,
-        host: cfg.host,
-        port: cfg.port,
+      await requestSupervisorRestart({
         trace,
+        runKind,
+        currentVersion: status.currentVersion,
+        targetVersion: status.targetVersion,
       });
-      await appendRestartTraceBestEffort(trace, 'parent.helper_spawned', {
-        helperPid,
+      await appendRestartTraceBestEffort(trace, 'parent.supervisor_restart_requested', {
         retiringPid: process.pid,
         host: cfg.host,
         port: cfg.port,
       });
-      log.info('Dominds restart helper spawned', undefined, {
-        helperPid,
+      log.info('Dominds supervisor restart requested', undefined, {
         traceFile: trace.traceFile,
       });
       setImmediate(() => {
