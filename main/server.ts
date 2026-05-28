@@ -184,7 +184,7 @@ export async function startServer(opts: ServerOptions = {}): Promise<StartedServ
     certificateLookup.kind === 'found' && !strictPort ? certificateLookup.certificate : undefined;
   const urlHost = resolveHttpUrlHostForBindHost(host);
 
-  log.info(
+  log.debug(
     `Starting server in ${mode} mode on ${formatServerOrigin({
       scheme: 'http',
       host: urlHost,
@@ -192,11 +192,11 @@ export async function startServer(opts: ServerOptions = {}): Promise<StartedServ
     })} (bind ${host}; ${strictPort ? 'strict port' : `auto port ${portAutoDirection}`}; working language: ${getWorkLanguage()} from ${source})`,
   );
   if (certificateLookup.kind === 'found' && strictPort) {
-    log.info(
+    log.debug(
       `HTTPS certificate found but Dominds HTTPS is disabled for strict --port; assuming HTTPS, if needed, is handled by a front proxy (${certificateLookup.certificate.certPath})`,
     );
   } else if (tls !== undefined) {
-    log.info(`HTTPS certificate available: ${tls.certPath} (matched host ${tls.matchedHost})`);
+    log.debug(`HTTPS certificate available: ${tls.certPath} (matched host ${tls.matchedHost})`);
   }
 
   let startedCore: HttpServerCore | null = null;
@@ -287,7 +287,7 @@ export async function startServer(opts: ServerOptions = {}): Promise<StartedServ
         `Failed to start WebUI HTTPS: no available adjacent port found from ${preferredHttpsPort}`,
       );
     }
-    log.info(
+    log.debug(
       `HTTPS WebUI ready: ${formatServerOrigin({
         scheme: 'https',
         host: httpsUrlHost,

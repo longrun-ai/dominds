@@ -92,6 +92,15 @@ function run(): void {
       formatAutoAuthUrl({ host: 'localhost', port: 5666, authKey: 'a b' }),
       'http://localhost:5666/?auth=a%20b',
     );
+    assert.equal(
+      formatAutoAuthUrl({
+        scheme: 'https',
+        host: '192.168.1.10',
+        port: 5667,
+        authKey: 'a b',
+      }),
+      'https://192.168.1.10:5667/?auth=a%20b',
+    );
   }
 
   console.log('auth tests: ok');

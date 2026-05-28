@@ -177,18 +177,20 @@ async function main(args: readonly string[] = process.argv.slice(2)): Promise<vo
         port: started.port,
       })}`,
     );
+    let httpsEndpoint: Readonly<{ host: string; port: number }> | undefined;
     if (started.httpsPort !== undefined && started.httpsUrlHost !== undefined) {
+      httpsEndpoint = { host: started.httpsUrlHost, port: started.httpsPort };
       const httpsBaseUrl = formatServerOrigin({
         scheme: 'https',
-        host: started.httpsUrlHost,
-        port: started.httpsPort,
+        host: httpsEndpoint.host,
+        port: httpsEndpoint.port,
       });
       log.info(`HTTPS WebUI ready: ${httpsBaseUrl}`);
       log.debug(
         `HTTPS WebSocket endpoint: ${formatWebSocketEndpoint({
           scheme: 'wss',
-          host: started.httpsUrlHost,
-          port: started.httpsPort,
+          host: httpsEndpoint.host,
+          port: httpsEndpoint.port,
         })}`,
       );
     }
@@ -201,6 +203,16 @@ async function main(args: readonly string[] = process.argv.slice(2)): Promise<vo
         authKey: auth.key,
       });
       log.info(`auto auth url (sensitive): ${autoAuthUrl}`);
+      if (httpsEndpoint !== undefined) {
+        log.info(
+          `HTTPS auto auth url (sensitive): ${formatAutoAuthUrl({
+            scheme: 'https',
+            host: httpsEndpoint.host,
+            port: httpsEndpoint.port,
+            authKey: auth.key,
+          })}`,
+        );
+      }
       if (shouldOpen) {
         log.debug(`Opening browser: ${autoAuthUrl}`);
         openInBrowser(autoAuthUrl);
