@@ -19,6 +19,10 @@ Dominds already has:
 
 - Collect **token usage stats** from LLM provider wrappers after each generation.
 - Compute a simple **context health** signal from provider stats + model metadata.
+- When the current computed health is `caution` or `critical`, keep large function results from
+  adding more raw material to the next prompt. Large return content is replaced with a
+  scope-specific, low-cognitive-load instruction that tells the agent the output is too large to see
+  before `clear_mind`.
 - When the dialog context is “too large”, enforce a **v3 remediation** workflow that is short,
   executable, and regression-testable:
   - In **caution**, record an auto-inserted **role=user prompt** as a normal, persisted user message
@@ -152,6 +156,34 @@ Rules:
 - Do not duplicate Taskdoc content except for a short bridge when strictly needed.
 - Do not paste long raw logs/tool outputs into the continuation package.
 
+### Large Function Results During Remediation
+
+When the current generation's computed context health is `caution` or `critical`, Dominds applies a
+runtime visibility limit to every ordinary function result before it is persisted back into dialog
+history. If current usage is unavailable, the driver falls back to the previous known context health
+for this visibility decision. This limit only applies to returned content. Function arguments remain
+unrestricted, because large arguments are often the necessary path for preserving current-dialog
+details into Taskdoc sections or reminders.
+
+If a function result is larger than the runtime visibility budget, measured by the total returned
+bytes visible to the model, Dominds does not insert the raw return content into the model context.
+Text is counted as UTF-8 bytes; image items use their recorded byte length. Instead, Dominds inserts
+a short scope-specific message:
+
+- Main Dialog: tell the agent that this function return is too large to see before `clear_mind`,
+  instruct it not to retry the same kind of large output, then tell it to write needed next-course
+  information into Taskdoc sections, preserve any remaining easy-to-lose details in reminders, and
+  call `clear_mind({})`.
+- Side Dialog: tell the agent that this function return is too large to see before `clear_mind`,
+  instruct it not to retry the same kind of large output, then tell it to organize the conclusion,
+  evidence pointers, and risks for the Main Dialog, preserve any easy-to-lose details in reminders,
+  and finish the Side Dialog reply as soon as possible.
+
+The replacement text may include only a short human-scale detail such as the approximate original
+byte count. It must not present the tool invocation as an execution failure: the function may have
+executed and produced side effects; only its large return content is unavailable before
+`clear_mind`.
+
 ### Caution (yellow)
 
 When `level === 'caution'`, the driver auto-inserts a **role=user** guidance prompt into the _next_
@@ -240,7 +272,9 @@ Additional constraints:
 2. Thread usage stats into the dialog state (persist alongside dialog turns).
 3. Implement the context health monitor computation and persist it per generation.
 4. Implement v3 remediation (persisted role=user prompt insertion + caution reminder-curation cadence + critical countdown + auto clear_mind).
-5. Add minimal regression guards for the v3 behavior (types + gating).
+5. Suppress oversized function-return content during `caution` / `critical` remediation while leaving
+   function arguments unrestricted.
+6. Add minimal regression guards for the v3 behavior (types + gating).
 
 ## Acceptance Criteria
 
@@ -265,4 +299,8 @@ Additional constraints:
     then `clear_mind`; Side Dialog prompts instruct detailed reminder curation only, then `clear_mind`.
     When the countdown reaches 0, the driver auto-executes `clear_mind` and starts a new course (no Q4H,
     no suspension).
+- During `caution` / `critical`, any ordinary function result whose returned content exceeds the
+  runtime visibility byte budget is replaced with the scope-specific “too large to see before
+  `clear_mind`” instruction instead of raw output. This is not reported as tool execution failure,
+  and function arguments are not limited.
 - UI shows context health with green/yellow/red (and “unknown” handling when usage is unavailable).

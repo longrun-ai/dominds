@@ -1016,6 +1016,182 @@ const TELLASK_SPECIAL_VIRTUAL_TOOLS: readonly FuncTool[] = [
   },
 ];
 
+const CONTEXT_HEALTH_TOOL_RESULT_VISIBLE_BYTE_LIMIT = 2_000;
+const CONTEXT_HEALTH_LARGE_TOOL_RETURN_UNAVAILABLE_ZH =
+  '这次函数返回内容太大，清理头脑之前当前不可见。';
+const CONTEXT_HEALTH_LARGE_TOOL_RETURN_UNAVAILABLE_EN =
+  'This function returned too much content, so it is not visible before clear_mind.';
+
+function getContextHealthRemediationLevel(
+  snapshot: ContextHealthSnapshot | undefined,
+): 'caution' | 'critical' | undefined {
+  if (snapshot?.kind !== 'available') {
+    return undefined;
+  }
+  return snapshot.level === 'caution' || snapshot.level === 'critical' ? snapshot.level : undefined;
+}
+
+function pickContextHealthForLargeToolResultVisibility(args: {
+  previous: ContextHealthSnapshot | undefined;
+  current: ContextHealthSnapshot | undefined;
+}): ContextHealthSnapshot | undefined {
+  if (args.current?.kind === 'available') {
+    return args.current;
+  }
+  return args.previous;
+}
+
+function formatContextHealthLargeToolReturnUnavailable(args: {
+  dlg: Dialog;
+  originalBytes: number;
+  language: 'zh' | 'en';
+}): string {
+  const approxBytes = new Intl.NumberFormat(args.language === 'zh' ? 'zh-CN' : 'en-US').format(
+    args.originalBytes,
+  );
+
+  if (args.language === 'zh') {
+    if (args.dlg instanceof SideDialog) {
+      return [
+        CONTEXT_HEALTH_LARGE_TOOL_RETURN_UNAVAILABLE_ZH,
+        '',
+        '不要重试获取这类大段输出。现在先做两件事：',
+        '1. 把需要回传给主线对话的结论、证据定位和风险整理清楚。',
+        '2. 若还有恢复工作会丢的信息，写入提醒项。',
+        '',
+        '然后尽快完成当前支线回复；如果你有 clear_mind({})，再调用它开启新一程。',
+        '',
+        `详情：本次返回约 ${approxBytes} 字节。`,
+      ].join('\n');
+    }
+    return [
+      CONTEXT_HEALTH_LARGE_TOOL_RETURN_UNAVAILABLE_ZH,
+      '',
+      '不要重试获取这类大段输出。现在先做两件事：',
+      '1. 把下一程还需要知道的信息写入差遣牒合适章节。',
+      '2. 把差遣牒没有覆盖、但恢复工作会丢的信息写入提醒项。',
+      '',
+      '然后调用 clear_mind({}) 开启新一程。',
+      '',
+      `详情：本次返回约 ${approxBytes} 字节。`,
+    ].join('\n');
+  }
+
+  if (args.dlg instanceof SideDialog) {
+    return [
+      CONTEXT_HEALTH_LARGE_TOOL_RETURN_UNAVAILABLE_EN,
+      '',
+      'Do not retry fetching this kind of large output. Do two things now:',
+      '1. Organize the conclusion, evidence pointers, and risks that need to go back to the Main Dialog.',
+      '2. If any resume-critical details would otherwise be lost, write them into reminders.',
+      '',
+      'Then finish the current Side Dialog reply as soon as possible; if you have clear_mind({}), call it to start a new course.',
+      '',
+      `Detail: this return was about ${approxBytes} bytes.`,
+    ].join('\n');
+  }
+
+  return [
+    CONTEXT_HEALTH_LARGE_TOOL_RETURN_UNAVAILABLE_EN,
+    '',
+    'Do not retry fetching this kind of large output. Do two things now:',
+    '1. Write the information the next course still needs into the appropriate Taskdoc sections.',
+    '2. Write any resume-critical details not covered by Taskdoc into reminders.',
+    '',
+    'Then call clear_mind({}) to start a new course.',
+    '',
+    `Detail: this return was about ${approxBytes} bytes.`,
+  ].join('\n');
+}
+
+function countToolResultVisibleBytes(output: ToolCallOutput): number {
+  const items = output.contentItems;
+  if (!Array.isArray(items) || items.length === 0) {
+    return Buffer.byteLength(output.content, 'utf8');
+  }
+
+  let bytes = Buffer.byteLength(output.content, 'utf8');
+  for (const item of items) {
+    switch (item.type) {
+      case 'input_text':
+        bytes += Buffer.byteLength(item.text, 'utf8');
+        break;
+      case 'input_image':
+        bytes += item.byteLength;
+        break;
+      default: {
+        throw new Error(`Unsupported function result content item: ${String(item.type)}`);
+      }
+    }
+  }
+  return bytes;
+}
+
+function applyContextHealthToolResultVisibilityLimit(args: {
+  dlg: Dialog;
+  output: ToolCallOutput;
+  contextHealth: ContextHealthSnapshot | undefined;
+  language: 'zh' | 'en';
+}): Readonly<{ output: ToolCallOutput; largeReturnUnavailable: boolean }> {
+  if (getContextHealthRemediationLevel(args.contextHealth) === undefined) {
+    return { output: args.output, largeReturnUnavailable: false };
+  }
+  const visibleBytes = countToolResultVisibleBytes(args.output);
+  if (visibleBytes <= CONTEXT_HEALTH_TOOL_RESULT_VISIBLE_BYTE_LIMIT) {
+    return { output: args.output, largeReturnUnavailable: false };
+  }
+  return {
+    output: {
+      content: formatContextHealthLargeToolReturnUnavailable({
+        dlg: args.dlg,
+        originalBytes: visibleBytes,
+        language: args.language,
+      }),
+      outcome: args.output.outcome,
+    },
+    largeReturnUnavailable: true,
+  };
+}
+
+function isContextHealthLargeToolReturnUnavailableResult(content: string): boolean {
+  return (
+    content.includes(CONTEXT_HEALTH_LARGE_TOOL_RETURN_UNAVAILABLE_ZH) ||
+    content.includes(CONTEXT_HEALTH_LARGE_TOOL_RETURN_UNAVAILABLE_EN)
+  );
+}
+
+function latestInputLikeMessageIsContextHealthLargeToolReturnUnavailableResult(
+  messages: readonly ChatMessage[],
+): boolean {
+  for (let index = messages.length - 1; index >= 0; index -= 1) {
+    const msg = messages[index];
+    if (msg === undefined) {
+      continue;
+    }
+    switch (msg.type) {
+      case 'func_result_msg':
+        return isContextHealthLargeToolReturnUnavailableResult(msg.content);
+      case 'prompting_msg':
+      case 'tellask_result_msg':
+      case 'tellask_carryover_msg':
+        return false;
+      case 'environment_msg':
+      case 'transient_guide_msg':
+      case 'saying_msg':
+      case 'thinking_msg':
+      case 'func_call_msg':
+        break;
+      default: {
+        const _exhaustive: never = msg;
+        throw new Error(
+          `Unsupported chat message while checking latest input-like message: ${_exhaustive}`,
+        );
+      }
+    }
+  }
+  return false;
+}
+
 function mergeTellaskVirtualTools(
   baseTools: readonly FuncTool[],
   options: {
@@ -2264,6 +2440,7 @@ type ExecutedFuncCallResult = Readonly<{
   func: FuncCallMsg;
   originalFunc: FuncCallMsg;
   outcome: ToolOutcome;
+  forceImmediateFollowup: boolean;
   result: FuncResultMsg;
 }>;
 
@@ -2464,6 +2641,7 @@ async function executeFunctionCalls(args: {
   agentTools: readonly Tool[];
   funcCalls: readonly FuncCallMsg[];
   abortSignal: AbortSignal | undefined;
+  contextHealthForToolResultVisibility: ContextHealthSnapshot | undefined;
 }): Promise<ExecutedFuncCallResult[]> {
   const preparedCalls: Array<PreparedFuncCall & { originalFunc: FuncCallMsg }> = args.funcCalls.map(
     (func) => {
@@ -2518,6 +2696,7 @@ async function executeFunctionCalls(args: {
     }): Promise<ExecutedFuncCallResult> => {
       let result: FuncResultMsg;
       let outcome: ToolOutcome = 'success';
+      let forceImmediateFollowup = false;
       let rethrowError: unknown;
       if (!tool) {
         outcome = 'failure';
@@ -2561,16 +2740,24 @@ async function executeFunctionCalls(args: {
               preparedInvocationArgs.args,
             );
             throwIfAborted(args.abortSignal, args.dlg);
-            outcome = output.outcome;
+            const visibleResult = applyContextHealthToolResultVisibilityLimit({
+              dlg: args.dlg,
+              output,
+              contextHealth: args.contextHealthForToolResultVisibility,
+              language: getWorkLanguage(),
+            });
+            const visibleOutput = visibleResult.output;
+            forceImmediateFollowup = visibleResult.largeReturnUnavailable;
+            outcome = visibleOutput.outcome;
             result = {
               type: 'func_result_msg',
               id: func.id,
               rawId: func.rawId,
               effectiveId: func.effectiveId,
               name: func.name,
-              content: output.content,
-              contentItems: Array.isArray(output.contentItems)
-                ? [...output.contentItems]
+              content: visibleOutput.content,
+              contentItems: Array.isArray(visibleOutput.contentItems)
+                ? [...visibleOutput.contentItems]
                 : undefined,
               role: 'tool',
               genseq: callGenseq,
@@ -2603,7 +2790,7 @@ async function executeFunctionCalls(args: {
       if (rethrowError !== undefined) {
         throw rethrowError;
       }
-      return { func, originalFunc, outcome, result };
+      return { func, originalFunc, outcome, forceImmediateFollowup, result };
     },
   );
 
@@ -2619,6 +2806,7 @@ async function executeFunctionRound(args: {
   abortSignal: AbortSignal | undefined;
   allowTellaskFunctions: boolean;
   activePromptReplyDirective?: KernelDriverPrompt['tellaskReplyDirective'];
+  contextHealthForToolResultVisibility: ContextHealthSnapshot | undefined;
 }): Promise<RoutedFunctionResult> {
   if (args.funcCalls.length === 0) {
     return {
@@ -2666,6 +2854,7 @@ async function executeFunctionRound(args: {
     agentTools: args.agentTools,
     funcCalls: tellaskRound.normalCalls,
     abortSignal: args.abortSignal,
+    contextHealthForToolResultVisibility: args.contextHealthForToolResultVisibility,
   });
   const genericExecutionByOriginalCall = new Map(
     genericExecutions.map((execution) => [execution.originalFunc, execution] as const),
@@ -2678,6 +2867,11 @@ async function executeFunctionRound(args: {
   const genericOutcomeByCallId = new Map(
     genericExecutions.map((execution) => [execution.result.id, execution.outcome] as const),
   );
+  const forceImmediateFollowupCallIds = new Set(
+    genericExecutions
+      .filter((execution) => execution.forceImmediateFollowup)
+      .map((execution) => execution.result.id),
+  );
   const immediateFollowupCallIds: string[] = [];
   for (const call of tellaskRound.normalCalls) {
     const tool = funcToolByName.get(call.name);
@@ -2687,7 +2881,10 @@ async function executeFunctionRound(args: {
         `kernel-driver function outcome invariant violation: missing outcome for call id '${call.id}' (${call.name})`,
       );
     }
-    if (shouldImmediatelyFollowUpToolOutcome(tool, outcome)) {
+    if (
+      forceImmediateFollowupCallIds.has(call.id) ||
+      shouldImmediatelyFollowUpToolOutcome(tool, outcome)
+    ) {
       immediateFollowupCallIds.push(call.id);
     }
   }
@@ -3225,7 +3422,10 @@ export async function driveDialogStreamCore(
             criticalCountdownRemaining,
           });
 
-          if (healthDecision.kind === 'continue') {
+          if (
+            healthDecision.kind === 'continue' &&
+            !latestInputLikeMessageIsContextHealthLargeToolReturnUnavailableResult(dlg.msgs)
+          ) {
             if (healthDecision.reason === 'critical_force_new_course') {
               const language = getWorkLanguage();
               const newCoursePrompt = formatNewCourseStartPrompt(language, {
@@ -4100,6 +4300,7 @@ export async function driveDialogStreamCore(
           };
 
           const previousAssistantSayingGenseq = lastAssistantSayingGenseq;
+          const contextHealthBeforeGen = dlg.getLastContextHealth();
           const llmOutput = await streamOrBatch();
           if (typeof llmOutput.llmGenModel === 'string' && llmOutput.llmGenModel.trim() !== '') {
             llmGenModelForGen = llmOutput.llmGenModel.trim();
@@ -4315,6 +4516,10 @@ export async function driveDialogStreamCore(
             abortSignal,
             allowTellaskFunctions: policy.allowTellaskFunctions,
             activePromptReplyDirective: currentPrompt?.tellaskReplyDirective,
+            contextHealthForToolResultVisibility: pickContextHealthForLargeToolResultVisibility({
+              previous: contextHealthBeforeGen,
+              current: contextHealthForGen,
+            }),
           });
           if (routed.tellaskToolOutputs.length > 0) {
             newMsgs.push(...routed.tellaskToolOutputs);
