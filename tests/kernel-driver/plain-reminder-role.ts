@@ -60,6 +60,7 @@ async function main(): Promise<void> {
               followingDialogState: 'user_message',
               pendingUserInterjectionReply: false,
               interDialogReplyObligation: 'none',
+              contextHealthState: 'normal',
             }),
           },
         ]

@@ -31,6 +31,7 @@ async function main() {
     followingDialogState: 'user_message',
     pendingUserInterjectionReply: false,
     interDialogReplyObligation: 'none',
+    contextHealthState: 'normal',
   });
   assert(
     zhContextFooter.includes('从“提醒项上下文块开始”到“提醒项上下文块结束”之间'),
@@ -56,6 +57,7 @@ async function main() {
     followingDialogState: 'none',
     pendingUserInterjectionReply: false,
     interDialogReplyObligation: 'none',
+    contextHealthState: 'normal',
   });
   assert(
     zhAutoContinueFooter.includes('本轮没有新的用户消息或运行时提示'),
@@ -77,6 +79,7 @@ async function main() {
     followingDialogState: 'runtime_notice',
     pendingUserInterjectionReply: false,
     interDialogReplyObligation: 'none',
+    contextHealthState: 'normal',
   });
   assert(
     zhRuntimeFooter.includes('本轮提醒项块之后会接着出现一条运行时提示'),
@@ -86,6 +89,7 @@ async function main() {
     followingDialogState: 'none',
     pendingUserInterjectionReply: true,
     interDialogReplyObligation: 'parked_by_user_interjection',
+    contextHealthState: 'normal',
   });
   assert(
     zhInterjectionPendingFooter.includes('真实用户插话尚未得到可见回复'),
@@ -99,6 +103,7 @@ async function main() {
     followingDialogState: 'none',
     pendingUserInterjectionReply: true,
     interDialogReplyObligation: 'active',
+    contextHealthState: 'normal',
   });
   assert(
     zhInterjectionActiveFooter.includes('同时存在跨对话回复义务'),
@@ -108,10 +113,55 @@ async function main() {
     followingDialogState: 'none',
     pendingUserInterjectionReply: false,
     interDialogReplyObligation: 'active',
+    contextHealthState: 'normal',
   });
   assert(
     zhActiveReplyFooter.includes('当前仍有跨对话回复义务'),
     'Expected zh reminder footer to surface active inter-dialog reply obligation',
+  );
+  const zhCautionFooter = formatReminderContextFooter('zh', {
+    followingDialogState: 'none',
+    pendingUserInterjectionReply: false,
+    interDialogReplyObligation: 'none',
+    contextHealthState: 'caution',
+  });
+  assert(
+    zhCautionFooter.includes('当前上下文已吃紧'),
+    'Expected zh caution footer to surface tight context health',
+  );
+  assert(
+    zhCautionFooter.includes('默认都是给下一程以清醒头脑复核后执行的'),
+    'Expected zh caution footer to say reminder next steps are for the next course',
+  );
+  assert(
+    zhCautionFooter.includes('不要为了执行提醒项里的旧下一步继续扩张上下文'),
+    'Expected zh caution footer to prevent executing reminder next steps before clear_mind',
+  );
+  assert(
+    zhCautionFooter.includes('尽快 `clear_mind`'),
+    'Expected zh caution footer to prioritize clear_mind',
+  );
+  assert(
+    !zhCautionFooter.includes('若已有明确、相关且有价值的动作，就继续执行'),
+    'Expected zh caution footer not to encourage ordinary continuation from reminders',
+  );
+  const zhCriticalFooter = formatReminderContextFooter('zh', {
+    followingDialogState: 'none',
+    pendingUserInterjectionReply: false,
+    interDialogReplyObligation: 'none',
+    contextHealthState: 'critical',
+  });
+  assert(
+    zhCriticalFooter.includes('当前上下文已告急'),
+    'Expected zh critical footer to surface critical context health',
+  );
+  assert(
+    zhCriticalFooter.includes('不要执行提醒项里的旧下一步、旧诉请或旧工具重试'),
+    'Expected zh critical footer to block old reminder actions',
+  );
+  assert(
+    zhCriticalFooter.includes('立即 `clear_mind`'),
+    'Expected zh critical footer to require immediate clear_mind',
   );
 
   const zh = formatReminderItemGuide('zh', 'rem02abc', '保持缩进：\n  - A\n  - B\n');
@@ -332,6 +382,7 @@ async function main() {
     followingDialogState: 'user_message',
     pendingUserInterjectionReply: false,
     interDialogReplyObligation: 'none',
+    contextHealthState: 'normal',
   });
   assert(
     enContextFooter.includes(
@@ -361,6 +412,7 @@ async function main() {
     followingDialogState: 'none',
     pendingUserInterjectionReply: false,
     interDialogReplyObligation: 'none',
+    contextHealthState: 'normal',
   });
   assert(
     enAutoContinueFooter.includes('There is no new user message or runtime notice in this round'),
@@ -382,6 +434,7 @@ async function main() {
     followingDialogState: 'runtime_notice',
     pendingUserInterjectionReply: false,
     interDialogReplyObligation: 'none',
+    contextHealthState: 'normal',
   });
   assert(
     enRuntimeFooter.includes('A runtime notice follows this reminder block in this round'),
@@ -395,6 +448,7 @@ async function main() {
     followingDialogState: 'none',
     pendingUserInterjectionReply: true,
     interDialogReplyObligation: 'parked_by_user_interjection',
+    contextHealthState: 'normal',
   });
   assert(
     enInterjectionPendingFooter.includes('real user interjection without a visible reply'),
@@ -408,6 +462,7 @@ async function main() {
     followingDialogState: 'none',
     pendingUserInterjectionReply: true,
     interDialogReplyObligation: 'active',
+    contextHealthState: 'normal',
   });
   assert(
     enInterjectionActiveFooter.includes('while an inter-dialog reply obligation also exists'),
@@ -417,10 +472,55 @@ async function main() {
     followingDialogState: 'none',
     pendingUserInterjectionReply: false,
     interDialogReplyObligation: 'active',
+    contextHealthState: 'normal',
   });
   assert(
     enActiveReplyFooter.includes('An inter-dialog reply obligation is still active'),
     'Expected en reminder footer to surface active inter-dialog reply obligation',
+  );
+  const enCautionFooter = formatReminderContextFooter('en', {
+    followingDialogState: 'none',
+    pendingUserInterjectionReply: false,
+    interDialogReplyObligation: 'none',
+    contextHealthState: 'caution',
+  });
+  assert(
+    enCautionFooter.includes('Context health is tight'),
+    'Expected en caution footer to surface tight context health',
+  );
+  assert(
+    enCautionFooter.includes('meant for the next course to review and run with a clear head'),
+    'Expected en caution footer to say reminder next steps are for the next course',
+  );
+  assert(
+    enCautionFooter.includes('Do not expand context by performing old next steps from reminders'),
+    'Expected en caution footer to prevent executing reminder next steps before clear_mind',
+  );
+  assert(
+    enCautionFooter.includes('call `clear_mind` soon'),
+    'Expected en caution footer to prioritize clear_mind',
+  );
+  assert(
+    !enCautionFooter.includes('if there is a clear, relevant, valuable action'),
+    'Expected en caution footer not to encourage ordinary continuation from reminders',
+  );
+  const enCriticalFooter = formatReminderContextFooter('en', {
+    followingDialogState: 'none',
+    pendingUserInterjectionReply: false,
+    interDialogReplyObligation: 'none',
+    contextHealthState: 'critical',
+  });
+  assert(
+    enCriticalFooter.includes('Context health is critical'),
+    'Expected en critical footer to surface critical context health',
+  );
+  assert(
+    enCriticalFooter.includes('Do not perform old next steps, old inter-dialog requests'),
+    'Expected en critical footer to block old reminder actions',
+  );
+  assert(
+    enCriticalFooter.includes('call `clear_mind` immediately'),
+    'Expected en critical footer to require immediate clear_mind',
   );
 
   const en = formatReminderItemGuide('en', 'rem02abc', 'Keep indentation:\n  - A\n  - B\n');

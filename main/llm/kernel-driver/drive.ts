@@ -60,6 +60,7 @@ import {
   isAgentFacingCriticalUserInterjectionRemediationGuideContent,
   type ReminderContextFollowingDialogState,
   type ReminderContextFooterState,
+  type ReminderContextHealthState,
   type ReminderContextReplyObligationState,
   type ReminderMaintenanceReferenceItem,
 } from '../../runtime/driver-messages';
@@ -465,6 +466,13 @@ function resolveReminderContextFollowingDialogState(
   return prompt.origin === 'user' ? 'user_message' : 'runtime_notice';
 }
 
+function resolveReminderContextHealthState(
+  snapshot: ContextHealthSnapshot | undefined,
+): ReminderContextHealthState {
+  const remediationLevel = getContextHealthRemediationLevel(snapshot);
+  return remediationLevel === undefined ? 'normal' : remediationLevel;
+}
+
 async function resolveReminderContextFooterState(args: {
   dlg: Dialog;
   prompt: KernelDriverPrompt | undefined;
@@ -490,6 +498,7 @@ async function resolveReminderContextFooterState(args: {
     ),
     pendingUserInterjectionReply,
     interDialogReplyObligation,
+    contextHealthState: resolveReminderContextHealthState(args.dlg.getLastContextHealth()),
   };
 }
 

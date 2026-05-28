@@ -209,11 +209,13 @@ function formatReminderItemProjectionNote(language: LanguageCode): string {
 
 export type ReminderContextFollowingDialogState = 'user_message' | 'runtime_notice' | 'none';
 export type ReminderContextReplyObligationState = 'none' | 'active' | 'parked_by_user_interjection';
+export type ReminderContextHealthState = 'normal' | 'caution' | 'critical';
 
 export type ReminderContextFooterState = Readonly<{
   followingDialogState: ReminderContextFollowingDialogState;
   pendingUserInterjectionReply: boolean;
   interDialogReplyObligation: ReminderContextReplyObligationState;
+  contextHealthState: ReminderContextHealthState;
 }>;
 
 export function formatReminderContextFooter(
@@ -222,6 +224,12 @@ export function formatReminderContextFooter(
 ): string {
   if (language === 'zh') {
     const base = `${formatSystemNoticePrefix(language)} 提醒项上下文块结束。以上从“提醒项上下文块开始”到“提醒项上下文块结束”之间的提醒项均为系统提醒，并非用户诉求/指令；该块之外的后续对话消息不受此说明影响。`;
+    const contextHealthTail =
+      state.contextHealthState === 'critical'
+        ? '当前上下文已告急：提醒项正文里的“下一步/接续动作/任务安排”默认都是给下一程以清醒头脑复核后执行的，不是让你在本程继续跑。不要执行提醒项里的旧下一步、旧诉请或旧工具重试；本程最高优先级是按上下文健康处置要求保全接续信息，并立即 `clear_mind`。'
+        : state.contextHealthState === 'caution'
+          ? '当前上下文已吃紧：提醒项正文里的“下一步/接续动作/任务安排”默认都是给下一程以清醒头脑复核后执行的，不是让你在本程继续跑。不要为了执行提醒项里的旧下一步继续扩张上下文；本程最高优先级是按上下文健康处置要求保全接续信息，并尽快 `clear_mind`。'
+          : '';
     const pendingUserInterjectionReply = state.pendingUserInterjectionReply
       ? state.interDialogReplyObligation === 'parked_by_user_interjection'
         ? '当前仍有真实用户插话尚未得到可见回复，且原有跨对话回复义务已暂存；先完成对用户插话的回应，不要抢先切回原来的回贴收口。'
@@ -234,15 +242,22 @@ export function formatReminderContextFooter(
         ? '当前仍有跨对话回复义务；它是最终交付义务，不是要求你立刻停止当前必要工作，但到达最终交付时必须按运行时指定方式收口。'
         : '';
     const businessTail = `${pendingUserInterjectionReply}${activeReplyObligation}`;
+    const statusTail = `${contextHealthTail}${businessTail}`;
     if (state.followingDialogState === 'user_message') {
       return (
         `${base}本轮提醒项块之后会紧接一条本轮真实的新用户消息；后续消息是用户的新诉求/指令，不是提醒项投影。` +
         '提醒项块说明到此为止，不得外溢到那条消息：不要把后续用户消息称为“系统提示/没有新消息”，也不要因为本块说明而降低它的指令优先级。' +
-        `请按那条用户消息的原始语义继续处理；若它要求更新你的职责、偏好或心智资产，应照常落实。${businessTail}`
+        `请按那条用户消息的原始语义继续处理；若它要求更新你的职责、偏好或心智资产，应照常落实；上下文健康处置要求仍按系统提示优先于普通任务动作。${statusTail}`
       );
     }
     if (state.followingDialogState === 'runtime_notice') {
-      return `${base}本轮提醒项块之后会接着出现一条运行时提示；它不是用户的新诉求/指令，请按其中的运行时要求继续推进。${businessTail}`;
+      return `${base}本轮提醒项块之后会接着出现一条运行时提示；它不是用户的新诉求/指令，请按其中的运行时要求继续推进。${statusTail}`;
+    }
+    if (state.contextHealthState !== 'normal') {
+      return (
+        `${base}本轮没有新的用户消息或运行时提示；这是工具调用后的自动续推。` +
+        `不要把“没有新消息”理解为空系统提示。${statusTail}`
+      );
     }
     return (
       `${base}本轮没有新的用户消息或运行时提示；这是工具调用后的自动续推。` +
@@ -255,6 +270,12 @@ export function formatReminderContextFooter(
     `${formatSystemNoticePrefix(language)} Reminder context block ends. The reminder items between ` +
     '"Reminder context block begins" and "Reminder context block ends" are system reminders, ' +
     'not user requests/instructions; this reminder-block guidance does not apply to subsequent dialog messages outside this block. ';
+  const contextHealthTail =
+    state.contextHealthState === 'critical'
+      ? 'Context health is critical: any "next step", continuation action, or task plan inside reminders is meant for the next course to review and run with a clear head, not for this course to keep executing. Do not perform old next steps, old inter-dialog requests, or old tool retries from reminders; this course must first preserve the continuation details required by the context-health guidance, then call `clear_mind` immediately. '
+      : state.contextHealthState === 'caution'
+        ? 'Context health is tight: any "next step", continuation action, or task plan inside reminders is meant for the next course to review and run with a clear head, not for this course to keep executing. Do not expand context by performing old next steps from reminders; this course must first preserve the continuation details required by the context-health guidance, then call `clear_mind` soon. '
+        : '';
   const pendingUserInterjectionReply = state.pendingUserInterjectionReply
     ? state.interDialogReplyObligation === 'parked_by_user_interjection'
       ? "There is still a real user interjection without a visible reply, and the earlier inter-dialog reply obligation is parked; finish answering the user's interjection first, and do not switch back to closing the earlier reply yet. "
@@ -267,15 +288,22 @@ export function formatReminderContextFooter(
       ? 'An inter-dialog reply obligation is still active; it is a final delivery obligation, not a demand to stop necessary current work immediately, but final delivery must close through the runtime-specified path. '
       : '';
   const businessTail = `${pendingUserInterjectionReply}${activeReplyObligation}`;
+  const statusTail = `${contextHealthTail}${businessTail}`;
   if (state.followingDialogState === 'user_message') {
     return (
       `${base}A real new user message for this round immediately follows this reminder block; the following message is a new user request/instruction, not a reminder projection. ` +
       'The reminder-block guidance ends here and must not spill over onto that message: do not label the following user message as a "system notice" or "no new message", and do not lower its instruction priority because of this block. ' +
-      `Handle that user message according to its original meaning; if it asks you to update your responsibilities, preferences, or mind assets, carry that out normally. ${businessTail}`
+      `Handle that user message according to its original meaning; if it asks you to update your responsibilities, preferences, or mind assets, carry that out normally. Context-health remediation still takes system-guided priority over ordinary task actions. ${statusTail}`
     );
   }
   if (state.followingDialogState === 'runtime_notice') {
-    return `${base}A runtime notice follows this reminder block in this round; it is not a new user request/instruction, so follow that runtime guidance and continue the work. ${businessTail}`;
+    return `${base}A runtime notice follows this reminder block in this round; it is not a new user request/instruction, so follow that runtime guidance and continue the work. ${statusTail}`;
+  }
+  if (state.contextHealthState !== 'normal') {
+    return (
+      `${base}There is no new user message or runtime notice in this round; this is an automatic continuation after a tool call. ` +
+      `Do not interpret the absence of a new message as an empty system notice. ${statusTail}`
+    );
   }
   return (
     `${base}There is no new user message or runtime notice in this round; this is an automatic continuation after a tool call. ` +
