@@ -1018,9 +1018,9 @@ const TELLASK_SPECIAL_VIRTUAL_TOOLS: readonly FuncTool[] = [
 
 const CONTEXT_HEALTH_TOOL_RESULT_VISIBLE_BYTE_LIMIT = 2_000;
 const CONTEXT_HEALTH_LARGE_TOOL_RETURN_UNAVAILABLE_ZH =
-  '这次函数返回内容太大，清理头脑之前当前不可见。';
+  '这次函数返回内容太大，清理头脑之前不会显示给你。';
 const CONTEXT_HEALTH_LARGE_TOOL_RETURN_UNAVAILABLE_EN =
-  'This function returned too much content, so it is not visible before clear_mind.';
+  'This function returned too much content. It will not be shown to you before you clear your mind.';
 
 function getContextHealthRemediationLevel(
   snapshot: ContextHealthSnapshot | undefined,
@@ -1055,9 +1055,9 @@ function formatContextHealthLargeToolReturnUnavailable(args: {
       return [
         CONTEXT_HEALTH_LARGE_TOOL_RETURN_UNAVAILABLE_ZH,
         '',
-        '不要重试获取这类大段输出。现在先做两件事：',
+        '不要再尝试获取各种大段的输出，都不会显示给你。现在先做两件事：',
         '1. 把需要回传给主线对话的结论、证据定位和风险整理清楚。',
-        '2. 若还有恢复工作会丢的信息，写入提醒项。',
+        '2. 对于下一程恢复工作需要的信息，写入提醒项。',
         '',
         '然后尽快完成当前支线回复；如果你有 clear_mind({})，再调用它开启新一程。',
         '',
@@ -1067,9 +1067,9 @@ function formatContextHealthLargeToolReturnUnavailable(args: {
     return [
       CONTEXT_HEALTH_LARGE_TOOL_RETURN_UNAVAILABLE_ZH,
       '',
-      '不要重试获取这类大段输出。现在先做两件事：',
-      '1. 把下一程还需要知道的信息写入差遣牒合适章节。',
-      '2. 把差遣牒没有覆盖、但恢复工作会丢的信息写入提醒项。',
+      '不要再尝试获取各种大段的输出，都不会显示给你。现在先做两件事：',
+      '1. 把下一程对话需要知道的此程细节信息写入差遣牒合适章节。',
+      '2. 对于不适合差遣牒章节覆盖、但下一程恢复工作需要的信息写入提醒项。',
       '',
       '然后调用 clear_mind({}) 开启新一程。',
       '',
@@ -1081,11 +1081,11 @@ function formatContextHealthLargeToolReturnUnavailable(args: {
     return [
       CONTEXT_HEALTH_LARGE_TOOL_RETURN_UNAVAILABLE_EN,
       '',
-      'Do not retry fetching this kind of large output. Do two things now:',
-      '1. Organize the conclusion, evidence pointers, and risks that need to go back to the Main Dialog.',
-      '2. If any resume-critical details would otherwise be lost, write them into reminders.',
+      'Do not try again to fetch any kind of large output; it still will not be shown. Do two things now:',
+      '1. Organize the conclusions, evidence pointers, and risks that need to go back to the Mainline dialog.',
+      '2. Write any details needed to resume the next course into reminders.',
       '',
-      'Then finish the current Side Dialog reply as soon as possible; if you have clear_mind({}), call it to start a new course.',
+      'Then finish the current Sideline dialog reply as soon as possible; if you have clear_mind({}), call it to start a new course.',
       '',
       `Detail: this return was about ${approxBytes} bytes.`,
     ].join('\n');
@@ -1094,9 +1094,9 @@ function formatContextHealthLargeToolReturnUnavailable(args: {
   return [
     CONTEXT_HEALTH_LARGE_TOOL_RETURN_UNAVAILABLE_EN,
     '',
-    'Do not retry fetching this kind of large output. Do two things now:',
-    '1. Write the information the next course still needs into the appropriate Taskdoc sections.',
-    '2. Write any resume-critical details not covered by Taskdoc into reminders.',
+    'Do not try again to fetch any kind of large output; it still will not be shown. Do two things now:',
+    '1. Write the details from this course that the next course needs into the appropriate Taskdoc sections.',
+    '2. Write information that does not fit a Taskdoc section, but is needed to resume the next course, into reminders.',
     '',
     'Then call clear_mind({}) to start a new course.',
     '',

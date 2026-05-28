@@ -23,11 +23,11 @@ function byteLength(text: string): number {
 
 function expectedMainlineReplacement(originalBytes: number): string {
   return [
-    '这次函数返回内容太大，清理头脑之前当前不可见。',
+    '这次函数返回内容太大，清理头脑之前不会显示给你。',
     '',
-    '不要重试获取这类大段输出。现在先做两件事：',
-    '1. 把下一程还需要知道的信息写入差遣牒合适章节。',
-    '2. 把差遣牒没有覆盖、但恢复工作会丢的信息写入提醒项。',
+    '不要再尝试获取各种大段的输出，都不会显示给你。现在先做两件事：',
+    '1. 把下一程对话需要知道的此程细节信息写入差遣牒合适章节。',
+    '2. 对于不适合差遣牒章节覆盖、但下一程恢复工作需要的信息写入提醒项。',
     '',
     '然后调用 clear_mind({}) 开启新一程。',
     '',
@@ -37,15 +37,29 @@ function expectedMainlineReplacement(originalBytes: number): string {
 
 function expectedSidelineReplacement(originalBytes: number): string {
   return [
-    '这次函数返回内容太大，清理头脑之前当前不可见。',
+    '这次函数返回内容太大，清理头脑之前不会显示给你。',
     '',
-    '不要重试获取这类大段输出。现在先做两件事：',
+    '不要再尝试获取各种大段的输出，都不会显示给你。现在先做两件事：',
     '1. 把需要回传给主线对话的结论、证据定位和风险整理清楚。',
-    '2. 若还有恢复工作会丢的信息，写入提醒项。',
+    '2. 对于下一程恢复工作需要的信息，写入提醒项。',
     '',
     '然后尽快完成当前支线回复；如果你有 clear_mind({})，再调用它开启新一程。',
     '',
     `详情：本次返回约 ${new Intl.NumberFormat('zh-CN').format(originalBytes)} 字节。`,
+  ].join('\n');
+}
+
+function expectedEnglishMainlineReplacement(originalBytes: number): string {
+  return [
+    'This function returned too much content. It will not be shown to you before you clear your mind.',
+    '',
+    'Do not try again to fetch any kind of large output; it still will not be shown. Do two things now:',
+    '1. Write the details from this course that the next course needs into the appropriate Taskdoc sections.',
+    '2. Write information that does not fit a Taskdoc section, but is needed to resume the next course, into reminders.',
+    '',
+    'Then call clear_mind({}) to start a new course.',
+    '',
+    `Detail: this return was about ${new Intl.NumberFormat('en-US').format(originalBytes)} bytes.`,
   ].join('\n');
 }
 
@@ -148,14 +162,17 @@ async function main(): Promise<void> {
     const contentItemsTrigger = 'Call the content-items probe while context is already tight.';
     const imageContentItemTrigger =
       'Call the image content-item probe while context is already tight.';
+    const englishTrigger = 'Call env_get in English while context is already tight.';
     const largeValue = `large-start-${'x'.repeat(2_300)}-large-end`;
     const previousCautionLargeValue = `previous-caution-start-${'y'.repeat(2_300)}-previous-caution-end`;
     const recoveredLargeValue = `recovered-start-${'z'.repeat(2_300)}-recovered-end`;
     const sideLargeValue = `side-start-${'s'.repeat(2_300)}-side-end`;
+    const englishLargeValue = `english-start-${'e'.repeat(2_300)}-english-end`;
     const envKey = 'DOMINDS_TEST_LARGE_TOOL_OUTPUT';
     const previousCautionEnvKey = 'DOMINDS_TEST_PREVIOUS_CAUTION_LARGE_TOOL_OUTPUT';
     const recoveredEnvKey = 'DOMINDS_TEST_RECOVERED_LARGE_TOOL_OUTPUT';
     const sideEnvKey = 'DOMINDS_TEST_SIDE_LARGE_TOOL_OUTPUT';
+    const englishEnvKey = 'DOMINDS_TEST_ENGLISH_LARGE_TOOL_OUTPUT';
     const expectedReplacement = expectedMainlineReplacement(byteLength(largeValue));
     const expectedPreviousCautionReplacement = expectedMainlineReplacement(
       byteLength(previousCautionLargeValue),
@@ -167,10 +184,14 @@ async function main(): Promise<void> {
     const expectedImageContentItemReplacement = expectedMainlineReplacement(
       byteLength('short image top-level content') + imageContentItemByteLength,
     );
+    const expectedEnglishReplacement = expectedEnglishMainlineReplacement(
+      byteLength(englishLargeValue),
+    );
     process.env[envKey] = largeValue;
     process.env[previousCautionEnvKey] = previousCautionLargeValue;
     process.env[recoveredEnvKey] = recoveredLargeValue;
     process.env[sideEnvKey] = sideLargeValue;
+    process.env[englishEnvKey] = englishLargeValue;
 
     try {
       await writeMockDb(tmpRoot, [
@@ -288,6 +309,25 @@ async function main(): Promise<void> {
           response: '我会按大返回规则处理图片 contentItem。',
           usage: { promptTokens: 210_100, completionTokens: 100 },
         },
+        {
+          message: englishTrigger,
+          role: 'user',
+          response: 'I will read the environment variable.',
+          funcCalls: [
+            {
+              id: 'english-large-env-get',
+              name: 'env_get',
+              arguments: { key: englishEnvKey },
+            },
+          ],
+          usage: { promptTokens: 210_000, completionTokens: 100 },
+        },
+        {
+          message: expectedEnglishReplacement,
+          role: 'tool',
+          response: 'I will save the handoff details and clear my mind.',
+          usage: { promptTokens: 210_100, completionTokens: 100 },
+        },
       ]);
 
       const dlg = await createMainDialog('tester');
@@ -303,8 +343,8 @@ async function main(): Promise<void> {
       assert.equal(funcResults.length, 1, 'expected exactly one function result');
       const resultContent = funcResults[0]?.content ?? '';
       assert.equal(resultContent, expectedReplacement);
-      assert.match(resultContent, /这次函数返回内容太大，清理头脑之前当前不可见/);
-      assert.match(resultContent, /不要重试获取这类大段输出/);
+      assert.match(resultContent, /这次函数返回内容太大，清理头脑之前不会显示给你/);
+      assert.match(resultContent, /不要再尝试获取各种大段的输出，都不会显示给你/);
       assert.match(resultContent, /然后调用 clear_mind\(\{\}\) 开启新一程/);
       assert.match(
         resultContent,
@@ -429,7 +469,7 @@ async function main(): Promise<void> {
       assert.equal(sideResultContent, expectedSideReplacement);
       assert.match(sideResultContent, /把需要回传给主线对话的结论、证据定位和风险整理清楚/);
       assert.match(sideResultContent, /然后尽快完成当前支线回复/);
-      assert.doesNotMatch(sideResultContent, /把下一程还需要知道的信息写入差遣牒合适章节/);
+      assert.doesNotMatch(sideResultContent, /写入差遣牒合适章节/);
       assert.doesNotMatch(sideResultContent, /side-start/);
       assert.doesNotMatch(sideResultContent, /side-end/);
 
@@ -521,13 +561,47 @@ async function main(): Promise<void> {
         true,
         'large image contentItem replacement must trigger immediate remediation follow-up',
       );
+
+      setWorkLanguage('en');
+      const englishDlg = await createMainDialog('tester');
+      englishDlg.disableDiligencePush = true;
+
+      await driveDialogStream(
+        englishDlg,
+        makeUserPrompt(englishTrigger, 'kernel-driver-context-health-english-large-output-hidden'),
+        true,
+      );
+
+      const englishFuncResults = englishDlg.msgs.filter((msg) => msg.type === 'func_result_msg');
+      assert.equal(englishFuncResults.length, 1, 'expected exactly one English function result');
+      const englishResultContent = englishFuncResults[0]?.content ?? '';
+      assert.equal(englishResultContent, expectedEnglishReplacement);
+      assert.match(englishResultContent, /will not be shown to you before you clear your mind/);
+      assert.match(englishResultContent, /Do not try again to fetch any kind of large output/);
+      assert.match(englishResultContent, /details from this course that the next course needs/);
+      assert.match(englishResultContent, /does not fit a Taskdoc section/);
+      assert.doesNotMatch(englishResultContent, /english-start/);
+      assert.doesNotMatch(englishResultContent, /english-end/);
+
+      const englishAssistantSayings = englishDlg.msgs.filter(
+        (msg) => msg.type === 'saying_msg' && msg.role === 'assistant',
+      );
+      assert.equal(
+        englishAssistantSayings.some(
+          (msg) => msg.content === 'I will save the handoff details and clear my mind.',
+        ),
+        true,
+        'English large-output replacement must trigger immediate model follow-up',
+      );
     } finally {
+      setWorkLanguage('zh');
       unregisterTool(CONTENT_ITEMS_TOOL_NAME);
       unregisterTool(IMAGE_CONTENT_ITEM_TOOL_NAME);
       delete process.env[envKey];
       delete process.env[previousCautionEnvKey];
       delete process.env[recoveredEnvKey];
       delete process.env[sideEnvKey];
+      delete process.env[englishEnvKey];
     }
   });
 
