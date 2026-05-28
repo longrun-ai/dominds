@@ -4,7 +4,7 @@
 
 `dominds` 提供统一的命令行入口，但**主要交互界面是 Web UI**（默认命令 `dominds`）。本文档以 Web UI 工作流为主。
 
-> 注：本文统一使用 **rtws（运行时工作区）** 表示 Dominds 运行时使用的根目录（默认等于 `process.cwd()`，可通过 `-C <dir>` 切换）。
+> 注：本文统一使用 **rtws（运行时工作区）** 表示 Dominds 运行时使用的根目录（默认等于 `process.cwd()`，可通过 `-C <abs-dir>` 切换；`-C` 只接受绝对路径）。
 
 > 说明：`dominds tui` / `dominds run` 相关功能目前尚未提供稳定实现（子命令名保留用于未来规划），因此本指南不再展开 TUI 的命令选项与用法细节。
 
@@ -49,7 +49,7 @@ dominds webui [options]
 
 # 常用：指定端口 / rtws
 dominds webui -p 8080
-dominds webui -C ./my-rtws
+dominds webui -C /path/to/my-rtws
 
 # Minds 阅读器：分析团队配置
 dominds read [options] [member-id]
@@ -83,7 +83,7 @@ dominds webui [options]
 
 - `-p, --port <port>` - 监听端口；裸端口严格绑定，后缀 `+` 向更大端口自动尝试，后缀 `-` 向更小端口自动尝试（未指定时等价于 `5666-`）
 - `-h, --host <host>` - 绑定的主机（默认：localhost）
-- `-C, --cwd <dir>` - 启动前更改 rtws 目录
+- `-C, --cwd <abs-dir>` - 启动前更改 rtws 目录；只接受绝对路径
 - `--help` - 显示帮助消息
 
 **示例：**
@@ -99,7 +99,7 @@ dominds webui -p 8080
 dominds webui -p 8080+
 
 # 在特定 rtws 启动 Web UI
-dominds webui -C ./my-rtws
+dominds webui -C /path/to/my-rtws
 ```
 
 **常见用途：**
@@ -129,7 +129,7 @@ dominds read [options] [member-id]
 
 **选项：**
 
-- `-C, --cwd <dir>` - 读取前更改 rtws 目录
+- `-C, --cwd <abs-dir>` - 读取前更改 rtws 目录；只接受绝对路径
 - `--only-prompt` - 仅显示系统提示词
 - `--only-mem` - 仅显示内存
 - `--help` - 显示帮助消息
@@ -139,7 +139,7 @@ dominds read [options] [member-id]
 ```bash
 dominds read
 dominds read developer
-dominds read -C ./my-rtws
+dominds read -C /path/to/my-rtws
 dominds read --only-prompt
 dominds read --only-mem
 ```
@@ -204,7 +204,7 @@ dominds
 dominds webui -p 8080
 
 # 3) 在特定 rtws 启动
-dominds webui -C ./my-rtws
+dominds webui -C /path/to/my-rtws
 
 # 4) 查看/核对当前团队配置
 dominds read

@@ -326,12 +326,15 @@ async function main() {
   // Handle working directory change from -C flag
   const wsDir = cliArgs['C'] as string;
   if (wsDir) {
-    // Resolve to absolute path before changing directory
-    const absoluteWsDir = path.isAbsolute(wsDir) ? wsDir : path.resolve(process.cwd(), wsDir);
+    if (!path.isAbsolute(wsDir)) {
+      throw new Error(`-C requires an absolute directory path: ${wsDir}`);
+    }
     try {
       process.chdir(wsDir);
     } catch (err) {
-      log.warn(`Failed to change working directory to ${wsDir}:`, err);
+      throw new Error(
+        `Failed to change working directory to ${wsDir}: ${err instanceof Error ? err.message : String(err)}`,
+      );
     }
   }
 

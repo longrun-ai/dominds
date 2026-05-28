@@ -1,4 +1,5 @@
 import { spawn } from 'child_process';
+import { randomUUID } from 'crypto';
 import fsPromises from 'fs/promises';
 import path from 'path';
 
@@ -14,6 +15,7 @@ import { formatUnifiedTimestamp } from '@longrun-ai/kernel/utils/time';
 
 import { createLogger } from '../log';
 import { DOMINDS_RUNNING_VERSION } from './dominds-running-version';
+import type { RestartHelperPayload } from './dominds-self-update-restart-helper';
 
 const log = createLogger('dominds-self-update');
 const BACKGROUND_CHECK_INTERVAL_MS = 30 * 60 * 1000;
@@ -138,6 +140,10 @@ type RestartState =
 type InstallFailureObservation = Readonly<{ errorText: string; failedAt: string }>;
 
 type RestartStdioMode = 'inherit' | 'ignore';
+type RestartTraceContext = Readonly<{
+  debugDir: string;
+  traceFile: string;
+}>;
 
 const IDLE_RESTART_STATE: RestartState = { kind: 'idle' };
 const PROCESS_START_ARGV = [...process.argv];
@@ -152,6 +158,7 @@ let restartPromise: Promise<DomindsSelfUpdateStatus> | null = null;
 let restartState: RestartState = IDLE_RESTART_STATE;
 let installFailureObservation: InstallFailureObservation | null = null;
 let broadcastStatusUpdate: ((status: DomindsSelfUpdateStatus) => void) | null = null;
+let activeRestartTraceFile: string | null = null;
 
 function normalizeVersionString(value: string): string {
   return value.trim().replace(/^v/i, '');
@@ -209,6 +216,75 @@ function getRestartPortProbeHost(host: string): string {
 function normalizeComparablePath(value: string): string {
   const normalized = path.normalize(value);
   return process.platform === 'win32' ? normalized.toLowerCase() : normalized;
+}
+
+function sanitizeDebugFileSegment(value: string): string {
+  const sanitized = value.replace(/[^A-Za-z0-9._-]+/g, '_').replace(/^_+|_+$/g, '');
+  return sanitized.length > 0 ? sanitized.slice(0, 80) : 'unknown';
+}
+
+function buildRestartTraceContext(): RestartTraceContext {
+  const capturedAt = formatUnifiedTimestamp(new Date());
+  const debugDir = path.resolve(process.cwd(), '.dialogs', 'debug');
+  const traceFile = path.join(
+    debugDir,
+    [
+      'dominds-self-update-restart',
+      sanitizeDebugFileSegment(capturedAt),
+      String(process.pid),
+      `${randomUUID()}.jsonl`,
+    ].join('-'),
+  );
+  return { debugDir, traceFile };
+}
+
+function getRestartHelperEntrypoint(): string {
+  return path.resolve(__dirname, 'dominds-self-update-restart-helper.js');
+}
+
+async function appendRestartTrace(
+  trace: RestartTraceContext,
+  event: string,
+  details: Record<string, unknown> = {},
+): Promise<void> {
+  const payload = {
+    ...details,
+    event,
+    capturedAt: formatUnifiedTimestamp(new Date()),
+    pid: process.pid,
+    platform: process.platform,
+    rtwsRootAbs: process.cwd(),
+  };
+  await fsPromises.mkdir(trace.debugDir, { recursive: true });
+  await fsPromises.appendFile(trace.traceFile, `${JSON.stringify(payload)}\n`, 'utf-8');
+}
+
+function appendRestartTraceSoon(
+  trace: RestartTraceContext,
+  event: string,
+  details: Record<string, unknown> = {},
+): void {
+  void appendRestartTrace(trace, event, details).catch((error: unknown) => {
+    log.warn('Failed to write Dominds restart trace', error, {
+      traceFile: trace.traceFile,
+      event,
+    });
+  });
+}
+
+async function appendRestartTraceBestEffort(
+  trace: RestartTraceContext,
+  event: string,
+  details: Record<string, unknown> = {},
+): Promise<void> {
+  try {
+    await appendRestartTrace(trace, event, details);
+  } catch (error: unknown) {
+    log.warn('Failed to write Dominds restart trace', error, {
+      traceFile: trace.traceFile,
+      event,
+    });
+  }
 }
 
 async function getComparableRealPath(absPath: string): Promise<string> {
@@ -1567,15 +1643,18 @@ export async function installLatestDominds(): Promise<DomindsSelfUpdateStatus> {
   return await getDomindsSelfUpdateStatus();
 }
 
-function spawnDetachedRestartHelper(params: {
+async function spawnDetachedRestartHelper(params: {
   command: string;
   args: readonly string[];
   cwd: string;
   host: string;
   port: number;
-}): void {
+  trace: RestartTraceContext;
+}): Promise<number | null> {
   const stdioMode = getRestartHelperStdio();
-  const helperPayload = JSON.stringify({
+  const helperEntrypoint = getRestartHelperEntrypoint();
+  await fsPromises.access(helperEntrypoint);
+  const helperPayload: RestartHelperPayload = {
     command: params.command,
     args: [...params.args],
     cwd: params.cwd,
@@ -1586,146 +1665,90 @@ function spawnDetachedRestartHelper(params: {
     probeIntervalMs: RESTART_PORT_PROBE_INTERVAL_MS,
     portReleaseTimeoutMs: RESTART_PORT_RELEASE_TIMEOUT_MS,
     stdioMode,
-  });
-  const helperScript = [
-    "const net = require('net');",
-    "const { spawn } = require('child_process');",
-    'const payload = JSON.parse(process.argv[1]);',
-    'const detached = payload.stdioMode !== "inherit";',
-    'function isPortBusy() {',
-    '  return new Promise((resolve) => {',
-    '    const socket = net.createConnection({ host: payload.host, port: payload.port });',
-    '    let settled = false;',
-    '    const finish = (busy) => {',
-    '      if (settled) return;',
-    '      settled = true;',
-    '      socket.destroy();',
-    '      resolve(busy);',
-    '    };',
-    '    socket.once("connect", () => finish(true));',
-    '    socket.once("error", () => finish(false));',
-    '    socket.setTimeout(1000, () => finish(true));',
-    '  });',
-    '}',
-    'function getErrorCode(error) {',
-    '  return error && typeof error === "object" && typeof error.code === "string" ? error.code : "";',
-    '}',
-    'function assertValidRetiringPid() {',
-    '  if (!Number.isInteger(payload.retiringPid) || payload.retiringPid <= 0) {',
-    '    throw new Error(`Invalid retiring Dominds pid for restart: ${String(payload.retiringPid)}`);',
-    '  }',
-    '  if (payload.retiringPid === process.pid) {',
-    '    throw new Error(`Refusing to kill restart helper pid ${String(process.pid)}`);',
-    '  }',
-    '}',
-    'function isRetiringProcessAlive() {',
-    '  assertValidRetiringPid();',
-    '  try {',
-    '    process.kill(payload.retiringPid, 0);',
-    '    return true;',
-    '  } catch (error) {',
-    '    const code = getErrorCode(error);',
-    '    if (code === "ESRCH") return false;',
-    '    if (code === "EPERM") return true;',
-    '    throw error;',
-    '  }',
-    '}',
-    'async function waitForRetiringProcessExit(timeoutMs) {',
-    '  const deadline = Date.now() + timeoutMs;',
-    '  while (Date.now() < deadline) {',
-    '    if (!isRetiringProcessAlive()) return true;',
-    '    await new Promise((resolve) => setTimeout(resolve, payload.probeIntervalMs));',
-    '  }',
-    '  return false;',
-    '}',
-    'async function waitForPortReleaseUntil(deadline) {',
-    '  let consecutiveReady = 0;',
-    '  while (Date.now() < deadline) {',
-    '    if (!(await isPortBusy())) {',
-    '      consecutiveReady += 1;',
-    '      if (consecutiveReady >= 2) return true;',
-    '    } else {',
-    '      consecutiveReady = 0;',
-    '    }',
-    '    await new Promise((resolve) => setTimeout(resolve, payload.probeIntervalMs));',
-    '  }',
-    '  return false;',
-    '}',
-    'function runBestEffortKiller(command, args) {',
-    '  return new Promise((resolve) => {',
-    '    const killer = spawn(command, args, { stdio: payload.stdioMode, windowsHide: payload.stdioMode !== "inherit" });',
-    "    killer.once('error', () => resolve());",
-    "    killer.once('exit', () => resolve());",
-    '  });',
-    '}',
-    'async function forceKillRetiringProcess() {',
-    '  assertValidRetiringPid();',
-    '  try {',
-    "    process.kill(payload.retiringPid, 'SIGKILL');",
-    '  } catch (error) {',
-    '    const code = getErrorCode(error);',
-    '    if (code === "ESRCH") return;',
-    '    if (process.platform !== "win32") throw error;',
-    '  }',
-    '  if (process.platform === "win32") {',
-    "    await runBestEffortKiller('taskkill.exe', ['/PID', String(payload.retiringPid), '/F']);",
-    '  }',
-    '}',
-    '(async () => {',
-    '  try {',
-    '    const forceKillDeadline = Date.now() + payload.forceKillAfterMs;',
-    '    const exitedGracefully = await waitForRetiringProcessExit(payload.forceKillAfterMs);',
-    '    if (!exitedGracefully) {',
-    '      await forceKillRetiringProcess();',
-    '      const exitedAfterKill = await waitForRetiringProcessExit(payload.portReleaseTimeoutMs);',
-    '      if (!exitedAfterKill) {',
-    '        throw new Error(`Dominds retiring process is still alive after force-killing pid ${String(payload.retiringPid)}`);',
-    '      }',
-    '    }',
-    '    const portReleaseDeadline = Math.max(forceKillDeadline, Date.now() + payload.portReleaseTimeoutMs);',
-    '    const portReleased = await waitForPortReleaseUntil(portReleaseDeadline);',
-    '    if (!portReleased) {',
-    '      throw new Error(`Dominds restart port is still busy after retiring pid ${String(payload.retiringPid)} exited; port=${String(payload.host)}:${String(payload.port)}`);',
-    '    }',
-    '    const child = spawn(payload.command, payload.args, { cwd: payload.cwd, env: process.env, detached, stdio: payload.stdioMode, shell: false, windowsHide: payload.stdioMode !== "inherit" });',
-    '    if (detached) child.unref();',
-    '    await new Promise((resolve, reject) => {',
-    "      child.once('error', reject);",
-    "      child.once('spawn', resolve);",
-    '    });',
-    '    process.exit(0);',
-    '  } catch (error) {',
-    '    console.error(error instanceof Error ? error.message : String(error));',
-    '    process.exit(1);',
-    '  }',
-    '})();',
-  ].join('\n');
-  const helper = spawn(process.execPath, ['-e', helperScript, helperPayload], {
+    traceFile: params.trace.traceFile,
+    debugDir: params.trace.debugDir,
+  };
+  const helper = spawn(process.execPath, [helperEntrypoint, JSON.stringify(helperPayload)], {
     cwd: params.cwd,
     env: process.env,
     detached: stdioMode !== 'inherit',
     stdio: stdioMode,
     windowsHide: stdioMode !== 'inherit',
   });
+  const helperPid = typeof helper.pid === 'number' ? helper.pid : null;
+  const helperSpawned = new Promise<number | null>((resolve, reject) => {
+    helper.once('spawn', () => {
+      appendRestartTraceSoon(params.trace, 'parent.helper_spawn_event', {
+        helperPid,
+      });
+      resolve(helperPid);
+    });
+    helper.once('error', (error: Error) => {
+      appendRestartTraceSoon(params.trace, 'parent.helper_error_event', {
+        message: error.message,
+        stack: error.stack ?? null,
+      });
+      reject(error);
+    });
+  });
+  helper.once('exit', (code, signal) => {
+    appendRestartTraceSoon(params.trace, 'parent.helper_exit_event', {
+      code,
+      signal,
+    });
+  });
   if (stdioMode !== 'inherit') {
     helper.unref();
   }
+  return await helperSpawned;
 }
 
 async function stopAndExitForRestart(): Promise<void> {
   const cfg = assertRuntimeConfig();
+  const trace =
+    activeRestartTraceFile === null
+      ? null
+      : { debugDir: path.dirname(activeRestartTraceFile), traceFile: activeRestartTraceFile };
   let stopSettled = false;
-  void cfg
+  if (trace !== null) {
+    await appendRestartTraceBestEffort(trace, 'parent.stop_and_exit.start', {
+      host: cfg.host,
+      port: cfg.port,
+      exitGraceMs: RESTART_EXIT_GRACE_MS,
+    });
+  }
+  const stopPromise = cfg
     .stopServer()
     .then(() => {
       stopSettled = true;
+      if (trace !== null) {
+        return appendRestartTraceBestEffort(trace, 'parent.stop_server.finish', {
+          host: cfg.host,
+          port: cfg.port,
+        });
+      }
+      return undefined;
     })
     .catch((error: unknown) => {
       stopSettled = true;
+      if (trace !== null) {
+        return appendRestartTraceBestEffort(trace, 'parent.stop_server.error', {
+          host: cfg.host,
+          port: cfg.port,
+          message: error instanceof Error ? error.message : String(error),
+          stack: error instanceof Error ? (error.stack ?? null) : null,
+        }).then(() => {
+          log.error('Failed to stop Dominds HTTP server during restart grace window', error, {
+            host: cfg.host,
+            port: cfg.port,
+          });
+        });
+      }
       log.error('Failed to stop Dominds HTTP server during restart grace window', error, {
         host: cfg.host,
         port: cfg.port,
       });
+      return undefined;
     });
   cfg.closeWebSocketClients();
   await delayMs(RESTART_EXIT_GRACE_MS);
@@ -1739,6 +1762,17 @@ async function stopAndExitForRestart(): Promise<void> {
         graceMs: RESTART_EXIT_GRACE_MS,
       },
     );
+  }
+  if (trace !== null) {
+    if (stopSettled) {
+      await stopPromise;
+    }
+    await appendRestartTraceBestEffort(trace, 'parent.process_exit', {
+      host: cfg.host,
+      port: cfg.port,
+      stopSettled,
+      code: 0,
+    });
   }
   process.exit(0);
 }
@@ -1780,23 +1814,58 @@ export async function restartDomindsIntoLatest(): Promise<DomindsSelfUpdateStatu
 
     restartState = { kind: 'restarting', targetVersion: status.targetVersion };
     publishStatusUpdateSoon();
+    const restartCwd = process.cwd();
+    const trace = buildRestartTraceContext();
+    activeRestartTraceFile = trace.traceFile;
     try {
-      spawnDetachedRestartHelper({
+      await appendRestartTraceBestEffort(trace, 'parent.restart_requested', {
+        runKind,
+        currentVersion: status.currentVersion,
+        targetVersion: status.targetVersion,
+        launchCommand: launchSpec.command,
+        launchArgs: launchSpec.args,
+        restartCwd,
+        host: cfg.host,
+        port: cfg.port,
+        traceFile: trace.traceFile,
+      });
+      const helperPid = await spawnDetachedRestartHelper({
         command: launchSpec.command,
         args: launchSpec.args,
-        cwd: PROCESS_START_CWD,
+        cwd: restartCwd,
+        host: cfg.host,
+        port: cfg.port,
+        trace,
+      });
+      await appendRestartTraceBestEffort(trace, 'parent.helper_spawned', {
+        helperPid,
+        retiringPid: process.pid,
         host: cfg.host,
         port: cfg.port,
       });
+      log.info('Dominds restart helper spawned', undefined, {
+        helperPid,
+        traceFile: trace.traceFile,
+      });
       setImmediate(() => {
         void stopAndExitForRestart().catch((error: unknown) => {
+          void appendRestartTraceBestEffort(trace, 'parent.stop_and_exit.error', {
+            message: error instanceof Error ? error.message : String(error),
+            stack: error instanceof Error ? (error.stack ?? null) : null,
+          });
           log.error('Failed to stop Dominds server during restart', error);
           restartState = previousRestartRequiredState ?? IDLE_RESTART_STATE;
+          activeRestartTraceFile = null;
           publishStatusUpdateSoon();
         });
       });
     } catch (error) {
+      await appendRestartTraceBestEffort(trace, 'parent.restart_error', {
+        message: error instanceof Error ? error.message : String(error),
+        stack: error instanceof Error ? (error.stack ?? null) : null,
+      });
       restartState = previousRestartRequiredState ?? IDLE_RESTART_STATE;
+      activeRestartTraceFile = null;
       publishStatusUpdateSoon();
       throw error;
     }

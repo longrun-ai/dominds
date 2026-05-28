@@ -4,21 +4,21 @@ import * as path from 'node:path';
 import { extractGlobalRtwsChdir } from '../../main/bootstrap/rtws-cli';
 
 function main(): void {
-  const baseCwd = path.join(path.sep, 'base', 'cwd');
+  const absWs = path.join(path.sep, 'abs', 'ws');
+  const absFirst = path.join(path.sep, 'abs', 'first');
+  const absSecond = path.join(path.sep, 'abs', 'second');
 
   {
     const parsed = extractGlobalRtwsChdir({
-      argv: ['webui', '-C', './ws', '--nobrowser'],
-      baseCwd,
+      argv: ['webui', '-C', absWs, '--nobrowser'],
     });
-    assert.equal(parsed.chdir, path.resolve(baseCwd, './ws'));
+    assert.equal(parsed.chdir, absWs);
     assert.deepEqual(parsed.argv, ['webui', '--nobrowser']);
   }
 
   {
     const parsed = extractGlobalRtwsChdir({
       argv: ['-C', '/abs/ws', 'tui', 'task.tsk'],
-      baseCwd,
     });
     assert.equal(parsed.chdir, '/abs/ws');
     assert.deepEqual(parsed.argv, ['tui', 'task.tsk']);
@@ -27,7 +27,6 @@ function main(): void {
   {
     const parsed = extractGlobalRtwsChdir({
       argv: ['read', '--cwd=/foo', 'dev'],
-      baseCwd,
     });
     assert.equal(parsed.chdir, '/foo');
     assert.deepEqual(parsed.argv, ['read', 'dev']);
@@ -36,7 +35,6 @@ function main(): void {
   {
     const parsed = extractGlobalRtwsChdir({
       argv: ['tui', '--', '-C', 'not-an-option'],
-      baseCwd,
     });
     assert.equal(parsed.chdir, undefined);
     assert.deepEqual(parsed.argv, ['tui', '--', '-C', 'not-an-option']);
@@ -44,12 +42,27 @@ function main(): void {
 
   {
     const parsed = extractGlobalRtwsChdir({
-      argv: ['-C', './first', 'webui', '-C', './second'],
-      baseCwd,
+      argv: ['-C', absFirst, 'webui', '-C', absSecond],
     });
-    assert.equal(parsed.chdir, path.resolve(baseCwd, './second'));
+    assert.equal(parsed.chdir, absSecond);
     assert.deepEqual(parsed.argv, ['webui']);
   }
+
+  assert.throws(
+    () =>
+      extractGlobalRtwsChdir({
+        argv: ['webui', '-C', './ws'],
+      }),
+    /-C requires an absolute directory path: \.\/ws/,
+  );
+
+  assert.throws(
+    () =>
+      extractGlobalRtwsChdir({
+        argv: ['read', '--cwd=relative/ws'],
+      }),
+    /--cwd requires an absolute directory path: relative\/ws/,
+  );
 }
 
 main();

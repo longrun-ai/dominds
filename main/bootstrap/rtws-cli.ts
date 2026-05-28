@@ -8,11 +8,17 @@ export type RtwsCliParseResult = Readonly<{
 export function extractGlobalRtwsChdir(
   params: Readonly<{
     argv: ReadonlyArray<string>;
-    baseCwd: string;
   }>,
 ): RtwsCliParseResult {
   let chdir: string | undefined;
   const out: string[] = [];
+
+  const readAbsoluteChdir = (argName: string, value: string): string => {
+    if (!path.isAbsolute(value)) {
+      throw new Error(`${argName} requires an absolute directory path: ${value}`);
+    }
+    return value;
+  };
 
   for (let i = 0; i < params.argv.length; i++) {
     const arg = params.argv[i];
@@ -27,7 +33,7 @@ export function extractGlobalRtwsChdir(
       if (typeof next !== 'string' || next.length === 0 || next === '--') {
         throw new Error(`${arg} requires a directory argument`);
       }
-      chdir = path.isAbsolute(next) ? next : path.resolve(params.baseCwd, next);
+      chdir = readAbsoluteChdir(arg, next);
       i++;
       continue;
     }
@@ -35,14 +41,14 @@ export function extractGlobalRtwsChdir(
     if (arg.startsWith('--cwd=')) {
       const value = arg.slice('--cwd='.length);
       if (value.length === 0) throw new Error(`--cwd requires a directory argument`);
-      chdir = path.isAbsolute(value) ? value : path.resolve(params.baseCwd, value);
+      chdir = readAbsoluteChdir('--cwd', value);
       continue;
     }
 
     if (arg.startsWith('--chdir=')) {
       const value = arg.slice('--chdir='.length);
       if (value.length === 0) throw new Error(`--chdir requires a directory argument`);
-      chdir = path.isAbsolute(value) ? value : path.resolve(params.baseCwd, value);
+      chdir = readAbsoluteChdir('--chdir', value);
       continue;
     }
 

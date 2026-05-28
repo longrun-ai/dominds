@@ -4,7 +4,7 @@ Chinese version: [中文版](./cli-usage.zh.md)
 
 The `dominds` CLI provides a unified entry point, but the **primary interaction experience is the Web UI** (the default `dominds` command). This guide focuses on the Web UI workflow.
 
-> Note: In this document, **rtws (runtime workspace)** refers to the runtime root directory Dominds uses (by default `process.cwd()`, switchable via `-C <dir>`).
+> Note: In this document, **rtws (runtime workspace)** refers to the runtime root directory Dominds uses (by default `process.cwd()`, switchable via `-C <abs-dir>`; `-C` only accepts absolute paths).
 
 > Note: `dominds tui` / `dominds run` are currently reserved subcommand names and do not have a stable implementation yet. As a result, this guide does not document TUI options or detailed usage.
 
@@ -49,7 +49,7 @@ dominds webui [options]
 
 # Common: choose port / rtws
 dominds webui -p 8080
-dominds webui -C ./my-rtws
+dominds webui -C /path/to/my-rtws
 
 # Minds reader: inspect team configuration
 dominds read [options] [member-id]
@@ -83,7 +83,7 @@ Start the web-based user interface for the current rtws. This provides a graphic
 
 - `-p, --port <port>` - Port to listen on; a bare port binds strictly, suffix `+` tries higher ports, and suffix `-` tries lower ports (omitting `--port` is equivalent to `5666-`)
 - `-h, --host <host>` - Host to bind to (default: localhost)
-- `-C, --cwd <dir>` - Change to rtws directory before starting
+- `-C, --cwd <abs-dir>` - Change to rtws directory before starting; absolute paths only
 - `--help` - Show help message
 
 **Examples:**
@@ -92,7 +92,7 @@ Start the web-based user interface for the current rtws. This provides a graphic
 dominds
 dominds webui -p 8080
 dominds webui -p 8080+
-dominds webui -C ./my-rtws
+dominds webui -C /path/to/my-rtws
 ```
 
 **Common use cases:**
@@ -122,7 +122,7 @@ Read and inspect agent prompts/configuration for the rtws. This is commonly used
 
 **Options:**
 
-- `-C, --cwd <dir>` - Change to rtws directory before reading
+- `-C, --cwd <abs-dir>` - Change to rtws directory before reading; absolute paths only
 - `--only-prompt` - Show only system prompts
 - `--only-mem` - Show only memory
 - `--help` - Show help message
@@ -132,7 +132,7 @@ Read and inspect agent prompts/configuration for the rtws. This is commonly used
 ```bash
 dominds read
 dominds read developer
-dominds read -C ./my-rtws
+dominds read -C /path/to/my-rtws
 dominds read --only-prompt
 dominds read --only-mem
 ```
@@ -190,7 +190,7 @@ dominds
 dominds webui -p 8080
 
 # 3) Start in a specific rtws
-dominds webui -C ./my-rtws
+dominds webui -C /path/to/my-rtws
 
 # 4) Inspect current team/rtws configuration
 dominds read

@@ -12,18 +12,17 @@ function printHelp(): void {
 Dominds Tests CLI
 
 Usage:
-  pnpm -C tests run rtws -- [--shared-rtws] [-C <dir>] <script.ts> [script args...]
+  pnpm -C tests run rtws -- [--shared-rtws] [-C <abs-dir>] <script.ts> [script args...]
 
 Notes:
   - Default mode is isolated: each run copies tests/script-rtws into a unique temp rtws.
   - This avoids cross-test pollution and allows safe parallel runs.
   - Use --shared-rtws only for debugging (runs directly in tests/script-rtws).
-  - -C is parsed for parity with dominds CLI, but only tests/script-rtws is accepted.
+  - -C is parsed for parity with dominds CLI, but only the absolute tests/script-rtws path is accepted.
   - Set DOMINDS_TEST_RTWS_KEEP_TMP=1 to keep isolated temp rtws after run.
 
-	Examples:
+	  Examples:
 	  pnpm -C tests run rtws -- kernel-driver/context-assembly-order.ts
-	  pnpm -C tests run rtws -- -C script-rtws kernel-driver/sideDialog-queue-commit-mirror.ts
 	  pnpm -C tests run rtws -- --shared-rtws kernel-driver/sideDialog-queue-commit-mirror.ts
 	`);
 }
@@ -55,7 +54,6 @@ function parseRtwsMode(rawArgv: ReadonlyArray<string>): ModeParseResult {
 
 async function main(): Promise<void> {
   const testsRoot = path.resolve(__dirname);
-  const baseCwd = process.cwd();
   const templateRtws = path.resolve(testsRoot, 'script-rtws');
   const rawArgv = process.argv.slice(2);
   const normalizedArgv = rawArgv.length > 0 && rawArgv[0] === '--' ? rawArgv.slice(1) : rawArgv;
@@ -63,7 +61,7 @@ async function main(): Promise<void> {
 
   let parsed: { chdir?: string; argv: ReadonlyArray<string> };
   try {
-    parsed = extractGlobalRtwsChdir({ argv: argvForParse, baseCwd });
+    parsed = extractGlobalRtwsChdir({ argv: argvForParse });
   } catch (err) {
     console.error('Error:', err instanceof Error ? err.message : String(err));
     process.exit(1);

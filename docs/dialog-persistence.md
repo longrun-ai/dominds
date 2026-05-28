@@ -4,7 +4,7 @@ Chinese version: [中文版](./dialog-persistence.zh.md)
 
 This document describes the persistence layer and storage mechanisms for the Dominds dialog system, including file system conventions, data structures, and storage patterns.
 
-> Note: In this document, **rtws (runtime workspace)** refers to Dominds' runtime root directory (by default `process.cwd()`, switchable via `-C <dir>`).
+> Note: In this document, **rtws (runtime workspace)** refers to Dominds' runtime root directory (by default `process.cwd()`, switchable via `-C <abs-dir>`; `-C` only accepts absolute paths).
 
 ## Current Implementation Status
 

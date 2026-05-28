@@ -84,10 +84,10 @@ function printHelp(): void {
 Dominds CLI - AI-driven DevOps framework with persistent memory
 
 Usage:
-  dominds [-C <dir>] [subcommand] [options]
+  dominds [-C <abs-dir>] [subcommand] [options]
 
 Global Options:
-  -C <dir>            Change to runtime workspace directory (rtws) before running
+  -C <abs-dir>        Change to absolute runtime workspace directory (rtws) before running
 
 Subcommands:
   webui [options]    Start WebUI server (default)
@@ -110,7 +110,7 @@ Subcommands:
 Examples:
   dominds                    # Start WebUI server (default)
   dominds webui              # Start WebUI server
-  dominds -C ./my-ws webui   # Start in specific rtws
+  dominds -C /path/to/my-ws webui # Start in specific rtws
   dominds tui --help         # Show TUI help
   dominds run task.tsk       # Run task dialog
   dominds read               # Read team configuration
@@ -139,10 +139,9 @@ function printVersion(): void {
 }
 
 export async function main(argv: readonly string[] = process.argv.slice(2)): Promise<void> {
-  const baseCwd = process.cwd();
   let parsed: { chdir?: string; argv: ReadonlyArray<string> };
   try {
-    parsed = extractGlobalRtwsChdir({ argv, baseCwd });
+    parsed = extractGlobalRtwsChdir({ argv });
   } catch (err) {
     console.error('Error:', err instanceof Error ? err.message : String(err));
     process.exit(1);
@@ -154,10 +153,7 @@ export async function main(argv: readonly string[] = process.argv.slice(2)): Pro
   if (args.length === 0) {
     if (parsed.chdir) {
       try {
-        const absoluteRtwsRoot = path.isAbsolute(parsed.chdir)
-          ? parsed.chdir
-          : path.resolve(baseCwd, parsed.chdir);
-        process.chdir(absoluteRtwsRoot);
+        process.chdir(parsed.chdir);
       } catch (err) {
         console.error(`Error: failed to change directory to '${parsed.chdir}':`, err);
         process.exit(1);
@@ -208,10 +204,7 @@ export async function main(argv: readonly string[] = process.argv.slice(2)): Pro
   if (!shouldSkipRtwsSetup) {
     if (parsed.chdir) {
       try {
-        const absoluteRtwsRoot = path.isAbsolute(parsed.chdir)
-          ? parsed.chdir
-          : path.resolve(baseCwd, parsed.chdir);
-        process.chdir(absoluteRtwsRoot);
+        process.chdir(parsed.chdir);
       } catch (err) {
         console.error(`Error: failed to change directory to '${parsed.chdir}':`, err);
         process.exit(1);

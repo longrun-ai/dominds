@@ -264,8 +264,8 @@ Example / 示例（概念）:
 
 ### rtws（运行时工作区）
 
-- EN: **rtws** (runtime workspace) is the directory Dominds treats as its runtime root (by default it is `process.cwd()`, and can be changed via `-C <dir>`). Files like `.minds/` and `.dialogs/` live under the rtws.
-- ZH: **rtws（运行时工作区）**是 Dominds 运行时使用的根目录（默认等于 `process.cwd()`，可通过 `-C <dir>` 切换）。诸如 `.minds/`、`.dialogs/` 等运行态目录均位于 rtws 下。
+- EN: **rtws** (runtime workspace) is the directory Dominds treats as its runtime root (by default it is `process.cwd()`, and can be changed via `-C <abs-dir>`; `-C` only accepts absolute paths). Files like `.minds/` and `.dialogs/` live under the rtws.
+- ZH: **rtws（运行时工作区）**是 Dominds 运行时使用的根目录（默认等于 `process.cwd()`，可通过 `-C <abs-dir>` 切换；`-C` 只接受绝对路径）。诸如 `.minds/`、`.dialogs/` 等运行态目录均位于 rtws 下。
 
 - EN: Wording rule: when the meaning is **rtws**, prefer writing “rtws (runtime workspace)” (or just “rtws” after the first mention) rather than the ambiguous generic “workspace”.
 - ZH: 用词规则：当语义指向 **rtws** 时，优先写“rtws（运行时工作区）”（或在已定义后只写“rtws”），避免在对外提示/文档中只写“工作区”从而与其他语境的 workspace/workdir 混淆。
