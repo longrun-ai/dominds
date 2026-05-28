@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import * as fs from 'node:fs/promises';
+import { createRequire } from 'node:module';
 import * as os from 'node:os';
 import * as path from 'node:path';
 
@@ -8,7 +9,10 @@ import {
   createSelfSignedCertificate,
   findAutoHttpsCertificateForHost,
 } from '../main/server/certificates';
-import { isLanHttpsHost } from '../main/server/network-hosts';
+import { isLanHttpsHost, resolveLanHttpsHostsForBindHost } from '../main/server/network-hosts';
+
+const requireFn = createRequire(__filename);
+const mutableOs = requireFn('node:os') as typeof os;
 
 async function withTempCertsDir<T>(fn: (certsDirAbs: string) => Promise<T>): Promise<T> {
   const certsDirAbs = await fs.mkdtemp(path.join(os.tmpdir(), 'dominds-certs-'));
@@ -185,6 +189,19 @@ async function captureCliExit(fn: () => Promise<void>): Promise<{
   throw new Error('Expected CLI to call process.exit');
 }
 
+async function withPatchedDetectedHostname<T>(hostname: string, fn: () => Promise<T>): Promise<T> {
+  const originalHostname = mutableOs.hostname;
+  const originalNetworkInterfaces = mutableOs.networkInterfaces;
+  mutableOs.hostname = (): string => hostname;
+  mutableOs.networkInterfaces = (): ReturnType<typeof os.networkInterfaces> => ({});
+  try {
+    return await fn();
+  } finally {
+    mutableOs.hostname = originalHostname;
+    mutableOs.networkInterfaces = originalNetworkInterfaces;
+  }
+}
+
 async function testCertStatusDefaultsToDetectedHosts(): Promise<void> {
   await withTempCertsDir(async (certsDirAbs) => {
     const lines = await captureConsoleLog(async () => {
@@ -235,8 +252,24 @@ function testLanHostFiltering(): void {
   assert.equal(isLanHttpsHost('192.168.55.10'), true);
 }
 
+async function testDetectedHostsExcludeSimpleHostname(): Promise<void> {
+  await withPatchedDetectedHostname('cymp', async () => {
+    const hosts = await resolveLanHttpsHostsForBindHost('0.0.0.0');
+    assert.equal(hosts.includes('cymp'), false);
+  });
+}
+
+async function testDetectedHostsIncludeQualifiedHostname(): Promise<void> {
+  await withPatchedDetectedHostname('cymp.lan', async () => {
+    const hosts = await resolveLanHttpsHostsForBindHost('0.0.0.0');
+    assert.equal(hosts.includes('cymp.lan'), true);
+  });
+}
+
 async function main(): Promise<void> {
   testLanHostFiltering();
+  await testDetectedHostsExcludeSimpleHostname();
+  await testDetectedHostsIncludeQualifiedHostname();
   await testCreateAndFindMatchingCertificate();
   await testLoopbackDoesNotEnableHttps();
   await testForceRequiredForExistingFiles();

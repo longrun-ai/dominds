@@ -3,9 +3,12 @@ import * as net from 'node:net';
 import * as os from 'node:os';
 import { createLogger } from '../log';
 
-const OUTBOUND_PROBE_HOST = 'github.com';
-const OUTBOUND_PROBE_PORT = 443;
-const OUTBOUND_PROBE_TIMEOUT_MS = 800;
+const UDP_ROUTE_PROBE_TARGETS: Readonly<
+  Record<'ipv4' | 'ipv6', Readonly<{ host: string; port: number }>>
+> = {
+  ipv4: { host: '192.0.2.1', port: 443 },
+  ipv6: { host: '2001:db8::1', port: 443 },
+};
 const log = createLogger('network-hosts');
 
 export function normalizeNetworkHost(host: string): string {
@@ -62,7 +65,7 @@ export async function resolveLanHttpsHostsForBindHost(
   bindHost: string,
 ): Promise<readonly string[]> {
   const normalizedHost = normalizeNetworkHost(bindHost);
-  log.info('Resolving LAN HTTPS certificate hosts', undefined, {
+  log.debug('Resolving LAN HTTPS certificate hosts', undefined, {
     bindHost,
     normalizedHost,
   });
@@ -79,10 +82,10 @@ export async function resolveLanHttpsHostsForBindHost(
     });
   }
   const accepted = isLanHttpsHost(normalizedHost);
-  log.info('Resolved explicit LAN HTTPS certificate host', undefined, {
+  log.info('Resolved LAN HTTPS certificate hosts', undefined, {
     bindHost,
     normalizedHost,
-    accepted,
+    acceptedHosts: accepted ? [normalizedHost] : [],
   });
   return accepted ? [normalizedHost] : [];
 }
@@ -97,17 +100,21 @@ async function resolveBindAllLanHttpsHosts(params: {
 }): Promise<readonly string[]> {
   const rawCandidates: string[] = [];
   for (const family of params.families) {
-    rawCandidates.push(...(await getUdpOutboundHosts(family)));
+    rawCandidates.push(...(await getUdpRouteLocalHosts(family)));
   }
   for (const family of params.families) {
     rawCandidates.push(...getNetworkInterfaceHosts(family));
   }
   const hostname = os.hostname();
-  log.info('LAN HTTPS host detection hostname candidate', undefined, {
+  const hostnameAccepted = isDetectedHostnameCandidate(hostname);
+  log.debug('LAN HTTPS host detection hostname candidate', undefined, {
     method: 'os.hostname',
     host: hostname,
+    acceptedCandidate: hostnameAccepted,
   });
-  rawCandidates.push(hostname);
+  if (hostnameAccepted) {
+    rawCandidates.push(hostname);
+  }
 
   const uniqueCandidates = uniqueHosts(rawCandidates);
   const acceptedHosts: string[] = [];
@@ -119,7 +126,12 @@ async function resolveBindAllLanHttpsHosts(params: {
       rejectedHosts.push(host);
     }
   }
-  log.info('Resolved bind-all LAN HTTPS certificate hosts', undefined, {
+  log.info('Resolved LAN HTTPS certificate hosts', undefined, {
+    bindHost: params.bindHost,
+    families: params.families,
+    acceptedHosts,
+  });
+  log.debug('Resolved bind-all LAN HTTPS certificate host diagnostics', undefined, {
     bindHost: params.bindHost,
     families: params.families,
     rawCandidates,
@@ -130,31 +142,30 @@ async function resolveBindAllLanHttpsHosts(params: {
   return acceptedHosts;
 }
 
-async function getUdpOutboundHosts(kind: 'ipv4' | 'ipv6'): Promise<readonly string[]> {
-  const host = await getUdpOutboundHost(kind);
+async function getUdpRouteLocalHosts(kind: 'ipv4' | 'ipv6'): Promise<readonly string[]> {
+  const host = await getUdpRouteLocalHost(kind);
   return host === null ? [] : [host];
 }
 
-async function getUdpOutboundHost(kind: 'ipv4' | 'ipv6'): Promise<string | null> {
+async function getUdpRouteLocalHost(kind: 'ipv4' | 'ipv6'): Promise<string | null> {
   return await new Promise<string | null>((resolve) => {
-    log.info('LAN HTTPS host detection UDP probe start', undefined, {
-      method: 'udp_outbound_probe',
+    const target = UDP_ROUTE_PROBE_TARGETS[kind];
+    log.debug('LAN HTTPS host detection UDP route probe start', undefined, {
+      method: 'udp_route_local_address_probe',
       family: kind,
-      remoteHost: OUTBOUND_PROBE_HOST,
-      remotePort: OUTBOUND_PROBE_PORT,
-      timeoutMs: OUTBOUND_PROBE_TIMEOUT_MS,
+      targetHost: target.host,
+      targetPort: target.port,
     });
     const socket = dgram.createSocket(kind === 'ipv4' ? 'udp4' : 'udp6');
     let settled = false;
     const finish = (host: string | null, reason: string): void => {
       if (settled) return;
       settled = true;
-      clearTimeout(timeout);
       socket.removeAllListeners('error');
       socket.close();
       const normalizedHost = host === null ? null : normalizeNetworkHost(host);
-      log.info('LAN HTTPS host detection UDP probe finish', undefined, {
-        method: 'udp_outbound_probe',
+      log.debug('LAN HTTPS host detection UDP route probe finish', undefined, {
+        method: 'udp_route_local_address_probe',
         family: kind,
         reason,
         host,
@@ -162,18 +173,14 @@ async function getUdpOutboundHost(kind: 'ipv4' | 'ipv6'): Promise<string | null>
       });
       resolve(normalizedHost);
     };
-    const timeout = setTimeout(() => {
-      finish(null, 'timeout');
-    }, OUTBOUND_PROBE_TIMEOUT_MS);
-    timeout.unref();
     socket.once('error', (error: Error) => {
-      log.info('LAN HTTPS host detection UDP probe error', error, {
-        method: 'udp_outbound_probe',
+      log.debug('LAN HTTPS host detection UDP route probe error', error, {
+        method: 'udp_route_local_address_probe',
         family: kind,
       });
       finish(null, 'error');
     });
-    socket.connect(OUTBOUND_PROBE_PORT, OUTBOUND_PROBE_HOST, () => {
+    socket.connect(target.port, target.host, () => {
       const address = socket.address();
       if (typeof address === 'string') {
         finish(null, 'non_ip_socket_address');
@@ -218,13 +225,20 @@ function getNetworkInterfaceHosts(kind: 'ipv4' | 'ipv6'): readonly string[] {
       }
     }
   }
-  log.info('LAN HTTPS host detection networkInterfaces result', undefined, {
+  log.debug('LAN HTTPS host detection networkInterfaces result', undefined, {
     method: 'os.networkInterfaces',
     family: kind,
     hosts,
     inspectedInterfaces,
   });
   return hosts;
+}
+
+function isDetectedHostnameCandidate(host: string): boolean {
+  const normalizedHost = normalizeNetworkHost(host);
+  if (!isLanHttpsHost(normalizedHost)) return false;
+  if (net.isIP(normalizedHost) !== 0) return true;
+  return normalizedHost.includes('.');
 }
 
 function uniqueHosts(rawHosts: readonly string[]): readonly string[] {
