@@ -58,8 +58,7 @@ dominds read [options] [member-id]
 
 # 证书工具：创建/检查本机 HTTPS 证书
 dominds cert create [--host <host>] [--days <days>] [--force]
-dominds cert self-cert [--host <host>] [--days <days>] [--force]
-dominds cert status --host <host> [--port <port>] [--origin]
+dominds cert status [--host <host>] [--port <port>] [--origin]
 
 # rtws 创建：搭建新项目/运行时工作区
 dominds create <template> [directory]
@@ -155,8 +154,7 @@ dominds read --only-mem
 
 ```bash
 dominds cert create [--host <host>] [--days <days>] [--force]
-dominds cert self-cert [--host <host>] [--days <days>] [--force]
-dominds cert status --host <host> [--port <port>] [--origin]
+dominds cert status [--host <host>] [--port <port>] [--origin]
 ```
 
 创建或检查 Dominds WebUI 的本机 HTTPS 证书。证书保存在 `~/.dominds/certs/`，按 DNS/IP 主机名匹配，不绑定端口；同一张证书可覆盖该主机上的所有 WebUI 端口。
@@ -174,11 +172,11 @@ dominds cert status --host <host> [--port <port>] [--origin]
 ```bash
 dominds cert create
 dominds cert create --host 192.168.1.10 --host my-host.local
-dominds cert status --host 0.0.0.0
-dominds cert status --host 0.0.0.0 --port 5666 --origin
+dominds cert status
+dominds cert status --port 5666 --origin
 ```
 
-`localhost`、`loopback`、`127.0.0.0/8`、`::1`、`0.0.0.0`、`::` 不会作为 HTTPS 证书主机。`0.0.0.0` / `::` 只表示绑定所有地址，匹配证书时会使用检测到的非 loopback LAN 主机。
+`localhost`、`loopback`、`127.0.0.0/8`、`169.254.0.0/16`、`::1`、`fe80::/10`、`0.0.0.0`、`::` 不会作为 HTTPS 证书主机。`0.0.0.0` / `::` 只表示绑定所有地址，匹配证书时会使用检测到的非 loopback LAN 主机。
 
 ### rtws 创建
 

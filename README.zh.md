@@ -203,11 +203,11 @@ dominds cert create
 # 显式指定证书 SAN，可重复 --host
 dominds cert create --host 192.168.1.10 --host my-host.local
 
-# 查看指定 host 是否能匹配到证书
-dominds cert status --host 0.0.0.0
+# 查看检测到的 LAN 主机是否能匹配到证书
+dominds cert status
 ```
 
-`localhost`、`loopback`、`127.0.0.0/8`、`::1`、`0.0.0.0`、`::` 不会作为 HTTPS 证书主机；其中 `0.0.0.0` / `::` 仅表示绑定所有地址，匹配证书时会使用检测到的非 loopback LAN 主机。使用裸 `--port 5666` 启动时，Dominds 会认为 HTTPS 由前置代理负责，不启用内建 HTTPS；使用默认端口或 `--port 5666+/-` 时才会自动启用内建 HTTPS。
+`localhost`、`loopback`、`127.0.0.0/8`、`169.254.0.0/16`、`::1`、`fe80::/10`、`0.0.0.0`、`::` 不会作为 HTTPS 证书主机；其中 `0.0.0.0` / `::` 仅表示绑定所有地址，匹配证书时会使用检测到的非 loopback LAN 主机。使用裸 `--port 5666` 启动时，Dominds 会认为 HTTPS 由前置代理负责，不启用内建 HTTPS；使用默认端口或 `--port 5666+/-` 时才会自动启用内建 HTTPS。
 
 ## 从零开始（空文件夹启动）
 

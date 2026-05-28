@@ -264,11 +264,11 @@ dominds cert create
 # Add explicit SAN hosts; --host can be repeated
 dominds cert create --host 192.168.1.10 --host my-host.local
 
-# Inspect whether a host can use an HTTPS certificate
-dominds cert status --host 0.0.0.0
+# Inspect whether the detected LAN hosts can use an HTTPS certificate
+dominds cert status
 ```
 
-`localhost`, `loopback`, `127.0.0.0/8`, `::1`, `0.0.0.0`, and `::` are not certificate hosts. `0.0.0.0` / `::` only mean bind-all; certificate matching uses detected non-loopback LAN hosts. A bare `--port 5666` disables Dominds built-in HTTPS and assumes a front proxy handles HTTPS, while the default port behavior and `--port 5666+/-` may auto-enable built-in HTTPS when a matching certificate exists.
+`localhost`, `loopback`, `127.0.0.0/8`, `169.254.0.0/16`, `::1`, `fe80::/10`, `0.0.0.0`, and `::` are not certificate hosts. `0.0.0.0` / `::` only mean bind-all; certificate matching uses detected non-loopback LAN hosts. A bare `--port 5666` disables Dominds built-in HTTPS and assumes a front proxy handles HTTPS, while the default port behavior and `--port 5666+/-` may auto-enable built-in HTTPS when a matching certificate exists.
 
 ## Start from scratch
 

@@ -15,11 +15,10 @@ Dominds certificate tools
 
 Usage:
   dominds cert create [--host <host>] [--days <days>] [--force]
-  dominds cert self-cert [--host <host>] [--days <days>] [--force]
-  dominds cert status --host <host> [--port <port>] [--origin]
+  dominds cert status [--host <host>] [--port <port>] [--origin]
 
 Options:
-  --host <host>      Host name or IP address (default for create: detected non-loopback LAN hosts)
+  --host <host>      Host name or IP address (default: detected non-loopback LAN hosts)
   --days <days>      Certificate validity in days (default: ${DEFAULT_SELF_SIGNED_CERT_DAYS})
   --force            Overwrite existing generated files
   --port <port>      Port for status --origin output
@@ -31,7 +30,10 @@ a certificate/key pair that matches the bind host or, for 0.0.0.0/::, a detected
 `);
 }
 
-export async function main(args: readonly string[] = process.argv.slice(2)): Promise<void> {
+export async function main(
+  args: readonly string[] = process.argv.slice(2),
+  runtimeOptions: Readonly<{ certsDirAbs?: string }> = {},
+): Promise<void> {
   const first = args[0];
   if (first === undefined || first === '--help' || first === '-h') {
     printHelp();
@@ -58,6 +60,7 @@ export async function main(args: readonly string[] = process.argv.slice(2)): Pro
       altHosts: options.altHosts,
       days: options.days,
       force: options.force,
+      certsDirAbs: runtimeOptions.certsDirAbs,
     });
     console.log(`Created self-signed certificate for ${created.host}`);
     console.log(`  hosts: ${created.hosts.join(', ')}`);
@@ -68,17 +71,17 @@ export async function main(args: readonly string[] = process.argv.slice(2)): Pro
     return;
   }
 
-  if (options.host === undefined) {
-    console.error('Error: cert status requires --host <host>');
-    printHelp();
-    process.exit(1);
-  }
-  const lookup = await findAutoHttpsCertificateForHost({ host: options.host });
   if (options.origin) {
     if (options.port === undefined) {
       console.error('Error: cert status --origin requires --port <port>');
       process.exit(1);
     }
+    const lookup = await withConsoleInfoOnStderr(async () =>
+      findAutoHttpsCertificateForHost({
+        host: options.host ?? '::',
+        certsDirAbs: runtimeOptions.certsDirAbs,
+      }),
+    );
     console.log(
       formatServerOrigin({
         scheme: lookup.kind === 'found' ? 'https' : 'http',
@@ -89,6 +92,10 @@ export async function main(args: readonly string[] = process.argv.slice(2)): Pro
     return;
   }
 
+  const lookup = await findAutoHttpsCertificateForHost({
+    host: options.host ?? '::',
+    certsDirAbs: runtimeOptions.certsDirAbs,
+  });
   for (const diagnostic of lookup.diagnostics) {
     console.warn(`warning: ${diagnostic.message}`);
   }
@@ -107,7 +114,6 @@ export async function main(args: readonly string[] = process.argv.slice(2)): Pro
 function parseAction(value: string): CertAction | null {
   switch (value) {
     case 'create':
-    case 'self-cert':
       return 'create';
     case 'status':
       return 'status';
@@ -140,19 +146,27 @@ function parseOptions(args: readonly string[], action: CertAction): ParsedOption
     const arg = args[i];
     if (arg === '--host') {
       const next = args[i + 1];
-      if (!next) return { kind: 'error', message: '--host requires a value' };
-      if (host === undefined) host = next;
-      else altHosts.push(next);
+      if (next === undefined || next === '') {
+        return { kind: 'error', message: '--host requires a value' };
+      }
+      const hostResult = addHostOption({ action, host, altHosts, value: next });
+      if (hostResult.kind === 'error') return hostResult;
+      host = hostResult.host;
       i += 1;
       continue;
     }
     if (arg.startsWith('--host=')) {
       const value = arg.slice('--host='.length);
-      if (host === undefined) host = value;
-      else altHosts.push(value);
+      if (value === '') return { kind: 'error', message: '--host requires a value' };
+      const hostResult = addHostOption({ action, host, altHosts, value });
+      if (hostResult.kind === 'error') return hostResult;
+      host = hostResult.host;
       continue;
     }
     if (arg === '--days') {
+      if (action !== 'create') {
+        return { kind: 'error', message: '--days is only valid for cert create' };
+      }
       const next = args[i + 1];
       const parsed = next === undefined ? null : parseInteger(next);
       if (parsed === null) return { kind: 'error', message: '--days requires an integer' };
@@ -161,12 +175,18 @@ function parseOptions(args: readonly string[], action: CertAction): ParsedOption
       continue;
     }
     if (arg.startsWith('--days=')) {
+      if (action !== 'create') {
+        return { kind: 'error', message: '--days is only valid for cert create' };
+      }
       const parsed = parseInteger(arg.slice('--days='.length));
       if (parsed === null) return { kind: 'error', message: '--days requires an integer' };
       days = parsed;
       continue;
     }
     if (arg === '--port') {
+      if (action !== 'status') {
+        return { kind: 'error', message: '--port is only valid for cert status' };
+      }
       const next = args[i + 1];
       const parsed = next === undefined ? null : parseInteger(next);
       if (parsed === null || parsed < 1 || parsed > 65535) {
@@ -177,6 +197,9 @@ function parseOptions(args: readonly string[], action: CertAction): ParsedOption
       continue;
     }
     if (arg.startsWith('--port=')) {
+      if (action !== 'status') {
+        return { kind: 'error', message: '--port is only valid for cert status' };
+      }
       const parsed = parseInteger(arg.slice('--port='.length));
       if (parsed === null || parsed < 1 || parsed > 65535) {
         return { kind: 'error', message: '--port requires a valid TCP port' };
@@ -185,10 +208,16 @@ function parseOptions(args: readonly string[], action: CertAction): ParsedOption
       continue;
     }
     if (arg === '--force') {
+      if (action !== 'create') {
+        return { kind: 'error', message: '--force is only valid for cert create' };
+      }
       force = true;
       continue;
     }
     if (arg === '--origin') {
+      if (action !== 'status') {
+        return { kind: 'error', message: '--origin is only valid for cert status' };
+      }
       origin = true;
       continue;
     }
@@ -206,10 +235,43 @@ function parseOptions(args: readonly string[], action: CertAction): ParsedOption
   return { kind: 'ok', host, days, altHosts, force, port, origin };
 }
 
+function addHostOption(params: {
+  action: CertAction;
+  host: string | undefined;
+  altHosts: string[];
+  value: string;
+}): { kind: 'ok'; host: string | undefined } | { kind: 'error'; message: string } {
+  if (params.host === undefined) {
+    return { kind: 'ok', host: params.value };
+  }
+  if (params.action !== 'create') {
+    return { kind: 'error', message: '--host can only be repeated for cert create' };
+  }
+  params.altHosts.push(params.value);
+  return { kind: 'ok', host: params.host };
+}
+
 function parseInteger(raw: string): number | null {
   if (!/^[0-9]+$/.test(raw)) return null;
   const parsed = Number(raw);
   return Number.isSafeInteger(parsed) ? parsed : null;
+}
+
+async function withConsoleInfoOnStderr<T>(fn: () => Promise<T>): Promise<T> {
+  const originalInfo = console.info;
+  const originalDebug = console.debug;
+  console.info = (...args: readonly unknown[]): void => {
+    console.error(...args);
+  };
+  console.debug = (...args: readonly unknown[]): void => {
+    console.error(...args);
+  };
+  try {
+    return await fn();
+  } finally {
+    console.info = originalInfo;
+    console.debug = originalDebug;
+  }
 }
 
 if (require.main === module) {

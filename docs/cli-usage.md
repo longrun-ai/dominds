@@ -58,8 +58,7 @@ dominds read [options] [member-id]
 
 # Certificate tools: create/inspect local HTTPS certificates
 dominds cert create [--host <host>] [--days <days>] [--force]
-dominds cert self-cert [--host <host>] [--days <days>] [--force]
-dominds cert status --host <host> [--port <port>] [--origin]
+dominds cert status [--host <host>] [--port <port>] [--origin]
 
 # rtws creation: scaffold a new runtime workspace
 dominds create <template> [directory]
@@ -148,8 +147,7 @@ dominds read --only-mem
 
 ```bash
 dominds cert create [--host <host>] [--days <days>] [--force]
-dominds cert self-cert [--host <host>] [--days <days>] [--force]
-dominds cert status --host <host> [--port <port>] [--origin]
+dominds cert status [--host <host>] [--port <port>] [--origin]
 ```
 
 Create or inspect local HTTPS certificates for the Dominds WebUI. Certificates live in `~/.dominds/certs/` and match DNS/IP hostnames, not ports; one certificate covers every WebUI port on that host.
@@ -167,11 +165,11 @@ Create or inspect local HTTPS certificates for the Dominds WebUI. Certificates l
 ```bash
 dominds cert create
 dominds cert create --host 192.168.1.10 --host my-host.local
-dominds cert status --host 0.0.0.0
-dominds cert status --host 0.0.0.0 --port 5666 --origin
+dominds cert status
+dominds cert status --port 5666 --origin
 ```
 
-`localhost`, `loopback`, `127.0.0.0/8`, `::1`, `0.0.0.0`, and `::` are not certificate hosts. `0.0.0.0` / `::` only mean bind-all; certificate matching uses detected non-loopback LAN hosts.
+`localhost`, `loopback`, `127.0.0.0/8`, `169.254.0.0/16`, `::1`, `fe80::/10`, `0.0.0.0`, and `::` are not certificate hosts. `0.0.0.0` / `::` only mean bind-all; certificate matching uses detected non-loopback LAN hosts.
 
 ### rtws Creation
 

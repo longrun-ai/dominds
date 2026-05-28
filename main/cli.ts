@@ -120,6 +120,7 @@ Examples:
   dominds man ws_read --lang zh --all
   dominds validate_team_def  # Validate toolset references in .minds/team.yaml
   dominds cert create --host 192.168.1.10
+  dominds cert status        # Inspect detected LAN HTTPS certificate status
   dominds create web-scaffold my-project   # Create rtws from a template
   dominds doctor @longrun-ai/web-dev       # Diagnose a single app across all app-state layers
 

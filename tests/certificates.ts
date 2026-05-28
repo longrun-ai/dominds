@@ -3,6 +3,7 @@ import * as fs from 'node:fs/promises';
 import * as os from 'node:os';
 import * as path from 'node:path';
 
+import { main as certCliMain } from '../main/cli/cert';
 import {
   createSelfSignedCertificate,
   findAutoHttpsCertificateForHost,
@@ -49,7 +50,7 @@ async function testLoopbackDoesNotEnableHttps(): Promise<void> {
           days: 3650,
           certsDirAbs,
         }),
-      /must not be localhost, loopback, 127\.0\.0\.0\/8, ::1, 0\.0\.0\.0, or ::/,
+      /must not be localhost, loopback, 127\.0\.0\.0\/8, 169\.254\.0\.0\/16, ::1, fe80::\/10, 0\.0\.0\.0, or ::/,
     );
     await assert.rejects(
       () =>
@@ -58,7 +59,25 @@ async function testLoopbackDoesNotEnableHttps(): Promise<void> {
           days: 3650,
           certsDirAbs,
         }),
-      /must not be localhost, loopback, 127\.0\.0\.0\/8, ::1, 0\.0\.0\.0, or ::/,
+      /must not be localhost, loopback, 127\.0\.0\.0\/8, 169\.254\.0\.0\/16, ::1, fe80::\/10, 0\.0\.0\.0, or ::/,
+    );
+    await assert.rejects(
+      () =>
+        createSelfSignedCertificate({
+          host: '169.254.1.2',
+          days: 3650,
+          certsDirAbs,
+        }),
+      /169\.254\.0\.0\/16/,
+    );
+    await assert.rejects(
+      () =>
+        createSelfSignedCertificate({
+          host: 'fe80::1',
+          days: 3650,
+          certsDirAbs,
+        }),
+      /fe80::\/10/,
     );
 
     const lookup = await findAutoHttpsCertificateForHost({
@@ -97,6 +116,109 @@ async function testForceRequiredForExistingFiles(): Promise<void> {
   });
 }
 
+async function captureConsoleLog(fn: () => Promise<void>): Promise<readonly string[]> {
+  const originalLog = console.log;
+  const originalInfo = console.info;
+  const originalDebug = console.debug;
+  const lines: string[] = [];
+  console.log = (...args: readonly unknown[]): void => {
+    lines.push(args.map((arg) => String(arg)).join(' '));
+  };
+  console.info = (...args: readonly unknown[]): void => {
+    throw new Error(
+      `Expected cert status --origin not to write info logs to stdout: ${String(args[0])}`,
+    );
+  };
+  console.debug = (...args: readonly unknown[]): void => {
+    throw new Error(
+      `Expected cert status --origin not to write debug logs to stdout: ${String(args[0])}`,
+    );
+  };
+  try {
+    await fn();
+    return lines;
+  } finally {
+    console.log = originalLog;
+    console.info = originalInfo;
+    console.debug = originalDebug;
+  }
+}
+
+class CapturedProcessExit extends Error {
+  readonly code: string | number | null | undefined;
+
+  constructor(code: string | number | null | undefined) {
+    super(`process.exit(${String(code)})`);
+    this.code = code;
+  }
+}
+
+async function captureCliExit(fn: () => Promise<void>): Promise<{
+  code: string | number | null | undefined;
+  stderr: readonly string[];
+}> {
+  const originalExit = process.exit;
+  const originalError = console.error;
+  const originalLog = console.log;
+  const stderr: string[] = [];
+  console.error = (...args: readonly unknown[]): void => {
+    stderr.push(args.map((arg) => String(arg)).join(' '));
+  };
+  console.log = (): void => {
+    // Suppress help text during expected parse failures.
+  };
+  process.exit = ((code?: string | number | null | undefined): never => {
+    throw new CapturedProcessExit(code);
+  }) as typeof process.exit;
+  try {
+    await fn();
+  } catch (error: unknown) {
+    if (error instanceof CapturedProcessExit) {
+      return { code: error.code, stderr };
+    }
+    throw error;
+  } finally {
+    process.exit = originalExit;
+    console.error = originalError;
+    console.log = originalLog;
+  }
+  throw new Error('Expected CLI to call process.exit');
+}
+
+async function testCertStatusDefaultsToDetectedHosts(): Promise<void> {
+  await withTempCertsDir(async (certsDirAbs) => {
+    const lines = await captureConsoleLog(async () => {
+      await certCliMain(['status', '--port', '5666', '--origin'], { certsDirAbs });
+    });
+    assert.equal(lines.length, 1);
+    assert.match(lines[0], /^http:\/\/.+:5666$/);
+  });
+}
+
+async function testCertCliRejectsInvalidSubcommandOptions(): Promise<void> {
+  await withTempCertsDir(async (certsDirAbs) => {
+    const cases: ReadonlyArray<Readonly<{ args: readonly string[]; message: RegExp }>> = [
+      { args: ['self-cert'], message: /Unknown cert subcommand 'self-cert'/ },
+      { args: ['create', '--port', '5666'], message: /--port is only valid for cert status/ },
+      { args: ['create', '--origin'], message: /--origin is only valid for cert status/ },
+      { args: ['status', '--days', '30'], message: /--days is only valid for cert create/ },
+      { args: ['status', '--force'], message: /--force is only valid for cert create/ },
+      {
+        args: ['status', '--host', '192.168.55.10', '--host', '192.168.55.11'],
+        message: /--host can only be repeated for cert create/,
+      },
+    ];
+    for (const item of cases) {
+      const exit = await captureCliExit(async () => {
+        await certCliMain(item.args, { certsDirAbs });
+      });
+      assert.equal(exit.code, 1);
+      assert.ok(exit.stderr.length > 0);
+      assert.match(exit.stderr[0], item.message);
+    }
+  });
+}
+
 function testLanHostFiltering(): void {
   assert.equal(isLanHttpsHost('localhost'), false);
   assert.equal(isLanHttpsHost('loopback'), false);
@@ -107,6 +229,8 @@ function testLanHostFiltering(): void {
   assert.equal(isLanHttpsHost('::ffff:0.0.0.0'), false);
   assert.equal(isLanHttpsHost('0.0.0.0'), false);
   assert.equal(isLanHttpsHost('::'), false);
+  assert.equal(isLanHttpsHost('169.254.1.2'), false);
+  assert.equal(isLanHttpsHost('fe80::1'), false);
   assert.equal(isLanHttpsHost('::ffff:192.168.55.10'), true);
   assert.equal(isLanHttpsHost('192.168.55.10'), true);
 }
@@ -116,6 +240,8 @@ async function main(): Promise<void> {
   await testCreateAndFindMatchingCertificate();
   await testLoopbackDoesNotEnableHttps();
   await testForceRequiredForExistingFiles();
+  await testCertStatusDefaultsToDetectedHosts();
+  await testCertCliRejectsInvalidSubcommandOptions();
   console.log('certificates tests: ok');
 }
 

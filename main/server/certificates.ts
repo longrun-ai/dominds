@@ -295,7 +295,8 @@ function validateCertificateHost(
   if (!isLanHttpsHost(host)) {
     return {
       kind: 'invalid',
-      message: '--host must not be localhost, loopback, 127.0.0.0/8, ::1, 0.0.0.0, or ::',
+      message:
+        '--host must not be localhost, loopback, 127.0.0.0/8, 169.254.0.0/16, ::1, fe80::/10, 0.0.0.0, or ::',
     };
   }
   if (net.isIP(host) !== 0) return { kind: 'valid' };
