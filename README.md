@@ -257,6 +257,8 @@ Platform note:
 
 Dominds always keeps an HTTP listener. When a valid certificate matching the current `--host` exists under `~/.dominds/certs/`, Dominds also starts HTTPS. Certificates match DNS/IP hostnames, not ports, so one certificate covers all Dominds WebUI ports on that host.
 
+Dominds generates certificates through npm dependencies, so no separate `openssl` command is required.
+
 ```bash
 # Create a 10-year self-signed certificate for detected non-loopback LAN hosts
 dominds cert create

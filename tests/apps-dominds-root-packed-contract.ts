@@ -135,6 +135,11 @@ async function main(): Promise<void> {
     expectedCodexAuthVersion,
     'Packed root package must rewrite @longrun-ai/codex-auth to a concrete publishable version.',
   );
+  assert.equal(
+    packedDependencies.selfsigned,
+    '^5.5.0',
+    'Packed root package must keep selfsigned as a runtime dependency for npm-only certificate creation.',
+  );
 }
 
 main().catch((error: unknown) => {

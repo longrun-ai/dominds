@@ -1,19 +1,17 @@
-import { execFile } from 'node:child_process';
 import { X509Certificate, createHash } from 'node:crypto';
 import * as fs from 'node:fs/promises';
 import * as net from 'node:net';
 import * as os from 'node:os';
 import * as path from 'node:path';
 import * as tls from 'node:tls';
-import { promisify } from 'node:util';
+import type { CertificateExtension, CertificateField, SubjectAltNameEntry } from 'selfsigned';
+import { generate as generateSelfSignedCertificate } from 'selfsigned';
 import {
   isLanHttpsHost,
   normalizeNetworkHost,
   resolveDefaultLanHttpsHosts,
   resolveLanHttpsHostsForBindHost,
 } from './network-hosts';
-
-const execFileAsync = promisify(execFile);
 
 const CERT_EXTENSIONS = ['.crt', '.cert', '.pem'];
 const KEY_SUFFIXES = ['.key.pem', '.key', '-key.pem'];
@@ -196,29 +194,19 @@ export async function createSelfSignedCertificate(params: {
     await assertPathDoesNotExist(metadataPath);
   }
 
+  const writeFlag = params.force === true ? 'w' : 'wx';
   const san = buildSubjectAltName(hosts);
-  await execFileAsync(
-    'openssl',
-    [
-      'req',
-      '-x509',
-      '-newkey',
-      'rsa:2048',
-      '-sha256',
-      '-nodes',
-      '-days',
-      String(days),
-      '-keyout',
-      keyPath,
-      '-out',
-      certPath,
-      '-subj',
-      `/CN=${escapeOpenSslSubjectValue(host)}`,
-      '-addext',
-      `subjectAltName=${san}`,
-    ],
-    { maxBuffer: 1024 * 1024 },
-  );
+  const generated = await generateDomindsSelfSignedPem({ host, hosts, days });
+  await fs.writeFile(keyPath, generated.keyPem, {
+    encoding: 'utf8',
+    mode: 0o600,
+    flag: writeFlag,
+  });
+  await fs.writeFile(certPath, generated.certPem, {
+    encoding: 'utf8',
+    mode: 0o644,
+    flag: writeFlag,
+  });
 
   await fs.chmod(keyPath, 0o600);
   await fs.chmod(certPath, 0o644);
@@ -232,10 +220,75 @@ export async function createSelfSignedCertificate(params: {
     createdAt: new Date().toISOString(),
     subjectAltName: san,
   };
-  await fs.writeFile(metadataPath, `${JSON.stringify(metadata, null, 2)}\n`, 'utf8');
+  await fs.writeFile(metadataPath, `${JSON.stringify(metadata, null, 2)}\n`, {
+    encoding: 'utf8',
+    mode: 0o644,
+    flag: writeFlag,
+  });
   await fs.chmod(metadataPath, 0o644);
 
   return { host, hosts, days, certsDirAbs, certPath, keyPath, metadataPath };
+}
+
+async function generateDomindsSelfSignedPem(params: {
+  host: string;
+  hosts: readonly string[];
+  days: number;
+}): Promise<{ certPem: string; keyPem: string }> {
+  const notBeforeDate = new Date();
+  const notAfterDate = new Date(notBeforeDate.getTime() + params.days * 24 * 60 * 60 * 1000);
+  const attrs: CertificateField[] = [{ name: 'commonName', value: params.host }];
+  const extensions: CertificateExtension[] = [
+    { name: 'basicConstraints', cA: false, critical: true },
+    { name: 'keyUsage', digitalSignature: true, keyEncipherment: true, critical: true },
+    { name: 'extKeyUsage', serverAuth: true },
+    { name: 'subjectAltName', altNames: buildSubjectAltNameEntries(params.hosts) },
+  ];
+
+  const pems = await generateSelfSignedCertificate(attrs, {
+    keyType: 'rsa',
+    keySize: 2048,
+    algorithm: 'sha256',
+    notBeforeDate,
+    notAfterDate,
+    extensions,
+  });
+
+  const certPem = pems.cert;
+  const keyPem = pems.private;
+  assertGeneratedCertificateMatchesRequest({ certPem, keyPem, hosts: params.hosts, notAfterDate });
+  return { certPem, keyPem };
+}
+
+function buildSubjectAltNameEntries(hosts: readonly string[]): SubjectAltNameEntry[] {
+  return hosts.map((host) => {
+    if (net.isIP(host) !== 0) {
+      return { type: 7, ip: host };
+    }
+    return { type: 2, value: host };
+  });
+}
+
+function assertGeneratedCertificateMatchesRequest(params: {
+  certPem: string;
+  keyPem: string;
+  hosts: readonly string[];
+  notAfterDate: Date;
+}): void {
+  const cert = new X509Certificate(params.certPem);
+  for (const host of params.hosts) {
+    if (!certificateMatchesHost(cert, host)) {
+      throw new Error(`Generated self-signed certificate does not include requested host: ${host}`);
+    }
+  }
+  const validToMs = Date.parse(cert.validTo);
+  if (!Number.isFinite(validToMs)) {
+    throw new Error('Generated self-signed certificate has an invalid validTo date');
+  }
+  if (validToMs > params.notAfterDate.getTime() + 1000) {
+    throw new Error('Generated self-signed certificate validity exceeds requested --days value');
+  }
+  tls.createSecureContext({ cert: params.certPem, key: params.keyPem });
 }
 
 function normalizeCertificateHostsForCreate(
@@ -348,10 +401,6 @@ function buildSubjectAltName(hosts: readonly string[]): string {
       return ipVersion !== 0 ? `IP:${host}` : `DNS:${host}`;
     })
     .join(',');
-}
-
-function escapeOpenSslSubjectValue(value: string): string {
-  return value.replace(/\\/g, '\\\\').replace(/\//g, '\\/');
 }
 
 function isCertificateFilename(filename: string): boolean {

@@ -153,7 +153,7 @@ dominds cert create [--host <host>] [--days <days>] [--force]
 dominds cert status [--host <host>] [--port <port>] [--origin]
 ```
 
-Create or inspect local HTTPS certificates for the Dominds WebUI. Certificates live in `~/.dominds/certs/` and match DNS/IP hostnames, not ports; one certificate covers every WebUI port on that host.
+Create or inspect local HTTPS certificates for the Dominds WebUI. Dominds generates certificates through npm dependencies, so no separate `openssl` command is required. Certificates live in `~/.dominds/certs/` and match DNS/IP hostnames, not ports; one certificate covers every WebUI port on that host.
 
 **Options:**
 

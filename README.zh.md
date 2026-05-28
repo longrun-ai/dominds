@@ -196,6 +196,8 @@ dominds
 
 Dominds 默认始终提供 HTTP 监听；当 `~/.dominds/certs/` 下存在匹配当前 `--host` 的有效证书时，会额外启用 HTTPS。证书按 DNS/IP 主机名匹配，不绑定端口，因此同一张证书可覆盖该主机上的所有 Dominds WebUI 端口。
 
+证书由 Dominds 通过 npm 依赖生成，无需额外安装 `openssl` 等系统命令。
+
 ```bash
 # 自动为检测到的一个或多个非 loopback LAN 主机创建 10 年有效的自签名证书
 dominds cert create

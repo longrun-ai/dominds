@@ -45,6 +45,54 @@ async function testCreateAndFindMatchingCertificate(): Promise<void> {
   });
 }
 
+async function testCreateCertificateWithDnsAndIpv6AltHosts(): Promise<void> {
+  await withTempCertsDir(async (certsDirAbs) => {
+    const created = await createSelfSignedCertificate({
+      host: '192.168.55.13',
+      altHosts: ['dominds-test.lan', 'fd00::55'],
+      days: 3650,
+      certsDirAbs,
+    });
+    assert.deepEqual(created.hosts, ['192.168.55.13', 'dominds-test.lan', 'fd00::55']);
+
+    for (const host of created.hosts) {
+      const lookup = await findAutoHttpsCertificateForHost({ host, certsDirAbs });
+      assert.equal(lookup.kind, 'found');
+      if (lookup.kind !== 'found') continue;
+      assert.equal(lookup.certificate.certPath, created.certPath);
+      assert.equal(lookup.certificate.matchedHost, host);
+      assert.equal(lookup.diagnostics.length, 0);
+    }
+  });
+}
+
+async function testCreateDoesNotRequireSystemOpenSsl(): Promise<void> {
+  await withTempCertsDir(async (certsDirAbs) => {
+    const originalPath = process.env.PATH;
+    process.env.PATH = '';
+    try {
+      const created = await createSelfSignedCertificate({
+        host: '192.168.55.12',
+        days: 3650,
+        certsDirAbs,
+      });
+      const lookup = await findAutoHttpsCertificateForHost({
+        host: '192.168.55.12',
+        certsDirAbs,
+      });
+      assert.equal(lookup.kind, 'found');
+      if (lookup.kind !== 'found') return;
+      assert.equal(lookup.certificate.certPath, created.certPath);
+    } finally {
+      if (originalPath === undefined) {
+        delete process.env.PATH;
+      } else {
+        process.env.PATH = originalPath;
+      }
+    }
+  });
+}
+
 async function testLoopbackDoesNotEnableHttps(): Promise<void> {
   await withTempCertsDir(async (certsDirAbs) => {
     await assert.rejects(
@@ -212,6 +260,33 @@ async function testCertStatusDefaultsToDetectedHosts(): Promise<void> {
   });
 }
 
+async function testCertCliCreateDoesNotRequireSystemOpenSsl(): Promise<void> {
+  await withTempCertsDir(async (certsDirAbs) => {
+    const originalPath = process.env.PATH;
+    process.env.PATH = '';
+    try {
+      const lines = await captureConsoleLog(async () => {
+        await certCliMain(['create', '--host', '192.168.55.15', '--days', '30'], {
+          certsDirAbs,
+        });
+      });
+      assert.equal(lines[0], 'Created self-signed certificate for 192.168.55.15');
+
+      const lookup = await findAutoHttpsCertificateForHost({
+        host: '192.168.55.15',
+        certsDirAbs,
+      });
+      assert.equal(lookup.kind, 'found');
+    } finally {
+      if (originalPath === undefined) {
+        delete process.env.PATH;
+      } else {
+        process.env.PATH = originalPath;
+      }
+    }
+  });
+}
+
 async function testCertCliRejectsInvalidSubcommandOptions(): Promise<void> {
   await withTempCertsDir(async (certsDirAbs) => {
     const cases: ReadonlyArray<Readonly<{ args: readonly string[]; message: RegExp }>> = [
@@ -271,9 +346,12 @@ async function main(): Promise<void> {
   await testDetectedHostsExcludeSimpleHostname();
   await testDetectedHostsIncludeQualifiedHostname();
   await testCreateAndFindMatchingCertificate();
+  await testCreateCertificateWithDnsAndIpv6AltHosts();
+  await testCreateDoesNotRequireSystemOpenSsl();
   await testLoopbackDoesNotEnableHttps();
   await testForceRequiredForExistingFiles();
   await testCertStatusDefaultsToDetectedHosts();
+  await testCertCliCreateDoesNotRequireSystemOpenSsl();
   await testCertCliRejectsInvalidSubcommandOptions();
   console.log('certificates tests: ok');
 }

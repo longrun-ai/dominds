@@ -160,7 +160,7 @@ dominds cert create [--host <host>] [--days <days>] [--force]
 dominds cert status [--host <host>] [--port <port>] [--origin]
 ```
 
-创建或检查 Dominds WebUI 的本机 HTTPS 证书。证书保存在 `~/.dominds/certs/`，按 DNS/IP 主机名匹配，不绑定端口；同一张证书可覆盖该主机上的所有 WebUI 端口。
+创建或检查 Dominds WebUI 的本机 HTTPS 证书。证书由 Dominds 通过 npm 依赖生成，无需额外安装 `openssl` 等系统命令。证书保存在 `~/.dominds/certs/`，按 DNS/IP 主机名匹配，不绑定端口；同一张证书可覆盖该主机上的所有 WebUI 端口。
 
 **选项：**
 
