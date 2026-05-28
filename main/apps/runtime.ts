@@ -2,6 +2,7 @@ import { createHash } from 'crypto';
 import fs from 'fs/promises';
 import path from 'path';
 
+import type { DomindsKernelEndpoint } from '@longrun-ai/kernel/app-host-contract';
 import type {
   DomindsAppDialogReminderRequestBatch,
   DomindsAppDialogTargetRef,
@@ -40,7 +41,7 @@ let appsHostTransition: Promise<AppsHostClient> | null = null;
 let hostedAppsSignature: string | null = null;
 let appsRuntimeConfig: Readonly<{
   rtwsRootAbs: string;
-  kernel: Readonly<{ host: string; port: number }>;
+  kernel: DomindsKernelEndpoint;
 }> | null = null;
 let refreshQueue: Promise<void> = Promise.resolve();
 
@@ -632,7 +633,7 @@ export async function resolveDynamicAppToolAvailabilityForMember(_params: {
 
 export async function initAppsRuntime(params: {
   rtwsRootAbs: string;
-  kernel: Readonly<{ host: string; port: number }>;
+  kernel: DomindsKernelEndpoint;
 }): Promise<void> {
   appsRuntimeConfig = {
     rtwsRootAbs: params.rtwsRootAbs,

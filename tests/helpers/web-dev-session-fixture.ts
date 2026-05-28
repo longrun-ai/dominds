@@ -493,7 +493,7 @@ export async function createWebDevFixture(): Promise<WebDevFixture> {
     rtwsRootAbs: tempRoot,
     rtwsAppDirAbs,
     packageRootAbs,
-    kernel: { host: '127.0.0.1', port: 0 },
+    kernel: { scheme: 'http', host: '127.0.0.1', port: 0 },
     log: () => undefined,
     playwrightLoader: async () => fakeEnv.playwright,
   });

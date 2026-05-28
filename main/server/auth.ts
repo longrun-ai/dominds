@@ -113,14 +113,35 @@ export function getWebSocketAuthCheck(req: IncomingMessage, auth: AuthConfig): A
     : { kind: 'unauthorized', reason: 'invalid' };
 }
 
-export function formatAutoAuthUrl(params: { host: string; port: number; authKey: string }): string {
-  const visibleHost = normalizeHostForUrl(params.host);
-  return `http://${visibleHost}:${params.port}/?auth=${encodeURIComponent(params.authKey)}`;
+export type ServerUrlScheme = 'http' | 'https';
+
+export function formatServerOrigin(params: {
+  scheme: ServerUrlScheme;
+  host: string;
+  port: number;
+}): string {
+  const visibleHost = normalizeHostForUrl(params.host, params.scheme);
+  return `${params.scheme}://${visibleHost}:${params.port}`;
 }
 
-function normalizeHostForUrl(host: string): string {
+export function formatAutoAuthUrl(params: {
+  scheme?: ServerUrlScheme;
+  host: string;
+  port: number;
+  authKey: string;
+}): string {
+  return `${formatServerOrigin({
+    scheme: params.scheme ?? 'http',
+    host: params.host,
+    port: params.port,
+  })}/?auth=${encodeURIComponent(params.authKey)}`;
+}
+
+function normalizeHostForUrl(host: string, scheme: ServerUrlScheme): string {
   // Binding to 0.0.0.0/:: is common, but not a browsable "host".
-  if (host === '0.0.0.0' || host === '::') return 'localhost';
+  // For HTTPS, preserve the certificate-matched bind host to avoid creating a hostname mismatch.
+  if (scheme === 'http' && (host === '0.0.0.0' || host === '::')) return 'localhost';
+  if (host.includes(':') && !host.startsWith('[')) return `[${host}]`;
   return host;
 }
 

@@ -56,7 +56,8 @@ import { toCallSiteCourseNo, type FuncResultContentItem } from '@longrun-ai/kern
 import { formatUnifiedTimestamp } from '@longrun-ai/kernel/utils/time';
 import { randomUUID } from 'crypto';
 import fsPromises from 'fs/promises';
-import type { Server } from 'http';
+import type { Server as HttpServer, IncomingMessage } from 'http';
+import type { Server as HttpsServer } from 'https';
 import path from 'path';
 import { WebSocket, WebSocketServer } from 'ws';
 import { shutdownAppsRuntime } from '../apps/runtime';
@@ -2452,13 +2453,14 @@ async function handleReceiveHumanReply(
  * Setup WebSocket server with dialog handling
  */
 export function setupWebSocketServer(
-  httpServer: Server,
+  httpServers: HttpServer | HttpsServer | readonly (HttpServer | HttpsServer)[],
   clients: Set<WebSocket>,
   auth: AuthConfig,
   serverWorkLanguage: LanguageCode,
   mode: DomindsRuntimeMode,
-): WebSocketServer {
-  const wss = new WebSocketServer({ server: httpServer });
+): readonly WebSocketServer[] {
+  const servers = Array.isArray(httpServers) ? httpServers : [httpServers];
+  const webSocketServers = servers.map((server) => new WebSocketServer({ server }));
   const runtimeStatusPubChan: PubChan<DomindsRuntimeStatusMessage> =
     createPubChan<DomindsRuntimeStatusMessage>();
 
@@ -2559,7 +2561,7 @@ export function setupWebSocketServer(
   });
   startTeamConfigWatcher();
 
-  httpServer.once('close', () => {
+  const cleanupRuntime = (): void => {
     stopTeamConfigWatcher();
     clearTeamConfigBroadcaster();
     clearToolAvailabilityBroadcaster();
@@ -2569,10 +2571,13 @@ export function setupWebSocketServer(
     setDialogsQuarantinedBroadcaster(null);
     broadcastDialogsIndexMessage = null;
     broadcastDiligencePushUpdatedMessage = null;
-    void wss.close();
-  });
+    for (const wss of webSocketServers) {
+      void wss.close();
+    }
+  };
+  servers[0]?.once('close', cleanupRuntime);
 
-  wss.on('connection', (ws: WebSocket, req) => {
+  const onConnection = (ws: WebSocket, req: IncomingMessage): void => {
     const authCheck = getWebSocketAuthCheck(req, auth);
     if (authCheck.kind !== 'ok') {
       ws.close(4401, 'unauthorized');
@@ -2661,9 +2666,12 @@ export function setupWebSocketServer(
       // Clean up client subscriptions on error
       cleanupWsClient(ws);
     });
-  });
+  };
+  for (const wss of webSocketServers) {
+    wss.on('connection', onConnection);
+  }
 
-  return wss;
+  return webSocketServers;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

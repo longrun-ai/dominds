@@ -7,6 +7,8 @@ import path from 'node:path';
 import { shutdownAppsRuntime } from '../main/apps/runtime';
 import { stopMcpSupervisor } from '../main/mcp/supervisor';
 import { startServer, type StartedServer } from '../main/server';
+import { createSelfSignedCertificate } from '../main/server/certificates';
+import { resolveLanHttpsHostsForBindHost } from '../main/server/network-hosts';
 import { parseWebuiPortSpec } from '../main/server/port-selection';
 import '../main/tools/builtins';
 
@@ -56,7 +58,7 @@ async function closeTcpServer(server: net.Server): Promise<void> {
   });
 }
 
-async function bindTcpPort(port: number): Promise<net.Server> {
+async function bindTcpPort(port: number, host: string = '127.0.0.1'): Promise<net.Server> {
   return await new Promise<net.Server>((resolve, reject) => {
     const server = net.createServer();
     const cleanup = (): void => {
@@ -73,7 +75,7 @@ async function bindTcpPort(port: number): Promise<net.Server> {
     };
     server.once('error', onError);
     server.once('listening', onListening);
-    server.listen({ host: '127.0.0.1', port, exclusive: true });
+    server.listen({ host, port, exclusive: true });
   });
 }
 
@@ -85,13 +87,22 @@ function boundPort(server: net.Server): number {
   return address.port;
 }
 
-async function canBindPort(port: number): Promise<boolean> {
+async function canBindPort(port: number, host: string = '127.0.0.1'): Promise<boolean> {
   try {
-    const server = await bindTcpPort(port);
+    const server = await bindTcpPort(port, host);
     await closeTcpServer(server);
     return true;
   } catch {
     return false;
+  }
+}
+
+async function getFreeTcpPort(host: string = '127.0.0.1'): Promise<number> {
+  const server = await bindTcpPort(0, host);
+  try {
+    return boundPort(server);
+  } finally {
+    await closeTcpServer(server);
   }
 }
 
@@ -111,6 +122,82 @@ async function findOccupiedPortWithFreeNeighbor(direction: 'down' | 'up'): Promi
     await closeTcpServer(blocker);
   }
   throw new Error(`Failed to find an occupied port with a free ${direction} neighbor`);
+}
+
+async function findOccupiedPortWithTwoFreeNeighbors(direction: 'down' | 'up'): Promise<{
+  blocker: net.Server;
+  occupiedPort: number;
+  expectedHttpPort: number;
+  expectedHttpsPort: number;
+}> {
+  for (let attempt = 0; attempt < 50; attempt += 1) {
+    const blocker = await bindTcpPort(0, '0.0.0.0');
+    const occupiedPort = boundPort(blocker);
+    const expectedHttpPort = direction === 'down' ? occupiedPort - 1 : occupiedPort + 1;
+    const expectedHttpsPort = direction === 'down' ? expectedHttpPort - 1 : expectedHttpPort + 1;
+    const inRange =
+      expectedHttpPort >= 1024 &&
+      expectedHttpPort <= 65535 &&
+      expectedHttpsPort >= 1024 &&
+      expectedHttpsPort <= 65535;
+    if (
+      inRange &&
+      (await canBindPort(expectedHttpPort, '0.0.0.0')) &&
+      (await canBindPort(expectedHttpsPort, '0.0.0.0'))
+    ) {
+      return { blocker, occupiedPort, expectedHttpPort, expectedHttpsPort };
+    }
+    await closeTcpServer(blocker);
+  }
+  throw new Error(`Failed to find an occupied port with two free ${direction} neighbors`);
+}
+
+async function findFreePortWithOccupiedNextPort(): Promise<{
+  blocker: net.Server;
+  expectedHttpPort: number;
+  expectedHttpsPort: number;
+}> {
+  for (let attempt = 0; attempt < 50; attempt += 1) {
+    const blocker = await bindTcpPort(0, '0.0.0.0');
+    const occupiedPort = boundPort(blocker);
+    const expectedHttpPort = occupiedPort - 1;
+    const expectedHttpsPort = occupiedPort + 1;
+    const inRange = expectedHttpPort >= 1024 && expectedHttpsPort <= 65535;
+    if (
+      inRange &&
+      (await canBindPort(expectedHttpPort, '0.0.0.0')) &&
+      (await canBindPort(expectedHttpsPort, '0.0.0.0'))
+    ) {
+      return { blocker, expectedHttpPort, expectedHttpsPort };
+    }
+    await closeTcpServer(blocker);
+  }
+  throw new Error('Failed to find a free HTTP port around an occupied HTTPS candidate port');
+}
+
+async function withTempCertsDir<T>(fn: (certsDirAbs: string) => Promise<T>): Promise<T> {
+  const certsDirAbs = await fs.mkdtemp(path.join(os.tmpdir(), 'dominds-webui-certs-'));
+  try {
+    return await fn(certsDirAbs);
+  } finally {
+    await fs.rm(certsDirAbs, { recursive: true, force: true });
+  }
+}
+
+async function createBindAllHttpsCert(certsDirAbs: string): Promise<string> {
+  const hosts = await resolveLanHttpsHostsForBindHost('0.0.0.0');
+  for (const host of hosts) {
+    try {
+      await createSelfSignedCertificate({ host, certsDirAbs });
+      return host;
+    } catch (error: unknown) {
+      if (error instanceof Error && error.message.includes('--host must be a DNS name')) {
+        continue;
+      }
+      throw error;
+    }
+  }
+  throw new Error('Expected at least one certificate-valid non-loopback LAN host for HTTPS test');
 }
 
 async function withTempRtws<T>(fn: () => Promise<T>): Promise<T> {
@@ -260,12 +347,97 @@ async function testDefaultPortIsAutoDown(): Promise<void> {
   }
 }
 
+async function testStrictPortDisablesBuiltInHttps(): Promise<void> {
+  await withTempCertsDir(async (certsDirAbs) => {
+    await createBindAllHttpsCert(certsDirAbs);
+    const port = await getFreeTcpPort('0.0.0.0');
+    await withTempRtws(async () => {
+      const started = await startServer({
+        port,
+        host: '0.0.0.0',
+        mode: 'prod',
+        certsDirAbs,
+        startBackendDriver: false,
+        strictPort: true,
+      });
+      try {
+        assert.equal(started.port, port);
+        assert.equal(started.httpsServer, undefined);
+        assert.equal(started.httpsPort, undefined);
+      } finally {
+        await started.httpServer.stop();
+      }
+    });
+  });
+}
+
+async function testAutoPortStartsAdjacentHttps(): Promise<void> {
+  const { blocker, occupiedPort, expectedHttpPort, expectedHttpsPort } =
+    await findOccupiedPortWithTwoFreeNeighbors('up');
+  try {
+    await withTempCertsDir(async (certsDirAbs) => {
+      const certHost = await createBindAllHttpsCert(certsDirAbs);
+      await withTempRtws(async () => {
+        const started = await startServer({
+          port: occupiedPort,
+          host: '0.0.0.0',
+          mode: 'prod',
+          certsDirAbs,
+          startBackendDriver: false,
+          strictPort: false,
+          portAutoDirection: 'up',
+        });
+        try {
+          assert.equal(started.port, expectedHttpPort);
+          assert.equal(started.httpsPort, expectedHttpsPort);
+          assert.equal(started.httpsUrlHost, certHost);
+        } finally {
+          await started.httpServer.stop();
+        }
+      });
+    });
+  } finally {
+    await closeTcpServer(blocker);
+  }
+}
+
+async function testHttpsPortSkipsOccupiedAdjacentPort(): Promise<void> {
+  const { blocker, expectedHttpPort, expectedHttpsPort } = await findFreePortWithOccupiedNextPort();
+  try {
+    await withTempCertsDir(async (certsDirAbs) => {
+      await createBindAllHttpsCert(certsDirAbs);
+      await withTempRtws(async () => {
+        const started = await startServer({
+          port: expectedHttpPort,
+          host: '0.0.0.0',
+          mode: 'prod',
+          certsDirAbs,
+          startBackendDriver: false,
+          strictPort: false,
+          portAutoDirection: 'up',
+        });
+        try {
+          assert.equal(started.port, expectedHttpPort);
+          assert.equal(started.httpsPort, expectedHttpsPort);
+        } finally {
+          await started.httpServer.stop();
+        }
+      });
+    });
+  } finally {
+    await closeTcpServer(blocker);
+  }
+}
+
 async function main(): Promise<void> {
   testPortSpecParsing();
   await testStrictPortDoesNotFallback();
   await testAutoPortUp();
   await testAutoPortDown();
   await testDefaultPortIsAutoDown();
+  await testStrictPortDisablesBuiltInHttps();
+  await testAutoPortStartsAdjacentHttps();
+  await testHttpsPortSkipsOccupiedAdjacentPort();
   console.log('webui-port-selection tests: ok');
 }
 

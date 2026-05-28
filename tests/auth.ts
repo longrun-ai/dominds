@@ -1,6 +1,12 @@
 import assert from 'node:assert/strict';
 import type { IncomingMessage } from 'node:http';
-import { computeAuthConfig, getHttpAuthCheck, getWebSocketAuthCheck } from '../main/server/auth';
+import {
+  computeAuthConfig,
+  formatAutoAuthUrl,
+  formatServerOrigin,
+  getHttpAuthCheck,
+  getWebSocketAuthCheck,
+} from '../main/server/auth';
 
 function reqWithHeaders(headers: Record<string, string>): IncomingMessage {
   return { headers } as unknown as IncomingMessage;
@@ -66,6 +72,25 @@ function run(): void {
         auth,
       ),
       { kind: 'unauthorized', reason: 'invalid' },
+    );
+  }
+
+  {
+    assert.equal(
+      formatServerOrigin({ scheme: 'http', host: 'localhost', port: 5666 }),
+      'http://localhost:5666',
+    );
+    assert.equal(
+      formatServerOrigin({ scheme: 'https', host: '192.168.1.10', port: 5667 }),
+      'https://192.168.1.10:5667',
+    );
+    assert.equal(
+      formatServerOrigin({ scheme: 'https', host: 'fd00::1', port: 5667 }),
+      'https://[fd00::1]:5667',
+    );
+    assert.equal(
+      formatAutoAuthUrl({ host: 'localhost', port: 5666, authKey: 'a b' }),
+      'http://localhost:5666/?auth=a%20b',
     );
   }
 

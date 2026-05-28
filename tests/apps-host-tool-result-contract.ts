@@ -107,7 +107,7 @@ async function main(): Promise<void> {
     const installJson = await runDomindsAppJsonViaLocalPackage({ packageRootAbs: appRootAbs });
     const started = await startAppsHost({
       rtwsRootAbs: tmpRoot,
-      kernel: { host: '127.0.0.1', port: 0 },
+      kernel: { scheme: 'http', host: '127.0.0.1', port: 0 },
       apps: [
         {
           appId: installJson.appId,

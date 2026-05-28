@@ -253,6 +253,23 @@ Platform note:
 
 - Windows also registers `codex_inspect_and_patch_tools`; its `readonly_shell` tool runs through `cmd.exe`, so prefer allowlisted commands available in that shell/PATH, such as `rg`, `git`, `dir`, `type`, and `where`.
 
+### Local HTTPS Certificates
+
+Dominds always keeps an HTTP listener. When a valid certificate matching the current `--host` exists under `~/.dominds/certs/`, Dominds also starts HTTPS. Certificates match DNS/IP hostnames, not ports, so one certificate covers all Dominds WebUI ports on that host.
+
+```bash
+# Create a 10-year self-signed certificate for detected non-loopback LAN hosts
+dominds cert create
+
+# Add explicit SAN hosts; --host can be repeated
+dominds cert create --host 192.168.1.10 --host my-host.local
+
+# Inspect whether a host can use an HTTPS certificate
+dominds cert status --host 0.0.0.0
+```
+
+`localhost`, `loopback`, `127.0.0.0/8`, `::1`, `0.0.0.0`, and `::` are not certificate hosts. `0.0.0.0` / `::` only mean bind-all; certificate matching uses detected non-loopback LAN hosts. A bare `--port 5666` disables Dominds built-in HTTPS and assumes a front proxy handles HTTPS, while the default port behavior and `--port 5666+/-` may auto-enable built-in HTTPS when a matching certificate exists.
+
 ## Start from scratch
 
 Starting from scratch means: create an empty folder, run `dominds`, let Setup generate the minimal `.minds/team.yaml`, then use the shadow team manager (`@fuxi`) to design a real team for your product.

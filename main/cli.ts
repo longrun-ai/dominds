@@ -14,6 +14,7 @@
  *   man      - Render toolset manual to stdout
  *   manual   - Alias for man
  *   validate_team_def - Validate explicit team toolset declarations
+ *   cert     - Create and inspect local HTTPS certificates
  *   create   - Create a new runtime workspace (rtws) from a template
  *   install  - Install a Dominds App into this rtws
  *   doctor   - Diagnose Dominds App state in this rtws
@@ -36,6 +37,7 @@ import * as path from 'path';
 import { initAppsRuntime, registerEnabledAppsToolProxies } from './apps/runtime';
 import { loadRtwsDotenv } from './bootstrap/dotenv';
 import { extractGlobalRtwsChdir } from './bootstrap/rtws-cli';
+import { main as certMain } from './cli/cert';
 import { main as createMain } from './cli/create';
 import { main as disableMain } from './cli/disable';
 import { main as doctorMain } from './cli/doctor';
@@ -97,6 +99,7 @@ Subcommands:
   man [options]      Render toolset manual to stdout
   manual [options]   Alias for man
   validate_team_def [options] Validate explicit team toolset declarations
+  cert [options]     Create and inspect local HTTPS certificates
   create [options]   Create a new runtime workspace (rtws) from a template
   install [options]  Install a Dominds App into this rtws
   doctor [options]   Read-only diagnosis across manifest/lock/configuration/resolution/handshake
@@ -116,6 +119,7 @@ Examples:
   dominds read               # Read team configuration
   dominds man ws_read --lang zh --all
   dominds validate_team_def  # Validate toolset references in .minds/team.yaml
+  dominds cert create --host 192.168.1.10
   dominds create web-scaffold my-project   # Create rtws from a template
   dominds doctor @longrun-ai/web-dev       # Diagnose a single app across all app-state layers
 
@@ -180,6 +184,7 @@ export async function main(argv: readonly string[] = process.argv.slice(2)): Pro
   }
 
   const shouldSkipRtwsSetup =
+    subcommand === 'cert' ||
     subcommandArgs.includes('--help') ||
     (subcommand === 'tui' && subcommandArgs.includes('-h')) ||
     (subcommand === 'run' && subcommandArgs.includes('-h')) ||
@@ -220,6 +225,7 @@ export async function main(argv: readonly string[] = process.argv.slice(2)): Pro
 
   const shouldLoadApps =
     subcommand !== 'webui' &&
+    subcommand !== 'cert' &&
     subcommand !== 'create' &&
     subcommand !== 'new' &&
     subcommand !== 'install' &&
@@ -239,7 +245,7 @@ export async function main(argv: readonly string[] = process.argv.slice(2)): Pro
       if (shouldStartAppsHost) {
         await initAppsRuntime({
           rtwsRootAbs: process.cwd(),
-          kernel: { host: '127.0.0.1', port: 0 },
+          kernel: { scheme: 'http', host: '127.0.0.1', port: 0 },
         });
       }
     } catch (err) {
@@ -271,6 +277,9 @@ export async function main(argv: readonly string[] = process.argv.slice(2)): Pro
       break;
     case 'validate_team_def':
       await runSubcommand('validate_team_def', subcommandArgs);
+      break;
+    case 'cert':
+      await runSubcommand('cert', subcommandArgs);
       break;
     case 'create':
     case 'new':
@@ -315,6 +324,8 @@ async function runSubcommand(subcommand: string, args: readonly string[]): Promi
       await manualMain(args);
     } else if (subcommand === 'validate_team_def') {
       await validateTeamDefMain(args);
+    } else if (subcommand === 'cert') {
+      await certMain(args);
     } else if (subcommand === 'create') {
       await createMain(args);
     } else if (subcommand === 'install') {
@@ -334,7 +345,9 @@ async function runSubcommand(subcommand: string, args: readonly string[]): Promi
       process.exit(1);
     }
   } catch (err) {
-    console.error(`Failed to execute subcommand '${subcommand}':`, err);
+    console.error(
+      `Failed to execute subcommand '${subcommand}': ${err instanceof Error ? err.message : String(err)}`,
+    );
     process.exit(1);
   }
 }

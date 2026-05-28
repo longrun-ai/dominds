@@ -1,6 +1,7 @@
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
 
+import type { DomindsKernelEndpoint } from '@longrun-ai/kernel/app-host-contract';
 import type { DomindsAppInstallJson } from '@longrun-ai/kernel/app-json';
 import { runDomindsAppJsonViaLocalPackage } from '../../main/apps/run-app-json';
 
@@ -13,7 +14,7 @@ export type AppFactoryContext = Readonly<{
   rtwsRootAbs: string;
   rtwsAppDirAbs: string;
   packageRootAbs: string;
-  kernel: Readonly<{ host: string; port: number }>;
+  kernel: DomindsKernelEndpoint;
   log: (
     level: 'info' | 'warn' | 'error',
     msg: string,

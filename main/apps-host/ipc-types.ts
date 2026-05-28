@@ -1,6 +1,7 @@
 import type {
   DomindsAppReminderRenderedMessage,
   DomindsAppRunControlResult,
+  DomindsKernelEndpoint,
 } from '@longrun-ai/kernel/app-host-contract';
 import type {
   DomindsAppDialogReminderRequestBatch,
@@ -16,7 +17,7 @@ import type { ToolArguments, ToolCallOutput } from '../tool';
 export type AppsHostKernelInitMessage = Readonly<{
   type: 'init';
   rtwsRootAbs: string;
-  kernel: Readonly<{ host: string; port: number }>;
+  kernel: DomindsKernelEndpoint;
   apps: ReadonlyArray<
     Readonly<{
       appId: string;
@@ -355,10 +356,14 @@ export function parseAppsHostMessageFromKernel(v: unknown): AppsHostMessageFromK
     const apps = v['apps'];
     if (!rtwsRootAbs) throw new Error('Invalid init message: rtwsRootAbs required');
     if (!isRecord(kernel)) throw new Error('Invalid init message: kernel must be object');
+    const scheme = kernel['scheme'];
     const host = asString(kernel['host']);
     const portRaw = kernel['port'];
     const port =
       typeof portRaw === 'number' && Number.isFinite(portRaw) ? Math.floor(portRaw) : null;
+    if (scheme !== 'http' && scheme !== 'https') {
+      throw new Error('Invalid init message: kernel.scheme must be http|https');
+    }
     if (!host) throw new Error('Invalid init message: kernel.host required');
     if (port === null || port < 0) {
       throw new Error('Invalid init message: kernel.port must be non-negative number');
@@ -386,7 +391,7 @@ export function parseAppsHostMessageFromKernel(v: unknown): AppsHostMessageFromK
       }
       return { appId, runtimePort, installJson: installJson as DomindsAppInstallJson };
     });
-    return { type: 'init', rtwsRootAbs, kernel: { host, port }, apps: parsedApps };
+    return { type: 'init', rtwsRootAbs, kernel: { scheme, host, port }, apps: parsedApps };
   }
 
   if (type === 'tool_call') {

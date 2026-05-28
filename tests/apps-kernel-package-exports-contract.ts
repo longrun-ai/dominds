@@ -335,7 +335,7 @@ async function main(): Promise<void> {
     rtwsRootAbs: repoRootAbs,
     rtwsAppDirAbs: path.join(repoRootAbs, '.apps', '@longrun-ai', 'phase-gate'),
     packageRootAbs: path.join(repoRootAbs, 'dominds-apps', '@longrun-ai', 'phase-gate'),
-    kernel: { host: '127.0.0.1', port: 4321 },
+    kernel: { scheme: 'http', host: '127.0.0.1', port: 4321 },
     log: () => {},
   });
   assert.equal(typeof phaseGateHost.dynamicToolsets, 'function');

@@ -18,8 +18,10 @@ import { startMcpSupervisor } from './mcp/supervisor';
 import { recoverOpenGenerationAfterRestart } from './recovery/open-generation-recovery';
 import { recoverPendingReplyDeliveryAfterRestart } from './recovery/reply-delivery-recovery';
 import { getWorkLanguage, resolveWorkLanguage, setWorkLanguage } from './runtime/work-language';
-import { AuthConfig, computeAuthConfig } from './server/auth';
+import { AuthConfig, computeAuthConfig, formatServerOrigin } from './server/auth';
+import { findAutoHttpsCertificateForHost } from './server/certificates';
 import { configureDomindsSelfUpdate } from './server/dominds-self-update';
+import { resolveHttpUrlHostForBindHost } from './server/network-hosts';
 import {
   buildWebuiPortCandidates,
   DEFAULT_WEBUI_PORT,
@@ -100,6 +102,7 @@ export type ServerOptions = {
   port?: number;
   host?: string;
   mode?: 'dev' | 'prod';
+  certsDirAbs?: string;
   startBackendDriver?: boolean;
   returnAfterListen?: boolean;
   strictPort?: boolean;
@@ -108,9 +111,13 @@ export type ServerOptions = {
 
 export type StartedServer = {
   httpServer: HttpServerCore;
+  httpsServer?: HttpServerCore;
   auth: AuthConfig;
   host: string;
+  urlHost: string;
   port: number;
+  httpsPort?: number;
+  httpsUrlHost?: string;
   mode: 'dev' | 'prod';
 };
 
@@ -136,9 +143,21 @@ function getErrnoCode(error: unknown): string | undefined {
   return typeof withCode.code === 'string' ? withCode.code : undefined;
 }
 
+function buildAdjacentHttpsPortCandidates(params: {
+  preferredPort: number;
+  direction: WebuiPortAutoDirection;
+}): number[] {
+  if (params.preferredPort < 1 || params.preferredPort > 65535) return [];
+  return buildWebuiPortCandidates({
+    preferredPort: params.preferredPort,
+    strictPort: false,
+    direction: params.direction,
+  });
+}
+
 async function runPostListenStartup(params: {
   rtwsRootAbs: string;
-  kernel: Readonly<{ host: string; port: number }>;
+  kernel: Readonly<{ scheme: 'http' | 'https'; host: string; port: number }>;
   startBackendDriver: boolean;
   token: PostListenStartupToken;
 }): Promise<void> {
@@ -191,10 +210,6 @@ export async function startServer(opts: ServerOptions = {}): Promise<StartedServ
     direction: portAutoDirection,
   });
 
-  log.info(
-    `Starting server in ${mode} mode on ${host}:${preferredPort} (${strictPort ? 'strict port' : `auto port ${portAutoDirection}`}; working language: ${getWorkLanguage()} from ${source})`,
-  );
-
   // WebSocket clients set
   const clients = new Set<WebSocket>();
   const serverMode = mode === 'dev' ? 'development' : 'production';
@@ -202,6 +217,31 @@ export async function startServer(opts: ServerOptions = {}): Promise<StartedServ
     mode: serverMode,
     env: process.env,
   });
+  const certificateLookup = await findAutoHttpsCertificateForHost({
+    host,
+    certsDirAbs: opts.certsDirAbs,
+  });
+  for (const diagnostic of certificateLookup.diagnostics) {
+    log.warn(diagnostic.message);
+  }
+  const tls =
+    certificateLookup.kind === 'found' && !strictPort ? certificateLookup.certificate : undefined;
+  const urlHost = resolveHttpUrlHostForBindHost(host);
+
+  log.info(
+    `Starting server in ${mode} mode on ${formatServerOrigin({
+      scheme: 'http',
+      host: urlHost,
+      port: preferredPort,
+    })} (bind ${host}; ${strictPort ? 'strict port' : `auto port ${portAutoDirection}`}; working language: ${getWorkLanguage()} from ${source})`,
+  );
+  if (certificateLookup.kind === 'found' && strictPort) {
+    log.info(
+      `HTTPS certificate found but Dominds HTTPS is disabled for strict --port; assuming HTTPS, if needed, is handled by a front proxy (${certificateLookup.certificate.certPath})`,
+    );
+  } else if (tls !== undefined) {
+    log.info(`HTTPS certificate available: ${tls.certPath} (matched host ${tls.matchedHost})`);
+  }
 
   let startedCore: HttpServerCore | null = null;
   let boundPort: number | null = null;
@@ -220,13 +260,6 @@ export async function startServer(opts: ServerOptions = {}): Promise<StartedServ
 
     try {
       boundPort = await candidateServer.start();
-      setupWebSocketServer(
-        candidateServer.getHttpServer(),
-        clients,
-        auth,
-        getWorkLanguage(),
-        config.mode,
-      );
       startedCore = candidateServer;
       break;
     } catch (error: unknown) {
@@ -236,9 +269,6 @@ export async function startServer(opts: ServerOptions = {}): Promise<StartedServ
           `WebUI port ${candidatePort} is already in use; trying the next ${nextDirection} port`,
         );
         continue;
-      }
-      if (boundPort !== null && startedCore === null) {
-        await candidateServer.stop();
       }
       throw error;
     }
@@ -258,8 +288,79 @@ export async function startServer(opts: ServerOptions = {}): Promise<StartedServ
     log.warn(`WebUI preferred port ${preferredPort} was unavailable; listening on ${boundPort}`);
   }
 
+  let httpsServer: HttpServerCore | undefined;
+  let httpsPort: number | undefined;
+  let httpsUrlHost: string | undefined;
+  if (tls !== undefined) {
+    const preferredHttpsPort = portAutoDirection === 'up' ? boundPort + 1 : boundPort - 1;
+    const httpsPortCandidates = buildAdjacentHttpsPortCandidates({
+      preferredPort: preferredHttpsPort,
+      direction: portAutoDirection,
+    });
+    for (const candidatePort of httpsPortCandidates) {
+      const config: ServerConfig = {
+        mode: serverMode,
+        staticRoot: 'webapp/dist',
+        host,
+        port: candidatePort,
+        tls,
+        clients,
+        auth,
+      };
+      const candidateServer = createHttpServer(config);
+      try {
+        httpsPort = await candidateServer.start();
+        httpsServer = candidateServer;
+        httpsUrlHost = tls.matchedHost;
+        break;
+      } catch (error: unknown) {
+        if (getErrnoCode(error) === 'EADDRINUSE') {
+          const nextDirection = portAutoDirection === 'down' ? 'lower' : 'higher';
+          log.warn(
+            `WebUI HTTPS port ${candidatePort} is already in use; trying the next ${nextDirection} port`,
+          );
+          continue;
+        }
+        await startedCore.stop();
+        throw error;
+      }
+    }
+    if (httpsServer === undefined || httpsPort === undefined || httpsUrlHost === undefined) {
+      await startedCore.stop();
+      throw new Error(
+        `Failed to start WebUI HTTPS: no available adjacent port found from ${preferredHttpsPort}`,
+      );
+    }
+    log.info(
+      `HTTPS WebUI ready: ${formatServerOrigin({
+        scheme: 'https',
+        host: httpsUrlHost,
+        port: httpsPort,
+      })}`,
+    );
+  }
+
+  setupWebSocketServer(
+    httpsServer === undefined
+      ? startedCore.getHttpServer()
+      : [startedCore.getHttpServer(), httpsServer.getHttpServer()],
+    clients,
+    auth,
+    getWorkLanguage(),
+    serverMode,
+  );
+
   const postListenStartupToken: PostListenStartupToken = { canceled: false };
   const httpServer = attachPostListenStartupCancellation(startedCore, postListenStartupToken);
+  if (httpsServer !== undefined) {
+    const originalStop = httpServer.stop.bind(httpServer);
+    const httpsServerToStop = httpsServer;
+    httpServer.stop = async (): Promise<void> => {
+      postListenStartupToken.canceled = true;
+      await httpsServerToStop.stop();
+      await originalStop();
+    };
+  }
   try {
     const rtwsRootAbs = process.cwd();
     configureDomindsSelfUpdate({
@@ -294,7 +395,7 @@ export async function startServer(opts: ServerOptions = {}): Promise<StartedServ
 
     const postListenStartup = runPostListenStartup({
       rtwsRootAbs,
-      kernel: { host, port: boundPort },
+      kernel: { scheme: 'http', host: urlHost, port: boundPort },
       startBackendDriver,
       token: postListenStartupToken,
     });
@@ -316,7 +417,17 @@ export async function startServer(opts: ServerOptions = {}): Promise<StartedServ
     throw error;
   }
 
-  return { httpServer, auth, host, port: boundPort, mode };
+  return {
+    httpServer,
+    httpsServer,
+    auth,
+    host,
+    urlHost,
+    port: boundPort,
+    httpsPort,
+    httpsUrlHost,
+    mode,
+  };
 }
 
 // Main function for CLI execution

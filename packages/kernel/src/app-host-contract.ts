@@ -8,6 +8,12 @@ import type {
 } from './app-json';
 import type { LanguageCode } from './types/language';
 
+export type DomindsKernelEndpoint = Readonly<{
+  scheme: 'http' | 'https';
+  host: string;
+  port: number;
+}>;
+
 export type DomindsAppRunControlContext = Readonly<{
   dialog: Readonly<{
     selfId: string;
@@ -184,7 +190,7 @@ export type CreateDomindsAppFn = (
     rtwsRootAbs: string;
     rtwsAppDirAbs: string;
     packageRootAbs: string;
-    kernel: Readonly<{ host: string; port: number }>;
+    kernel: DomindsKernelEndpoint;
     log: (
       level: 'info' | 'warn' | 'error',
       msg: string,

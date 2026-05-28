@@ -58,7 +58,10 @@ async function main(): Promise<void> {
       }),
     );
 
-    await initAppsRuntime({ rtwsRootAbs: tmpRoot, kernel: { host: '127.0.0.1', port: 0 } });
+    await initAppsRuntime({
+      rtwsRootAbs: tmpRoot,
+      kernel: { scheme: 'http', host: '127.0.0.1', port: 0 },
+    });
 
     const dynamicToolsets = await listDynamicAppToolsetsForMember({
       rtwsRootAbs: tmpRoot,

@@ -10,7 +10,7 @@
  *   -p, --port <port>    Port to listen on. Bare port is strict; suffix + tries higher ports; suffix - tries lower ports.
  *   -h, --host <host>    Host to bind to (default: localhost)
  *   --nobrowser          Do not open a browser (opt-out)
- *   -h, --help           Show help
+ *   --help               Show help
  */
 
 import { spawn } from 'child_process';
@@ -18,10 +18,23 @@ import { createLogger } from '../log';
 import { setRtwsProcessTitle } from '../process-title';
 import { getWorkLanguage, resolveWorkLanguage, setWorkLanguage } from '../runtime/work-language';
 import { startServer } from '../server';
-import { formatAutoAuthUrl } from '../server/auth';
+import { formatAutoAuthUrl, formatServerOrigin } from '../server/auth';
 import { parseWebuiPortSpec, type WebuiPortAutoDirection } from '../server/port-selection';
 
 const log = createLogger('webui');
+
+function formatWebSocketEndpoint(params: {
+  scheme: 'ws' | 'wss';
+  host: string;
+  port: number;
+}): string {
+  const httpOrigin = formatServerOrigin({
+    scheme: params.scheme === 'ws' ? 'http' : 'https',
+    host: params.host,
+    port: params.port,
+  });
+  return `${params.scheme}${httpOrigin.slice(httpOrigin.indexOf(':'))}/ws`;
+}
 
 function printHelp(): void {
   console.log(`
@@ -151,13 +164,39 @@ async function main(args: readonly string[] = process.argv.slice(2)): Promise<vo
     const httpServer = started.httpServer;
     const auth = started.auth;
 
-    const baseUrl = `http://${started.host}:${started.port}`;
+    const baseUrl = formatServerOrigin({
+      scheme: 'http',
+      host: started.urlHost,
+      port: started.port,
+    });
     log.info(`WebUI ready: ${baseUrl}`);
-    log.debug(`WebSocket endpoint: ws://${started.host}:${started.port}/ws`);
+    log.debug(
+      `WebSocket endpoint: ${formatWebSocketEndpoint({
+        scheme: 'ws',
+        host: started.urlHost,
+        port: started.port,
+      })}`,
+    );
+    if (started.httpsPort !== undefined && started.httpsUrlHost !== undefined) {
+      const httpsBaseUrl = formatServerOrigin({
+        scheme: 'https',
+        host: started.httpsUrlHost,
+        port: started.httpsPort,
+      });
+      log.info(`HTTPS WebUI ready: ${httpsBaseUrl}`);
+      log.debug(
+        `HTTPS WebSocket endpoint: ${formatWebSocketEndpoint({
+          scheme: 'wss',
+          host: started.httpsUrlHost,
+          port: started.httpsPort,
+        })}`,
+      );
+    }
 
     if (auth.kind === 'enabled') {
       const autoAuthUrl = formatAutoAuthUrl({
-        host: started.host,
+        scheme: 'http',
+        host: started.urlHost,
         port: started.port,
         authKey: auth.key,
       });

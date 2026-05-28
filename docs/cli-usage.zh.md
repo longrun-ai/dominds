@@ -18,6 +18,7 @@
     - [Web UI 界面](#web-ui-界面)
     - [文本用户界面 (TUI)（尚未实现）](#文本用户界面-tui尚未实现)
     - [Minds 阅读器](#minds-阅读器)
+    - [证书工具](#证书工具)
     - [rtws 创建](#rtws-创建)
   - [使用示例](#使用示例)
   - [对话存储](#对话存储)
@@ -32,6 +33,7 @@
 | `dominds` 或 `dominds webui`      | 启动 Web UI（默认、推荐）                | Web UI   |
 | `dominds tui` 或 `dominds run`    | 终端界面（规划中；当前版本暂不提供稳定） | N/A      |
 | `dominds read`                    | 读取/分析团队 minds 配置                 | CLI      |
+| `dominds cert`                    | 创建/检查本机 WebUI HTTPS 证书           | CLI      |
 | `dominds create` 或 `dominds new` | 从模板创建新 rtws（运行时工作区）        | CLI      |
 | `dominds help`                    | 显示帮助消息                             | CLI      |
 | `dominds --version`               | 显示版本信息                             | CLI      |
@@ -53,6 +55,11 @@ dominds webui -C /path/to/my-rtws
 
 # Minds 阅读器：分析团队配置
 dominds read [options] [member-id]
+
+# 证书工具：创建/检查本机 HTTPS 证书
+dominds cert create [--host <host>] [--days <days>] [--force]
+dominds cert self-cert [--host <host>] [--days <days>] [--force]
+dominds cert status --host <host> [--port <port>] [--origin]
 
 # rtws 创建：搭建新项目/运行时工作区
 dominds create <template> [directory]
@@ -143,6 +150,35 @@ dominds read -C /path/to/my-rtws
 dominds read --only-prompt
 dominds read --only-mem
 ```
+
+### 证书工具
+
+```bash
+dominds cert create [--host <host>] [--days <days>] [--force]
+dominds cert self-cert [--host <host>] [--days <days>] [--force]
+dominds cert status --host <host> [--port <port>] [--origin]
+```
+
+创建或检查 Dominds WebUI 的本机 HTTPS 证书。证书保存在 `~/.dominds/certs/`，按 DNS/IP 主机名匹配，不绑定端口；同一张证书可覆盖该主机上的所有 WebUI 端口。
+
+**选项：**
+
+- `--host <host>` - 证书 SAN 主机名或 IP；创建证书时可重复指定；未指定时使用检测到的一个或多个非 loopback LAN 主机
+- `--days <days>` - 证书有效天数（默认：3650，即 10 年）
+- `--force` - 覆盖已有的同名生成文件
+- `--port <port>` - `status --origin` 输出 URL 时使用的端口
+- `--origin` - 仅输出有效访问 origin；找到证书时输出 HTTPS，否则输出 HTTP
+
+**示例：**
+
+```bash
+dominds cert create
+dominds cert create --host 192.168.1.10 --host my-host.local
+dominds cert status --host 0.0.0.0
+dominds cert status --host 0.0.0.0 --port 5666 --origin
+```
+
+`localhost`、`loopback`、`127.0.0.0/8`、`::1`、`0.0.0.0`、`::` 不会作为 HTTPS 证书主机。`0.0.0.0` / `::` 只表示绑定所有地址，匹配证书时会使用检测到的非 loopback LAN 主机。
 
 ### rtws 创建
 

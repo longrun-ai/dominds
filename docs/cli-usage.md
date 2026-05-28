@@ -18,6 +18,7 @@ The `dominds` CLI provides a unified entry point, but the **primary interaction 
     - [Web UI Interface](#web-ui-interface)
     - [Text User Interface (TUI) (Not Implemented Yet)](#text-user-interface-tui-not-implemented-yet)
     - [Minds Reader](#minds-reader)
+    - [Certificate Tools](#certificate-tools)
     - [rtws Creation](#rtws-creation)
   - [Usage Examples](#usage-examples)
   - [Dialog Storage](#dialog-storage)
@@ -32,6 +33,7 @@ The `dominds` package provides a unified CLI with subcommands:
 | `dominds` or `dominds webui`      | Start Web UI (default, recommended)                           | Web UI         |
 | `dominds tui` or `dominds run`    | Terminal UI (planned; no stable implementation at the moment) | N/A            |
 | `dominds read`                    | Read and inspect rtws/team minds configuration                | CLI            |
+| `dominds cert`                    | Create and inspect local WebUI HTTPS certificates             | CLI            |
 | `dominds create` or `dominds new` | Create a new rtws (runtime workspace) from a template         | CLI            |
 | `dominds help`                    | Show help message                                             | CLI            |
 | `dominds --version`               | Show version information                                      | CLI            |
@@ -53,6 +55,11 @@ dominds webui -C /path/to/my-rtws
 
 # Minds reader: inspect team configuration
 dominds read [options] [member-id]
+
+# Certificate tools: create/inspect local HTTPS certificates
+dominds cert create [--host <host>] [--days <days>] [--force]
+dominds cert self-cert [--host <host>] [--days <days>] [--force]
+dominds cert status --host <host> [--port <port>] [--origin]
 
 # rtws creation: scaffold a new runtime workspace
 dominds create <template> [directory]
@@ -136,6 +143,35 @@ dominds read -C /path/to/my-rtws
 dominds read --only-prompt
 dominds read --only-mem
 ```
+
+### Certificate Tools
+
+```bash
+dominds cert create [--host <host>] [--days <days>] [--force]
+dominds cert self-cert [--host <host>] [--days <days>] [--force]
+dominds cert status --host <host> [--port <port>] [--origin]
+```
+
+Create or inspect local HTTPS certificates for the Dominds WebUI. Certificates live in `~/.dominds/certs/` and match DNS/IP hostnames, not ports; one certificate covers every WebUI port on that host.
+
+**Options:**
+
+- `--host <host>` - Certificate SAN hostname or IP; repeatable for certificate creation; defaults to one or more detected non-loopback LAN hosts
+- `--days <days>` - Certificate validity in days (default: 3650, or 10 years)
+- `--force` - Overwrite existing generated files
+- `--port <port>` - Port used when formatting `status --origin`
+- `--origin` - Print only the effective origin; HTTPS when a cert matches, HTTP otherwise
+
+**Examples:**
+
+```bash
+dominds cert create
+dominds cert create --host 192.168.1.10 --host my-host.local
+dominds cert status --host 0.0.0.0
+dominds cert status --host 0.0.0.0 --port 5666 --origin
+```
+
+`localhost`, `loopback`, `127.0.0.0/8`, `::1`, `0.0.0.0`, and `::` are not certificate hosts. `0.0.0.0` / `::` only mean bind-all; certificate matching uses detected non-loopback LAN hosts.
 
 ### rtws Creation
 

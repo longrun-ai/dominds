@@ -5,6 +5,8 @@
  */
 import * as http from 'http';
 import { IncomingMessage, ServerResponse } from 'http';
+import type { Server as HttpsServer } from 'node:https';
+import * as https from 'node:https';
 import type { AddressInfo } from 'node:net';
 import * as path from 'path';
 import type { ParsedUrlQuery } from 'querystring';
@@ -38,11 +40,19 @@ export interface ServerConfig {
   port: number;
   host: string;
   mode: 'development' | 'production';
+  tls?: {
+    cert: string;
+    key: string;
+    certPath: string;
+    keyPath: string;
+  };
   clients?: Set<WebSocket>;
   staticRoot?: string;
   enableLiveReload?: boolean;
   auth?: AuthConfig;
 }
+
+export type HttpServerLike = http.Server | HttpsServer;
 
 export interface RequestHandler {
   (
@@ -57,13 +67,19 @@ export interface RequestHandler {
  * Core HTTP server class
  */
 export class HttpServerCore {
-  private server: http.Server;
+  private server: HttpServerLike;
   private config: ServerConfig;
   private customHandlers: RequestHandler[] = [];
+  private started = false;
+  private stopping: Promise<void> | null = null;
 
   constructor(config: ServerConfig) {
     this.config = config;
-    this.server = http.createServer(this.handleRequest.bind(this));
+    const requestHandler = this.handleRequest.bind(this);
+    this.server =
+      config.tls === undefined
+        ? http.createServer(requestHandler)
+        : https.createServer({ cert: config.tls.cert, key: config.tls.key }, requestHandler);
   }
 
   /**
@@ -224,7 +240,8 @@ export class HttpServerCore {
             ? (address as AddressInfo).port
             : this.config.port;
         this.config = { ...this.config, port: actualPort };
-        log.debug(`Server listening on http://${this.config.host}:${actualPort}`);
+        this.started = true;
+        log.debug(`Server listening on ${this.getScheme()}://${this.config.host}:${actualPort}`);
         resolve(actualPort);
       };
 
@@ -239,19 +256,32 @@ export class HttpServerCore {
    * Stop the server
    */
   stop(): Promise<void> {
-    return new Promise((resolve) => {
-      this.server.close(() => {
+    if (this.stopping !== null) return this.stopping;
+    if (!this.started) return Promise.resolve();
+    this.stopping = new Promise((resolve, reject) => {
+      this.server.close((error) => {
+        this.started = false;
+        this.stopping = null;
+        if (error !== undefined) {
+          reject(error);
+          return;
+        }
         log.info('Server stopped');
         resolve();
       });
     });
+    return this.stopping;
   }
 
   /**
    * Get the underlying HTTP server
    */
-  getHttpServer(): http.Server {
+  getHttpServer(): HttpServerLike {
     return this.server;
+  }
+
+  getScheme(): 'http' | 'https' {
+    return this.config.tls === undefined ? 'http' : 'https';
   }
 
   /**

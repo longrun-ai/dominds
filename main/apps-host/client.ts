@@ -12,6 +12,7 @@ import type {
   DomindsAppReminderRenderedMessage,
   DomindsAppRunControlContext,
   DomindsAppRunControlResult,
+  DomindsKernelEndpoint,
 } from '@longrun-ai/kernel/app-host-contract';
 import type {
   DomindsAppDialogReminderRequestBatch,
@@ -243,7 +244,7 @@ function resolveAppsHostEntrypointAbs():
 
 export async function startAppsHost(params: {
   rtwsRootAbs: string;
-  kernel: Readonly<{ host: string; port: number }>;
+  kernel: DomindsKernelEndpoint;
   apps: ReadonlyArray<EnabledAppForHost>;
 }): Promise<Readonly<{ client: AppsHostClient; ready: AppsHostReadyMessage }>> {
   const entry = resolveAppsHostEntrypointAbs();
