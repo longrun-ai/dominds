@@ -183,6 +183,16 @@ function compareVersions(a: string, b: string): number | null {
   return 0;
 }
 
+function isVersionGreaterThan(a: string, b: string): boolean {
+  const comparison = compareVersions(a, b);
+  return comparison !== null ? comparison > 0 : a !== b;
+}
+
+function isVersionAtLeast(a: string, b: string): boolean {
+  const comparison = compareVersions(a, b);
+  return comparison !== null ? comparison >= 0 : a === b;
+}
+
 function detectRunKind(mode: ServerMode): DomindsSelfUpdateRunKind {
   if (mode !== 'production') return 'disabled';
   const scriptPath = (PROCESS_START_ARGV[1] ?? '').replace(/\\/g, '/');
@@ -916,10 +926,14 @@ async function readCurrentDomindsPackageRootAbs(): Promise<string> {
 
 async function readCurrentDomindsPackageVersion(): Promise<string> {
   const runningPackageRoot = await readCurrentDomindsPackageRootAbs();
-  const packageJsonPath = path.join(runningPackageRoot, 'package.json');
+  return await readDomindsPackageVersionAtRootAbs(runningPackageRoot);
+}
+
+async function readDomindsPackageVersionAtRootAbs(packageRootAbs: string): Promise<string> {
+  const packageJsonPath = path.join(packageRootAbs, 'package.json');
   const version = await readPackageVersionFromPackageJson(packageJsonPath);
   if (version === null) {
-    throw new Error(`Cannot read current Dominds package metadata at ${packageJsonPath}`);
+    throw new Error(`Cannot read Dominds package metadata at ${packageJsonPath}`);
   }
   return version;
 }
@@ -1440,10 +1454,31 @@ export async function getDomindsSelfUpdateStatus(): Promise<DomindsSelfUpdateSta
       targetVersion: latestObservation.latestVersion,
     });
   }
+  const installedVersion = await readDomindsPackageVersionAtRootAbs(
+    globalTargetVerification.managerPackageRootAbs,
+  );
+  if (
+    isVersionGreaterThan(installedVersion, runningVersion) &&
+    isVersionAtLeast(installedVersion, latestObservation.latestVersion)
+  ) {
+    return buildStatus({
+      currentVersion: runningVersion,
+      installedVersion,
+      latestVersion: latestObservation.latestVersion,
+      checkedAt: latestObservation.checkedAt,
+      mode: cfg.mode,
+      runKind,
+      action: 'restart',
+      busy: 'idle',
+      reason: 'restart_required',
+      message: 'Latest Dominds is already installed and waiting for restart',
+      targetVersion: installedVersion,
+    });
+  }
 
   return buildStatus({
     currentVersion: runningVersion,
-    installedVersion: runningVersion,
+    installedVersion,
     latestVersion: latestObservation.latestVersion,
     checkedAt: latestObservation.checkedAt,
     mode: cfg.mode,
@@ -1508,6 +1543,22 @@ export async function installLatestDominds(): Promise<DomindsSelfUpdateStatus> {
     const globalTargetVerification = await verifyGlobalInstallTargetsCurrentPackage();
     if (globalTargetVerification.kind === 'unsupported') {
       throw new Error(globalTargetVerification.message);
+    }
+    const installedVersion = await readDomindsPackageVersionAtRootAbs(
+      globalTargetVerification.managerPackageRootAbs,
+    );
+    if (
+      isVersionGreaterThan(installedVersion, runningVersion) &&
+      isVersionAtLeast(installedVersion, targetVersion)
+    ) {
+      restartState = {
+        kind: 'restart_required',
+        installedVersion,
+        installReport: 'Latest Dominds is already installed and waiting for restart',
+        reason: 'restart_required',
+      };
+      installFailureObservation = null;
+      return await getDomindsSelfUpdateStatus();
     }
     let installCommandError: unknown = null;
     try {
@@ -1785,7 +1836,11 @@ export async function restartDomindsIntoLatest(): Promise<DomindsSelfUpdateStatu
       if (npxSpec?.kind !== 'latest') {
         throw new Error('Dominds npx restart requires launching Dominds with dominds@latest');
       }
-    } else if (previousRestartRequiredState === null) {
+    } else if (
+      previousRestartRequiredState === null &&
+      (status.targetVersion === null ||
+        !isVersionGreaterThan(status.targetVersion, status.currentVersion))
+    ) {
       throw new Error('Dominds restart requires a completed install or a restartable session');
     }
 
