@@ -99,7 +99,7 @@ export class DomindsQ4HInput extends HTMLElement {
   private props: Q4HInputProps = {
     disabled: false,
     placeholder: 'Type your answer...',
-    maxLength: 4000,
+    maxLength: 30000,
   };
   private currentDialog: DialogContext | null = null;
   private displayState: DialogDisplayState | null = null;
