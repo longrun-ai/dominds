@@ -17,7 +17,7 @@
 
 When an MCP service has issues, needs to refresh the connection, or is currently disabled with `enabled: false`, enable and restart the MCP service.
 
-`mcp_restart` writes `enabled: true` when the server is currently `enabled: false`, then tries to start it. After it succeeds, it clears every dialog lease on the old runtime; you do not need to call `mcp_release` first.
+`mcp_restart` writes `enabled: true` when the server is currently `enabled: false`, then tries to start it. After it succeeds, it clears every dialog lease on the old connection/process; you do not need to call `mcp_release` first.
 
 ### Example
 

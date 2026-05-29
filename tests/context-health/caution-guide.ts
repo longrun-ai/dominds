@@ -103,7 +103,7 @@ async function main(): Promise<void> {
     'en guide should say it is not a new user request',
   );
   assert.ok(
-    enSoft.includes('do not reply with a standalone "acknowledged/ok'),
+    enSoft.includes('do not answer only with "acknowledged/ok'),
     'en guide should forbid standalone acknowledgement replies',
   );
   assert.ok(
@@ -125,8 +125,8 @@ async function main(): Promise<void> {
     'en guide should explicitly forbid early new-course review while still in the current course',
   );
   assert.ok(
-    enSoft.includes('that is the first step only after the system actually starts the new course'),
-    'en guide should pin the mandatory review step to the system-started new course',
+    enSoft.includes('that is the first step only after Dominds actually starts the new course'),
+    'en guide should pin the mandatory review step to the Dominds-started new course',
   );
   assert.ok(
     enSoft.includes('Prefer adding a bridge reminder first'),
@@ -163,8 +163,8 @@ async function main(): Promise<void> {
     'zh side guide should not ask the agent to decide or draft Taskdoc updates',
   );
   assert.ok(
-    zhSide.includes('提醒项长度没有技术限制'),
-    'zh side guide should permit detailed reminders without technical length pressure',
+    zhSide.includes('提醒项没有固定长度限制'),
+    'zh side guide should permit detailed reminders without fixed length pressure',
   );
   assert.ok(!zhSide.includes('do_mind'), 'zh side guide should not mention do_mind');
   assert.ok(!zhSide.includes('mind_more'), 'zh side guide should not mention mind_more');
@@ -186,8 +186,8 @@ async function main(): Promise<void> {
     'en side guide should not ask the agent to decide or draft Taskdoc updates',
   );
   assert.ok(
-    enSide.includes('Reminder length has no technical limit'),
-    'en side guide should permit detailed reminders without technical length pressure',
+    enSide.includes('Reminders have no fixed length limit'),
+    'en side guide should permit detailed reminders without fixed length pressure',
   );
   assert.ok(!enSide.includes('do_mind'), 'en side guide should not mention do_mind');
   assert.ok(!enSide.includes('mind_more'), 'en side guide should not mention mind_more');

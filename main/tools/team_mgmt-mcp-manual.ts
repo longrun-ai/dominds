@@ -106,14 +106,14 @@ function renderMcpManualPresentBlock(
   if (manual.contentFile && manual.contentFile.trim() !== '') {
     out += fmtList([
       language === 'zh'
-        ? `运行时手册文件前缀（\`contentFile\`）：\`${manual.contentFile}\``
-        : `Runtime manual file prefix (\`contentFile\`): \`${manual.contentFile}\``,
+        ? `手册文件前缀（\`contentFile\`）：\`${manual.contentFile}\``
+        : `Manual file prefix (\`contentFile\`): \`${manual.contentFile}\``,
     ]);
     if ((!manual.content || manual.content.trim() === '') && manual.sections.length === 0) {
       out += fmtList([
         language === 'zh'
-          ? `该 toolset 的最终 \`man({ "toolsetId": "${serverId}" })\` 正文会在运行时从该前缀下的 topic 文件加载；这里不直接内嵌正文。`
-          : `The final \`man({ "toolsetId": "${serverId}" })\` body is loaded at runtime from topic files under this prefix; it is not inlined here.`,
+          ? `该 toolset 的最终 \`man({ "toolsetId": "${serverId}" })\` 正文会从该前缀下的 topic 文件加载；这里不直接内嵌正文。`
+          : `The final \`man({ "toolsetId": "${serverId}" })\` body is loaded from topic files under this prefix; it is not inlined here.`,
       ]);
     }
   }
@@ -247,8 +247,8 @@ function renderRawMcpAutomaticBaselineSection(
         ? '未配置 `servers.<serverId>.manual`；以下为标准 Raw MCP 接入的自动基础说明。'
         : '`servers.<serverId>.manual` is not configured; below is the automatic baseline for this standard Raw MCP integration.',
       language === 'zh'
-        ? `运行时状态：status=${statusText}，transport=${transportText}。`
-        : `Runtime status: status=${statusText}, transport=${transportText}.`,
+        ? `当前连接状态：status=${statusText}，transport=${transportText}。`
+        : `Current connection status: status=${statusText}, transport=${transportText}.`,
       language === 'zh'
         ? '说明：MCP 工具名称、description 与参数 schema 已由 server 通过 `tools/list` 自动提供，并随工具函数说明进入 LLM 上下文；手册应列出工具名清单以澄清“哪些工具属于该 toolset”，但不要复制参数 schema 或长篇工具契约。'
         : 'Note: MCP tool names, descriptions, and parameter schemas are already provided by the server through `tools/list` and enter LLM context as function-tool metadata; manuals should list tool names to clarify which tools belong to this toolset, but should not copy parameter schemas or long tool-contract prose.',
@@ -643,8 +643,8 @@ export async function renderMcpManual(language: LanguageCode): Promise<string> {
       fmtHeader('.minds/mcp.yaml') +
       fmtList([
         '每个 MCP `serverId` 注册一个 toolset，toolset 名称 = `serverId`（不加 `mcp_` 前缀）。成员通过 `members.<id>.toolsets` 选择能用哪些 MCP toolset。',
-        '支持热重载：编辑 `.minds/mcp.yaml` 后通常无需重启 Dominds；必要时用 `mcp_restart`。`mcp_restart` 会把目标 server 的 `enabled: false` 写回 `enabled: true` 后尝试启动；成功后替换全局 runtime 并清掉旧 runtime 的全部对话 lease。',
-        '默认按“每个对话租用一个 MCP 运行时实例”运行（更安全）：某个对话首次使用该 server 时，可能为它启动/持有一个运行时实例（HTTP 连接或 stdio 进程），并添加 sticky reminder。确认当前对话不再需要该运行时实例后，用 `mcp_release` 释放。租约只表达运行时资源归属，不决定该 server 的全局工具注册/可见性；如确实是无状态服务器，可配置 `truely-stateless: true` 允许跨对话共享。若需停用某 server，用 `mcp_disable` 写入 `enabled: false`；禁用后仍会保留 0 工具 toolset 与 Raw MCP 基线/手册可见性。',
+        '支持热重载：编辑 `.minds/mcp.yaml` 后通常无需重启 Dominds；必要时用 `mcp_restart`。`mcp_restart` 会把目标 server 的 `enabled: false` 写回 `enabled: true` 后尝试启动；成功后替换全局 MCP 工具注册，并清掉旧连接上的全部对话 lease。',
+        '默认按“每个对话租用一个 MCP 连接/进程”运行（更安全）：某个对话首次使用该 server 时，可能为它启动/持有一个连接或进程（HTTP 连接或 stdio 进程），并添加 sticky reminder。确认当前对话不再需要该连接/进程后，用 `mcp_release` 释放。租约只表达连接/进程资源归属，不决定该 server 的全局工具注册/可见性；如确实是无状态服务器，可配置 `truely-stateless: true` 允许跨对话共享。若需停用某 server，用 `mcp_disable` 写入 `enabled: false`；禁用后仍会保留 0 工具 toolset 与 Raw MCP 基线/手册可见性。',
         'stdio 配置格式：`command` 必须是字符串（可执行命令），参数放在 `args`（string[]，可省略，默认空数组）。`cwd` 可选（字符串）：用于固定相对路径解析目录。',
         'HTTP headers 支持三种值：字面量字符串、`{ env: NAME }`、`{ prefix: "Bearer ", env: NAME }`；认证 token 建议从环境变量读取，不要写死在 YAML。',
         '用 `tools.whitelist/blacklist` 控制暴露的工具。顶层 `transform` 是 tools/prompts/resources/resource skills 的默认 ID 转换；内层 `tools.transform`、`prompts.transform`、`resources.transform`、`resources.skills.transform` 会覆盖外层转换，不会叠加；显式 `transform: []` 表示该层不转换。',
@@ -652,7 +652,7 @@ export async function renderMcpManual(language: LanguageCode): Promise<string> {
         '高频坑（stdio 路径）：若未设置 `cwd`，相对路径按 Dominds 进程工作目录（通常 rtws 根目录）解析；建议显式配置 `cwd` 或直接使用绝对路径。`cwd` 必须存在且是目录。',
         '可选手册字段：`servers.<serverId>.manual` 是增强说明，不是标准 MCP 接入的必填项。',
         '如果你要控制最终 `man({ "toolsetId": "<serverId>" })` 给 LLM 看的正式手册，请使用 `manual.contentFile` 指向 topic 文件目录前缀。',
-        '如果你只是想在 `team_mgmt` 的 MCP 章节里补充团队管理说明，也可以使用 inline `content`（总说明）+ `sections`（章节列表）。这类 inline 内容会展示在 `team_mgmt` 指南里，但不会替代运行时 `contentFile` 手册。',
+        '如果你只是想在 `team_mgmt` 的 MCP 章节里补充团队管理说明，也可以使用 inline `content`（总说明）+ `sections`（章节列表）。这类 inline 内容会展示在 `team_mgmt` 指南里，但不会替代 `contentFile` 手册。',
         '重要：未配置 `manual` 并不代表 MCP toolset 不可用；但 Dominds 会在 Problems 中给 warning，提醒补充整体定位说明。标准工具元数据来自 MCP `tools/list`，智能体应继续依据各工具函数说明判断并使用。',
         '团队管理者建议：配置并验证 MCP 后，优先依赖 MCP server 暴露的工具 description/参数；同时给每个 MCP server 的手册写一段简短整体定位，并列出工具名清单，明确“哪些工具属于这个 toolset”。只有当团队需要补充更完整的使用场景、安全边界、故障处置或协作规范时，再写 `manual.contentFile` 或更详细的 inline `content + sections`。',
         '工具列表写法：列工具名即可，必要时补一句用途归类；不要复制参数 schema 或长篇工具 description，因为这些契约由系统提示里的函数工具定义提供。',
@@ -733,8 +733,8 @@ export async function renderMcpManual(language: LanguageCode): Promise<string> {
     fmtHeader('.minds/mcp.yaml') +
     fmtList([
       'Each MCP `serverId` registers one toolset, and the toolset name is exactly `serverId` (no `mcp_` prefix). Members choose MCP access via `members.<id>.toolsets`.',
-      'Hot reload: edits usually apply without restarting Dominds; use `mcp_restart` when needed. `mcp_restart` writes `enabled: true` when the target server is currently `enabled: false`, then tries to start it; after success it replaces the global runtime and clears all dialog leases on the old runtime.',
-      "Default is per-dialog MCP runtime leasing (safer): a dialog's first use may start/hold one runtime instance for that server (an HTTP connection or stdio process), and first use adds a sticky reminder. Call `mcp_release` when you're sure the current dialog no longer needs that runtime instance. This lease is about runtime resource ownership only; tool registration/visibility still follows the latest global server instance. If the server is truly stateless, set `truely-stateless: true` to allow cross-dialog sharing. To disable a server, use `mcp_disable` to write `enabled: false`; disabled servers remain visible as zero-tool toolsets with Raw MCP baseline/manual visibility.",
+      'Hot reload: edits usually apply without restarting Dominds; use `mcp_restart` when needed. `mcp_restart` writes `enabled: true` when the target server is currently `enabled: false`, then tries to start it; after success it replaces the global MCP tool registration and clears all dialog leases on the old connection/process.',
+      "Default is per-dialog MCP connection/process leasing (safer): a dialog's first use may start/hold one connection or process for that server (an HTTP connection or stdio process), and first use adds a sticky reminder. Call `mcp_release` when you're sure the current dialog no longer needs that connection/process. This lease is about connection/process resource ownership only; tool registration/visibility still follows the latest global server connection. If the server is truly stateless, set `truely-stateless: true` to allow cross-dialog sharing. To disable a server, use `mcp_disable` to write `enabled: false`; disabled servers remain visible as zero-tool toolsets with Raw MCP baseline/manual visibility.",
       'Stdio shape: `command` must be a string executable; parameters go in `args` (string[], optional, defaults to empty). Optional `cwd` (string) fixes the working directory used for relative paths.',
       'HTTP headers support three value forms: literal strings, `{ env: NAME }`, and `{ prefix: "Bearer ", env: NAME }`; keep auth tokens in env instead of hardcoding them in YAML.',
       'Use `tools.whitelist/blacklist` for exposure control. Top-level `transform` is the default ID transform for tools/prompts/resources/resource skills; nested `tools.transform`, `prompts.transform`, `resources.transform`, and `resources.skills.transform` override the enclosing transform instead of stacking with it. Explicit `transform: []` means no transform for that layer.',
@@ -742,7 +742,7 @@ export async function renderMcpManual(language: LanguageCode): Promise<string> {
       'High-frequency pitfall (stdio paths): if `cwd` is omitted, relative paths are resolved from Dominds process cwd (usually rtws root). Prefer setting `cwd` explicitly or use absolute paths. `cwd` must exist and be a directory.',
       'Optional manual field: `servers.<serverId>.manual` is enhancement guidance, not required for standard MCP use.',
       'To control the final formal manual shown to the LLM by `man({ "toolsetId": "<serverId>" })`, use `manual.contentFile` and point it at the topic-file directory prefix.',
-      'If you only want extra team-management guidance inside the `team_mgmt` MCP chapter, you may also use inline `content` (overview) + `sections` (chapter list). That inline content is shown in the `team_mgmt` guide, but it does not replace runtime `contentFile` manuals.',
+      'If you only want extra team-management guidance inside the `team_mgmt` MCP chapter, you may also use inline `content` (overview) + `sections` (chapter list). That inline content is shown in the `team_mgmt` guide, but it does not replace `contentFile` manuals.',
       'Important: an unconfigured `manual` does not mean the MCP toolset is unavailable, but Dominds reports a Problems warning to encourage an overall positioning note. Standard tool metadata comes from MCP `tools/list`; continue by reading each function-tool description.',
       'Team-manager recommendation: after MCP config is validated, rely on MCP-provided descriptions/arguments first; also write a short overall positioning note for each MCP server manual and list tool names to make clear which tools belong to this toolset. Add `manual.contentFile` or more detailed inline `content + sections` only when the team needs fuller guidance about use cases, safety boundaries, failure handling, or coordination norms.',
       'Tool-list writing rule: list tool names, with a short purpose group when useful; do not copy parameter schemas or long tool descriptions, because those contracts are provided by function-tool definitions in the system prompt.',

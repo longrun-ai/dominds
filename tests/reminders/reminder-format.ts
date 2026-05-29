@@ -16,11 +16,11 @@ async function main() {
     'Expected zh reminder context guide to include paired block header',
   );
   assert(
-    zhContextGuide.includes('当前可见提醒项的运行时上下文投影'),
-    'Expected zh reminder context guide to explain runtime-added context projection',
+    zhContextGuide.includes('Dominds 为你放到当前上下文里的可见提醒项'),
+    'Expected zh reminder context guide to explain Dominds-added reminder context',
   );
   assert(
-    zhContextGuide.includes('它们都不是用户的新诉求/指令'),
+    zhContextGuide.includes('它们不是用户的新诉求/指令'),
     'Expected zh reminder context guide to clarify reminders are not new user requests/instructions',
   );
   assert(
@@ -58,7 +58,7 @@ async function main() {
     contextHealth: { kind: 'normal' },
   });
   assert(
-    zhAutoContinueFooter.includes('本轮没有新的用户消息或运行时提示'),
+    zhAutoContinueFooter.includes('本轮没有新的用户消息或 Dominds 提示'),
     'Expected zh auto-continue reminder footer to explicitly say no new message follows',
   );
   assert(
@@ -83,8 +83,8 @@ async function main() {
     contextHealth: { kind: 'normal' },
   });
   assert(
-    zhRuntimeFooter.includes('本轮提醒项块之后会接着出现一条运行时提示'),
-    'Expected zh reminder context footer to explicitly identify following runtime notice',
+    zhRuntimeFooter.includes('本轮提醒项块之后会接着出现一条 Dominds 提示'),
+    'Expected zh reminder context footer to explicitly identify following Dominds notice',
   );
   const zhHumanAnswerFooter = formatReminderContextFooter('zh', {
     followingMessage: { kind: 'human_answer' },
@@ -139,7 +139,7 @@ async function main() {
     'Expected zh completed-side-reply footer before a real user message to state the follow-up scenario',
   );
   assert(
-    !zhCompletedSideReplyUserMessageFooter.includes('本轮没有新的用户消息或运行时提示'),
+    !zhCompletedSideReplyUserMessageFooter.includes('本轮没有新的用户消息或 Dominds 提示'),
     'Expected zh completed-side-reply footer before a real user message not to use auto-continuation wording',
   );
   const zhCompletedSideReplyInterjectionFooter = formatReminderContextFooter('zh', {
@@ -232,7 +232,7 @@ async function main() {
   assert(zh.includes('保持缩进'), 'Expected zh reminder guide to include content');
   assert(zh.includes('\n  - A\n'), 'Expected zh reminder guide to preserve whitespace');
   assert(
-    zh.includes('你设置了提醒项，让运行时系统提醒你'),
+    zh.includes('你设置了提醒项，Dominds 会在需要时提醒你'),
     'Expected zh reminder guide to address the model in second person',
   );
   assert(
@@ -240,7 +240,7 @@ async function main() {
     'Expected zh reminder guide to include standard system notice prefix',
   );
   assert(
-    zh.includes('运行时提醒项投影：'),
+    zh.includes('Dominds 提醒项说明：'),
     'Expected zh reminder guide to include a compact self-contained per-item projection note',
   );
   const deprecatedZhWorkset = '\u5de5\u4f5c\u96c6';
@@ -390,7 +390,7 @@ async function main() {
     'Expected zh tool-managed reminder to discourage standalone acknowledgment',
   );
   assert(
-    zhToolManaged.includes('运行时提醒项投影：'),
+    zhToolManaged.includes('Dominds 提醒项说明：'),
     'Expected zh tool-managed reminder to include compact self-contained per-item projection note',
   );
 
@@ -432,8 +432,8 @@ async function main() {
     'Expected en reminder context guide to include paired block header',
   );
   assert(
-    enContextGuide.includes('visible reminders are runtime-added context projections'),
-    'Expected en reminder context guide to explain runtime-added context projection',
+    enContextGuide.includes('visible reminders were added to the current context by Dominds'),
+    'Expected en reminder context guide to explain Dominds-added reminder context',
   );
   assert(
     enContextGuide.includes('not new user requests/instructions'),
@@ -480,7 +480,7 @@ async function main() {
     contextHealth: { kind: 'normal' },
   });
   assert(
-    enAutoContinueFooter.includes('There is no new user message or runtime notice in this round'),
+    enAutoContinueFooter.includes('There is no new user message or Dominds notice in this round'),
     'Expected en auto-continue reminder footer to explicitly say no new message follows',
   );
   assert(
@@ -505,12 +505,12 @@ async function main() {
     contextHealth: { kind: 'normal' },
   });
   assert(
-    enRuntimeFooter.includes('A runtime notice follows this reminder block in this round'),
-    'Expected en reminder context footer to explicitly identify following runtime notice',
+    enRuntimeFooter.includes('A Dominds notice follows this reminder block in this round'),
+    'Expected en reminder context footer to explicitly identify following Dominds notice',
   );
   assert(
     enRuntimeFooter.includes('not a new user request/instruction'),
-    'Expected en runtime reminder footer to clarify runtime notices are not new user requests/instructions',
+    'Expected en Dominds reminder footer to clarify Dominds notices are not new user requests/instructions',
   );
   const enHumanAnswerFooter = formatReminderContextFooter('en', {
     followingMessage: { kind: 'human_answer' },
@@ -568,7 +568,7 @@ async function main() {
   );
   assert(
     !enCompletedSideReplyUserMessageFooter.includes(
-      'There is no new user message or runtime notice in this round',
+      'There is no new user message or Dominds notice in this round',
     ),
     'Expected en completed-side-reply footer before a real user message not to use auto-continuation wording',
   );
@@ -663,7 +663,7 @@ async function main() {
   assert(en.includes('REMINDER [rem02abc]'), 'Expected en reminder guide to include reminder id');
   assert(en.includes('Keep indentation'), 'Expected en reminder guide to include content');
   assert(
-    en.includes('You set a reminder so the runtime system can remind you'),
+    en.includes('You set a reminder so Dominds can remind you when needed'),
     'Expected en reminder guide to address the model in second person',
   );
   assert(
@@ -671,7 +671,7 @@ async function main() {
     'Expected en reminder guide to include standard system notice prefix',
   );
   assert(
-    en.includes('Runtime reminder projection:'),
+    en.includes('Dominds reminder note:'),
     'Expected en reminder guide to include a compact self-contained per-item projection note',
   );
   assert(
@@ -811,7 +811,7 @@ async function main() {
     'Expected en tool-managed reminder to discourage standalone acknowledgment',
   );
   assert(
-    enToolManaged.includes('Runtime reminder projection:'),
+    enToolManaged.includes('Dominds reminder note:'),
     'Expected en tool-managed reminder to include compact self-contained per-item projection note',
   );
   assert(

@@ -56,7 +56,7 @@ function main(): void {
   );
   assert.ok(
     zhMainDialog.includes(
-      `当你在诉请正文里定义“回贴格式/交付格式”时，只写业务交付结构即可；不要要求被诉请者手写 \`${zhMarkers.finalCompleted}\` / \`${zhMarkers.tellaskBack}\` / FBR 标记（\`${zhMarkers.fbrDirectReply}\` / \`${zhMarkers.fbrReasoningOnly}\`），这些标记由 Dominds 运行时自动注入。`,
+      `当你在诉请正文里定义“回贴格式/交付格式”时，只写业务交付结构即可；不要要求被诉请者手写 \`${zhMarkers.finalCompleted}\` / \`${zhMarkers.tellaskBack}\` / FBR 标记（\`${zhMarkers.fbrDirectReply}\` / \`${zhMarkers.fbrReasoningOnly}\`），这些标记由 Dominds 自动注入。`,
     ),
   );
   assert.ok(!zhMainDialog.includes('Dominds 会自动注入回贴标记，禁止手写标记'));
@@ -86,7 +86,7 @@ function main(): void {
   );
   assert.ok(
     enMainDialog.includes(
-      `When you define a “reply/delivery format” inside tellask body, keep it to the business delivery structure; do not require the tellaskee to hand-write \`${enMarkers.finalCompleted}\` / \`${enMarkers.tellaskBack}\` / FBR markers (\`${enMarkers.fbrDirectReply}\` / \`${enMarkers.fbrReasoningOnly}\`), because Dominds runtime injects those markers automatically.`,
+      `When you define a “reply/delivery format” inside tellask body, keep it to the business delivery structure; do not require the tellaskee to hand-write \`${enMarkers.finalCompleted}\` / \`${enMarkers.tellaskBack}\` / FBR markers (\`${enMarkers.fbrDirectReply}\` / \`${enMarkers.fbrReasoningOnly}\`), because Dominds injects those markers automatically.`,
     ),
   );
   assert.ok(
@@ -106,19 +106,19 @@ function main(): void {
   );
   assert.ok(
     !enMainDialog.includes(
-      'Reply markers are runtime-added in the presentation layer (regular completed reply = 【最终完成】; FBR = 【FBR-直接回复】 or 【FBR-仅推理】) without rewriting body text; do not hand-write markers.',
+      'Reply markers are added by Dominds in the presentation layer (regular completed reply = 【最终完成】; FBR = 【FBR-直接回复】 or 【FBR-仅推理】) without rewriting body text; do not hand-write markers.',
     ),
   );
 
   const zhSideDialog = buildPrompt('sideDialog', 'zh');
   assert.ok(
     zhSideDialog.includes(
-      `回贴文本标记由运行时在跨对话传递正文中自动添加（常规完成=${zhMarkers.finalCompleted}；FBR=${zhMarkers.fbrDirectReply} 或 ${zhMarkers.fbrReasoningOnly}）；该正文直接进入诉请者上下文，且 UI 展示与其一致。你无需、也不应手写标记。`,
+      `回贴文本标记由 Dominds 在跨对话传递正文中自动添加（常规完成=${zhMarkers.finalCompleted}；FBR=${zhMarkers.fbrDirectReply} 或 ${zhMarkers.fbrReasoningOnly}）；该正文直接进入诉请者上下文，且 UI 展示与其一致。你无需、也不应手写标记。`,
     ),
   );
   assert.ok(
     zhSideDialog.includes(
-      '若你在正文中给下游写“回贴格式”，只写业务交付结构；不得要求下游手写任何标记，运行时会自动注入。',
+      '若你在正文中给下游写“回贴格式”，只写业务交付结构；不得要求下游手写任何标记，Dominds 会自动注入。',
     ),
   );
   assert.ok(
@@ -139,24 +139,24 @@ function main(): void {
   assert.ok(zhSideDialog.includes(buildSideDialogCompletionRule('zh')));
   assert.ok(
     zhSideDialog.includes(
-      `正式完成路径中，仅当运行时当前明确点名了某个精确 reply 函数，且你通过那个函数回复时，运行时才会把该回复投递给诉请者并标注 ${zhMarkers.finalCompleted}`,
+      `正式完成路径中，仅当 Dominds 当前明确点名了某个精确回复工具，且你通过那个工具回复时，Dominds 才会把该回复投递给诉请者并标注 ${zhMarkers.finalCompleted}`,
     ),
   );
   assert.ok(
     zhSideDialog.includes(
-      '若运行时当前明确提示“没有待完成的跨对话回复义务”，说明这轮不是待你收口的跨对话回复义务；不要重复调用 `reply*`。',
+      '若 Dominds 当前明确提示“无需回贴”，说明这轮没有别的对话在等你发送最终回贴；这是当前对话里的普通回合，按当前消息正常交流和处理即可。',
     ),
   );
 
   const enSideDialog = buildPrompt('sideDialog', 'en');
   assert.ok(
     enSideDialog.includes(
-      `Reply markers are runtime-added in the inter-dialog transfer payload (regular completed reply = ${enMarkers.finalCompleted}; FBR = ${enMarkers.fbrDirectReply} or ${enMarkers.fbrReasoningOnly}); this payload is delivered to tellasker context and shown identically in UI. Do not hand-write markers.`,
+      `Reply markers are added by Dominds in the inter-dialog transfer payload (regular completed reply = ${enMarkers.finalCompleted}; FBR = ${enMarkers.fbrDirectReply} or ${enMarkers.fbrReasoningOnly}); this payload is delivered to tellasker context and shown identically in UI. Do not hand-write markers.`,
     ),
   );
   assert.ok(
     enSideDialog.includes(
-      'If you define a reply format for downstream, keep it to the business delivery structure; do not require downstream to hand-write any marker, because runtime injects markers automatically.',
+      'If you define a reply format for downstream, keep it to the business delivery structure; do not require downstream to hand-write any marker, because Dominds injects markers automatically.',
     ),
   );
   assert.ok(
@@ -177,12 +177,12 @@ function main(): void {
   assert.ok(enSideDialog.includes(buildSideDialogCompletionRule('en')));
   assert.ok(
     enSideDialog.includes(
-      `In the formal completion path, runtime marks ${enMarkers.finalCompleted} and delivers to the tellasker only when runtime currently names an exact reply function and you reply through that named function`,
+      `In the formal completion path, Dominds marks ${enMarkers.finalCompleted} and delivers to the tellasker only when Dominds currently names an exact reply tool and you reply through that named tool`,
     ),
   );
   assert.ok(
     enSideDialog.includes(
-      'If runtime currently tells you there is no active inter-dialog reply obligation, then this turn is not awaiting another inter-dialog closure from you; do not call `reply*` again.',
+      'If Dominds currently tells you no reply is needed, then no other dialog is waiting for your final reply in this turn; this is a normal turn in the current conversation, so handle the current message normally.',
     ),
   );
 
@@ -209,7 +209,7 @@ function main(): void {
   );
   assert.ok(
     enAssignment.includes(
-      `Protocol note: reply markers (for example \`${enMarkers.tellaskBack}\` / \`${enMarkers.finalCompleted}\` / FBR markers \`${enMarkers.fbrDirectReply}\` / \`${enMarkers.fbrReasoningOnly}\`) are auto-injected by Dominds runtime into the inter-dialog transfer payload.`,
+      `Protocol note: reply markers (for example \`${enMarkers.tellaskBack}\` / \`${enMarkers.finalCompleted}\` / FBR markers \`${enMarkers.fbrDirectReply}\` / \`${enMarkers.fbrReasoningOnly}\`) are auto-injected by Dominds into the inter-dialog transfer payload.`,
     ),
   );
 

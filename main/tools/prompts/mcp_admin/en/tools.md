@@ -21,7 +21,7 @@
 
 ### 1. mcp_restart
 
-Enable and rebuild an MCP service using the current `.minds/mcp.yaml` config. If the target server is currently `enabled: false`, this writes `enabled: true` before trying to start it. After a successful restart, Dominds replaces the global MCP runtime/tool registration and clears all dialog leases held on the old runtime. If restart fails, the old runtime/leases are kept so troubleshooting does not tear down a still-working connection.
+Enable and rebuild an MCP service using the current `.minds/mcp.yaml` config. If the target server is currently `enabled: false`, this writes `enabled: true` before trying to start it. After a successful restart, Dominds replaces the global MCP tool registration and clears all dialog leases held on the old connection/process. If restart fails, the old connection/process and leases are kept so troubleshooting does not tear down a still-working connection.
 
 **Parameters:**
 
@@ -39,7 +39,7 @@ ok: restarted <MCP service identifier>
 
 ### 2. mcp_release
 
-Release the current dialog's leased MCP runtime instance for a server. This stops/releases the underlying HTTP connection or stdio process, but does not define global tool registration/visibility.
+Release the current dialog's leased MCP connection/process for a server. This stops/releases the underlying HTTP connection or stdio process, but does not define global tool registration/visibility.
 
 **Parameters:**
 
@@ -64,7 +64,7 @@ ok: no active lease for <MCP service identifier> (or server is truely-stateless)
 
 ### 3. mcp_disable
 
-Disable an MCP service and write `enabled: false` for that server in `.minds/mcp.yaml`. This does not wait for a replacement service to become available: it unconditionally clears the loaded runtime/leases. The disabled server remains visible as a zero-tool MCP toolset, with its manual clearly marked disabled.
+Disable an MCP service and write `enabled: false` for that server in `.minds/mcp.yaml`. This does not wait for a replacement service to become available: it unconditionally clears the loaded MCP connection/leases. The disabled server remains visible as a zero-tool MCP toolset, with its manual clearly marked disabled.
 
 **Parameters:**
 

@@ -37,15 +37,15 @@ MCP（Model Context Protocol）是连接外部服务的协议。
 
 ### 2. MCP 租约
 
-MCP 使用租约机制管理运行时资源，例如 HTTP 连接和 stdio 进程。租约只表示谁持有某个运行时实例，不决定 MCP 工具的全局注册或可见性。
+MCP 使用租约机制管理连接/进程资源，例如 HTTP 连接和 stdio 进程。租约只表示谁持有某个连接/进程，不决定 MCP 工具的全局注册或可见性。
 
 **生命周期：**
 
-- **获取租约**：建立或持有一个运行时实例
-- **持有租约**：继续使用该运行时实例
+- **获取租约**：建立或持有一个连接/进程
+- **持有租约**：继续使用该连接/进程
 - **释放租约**：停止/断开并释放资源
 
-`mcp_restart` 会把目标 server 的 `enabled: false` 改回 `enabled: true`，然后尝试启动；成功时会替换全局 MCP runtime 并清掉旧 runtime 的所有对话 lease；不需要先逐个 `mcp_release`。如果需要强制禁用某个 server，使用 `mcp_disable`。
+`mcp_restart` 会把目标 server 的 `enabled: false` 改回 `enabled: true`，然后尝试启动；成功时会替换全局 MCP 服务连接，并清掉旧连接/进程的所有对话 lease；不需要先逐个 `mcp_release`。如果需要强制禁用某个 server，使用 `mcp_disable`。
 
 ### 3. 环境变量
 

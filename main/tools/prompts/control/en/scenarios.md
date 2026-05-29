@@ -57,11 +57,11 @@ delete_reminder({
 - If the information should synchronize the whole team's current effective state, put it in Taskdoc `progress` instead
 - If the note is durable knowledge rather than an active current-work cue, move it to `personal_memory` instead
 
-## Scenario 2: Side Dialog is complete, and the assignment header requires replyTellask
+## Scenario 2: Side Dialog is complete, and the task header requires replyTellask
 
 ### Scenario Description
 
-The current Side Dialog is finished, and the assignment header explicitly says "when complete, call `replyTellask`".
+The current Side Dialog is finished, and the task header explicitly says "when complete, call `replyTellask`".
 
 ### Example
 
@@ -74,7 +74,7 @@ replyTellask({
 
 ### Key Points
 
-- Do not replace this with a plain final message; direct-reply fallback is only a temporary runtime transition safeguard, not a valid planned completion method
+- Do not replace this with a plain final message; formal delivery must use the reply tool named by Dominds, or the other dialog may not receive a formal reply
 - Put the final deliverable body directly in `replyContent`
 - If the header says `replyTellaskSessionless`, use the same shape with that exact function name
 
@@ -97,13 +97,13 @@ tellaskBack({
 
 - This example uses `tellaskBack` because tellasker input is specifically required
 - If team SOP / role ownership already identifies the responsible executor, directly use `tellask` / `tellaskSessionless` for that owner instead of mapping every unfinished state to `tellaskBack`
-- Do not use `replyTellask*` for intermediate clarifications
+- Do not use reply tools for intermediate clarifications
 
 ## Scenario 4: Tellasker answered the ask-back, so use replyTellaskBack to close
 
 ### Scenario Description
 
-You previously sent a `tellaskBack`, the tellasker has now replied, and runtime exposes `replyTellaskBack`.
+You previously sent a `tellaskBack`, the tellasker has now replied, and Dominds shows `replyTellaskBack`.
 
 ### Example
 

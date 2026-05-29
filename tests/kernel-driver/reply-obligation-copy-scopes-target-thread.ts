@@ -38,7 +38,7 @@ function main(): void {
       tellaskerId: 'tester',
       expectedReplyTool: 'replyTellask',
     }),
-    '@tester 已通过【长线诉请】安排你处理下述诉请内容。等你准备好回复内容后，调用 `replyTellask` 完成回复。只有确实需要向诉请者回问、且现有规程无法直接判责时，才调用 `tellaskBack`。',
+    '@tester 已通过【长线诉请】安排你处理下述诉请内容。等你准备好最终回复后，调用 `replyTellask` 发回去。只有确实需要向诉请者回问、且现有规程无法直接判责时，才调用 `tellaskBack`。',
   );
   assert.equal(
     buildSideDialogRoleHeaderCopy({
@@ -46,7 +46,7 @@ function main(): void {
       tellaskerId: 'tester',
       expectedReplyTool: 'replyTellaskSessionless',
     }),
-    '@tester has assigned you, via this 【Fresh Tellask】, to handle the request content below. Once your reply content is ready, call `replyTellaskSessionless` to deliver it. Call `tellaskBack` only when you truly need to ask the tellasker back and existing SOP cannot directly identify another owner.',
+    '@tester has assigned you, via this 【Fresh Tellask】, to handle the request content below. When the final reply is ready, call `replyTellaskSessionless` to send it back. Call `tellaskBack` only when you truly need to ask the tellasker back and existing SOP cannot directly identify another owner.',
   );
 
   const startAssignment = formatAssignmentFromAskerDialog({
@@ -91,17 +91,17 @@ function main(): void {
     directive: askBackDirective,
     replyTargetAgentId: 'pangu',
   });
-  assert.match(askBackReminder, /@pangu 的【回问诉请】还在等你的回复/u);
-  assert.match(askBackReminder, /请现在调用 `replyTellaskBack\(\{ replyContent \}\)` 完成回复/u);
-  assert.match(askBackReminder, /你刚才已经产出了可作为回贴的内容，但还没调用 `replyTellaskBack`/u);
+  assert.match(askBackReminder, /@pangu 还在等你完成【回问诉请】的回贴/u);
+  assert.match(askBackReminder, /请现在调用 `replyTellaskBack\(\{ replyContent \}\)` 发送/u);
+  assert.match(askBackReminder, /你刚才已经写出了可以发回去的内容，但还没调用 `replyTellaskBack`/u);
 
   const askBackReassertion = buildReplyObligationReassertionText({
     language: 'en',
     directive: askBackDirective,
     replyTargetAgentId: 'pangu',
   });
-  assert.match(askBackReassertion, /@pangu's 【TellaskBack】 is still waiting for your reply/u);
-  assert.match(askBackReassertion, /call `replyTellaskBack` to deliver it/u);
+  assert.match(askBackReassertion, /@pangu is still waiting for your 【TellaskBack】 reply/u);
+  assert.match(askBackReassertion, /call `replyTellaskBack` to send it/u);
   assert.match(askBackReassertion, /not asking you to reply immediately/u);
 
   const assignmentDirective = {
@@ -115,8 +115,8 @@ function main(): void {
     directive: assignmentDirective,
     replyTargetAgentId: 'tester',
   });
-  assert.match(assignmentReassertion, /@tester 的【一次性诉请】还在等你的回复/u);
-  assert.match(assignmentReassertion, /调用 `replyTellaskSessionless` 完成回复/u);
+  assert.match(assignmentReassertion, /@tester 还在等你完成【一次性诉请】的回贴/u);
+  assert.match(assignmentReassertion, /调用 `replyTellaskSessionless` 发送/u);
   assert.match(assignmentReassertion, /这里不是催你立刻回复/u);
 
   console.log('kernel-driver reply-obligation-copy-scopes-target-thread: PASS');

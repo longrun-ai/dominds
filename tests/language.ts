@@ -33,7 +33,7 @@ regarding the original tellask: @alice
 
 > @bob hello
 
-[Dominds tellask status]
+[Dominds teammate reply status]
 - Function: \`tellaskSessionless\`
 - callId: language-en-call
 - Note: This is a reply fact for an earlier tellask, not a new user request or a newly initiated function call in the current course.
@@ -62,7 +62,7 @@ regarding the original tellask: @alice
 
 > @bob hello
 
-[Dominds 诉请状态]
+[Dominds 队友回贴状态]
 - 函数: \`tellaskSessionless\`
 - callId: language-zh-call
 - 说明: 这是前序诉请的回贴事实，不是新的用户请求，也不是当前程新发起的函数调用。

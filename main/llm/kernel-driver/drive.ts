@@ -472,10 +472,10 @@ async function resolveReminderContextFooterState(args: {
   const hasDeferredReplyReassertion =
     deferredReplyReassertion?.reason === 'user_interjection_with_parked_original_task';
   const hasActiveReplyObligation = activeReplyObligation !== undefined;
-  // A side dialog final response without a still-active or parked reply obligation means the
-  // handoff has already been reported back. If a real user message is now present, the reminder
-  // footer should tell the model to handle that current exchange normally instead of making the
-  // model rediscover from old transcript/reminder context that the delegated work is done.
+  // Business scenario: a user can reopen a completed Side Dialog to ask a follow-up. A recorded
+  // final response with no active/parked reply task means the old handoff has already been
+  // reported back; if a real user message is now present, the footer should say "talk with the
+  // user now" instead of making the model infer that from old transcript/reminder context.
   const hasCompletedHandoffWithoutPendingReply =
     latest?.sideDialogFinalResponse !== undefined &&
     !hasDeferredReplyReassertion &&
@@ -1804,7 +1804,7 @@ function formatInvalidFuncCallRuntimeGuide(
     call.toolCallIndex === undefined ? undefined : `- toolCallIndex: ${String(call.toolCallIndex)}`;
   if (language === 'en') {
     return [
-      '[Runtime notice] The previous model output contained an invalid tool-call payload that could not be represented as a normal provider tool call in the next generation context.',
+      '[Runtime notice] Your previous response tried to call a tool, but the tool call was malformed and could not be run.',
       '',
       `- provider: ${call.provider}`,
       `- callId: ${call.callId}`,
@@ -1816,13 +1816,13 @@ function formatInvalidFuncCallRuntimeGuide(
       '```',
       ...(indexLine === undefined ? [] : [indexLine]),
       '',
-      'Treat that payload as failed. Do not assume the tool ran. Continue from the current task, and if a tool call is still needed, emit a new valid tool call with a non-empty function name and valid arguments.',
+      'Treat that tool call as failed. Do not assume the tool ran. Continue the current task; if you still need a tool, call it again with a real tool name and valid arguments.',
     ]
       .filter((line) => line.length > 0)
       .join('\n');
   }
   return [
-    '[运行时提示] 上一轮模型输出包含一个无效工具调用载荷，无法按正常 provider tool call 形态进入下一轮生成上下文。',
+    '[Dominds 提示] 你上一轮尝试调用工具，但工具调用格式无效，Dominds 没有执行它。',
     '',
     `- provider: ${call.provider}`,
     `- callId: ${call.callId}`,
@@ -1834,7 +1834,7 @@ function formatInvalidFuncCallRuntimeGuide(
     '```',
     ...(indexLine === undefined ? [] : [indexLine]),
     '',
-    '请把该载荷视为调用失败，不要假设工具已经执行。继续当前任务；如果仍需要调用工具，请重新发起一个函数名非空、参数有效的新工具调用。',
+    '请把这次工具调用视为失败，不要假设工具已经执行。继续当前任务；如果仍需要工具，请重新发起一次工具名明确、参数有效的调用。',
   ]
     .filter((line) => line.length > 0)
     .join('\n');

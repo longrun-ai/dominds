@@ -39,7 +39,7 @@ async function main(): Promise<void> {
         message: userPrompt,
         role: 'user',
         response: 'Continuing the local check without resolving the reply yet.',
-        contextContains: ['[Dominds active reply tool]', userPrompt],
+        contextContains: ['[Dominds reply path]', userPrompt],
       },
     ]);
 

@@ -48,18 +48,18 @@ export function resolveReminderContextBusinessState(args: {
     args.followingMessage.kind === 'user_message' &&
     args.hasCompletedHandoffWithoutPendingReply
   ) {
-    // Completed handoff + new user message means the runtime already knows this is a follow-up.
-    // The model should hear that directly instead of guessing from older task context or
-    // reminder-maintenance references.
+    // Business scenario: the requester-side work has already received its final report, and now a
+    // user is speaking again inside that completed Side Dialog. Dominds can know this from durable
+    // handoff state; the model should hear the simple product meaning directly instead of guessing
+    // from older task context or reminder-maintenance references.
     return { kind: 'user_followup_after_completed_handoff' };
   }
   if (args.pendingUserInterjectionReply) {
     // User-visible reply gaps take priority over handoff continuation state. The completed
-    // handoff case is most specific: runtime already knows the old delegated task is done.
-    // The footer should say there is no old handoff to advance and the model should handle the
-    // current user message normally. Do not narrow this to "only answer" or "do not organize
-    // reminders": a user may explicitly ask for reminder cleanup/correction as the current
-    // conversation topic.
+    // handoff case is most specific: Dominds already knows the old delegated task is done. The
+    // footer should say there is no old handoff to advance and the model should handle the current
+    // user message normally. Do not narrow this to "only answer" or "do not organize reminders":
+    // a user may explicitly ask for reminder cleanup/correction as the current conversation topic.
     //
     // This branch may run on a later tool-followup turn where no user message immediately
     // follows the reminder block anymore. That is still the same pending user follow-up; do not

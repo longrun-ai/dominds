@@ -24,8 +24,8 @@ async function main(): Promise<void> {
     'zh prompt should define goals/constraints as the stable task contract',
   );
   assert.ok(
-    zh.includes('当前没有生效中的上下文健康处置指令'),
-    'zh normal prompt should contain the normal context-health directive',
+    zh.includes('当前没有生效中的上下文保全提示'),
+    'zh normal prompt should contain the normal context-preservation directive',
   );
   assert.ok(
     zh.includes('完整当前快照'),
@@ -40,8 +40,8 @@ async function main(): Promise<void> {
     'zh prompt should require documenting unrecorded discussion details before continuation reminders',
   );
   assert.ok(
-    zh.includes('只有系统实际开启新一程后，第一步才是以清醒头脑复核并整理'),
-    'zh prompt should pin clear-headed review to the system-started new course',
+    zh.includes('只有 Dominds 实际开启新一程后，第一步才是以清醒头脑复核并整理'),
+    'zh prompt should pin clear-headed review to the Dominds-started new course',
   );
   assert.ok(
     zh.includes('硬性顺序：先补 `progress`，再动 git'),
@@ -104,7 +104,7 @@ async function main(): Promise<void> {
     'en prompt should define goals/constraints as the stable task contract',
   );
   assert.ok(
-    en.includes('Current context is under system critical remediation'),
+    en.includes('Dominds has warned that context is critical'),
     'en critical prompt should contain the critical context-health directive',
   );
   assert.ok(
@@ -129,9 +129,9 @@ async function main(): Promise<void> {
   );
   assert.ok(
     en.includes(
-      'Once the system actually starts the new course, the first step is to review/rewrite them',
+      'Once Dominds actually starts the new course, the first step is to review/rewrite them',
     ),
-    'en prompt should pin clear-headed review to the system-started new course',
+    'en prompt should pin clear-headed review to the Dominds-started new course',
   );
   assert.ok(
     en.includes('Hard order: update `progress` first, then use git'),
@@ -170,8 +170,8 @@ async function main(): Promise<void> {
     'en side critical prompt should avoid Taskdoc update/draft work during remediation',
   );
   assert.ok(
-    enSide.includes('Reminder length has no technical limit'),
-    'en side critical prompt should permit detailed reminders without technical length pressure',
+    enSide.includes('Reminders have no fixed length limit'),
+    'en side critical prompt should permit detailed reminders without fixed length pressure',
   );
   assert.ok(
     !enSide.includes('do_mind') && !enSide.includes('mind_more') && !enSide.includes('change_mind'),

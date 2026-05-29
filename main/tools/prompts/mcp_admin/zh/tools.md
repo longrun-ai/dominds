@@ -21,7 +21,7 @@
 
 ### 1. mcp_restart
 
-按当前 `.minds/mcp.yaml` 配置启用并重建 MCP 服务。如果目标 server 当前是 `enabled: false`，会先写回 `enabled: true` 再尝试启动。重启成功后会替换全局 MCP runtime/tool 注册，并清理旧 runtime 上所有对话持有的 lease；重启失败时保留旧 runtime/lease，避免排障过程中把仍可用的连接拆掉。
+按当前 `.minds/mcp.yaml` 配置启用并重建 MCP 服务。如果目标 server 当前是 `enabled: false`，会先写回 `enabled: true` 再尝试启动。重启成功后会替换全局 MCP 工具注册，并清理旧连接/进程上所有对话持有的 lease；重启失败时保留旧连接/进程和 lease，避免排障过程中把仍可用的连接拆掉。
 
 **参数：**
 
@@ -39,7 +39,7 @@ ok: restarted <MCP 服务标识符>
 
 ### 2. mcp_release
 
-释放当前对话为某个 server 持有的 MCP 运行时实例。它会停止/释放底层 HTTP 连接或 stdio 进程，但不决定工具的全局注册或可见性。
+释放当前对话为某个 server 持有的 MCP 连接/进程。它会停止/释放底层 HTTP 连接或 stdio 进程，但不决定工具的全局注册或可见性。
 
 **参数：**
 
@@ -64,7 +64,7 @@ ok: no active lease for <MCP 服务标识符> (or server is truely-stateless)
 
 ### 3. mcp_disable
 
-禁用 MCP 服务并将 `.minds/mcp.yaml` 中对应 server 写为 `enabled: false`。该操作不等待新服务可用：会无条件清理已加载 runtime/lease。禁用后的 server 仍作为 0 工具 MCP toolset 可见，并在手册中明确标记为 disabled。
+禁用 MCP 服务并将 `.minds/mcp.yaml` 中对应 server 写为 `enabled: false`。该操作不等待新服务可用：会无条件清理已加载 MCP 连接/lease。禁用后的 server 仍作为 0 工具 MCP toolset 可见，并在手册中明确标记为 disabled。
 
 **参数：**
 

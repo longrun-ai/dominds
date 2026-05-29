@@ -37,15 +37,15 @@ MCP (Model Context Protocol) is a protocol for connecting to external services.
 
 ### 2. MCP Lease
 
-MCP uses a lease mechanism to manage runtime resources such as HTTP connections and stdio processes. Lease ownership is about who holds a runtime instance; it does not define global MCP tool registration or visibility.
+MCP uses a lease mechanism to manage connection/process resources such as HTTP connections and stdio processes. Lease ownership is about who holds a connection/process; it does not define global MCP tool registration or visibility.
 
 **Lifecycle:**
 
-- **Acquire lease**: Establish or hold a runtime instance
-- **Hold lease**: Keep using that runtime instance
+- **Acquire lease**: Establish or hold a connection/process
+- **Hold lease**: Keep using that connection/process
 - **Release lease**: Stop/disconnect and release resources
 
-`mcp_restart` changes the target server from `enabled: false` back to `enabled: true`, then tries to start it. When it succeeds, it replaces the global MCP runtime and clears all dialog leases on the old runtime; you do not need to call `mcp_release` first. To force a server into the disabled state, use `mcp_disable`.
+`mcp_restart` changes the target server from `enabled: false` back to `enabled: true`, then tries to start it. When it succeeds, it replaces the global MCP service connection and clears all dialog leases on the old connection/process; you do not need to call `mcp_release` first. To force a server into the disabled state, use `mcp_disable`.
 
 ### 3. Environment Variables
 

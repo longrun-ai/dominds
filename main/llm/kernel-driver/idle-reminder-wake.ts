@@ -105,15 +105,19 @@ function buildAggregatedWakePromptContent(events: readonly ReminderWakeEvent[]):
       return `${String(index + 1)}. ${eventText}`;
     })
     .join('\n\n');
+  // Business scenario: several reminder/environment wakes arrived while the dialog was idle.
+  // The model needs the events as state updates, but they are not a new human request and should
+  // not trigger a standalone acknowledgement. Say the product meaning plainly instead of exposing
+  // internal "runtime event" wording.
   return language === 'zh'
     ? `${prefix}
-以下是对话空闲期间发生的 runtime 环境事件。这些事件不是新的用户指令。
+以下是对话空闲期间 Dominds 收到的环境事件。这些事件不是新的用户指令。
 
 ${body}
 
 请结合当前任务上下文继续推进；若这些事件不影响当前工作，不要发送占位式确认。`
     : `${prefix}
-The following runtime environment events happened while the dialog was idle. These events are not new user instructions.
+The following environment events reached Dominds while the dialog was idle. These events are not new user instructions.
 
 ${body}
 

@@ -658,7 +658,7 @@ async function main(): Promise<void> {
     const firstThinkingOnlyResult = findTellaskResult(restoredRoot.msgs, firstThinkingOnlyCallId);
     assert.ok(firstThinkingOnlyResult, 'expected first-turn thinking-only direct fallback result');
     assert.equal(firstThinkingOnlyResult.content, expectedFirstThinkingOnlyMirror);
-    assert.match(firstThinkingOnlyResult.content, /direct-reply fallback/u);
+    assert.match(firstThinkingOnlyResult.content, /one-time recovery/u);
     assert.match(firstThinkingOnlyResult.content, /I still skipped the reply tool/u);
     const firstThinkingOnlyLatestAfterFallback = await DialogPersistence.loadDialogLatest(
       restoredFirstThinkingOnlySideDialog.id,
@@ -869,7 +869,8 @@ async function main(): Promise<void> {
     const thinkingOnlyResult = findTellaskResult(root.msgs, thinkingOnlyCallId);
     assert.ok(thinkingOnlyResult, 'expected thinking-only direct fallback result');
     assert.equal(thinkingOnlyResult.content, expectedThinkingOnlyMirror);
-    assert.match(thinkingOnlyResult.content, /only produced thinking/u);
+    assert.match(thinkingOnlyResult.content, /only wrote thinking content/u);
+    assert.match(thinkingOnlyResult.content, /one-time recovery/u);
     assert.match(thinkingOnlyResult.content, /Reasoned answer: 2/u);
 
     await driveDialogStream(

@@ -87,12 +87,12 @@ function buildFbrContextHealthScopeRule(
     return pickLocalized(language, {
       zh:
         scope === 'mainDialog'
-          ? '- 当前上下文处于系统告急处置态：本程禁止发起 FBR。先按处置要求把尚未落实到差遣牒、且下一程需要知会的讨论细节写入合适章节，再维护接续包提醒项，并立即 `clear_mind`；系统真正开启新一程并完成接续包复核后，再恢复 FBR。'
-          : '- 当前上下文处于系统告急处置态：本程禁止发起 FBR。你当前处于支线对话：不要维护差遣牒，也不要整理差遣牒更新提案；先按处置要求维护足够详尽的接续包提醒项，并立即 `clear_mind`；系统真正开启新一程并完成接续包复核后，再恢复 FBR。',
+          ? '- Dominds 已提醒上下文告急：本程禁止发起 FBR。先按上下文保全要求把尚未落实到差遣牒、且下一程需要知会的讨论细节写入合适章节，再维护接续包提醒项，并立即 `clear_mind`；Dominds 真正开启新一程并完成接续包复核后，再恢复 FBR。'
+          : '- Dominds 已提醒上下文告急：本程禁止发起 FBR。你当前处于支线对话：不要维护差遣牒，也不要整理差遣牒更新提案；先按上下文保全要求维护足够详尽的接续包提醒项，并立即 `clear_mind`；Dominds 真正开启新一程并完成接续包复核后，再恢复 FBR。',
       en:
         scope === 'mainDialog'
-          ? '- Current context is under system critical remediation: do not start FBR in this course. First write discussion details not yet in Taskdoc but needed by the next course into the appropriate sections, then maintain continuation-package reminders and clear immediately; resume FBR only after the system starts the new course and the continuation package has been reviewed.'
-          : '- Current context is under system critical remediation: do not start FBR in this course. You are in a Side Dialog: do not maintain Taskdoc and do not draft Taskdoc update proposals; first maintain sufficiently detailed continuation-package reminders, then clear immediately. Resume FBR only after the system starts the new course and the continuation package has been reviewed.',
+          ? '- Dominds has warned that context is critical: do not start FBR in this course. First write discussion details not yet in Taskdoc but needed by the next course into the appropriate sections, then maintain continuation-package reminders and clear immediately; resume FBR only after Dominds starts the new course and the continuation package has been reviewed.'
+          : '- Dominds has warned that context is critical: do not start FBR in this course. You are in a Side Dialog: do not maintain Taskdoc and do not draft Taskdoc update proposals; first maintain sufficiently detailed continuation-package reminders, then clear immediately. Resume FBR only after Dominds starts the new course and the continuation package has been reviewed.',
     });
   }
 
@@ -100,24 +100,24 @@ function buildFbrContextHealthScopeRule(
     return pickLocalized(language, {
       zh:
         scope === 'mainDialog'
-          ? '- 当前上下文处于系统吃紧处置态：本程不要发起 FBR。先按处置要求把尚未落实到差遣牒、且下一程需要知会的讨论细节写入合适章节，再提炼提醒项并尽快 `clear_mind`；系统真正开启新一程并完成接续包复核后，再恢复 FBR。'
-          : '- 当前上下文处于系统吃紧处置态：本程不要发起 FBR。你当前处于支线对话：不要维护差遣牒，也不要整理差遣牒更新提案；先按处置要求维护足够详尽的接续包提醒项并尽快 `clear_mind`；系统真正开启新一程并完成接续包复核后，再恢复 FBR。',
+          ? '- Dominds 已提醒上下文吃紧：本程不要发起 FBR。先按上下文保全要求把尚未落实到差遣牒、且下一程需要知会的讨论细节写入合适章节，再提炼提醒项并尽快 `clear_mind`；Dominds 真正开启新一程并完成接续包复核后，再恢复 FBR。'
+          : '- Dominds 已提醒上下文吃紧：本程不要发起 FBR。你当前处于支线对话：不要维护差遣牒，也不要整理差遣牒更新提案；先按上下文保全要求维护足够详尽的接续包提醒项并尽快 `clear_mind`；Dominds 真正开启新一程并完成接续包复核后，再恢复 FBR。',
       en:
         scope === 'mainDialog'
-          ? '- Current context is under system caution remediation: do not start FBR in this course. First write discussion details not yet in Taskdoc but needed by the next course into the appropriate sections, then distill reminders and clear soon; resume FBR only after the system starts the new course and the continuation package has been reviewed.'
-          : '- Current context is under system caution remediation: do not start FBR in this course. You are in a Side Dialog: do not maintain Taskdoc and do not draft Taskdoc update proposals; first maintain sufficiently detailed continuation-package reminders, then clear soon. Resume FBR only after the system starts the new course and the continuation package has been reviewed.',
+          ? '- Dominds has warned that context is tight: do not start FBR in this course. First write discussion details not yet in Taskdoc but needed by the next course into the appropriate sections, then distill reminders and clear soon; resume FBR only after Dominds starts the new course and the continuation package has been reviewed.'
+          : '- Dominds has warned that context is tight: do not start FBR in this course. You are in a Side Dialog: do not maintain Taskdoc and do not draft Taskdoc update proposals; first maintain sufficiently detailed continuation-package reminders, then clear soon. Resume FBR only after Dominds starts the new course and the continuation package has been reviewed.',
     });
   }
 
   if (scope === 'mainDialog') {
     return pickLocalized(language, {
-      zh: '- 当前没有生效中的上下文健康处置指令，可以按正常流程进行 FBR。完成 FBR 后，基于当前可观测事实调用 `mind_more` 或 `change_mind` 更新差遣牒，体现任务最新进展情况。FBR 自诉请正文不要冗余包含差遣牒已有信息。',
-      en: '- There is no active context-health remediation instruction in effect, so FBR may proceed normally. After FBR, call `mind_more` or `change_mind` based on currently observable facts to update the Taskdoc with the latest progress; do not redundantly include information already present in the Taskdoc in the FBR body.',
+      zh: '- 当前没有生效中的上下文保全提示，可以按正常流程进行 FBR。完成 FBR 后，基于当前可观测事实调用 `mind_more` 或 `change_mind` 更新差遣牒，体现任务最新进展情况。FBR 自诉请正文不要冗余包含差遣牒已有信息。',
+      en: '- There is no active context-preservation notice in effect, so FBR may proceed normally. After FBR, call `mind_more` or `change_mind` based on currently observable facts to update the Taskdoc with the latest progress; do not redundantly include information already present in the Taskdoc in the FBR body.',
     });
   }
   return pickLocalized(language, {
-    zh: '- 当前没有生效中的上下文健康处置指令，可以按正常流程进行 FBR。随后基于当前可观测事实分析是否与差遣牒内容存在差异，并将发现的情况包含在 FBR 自诉请正文中。',
-    en: '- There is no active context-health remediation instruction in effect, so FBR may proceed normally. Then analyze whether currently observable facts differ from the Taskdoc, and include the findings in the FBR body.',
+    zh: '- 当前没有生效中的上下文保全提示，可以按正常流程进行 FBR。随后基于当前可观测事实分析是否与差遣牒内容存在差异，并将发现的情况包含在 FBR 自诉请正文中。',
+    en: '- There is no active context-preservation notice in effect, so FBR may proceed normally. Then analyze whether currently observable facts differ from the Taskdoc, and include the findings in the FBR body.',
   });
 }
 
@@ -151,9 +151,9 @@ function buildTeammateTellaskPhaseContract(language: LanguageCode): string {
       '- 只有长线诉请（`tellask` + `sessionSlug`）能接着同一件事说、更新同一件正在做的事；一次性诉请（`tellaskSessionless`）做不到。再次发起 `tellaskSessionless` 只是另一件独立任务，不会更新、更不会要求旧任务停止；若你后来发现可能需要改要求/提前收口，一开始就不该选择 `tellaskSessionless`。',
       '- 不要把智能体队友当成真人同事：祂不会因为你又发一条诉请而被打扰。同一个队友可以同时做多件独立任务，系统会分开处理。记住这个简单规则：同一个队友 + 同一个 `sessionSlug` = 接着同一件事说，并更新那件正在做的事；`tellaskSessionless` 或不同 `sessionSlug` = 另一件独立任务。只要任务独立、目标清楚，就直接并行诉请。',
       '- 能由队友诉请完成的执行性工作，禁止转交 `askHuman` 做“转发员”；当你写“让 @X 执行 Y”时，必须在同一回复内直接发出 `tellask` 或 `tellaskSessionless`。',
-      `- 当你在诉请正文里定义“回贴格式/交付格式”时，只写业务交付结构即可；不要要求被诉请者手写 \`${runtimeMarkers.finalCompleted}\` / \`${runtimeMarkers.tellaskBack}\` / FBR 标记（\`${runtimeMarkers.fbrDirectReply}\` / \`${runtimeMarkers.fbrReasoningOnly}\`），这些标记由 Dominds 运行时自动注入。`,
+      `- 当你在诉请正文里定义“回贴格式/交付格式”时，只写业务交付结构即可；不要要求被诉请者手写 \`${runtimeMarkers.finalCompleted}\` / \`${runtimeMarkers.tellaskBack}\` / FBR 标记（\`${runtimeMarkers.fbrDirectReply}\` / \`${runtimeMarkers.fbrReasoningOnly}\`），这些标记由 Dominds 自动注入。`,
       '- 当你处于队友诉请触发的支线时，不要把“阻塞/不确定”默认等同于 `tellaskBack`：若按当前团队规程/SOP/职责卡已能明确判定执行负责人，直接用 `tellask` / `tellaskSessionless` 诉请对应负责人；只有确实需要诉请者补充需求、做裁决、澄清验收口径、提供缺失输入，或现有规程无法明确判责时，才使用 `tellaskBack`。`tellaskBack` 不携带 `sessionSlug`。',
-      `- 回贴文本标记由运行时在跨对话传递正文中按语义自动添加（例如 \`${runtimeMarkers.tellaskBack}\` / \`${runtimeMarkers.finalCompleted}\` / FBR 标记 \`${runtimeMarkers.fbrDirectReply}\` / \`${runtimeMarkers.fbrReasoningOnly}\`）；该传递正文会进入目标智能体上下文，且 UI 与其一致。你不应手写这些标记。`,
+      `- 回贴文本标记由 Dominds 在跨对话传递正文中按语义自动添加（例如 \`${runtimeMarkers.tellaskBack}\` / \`${runtimeMarkers.finalCompleted}\` / FBR 标记 \`${runtimeMarkers.fbrDirectReply}\` / \`${runtimeMarkers.fbrReasoningOnly}\`）；该传递正文会进入目标智能体上下文，且 UI 与其一致。你不应手写这些标记。`,
     ],
     en: [
       '- Teammate Tellasks MUST follow four phases: “initiate -> wait -> judge -> continue”. If the objective is not met, immediately send the next Tellask round.',
@@ -164,9 +164,9 @@ function buildTeammateTellaskPhaseContract(language: LanguageCode): string {
       '- Only a sessioned Tellask (`tellask` + `sessionSlug`) can continue the same task and update that task. A one-shot Tellask (`tellaskSessionless`) cannot: another `tellaskSessionless` is a separate task and does not update, stop, or instruct the earlier task to stop. If you may need later correction or earlier wrap-up, do not choose `tellaskSessionless` in the first place.',
       '- Do not treat an agent teammate like a human coworker who can only handle one conversation at a time. The same teammate can work on several independent tasks at once, and the system keeps them separate. Simple rule: same teammate + same `sessionSlug` = continue the same task and update that task; `tellaskSessionless` or a different `sessionSlug` = another independent task. When tasks are independent and clear, tellask in parallel.',
       '- Do not use `askHuman` as a relay for executable teammate work. If you write “ask @X to do Y”, emit `tellask` or `tellaskSessionless` in the same response.',
-      `- When you define a “reply/delivery format” inside tellask body, keep it to the business delivery structure; do not require the tellaskee to hand-write \`${runtimeMarkers.finalCompleted}\` / \`${runtimeMarkers.tellaskBack}\` / FBR markers (\`${runtimeMarkers.fbrDirectReply}\` / \`${runtimeMarkers.fbrReasoningOnly}\`), because Dominds runtime injects those markers automatically.`,
+      `- When you define a “reply/delivery format” inside tellask body, keep it to the business delivery structure; do not require the tellaskee to hand-write \`${runtimeMarkers.finalCompleted}\` / \`${runtimeMarkers.tellaskBack}\` / FBR markers (\`${runtimeMarkers.fbrDirectReply}\` / \`${runtimeMarkers.fbrReasoningOnly}\`), because Dominds injects those markers automatically.`,
       '- In a teammate-triggered Side Dialog, do not treat “blocked / uncertain” as an automatic `tellaskBack`: if current team SOP / role ownership already identifies the responsible executor, directly use `tellask` / `tellaskSessionless` for that owner; use `tellaskBack` only when you truly need the tellasker to clarify, decide, confirm acceptance criteria, provide missing input, or when existing SOP cannot determine ownership. `tellaskBack` must not carry `sessionSlug`.',
-      `- Reply markers are auto-added by runtime in the inter-dialog transfer payload (for example \`${runtimeMarkers.tellaskBack}\` / \`${runtimeMarkers.finalCompleted}\` / FBR markers \`${runtimeMarkers.fbrDirectReply}\` / \`${runtimeMarkers.fbrReasoningOnly}\`); that same transfer payload is what the target agent receives in context and what UI shows. Do not hand-write markers.`,
+      `- Reply markers are auto-added by Dominds in the inter-dialog transfer payload (for example \`${runtimeMarkers.tellaskBack}\` / \`${runtimeMarkers.finalCompleted}\` / FBR markers \`${runtimeMarkers.fbrDirectReply}\` / \`${runtimeMarkers.fbrReasoningOnly}\`); that same transfer payload is what the target agent receives in context and what UI shows. Do not hand-write markers.`,
     ],
   });
   return lines.join('\n');
@@ -174,35 +174,41 @@ function buildTeammateTellaskPhaseContract(language: LanguageCode): string {
 
 function buildSideDialogTellaskerReplyMarkerRules(language: LanguageCode): string {
   const runtimeMarkers = getRuntimeTransferMarkers(language);
+  // Business scenario: Side Dialogs use the same visible conversation surface for three very
+  // different acts: asking another teammate (`tellask*`), asking the requester a question
+  // (`tellaskBack`), and sending the final answer back through a runtime-selected reply tool.
+  // Models often blur those acts when the prompt names all tools at once. These rules deliberately
+  // make runtime the authority for "is somebody waiting for my final reply" and "which reply tool
+  // sends it", while leaving business ownership/SOP decisions to the model.
   const lines = pickLocalized(language, {
     zh: [
       '- 本规则仅用于当前支线向诉请者回复；`tellask` 用于**发起新的下游诉请对话**（委托队友做事），不用于向诉请者汇报。',
       '- 当前支线未完成时，不要默认直接 `tellaskBack`。先判断当前团队规程/SOP/职责卡能否明确负责人：若能明确且属于执行性处理，直接 `tellask` / `tellaskSessionless` 对应负责人；只有当必须向诉请者补充需求、做业务裁决、澄清验收口径、提供缺失输入，或现有规程无法明确判责时，才发起 `tellaskBack({ tellaskContent: "..." })`，并在 `tellaskContent` 中给出具体问题。',
-      '- 是否存在“待你收口的跨对话回复义务”、以及精确该调用哪个 reply 函数，均由运行时程序化判断；运行时会在 assignment 或最新 runtime/user 提示里直接点名。',
-      '- 若运行时点名了精确 reply 函数名，你只需调用那个被点名的函数；不要自己判断 `reply*` 变体。禁止调用 `tellaskBack` 发送最终结果，也禁止用 `tellask` 向诉请者发送最终结果。',
-      `- 正式完成路径：只有在运行时当前明确点名了某个精确 reply 函数，且你通过那个函数回复时，运行时才会把该回复作为完成结果投递给诉请者，并在传递正文中添加 ${runtimeMarkers.finalCompleted}。不要依赖 direct-reply fallback；它只是运行时临时过渡兜底，不是正式回复机制。`,
-      '- 若运行时当前明确提示“没有待完成的跨对话回复义务”，就直接继续当前本地对话；不要凭记忆再次调用 `reply*`。',
-      '- "不得发普通文本中间汇报"只针对未完成态；若你已经完成任务并能给出最终交付，就应使用运行时当前点名的精确 reply 函数，不要使用 `tellaskBack` 或 `tellask`。',
+      '- 是否有别的对话正在等你发送最终回贴、以及发送时该用哪个精确回复工具，均由 Dominds 根据当前对话状态判断；Dominds 会在任务开头或最新 Dominds/user 提示里直接点名。',
+      '- 若 Dominds 点名了精确回复工具，你只需调用那个被点名的工具；不要自己从历史上下文猜工具变体。禁止调用 `tellaskBack` 发送最终结果，也禁止用 `tellask` 向诉请者发送最终结果。',
+      `- 正式完成路径：只有在 Dominds 当前明确点名了某个精确回复工具，且你通过那个工具回复时，Dominds 才会把该回复作为完成结果投递给诉请者，并在传递正文中添加 ${runtimeMarkers.finalCompleted}。不要只发普通文本；对方可能收不到正式回贴。`,
+      '- 若 Dominds 当前明确提示“无需回贴”，说明这就是当前对话里的普通回合；按当前用户/Dominds 消息正常交流和处理即可。',
+      '- "不得发普通文本中间汇报"只针对未完成态；若你已经完成任务并能给出最终交付，就应使用 Dominds 当前点名的精确回复工具，不要使用 `tellaskBack` 或 `tellask`。',
       '- 例外：FBR 支线为工具禁用模式（不得调用 `tellaskBack`）；其回贴标记（`' +
         runtimeMarkers.fbrDirectReply +
         '` / `' +
         runtimeMarkers.fbrReasoningOnly +
-        '`)也由运行时在传递正文中注入。',
+        '`)也由 Dominds 在传递正文中注入。',
       '- 若人类用户在支线对话中插入消息或补问：直接正常回复即可，不需要向诉请者汇报（支线不需要主动汇报诉请者，默认行为就是直接回复）。',
     ],
     en: [
       '- This rule applies only when replying to the tellasker from the current Side Dialog; tellask is for initiating a new downstream tellask dialog (delegating work to a teammate), not for reporting back to the tellasker.',
       '- If the current Side Dialog is unfinished, do not default to `tellaskBack`. First judge whether current team SOP / role ownership already identifies the responsible executor: if yes and the issue is execution work, directly use `tellask` / `tellaskSessionless` for that owner; use `tellaskBack({ tellaskContent: "..." })` only when the tellasker must provide clarification, business decision, acceptance-criteria confirmation, missing input, or when existing SOP cannot determine ownership. Put concrete questions in `tellaskContent`.',
-      '- Runtime programmatically decides whether there is an active inter-dialog reply obligation for you, and which exact reply function name applies; runtime will state that directly in the assignment or the latest runtime/user prompt.',
-      '- If runtime names an exact reply function, call that named function and do not choose a `reply*` variant by yourself. Do not use `tellaskBack` or `tellask` to send final delivery.',
-      `- Formal completion path: only replies sent through the exact reply function currently named by runtime are delivered to the tellasker as completion results and marked with ${runtimeMarkers.finalCompleted}. Do not rely on direct-reply fallback; it is only a temporary runtime transition safeguard, not the formal reply mechanism.`,
-      '- If runtime explicitly tells you there is no active inter-dialog reply obligation right now, just continue the current local conversation; do not call `reply*` again from memory.',
-      '- "Do not post a plain-text progress update" only applies to unfinished states; if the task is done and you can deliver the final result, use the exact reply function currently named by runtime instead of `tellaskBack` or `tellask`.',
+      '- Dominds decides from the current dialog state whether another dialog is waiting for your final reply, and which exact reply tool sends it; Dominds will state that directly in the task header or the latest Dominds/user prompt.',
+      '- If Dominds names an exact reply tool, call that named tool and do not choose a variant by yourself. Do not use `tellaskBack` or `tellask` to send final delivery.',
+      `- Formal completion path: only replies sent through the exact reply tool currently named by Dominds are delivered to the tellasker as completion results and marked with ${runtimeMarkers.finalCompleted}. Do not rely on plain text; the other dialog may not receive a formal reply that way.`,
+      '- If Dominds explicitly says no reply is needed right now, this is just a normal turn in the current conversation; handle the current user/Dominds message normally.',
+      '- "Do not post a plain-text progress update" only applies to unfinished states; if the task is done and you can deliver the final result, use the exact reply tool currently named by Dominds instead of `tellaskBack` or `tellask`.',
       '- Exception: FBR Side Dialog is tool-less (no \`tellaskBack\`); its reply markers (`' +
         runtimeMarkers.fbrDirectReply +
         '` / `' +
         runtimeMarkers.fbrReasoningOnly +
-        '`) are also injected by runtime into the transfer payload.',
+        '`) are also injected by Dominds into the transfer payload.',
       '- If a human user inserts a message or asks a follow-up in the Side Dialog: just reply normally; no need to report back to the tellasker (Side Dialog has no standing obligation to report to the tellasker).',
     ],
   });
@@ -215,25 +221,34 @@ function buildTellaskReplyMarkerScopePolicy(
 ): string[] {
   const runtimeMarkers = getRuntimeTransferMarkers(language);
   if (dialogScope === 'sideDialog') {
+    // Business scenario: this policy is embedded in the standing Side Dialog system prompt, so
+    // it must teach the stable rule without forcing the model to infer the live state. The live
+    // state comes from runtime prompts such as "[Dominds 回复路径]" or "[Dominds 无需回贴]"; this
+    // standing text only says how to obey those runtime facts when they appear.
+    //
+    // The "no reply needed" wording is deliberately phrased as "normal current turn" instead of
+    // as a broad tool/reminder prohibition. A completed Sideline Dialog follow-up may still need
+    // tools, reminder cleanup, or ordinary explanation if the user asks for them; the key business
+    // fact is only that no requester is waiting for formal final delivery anymore.
     return [
       ...pickLocalized(language, {
         zh: [
-          `- 回贴文本标记由运行时在跨对话传递正文中自动添加（常规完成=${runtimeMarkers.finalCompleted}；FBR=${runtimeMarkers.fbrDirectReply} 或 ${runtimeMarkers.fbrReasoningOnly}）；该正文直接进入诉请者上下文，且 UI 展示与其一致。你无需、也不应手写标记。`,
-          '- 若你在正文中给下游写“回贴格式”，只写业务交付结构；不得要求下游手写任何标记，运行时会自动注入。',
+          `- 回贴文本标记由 Dominds 在跨对话传递正文中自动添加（常规完成=${runtimeMarkers.finalCompleted}；FBR=${runtimeMarkers.fbrDirectReply} 或 ${runtimeMarkers.fbrReasoningOnly}）；该正文直接进入诉请者上下文，且 UI 展示与其一致。你无需、也不应手写标记。`,
+          '- 若你在正文中给下游写“回贴格式”，只写业务交付结构；不得要求下游手写任何标记，Dominds 会自动注入。',
           '- `tellaskBack` 只允许用于回问诉请者；仅当必须向诉请者补需求/澄清/裁决/缺失输入，或现有团队规程无法明确判责时才使用。禁止用 `tellaskBack` 发送最终结果。',
           '- 当前支线未完成时，不得把“阻塞/不确定”机械等同于 `tellaskBack`；若团队规程/SOP/职责卡已明确负责人，应直接 `tellask` / `tellaskSessionless` 对应负责人，不得发普通文本中间汇报。',
           `- ${buildSideDialogCompletionRule('zh')}`,
-          `- 正式完成路径中，仅当运行时当前明确点名了某个精确 reply 函数，且你通过那个函数回复时，运行时才会把该回复投递给诉请者并标注 ${runtimeMarkers.finalCompleted}；不要依赖 direct-reply fallback，它只是运行时临时过渡兜底，不是正式回复机制。`,
-          '- 若运行时当前明确提示“没有待完成的跨对话回复义务”，说明这轮不是待你收口的跨对话回复义务；不要重复调用 `reply*`。',
+          `- 正式完成路径中，仅当 Dominds 当前明确点名了某个精确回复工具，且你通过那个工具回复时，Dominds 才会把该回复投递给诉请者并标注 ${runtimeMarkers.finalCompleted}；不要只发普通文本，对方可能收不到正式回贴。`,
+          '- 若 Dominds 当前明确提示“无需回贴”，说明这轮没有别的对话在等你发送最终回贴；这是当前对话里的普通回合，按当前消息正常交流和处理即可。',
         ],
         en: [
-          `- Reply markers are runtime-added in the inter-dialog transfer payload (regular completed reply = ${runtimeMarkers.finalCompleted}; FBR = ${runtimeMarkers.fbrDirectReply} or ${runtimeMarkers.fbrReasoningOnly}); this payload is delivered to tellasker context and shown identically in UI. Do not hand-write markers.`,
-          '- If you define a reply format for downstream, keep it to the business delivery structure; do not require downstream to hand-write any marker, because runtime injects markers automatically.',
+          `- Reply markers are added by Dominds in the inter-dialog transfer payload (regular completed reply = ${runtimeMarkers.finalCompleted}; FBR = ${runtimeMarkers.fbrDirectReply} or ${runtimeMarkers.fbrReasoningOnly}); this payload is delivered to tellasker context and shown identically in UI. Do not hand-write markers.`,
+          '- If you define a reply format for downstream, keep it to the business delivery structure; do not require downstream to hand-write any marker, because Dominds injects markers automatically.',
           '- `tellaskBack` is only for asking the tellasker back; use it only when tellasker clarification / decision / missing input is required, or current team SOP cannot determine ownership. Do not use `tellaskBack` to send final results.',
           '- If the current Side Dialog is unfinished, do not mechanically map “blocked / uncertain” to `tellaskBack`; when team SOP / role ownership already identifies the responsible owner, directly use `tellask` / `tellaskSessionless` for that owner instead of posting a plain-text progress update.',
           `- ${buildSideDialogCompletionRule('en')}`,
-          `- In the formal completion path, runtime marks ${runtimeMarkers.finalCompleted} and delivers to the tellasker only when runtime currently names an exact reply function and you reply through that named function; do not rely on direct-reply fallback, which is only a temporary runtime transition safeguard, not the formal reply mechanism.`,
-          '- If runtime currently tells you there is no active inter-dialog reply obligation, then this turn is not awaiting another inter-dialog closure from you; do not call `reply*` again.',
+          `- In the formal completion path, Dominds marks ${runtimeMarkers.finalCompleted} and delivers to the tellasker only when Dominds currently names an exact reply tool and you reply through that named tool; do not rely on plain text, because the other dialog may not receive a formal reply that way.`,
+          '- If Dominds currently tells you no reply is needed, then no other dialog is waiting for your final reply in this turn; this is a normal turn in the current conversation, so handle the current message normally.',
         ],
       }),
     ];
@@ -298,7 +313,7 @@ function buildFbrGuidelines(
   const lines = pickLocalized(language, {
     zh: [
       '- FBR 由 `freshBootsReasoning` 触发，不属于普通队友诉请分类；请按本节规则执行。',
-      '- FBR 不可调用 `tellaskBack`；其回贴标记由运行时在跨对话传递正文中自动注入。',
+      '- FBR 不可调用 `tellaskBack`；其回贴标记由 Dominds 在跨对话传递正文中自动注入。',
       '- FBR 禁止一切 tellask（包括 `tellaskBack` / `tellask` / `tellaskSessionless` / `askHuman`）。',
       '- 当用户明确要求“做一次 FBR/扪心自问”，对话主理人必须发起 `freshBootsReasoning`。',
       fbrContextHealthRule,
@@ -315,7 +330,7 @@ function buildFbrGuidelines(
     ],
     en: [
       '- FBR is triggered by `freshBootsReasoning`, not by normal teammate tellasks; follow this section’s rules.',
-      '- FBR cannot call `tellaskBack`; its reply marker is injected by runtime into the inter-dialog transfer payload.',
+      '- FBR cannot call `tellaskBack`; its reply marker is injected by Dominds into the inter-dialog transfer payload.',
       '- FBR forbids all tellask calls (including `tellaskBack` / `tellask` / `tellaskSessionless` / `askHuman`).',
       '- When the user explicitly requests “do an FBR / fresh boots reasoning”, the Dialog Responder must call `freshBootsReasoning`.',
       fbrContextHealthRule,
@@ -395,7 +410,7 @@ export function formatMcpToolsetRuntimeNote(
   const lines =
     language === 'zh'
       ? [
-          '以下 MCP toolset 已配置给你，且在 `.minds/mcp.yaml` 中有声明，但当前不提供可调用的运行时 MCP 工具。',
+          '以下 MCP toolset 已配置给你，且在 `.minds/mcp.yaml` 中有声明，但当前没有可调用的 MCP 工具。',
           '其中有些可能是暂时不可达（例如 stdio transport 进程启动失败，或 streamable HTTP transport 当前无法连接），有些可能是被明确禁用；这不代表你的权限被撤销，也不应视为系统级功能降级。',
           ...notices.map((notice) => {
             if (notice.status === 'disabled') {
@@ -411,7 +426,7 @@ export function formatMcpToolsetRuntimeNote(
           '若当前任务依赖这些能力，应明确说明对应 MCP toolset 眼下不可用，并优先继续使用其余可用工具/路径推进。',
         ]
       : [
-          'The following MCP toolsets are assigned to you and declared in `.minds/mcp.yaml`, but they do not currently provide callable runtime MCP tools.',
+          'The following MCP toolsets are assigned to you and declared in `.minds/mcp.yaml`, but they do not currently provide callable MCP tools.',
           'Some may be temporarily unavailable (for example a stdio transport process failing to start right now, or a streamable HTTP transport being unreachable right now), and some may be explicitly disabled. This does not mean your permission was revoked, and it should not be treated as a system-level capability downgrade.',
           ...notices.map((notice) => {
             if (notice.status === 'disabled') {

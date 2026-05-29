@@ -98,7 +98,7 @@ const mcpReleaseSchema: JsonSchema = {
     serverId: {
       type: 'string',
       description:
-        "MCP server id from `.minds/mcp.yaml` (e.g., 'playwright'). Releases this dialog's current leased MCP runtime instance/process for that server.",
+        "MCP server id from `.minds/mcp.yaml` (e.g., 'playwright'). Releases this dialog's current leased MCP connection/process for that server.",
     },
   },
   required: ['serverId'],
@@ -111,7 +111,7 @@ const mcpDisableSchema: JsonSchema = {
     serverId: {
       type: 'string',
       description:
-        "MCP server id from `.minds/mcp.yaml` (e.g., 'playwright'). Stops any loaded runtime/leases and writes servers.<id>.enabled=false.",
+        "MCP server id from `.minds/mcp.yaml` (e.g., 'playwright'). Stops any loaded MCP connection/leases and writes servers.<id>.enabled=false.",
     },
   },
   required: ['serverId'],
@@ -157,11 +157,10 @@ export const mcpRestartTool: FuncTool = {
 export const mcpReleaseTool: FuncTool = {
   type: 'func',
   name: 'mcp_release',
-  description:
-    "Release this dialog's current leased MCP runtime instance for a server (stops the underlying process/connection).",
+  description: "Release this dialog's current leased MCP connection/process for a server.",
   descriptionI18n: {
-    en: "Release this dialog's current leased MCP runtime instance for a server (stops the underlying process/connection).",
-    zh: '释放当前对话为某个 server 持有的 MCP 运行时实例（停止底层进程/连接）。',
+    en: "Release this dialog's current leased MCP connection/process for a server.",
+    zh: '释放当前对话为某个 server 持有的 MCP 连接/进程。',
   },
   parameters: mcpReleaseSchema,
   argsValidation: 'dominds',
@@ -202,10 +201,10 @@ export const mcpDisableTool: FuncTool = {
   type: 'func',
   name: 'mcp_disable',
   description:
-    'Disable a configured MCP server, clear its loaded runtime/leases, and persist enabled=false in `.minds/mcp.yaml`.',
+    'Disable a configured MCP server, clear its loaded MCP connection/leases, and persist enabled=false in `.minds/mcp.yaml`.',
   descriptionI18n: {
-    en: 'Disable a configured MCP server, clear its loaded runtime/leases, and persist enabled=false in `.minds/mcp.yaml`.',
-    zh: '禁用指定 MCP 服务器，清理其已加载运行时/租约，并在 `.minds/mcp.yaml` 中持久写入 enabled=false。',
+    en: 'Disable a configured MCP server, clear its loaded MCP connection/leases, and persist enabled=false in `.minds/mcp.yaml`.',
+    zh: '禁用指定 MCP 服务器，清理其已加载 MCP 连接/租约，并在 `.minds/mcp.yaml` 中持久写入 enabled=false。',
   },
   parameters: mcpDisableSchema,
   argsValidation: 'dominds',
@@ -271,18 +270,18 @@ export const mcpLeaseReminderOwner: ReminderOwner = {
           ? [
               `${prefix} MCP 工具集租约 [${reminder.id}]: \`${serverId}\``,
               '',
-              `你当前看到的是系统维护的 MCP 租约状态。该 MCP server 被视为非“真正无状态”；当前对话持有一个 MCP 运行时实例（HTTP 连接或 stdio 进程）。`,
+              `你当前看到的是系统维护的 MCP 租约状态。该 MCP server 被视为非“真正无状态”；当前对话持有一个 MCP 连接/进程（HTTP 连接或 stdio 进程）。`,
               formatAutoMaintainedReminderManualMirrorBan(workLanguage),
               '',
-              `该提醒项只说明当前对话持有的运行时实例；它不决定该 server 的全局工具注册/可见性。`,
+              `该提醒项只说明当前对话持有的连接/进程；它不决定该 server 的全局工具注册/可见性。`,
             ].join('\n')
           : [
               `${prefix} MCP toolset lease [${reminder.id}]: \`${serverId}\``,
               '',
-              `You are looking at system-maintained MCP lease state. This MCP server is treated as non-stateless, and the current dialog holds one MCP runtime instance for it (an HTTP connection or stdio process).`,
+              `You are looking at system-maintained MCP lease state. This MCP server is treated as non-stateless, and the current dialog holds one MCP connection/process for it (an HTTP connection or stdio process).`,
               formatAutoMaintainedReminderManualMirrorBan(workLanguage),
               '',
-              `This reminder only describes the runtime instance held by the current dialog; it does not determine global tool registration/visibility for that server.`,
+              `This reminder only describes the connection/process held by the current dialog; it does not determine global tool registration/visibility for that server.`,
             ].join('\n'),
     };
   },

@@ -42,7 +42,7 @@ Default to `task`. Use `dialog` only when the note is truly dialog-local; use `a
 - `agent` reminders stay visible in all later dialogs you lead
 - Can be added, modified, or deleted at any time
 - Should stay compact, scannable, and directly actionable by default
-- Before `clear_mind`, the Main Dialog first records undocumented discussion details the next course needs to know into Taskdoc, then creates a structured continuation-package reminder; a Side Dialog directly maintains sufficiently detailed continuation-package reminders. If the current course is already under system remediation, Side Dialog reminder length has no technical limit and rough multi-reminder carry-over is acceptable
+- Before `clear_mind`, the Main Dialog first records undocumented discussion details the next course needs to know into Taskdoc, then creates a structured continuation-package reminder; a Side Dialog directly maintains sufficiently detailed continuation-package reminders. If Dominds has already warned that context is tight or critical, Side Dialog reminders have no fixed length limit and rough multi-reminder carry-over is acceptable
 
 **Difference from memory:**
 | Feature | dialog reminder | task reminder | agent reminder | personal memory |
@@ -104,17 +104,17 @@ Taskdoc is a **task contract** and the task's **team-shared source of current tr
 - Do not treat an agent teammate like a human coworker who can only handle one conversation at a time. Same teammate + same `sessionSlug` = continue the same task and update that task; `tellaskSessionless` or a different `sessionSlug` = another independent task
 - Call `tellaskBack({ tellaskContent })` only when the tellasker must clarify the request, decide a tradeoff, confirm acceptance criteria, provide missing input, or current SOP cannot determine ownership
 - If a human must personally perform login / GUI / captcha / high-risk authorization: call `askHuman({ tellaskContent })`
-- If the current Side Dialog is complete and the assignment header says `replyTellask`: call `replyTellask({ replyContent })`
-- If the current Side Dialog is complete and the assignment header says `replyTellaskSessionless`: call `replyTellaskSessionless({ replyContent })`
-- If you are answering a tellasker `tellaskBack` follow-up and runtime exposes `replyTellaskBack`: call `replyTellaskBack({ replyContent })`
-- Plain text is not the completion channel for inter-dialog delivery; if you produce final deliverable content instead of the reply tool, runtime may temporarily inject a `role=user` reminder telling you to use the correct reply function. Do not rely on direct-reply fallback; it is only a temporary runtime transition safeguard, not the formal reply mechanism
+- If the current Side Dialog is complete and the task header says `replyTellask`: call `replyTellask({ replyContent })`
+- If the current Side Dialog is complete and the task header says `replyTellaskSessionless`: call `replyTellaskSessionless({ replyContent })`
+- If you are answering a tellasker `tellaskBack` follow-up and Dominds shows `replyTellaskBack`: call `replyTellaskBack({ replyContent })`
+- Plain text is not the completion channel for inter-dialog delivery. If you write final content for the requester but do not send it through the reply tool named by Dominds, Dominds may temporarily remind you to use that tool. Do not treat plain text as the formal reply path; the other dialog may not receive a formal reply that way.
 
 ### Low-Burden Rule
 
-- Focus on doing the current task correctly first; use `reply*` only when final tellasker delivery is actually ready
-- Do not memorize reply variants by yourself; follow the current assignment header and the function currently exposed by runtime
-- `reply*` tool descriptions are intentionally minimal and spec-like; use this manual's principles / scenarios for situational guidance
-- If runtime exposes only one `reply*`, that is the only correct completion path for the current state
+- Focus on doing the current task correctly first; send the final reply only when the final content is ready and Dominds names a reply tool
+- Do not memorize reply variants by yourself; follow the current task header and the reply tool currently named/shown by Dominds
+- Reply tool descriptions are intentionally minimal and spec-like; use this manual's principles / scenarios for situational guidance
+- If Dominds names/shows only one reply tool, that is the only correct completion path for the current state
 - `tellaskBack` is valid only when ownership cannot be determined from existing SOP, or when the tellasker must answer; it is not the default first move for every blocked state
 
 ## Best Practices
@@ -137,10 +137,10 @@ Taskdoc is a **task contract** and the task's **team-shared source of current tr
 
 - Keep concise: reminders are often 1-3 items; prefer `update_reminder` to compress/merge
 - Separate carriers: information that must synchronize the team's current effective state, key decisions, next steps, or still-active blockers belongs in `progress`, the quasi-real-time task bulletin board; reminders keep local resume details
-- Do not duplicate system state: background process status, in-flight background asks/collaboration, browser/session attachment state, and similar Dominds runtime-maintained environment state do not belong in manual reminders. Runtime-managed reminders, panels, and tool outputs are the single source of truth; manual copies go stale easily and create cognitive noise
+- Do not duplicate system state: background process status, in-flight background asks/collaboration, browser/session attachment state, and similar environment state automatically maintained by Dominds do not belong in manual reminders. Dominds-managed reminders, panels, and tool outputs are the authoritative place for that state; manual copies go stale easily and create cognitive noise
 - Team-facing: keep `progress` scannable and centered on what is still effective now; do not let it degrade into a personal log, raw chronology, scratchpad, or stale history pile. Use `mind_more` for small additions; when cleanup/reordering/compression is needed, call `recall_taskdoc` first and then use `change_mind` with the returned `content_hash` as `previous_content_hash`
 - Condense when needed: `mind_more` is not the default bookkeeping move. If one topic already has several phase notes, prefer `change_mind` to merge them into the current summary; put the detailed expansion in formal rtws documentation and keep a document pointer in Taskdoc. If the replacement would overwrite existing content, proceed only with direct human confirmation or after applying a human-approved SOP/acceptance standard that considers the existing content
-- Collapse before clearing: the Main Dialog first records undocumented discussion details the next course needs to know into the appropriate Taskdoc sections, then creates a structured continuation-package reminder; a Side Dialog must not maintain Taskdoc or draft Taskdoc update proposals, and should directly maintain sufficiently detailed continuation-package reminders. If the current course is already under system remediation, rough multi-reminder carry-over is acceptable but must be reconciled first in the new course
+- Collapse before clearing: the Main Dialog first records undocumented discussion details the next course needs to know into the appropriate Taskdoc sections, then creates a structured continuation-package reminder; a Side Dialog must not maintain Taskdoc or draft Taskdoc update proposals, and should directly maintain sufficiently detailed continuation-package reminders. If Dominds has already warned that context is tight or critical, rough multi-reminder carry-over is acceptable but must be reconciled first in the new course
 - Avoid raw-material dumps: do not paste long logs or large tool outputs into reminders
 - Documentation layering: Taskdoc says “what the team should sync on / do next now”; formal rtws documentation carries “why, how, detailed evidence, and the full process”. When Taskdoc references formal rtws documentation, use a stable path/section name/relevant command instead of copying the full content
 
@@ -164,5 +164,5 @@ Taskdoc is a **task contract** and the task's **team-shared source of current tr
 1. `dialog` reminders end with the dialog; `task` reminders stay visible under the current Taskdoc; `agent` reminders stay visible in all later dialogs you lead
 2. Use `do_mind` to create missing Taskdoc sections; use `mind_more` for small Taskdoc additions; use `change_mind` for full-section replacement of existing sections only after merging existing content and calling `recall_taskdoc` for the current `content_hash`; use `never_mind` when a whole section file should be deleted. Do not treat `mind_more` as a chronology tool; when cleanup, stale-entry removal, or same-topic consolidation is needed, use `recall_taskdoc` then `change_mind`
 3. `do_mind` / `mind_more` / `change_mind` / `never_mind` do not start a new course
-4. A continuation-package reminder should keep only details still not covered by Taskdoc but easy to lose during resume; in the Main Dialog, undocumented discussion details from current dialog history that the next course needs to know should be written to the appropriate Taskdoc sections first; in a Side Dialog under caution/critical remediation, maintain sufficiently detailed continuation-package reminders only
+4. A continuation-package reminder should keep only details still not covered by Taskdoc but easy to lose during resume; in the Main Dialog, undocumented discussion details from current dialog history that the next course needs to know should be written to the appropriate Taskdoc sections first; in a Side Dialog after Dominds warns that context is tight or critical, maintain sufficiently detailed continuation-package reminders only
 5. Do not turn `task` / `agent` reminders into a long-term fact dump; move durable knowledge into `personal_memory`

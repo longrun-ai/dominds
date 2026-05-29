@@ -174,7 +174,7 @@ async function main(): Promise<void> {
     assert.ok(staleReplyToolOutput, 'expected stale reply tool output');
     assert.match(
       staleReplyToolOutput.content,
-      /there is no active inter-dialog reply obligation right now/u,
+      /no other dialog is waiting for your final reply right now/u,
     );
 
     const deliveredAskBackCallId = 'already-delivered-askback-call';
@@ -230,7 +230,7 @@ async function main(): Promise<void> {
     assert.ok(duplicateAskBackToolOutput, 'expected duplicate ask-back reply tool output');
     assert.match(
       duplicateAskBackToolOutput.content,
-      /there is no longer a pending inter-dialog reply obligation/u,
+      /this reply task is no longer waiting for delivery from this dialog/u,
     );
     const duplicateAskBackEvents = await collectEvents(duplicateAskBackCh, 300);
     assert.equal(
@@ -379,7 +379,7 @@ async function main(): Promise<void> {
     );
     assert.match(
       stalePromptGuidance.promptContent ?? '',
-      /There is no active inter-dialog reply obligation right now/u,
+      /no other dialog is waiting for your final reply right now/u,
     );
 
     const liveDirective: TellaskReplyDirective = {

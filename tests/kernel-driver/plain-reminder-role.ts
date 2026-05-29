@@ -81,8 +81,8 @@ async function main(): Promise<void> {
     'Expected reminder context guide to render on user side as runtime context',
   );
   assert.ok(
-    renderedReminders[0]?.content.includes('当前可见提醒项的运行时上下文投影'),
-    'Expected reminder context guide to clarify runtime-added context projection',
+    renderedReminders[0]?.content.includes('Dominds 为你放到当前上下文里的可见提醒项'),
+    'Expected reminder context guide to clarify Dominds-added reminder context',
   );
   assert.ok(
     renderedReminders[0]?.content.includes('用户通过独立的 Reminder 小组件/面板项看到这些提醒'),
@@ -113,7 +113,7 @@ async function main(): Promise<void> {
     'Expected plain reminder to render on user side as runtime notice',
   );
   assert.ok(
-    renderedReminders[2]?.content.includes('运行时提醒项投影：'),
+    renderedReminders[2]?.content.includes('Dominds 提醒项说明：'),
     'Expected plain reminder to include compact self-contained per-item projection note',
   );
   assert.ok(

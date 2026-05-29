@@ -17,7 +17,7 @@
 
 当 MCP 服务出现故障、需要刷新连接，或当前被 `enabled: false` 禁用时，启用并重启 MCP 服务。
 
-`mcp_restart` 会把 `enabled: false` 写回 `enabled: true` 后尝试启动；成功后会清理旧 runtime 的全部对话 lease，不需要先 `mcp_release`。
+`mcp_restart` 会把 `enabled: false` 写回 `enabled: true` 后尝试启动；成功后会清理旧连接/进程 的全部对话 lease，不需要先 `mcp_release`。
 
 ### 示例
 

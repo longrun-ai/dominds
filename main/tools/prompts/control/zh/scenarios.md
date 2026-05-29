@@ -57,11 +57,11 @@ delete_reminder({
 - 如果信息需要向全队同步当前有效状态、关键决策、下一步或仍成立阻塞，应写入 Taskdoc `progress`
 - 如果内容本质上是长期知识而不是当前手头工作提示，应改存到 `personal_memory`
 
-## 场景 2：支线已完成，按 assignment 头部要求调用 replyTellask
+## 场景 2：支线已完成，按任务开头要求调用 replyTellask
 
 ### 场景描述
 
-当前支线处理完毕，assignment 头部明确写着“完成任务时必须调用 `replyTellask`”。
+当前支线处理完毕，任务开头明确写着“完成任务时必须调用 `replyTellask`”。
 
 ### 示例
 
@@ -73,9 +73,9 @@ replyTellask({
 
 ### 关键点
 
-- 不要再发一条普通最终消息代替；direct-reply fallback 只是运行时临时过渡兜底，不是可规划使用的收口方式
+- 不要再发一条普通最终消息代替；正式回贴必须走 Dominds 点名的回复工具，否则对方可能收不到正式回贴
 - `replyContent` 直接放最终交付正文
-- 若 assignment 头部写的是 `replyTellaskSessionless`，则同结构替换函数名
+- 若任务开头写的是 `replyTellaskSessionless`，则同结构替换函数名
 
 ## 场景 3：当前未完成，需要回问诉请者
 
@@ -90,20 +90,20 @@ tellaskBack({
   tellaskContent: '还缺少生产环境端口与部署入口信息。请补充这两项后我再继续给出最终方案。',
 });
 
-// 等诉请者补充后，runtime 会在当前对话里继续推进
+// 等诉请者补充后，Dominds 会在当前对话里继续推进
 ```
 
 ### 关键点
 
 - 这里只是“必须向诉请者补输入”的例子，所以用 `tellaskBack`
 - 若团队规程 / SOP / 职责卡已经能明确执行负责人，应直接 `tellask` / `tellaskSessionless` 对应负责人，而不是机械因为“未完成态”就用 `tellaskBack`
-- `tellaskBack` 只负责把问题问回去，不负责最终交付
+- `tellaskBack` 只负责把问题问回去，不负责最终交付；中间澄清不要调用回复工具
 
 ## 场景 4：收到 ask-back 续诉请后，用 replyTellaskBack 收口
 
 ### 场景描述
 
-你之前发过 `tellaskBack`，诉请者现在补回了所需信息，runtime 暴露了 `replyTellaskBack`。
+你之前发过 `tellaskBack`，诉请者现在补回了所需信息，Dominds 显示了 `replyTellaskBack`。
 
 ### 示例
 

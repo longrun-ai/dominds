@@ -465,9 +465,19 @@ export class MockGen implements LlmGenerator {
       if (trimmed !== '') {
         variants.add(trimmed.toLowerCase());
       }
-      const tellaskStatusIndexZh = trimmed.lastIndexOf('\n[Dominds 诉请状态]\n');
-      const tellaskStatusIndexEn = trimmed.lastIndexOf('\n[Dominds tellask status]\n');
-      const tellaskStatusIndex = Math.max(tellaskStatusIndexZh, tellaskStatusIndexEn);
+      const tellaskStatusPrefixes = [
+        '\n[Dominds 诉请状态]\n',
+        '\n[Dominds tellask status]\n',
+        '\n[Dominds 等待人类回复]\n',
+        '\n[Dominds waiting for human answer]\n',
+        '\n[Dominds 等待队友回贴]\n',
+        '\n[Dominds waiting for teammate reply]\n',
+        '\n[Dominds 队友回贴状态]\n',
+        '\n[Dominds teammate reply status]\n',
+      ];
+      const tellaskStatusIndex = Math.max(
+        ...tellaskStatusPrefixes.map((prefix) => trimmed.lastIndexOf(prefix)),
+      );
       if (tellaskStatusIndex >= 0) {
         const strippedTellaskStatus = trimmed.slice(0, tellaskStatusIndex).trim();
         if (strippedTellaskStatus !== '') {

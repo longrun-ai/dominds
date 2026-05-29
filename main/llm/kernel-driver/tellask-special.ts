@@ -151,7 +151,7 @@ type NonReplyTellaskCallName = Exclude<TellaskCall['callName'], ReplyTellaskCall
 const MULTIPLE_ASKHUMAN_CALLS_ERROR =
   '不允许一轮多次调用 askHuman，必须单次调用问所有问题。 Do not call askHuman multiple times in one round; ask all questions in a single askHuman call.';
 const MULTIPLE_REPLY_TELLASK_CALLS_ERROR =
-  '不允许一轮多次调用 replyTellask*，必须只用当前诉请要求的唯一 reply special 完成交付。 Do not call multiple replyTellask* functions in one round; deliver with exactly one reply special required by the current tellask.';
+  '不允许一轮多次调用回复工具；只能用当前诉请要求的那个回复工具发送最终结果。 Do not call multiple reply tools in one round; send the final result with the one reply tool required by the current tellask.';
 
 export function isTellaskCallFunctionName(name: string): name is TellaskCallFunctionName {
   return (TELLASK_SPECIAL_FUNCTION_NAMES as readonly string[]).includes(name);
@@ -190,6 +190,11 @@ function formatReplyFuncResult(args: {
     : `Reply delivered via \`${args.replyCallName}\`.`;
 }
 
+// Business scenario: the model called a reply tool when Dominds durable state says either "wrong
+// reply path" or "nothing is waiting for this reply anymore". These are programmatic facts from the
+// active reply record, not something the model should infer from transcript history. Keep the
+// tool result actionable: name the exact tool to use, or tell the model to stop trying to send a
+// reply and continue the current local conversation.
 function formatReplyFuncErrorResult(args: {
   attemptedCallName: ReplyTellaskCallName;
   expectedCallName?: ReplyTellaskCallName;
@@ -210,13 +215,13 @@ function formatReplyFuncErrorResult(args: {
         );
       case 'no_active':
         return (
-          `错误：当前没有待完成的跨对话回复义务。\n\n` +
-          `不要调用 \`${args.attemptedCallName}\`；请直接继续当前本地对话。`
+          `错误：当前没有别的对话在等你发送最终回贴。\n\n` +
+          `你刚才调用的 \`${args.attemptedCallName}\` 这次不会送达给别的对话。请按当前对话正常交流；如果用户提出了问题，就直接回答这个问题。`
         );
       case 'no_pending':
         return (
-          `错误：当前已没有待本对话送达的跨对话回复义务（可能已回复或已失效）。\n\n` +
-          `不要再次调用 \`${args.attemptedCallName}\`；请直接继续当前本地对话。`
+          `错误：这条回贴任务已经不再等待本对话送达（可能已回复或已失效）。\n\n` +
+          `你刚才调用的 \`${args.attemptedCallName}\` 这次不会送达给别的对话。请按当前对话正常交流；如果用户提出了问题，就直接回答这个问题。`
         );
     }
   }
@@ -233,13 +238,13 @@ function formatReplyFuncErrorResult(args: {
       );
     case 'no_active':
       return (
-        'Error: there is no active inter-dialog reply obligation right now.\n\n' +
-        `Do not call \`${args.attemptedCallName}\`; continue the current local conversation instead.`
+        'Error: no other dialog is waiting for your final reply right now.\n\n' +
+        `Your \`${args.attemptedCallName}\` call will not deliver anything to another dialog this time. Handle this as a normal turn in the current conversation; if the user asked a question, answer that question directly.`
       );
     case 'no_pending':
       return (
-        'Error: there is no longer a pending inter-dialog reply obligation for this dialog (it may already be resolved or no longer valid).\n\n' +
-        `Do not call \`${args.attemptedCallName}\` again; continue the current local conversation instead.`
+        'Error: this reply task is no longer waiting for delivery from this dialog; it may already be resolved or no longer valid.\n\n' +
+        `Your \`${args.attemptedCallName}\` call will not deliver anything to another dialog this time. Handle this as a normal turn in the current conversation; if the user asked a question, answer that question directly.`
       );
   }
 }
@@ -824,49 +829,54 @@ export function formatPendingTellaskFuncResultContent(
     const elapsedSec = Math.floor(elapsedMs / 1000);
     return language === 'zh' ? `${elapsedSec} 秒` : `${elapsedSec}s`;
   })();
+  // Business scenario: a tool call has been accepted and dispatched, but no answer has arrived
+  // yet. This tool result is a waiting status, not the teammate/human answer body. If the copy
+  // exposes only call IDs and "tellask status", models often treat it as a result and continue
+  // with invented content. Say plainly who we are waiting for and that Dominds will add the real
+  // answer later.
   if (name === 'askHuman') {
     return language === 'zh'
       ? [
-          '[Dominds 诉请状态]',
+          '[Dominds 等待人类回复]',
           '',
-          '`askHuman` 诉请已发出，当前仍在等待人类回复。',
+          '你已经向人类提问，当前仍在等待回答。',
           '',
           ...(callId ? [`- callId: ${callId}`] : []),
           `- 已等待: ${elapsed}`,
           '',
-          '这不是回贴内容。若后续收到回复，运行时会在后续上下文中用同一 callId 补入对应回复事实。',
+          '这不是回答正文。若人类稍后回复，Dominds 会把对应结果补入后续上下文。',
         ].join('\n')
       : [
-          '[Dominds tellask status]',
+          '[Dominds waiting for human answer]',
           '',
-          '`askHuman` has been issued and is still waiting for human reply.',
+          'You already asked the human and are still waiting for their answer.',
           '',
           ...(callId ? [`- callId: ${callId}`] : []),
           `- Elapsed: ${elapsed}`,
           '',
-          'This is not reply content. If a reply arrives later, runtime will append the corresponding reply fact in later context with the same callId.',
+          'This is not the answer body. If the human replies later, Dominds will add the result to later context.',
         ].join('\n');
   }
   return language === 'zh'
     ? [
-        '[Dominds 诉请状态]',
+        '[Dominds 等待队友回贴]',
         '',
-        `\`${name}\` 诉请已发出，当前仍在等待回贴。`,
+        `你已经发出 \`${name}\`，当前仍在等待队友回贴。`,
         '',
         ...(callId ? [`- callId: ${callId}`] : []),
         `- 已等待: ${elapsed}`,
         '',
-        '这不是回贴内容。若后续收到回贴，运行时会在后续上下文中用同一 callId 补入对应回贴事实。',
+        '这不是回贴正文。若稍后收到回贴，Dominds 会把对应结果补入后续上下文。',
       ].join('\n')
     : [
-        '[Dominds tellask status]',
+        '[Dominds waiting for teammate reply]',
         '',
-        `\`${name}\` has been issued and is still waiting for a reply.`,
+        `You already sent \`${name}\` and are still waiting for the teammate's reply.`,
         '',
         ...(callId ? [`- callId: ${callId}`] : []),
         `- Elapsed: ${elapsed}`,
         '',
-        'This is not reply content. If a reply arrives later, runtime will append the corresponding reply fact in later context with the same callId.',
+        'This is not the reply body. If a reply arrives later, Dominds will add the result to later context.',
       ].join('\n');
 }
 
@@ -880,56 +890,61 @@ export function formatResolvedTellaskFuncResultContent(args: {
   if (callId === '') {
     throw new Error(`tellask status formatter invariant violation: empty callId for ${args.name}`);
   }
+  // Business scenario: a previously dispatched teammate request is being summarized back into
+  // context as status. For `pending`, there is still no reply body. For `completed`/`failed`, the
+  // actual reply/failure fact is injected separately. The model-facing text must keep those
+  // separate so the model neither hallucinates a pending result nor treats this status line as the
+  // teammate's answer.
   if (language === 'zh') {
     if (args.status === 'pending') {
       return [
-        '[Dominds 诉请状态]',
+        '[Dominds 等待队友回贴]',
         '',
-        `\`${args.name}\` 诉请仍在等待回贴，当前没有回贴正文。`,
+        `\`${args.name}\` 仍在等待队友回贴，当前没有回贴正文。`,
         '',
         `- callId: ${callId}`,
         '',
-        '不要把本工具结果当作回贴正文；若后续收到回贴，运行时会用同一 callId 补入对应回贴事实。',
+        '不要把这条状态当作回贴正文；若稍后收到回贴，Dominds 会补入对应结果。',
       ].join('\n');
     }
     const statusLabel = args.status === 'completed' ? '已收到回贴' : '已失败收口';
     return [
-      '[Dominds 诉请状态]',
+      '[Dominds 队友回贴状态]',
       '',
-      `\`${args.name}\` 诉请${statusLabel}，对应回贴事实已作为独立上下文事实补入。`,
+      `\`${args.name}\` ${statusLabel}，对应结果已作为独立上下文补入。`,
       '',
       `- callId: ${callId}`,
       '',
-      '请以同一 callId 的独立回贴事实为准；不要把本工具结果当作回贴正文。',
+      '请以那条独立结果为准；不要把这条状态当作回贴正文。',
     ].join('\n');
   }
   if (args.status === 'pending') {
     return [
-      '[Dominds tellask status]',
+      '[Dominds waiting for teammate reply]',
       '',
-      `\`${args.name}\` is still waiting for a reply; there is no reply body yet.`,
+      `\`${args.name}\` is still waiting for the teammate's reply; there is no reply body yet.`,
       '',
       `- callId: ${callId}`,
       '',
-      'Do not treat this tool result as reply content. If a reply arrives later, runtime will append the corresponding reply fact with the same callId.',
+      'Do not treat this status as the reply body. If a reply arrives later, Dominds will add the result.',
     ].join('\n');
   }
   const statusLabel = args.status === 'completed' ? 'has received a reply' : 'has failed/closed';
   return [
-    '[Dominds tellask status]',
+    '[Dominds teammate reply status]',
     '',
-    `\`${args.name}\` ${statusLabel}; the corresponding reply fact is present separately in context.`,
+    `\`${args.name}\` ${statusLabel}; the corresponding result is present separately in context.`,
     '',
     `- callId: ${callId}`,
     '',
-    'Use the separate reply fact with the same callId as authoritative; do not treat this tool result as reply content.',
+    'Use that separate result as authoritative; do not treat this status as the reply body.',
   ].join('\n');
 }
 
 export function formatResolvedAskHumanResultContent(): string {
   return getWorkLanguage() === 'zh'
-    ? 'Q4H 已结束等待状态，请参考 askHuman 结果气泡。'
-    : 'Q4H wait is resolved; refer to the askHuman result bubble.';
+    ? '人类已经回答；请参考 askHuman 结果气泡。'
+    : 'The human has answered; refer to the askHuman result bubble.';
 }
 
 function buildPendingTellaskFuncResult(args: {

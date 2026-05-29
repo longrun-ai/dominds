@@ -1110,14 +1110,14 @@ function upsertMcpToolCallProblem(args: {
     workLanguage === 'zh'
       ? [
           '建议排查：',
-          `- 如果需要全局重建该 MCP server，直接调用 mcp_restart({"serverId":"${args.serverId}"})；它成功后会清理旧 runtime 的全部 lease`,
+          `- 如果需要全局重建该 MCP server，直接调用 mcp_restart({"serverId":"${args.serverId}"})；它成功后会清理旧连接/进程的全部 lease`,
           `- 如果只想丢弃当前对话的连接，再调用 mcp_release({"serverId":"${args.serverId}"})`,
           `- 重新打开/关闭浏览器窗口，避免 Playwright persistent context 残留`,
           `- 查看 ${MCP_YAML_PATH} 是否已加载且配置正确（Problems 面板 / 后端日志）`,
         ]
       : [
           'Suggested checks:',
-          `- To rebuild this MCP server globally, call mcp_restart({"serverId":"${args.serverId}"}) directly; a successful restart clears all leases on the old runtime`,
+          `- To rebuild this MCP server globally, call mcp_restart({"serverId":"${args.serverId}"}) directly; a successful restart clears all leases on the old connection/process`,
           `- To discard only this dialog's connection, call mcp_release({"serverId":"${args.serverId}"})`,
           `- Close/reopen browser windows to avoid leftover Playwright persistent contexts`,
           `- Verify ${MCP_YAML_PATH} is loaded and valid (Problems panel / backend logs)`,

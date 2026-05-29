@@ -389,22 +389,22 @@ async function main(): Promise<void> {
       const en = await render('en', ['mcp']);
 
       assert.ok(
-        zh.includes('运行时手册文件前缀（`contentFile`）：`.minds/manuals/sdk`'),
-        'zh mcp manual should surface contentFile-backed runtime manual prefixes accurately',
+        zh.includes('手册文件前缀（`contentFile`）：`.minds/manuals/sdk`'),
+        'zh mcp manual should surface contentFile-backed manual prefixes accurately',
       );
       assert.ok(
-        zh.includes(
-          '最终 `man({ "toolsetId": "sdk_stdio" })` 正文会在运行时从该前缀下的 topic 文件加载',
+        zh.includes('最终 `man({ "toolsetId": "sdk_stdio" })` 正文会从该前缀下的 topic 文件加载'),
+        'zh mcp manual should explain that contentFile-backed toolset manuals load their final body from topic files',
+      );
+      assert.ok(
+        en.includes('Manual file prefix (`contentFile`): `.minds/manuals/sdk`'),
+        'en mcp manual should surface contentFile-backed manual prefixes accurately',
+      );
+      assert.ok(
+        en.includes(
+          'The final `man({ "toolsetId": "sdk_stdio" })` body is loaded from topic files',
         ),
-        'zh mcp manual should explain that contentFile-backed toolset manuals load their final body at runtime',
-      );
-      assert.ok(
-        en.includes('Runtime manual file prefix (`contentFile`): `.minds/manuals/sdk`'),
-        'en mcp manual should surface contentFile-backed runtime manual prefixes accurately',
-      );
-      assert.ok(
-        en.includes('The final `man({ "toolsetId": "sdk_stdio" })` body is loaded at runtime'),
-        'en mcp manual should explain that contentFile-backed toolset manuals load their final body at runtime',
+        'en mcp manual should explain that contentFile-backed toolset manuals load their final body from topic files',
       );
     },
   );

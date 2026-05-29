@@ -61,6 +61,12 @@ function buildPromptContentWithExactReplyToolName(args: {
   ];
   const directive = args.activeReplyDirective;
   if (!directive) {
+    // Business scenario: a user can come back to a Side Dialog after its final reply has already
+    // been delivered to the requester. At that point the business obligation is complete and the
+    // visible user is simply asking a follow-up in this dialog. Old assignment text and reply tool
+    // names remain in transcript history, so the model may otherwise "finish" the old request
+    // again. Dominds has already checked durable reply state here; the prompt says the current
+    // business expectation directly: answer/continue this conversation normally.
     if (isFbrSideDialog) {
       return args.prompt.content;
     }
@@ -74,13 +80,13 @@ function buildPromptContentWithExactReplyToolName(args: {
       args.language === 'zh'
         ? [
             noActivePrefix,
-            '当前没有待完成的跨对话回复义务。',
-            '这轮不要调用任何 `reply*`；直接按当前本地对话继续即可。',
+            'Dominds 已经判断好：当前没有别的对话在等你发送最终回贴。',
+            '本轮按当前对话正常交流即可；如果用户提出了问题，就直接回答这个问题。',
           ].join('\n')
         : [
             noActivePrefix,
-            'There is no active inter-dialog reply obligation right now.',
-            'Do not call any `reply*` tool in this turn; just continue the current local conversation.',
+            'Dominds has already decided that no other dialog is waiting for your final reply right now.',
+            'Handle this as a normal turn in the current conversation; if the user asked a question, answer that question directly.',
           ].join('\n');
     return `${note}\n\n${args.prompt.content}`;
   }

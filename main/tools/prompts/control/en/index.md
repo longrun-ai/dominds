@@ -29,7 +29,7 @@ control is Dominds' **dialog control toolset** for managing dialog state, remind
 - **Reminder management**: Three reminder scopes: `dialog` / `task` / `agent`. Default to `task` for current work under the same Taskdoc; use `dialog` only for truly dialog-local notes; use `agent` only for urgent, short-lived, globally visible cues
 - **Taskdoc operations**: Append to, replace, or delete task contract sections (goals/constraints/progress); within Taskdoc, `progress` is the team-shared, quasi-real-time, scannable task bulletin board
 - **Context maintenance**: Reduce cognitive load without losing key resume state
-- **Reply routing**: Separate `tellaskBack`, `replyTellask*`, and plain text by responsibility in Side Dialog / ask-back flows
+- **Reply routing**: Separate asking the tellasker back, sending the final reply, and ordinary plain text in Side Dialog / ask-back flows
 
 ## Quick Navigation
 
@@ -58,7 +58,7 @@ Reminders are temporary current-work information for:
 - Recording blocking issues
 - Holding continuation-package bridge notes before `clear_mind`
 
-Reminders are not for manually copying Dominds runtime-maintained environment state, such as background process status, in-flight background asks/collaboration, or browser/session attachment state. Runtime-managed reminders, panels, and tool outputs are the single source of truth; manual notes go stale easily and create cognitive noise.
+Reminders are not for manually copying environment state automatically maintained by Dominds, such as background process status, in-flight background asks/collaboration, or browser/session attachment state. Dominds-managed reminders, panels, and tool outputs are the authoritative place for that state; manual notes go stale easily and create cognitive noise.
 
 Scope rule:
 

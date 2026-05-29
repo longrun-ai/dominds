@@ -25,7 +25,7 @@ function buildPrompt(mode: 'normal' | 'caution' | 'critical'): string {
 async function main(): Promise<void> {
   const normal = buildPrompt('normal');
   assert.ok(
-    normal.includes('当前没有生效中的上下文健康处置指令，可以按正常流程进行 FBR'),
+    normal.includes('当前没有生效中的上下文保全提示，可以按正常流程进行 FBR'),
     'normal system prompt should allow normal FBR flow directly',
   );
   assert.ok(
@@ -35,11 +35,13 @@ async function main(): Promise<void> {
 
   const caution = buildPrompt('caution');
   assert.ok(
-    caution.includes('当前上下文处于系统吃紧处置态：本程不要发起 FBR'),
+    caution.includes('Dominds 已提醒上下文吃紧：本程不要发起 FBR'),
     'caution system prompt should directly prohibit FBR in the current course',
   );
   assert.ok(
-    caution.includes('先按处置要求把尚未落实到差遣牒、且下一程需要知会的讨论细节写入合适章节'),
+    caution.includes(
+      '先按上下文保全要求把尚未落实到差遣牒、且下一程需要知会的讨论细节写入合适章节',
+    ),
     'caution system prompt should prescribe documenting unrecorded discussion details first',
   );
   assert.ok(
@@ -49,11 +51,13 @@ async function main(): Promise<void> {
 
   const critical = buildPrompt('critical');
   assert.ok(
-    critical.includes('当前上下文处于系统告急处置态：本程禁止发起 FBR'),
+    critical.includes('Dominds 已提醒上下文告急：本程禁止发起 FBR'),
     'critical system prompt should directly prohibit FBR in the current course',
   );
   assert.ok(
-    critical.includes('先按处置要求把尚未落实到差遣牒、且下一程需要知会的讨论细节写入合适章节'),
+    critical.includes(
+      '先按上下文保全要求把尚未落实到差遣牒、且下一程需要知会的讨论细节写入合适章节',
+    ),
     'critical system prompt should prescribe documenting unrecorded discussion details first',
   );
   assert.ok(

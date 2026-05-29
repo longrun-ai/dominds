@@ -612,9 +612,15 @@ function isSuppressedTellaskPlaceholderFuncResult(args: {
   if (raw === '') {
     return false;
   }
+  // Business scenario: these generated tool results are only waiting/status placeholders. They
+  // must be suppressed when reconstructing the conversation so the model does not confuse them
+  // with a real teammate/human answer. Keep the old prefixes for persisted records, and include
+  // the newer plain-language prefixes so the suppression logic matches the current copy.
   if (
     raw === 'Q4H 已结束等待状态，请参考 askHuman 结果气泡。' ||
-    raw === 'Q4H wait is resolved; refer to the askHuman result bubble.'
+    raw === 'Q4H wait is resolved; refer to the askHuman result bubble.' ||
+    raw === '人类已经回答；请参考 askHuman 结果气泡。' ||
+    raw === 'The human has answered; refer to the askHuman result bubble.'
   ) {
     return true;
   }
@@ -633,6 +639,16 @@ function isSuppressedTellaskPlaceholderFuncResult(args: {
   if (
     (raw.startsWith('[Dominds 诉请状态]') || raw.startsWith('[Dominds tellask status]')) &&
     (raw.includes('当前仍在等待') || raw.includes('is still waiting'))
+  ) {
+    return true;
+  }
+  if (
+    raw.startsWith('[Dominds 等待人类回复]') ||
+    raw.startsWith('[Dominds waiting for human answer]') ||
+    raw.startsWith('[Dominds 等待队友回贴]') ||
+    raw.startsWith('[Dominds waiting for teammate reply]') ||
+    raw.startsWith('[Dominds 队友回贴状态]') ||
+    raw.startsWith('[Dominds teammate reply status]')
   ) {
     return true;
   }

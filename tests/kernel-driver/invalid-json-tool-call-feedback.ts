@@ -432,7 +432,7 @@ async function main(): Promise<void> {
     );
 
     const multiReplyError =
-      '不允许一轮多次调用 replyTellask*，必须只用当前诉请要求的唯一 reply special 完成交付。 Do not call multiple replyTellask* functions in one round; deliver with exactly one reply special required by the current tellask.';
+      '不允许一轮多次调用回复工具；只能用当前诉请要求的那个回复工具发送最终结果。 Do not call multiple reply tools in one round; send the final result with the one reply tool required by the current tellask.';
     const multiReplyRoot = await createMainDialog('tester');
     const multiReplySideDialog = await multiReplyRoot.createSideDialog(
       'pangu',

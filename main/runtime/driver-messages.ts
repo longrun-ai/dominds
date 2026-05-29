@@ -90,13 +90,13 @@ export function formatRegisteredTellaskTellaskerUpdateNotice(language: LanguageC
   if (language === 'zh') {
     return [
       prefix,
-      '刚才那轮诉请已被你后续发出的新要求取代；运行时已登记这次更新。',
+      '刚才那轮诉请已被你后续发出的新要求取代；Dominds 已登记这次更新。',
       '如果目标支线正忙，更新会在下一次安全推进边界进入目标支线；请把目标支线里的更新气泡作为可见确认点。',
     ].join('\n');
   }
   return [
     prefix,
-    'That earlier request has been superseded by your later updated request; runtime has registered the update.',
+    'That earlier request has been superseded by your later updated request; Dominds has registered the update.',
     'If the target Side Dialog is busy, the update will enter it at the next safe drive boundary. Use the target Side Dialog update bubble as the visible confirmation point.',
   ].join('\n');
 }
@@ -127,14 +127,19 @@ export function formatNewCourseStartPrompt(
   },
 ): string {
   const noticePrefix = formatSystemNoticePrefix(language);
+  // Business scenario: after clear_mind or critical auto-clear, the model is in a fresh course
+  // but still sees a Dominds-inserted notice as the latest "user" message. If the copy sounds
+  // like an implementation command ("runtime instruction"), models tend to acknowledge it or churn
+  // reminders as a task. Say the user-visible business state instead: Dominds started a new course,
+  // this is not a user request, first reconcile bridge reminders only if needed, then resume work.
   if (language === 'zh') {
     const prefix =
       args.source === 'clear_mind'
         ? `你刚清理头脑，开启了第 ${args.nextCourse} 程对话。`
-        : `系统因上下文已告急（critical）而自动开启了第 ${args.nextCourse} 程对话。`;
+        : `Dominds 因上下文已告急而自动开启了第 ${args.nextCourse} 程对话。`;
     return (
       `${noticePrefix} ${prefix} ` +
-      '这是一条运行时换程指令，不是新的用户诉求；不要把这条提示当成新的待办，也不要只回复“收到/好的/我会先整理提醒项”。' +
+      '这是 Dominds 的换程提示，不是新的用户诉求；不要把这条提示当成新的待办，也不要只回复“收到/好的/我会先整理提醒项”。' +
       '现在已经进入新一程：上下文已经不再吃紧，告急状况已改观。第一步先复核并在必要时整理接续包提醒项，以清醒头脑删除冗余、纠正偏激或失真的过桥思路、压缩成高质量提醒项；若提醒项已经足够清晰，就不要为了整理而整理。' +
       '完成这一步后，直接继续推进原任务本身；除非任务自然需要对用户交付结果，否则不要为这条提示单独回复。'
     );
@@ -143,10 +148,10 @@ export function formatNewCourseStartPrompt(
   const prefix =
     args.source === 'clear_mind'
       ? `This is dialog course #${args.nextCourse}. You just cleared your mind.`
-      : `System auto-started dialog course #${args.nextCourse} because context health is critical.`;
+      : `Dominds auto-started dialog course #${args.nextCourse} because context was critical.`;
   return (
     `${noticePrefix} ${prefix} ` +
-    'This is a runtime course-transition instruction, not a new user request; do not treat it as a new to-do, and do not reply with a standalone "acknowledged/ok/I will reorganize the reminders first". ' +
+    'This is a Dominds course-transition notice, not a new user request; do not treat it as a new to-do, and do not reply with a standalone "acknowledged/ok/I will reorganize the reminders first". ' +
     'You are now in a new course: your first step is to review and, if needed, rewrite any continuation-package reminders with a clear head, remove redundancy, correct biased or distorted bridge notes, and compress them into high-quality reminders; if the reminders are already clear enough, do not churn on them. ' +
     'After that, continue the underlying task itself directly; unless the task naturally calls for a user-facing delivery, do not send a standalone reply just for this notice.'
   );
@@ -164,7 +169,7 @@ export function formatDiligenceAutoContinuePrompt(
 
   if (language === 'zh') {
     return [
-      `${noticePrefix} 这是一条运行时自动续推指令，不是新的用户诉求。`,
+      `${noticePrefix} 这是 Dominds 的自动续推提示，不是新的用户诉求。`,
       '不要把这条提示当成新的待办，也不要只回复“收到/好的/我先想想/我会先整理一下”。',
       '请直接按下面的引导继续推进任务；若形成结论，必须尽快落地为实际动作，不要停在“只汇报决定/只确认收到”。',
       '',
@@ -175,7 +180,7 @@ export function formatDiligenceAutoContinuePrompt(
   }
 
   return [
-    `${noticePrefix} This is a runtime auto-continue instruction, not a new user request.`,
+    `${noticePrefix} This is a Dominds auto-continue notice, not a new user request.`,
     'Do not treat this notice as a new to-do, and do not reply with a standalone "acknowledged/ok/I will think first/I will organize things first".',
     'Follow the guidance below and continue the task directly; if you reach a conclusion, turn it into concrete action promptly instead of stopping at a decision report or acknowledgement.',
     '',
@@ -186,10 +191,14 @@ export function formatDiligenceAutoContinuePrompt(
 }
 
 export function formatReminderContextGuide(language: LanguageCode): string {
+  // Business scenario: reminder records are injected near ordinary dialog messages so the model
+  // can keep useful state, but the UI shows them outside the chat transcript. The copy must make
+  // that product fact plain without exposing provider/role plumbing: reminders are current-work
+  // references, not new user requests, and they should not trigger standalone acknowledgements.
   if (language === 'zh') {
     return [
       `${formatSystemNoticePrefix(language)} 提醒项上下文块开始`,
-      '以下是当前可见提醒项的运行时上下文投影。由于当前 LLM Provider 通常不支持 role=environment，Dominds 默认把系统运行时提醒包装投影为 role=user；个别提醒项可由其 owner 按自身契约选择 role。无论最终 role 如何，它们都不是用户的新诉求/指令，也不是聊天正文。',
+      '以下是 Dominds 为你放到当前上下文里的可见提醒项。它们不是用户的新诉求/指令，也不是聊天正文。',
       '在 WebUI 中，用户通过独立的 Reminder 小组件/面板项看到这些提醒，并能把它们和聊天正文区分开。',
       '请把提醒项作为手头工作/状态参考；只有实际改变你的判断、计划或风险的信息，才需要提炼进后续有实质内容的对外回复。不要为了提醒项单独回复“收到/已了解/静默吸收”。',
     ].join('\n');
@@ -197,14 +206,14 @@ export function formatReminderContextGuide(language: LanguageCode): string {
 
   return [
     `${formatSystemNoticePrefix(language)} Reminder context block begins`,
-    'The following visible reminders are runtime-added context projections. Because current LLM providers usually do not support role=environment, Dominds projects default system-runtime reminder wrappers as role=user; individual reminder owners may choose the role required by their own contract. Regardless of their final role, these reminders are not new user requests/instructions, and not chat transcript text.',
+    'The following visible reminders were added to the current context by Dominds. They are not new user requests/instructions, and not chat transcript text.',
     'In the WebUI, the user sees these reminders through a separate Reminder widget/panel item and can distinguish them from the chat transcript.',
     'Use reminders as current-work/state references; only carry information into a later substantive outward reply when it materially changes your current judgment, plan, or risk. Do not send a standalone "acknowledged/noted/silently absorbed" reply for reminder items.',
   ].join('\n');
 }
 
 function formatReminderItemProjectionNote(language: LanguageCode): string {
-  return language === 'zh' ? '运行时提醒项投影：' : 'Runtime reminder projection:';
+  return language === 'zh' ? 'Dominds 提醒项说明：' : 'Dominds reminder note:';
 }
 
 export type ReminderContextFollowingMessage =
@@ -257,6 +266,13 @@ function formatZhReminderBusinessTail(business: ReminderContextBusiness): string
       // reported back as complete. This is not an active reply-obligation state anymore: the
       // model should simply communicate with the user according to the current message.
       //
+      // Business reason for this exact footer: a completed Sideline Dialog often still carries
+      // reminder/status text from the long-line handoff. When a user later asks "what happened?"
+      // or gives a new instruction in that same dialog, the model may see those reminders and
+      // keep advancing the old handoff instead of answering the visible user. Runtime can tell
+      // from durable state that the handoff was already delivered, so the footer must say the
+      // business state directly: old handoff done, current message belongs to the user.
+      //
       // Keep the wording deliberately neutral about reminders and tools. A user may explicitly
       // ask the agent to reorganize reminders so a later long-running handoff can resume from a
       // corrected state. If this footer said "do not organize reminders" or "only answer", it
@@ -279,7 +295,7 @@ function formatZhReminderBusinessTail(business: ReminderContextBusiness): string
     case 'active_reply_obligation':
       // There is still an unfinished handoff, but no user interjection is pending. Say this is
       // a final-delivery constraint, not a command to abandon necessary current work.
-      return '当前仍有回贴任务未完成；它是最终交付要求，不是要求你立刻停止当前必要工作，但到达最终交付时必须按运行时指定方式收口。';
+      return '当前仍有回贴任务未完成；它是最终交付要求，不是要求你立刻停止当前必要工作，但到达最终交付时必须按 Dominds 指定方式收口。';
     default: {
       const _exhaustive: never = business;
       throw new Error(`Unhandled zh reminder business state: ${String(_exhaustive)}`);
@@ -295,6 +311,13 @@ function formatEnReminderBusinessTail(business: ReminderContextBusiness): string
       // Runtime has already identified a real user message after the earlier handoff was
       // reported back as complete. This is not an active reply-obligation state anymore: the
       // model should simply communicate with the user according to the current message.
+      //
+      // Business reason for this exact footer: a completed Sideline Dialog often still carries
+      // reminder/status text from the long-line handoff. When a user later asks "what happened?"
+      // or gives a new instruction in that same dialog, the model may see those reminders and
+      // keep advancing the old handoff instead of answering the visible user. Runtime can tell
+      // from durable state that the handoff was already delivered, so the footer must say the
+      // business state directly: old handoff done, current message belongs to the user.
       //
       // Keep the wording deliberately neutral about reminders and tools. A user may explicitly
       // ask the agent to reorganize reminders so a later long-running handoff can resume from a
@@ -318,7 +341,7 @@ function formatEnReminderBusinessTail(business: ReminderContextBusiness): string
     case 'active_reply_obligation':
       // There is still an unfinished handoff, but no user interjection is pending. Say this is
       // a final-delivery constraint, not a command to abandon necessary current work.
-      return 'A reply task is still unfinished; it is a final-delivery requirement, not a demand to stop necessary current work immediately, but final delivery must close through the runtime-specified path.';
+      return 'A reply task is still unfinished; it is a final-delivery requirement, not a demand to stop necessary current work immediately, but final delivery must close through the path Dominds names.';
     default: {
       const _exhaustive: never = business;
       throw new Error(`Unhandled en reminder business state: ${String(_exhaustive)}`);
@@ -402,15 +425,15 @@ export function formatReminderContextFooter(
           `请用那条回答继续原本等待答案的任务，不要把提醒项块说明外溢到那条回答上。${statusTail}`
         );
       case 'runtime_notice':
-        // Runtime notices are deliberate driver instructions. Keep them distinct from user
+        // Dominds notices are deliberate driver instructions. Keep them distinct from user
         // requests while allowing their own wording to drive the next action.
-        return `${base}本轮提醒项块之后会接着出现一条运行时提示；它不是用户的新诉求/指令，请按其中的运行时要求继续推进。${statusTail}`;
+        return `${base}本轮提醒项块之后会接着出现一条 Dominds 提示；它不是用户的新诉求/指令，请按其中的要求继续推进。${statusTail}`;
       case 'none':
         if (!contextHealthIsNormal) {
-          // Under context-health remediation, the health instruction owns the turn. Do not add
+          // When context is tight/critical, the context-preservation notice owns the turn. Do not add
           // ordinary continuation wording that could encourage more work from old reminders.
           return (
-            `${base}本轮没有新的用户消息或运行时提示；这是工具调用后的自动续推。` +
+            `${base}本轮没有新的用户消息或 Dominds 提示；这是工具调用后的自动续推。` +
             `不要把“没有新消息”理解为空系统提示。${statusTail}`
           );
         }
@@ -418,7 +441,7 @@ export function formatReminderContextFooter(
         // paths are merely references. This is the guard against loops that only add/delete/merge
         // reminders after a task is otherwise done.
         return (
-          `${base}本轮没有新的用户消息或运行时提示；这是工具调用后的自动续推。` +
+          `${base}本轮没有新的用户消息或 Dominds 提示；这是工具调用后的自动续推。` +
           '请基于提醒项之外的已有任务状态判断下一步：若已有明确、相关且有价值的任务动作，就继续执行；若唯一看似可做的动作只是新增、更新、删除、压缩或整理提醒项，则不要单独为提醒项维护继续调用工具。若当前确实只能等待外部结果或用户输入，不要为了避免“等待”而寻找无关小事。' +
           `不要把“没有新消息”理解为空系统提示。${businessTail}`
         );
@@ -455,15 +478,15 @@ export function formatReminderContextFooter(
         `Use that answer to continue the task that was waiting for it, and do not let the reminder-block guidance spill over onto that answer. ${statusTail}`
       );
     case 'runtime_notice':
-      // Runtime notices are deliberate driver instructions. Keep them distinct from user requests
+      // Dominds notices are deliberate driver instructions. Keep them distinct from user requests
       // while allowing their own wording to drive the next action.
-      return `${base}A runtime notice follows this reminder block in this round; it is not a new user request/instruction, so follow that runtime guidance and continue the work. ${statusTail}`;
+      return `${base}A Dominds notice follows this reminder block in this round; it is not a new user request/instruction, so follow that guidance and continue the work. ${statusTail}`;
     case 'none':
       if (!contextHealthIsNormal) {
-        // Under context-health remediation, the health instruction owns the turn. Do not add
+        // When context is tight/critical, the context-preservation notice owns the turn. Do not add
         // ordinary continuation wording that could encourage more work from old reminders.
         return (
-          `${base}There is no new user message or runtime notice in this round; this is an automatic continuation after a tool call. ` +
+          `${base}There is no new user message or Dominds notice in this round; this is an automatic continuation after a tool call. ` +
           `Do not interpret the absence of a new message as an empty system notice. ${statusTail}`
         );
       }
@@ -471,7 +494,7 @@ export function formatReminderContextFooter(
       // paths are merely references. This is the guard against loops that only add/delete/merge
       // reminders after a task is otherwise done.
       return (
-        `${base}There is no new user message or runtime notice in this round; this is an automatic continuation after a tool call. ` +
+        `${base}There is no new user message or Dominds notice in this round; this is an automatic continuation after a tool call. ` +
         'Judge the next step from existing task state outside the reminder items: if there is a clear, relevant, valuable actual task action, continue with it; if the only apparent action is to add, update, delete, compress, or organize reminders, do not keep calling tools solely for reminder maintenance. If the work genuinely can only wait for an external result or user input, do not invent unrelated work just to avoid "waiting". ' +
         `Do not interpret the absence of a new message as an empty system notice. ${businessTail}`
       );
@@ -551,7 +574,7 @@ function getReminderMaintenanceInstructions(
         : deleteAltInstruction
           ? `删除通道：我不用 delete_reminder；我执行：${deleteAltInstruction}`
           : metaKind === 'mcp_lease'
-            ? `删除通道：我不用 delete_reminder 释放资源；确认当前对话近期不再需要该 MCP runtime 时，我执行：${mcpReleaseInstruction}`
+            ? `删除通道：我不用 delete_reminder 释放资源；确认当前对话近期不再需要这个 MCP 连接时，我执行：${mcpReleaseInstruction}`
             : daemonCompleted
               ? `删除通道：确认已知悉 daemon 终态后，可清理：delete_reminder({ "reminder_id": "${reminderId}" })`
               : isPendingTellaskReminder && pendingTellaskCount === 0
@@ -562,7 +585,7 @@ function getReminderMaintenanceInstructions(
         : deleteAltInstruction
           ? `Delete path: I do not use delete_reminder; I run: ${deleteAltInstruction}`
           : metaKind === 'mcp_lease'
-            ? `Delete path: I do not release resources by deleting the reminder; when this dialog will not need the MCP runtime soon, I run: ${mcpReleaseInstruction}`
+            ? `Delete path: I do not release resources by deleting the reminder; when this dialog will not need this MCP connection soon, I run: ${mcpReleaseInstruction}`
             : daemonCompleted
               ? `Delete path: after I have acknowledged the daemon terminal state, I may clean up: delete_reminder({ "reminder_id": "${reminderId}" })`
               : isPendingTellaskReminder && pendingTellaskCount === 0
@@ -614,14 +637,14 @@ export function formatReminderMaintenanceReference(
 
   if (language === 'zh') {
     return [
-      `${formatSystemNoticePrefix(language)} 我把下面的提醒项维护通道仅作为操作参考；如果我在处理真实用户消息、运行时处置指令或当前任务动作时确实需要维护某条 reminder，我会按对应 reminder_id 选择工具。我不会把这些参考当成当前轮必须立即执行的动作；没有新的用户消息、运行时提示或提醒项之外的任务动作时，我不会只为了清理/整理提醒项而继续调用提醒项工具，也不会因此延迟回应后续真实用户消息。`,
+      `${formatSystemNoticePrefix(language)} 我把下面的提醒项维护通道仅作为操作参考；如果我在处理真实用户消息、Dominds 提示或当前任务动作时确实需要维护某条 reminder，我会按对应 reminder_id 选择工具。我不会把这些参考当成当前轮必须立即执行的动作；没有新的用户消息、Dominds 提示或提醒项之外的任务动作时，我不会只为了清理/整理提醒项而继续调用提醒项工具，也不会因此延迟回应后续真实用户消息。`,
       '',
       ...lines,
     ].join('\n');
   }
 
   return [
-    `${formatSystemNoticePrefix(language)} I treat the following reminder-maintenance channels as an operational reference only. If I truly need to maintain a reminder while handling a real user message, runtime instruction, or current task action, I match the corresponding reminder_id and choose the tool from there. I do not treat these references as actions I must perform immediately in this turn; when there is no new user message, no runtime notice, and no task action outside reminders, I do not keep calling reminder tools solely to clean up or organize reminders, and I do not let them delay my response to any following real user message.`,
+    `${formatSystemNoticePrefix(language)} I treat the following reminder-maintenance channels as an operational reference only. If I truly need to maintain a reminder while handling a real user message, Dominds notice, or current task action, I match the corresponding reminder_id and choose the tool from there. I do not treat these references as actions I must perform immediately in this turn; when there is no new user message, no Dominds notice, and no task action outside reminders, I do not keep calling reminder tools solely to clean up or organize reminders, and I do not let them delay my response to any following real user message.`,
     '',
     ...lines,
   ].join('\n');
@@ -678,7 +701,7 @@ export function formatReminderItemGuide(
       return [
         `${systemPrefix} 提醒项 [${reminderId}]（换程接续信息）`,
         '',
-        `${projectionNote}你设置了换程接续提醒项，让运行时系统在新一程提醒你恢复工作。请把它当作快速恢复工作的接续包，不要自动当成当前必须立刻执行的新指令。`,
+        `${projectionNote}你设置了换程接续提醒项，Dominds 会在新一程提醒你恢复工作。请把它当作快速恢复工作的接续包，不要自动当成当前必须立刻执行的新指令。`,
         '',
         '你应优先保留下一步行动、关键定位、运行/验证信息、容易丢的临时细节；不要重复差遣牒已覆盖的内容。进入新一程后，你的第一步是以清醒头脑重新审视并整理更新：删除冗余、纠正偏激/失真思路、压缩成高质量提醒项。若目前只是粗略过桥笔记，进入新一程后必须尽快收敛。',
         '',
@@ -690,10 +713,10 @@ export function formatReminderItemGuide(
       scope === 'task' ? '（任务范围）' : scope === 'agent' ? '（智能体范围）' : '';
     const scopeGuide =
       scope === 'task'
-        ? `${projectionNote}你设置了任务范围提醒项，让运行时系统在当前差遣牒任务内、所有由你主理的对话里提醒你。请把它当作当前任务的手头工作提示，不要自动当成系统下发的下一步动作。`
+        ? `${projectionNote}你设置了任务范围提醒项，Dominds 会在当前差遣牒任务内、所有由你主理的对话里提醒你。请把它当作当前任务的手头工作提示，不要自动当成系统下发的下一步动作。`
         : scope === 'agent'
-          ? `${projectionNote}你设置了智能体范围提醒项，让运行时系统在所有由你主理的对话里提醒你。它只适合紧急、短期、全局刺眼提醒；不要用来记录普通任务状态，也不要自动当成系统下发的下一步动作。`
-          : `${projectionNote}你设置了提醒项，让运行时系统提醒你。请把它当作用来保留当前对话里容易丢的手头工作信息的提示，不要自动当成系统下发的下一步动作。`;
+          ? `${projectionNote}你设置了智能体范围提醒项，Dominds 会在所有由你主理的对话里提醒你。它只适合紧急、短期、全局刺眼提醒；不要用来记录普通任务状态，也不要自动当成系统下发的下一步动作。`
+          : `${projectionNote}你设置了提醒项，Dominds 会在需要时提醒你。请把它当作用来保留当前对话里容易丢的手头工作信息的提示，不要自动当成系统下发的下一步动作。`;
     const scopeMaintenance =
       scope === 'task'
         ? '你应保持简洁、及时更新；不再需要时就删除。若它只对当前对话有效，应改写成 dialog 范围提醒；若需要全队同步当前任务状态，应写入差遣牒 progress，而不是扩大提醒范围。'
@@ -715,7 +738,7 @@ export function formatReminderItemGuide(
   if (managementTool) {
     return `${systemPrefix} REMINDER [${reminderId}] (TOOL STATE)
 
-${enProjectionPrefix}The current runtime environment has a tool-managed state reminder from ${managementTool}. Treat it as environment/tool state, not as your self-authored work note.
+${enProjectionPrefix}Dominds currently has a tool-managed state reminder from ${managementTool}. Treat it as environment/tool state, not as your self-authored work note.
 
 ${formatAutoMaintainedReminderManualMirrorBan(language)}
 
@@ -727,7 +750,7 @@ ${content}`;
   if (updateInstruction) {
     return `${systemPrefix} REMINDER [${reminderId}]
 
-${enProjectionPrefix}The current runtime environment has a reminder with a meta-controlled update path. Treat it as state/reference; use the preceding maintenance reference for its maintenance channel.
+${enProjectionPrefix}Dominds currently has a reminder with a managed update path. Treat it as state/reference; use the preceding maintenance reference for its maintenance channel.
 
 ${formatAutoMaintainedReminderManualMirrorBan(language)}
 
@@ -737,7 +760,7 @@ ${content}`;
   if (isContinuationPackageReminder) {
     return `${systemPrefix} REMINDER [${reminderId}] (CONTINUATION PACKAGE)
 
-${enProjectionPrefix}You set a continuation reminder so the runtime system can remind you when work resumes in a new course. Treat it as resume information for the next course, not as an automatic must-do command.
+${enProjectionPrefix}You set a continuation reminder so Dominds can remind you when work resumes in a new course. Treat it as resume information for the next course, not as an automatic must-do command.
 
 Keep the next step, key pointers, run/verify info, and easy-to-lose volatile details here. Do not duplicate Taskdoc content. In the new course, your first step is to review and rewrite this with a clear head: remove redundancy, correct biased or distorted bridge notes, and compress it into a high-quality reminder. If this is only a rough bridge note, reconcile it early in the new course.
 
@@ -747,10 +770,10 @@ ${content}`;
   const scopeLabel = scope === 'task' ? ' (TASK SCOPE)' : scope === 'agent' ? ' (AGENT SCOPE)' : '';
   const scopeGuide =
     scope === 'task'
-      ? `${enProjectionPrefix}You set a task-scope reminder so the runtime system can remind you in every dialog you lead for the current Taskdoc. Treat it as a current-work reference for this task, not as an automatically assigned next action.`
+      ? `${enProjectionPrefix}You set a task-scope reminder so Dominds can remind you in every dialog you lead for the current Taskdoc. Treat it as a current-work reference for this task, not as an automatically assigned next action.`
       : scope === 'agent'
-        ? `${enProjectionPrefix}You set an agent-scope reminder so the runtime system can remind you in every dialog you lead. This is only for urgent, short-lived, globally visible cues; do not use it for ordinary task state, and do not treat it as an automatically assigned next action.`
-        : `${enProjectionPrefix}You set a reminder so the runtime system can remind you. Treat it as a current-work reference for easy-to-lose details in the current dialog, not as an automatically assigned next action.`;
+        ? `${enProjectionPrefix}You set an agent-scope reminder so Dominds can remind you in every dialog you lead. This is only for urgent, short-lived, globally visible cues; do not use it for ordinary task state, and do not treat it as an automatically assigned next action.`
+        : `${enProjectionPrefix}You set a reminder so Dominds can remind you when needed. Treat it as a current-work reference for easy-to-lose details in the current dialog, not as an automatically assigned next action.`;
   const scopeMaintenance =
     scope === 'task'
       ? 'Keep it concise, refresh it when needed, and delete it when obsolete. If it is only useful for the current dialog, rewrite it into dialog scope; if the team must synchronize current task state, update Taskdoc progress instead of broadening reminder scope.'
@@ -840,21 +863,26 @@ export function formatAgentFacingContextHealthV3RemediationGuide(
   args: ContextHealthV3RemediationGuideArgs,
 ): string {
   const isSideDialog = args.dialogScope === 'sideDialog';
+  // Business scenario: context-health prompts are inserted because the current course is close
+  // to losing useful state. The model should treat them as an immediate preservation workflow,
+  // but the old wording ("runtime remediation instruction") was unnecessarily technical and
+  // encouraged shallow acknowledgements. Say the business reason plainly: Dominds is protecting
+  // context, this is not a new user request, and the listed steps should be performed directly.
   if (language === 'zh') {
     if (args.kind === 'caution' && args.mode === 'soft') {
       if (isSideDialog) {
         return [
           `${formatSystemNoticePrefix(language)} 上下文状态：🟡 吃紧`,
           '',
-          '这是一条运行时处置指令，不是新的用户诉求；不要只回复“收到/好的/我先整理提醒项”，而要直接执行下面的处置动作。',
+          '这是 Dominds 为防止上下文丢失插入的保全提示，不是新的用户诉求；不要只回复“收到/好的/我先整理提醒项”，而要直接执行下面的保全动作。',
           '',
           '影响：对话历史中的工具调用/结果信息很多已经过时，成为你的思考负担。',
           '',
           '行动：你当前处于支线对话。本程不要维护差遣牒，也不要整理差遣牒更新提案；当前目标是维护足够详尽的接续包提醒项，然后主动 clear_mind 开启新一程继续工作。',
           '',
-          '提醒项应覆盖：当前对话历史中下一程需要知道的讨论细节、下一步行动、关键定位信息、运行/验证信息、临时路径/ID/样例输入，以及任何恢复工作容易丢的判断依据。提醒项长度没有技术限制，宁可完整一些；允许写成多条粗略提醒项，不必在当前程强行压成单条。',
+          '提醒项应覆盖：当前对话历史中下一程需要知道的讨论细节、下一步行动、关键定位信息、运行/验证信息、临时路径/ID/样例输入，以及任何恢复工作容易丢的判断依据。提醒项没有固定长度限制，宁可完整一些；允许写成多条粗略提醒项，不必在当前程强行压成单条。',
           '',
-          '当前已处于吃紧处置阶段：不要继续扩张上下文，也不要提前进入“按接续包做清醒复核”的模式；真正清理冗余、合并提醒项，放到系统开启新一程后再做。',
+          'Dominds 已提醒当前上下文吃紧：不要继续扩张上下文，也不要提前进入“按接续包做清醒复核”的模式；真正清理冗余、合并提醒项，放到 Dominds 开启新一程后再做。',
           '',
           '操作：',
           '- 优先新增详尽接续包提醒项：add_reminder({ "content": "..." })',
@@ -865,13 +893,13 @@ export function formatAgentFacingContextHealthV3RemediationGuide(
       return [
         `${formatSystemNoticePrefix(language)} 上下文状态：🟡 吃紧`,
         '',
-        '这是一条运行时处置指令，不是新的用户诉求；不要只回复“收到/好的/我先整理提醒项”，而要直接执行下面的处置动作。',
+        '这是 Dominds 为防止上下文丢失插入的保全提示，不是新的用户诉求；不要只回复“收到/好的/我先整理提醒项”，而要直接执行下面的保全动作。',
         '',
         '影响：对话历史中的工具调用/结果信息很多已经过时，成为你的思考负担。',
         '',
         '行动：你当前处于主线对话。先把当前对话历史中尚未落实到文档、且下一程需要知会的讨论细节落到差遣牒合适章节。然后再把差遣牒仍未覆盖、但恢复工作会丢的信息记进新提醒项过桥（下一步行动 + 关键定位信息 + 运行/验证信息 + 容易丢的临时细节）；允许先带着一定冗余，也允许先写成多条粗略提醒项，不必在当前程强行压成单条。',
         '',
-        '当前已处于吃紧处置阶段：不要继续扩张上下文，也不要提前进入“按接续包做清醒复核”的模式；那是系统真正开启新一程后的第一步。当前程的目标是先把未落文档的讨论细节补进差遣牒，再把差遣牒仍未覆盖、但恢复工作会丢的信息带过桥；真正清理冗余、合并提醒项，放到新一程再做。然后主动 clear_mind，开启新一程对话继续工作。',
+        'Dominds 已提醒当前上下文吃紧：不要继续扩张上下文，也不要提前进入“按接续包做清醒复核”的模式；那是 Dominds 真正开启新一程后的第一步。当前程的目标是先把未落文档的讨论细节补进差遣牒，再把差遣牒仍未覆盖、但恢复工作会丢的信息带过桥；真正清理冗余、合并提醒项，放到新一程再做。然后主动 clear_mind，开启新一程对话继续工作。',
         '',
         '操作：',
         '- 优先新增差遣牒章节保存讨论细节：do_mind({ "category": "<category>", "selector": "<selector>", "content": "..." })',
@@ -885,31 +913,31 @@ export function formatAgentFacingContextHealthV3RemediationGuide(
       return [
         `${formatSystemNoticePrefix(language)} 上下文状态：🔴 告急`,
         '',
-        '这是一条运行时处置指令，不是新的用户诉求；不要只回复“收到/好的/我先整理提醒项”，而要直接执行下面的处置动作。',
+        '这是 Dominds 为防止上下文丢失插入的保全提示，不是新的用户诉求；不要只回复“收到/好的/我先整理提醒项”，而要直接执行下面的保全动作。',
         '',
-        `系统最多再提醒你 ${args.promptsRemainingAfterThis} 次，之后将自动清理头脑开启新一程对话。`,
+        `Dominds 最多再提醒你 ${args.promptsRemainingAfterThis} 次，之后将自动清理头脑开启新一程对话。`,
         '',
         '行动：你当前处于支线对话。本程不要维护差遣牒，也不要整理差遣牒更新提案；当前目标是尽快维护足够详尽的接续包提醒项，然后 clear_mind。',
         '',
-        '提醒项应覆盖：当前对话历史中下一程需要知道的讨论细节、下一步行动、关键定位信息、运行/验证信息、临时路径/ID/样例输入，以及任何恢复工作容易丢的判断依据。提醒项长度没有技术限制，宁可完整一些；允许写成多条粗略提醒项，甚至带一定冗余也可以，不必在当前程强行整理干净。',
+        '提醒项应覆盖：当前对话历史中下一程需要知道的讨论细节、下一步行动、关键定位信息、运行/验证信息、临时路径/ID/样例输入，以及任何恢复工作容易丢的判断依据。提醒项没有固定长度限制，宁可完整一些；允许写成多条粗略提醒项，甚至带一定冗余也可以，不必在当前程强行整理干净。',
         '',
         '操作：',
         '- 优先新增详尽接续包提醒项：add_reminder({ "content": "..." })',
         '- 只有在确实能就地复用现有提醒项、且不会额外增加当前程认知负担时，才更新：update_reminder({ "reminder_id": "<现有 reminder_id>", "content": "..." })',
         '- clear_mind({})',
         '',
-        '当前处于告急处置阶段时，不要提前做“新一程清醒复核”；系统真正开启新一程后，第一步才是重新审视并整理：删除冗余、纠正偏激/失真思路、合并并压缩成高质量提醒项。',
+        'Dominds 已提醒当前上下文告急：不要提前做“新一程清醒复核”；Dominds 真正开启新一程后，第一步才是重新审视并整理：删除冗余、纠正偏激/失真思路、合并并压缩成高质量提醒项。',
       ].join('\n');
     }
 
     return [
       `${formatSystemNoticePrefix(language)} 上下文状态：🔴 告急`,
       '',
-      '这是一条运行时处置指令，不是新的用户诉求；不要只回复“收到/好的/我先整理提醒项”，而要直接执行下面的处置动作。',
+      '这是 Dominds 为防止上下文丢失插入的保全提示，不是新的用户诉求；不要只回复“收到/好的/我先整理提醒项”，而要直接执行下面的保全动作。',
       '',
-      `系统最多再提醒你 ${args.promptsRemainingAfterThis} 次，之后将自动清理头脑开启新一程对话。`,
+      `Dominds 最多再提醒你 ${args.promptsRemainingAfterThis} 次，之后将自动清理头脑开启新一程对话。`,
       '',
-      '行动：你当前处于主线对话。尽快保住易丢信息，然后 clear_mind。当前处于告急处置阶段时，先把当前对话历史中尚未落实到文档、且下一程需要知会的讨论细节落到差遣牒合适章节。然后再把差遣牒仍未覆盖、但恢复工作会丢的信息新增提醒项带过桥；允许先保留多条粗略提醒项，甚至带一定冗余也可以，不必在当前程强行整理干净。',
+      '行动：你当前处于主线对话。尽快保住易丢信息，然后 clear_mind。Dominds 已提醒当前上下文告急：先把当前对话历史中尚未落实到文档、且下一程需要知会的讨论细节落到差遣牒合适章节。然后再把差遣牒仍未覆盖、但恢复工作会丢的信息新增提醒项带过桥；允许先保留多条粗略提醒项，甚至带一定冗余也可以，不必在当前程强行整理干净。',
       '',
       '操作：',
       '- 优先新增差遣牒章节保存讨论细节：do_mind({ "category": "<category>", "selector": "<selector>", "content": "..." })',
@@ -918,7 +946,7 @@ export function formatAgentFacingContextHealthV3RemediationGuide(
       '- 只有在确实能就地复用现有提醒项、且不会额外增加当前程认知负担时，才更新：update_reminder({ "reminder_id": "<现有 reminder_id>", "content": "..." })',
       '- clear_mind({})',
       '',
-      '接续包要点：下一步行动 + 关键定位信息 + 运行验证方式 + 容易丢的临时细节；不要重复差遣牒已有内容，本程刚落入差遣牒的讨论细节只需提示下一程先查差遣牒。当前处于告急处置阶段时，不要提前做“新一程清醒复核”；系统真正开启新一程后，第一步才是重新审视并整理：删除冗余、纠正偏激/失真思路、合并并压缩成高质量提醒项。',
+      '接续包要点：下一步行动 + 关键定位信息 + 运行验证方式 + 容易丢的临时细节；不要重复差遣牒已有内容，本程刚落入差遣牒的讨论细节只需提示下一程先查差遣牒。Dominds 已提醒当前上下文告急：不要提前做“新一程清醒复核”；Dominds 真正开启新一程后，第一步才是重新审视并整理：删除冗余、纠正偏激/失真思路、合并并压缩成高质量提醒项。',
     ].join('\n');
   }
 
@@ -927,15 +955,15 @@ export function formatAgentFacingContextHealthV3RemediationGuide(
       return [
         `${formatSystemNoticePrefix(language)} Context state: 🟡 caution`,
         '',
-        'This is a runtime remediation instruction, not a new user request; do not reply with a standalone "acknowledged/ok/I will organize reminders first", and instead perform the remediation actions directly.',
+        'This is a Dominds notice to prevent context loss, not a new user request. Do the steps below directly; do not answer only with "acknowledged/ok/I will organize reminders first".',
         '',
         'Impact: stale call/results in dialog history are creating cognitive noise.',
         '',
         'Action: you are in a Side Dialog. Do not maintain Taskdoc in this course, and do not draft Taskdoc update proposals. The current goal is to maintain sufficiently detailed continuation-package reminders, then proactively clear_mind to start a new dialog course.',
         '',
-        'Reminders should cover: discussion details from current dialog history that the next course needs to know, next actions, key pointers, run/verify info, volatile paths/IDs/sample inputs, and any reasoning needed to resume safely. Reminder length has no technical limit, so prefer being complete; rough multi-reminder carry-over is acceptable, and you do not need to force everything into one clean reminder in the current course.',
+        'Reminders should cover: discussion details from current dialog history that the next course needs to know, next actions, key pointers, run/verify info, volatile paths/IDs/sample inputs, and any reasoning needed to resume safely. Reminders have no fixed length limit, so prefer being complete; rough multi-reminder carry-over is acceptable, and you do not need to force everything into one clean reminder in the current course.',
         '',
-        'You are already in caution remediation for the current course, so do not keep expanding context and do not switch early into “clear-headed continuation-package review” mode; reminder cleanup and dedup belong to the new course.',
+        'Dominds has already warned that context is tight for the current course, so do not keep expanding context and do not switch early into “clear-headed continuation-package review” mode; reminder cleanup and dedup belong to the new course.',
         '',
         'Operations:',
         '- Prefer adding a detailed continuation-package reminder first: add_reminder({ "content": "..." })',
@@ -946,13 +974,13 @@ export function formatAgentFacingContextHealthV3RemediationGuide(
     return [
       `${formatSystemNoticePrefix(language)} Context state: 🟡 caution`,
       '',
-      'This is a runtime remediation instruction, not a new user request; do not reply with a standalone "acknowledged/ok/I will organize reminders first", and instead perform the remediation actions directly.',
+      'This is a Dominds notice to prevent context loss, not a new user request. Do the steps below directly; do not answer only with "acknowledged/ok/I will organize reminders first".',
       '',
       'Impact: stale call/results in dialog history are creating cognitive noise.',
       '',
       'Action: you are in the Main Dialog. First record current-dialog discussion details that are not yet documented but the next course needs to know into the appropriate Taskdoc sections. Then write information still not covered by Taskdoc but easy to lose into new bridge reminders (next step + key pointers + run/verify info + easy-to-lose volatile details). Some redundancy is acceptable, and rough multi-reminder carry-over is acceptable too; do not force everything into one clean reminder in the current course.',
       '',
-      'You are already in caution remediation for the current course, so do not keep expanding context and do not switch early into “clear-headed continuation-package review” mode; that is the first step only after the system actually starts the new course. In the current course, the goal is to first fill Taskdoc with undocumented discussion details, then carry forward details still not covered by Taskdoc; reminder cleanup and dedup belong to the new course. Then proactively clear_mind to start a new dialog course.',
+      'Dominds has already warned that context is tight for the current course, so do not keep expanding context and do not switch early into “clear-headed continuation-package review” mode; that is the first step only after Dominds actually starts the new course. In the current course, the goal is to first fill Taskdoc with undocumented discussion details, then carry forward details still not covered by Taskdoc; reminder cleanup and dedup belong to the new course. Then proactively clear_mind to start a new dialog course.',
       '',
       'Operations:',
       '- Prefer creating a new Taskdoc section for discussion details: do_mind({ "category": "<category>", "selector": "<selector>", "content": "..." })',
@@ -966,31 +994,31 @@ export function formatAgentFacingContextHealthV3RemediationGuide(
     return [
       `${formatSystemNoticePrefix(language)} Context state: 🔴 critical`,
       '',
-      'This is a runtime remediation instruction, not a new user request; do not reply with a standalone "acknowledged/ok/I will organize reminders first", and instead perform the remediation actions directly.',
+      'This is a Dominds notice to prevent context loss, not a new user request. Do the steps below directly; do not answer only with "acknowledged/ok/I will organize reminders first".',
       '',
-      `System will remind you ${args.promptsRemainingAfterThis} more time(s), then automatically clear mind.`,
+      `Dominds will remind you ${args.promptsRemainingAfterThis} more time(s), then automatically clear mind.`,
       '',
       'Action: you are in a Side Dialog. Do not maintain Taskdoc in this course, and do not draft Taskdoc update proposals. The current goal is to maintain sufficiently detailed continuation-package reminders as soon as possible, then clear_mind.',
       '',
-      'Reminders should cover: discussion details from current dialog history that the next course needs to know, next actions, key pointers, run/verify info, volatile paths/IDs/sample inputs, and any reasoning needed to resume safely. Reminder length has no technical limit, so prefer being complete; multiple rough reminders, including some redundancy, are acceptable as a bridge.',
+      'Reminders should cover: discussion details from current dialog history that the next course needs to know, next actions, key pointers, run/verify info, volatile paths/IDs/sample inputs, and any reasoning needed to resume safely. Reminders have no fixed length limit, so prefer being complete; multiple rough reminders, including some redundancy, are acceptable as a bridge.',
       '',
       'Operations:',
       '- Prefer adding a detailed continuation-package reminder first: add_reminder({ "content": "..." })',
       '- Only if an existing reminder is clearly the right place, and updating it would not add extra cognitive load in the current course: update_reminder({ "reminder_id": "<existing reminder_id>", "content": "..." })',
       '- clear_mind({})',
       '',
-      'During critical remediation in the current course, do not start the new-course cleanup early; once the system actually starts the new course, the first step is to reconcile rough bridge reminders by removing redundancy, correcting biased or distorted bridge notes, and merging/compressing them into high-quality reminders.',
+      'Because Dominds has warned that context is critical in the current course, do not start the new-course cleanup early; once Dominds actually starts the new course, the first step is to reconcile rough bridge reminders by removing redundancy, correcting biased or distorted bridge notes, and merging/compressing them into high-quality reminders.',
     ].join('\n');
   }
 
   return [
     `${formatSystemNoticePrefix(language)} Context state: 🔴 critical`,
     '',
-    'This is a runtime remediation instruction, not a new user request; do not reply with a standalone "acknowledged/ok/I will organize reminders first", and instead perform the remediation actions directly.',
+    'This is a Dominds notice to prevent context loss, not a new user request. Do the steps below directly; do not answer only with "acknowledged/ok/I will organize reminders first".',
     '',
-    `System will remind you ${args.promptsRemainingAfterThis} more time(s), then automatically clear mind.`,
+    `Dominds will remind you ${args.promptsRemainingAfterThis} more time(s), then automatically clear mind.`,
     '',
-    'Action: you are in the Main Dialog. Preserve easy-to-lose information, then clear_mind. In critical remediation, first record current-dialog discussion details that are not yet documented but the next course needs to know into the appropriate Taskdoc sections. Then add bridge reminders for information still not covered by Taskdoc but easy to lose. Multiple rough reminders, including some redundancy, are acceptable as a bridge; do not spend the current course forcing them into a clean final package.',
+    'Action: you are in the Main Dialog. Preserve easy-to-lose information, then clear_mind. Because Dominds has warned that context is critical, first record current-dialog discussion details that are not yet documented but the next course needs to know into the appropriate Taskdoc sections. Then add bridge reminders for information still not covered by Taskdoc but easy to lose. Multiple rough reminders, including some redundancy, are acceptable as a bridge; do not spend the current course forcing them into a clean final package.',
     '',
     'Operations:',
     '- Prefer creating a new Taskdoc section for discussion details: do_mind({ "category": "<category>", "selector": "<selector>", "content": "..." })',
@@ -999,7 +1027,7 @@ export function formatAgentFacingContextHealthV3RemediationGuide(
     '- Only if an existing reminder is clearly the right place, and updating it would not add extra cognitive load in the current course: update_reminder({ "reminder_id": "<existing reminder_id>", "content": "..." })',
     '- clear_mind({})',
     '',
-    'Continuation package: next step + key pointers + run/verify info + easy-to-lose volatile details. Do not duplicate Taskdoc content; for discussion details just written into Taskdoc in this course, only remind the next course to review Taskdoc first. During critical remediation in the current course, do not start the new-course cleanup early; once the system actually starts the new course, the first step is to reconcile rough bridge reminders by removing redundancy, correcting biased or distorted bridge notes, and merging/compressing them into high-quality reminders.',
+    'Continuation package: next step + key pointers + run/verify info + easy-to-lose volatile details. Do not duplicate Taskdoc content; for discussion details just written into Taskdoc in this course, only remind the next course to review Taskdoc first. Because Dominds has warned that context is critical in the current course, do not start the new-course cleanup early; once Dominds actually starts the new course, the first step is to reconcile rough bridge reminders by removing redundancy, correcting biased or distorted bridge notes, and merging/compressing them into high-quality reminders.',
   ].join('\n');
 }
 
@@ -1015,24 +1043,24 @@ export function formatAgentFacingCriticalUserInterjectionRemediationGuide(
     return [
       `${formatSystemNoticePrefix(language)} 上下文状态：🔴 告急；收到用户插话`,
       '',
-      '本轮刚收到的用户消息是真实用户插话，不是普通运行时处置提示；必须把它当作有效用户轮次处理，让用户看到你已经接住了这次插话。',
+      '本轮刚收到的用户消息是真实用户插话，不是普通的上下文保全提示；必须把它当作有效用户轮次处理，让用户看到你已经接住了这次插话。',
       '',
-      `这次用户轮次已计入告急处置倒计数。系统最多再提醒你 ${args.promptsRemainingAfterThis} 次，之后将自动清理头脑开启新一程对话。`,
+      `这次用户轮次已计入上下文告急倒计数。Dominds 最多再提醒你 ${args.promptsRemainingAfterThis} 次，之后将自动清理头脑开启新一程对话。`,
       '',
       isSideDialog
         ? '行动：先直接回应用户这条插话；不要继续扩张上下文，不要维护差遣牒，也不要整理差遣牒更新提案。若还需要保留接续信息，只维护足够详尽的接续包提醒项，然后尽快 clear_mind。'
         : '行动：先直接回应用户这条插话；不要继续扩张上下文。若仍有当前对话中尚未落实到文档、且下一程需要知会的讨论细节，先落到差遣牒合适章节；再把差遣牒仍未覆盖、但恢复工作会丢的信息新增提醒项带过桥，然后尽快 clear_mind。',
       '',
-      '要求：不要因为 critical 状态沉默、挂起或只回复“收到/好的”。若必须调用工具才能回答用户，工具结果回来后继续给出用户可见回复；保持回答聚焦，并把清理/换程作为紧随其后的处置动作。',
+      '要求：不要因为告急状态沉默、挂起或只回复“收到/好的”。若必须调用工具才能回答用户，工具结果回来后继续给出用户可见回复；保持回答聚焦，并把清理/换程作为紧随其后的保全动作。',
     ].join('\n');
   }
 
   return [
     `${formatSystemNoticePrefix(language)} Context state: 🔴 critical; user interjection received`,
     '',
-    'The user message just received in this turn is a real user interjection, not an ordinary runtime remediation notice. Treat it as an effective user turn and make the system reaction visible to the user.',
+    'The user message just received in this turn is a real user interjection, not an ordinary context-preservation notice. Treat it as an effective user turn and make the system reaction visible to the user.',
     '',
-    `This user turn has been counted toward critical remediation. System will remind you ${args.promptsRemainingAfterThis} more time(s), then automatically clear mind.`,
+    `This user turn has been counted toward the critical context-preservation countdown. Dominds will remind you ${args.promptsRemainingAfterThis} more time(s), then automatically clear mind.`,
     '',
     isSideDialog
       ? 'Action: answer this user interjection directly first. Do not expand context, do not maintain Taskdoc, and do not draft Taskdoc update proposals. If continuation info still needs preserving, maintain sufficiently detailed continuation-package reminders only, then clear_mind as soon as possible.'

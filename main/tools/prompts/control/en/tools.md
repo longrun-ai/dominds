@@ -23,7 +23,7 @@
 
 The **tool descriptions themselves** for these functions intentionally stay minimal and spec-like. This section carries the smallest practical lookup for when they appear and how to choose among them.
 
-| Function                  | Minimal parameter contract   | When runtime exposes it                                                                                     | Effect                                                         |
+| Function                  | Minimal parameter contract   | When Dominds shows it                                                                                       | Effect                                                         |
 | ------------------------- | ---------------------------- | ----------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------- |
 | `replyTellask`            | `{ replyContent: string }`   | Current Side Dialog comes from a sessioned `tellask` and is ready for final delivery                        | Delivers the final result for the current tellask session      |
 | `replyTellaskSessionless` | `{ replyContent: string }`   | Current Side Dialog comes from a one-shot `tellaskSessionless` and is ready for final delivery              | Delivers the final result for the current one-shot tellask     |
@@ -32,11 +32,11 @@ The **tool descriptions themselves** for these functions intentionally stay mini
 
 ### Minimal Usage Rules
 
-- Focus on doing the current task correctly first; only move into `reply*` closure when final tellasker delivery is actually ready
-- Call whichever `reply*` runtime currently exposes; do not switch to another reply variant by yourself
-- If the assignment header explicitly names a reply function, follow that exact name
+- Focus on doing the current task correctly first; send the final reply only when the final content is ready and Dominds names a reply tool
+- Call whichever reply tool Dominds currently shows; do not switch to another reply tool by yourself
+- If the task header explicitly names a reply tool, follow that exact name
 - Put only the final deliverable body in `replyContent`; do not wrap it in meta-explanations like "I am now calling replyTellask"
-- If you produce final deliverable content instead of the reply tool, runtime may inject a temporary `role=user` reminder telling you to use the correct reply function; do not rely on direct-reply fallback, which is only a temporary runtime transition safeguard, not the formal reply mechanism
+- If you write final deliverable content but do not send it through the reply tool named by Dominds, Dominds may temporarily remind you to use that tool; do not treat plain text as the formal reply path, because the other dialog may not receive a formal reply that way
 
 ### 1. add_reminder
 
@@ -45,8 +45,8 @@ Add reminder.
 Use when:
 
 - Adding a new temporary current-work item
-- Before `clear_mind`, the Main Dialog first records undocumented discussion details the next course needs to know into Taskdoc, then creates continuation-package notes; a Side Dialog directly maintains sufficiently detailed continuation-package reminders. When the current course is already under caution/critical remediation, Side Dialog reminder length has no technical limit and rough bridge notes are acceptable
-- Record only manually maintained current-work / continuation details; do not put runtime-maintained environment state such as background process status, in-flight background asks, or session attachment state into manual reminders
+- Before `clear_mind`, the Main Dialog first records undocumented discussion details the next course needs to know into Taskdoc, then creates continuation-package notes; a Side Dialog directly maintains sufficiently detailed continuation-package reminders. When Dominds has already warned that context is tight or critical, Side Dialog reminders have no fixed length limit and rough bridge notes are acceptable
+- Record only manually maintained current-work / continuation details; do not put environment state automatically maintained by Dominds, such as background process status, in-flight background asks, or session attachment state, into manual reminders
 
 **Parameters:**
 
@@ -92,7 +92,7 @@ Use when:
 - Compressing / merging existing reminders
 - Rewriting pre-clear resume info into continuation-package notes
 - Removing details that have already been promoted into Taskdoc
-- Removing or rewriting system environment state that was mistakenly captured in a manual reminder; runtime-managed reminders, panels, and tool outputs are the single source of truth for that state
+- Removing or rewriting system environment state that was mistakenly captured in a manual reminder; Dominds-managed reminders, panels, and tool outputs are the authoritative place for that state
 
 **Parameters:**
 
@@ -360,7 +360,7 @@ message: <error message>
 
 - Normal reminders should stay concise, fresh, and directly actionable; often 1-3 items total
 - For a continuation package, use structured notes by default: next step, key pointers, run/verify, easy-to-lose volatile details
-- If the current course is already under caution/critical remediation: the Main Dialog first records undocumented discussion details the next course needs to know into the appropriate Taskdoc sections, then keeps necessary continuation-package reminders; a Side Dialog must not maintain Taskdoc or draft Taskdoc update proposals, and should directly maintain sufficiently detailed continuation-package reminders with no technical length limit. Rough multi-reminder bridge notes are acceptable and should be reconciled as the first step only after the system actually starts the new course
+- If Dominds has already warned that context is tight or critical: the Main Dialog first records undocumented discussion details the next course needs to know into the appropriate Taskdoc sections, then keeps necessary continuation-package reminders; a Side Dialog must not maintain Taskdoc or draft Taskdoc update proposals, and should directly maintain sufficiently detailed continuation-package reminders with no fixed length limit. Rough multi-reminder bridge notes are acceptable and should be reconciled as the first step only after Dominds actually starts the new course
 - Keep only details still not covered by Taskdoc; do not repeat team-shared status. If the team needs “where we are now / which decisions are in effect / what is next / which blockers still hold”, write it back to Taskdoc `progress`
-- Do not manually record Dominds runtime-maintained environment state, such as whether background processes are still running, in-flight background asks/collaboration, or browser/session attachment state. Manual copies go stale easily and conflict with the runtime-maintained single source of truth, creating cognitive noise
+- Do not manually record environment state automatically maintained by Dominds, such as whether background processes are still running, in-flight background asks/collaboration, or browser/session attachment state. Manual copies go stale easily and conflict with the Dominds-managed status, creating cognitive noise
 - Do not paste long logs, large tool outputs, or raw material into reminders
