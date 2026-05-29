@@ -227,8 +227,11 @@ type DomindsVersionActionState =
   | Readonly<{ kind: 'installing'; latestVersion: string | null }>
   | Readonly<{ kind: 'restarting'; latestVersion: string | null }>;
 
+type DomindsVersionUpdateRestartChoice = 'install_and_restart' | 'restart_only';
+
 export class DomindsApp extends HTMLElement {
   private static readonly DEFAULT_BROWSER_TITLE = 'Dominds - DevOps Mindsets';
+  private static readonly AUTH_REJECTED_ERROR_MESSAGE = 'Dominds API auth rejected';
   private static readonly TOAST_HISTORY_STORAGE_KEY = 'dominds-toast-history-v2';
   private static readonly TOAST_HISTORY_MAX = 200;
   private static readonly UNIFIED_TIMESTAMP_PATTERN = /^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/;
@@ -273,7 +276,9 @@ export class DomindsApp extends HTMLElement {
   private backendMode: 'development' | 'production' | null = null;
   private domindsSelfUpdate: DomindsSelfUpdateStatus | null = null;
   private domindsSelfUpdateCheckInFlight: boolean = false;
+  private domindsSelfUpdateCheckPromise: Promise<DomindsSelfUpdateStatus | null> | null = null;
   private domindsSelfUpdateInstallFailureToastKey: string | null = null;
+  private domindsVersionForceRestartPromise: Promise<void> | null = null;
   private domindsVersionClickTimer: number | null = null;
   private toolbarCurrentCourse: number = 1;
   private toolbarTotalCourses: number = 1;
@@ -2186,11 +2191,12 @@ export class DomindsApp extends HTMLElement {
     }
     switch (state.kind) {
       case 'install':
-      case 'installing':
         lines.push(`${t.domindsVersionTooltipStatus}: ${t.domindsVersionUpdateAvailableTitle}`);
         break;
+      case 'installing':
+        lines.push(`${t.domindsVersionTooltipStatus}: ${t.domindsVersionInstallInProgress}`);
+        break;
       case 'restart':
-      case 'restarting':
         lines.push(
           `${t.domindsVersionTooltipStatus}: ${
             this.domindsSelfUpdate?.reason === 'install_verified_after_command_failure'
@@ -2201,6 +2207,9 @@ export class DomindsApp extends HTMLElement {
               : t.domindsVersionRestartAvailableTitle
           }`,
         );
+        break;
+      case 'restarting':
+        lines.push(`${t.domindsVersionTooltipStatus}: ${t.domindsVersionRestartInProgress}`);
         break;
       case 'idle':
         if (
@@ -2229,7 +2238,7 @@ export class DomindsApp extends HTMLElement {
     versionIndicator.classList.toggle('hidden', !isVisible);
     const actionState = this.getDomindsVersionActionState();
     const isActionable = actionState.kind === 'install' || actionState.kind === 'restart';
-    const needsAttention = isActionable;
+    const needsAttention = isActionable || actionState.kind === 'installing';
     versionIndicator.disabled = false;
     versionIndicator.dataset.actionable = isActionable ? 'true' : 'false';
     versionIndicator.dataset.attention = needsAttention ? 'true' : 'false';
@@ -2386,6 +2395,9 @@ export class DomindsApp extends HTMLElement {
       }
       this.domindsSelfUpdate = nextStatus;
       this.updateDomindsVersionUi();
+      if (nextStatus.reason === 'install_failed') {
+        throw new Error(nextStatus.message || t.unknownError);
+      }
       if (nextStatus.busy === 'installing') {
         this.showInfo(t.domindsVersionInstallInProgress);
         return;
@@ -2405,15 +2417,35 @@ export class DomindsApp extends HTMLElement {
         );
         return;
       }
-      this.showInfo(t.domindsVersionRestartScheduled);
+      throw new Error(nextStatus.message || t.unknownError);
     } catch (error) {
       const message = error instanceof Error ? error.message : t.unknownError;
       this.showToast(`${t.domindsVersionActionFailedPrefix}${message}`, 'error');
     }
   }
 
-  private async handleDomindsVersionCheck(): Promise<void> {
-    if (this.domindsSelfUpdateCheckInFlight) return;
+  private async requestDomindsVersionAction(
+    action: 'install' | 'restart' | 'force_restart',
+  ): Promise<DomindsSelfUpdateStatus> {
+    const t = getUiStrings(this.uiLanguage);
+    const resp = await this.apiClient.actDomindsSelfUpdate(action);
+    if (!resp.success) {
+      if (resp.status === 401) {
+        this.onAuthRejected('api');
+        throw new Error(DomindsApp.AUTH_REJECTED_ERROR_MESSAGE);
+      }
+      throw new Error(resp.error || t.unknownError);
+    }
+    const nextStatus = resp.data?.update;
+    if (!nextStatus) {
+      throw new Error('Missing Dominds self-update action payload');
+    }
+    this.domindsSelfUpdate = nextStatus;
+    this.updateDomindsVersionUi();
+    return nextStatus;
+  }
+
+  private async runDomindsVersionCheck(): Promise<DomindsSelfUpdateStatus | null> {
     this.domindsSelfUpdateCheckInFlight = true;
     this.updateDomindsVersionUi();
     try {
@@ -2421,7 +2453,7 @@ export class DomindsApp extends HTMLElement {
       if (!resp.success) {
         if (resp.status === 401) {
           this.onAuthRejected('api');
-          return;
+          return null;
         }
         const t = getUiStrings(this.uiLanguage);
         throw new Error(resp.error || t.unknownError);
@@ -2431,15 +2463,204 @@ export class DomindsApp extends HTMLElement {
         throw new Error('Missing Dominds self-update check payload');
       }
       this.domindsSelfUpdate = nextStatus;
-      this.showDomindsVersionCheckResult(nextStatus);
+      return nextStatus;
     } catch (error) {
       const t = getUiStrings(this.uiLanguage);
       const message = error instanceof Error ? error.message : t.unknownError;
       this.showToast(`${t.domindsVersionCheckFailedPrefix}${message}`, 'error');
+      return null;
     } finally {
       this.domindsSelfUpdateCheckInFlight = false;
       this.updateDomindsVersionUi();
+      this.domindsSelfUpdateCheckPromise = null;
     }
+  }
+
+  private ensureDomindsVersionCheck(): Promise<DomindsSelfUpdateStatus | null> {
+    if (this.domindsSelfUpdateCheckPromise !== null) return this.domindsSelfUpdateCheckPromise;
+    this.domindsSelfUpdateCheckPromise = this.runDomindsVersionCheck();
+    return this.domindsSelfUpdateCheckPromise;
+  }
+
+  private async handleDomindsVersionCheck(): Promise<void> {
+    const status = await this.ensureDomindsVersionCheck();
+    if (status !== null && this.domindsVersionForceRestartPromise === null) {
+      this.showDomindsVersionCheckResult(status);
+    }
+  }
+
+  private async handleDomindsVersionForceRestart(): Promise<void> {
+    if (this.domindsVersionForceRestartPromise !== null) {
+      await this.domindsVersionForceRestartPromise;
+      return;
+    }
+    this.domindsVersionForceRestartPromise = this.runDomindsVersionForceRestart();
+    try {
+      await this.domindsVersionForceRestartPromise;
+    } finally {
+      this.domindsVersionForceRestartPromise = null;
+    }
+  }
+
+  private async runDomindsVersionForceRestart(): Promise<void> {
+    const t = getUiStrings(this.uiLanguage);
+    if (this.backendMode !== 'production') return;
+    const checkedStatus = await this.ensureDomindsVersionCheck();
+    if (checkedStatus === null) return;
+
+    try {
+      if (checkedStatus.action === 'install' || checkedStatus.action === 'restart') {
+        const choice = await this.promptDomindsUpdateRestartChoice(
+          this.formatVersionCheckResult(t.domindsVersionInstallAndRestartConfirm, checkedStatus),
+        );
+        if (choice === null) return;
+        if (choice === 'install_and_restart') {
+          if (checkedStatus.action === 'restart') {
+            await this.requestDomindsVersionAction('restart');
+            this.showInfo(t.domindsVersionRestartInProgress);
+            return;
+          }
+          const installStatus = await this.requestDomindsVersionAction('install');
+          if (installStatus.busy === 'installing') {
+            this.showInfo(t.domindsVersionInstallInProgress);
+            await this.waitForDomindsInstallCompletionAndRestart();
+            return;
+          }
+          if (installStatus.action === 'restart') {
+            await this.requestDomindsVersionAction('restart');
+            this.showInfo(t.domindsVersionRestartInProgress);
+            return;
+          }
+          throw new Error(installStatus.message || t.unknownError);
+        }
+        if (choice !== 'restart_only') {
+          const _exhaustive: never = choice;
+          throw new Error(`Unexpected Dominds update restart choice: ${String(_exhaustive)}`);
+        }
+      } else if (
+        !window.confirm(this.formatVersionActionPrompt(t.domindsVersionForceRestartConfirm, null))
+      ) {
+        return;
+      }
+
+      await this.requestDomindsVersionAction('force_restart');
+      this.showInfo(t.domindsVersionRestartInProgress);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : t.unknownError;
+      if (message !== DomindsApp.AUTH_REJECTED_ERROR_MESSAGE) {
+        this.showToast(`${t.domindsVersionActionFailedPrefix}${message}`, 'error');
+      }
+    }
+  }
+
+  private promptDomindsUpdateRestartChoice(
+    message: string,
+  ): Promise<DomindsVersionUpdateRestartChoice | null> {
+    const t = getUiStrings(this.uiLanguage);
+    const root = this.shadowRoot;
+    if (root === null) return Promise.resolve(null);
+
+    return new Promise<DomindsVersionUpdateRestartChoice | null>((resolve) => {
+      const modal = document.createElement('div');
+      modal.className = 'dominds-modal dominds-version-choice-modal';
+      const previouslyFocused = root.activeElement;
+      let settled = false;
+      modal.innerHTML = `
+        <div class="modal-backdrop"></div>
+        <div class="modal-content" role="dialog" aria-modal="true" aria-labelledby="dominds-version-choice-title">
+          <div class="modal-header">
+            <h3 id="dominds-version-choice-title">${escapeHtml(t.domindsVersionUpdateChoiceTitle)}</h3>
+            <button type="button" class="modal-close" aria-label="${escapeHtml(t.close)}">
+              <span class="icon-mask app-icon-close" aria-hidden="true"></span>
+            </button>
+          </div>
+          <div class="modal-body">
+            <p class="modal-description">${escapeHtml(message)}</p>
+          </div>
+          <div class="modal-footer">
+            <button type="button" class="btn btn-primary" data-choice="install_and_restart">${escapeHtml(
+              t.domindsVersionUpdateChoiceInstallButton,
+            )}</button>
+            <button type="button" class="btn btn-secondary" data-choice="restart_only">${escapeHtml(
+              t.domindsVersionUpdateChoiceRestartButton,
+            )}</button>
+          </div>
+        </div>
+      `;
+      const close = (choice: DomindsVersionUpdateRestartChoice | null): void => {
+        if (settled) return;
+        settled = true;
+        modal.remove();
+        if (previouslyFocused instanceof HTMLElement) {
+          previouslyFocused.focus();
+        }
+        resolve(choice);
+      };
+      modal.addEventListener('click', (event) => {
+        const target = event.target;
+        if (!(target instanceof Element)) return;
+        if (target.closest('.modal-close') || target.classList.contains('modal-backdrop')) {
+          close(null);
+          return;
+        }
+        const choiceButton = target.closest('[data-choice]');
+        if (!(choiceButton instanceof HTMLElement)) return;
+        const choice = choiceButton.dataset.choice;
+        if (choice === 'install_and_restart' || choice === 'restart_only') {
+          close(choice);
+        }
+      });
+      modal.addEventListener('keydown', (event) => {
+        if (event.key === 'Escape') {
+          event.preventDefault();
+          close(null);
+        }
+      });
+      root.appendChild(modal);
+      const firstButton = modal.querySelector('[data-choice="install_and_restart"]');
+      if (firstButton instanceof HTMLButtonElement) {
+        firstButton.focus();
+      }
+    });
+  }
+
+  private async waitForDomindsInstallCompletionAndRestart(): Promise<void> {
+    const t = getUiStrings(this.uiLanguage);
+    const deadlineMs = Date.now() + 15 * 60 * 1000;
+    while (Date.now() < deadlineMs) {
+      await new Promise<void>((resolve) => {
+        window.setTimeout(resolve, 1500);
+      });
+      const resp = await this.apiClient.checkDomindsSelfUpdate();
+      if (!resp.success) {
+        if (resp.status === 401) {
+          this.onAuthRejected('api');
+          throw new Error(DomindsApp.AUTH_REJECTED_ERROR_MESSAGE);
+        }
+        throw new Error(resp.error || t.unknownError);
+      }
+      const nextStatus = resp.data?.update;
+      if (!nextStatus) {
+        throw new Error('Missing Dominds self-update check payload');
+      }
+      this.domindsSelfUpdate = nextStatus;
+      this.updateDomindsVersionUi();
+      if (nextStatus.busy === 'installing') continue;
+      if (nextStatus.reason === 'install_failed') {
+        throw new Error(nextStatus.message || t.unknownError);
+      }
+      if (nextStatus.action === 'restart') {
+        await this.requestDomindsVersionAction('restart');
+        this.showInfo(t.domindsVersionRestartInProgress);
+        return;
+      }
+      if (nextStatus.busy === 'restarting') {
+        this.showInfo(t.domindsVersionRestartInProgress);
+        return;
+      }
+      throw new Error(nextStatus.message || t.unknownError);
+    }
+    throw new Error('Dominds install did not finish before the auto-restart wait timeout');
   }
 
   private queueDomindsVersionClickAction(): void {
@@ -5861,6 +6082,10 @@ export class DomindsApp extends HTMLElement {
         line-height: 1.5;
       }
 
+      .dominds-version-choice-modal .modal-description {
+        white-space: pre-line;
+      }
+
       .form-group {
         margin-bottom: 12px;
       }
@@ -7475,8 +7700,13 @@ export class DomindsApp extends HTMLElement {
 
       const versionBtn = target.closest('#dominds-version') as HTMLButtonElement | null;
       if (versionBtn) {
-        if (evt instanceof MouseEvent && evt.detail > 1) {
+        if (evt instanceof MouseEvent && evt.detail === 2) {
           this.cancelDomindsVersionClickAction();
+          return;
+        }
+        if (evt instanceof MouseEvent && evt.detail >= 3) {
+          this.cancelDomindsVersionClickAction();
+          void this.handleDomindsVersionForceRestart();
           return;
         }
         this.queueDomindsVersionClickAction();

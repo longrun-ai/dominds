@@ -446,7 +446,7 @@ export class ApiClient {
   }
 
   async actDomindsSelfUpdate(
-    action: 'install' | 'restart',
+    action: 'install' | 'restart' | 'force_restart',
   ): Promise<ApiResponse<{ update: DomindsSelfUpdateStatus }>> {
     const url = `${this.baseURL}/api/dominds/self-update`;
     const method = 'POST';

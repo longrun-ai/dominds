@@ -65,6 +65,7 @@ import { handleDialogForensicsZipRoute } from './dialog-forensics-routes';
 import { getDomindsRuntimeStatus } from './dominds-runtime-status';
 import {
   checkLatestDomindsVersionNow,
+  forceRestartDominds,
   installLatestDominds,
   restartDomindsIntoLatest,
 } from './dominds-self-update';
@@ -502,10 +503,12 @@ export interface ApiRouteContext {
   mode: 'development' | 'production';
 }
 
-function parseDomindsSelfUpdateAction(body: unknown): 'install' | 'restart' | null {
+function parseDomindsSelfUpdateAction(
+  body: unknown,
+): 'install' | 'restart' | 'force_restart' | null {
   if (!isRecord(body)) return null;
   const action = body['action'];
-  if (action === 'install' || action === 'restart') return action;
+  if (action === 'install' || action === 'restart' || action === 'force_restart') return action;
   return null;
 }
 
@@ -1193,7 +1196,7 @@ export async function handleApiRoute(
       if (action === null) {
         respondJson(res, 400, {
           success: false,
-          error: "Invalid action. Expected 'install' or 'restart'",
+          error: "Invalid action. Expected 'install', 'restart', or 'force_restart'",
         });
         return true;
       }
@@ -1201,6 +1204,11 @@ export async function handleApiRoute(
         if (action === 'install') {
           const status = await installLatestDominds();
           respondJson(res, 200, { success: true, update: status });
+          return true;
+        }
+        if (action === 'force_restart') {
+          const status = await forceRestartDominds();
+          respondJson(res, 202, { success: true, update: status });
           return true;
         }
         const status = await restartDomindsIntoLatest();

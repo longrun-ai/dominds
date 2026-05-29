@@ -14,10 +14,14 @@ export type UiStrings = {
   domindsVersionRestartAvailableTitle: string;
   domindsVersionInstallConfirm: string;
   domindsVersionRestartConfirm: string;
+  domindsVersionForceRestartConfirm: string;
+  domindsVersionInstallAndRestartConfirm: string;
+  domindsVersionUpdateChoiceTitle: string;
+  domindsVersionUpdateChoiceInstallButton: string;
+  domindsVersionUpdateChoiceRestartButton: string;
   domindsVersionInstallSuccess: string;
   domindsVersionInstallVerifiedAfterCommandFailure: string;
   domindsVersionInstallInProgress: string;
-  domindsVersionRestartScheduled: string;
   domindsVersionRestartInProgress: string;
   domindsVersionActionFailedPrefix: string;
   domindsVersionCheckUpdateAvailable: string;
@@ -438,11 +442,17 @@ export function getUiStrings(language: LanguageCode): UiStrings {
         '检测到 npm registry 上有新版 Dominds。\n\n当前: v<current>\n最新: v<latest>\n\n现在安装并在完成后等待重启吗？',
       domindsVersionRestartConfirm:
         '将以最新可用版本重启 Dominds 后台。\n\n当前: v<current>\n目标: v<latest>\n\n是否继续？',
+      domindsVersionForceRestartConfirm:
+        '强制重启 Dominds 后台？\n\n当前: v<current>\n\n确认后会立即中断当前连接并重启后台。',
+      domindsVersionInstallAndRestartConfirm:
+        '检查到新版本 v<latest>。\n\n当前: v<current>\n\n请选择使用新版重启，还是不执行升级流程、直接重启当前后台入口。',
+      domindsVersionUpdateChoiceTitle: 'Dominds 更新重启',
+      domindsVersionUpdateChoiceInstallButton: '使用新版重启',
+      domindsVersionUpdateChoiceRestartButton: '直接重启',
       domindsVersionInstallSuccess: '最新版 Dominds 已安装完成，请点击重启。',
       domindsVersionInstallVerifiedAfterCommandFailure:
         '安装命令返回异常，但磁盘文件和版本探针已确认 v<latest> 安装成功，请点击重启。',
       domindsVersionInstallInProgress: '后端正在安装……',
-      domindsVersionRestartScheduled: 'Dominds 后台正在重启…',
       domindsVersionRestartInProgress: '后端正在重启，若页面没有自动刷新，可手动刷新看看。',
       domindsVersionActionFailedPrefix: 'Dominds 更新失败：',
       domindsVersionCheckUpdateAvailable: '检查完成：发现新版本 v<latest>，点击版本号可安装。',
@@ -882,11 +892,17 @@ export function getUiStrings(language: LanguageCode): UiStrings {
       'A newer Dominds version is available on npm registry.\n\nCurrent: v<current>\nLatest: v<latest>\n\nInstall it now and wait for restart?',
     domindsVersionRestartConfirm:
       'Dominds backend will restart into the latest available version.\n\nCurrent: v<current>\nTarget: v<latest>\n\nContinue?',
+    domindsVersionForceRestartConfirm:
+      'Force restart the Dominds backend?\n\nCurrent: v<current>\n\nConfirming will immediately interrupt the current connection and restart the backend.',
+    domindsVersionInstallAndRestartConfirm:
+      'A newer version v<latest> is available.\n\nCurrent: v<current>\n\nChoose whether to restart into the latest version, or skip the update flow and restart the current backend entrypoint.',
+    domindsVersionUpdateChoiceTitle: 'Dominds update restart',
+    domindsVersionUpdateChoiceInstallButton: 'Restart into latest',
+    domindsVersionUpdateChoiceRestartButton: 'Restart now',
     domindsVersionInstallSuccess: 'Latest Dominds is installed. Click restart when ready.',
     domindsVersionInstallVerifiedAfterCommandFailure:
       'The install command returned an error, but installed files and version probe confirmed v<latest>. Click restart when ready.',
     domindsVersionInstallInProgress: 'Backend is installing…',
-    domindsVersionRestartScheduled: 'Dominds backend is restarting…',
     domindsVersionRestartInProgress:
       'Backend is restarting. If the page does not refresh automatically, try a manual refresh.',
     domindsVersionActionFailedPrefix: 'Dominds update failed: ',

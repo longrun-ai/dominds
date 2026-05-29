@@ -88,10 +88,10 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
 
-function isRestartRunKind(
+function isRestartStrategy(
   value: unknown,
-): value is DomindsSupervisorRestartWebuiMessage['runKind'] {
-  return value === 'global' || value === 'npx';
+): value is DomindsSupervisorRestartWebuiMessage['restartStrategy'] {
+  return value === 'current_entrypoint' || value === 'npx_latest';
 }
 
 function parseRunnerMessage(message: unknown): RunnerMessageParseResult {
@@ -104,7 +104,7 @@ function parseRunnerMessage(message: unknown): RunnerMessageParseResult {
   const debugDir = message['debugDir'];
   const currentVersion = message['currentVersion'];
   const targetVersion = message['targetVersion'];
-  const runKind = message['runKind'];
+  const restartStrategy = message['restartStrategy'];
   const invalid = (reason: string): RunnerMessageParseResult => ({
     kind: 'invalid',
     reason,
@@ -122,7 +122,9 @@ function parseRunnerMessage(message: unknown): RunnerMessageParseResult {
   if (targetVersion !== null && typeof targetVersion !== 'string') {
     return invalid('targetVersion must be a string or null');
   }
-  if (!isRestartRunKind(runKind)) return invalid('runKind must be global or npx');
+  if (!isRestartStrategy(restartStrategy)) {
+    return invalid('restartStrategy must be current_entrypoint or npx_latest');
+  }
   return {
     kind: 'restart',
     message: {
@@ -134,7 +136,7 @@ function parseRunnerMessage(message: unknown): RunnerMessageParseResult {
       debugDir,
       currentVersion,
       targetVersion,
-      runKind,
+      restartStrategy,
     },
   };
 }
@@ -194,7 +196,7 @@ function appendInvalidSupervisorTraceSoon(
     debugDir: parsed.debugDir,
     currentVersion: 'unknown',
     targetVersion: null,
-    runKind: 'global',
+    restartStrategy: 'current_entrypoint',
   };
   appendSupervisorTraceSoon(message, event, {
     ...details,
@@ -522,6 +524,7 @@ async function runSupervised(params: ParsedSupervisorArgs): Promise<number> {
           cwd: message.cwd,
           host: message.host,
           port: message.port,
+          restartStrategy: message.restartStrategy,
         });
         scheduleRestartExitEnforcement(child, message);
       });
@@ -577,7 +580,7 @@ async function runSupervised(params: ParsedSupervisorArgs): Promise<number> {
         if (stopState.stopping) return 0;
         backoffMs = Math.min(backoffMs * 2, MAX_RESTART_BACKOFF_MS);
       }
-      if (restart.runKind === 'npx') {
+      if (restart.restartStrategy === 'npx_latest') {
         while (true) {
           try {
             const runnerEntrypoint = await resolveNpxLatestRunnerEntrypoint();

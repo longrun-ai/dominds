@@ -16,7 +16,7 @@ import { formatUnifiedTimestamp } from '@longrun-ai/kernel/utils/time';
 import { createLogger } from '../log';
 import {
   DOMINDS_SUPERVISOR_RESTART_WEBUI,
-  type DomindsSupervisorRestartRunKind,
+  type DomindsSupervisorRestartStrategy,
   type DomindsSupervisorRestartWebuiMessage,
 } from '../supervisor-protocol';
 import { DOMINDS_RUNNING_VERSION } from './dominds-running-version';
@@ -1318,10 +1318,11 @@ export async function getDomindsSelfUpdateStatus(): Promise<DomindsSelfUpdateSta
   }
 
   if (restartPromise !== null) {
+    const targetVersion = latestObservation.kind === 'ok' ? latestObservation.latestVersion : null;
     return buildStatus({
       currentVersion: runningVersion,
-      installedVersion: runningVersion,
-      latestVersion: latestObservation.kind === 'ok' ? latestObservation.latestVersion : null,
+      installedVersion: targetVersion ?? runningVersion,
+      latestVersion: targetVersion,
       checkedAt: latestObservation.kind === 'unknown' ? null : latestObservation.checkedAt,
       mode: cfg.mode,
       runKind,
@@ -1329,7 +1330,7 @@ export async function getDomindsSelfUpdateStatus(): Promise<DomindsSelfUpdateSta
       busy: 'restarting',
       reason: 'restart_required',
       message: 'Dominds restart is in progress',
-      targetVersion: latestObservation.kind === 'ok' ? latestObservation.latestVersion : null,
+      targetVersion,
     });
   }
 
@@ -1592,7 +1593,7 @@ export async function installLatestDominds(): Promise<DomindsSelfUpdateStatus> {
 
 async function requestSupervisorRestart(params: {
   trace: RestartTraceContext;
-  runKind: DomindsSupervisorRestartRunKind;
+  restartStrategy: DomindsSupervisorRestartStrategy;
   currentVersion: string;
   targetVersion: string | null;
 }): Promise<void> {
@@ -1611,7 +1612,7 @@ async function requestSupervisorRestart(params: {
     debugDir: params.trace.debugDir,
     currentVersion: params.currentVersion,
     targetVersion: params.targetVersion,
-    runKind: params.runKind,
+    restartStrategy: params.restartStrategy,
   };
   await new Promise<void>((resolve, reject) => {
     process.send?.(message, (error: Error | null) => {
@@ -1683,6 +1684,77 @@ async function stopAndExitForRestart(): Promise<void> {
   process.exit(0);
 }
 
+async function requestDomindsRestart(params: {
+  traceEvent: 'parent.restart_requested' | 'parent.force_restart_requested';
+  restartStrategy: DomindsSupervisorRestartStrategy;
+  currentVersion: string;
+  targetVersion: string | null;
+  rollbackState: RestartState;
+}): Promise<DomindsSelfUpdateStatus> {
+  const cfg = assertRuntimeConfig();
+  const runKind = detectRunKind(cfg.mode);
+  if (runKind === 'disabled') {
+    throw new Error('Dominds restart requires a production run kind');
+  }
+
+  restartState = { kind: 'restarting', targetVersion: params.targetVersion };
+  publishStatusUpdateSoon();
+  const restartCwd = process.cwd();
+  const trace = buildRestartTraceContext();
+  activeRestartTraceFile = trace.traceFile;
+  try {
+    await appendRestartTraceBestEffort(trace, params.traceEvent, {
+      runKind,
+      restartStrategy: params.restartStrategy,
+      currentVersion: params.currentVersion,
+      targetVersion: params.targetVersion,
+      restartCwd,
+      host: cfg.host,
+      port: cfg.port,
+      traceFile: trace.traceFile,
+    });
+    await requestSupervisorRestart({
+      trace,
+      restartStrategy: params.restartStrategy,
+      currentVersion: params.currentVersion,
+      targetVersion: params.targetVersion,
+    });
+    await appendRestartTraceBestEffort(trace, 'parent.supervisor_restart_requested', {
+      retiringPid: process.pid,
+      host: cfg.host,
+      port: cfg.port,
+    });
+    log.info('Dominds supervisor restart requested', undefined, {
+      traceFile: trace.traceFile,
+      forced: params.traceEvent === 'parent.force_restart_requested',
+      restartStrategy: params.restartStrategy,
+    });
+    setImmediate(() => {
+      void stopAndExitForRestart().catch((error: unknown) => {
+        void appendRestartTraceBestEffort(trace, 'parent.stop_and_exit.error', {
+          message: error instanceof Error ? error.message : String(error),
+          stack: error instanceof Error ? (error.stack ?? null) : null,
+        });
+        log.error('Failed to stop Dominds server during restart', error);
+        restartState = params.rollbackState;
+        activeRestartTraceFile = null;
+        publishStatusUpdateSoon();
+      });
+    });
+  } catch (error) {
+    await appendRestartTraceBestEffort(trace, 'parent.restart_error', {
+      message: error instanceof Error ? error.message : String(error),
+      stack: error instanceof Error ? (error.stack ?? null) : null,
+    });
+    restartState = params.rollbackState;
+    activeRestartTraceFile = null;
+    publishStatusUpdateSoon();
+    throw error;
+  }
+
+  return await getDomindsSelfUpdateStatus();
+}
+
 export async function restartDomindsIntoLatest(): Promise<DomindsSelfUpdateStatus> {
   const cfg = assertRuntimeConfig();
   if (cfg.mode !== 'production') {
@@ -1717,63 +1789,58 @@ export async function restartDomindsIntoLatest(): Promise<DomindsSelfUpdateStatu
       throw new Error('Dominds restart requires a completed install or a restartable session');
     }
 
-    restartState = { kind: 'restarting', targetVersion: status.targetVersion };
-    publishStatusUpdateSoon();
-    const restartCwd = process.cwd();
-    const trace = buildRestartTraceContext();
-    activeRestartTraceFile = trace.traceFile;
-    try {
-      await appendRestartTraceBestEffort(trace, 'parent.restart_requested', {
-        runKind,
-        currentVersion: status.currentVersion,
-        targetVersion: status.targetVersion,
-        restartCwd,
-        host: cfg.host,
-        port: cfg.port,
-        traceFile: trace.traceFile,
-      });
-      await requestSupervisorRestart({
-        trace,
-        runKind,
-        currentVersion: status.currentVersion,
-        targetVersion: status.targetVersion,
-      });
-      await appendRestartTraceBestEffort(trace, 'parent.supervisor_restart_requested', {
-        retiringPid: process.pid,
-        host: cfg.host,
-        port: cfg.port,
-      });
-      log.info('Dominds supervisor restart requested', undefined, {
-        traceFile: trace.traceFile,
-      });
-      setImmediate(() => {
-        void stopAndExitForRestart().catch((error: unknown) => {
-          void appendRestartTraceBestEffort(trace, 'parent.stop_and_exit.error', {
-            message: error instanceof Error ? error.message : String(error),
-            stack: error instanceof Error ? (error.stack ?? null) : null,
-          });
-          log.error('Failed to stop Dominds server during restart', error);
-          restartState = previousRestartRequiredState ?? IDLE_RESTART_STATE;
-          activeRestartTraceFile = null;
-          publishStatusUpdateSoon();
-        });
-      });
-    } catch (error) {
-      await appendRestartTraceBestEffort(trace, 'parent.restart_error', {
-        message: error instanceof Error ? error.message : String(error),
-        stack: error instanceof Error ? (error.stack ?? null) : null,
-      });
-      restartState = previousRestartRequiredState ?? IDLE_RESTART_STATE;
-      activeRestartTraceFile = null;
-      publishStatusUpdateSoon();
-      throw error;
-    }
-
-    return await getDomindsSelfUpdateStatus();
+    return await requestDomindsRestart({
+      traceEvent: 'parent.restart_requested',
+      restartStrategy: runKind === 'npx' ? 'npx_latest' : 'current_entrypoint',
+      currentVersion: status.currentVersion,
+      targetVersion: status.targetVersion,
+      rollbackState: previousRestartRequiredState ?? IDLE_RESTART_STATE,
+    });
   })()
     .catch((error: unknown) => {
       const statusSnapshot = restartState.kind === 'restarting' ? restartState : null;
       log.error('Dominds version restart failed', error, {
+        runKind: detectRunKind(cfg.mode),
+        restartState: statusSnapshot,
+      });
+      throw error;
+    })
+    .finally(() => {
+      restartPromise = null;
+      publishStatusUpdateSoon();
+    });
+
+  return await restartPromise;
+}
+
+export async function forceRestartDominds(): Promise<DomindsSelfUpdateStatus> {
+  const cfg = assertRuntimeConfig();
+  if (cfg.mode !== 'production') {
+    throw new Error('Dominds force restart is disabled in development mode');
+  }
+  if (installPromise !== null) {
+    throw new Error('Dominds force restart is blocked while installation is in progress');
+  }
+  if (restartPromise !== null) {
+    return await getDomindsSelfUpdateStatus();
+  }
+  if (restartState.kind === 'restarting') {
+    return await getDomindsSelfUpdateStatus();
+  }
+
+  restartPromise = (async () => {
+    const runningVersion = getRunningVersion();
+    return await requestDomindsRestart({
+      traceEvent: 'parent.force_restart_requested',
+      restartStrategy: 'current_entrypoint',
+      currentVersion: runningVersion,
+      targetVersion: runningVersion,
+      rollbackState: IDLE_RESTART_STATE,
+    });
+  })()
+    .catch((error: unknown) => {
+      const statusSnapshot = restartState.kind === 'restarting' ? restartState : null;
+      log.error('Dominds force restart failed', error, {
         runKind: detectRunKind(cfg.mode),
         restartState: statusSnapshot,
       });
