@@ -28,6 +28,7 @@ import {
 } from '../services/auth';
 import type { ConnectionState } from '../services/store';
 import { getWebSocketManager } from '../services/websocket';
+import { copyTextOrShowManualCopy } from './dominds-clipboard';
 import './dominds-code-block';
 import { ICON_MASK_BASE_CSS, ICON_MASK_URLS } from './icon-masks';
 
@@ -696,7 +697,7 @@ export class DomindsSetup extends HTMLElement {
 
     const copyFileBtn = this.shadowRoot.querySelector('#file-modal-copy');
     if (copyFileBtn instanceof HTMLButtonElement) {
-      copyFileBtn.onclick = () => void this.copyFileModalRaw();
+      copyFileBtn.onclick = () => void this.copyFileModalRaw(copyFileBtn);
     }
 
     this.renderFileModalCodeBlock();
@@ -809,13 +810,14 @@ export class DomindsSetup extends HTMLElement {
     queueMicrotask(() => this.renderFileModalCodeBlock());
   }
 
-  private async copyFileModalRaw(): Promise<void> {
+  private async copyFileModalRaw(restoreFocusTo: HTMLElement | null = null): Promise<void> {
     if (this.fileModal.kind !== 'ready') return;
     const raw = this.fileModal.response.raw;
     try {
-      await navigator.clipboard.writeText(raw);
-    } catch {
-      window.prompt('Copy the content below:', raw);
+      await copyTextOrShowManualCopy(raw, restoreFocusTo);
+    } catch (error: unknown) {
+      console.error('Copy file modal raw failed:', error);
+      alert('复制失败 / Copy failed.');
     }
   }
 

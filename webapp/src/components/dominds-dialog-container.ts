@@ -40,6 +40,7 @@ import { getApiClient } from '../services/api';
 import { getWebSocketManager } from '../services/websocket.js';
 import { formatRetryStoppedReason, formatSystemStopReason } from '../utils/localized-text';
 import { dispatchDomindsEvent, type DomindsCustomEventMap, type UiToastKind } from './dom-events';
+import { copyTextOrShowManualCopy } from './dominds-clipboard';
 import {
   postprocessRenderedDomindsMarkdown,
   renderDomindsMarkdown,
@@ -655,27 +656,15 @@ export class DomindsDialogContainer extends HTMLElement {
             '<span class="icon-mask dc-icon-check-circle" aria-hidden="true"></span>';
           const copyIconHtml = '<span class="icon-mask dc-icon-copy" aria-hidden="true"></span>';
           try {
-            await navigator.clipboard.writeText(text);
-            const prev = btn.innerHTML || '';
-            btn.innerHTML = doneIconHtml;
-            setTimeout(() => (btn.innerHTML = prev || copyIconHtml), 1200);
-          } catch (err) {
-            try {
-              const ta = document.createElement('textarea');
-              ta.value = text;
-              ta.style.position = 'fixed';
-              ta.style.opacity = '0';
-              document.body.appendChild(ta);
-              ta.focus();
-              ta.select();
-              document.execCommand('copy');
-              ta.remove();
+            const result = await copyTextOrShowManualCopy(text, btn);
+            if (result.kind === 'copied') {
               const prev = btn.innerHTML || '';
               btn.innerHTML = doneIconHtml;
               setTimeout(() => (btn.innerHTML = prev || copyIconHtml), 1200);
-            } catch (err2) {
-              console.warn('Clipboard write failed', err2);
             }
+          } catch (err) {
+            console.warn('Clipboard write failed', err);
+            this.emitToast(getUiStrings(this.uiLanguage).copyFailedToast, 'warning');
           }
         }
       });
@@ -4651,36 +4640,17 @@ export class DomindsDialogContainer extends HTMLElement {
     dispatchDomindsEvent(this, 'ui-toast', { message, kind }, { bubbles: true, composed: true });
   }
 
-  private async copyTextToClipboard(text: string): Promise<boolean> {
-    try {
-      if (navigator.clipboard && typeof navigator.clipboard.writeText === 'function') {
-        await navigator.clipboard.writeText(text);
-        return true;
-      }
-
-      const ta = document.createElement('textarea');
-      ta.value = text;
-      ta.setAttribute('readonly', 'true');
-      ta.style.position = 'fixed';
-      ta.style.left = '-9999px';
-      document.body.appendChild(ta);
-      ta.select();
-      const ok = document.execCommand('copy');
-      document.body.removeChild(ta);
-      return ok === true;
-    } catch {
-      return false;
-    }
-  }
-
   private async copyLinkToClipboardWithToast(urlStr: string): Promise<void> {
-    const ok = await this.copyTextToClipboard(urlStr);
     const t = getUiStrings(this.uiLanguage);
-    if (ok) {
-      this.emitToast(t.linkCopiedToast, 'info');
-      return;
+    try {
+      const result = await copyTextOrShowManualCopy(urlStr, null);
+      if (result.kind === 'copied') {
+        this.emitToast(t.linkCopiedToast, 'info');
+      }
+    } catch (error: unknown) {
+      console.warn('Manual link copy fallback failed', error);
+      this.emitToast(t.linkCopyFailedToast, 'warning');
     }
-    this.emitToast(t.linkCopyFailedToast, 'warning');
   }
 
   // === REMINDER EVENTS ===

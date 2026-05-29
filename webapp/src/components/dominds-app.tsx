@@ -111,6 +111,7 @@ import {
   type Q4HCallSiteNavigationDetail,
   type ToastHistoryPolicy,
 } from './dom-events';
+import { copyTextOrShowManualCopy } from './dominds-clipboard';
 import './dominds-dialog-container.js';
 import {
   DomindsDialogContainer,
@@ -8620,36 +8621,17 @@ export class DomindsApp extends HTMLElement {
     window.history.replaceState({}, '', target.toString());
   }
 
-  private async copyTextToClipboard(text: string): Promise<boolean> {
-    try {
-      if (navigator.clipboard && typeof navigator.clipboard.writeText === 'function') {
-        await navigator.clipboard.writeText(text);
-        return true;
-      }
-
-      const ta = document.createElement('textarea');
-      ta.value = text;
-      ta.setAttribute('readonly', 'true');
-      ta.style.position = 'fixed';
-      ta.style.left = '-9999px';
-      document.body.appendChild(ta);
-      ta.select();
-      const ok = document.execCommand('copy');
-      document.body.removeChild(ta);
-      return ok === true;
-    } catch {
-      return false;
-    }
-  }
-
   private async copyLinkToClipboardWithToast(urlStr: string): Promise<void> {
-    const ok = await this.copyTextToClipboard(urlStr);
     const t = getUiStrings(this.uiLanguage);
-    if (ok) {
-      this.showToast(t.linkCopiedToast, 'info');
-      return;
+    try {
+      const result = await copyTextOrShowManualCopy(urlStr, null);
+      if (result.kind === 'copied') {
+        this.showToast(t.linkCopiedToast, 'info');
+      }
+    } catch (error: unknown) {
+      console.warn('Manual link copy fallback failed', error);
+      this.showToast(t.linkCopyFailedToast, 'warning');
     }
-    this.showToast(t.linkCopyFailedToast, 'warning');
   }
 
   private applyPendingQ4HSelectionFromDeepLink(): void {

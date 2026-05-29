@@ -207,6 +207,7 @@ export type UiStrings = {
   retryCountdownPrefix: string;
   retryCountdownSuffix: string;
   invalidMessageFormatToast: string;
+  copyFailedToast: string;
   linkCopiedToast: string;
   linkCopyFailedToast: string;
   forkDialogFailedToast: string;
@@ -648,6 +649,7 @@ export function getUiStrings(language: LanguageCode): UiStrings {
       retryCountdownPrefix: '将在 ',
       retryCountdownSuffix: ' 后重试。',
       invalidMessageFormatToast: '收到无效消息格式，请刷新页面。',
+      copyFailedToast: '复制失败 / Copy failed.',
       linkCopiedToast: '链接已复制。',
       linkCopyFailedToast: '复制链接失败。',
       forkDialogFailedToast: 'Fork 对话失败。',
@@ -824,8 +826,8 @@ export function getUiStrings(language: LanguageCode): UiStrings {
       setupWriteRcWrite: '写入',
       setupWriteRcOverwrite: '覆盖',
       setupFileModalLoading: '加载中…',
-      setupFileModalSelectToCopy: '可直接选择复制，或点击“复制”按钮。',
-      setupFileModalCopy: '复制',
+      setupFileModalSelectToCopy: '可直接选择复制，或点击“复制 / Copy”按钮。',
+      setupFileModalCopy: '复制 / Copy',
       setupSelectProviderModelFirst: '请先选择提供商与模型。',
       setupSelectProminentModelParamsFirst: '请先为 prominent 模型参数选择取值。',
       setupProminentModelParamUnset: '留空（不设置）',
@@ -1102,6 +1104,7 @@ export function getUiStrings(language: LanguageCode): UiStrings {
     retryCountdownPrefix: 'Retrying in ',
     retryCountdownSuffix: '.',
     invalidMessageFormatToast: 'Received invalid message format. Please refresh the page.',
+    copyFailedToast: '复制失败 / Copy failed.',
     linkCopiedToast: 'Link copied.',
     linkCopyFailedToast: 'Failed to copy link.',
     forkDialogFailedToast: 'Failed to fork dialog.',
@@ -1287,8 +1290,8 @@ export function getUiStrings(language: LanguageCode): UiStrings {
     setupWriteRcWrite: 'Write',
     setupWriteRcOverwrite: 'Overwrite',
     setupFileModalLoading: 'Loading…',
-    setupFileModalSelectToCopy: 'Select to copy, or use the Copy button.',
-    setupFileModalCopy: 'Copy',
+    setupFileModalSelectToCopy: '可直接选择复制，或点击“复制 / Copy”按钮。',
+    setupFileModalCopy: '复制 / Copy',
     setupSelectProviderModelFirst: 'Please select a provider and model first.',
     setupSelectProminentModelParamsFirst: 'Please select values for prominent model params first.',
     setupProminentModelParamUnset: 'Leave unset',

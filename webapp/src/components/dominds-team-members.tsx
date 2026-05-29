@@ -11,6 +11,7 @@ import {
   type TeamMembersMentionEventDetail,
   type UiToastKind,
 } from './dom-events';
+import { copyTextOrShowManualCopy } from './dominds-clipboard';
 
 export interface TeamMembersProps {
   members: FrontendTeamMember[];
@@ -490,7 +491,7 @@ export class DomindsTeamMembers extends HTMLElement {
           if (action === 'mention') {
             this.emitMention(memberId);
           } else if (action === 'copy') {
-            void this.copyMention(memberId);
+            void this.copyMention(memberId, actionBtn);
           }
           return;
         }
@@ -531,27 +532,14 @@ export class DomindsTeamMembers extends HTMLElement {
     dispatchDomindsEvent(this, 'team-member-mention', detail, { bubbles: true, composed: true });
   }
 
-  private async copyMention(memberId: string): Promise<void> {
+  private async copyMention(memberId: string, restoreFocusTo: HTMLElement | null): Promise<void> {
     const t = getUiStrings(this.props.uiLanguage);
     const mention = `@${memberId}`;
     try {
-      if (navigator.clipboard && typeof navigator.clipboard.writeText === 'function') {
-        await navigator.clipboard.writeText(mention);
+      const result = await copyTextOrShowManualCopy(mention, restoreFocusTo);
+      if (result.kind === 'copied') {
         this.emitToast(`${t.teamMembersCopiedPrefix}${mention}`);
-        return;
       }
-
-      // Clipboard API might be unavailable in some contexts; fall back to execCommand.
-      const ta = document.createElement('textarea');
-      ta.value = mention;
-      ta.setAttribute('readonly', 'true');
-      ta.style.position = 'fixed';
-      ta.style.left = '-9999px';
-      document.body.appendChild(ta);
-      ta.select();
-      document.execCommand('copy');
-      document.body.removeChild(ta);
-      this.emitToast(`${t.teamMembersCopiedPrefix}${mention}`);
     } catch (error: unknown) {
       const msg = error instanceof Error ? error.message : t.unknownError;
       this.emitToast(`${t.teamMembersCopyFailedPrefix}${msg}`, 'warning');
