@@ -39,6 +39,14 @@ function main(): void {
     'zh prompt should explicitly forbid placeholder replies to irrelevant system notices',
   );
   assert.ok(
+    zh.includes('Dominds：你当前所在的智能体自主运行环境'),
+    'zh prompt should define Dominds as the current autonomous agent runtime',
+  );
+  assert.ok(
+    zh.includes('不是用户的新诉求'),
+    'zh prompt should make Dominds notices distinct from new user requests',
+  );
+  assert.ok(
     zh.includes('可用工具集：'),
     'zh prompt should include a structured available-toolsets section',
   );
@@ -69,6 +77,14 @@ function main(): void {
       'if they do not materially change your judgment/plan/risk, make no user-visible reply at all',
     ),
     'en prompt should explicitly forbid placeholder replies to irrelevant system notices',
+  );
+  assert.ok(
+    en.includes('Dominds: your current autonomous agent runtime'),
+    'en prompt should define Dominds as the current autonomous agent runtime',
+  );
+  assert.ok(
+    en.includes('not as a new user request'),
+    'en prompt should make Dominds notices distinct from new user requests',
   );
   assert.ok(
     en.includes('Available toolsets:'),

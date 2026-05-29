@@ -66,11 +66,27 @@ async function main() {
     'Expected zh auto-continue reminder footer to make continuation depend on task state outside reminders',
   );
   assert(
-    zhAutoContinueFooter.includes('不要单独为提醒项维护继续调用工具'),
-    'Expected zh auto-continue reminder footer to prevent reminder-only tool continuation',
+    zhAutoContinueFooter.includes('不要把提醒项维护当成续推动作'),
+    'Expected zh auto-continue reminder footer to prevent treating reminder maintenance as progress',
   );
   assert(
-    zhAutoContinueFooter.includes('不要为了避免“等待”而寻找无关小事'),
+    zhAutoContinueFooter.includes('先按当前工具规则考虑 `tellaskBack({ tellaskContent })`'),
+    'Expected zh auto-continue reminder footer to prefer tellaskBack for Side Dialog requester clarification',
+  );
+  assert(
+    zhAutoContinueFooter.includes('才用 `askHuman({ tellaskContent })`'),
+    'Expected zh auto-continue reminder footer to reserve askHuman for truly human input',
+  );
+  assert(
+    zhAutoContinueFooter.includes('主线对话可由鞭策续推'),
+    'Expected zh auto-continue reminder footer to preserve Main Dialog diligence keep-alive',
+  );
+  assert(
+    zhAutoContinueFooter.includes('未完成支线会收到回贴提醒'),
+    'Expected zh auto-continue reminder footer to preserve unfinished Side Dialog reply reminders',
+  );
+  assert(
+    zhAutoContinueFooter.includes('不要为了避免停顿而寻找无关小事'),
     'Expected zh auto-continue reminder footer to avoid pressuring agents into unrelated work',
   );
   assert(
@@ -488,11 +504,33 @@ async function main() {
     'Expected en auto-continue reminder footer to make continuation depend on task state outside reminders',
   );
   assert(
-    enAutoContinueFooter.includes('do not keep calling tools solely for reminder maintenance'),
-    'Expected en auto-continue reminder footer to prevent reminder-only tool continuation',
+    enAutoContinueFooter.includes('do not treat reminder maintenance as task progress'),
+    'Expected en auto-continue reminder footer to prevent treating reminder maintenance as progress',
   );
   assert(
-    enAutoContinueFooter.includes('do not invent unrelated work just to avoid "waiting"'),
+    enAutoContinueFooter.includes('consider `tellaskBack({ tellaskContent })` first'),
+    'Expected en auto-continue reminder footer to prefer tellaskBack for Side Dialog requester clarification',
+  );
+  assert(
+    enAutoContinueFooter.includes('use `askHuman({ tellaskContent })` only when'),
+    'Expected en auto-continue reminder footer to reserve askHuman for truly human input',
+  );
+  assert(
+    enAutoContinueFooter.includes(
+      "let the current dialog continue through Dominds' existing mechanism",
+    ),
+    'Expected en auto-continue reminder footer to preserve Dominds keep-alive mechanisms',
+  );
+  assert(
+    enAutoContinueFooter.includes('Main Dialogs can be pushed by diligence'),
+    'Expected en auto-continue reminder footer to preserve Main Dialog diligence keep-alive',
+  );
+  assert(
+    enAutoContinueFooter.includes('unfinished Side Dialogs can receive reply reminders'),
+    'Expected en auto-continue reminder footer to preserve unfinished Side Dialog reply reminders',
+  );
+  assert(
+    enAutoContinueFooter.includes('do not invent unrelated work just to avoid a pause'),
     'Expected en auto-continue reminder footer to avoid pressuring agents into unrelated work',
   );
   assert(

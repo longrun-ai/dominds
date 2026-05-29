@@ -438,11 +438,16 @@ export function formatReminderContextFooter(
           );
         }
         // Normal tool-followup rounds may continue real business work, but reminder maintenance
-        // paths are merely references. This is the guard against loops that only add/delete/merge
-        // reminders after a task is otherwise done.
+        // paths are merely references. This branch gives the model a better off-ramp than
+        // reminder churn without contradicting Dominds keep-alive design: Main Dialogs can be
+        // pushed by diligence, unfinished Side Dialogs can receive direct-reply reminders, and
+        // only completed/no-new-request Side Dialogs may naturally settle. If a Side Dialog needs
+        // requester clarification/decision/acceptance criteria, the closer path is tellaskBack;
+        // askHuman is only for input/authorization that truly must come from the human. Otherwise
+        // hand control back to the current dialog mechanism instead of inventing reminder work.
         return (
           `${base}本轮没有新的用户消息或 Dominds 提示；这是工具调用后的自动续推。` +
-          '请基于提醒项之外的已有任务状态判断下一步：若已有明确、相关且有价值的任务动作，就继续执行；若唯一看似可做的动作只是新增、更新、删除、压缩或整理提醒项，则不要单独为提醒项维护继续调用工具。若当前确实只能等待外部结果或用户输入，不要为了避免“等待”而寻找无关小事。' +
+          '请基于提醒项之外的已有任务状态判断下一步：若已有明确、相关且有价值的任务动作，就继续执行；若唯一看似可做的只是新增、更新、删除、压缩或整理提醒项，不要把提醒项维护当成续推动作。此时先判断是否缺澄清、裁决、验收口径、授权或输入：若你在支线对话中，且缺的是诉请者能补的需求澄清/业务裁决/验收口径/缺失输入，先按当前工具规则考虑 `tellaskBack({ tellaskContent })` 回问诉请者；只有确实需要人类本人澄清、决策、授权或输入时，才用 `askHuman({ tellaskContent })` 提出一个最小且可回答的问题。若不缺这些信息、也没有真实任务动作，不要为了避免停顿而寻找无关小事；让当前对话按 Dominds 既有机制继续：主线对话可由鞭策续推，未完成支线会收到回贴提醒，已完成且无新诉求的支线可以自然收住。' +
           `不要把“没有新消息”理解为空系统提示。${businessTail}`
         );
       default: {
@@ -491,11 +496,16 @@ export function formatReminderContextFooter(
         );
       }
       // Normal tool-followup rounds may continue real business work, but reminder maintenance
-      // paths are merely references. This is the guard against loops that only add/delete/merge
-      // reminders after a task is otherwise done.
+      // paths are merely references. This branch gives the model a better off-ramp than reminder
+      // churn without contradicting Dominds keep-alive design: Main Dialogs can be pushed by
+      // diligence, unfinished Side Dialogs can receive direct-reply reminders, and only
+      // completed/no-new-request Side Dialogs may naturally settle. If a Side Dialog needs
+      // requester clarification/decision/acceptance criteria, the closer path is tellaskBack;
+      // askHuman is only for input/authorization that truly must come from the human. Otherwise
+      // hand control back to the current dialog mechanism instead of inventing reminder work.
       return (
         `${base}There is no new user message or Dominds notice in this round; this is an automatic continuation after a tool call. ` +
-        'Judge the next step from existing task state outside the reminder items: if there is a clear, relevant, valuable actual task action, continue with it; if the only apparent action is to add, update, delete, compress, or organize reminders, do not keep calling tools solely for reminder maintenance. If the work genuinely can only wait for an external result or user input, do not invent unrelated work just to avoid "waiting". ' +
+        "Judge the next step from existing task state outside the reminder items: if there is a clear, relevant, valuable actual task action, continue with it; if the only apparent action is to add, update, delete, compress, or organize reminders, do not treat reminder maintenance as task progress. First decide whether you are missing clarification, decision, acceptance criteria, authorization, or input. In a Side Dialog, if the requester can provide the missing requirement clarification, business decision, acceptance criteria, or missing input, follow the current tool rules and consider `tellaskBack({ tellaskContent })` first; use `askHuman({ tellaskContent })` only when the needed clarification, decision, authorization, or input truly must come from the human. If you do not need any of that and there is no real task action, do not invent unrelated work just to avoid a pause; let the current dialog continue through Dominds' existing mechanism: Main Dialogs can be pushed by diligence, unfinished Side Dialogs can receive reply reminders, and completed Side Dialogs with no new request may naturally settle. " +
         `Do not interpret the absence of a new message as an empty system notice. ${businessTail}`
       );
     default: {
