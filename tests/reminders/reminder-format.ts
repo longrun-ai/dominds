@@ -43,6 +43,10 @@ async function main() {
     'Expected zh reminder context guide to explain Dominds-added reminder context',
   );
   assert(
+    zhContextGuide.includes('Dominds 是你当前所在的自主运行环境'),
+    'Expected zh reminder context guide to explain Dominds as the runtime environment',
+  );
+  assert(
     zhContextGuide.includes('它们不是用户的新诉求/指令'),
     'Expected zh reminder context guide to clarify reminders are not new user requests/instructions',
   );
@@ -85,12 +89,16 @@ async function main() {
     'Expected zh auto-continue reminder footer to explicitly say no new message follows',
   );
   assert(
-    zhAutoContinueFooter.includes('基于提醒项之外的已有任务状态判断下一步'),
-    'Expected zh auto-continue reminder footer to make continuation depend on task state outside reminders',
+    zhAutoContinueFooter.includes('先校对会影响当前判断的提醒项'),
+    'Expected zh auto-continue reminder footer to first reconcile reminders that affect judgment',
   );
   assert(
-    zhAutoContinueFooter.includes('不要把提醒项维护当成续推动作'),
-    'Expected zh auto-continue reminder footer to prevent treating reminder maintenance as progress',
+    zhAutoContinueFooter.includes('过时、失真、互相冲突或会误导当前行动'),
+    'Expected zh auto-continue reminder footer to repair stale or misleading reminders',
+  );
+  assert(
+    !zhAutoContinueFooter.includes('不要把提醒项维护当成续推动作'),
+    'Expected zh auto-continue reminder footer not to contain the stale reminder-maintenance prohibition',
   );
   assert(
     zhAutoContinueFooter.includes('当前是主线对话'),
@@ -101,7 +109,7 @@ async function main() {
     'Expected zh main auto-continue reminder footer not to mention Side Dialog tellaskBack',
   );
   assert(
-    zhAutoContinueFooter.includes('才用 `askHuman({ tellaskContent })`'),
+    zhAutoContinueFooter.includes('用 `askHuman({ tellaskContent })`'),
     'Expected zh main auto-continue reminder footer to reserve askHuman for truly human input',
   );
   assert(
@@ -113,12 +121,12 @@ async function main() {
     'Expected zh main auto-continue reminder footer not to include Side Dialog reply-reminder wording',
   );
   assert(
-    zhAutoContinueFooter.includes('不要为了避免停顿而寻找无关小事'),
-    'Expected zh auto-continue reminder footer to avoid pressuring agents into unrelated work',
+    zhAutoContinueFooter.includes('交给 Dominds 按主线安排处理'),
+    'Expected zh auto-continue reminder footer to hand back to mainline behavior when there is no real action',
   );
   assert(
-    zhAutoContinueFooter.includes('不要把“没有新消息”理解为空系统提示'),
-    'Expected zh auto-continue reminder footer to prevent empty system notice misread',
+    zhAutoContinueFooter.includes('这里的“没有新消息”只说明本轮没有额外用户消息或 Dominds 提示'),
+    'Expected zh auto-continue reminder footer to explain the no-new-message state positively',
   );
   const zhSideAutoContinueFooter = formatSideReminderContextFooter('zh', {
     followingMessage: { kind: 'none' },
@@ -140,6 +148,10 @@ async function main() {
   assert(
     zhSideAutoContinueFooter.includes('需要回贴时会收到回贴提醒'),
     'Expected zh side auto-continue reminder footer to preserve Side Dialog reply reminders',
+  );
+  assert(
+    zhSideAutoContinueFooter.includes('交给 Dominds 按支线安排处理'),
+    'Expected zh side auto-continue reminder footer to hand back to sideline behavior when there is no real action',
   );
   assert(
     !zhSideAutoContinueFooter.includes('鞭策开启时会继续续推'),
@@ -373,12 +385,16 @@ async function main() {
   ]);
   assert(zhMaintenanceReference !== undefined, 'Expected zh reminder maintenance reference');
   assert(
-    zhMaintenanceReference.includes('我把下面的提醒项维护通道仅作为操作参考'),
-    'Expected zh maintenance reference to use first-person assistant framing',
+    zhMaintenanceReference.includes('下面列出这些提醒项可用的修正、更新或删除方式'),
+    'Expected zh maintenance reference to present concrete maintenance paths',
   );
   assert(
-    zhMaintenanceReference.includes('不会只为了清理/整理提醒项而继续调用提醒项工具'),
-    'Expected zh maintenance reference to prevent reminder-only cleanup loops',
+    zhMaintenanceReference.includes('过时、失真、重复或会误导当前判断'),
+    'Expected zh maintenance reference to allow stale or misleading reminder repair',
+  );
+  assert(
+    !zhMaintenanceReference.includes('不会只为了清理/整理提醒项而继续调用提醒项工具'),
+    'Expected zh maintenance reference not to contain the stale reminder-cleanup prohibition',
   );
   assert(
     !zhMaintenanceReference.includes('只有你已经决定'),
@@ -504,6 +520,10 @@ async function main() {
     'Expected en reminder context guide to explain Dominds-added reminder context',
   );
   assert(
+    enContextGuide.includes('Dominds is the autonomous runtime environment'),
+    'Expected en reminder context guide to explain Dominds as the runtime environment',
+  );
+  assert(
     enContextGuide.includes('not new user requests/instructions'),
     'Expected en reminder context guide to clarify reminders are not new user requests/instructions',
   );
@@ -552,12 +572,16 @@ async function main() {
     'Expected en auto-continue reminder footer to explicitly say no new message follows',
   );
   assert(
-    enAutoContinueFooter.includes('existing task state outside the reminder items'),
-    'Expected en auto-continue reminder footer to make continuation depend on task state outside reminders',
+    enAutoContinueFooter.includes('First check reminders that affect your current judgment'),
+    'Expected en auto-continue reminder footer to first reconcile reminders that affect judgment',
   );
   assert(
-    enAutoContinueFooter.includes('do not treat reminder maintenance as task progress'),
-    'Expected en auto-continue reminder footer to prevent treating reminder maintenance as progress',
+    enAutoContinueFooter.includes('stale, distorted, conflicting, or would mislead'),
+    'Expected en auto-continue reminder footer to repair stale or misleading reminders',
+  );
+  assert(
+    !enAutoContinueFooter.includes('do not treat reminder maintenance as task progress'),
+    'Expected en auto-continue reminder footer not to contain the stale reminder-maintenance prohibition',
   );
   assert(
     enAutoContinueFooter.includes('This is a Main Dialog'),
@@ -568,7 +592,7 @@ async function main() {
     'Expected en main auto-continue reminder footer not to mention Side Dialog tellaskBack',
   );
   assert(
-    enAutoContinueFooter.includes('Use `askHuman({ tellaskContent })` only when'),
+    enAutoContinueFooter.includes('use `askHuman({ tellaskContent })` only when'),
     'Expected en main auto-continue reminder footer to reserve askHuman for truly human input',
   );
   assert(
@@ -580,12 +604,14 @@ async function main() {
     'Expected en main auto-continue reminder footer not to include Side Dialog reply-reminder wording',
   );
   assert(
-    enAutoContinueFooter.includes('do not invent unrelated work just to avoid a pause'),
-    'Expected en auto-continue reminder footer to avoid pressuring agents into unrelated work',
+    enAutoContinueFooter.includes('hand control back to Dominds mainline behavior'),
+    'Expected en auto-continue reminder footer to hand back to mainline behavior when there is no real action',
   );
   assert(
-    enAutoContinueFooter.includes('Do not interpret the absence of a new message'),
-    'Expected en auto-continue reminder footer to prevent empty system notice misread',
+    enAutoContinueFooter.includes(
+      'Here, "no new message" only means this round has no extra user message or Dominds notice',
+    ),
+    'Expected en auto-continue reminder footer to explain the no-new-message state positively',
   );
   const enSideAutoContinueFooter = formatSideReminderContextFooter('en', {
     followingMessage: { kind: 'none' },
@@ -607,6 +633,10 @@ async function main() {
   assert(
     enSideAutoContinueFooter.includes('receive reply reminders when a reply is needed'),
     'Expected en side auto-continue reminder footer to preserve Side Dialog reply reminders',
+  );
+  assert(
+    enSideAutoContinueFooter.includes('hand control back to Dominds sideline behavior'),
+    'Expected en side auto-continue reminder footer to hand back to sideline behavior when there is no real action',
   );
   assert(
     !enSideAutoContinueFooter.includes('diligence can continue it when enabled'),
@@ -853,14 +883,20 @@ async function main() {
   ]);
   assert(enMaintenanceReference !== undefined, 'Expected en reminder maintenance reference');
   assert(
-    enMaintenanceReference.includes('I treat the following reminder-maintenance channels'),
-    'Expected en maintenance reference to use first-person assistant framing',
+    enMaintenanceReference.includes(
+      'The following are the available ways to correct, update, or delete these reminders',
+    ),
+    'Expected en maintenance reference to present concrete maintenance paths',
   );
   assert(
-    enMaintenanceReference.includes(
+    enMaintenanceReference.includes('stale, distorted, duplicate, or would mislead'),
+    'Expected en maintenance reference to allow stale or misleading reminder repair',
+  );
+  assert(
+    !enMaintenanceReference.includes(
       'I do not keep calling reminder tools solely to clean up or organize reminders',
     ),
-    'Expected en maintenance reference to prevent reminder-only cleanup loops',
+    'Expected en maintenance reference not to contain the stale reminder-cleanup prohibition',
   );
   assert(
     enMaintenanceReference.includes('reminder_id=rem03abc'),

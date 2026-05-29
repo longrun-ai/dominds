@@ -198,6 +198,7 @@ export function formatReminderContextGuide(language: LanguageCode): string {
   if (language === 'zh') {
     return [
       `${formatSystemNoticePrefix(language)} 提醒项上下文块开始`,
+      'Dominds 是你当前所在的自主运行环境；它会把运行中需要你看到的提醒、提示和状态放进上下文。',
       '以下是 Dominds 为你放到当前上下文里的可见提醒项。它们不是用户的新诉求/指令，也不是聊天正文。',
       '在 WebUI 中，用户通过独立的 Reminder 小组件/面板项看到这些提醒，并能把它们和聊天正文区分开。',
       '请把提醒项作为手头工作/状态参考；只有实际改变你的判断、计划或风险的信息，才需要提炼进后续有实质内容的对外回复。不要为了提醒项单独回复“收到/已了解/静默吸收”。',
@@ -206,6 +207,7 @@ export function formatReminderContextGuide(language: LanguageCode): string {
 
   return [
     `${formatSystemNoticePrefix(language)} Reminder context block begins`,
+    'Dominds is the autonomous runtime environment you are currently working in; it places needed reminders, notices, and state into your context.',
     'The following visible reminders were added to the current context by Dominds. They are not new user requests/instructions, and not chat transcript text.',
     'In the WebUI, the user sees these reminders through a separate Reminder widget/panel item and can distinguish them from the chat transcript.',
     'Use reminders as current-work/state references; only carry information into a later substantive outward reply when it materially changes your current judgment, plan, or risk. Do not send a standalone "acknowledged/noted/silently absorbed" reply for reminder items.',
@@ -411,16 +413,21 @@ function joinReminderFooterTails(language: LanguageCode, tails: readonly string[
 function formatZhNormalAutoContinueByDialogScope(scope: ReminderContextDialogScope): string {
   switch (scope.kind) {
     case 'main_dialog':
-      // Main Dialogs own the broad task and do not have a requester to tellaskBack. When the only
-      // apparent action is reminder maintenance, ask the human only for genuinely missing human
-      // input/authorization; otherwise hand control back to the Main Dialog keep-alive setting
-      // instead of making up work.
-      return '当前是主线对话。请基于提醒项之外的已有任务状态判断下一步：若已有明确、相关且有价值的任务动作，就继续执行；若唯一看似可做的只是新增、更新、删除、压缩或整理提醒项，不要把提醒项维护当成续推动作。若确实缺少人类本人澄清、裁决、验收口径、授权或输入，才用 `askHuman({ tellaskContent })` 提出一个最小且可回答的问题。若不缺这些信息、也没有真实任务动作，不要为了避免停顿而寻找无关小事；让主线按 Dominds 的主线机制处理，鞭策开启时会继续续推，鞭策关闭且没有真实动作时可以自然收住。';
+      // Main Dialogs own the broad task and do not have a requester to tellaskBack. Business
+      // scenario: this is a tool-followup turn with no new user/runtime message, and stale
+      // reminders can distort the model's next-step choice. Tell the model to first reconcile
+      // reminders that affect the current judgment, then proceed from the corrected task state.
+      // This is deliberately positive wording: users may ask the agent to fix reminders, and a
+      // stale reminder should be corrected instead of preserved by a blanket "do not maintain
+      // reminders" warning.
+      return '当前是主线对话。先校对会影响当前判断的提醒项：如果某条提醒项已经过时、失真、互相冲突或会误导当前行动，就先修正或删除；其余提醒项只作为背景参考。然后按校正后的真实任务状态行动：已有明确、相关且有价值的任务动作就继续执行；确实缺少人类本人澄清、裁决、验收口径、授权或输入时，用 `askHuman({ tellaskContent })` 提出一个最小且可回答的问题；如果既不缺这些信息、也没有真实任务动作，就交给 Dominds 按主线安排处理，鞭策开启时会继续续推，鞭策关闭且没有真实动作时可以自然收住。';
     case 'side_dialog':
-      // Side Dialogs are answering a requester. If blocked on requirement clarification, a business
-      // decision, acceptance criteria, or requester-held input, tellaskBack is the local loop and
-      // askHuman is only for information that truly must come from the human.
-      return '当前是支线对话。请基于提醒项之外的已有任务状态判断下一步：若已有明确、相关且有价值的任务动作，就继续执行；若唯一看似可做的只是新增、更新、删除、压缩或整理提醒项，不要把提醒项维护当成续推动作。若缺少需求澄清、业务裁决、验收口径、授权或输入，先判断缺的东西该由谁补：如果诉请者能补需求澄清/业务裁决/验收口径/缺失输入，先按当前工具规则考虑 `tellaskBack({ tellaskContent })` 回问诉请者；只有确实需要人类本人澄清、决策、授权或输入时，才用 `askHuman({ tellaskContent })` 提出一个最小且可回答的问题。若不缺这些信息、也没有真实任务动作，不要为了避免停顿而寻找无关小事；让支线按 Dominds 的支线机制处理：需要回贴时会收到回贴提醒，已完成且无新诉求时可以自然收住。';
+      // Side Dialogs are answering a requester. Business scenario: in a reminder-only
+      // tool-followup turn, runtime already knows this is a Sideline Dialog, so the model should
+      // not infer whether askHuman or tellaskBack is appropriate. First reconcile reminders that
+      // could mislead the current answer; then ask the requester before the human whenever the
+      // requester can supply the missing requirement/decision/criteria/input.
+      return '当前是支线对话。先校对会影响当前判断的提醒项：如果某条提醒项已经过时、失真、互相冲突或会误导当前行动，就先修正或删除；其余提醒项只作为背景参考。然后按校正后的真实任务状态行动：已有明确、相关且有价值的任务动作就继续执行；若缺少需求澄清、业务裁决、验收口径、授权或输入，先判断缺的东西该由谁补：如果诉请者能补需求澄清、业务裁决、验收口径或缺失输入，先按当前工具规则考虑 `tellaskBack({ tellaskContent })` 回问诉请者；只有确实需要人类本人澄清、决策、授权或输入时，才用 `askHuman({ tellaskContent })` 提出一个最小且可回答的问题；如果既不缺这些信息、也没有真实任务动作，就交给 Dominds 按支线安排处理：需要回贴时会收到回贴提醒，已完成且无新诉求时可以自然收住。';
     default: {
       const _exhaustive: never = scope;
       throw new Error(`Unhandled zh reminder dialog scope: ${String(_exhaustive)}`);
@@ -431,16 +438,21 @@ function formatZhNormalAutoContinueByDialogScope(scope: ReminderContextDialogSco
 function formatEnNormalAutoContinueByDialogScope(scope: ReminderContextDialogScope): string {
   switch (scope.kind) {
     case 'main_dialog':
-      // Main Dialogs own the broad task and do not have a requester to tellaskBack. When the only
-      // apparent action is reminder maintenance, ask the human only for genuinely missing human
-      // input/authorization; otherwise hand control back to the Main Dialog keep-alive setting
-      // instead of making up work.
-      return "This is a Main Dialog. Judge the next step from existing task state outside the reminder items: if there is a clear, relevant, valuable actual task action, continue with it; if the only apparent action is to add, update, delete, compress, or organize reminders, do not treat reminder maintenance as task progress. Use `askHuman({ tellaskContent })` only when you truly need clarification, a decision, acceptance criteria, authorization, or input from the human; ask one minimal, answerable question. If you do not need any of that and there is no real task action, do not invent unrelated work just to avoid a pause; let the Main Dialog follow Dominds' mainline mechanism: diligence can continue it when enabled, and when diligence is disabled with no real action, it may naturally settle.";
+      // Main Dialogs own the broad task and do not have a requester to tellaskBack. Business
+      // scenario: this is a tool-followup turn with no new user/runtime message, and stale
+      // reminders can distort the model's next-step choice. Tell the model to first reconcile
+      // reminders that affect the current judgment, then proceed from the corrected task state.
+      // This is deliberately positive wording: users may ask the agent to fix reminders, and a
+      // stale reminder should be corrected instead of preserved by a blanket "do not maintain
+      // reminders" warning.
+      return 'This is a Main Dialog. First check reminders that affect your current judgment: if a reminder is stale, distorted, conflicting, or would mislead the current action, correct or delete it; use the other reminders only as background reference. Then act from the corrected real task state: continue any clear, relevant, valuable task action; use `askHuman({ tellaskContent })` only when you truly need clarification, a decision, acceptance criteria, authorization, or input from the human, and ask one minimal, answerable question; if none of that is needed and there is no real task action, hand control back to Dominds mainline behavior, where diligence can continue it when enabled, and when diligence is disabled with no real action, it may naturally settle.';
     case 'side_dialog':
-      // Side Dialogs are answering a requester. If blocked on requirement clarification, a business
-      // decision, acceptance criteria, or requester-held input, tellaskBack is the local loop and
-      // askHuman is only for information that truly must come from the human.
-      return "This is a Side Dialog. Judge the next step from existing task state outside the reminder items: if there is a clear, relevant, valuable actual task action, continue with it; if the only apparent action is to add, update, delete, compress, or organize reminders, do not treat reminder maintenance as task progress. If you are missing clarification, a business decision, acceptance criteria, authorization, or input, first identify who should provide it: when the requester can provide the missing requirement clarification, business decision, acceptance criteria, or missing input, follow the current tool rules and consider `tellaskBack({ tellaskContent })` first; use `askHuman({ tellaskContent })` only when the needed clarification, decision, authorization, or input truly must come from the human. If you do not need any of that and there is no real task action, do not invent unrelated work just to avoid a pause; let the Side Dialog follow Dominds' sideline mechanism: it can receive reply reminders when a reply is needed, and when it is complete with no new request, it may naturally settle.";
+      // Side Dialogs are answering a requester. Business scenario: in a reminder-only
+      // tool-followup turn, runtime already knows this is a Sideline Dialog, so the model should
+      // not infer whether askHuman or tellaskBack is appropriate. First reconcile reminders that
+      // could mislead the current answer; then ask the requester before the human whenever the
+      // requester can supply the missing requirement/decision/criteria/input.
+      return 'This is a Side Dialog. First check reminders that affect your current judgment: if a reminder is stale, distorted, conflicting, or would mislead the current action, correct or delete it; use the other reminders only as background reference. Then act from the corrected real task state: continue any clear, relevant, valuable task action. If you are missing clarification, a business decision, acceptance criteria, authorization, or input, first identify who should provide it: when the requester can provide the missing requirement clarification, business decision, acceptance criteria, or missing input, follow the current tool rules and consider `tellaskBack({ tellaskContent })` first; use `askHuman({ tellaskContent })` only when the needed clarification, decision, authorization, or input truly must come from the human. If none of that is needed and there is no real task action, hand control back to Dominds sideline behavior: it can receive reply reminders when a reply is needed, and when it is complete with no new request, it may naturally settle.';
     default: {
       const _exhaustive: never = scope;
       throw new Error(`Unhandled en reminder dialog scope: ${String(_exhaustive)}`);
@@ -487,7 +499,7 @@ export function formatReminderContextFooter(
           // ordinary continuation wording that could encourage more work from old reminders.
           return (
             `${base}本轮没有新的用户消息或 Dominds 提示；这是工具调用后的自动续推。` +
-            `不要把“没有新消息”理解为空系统提示。${statusTail}`
+            `这里的“没有新消息”只说明本轮没有额外用户消息或 Dominds 提示。${statusTail}`
           );
         }
         // Normal tool-followup rounds may continue real business work, but reminder maintenance
@@ -497,7 +509,7 @@ export function formatReminderContextFooter(
         return (
           `${base}本轮没有新的用户消息或 Dominds 提示；这是工具调用后的自动续推。` +
           scopeTail +
-          `不要把“没有新消息”理解为空系统提示。${businessTail}`
+          `这里的“没有新消息”只说明本轮没有额外用户消息或 Dominds 提示。${businessTail}`
         );
       default: {
         const _exhaustive: never = state.followingMessage;
@@ -541,7 +553,7 @@ export function formatReminderContextFooter(
         // ordinary continuation wording that could encourage more work from old reminders.
         return (
           `${base}There is no new user message or Dominds notice in this round; this is an automatic continuation after a tool call. ` +
-          `Do not interpret the absence of a new message as an empty system notice. ${statusTail}`
+          `Here, "no new message" only means this round has no extra user message or Dominds notice. ${statusTail}`
         );
       }
       // Normal tool-followup rounds may continue real business work, but reminder maintenance
@@ -551,7 +563,7 @@ export function formatReminderContextFooter(
       return (
         `${base}There is no new user message or Dominds notice in this round; this is an automatic continuation after a tool call. ` +
         `${scopeTail} ` +
-        `Do not interpret the absence of a new message as an empty system notice. ${businessTail}`
+        `Here, "no new message" only means this round has no extra user message or Dominds notice. ${businessTail}`
       );
     default: {
       const _exhaustive: never = state.followingMessage;
@@ -690,16 +702,20 @@ export function formatReminderMaintenanceReference(
   }
   if (lines.length === 0) return undefined;
 
+  // Business scenario: this block exposes exact reminder_id maintenance channels. The footer
+  // decides what the model should do next; this note only tells the model how to repair a concrete
+  // reminder when the current user message, Dominds notice, or task state makes that repair useful.
+  // Keep it positive: stale reminders should be fixed, while accurate reminders remain references.
   if (language === 'zh') {
     return [
-      `${formatSystemNoticePrefix(language)} 我把下面的提醒项维护通道仅作为操作参考；如果我在处理真实用户消息、Dominds 提示或当前任务动作时确实需要维护某条 reminder，我会按对应 reminder_id 选择工具。我不会把这些参考当成当前轮必须立即执行的动作；没有新的用户消息、Dominds 提示或提醒项之外的任务动作时，我不会只为了清理/整理提醒项而继续调用提醒项工具，也不会因此延迟回应后续真实用户消息。`,
+      `${formatSystemNoticePrefix(language)} 下面列出这些提醒项可用的修正、更新或删除方式，按 reminder_id 对照使用。处理真实用户消息、Dominds 提示或当前任务时，如果某条提醒项已经过时、失真、重复或会误导当前判断，就用对应方式维护；如果它仍然准确，就把它当作参考继续处理当前场景。`,
       '',
       ...lines,
     ].join('\n');
   }
 
   return [
-    `${formatSystemNoticePrefix(language)} I treat the following reminder-maintenance channels as an operational reference only. If I truly need to maintain a reminder while handling a real user message, Dominds notice, or current task action, I match the corresponding reminder_id and choose the tool from there. I do not treat these references as actions I must perform immediately in this turn; when there is no new user message, no Dominds notice, and no task action outside reminders, I do not keep calling reminder tools solely to clean up or organize reminders, and I do not let them delay my response to any following real user message.`,
+    `${formatSystemNoticePrefix(language)} The following are the available ways to correct, update, or delete these reminders; use the matching reminder_id. While handling a real user message, Dominds notice, or current task, if a reminder is stale, distorted, duplicate, or would mislead your current judgment, maintain it through the matching path; if it is still accurate, use it as a reference and continue with the current situation.`,
     '',
     ...lines,
   ].join('\n');
