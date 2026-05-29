@@ -2994,7 +2994,7 @@ export class DomindsApp extends HTMLElement {
   }
 
   private requirePersistableStatus(
-    status: DialogStatusKind,
+    status: DialogStatusKind | null | undefined,
     context: string,
   ): PersistableDialogStatus {
     const normalized = this.toPersistableStatus(status);
@@ -10988,34 +10988,28 @@ export class DomindsApp extends HTMLElement {
     if (!normalizedDialog) {
       return;
     }
-    let status = this.getCurrentDialogActionStatus();
-    if (status === null) {
-      const resolved = await this.apiClient.resolveDialogStatus(
-        normalizedDialog.rootId,
-        normalizedDialog.selfId,
-      );
-      if (!resolved.success || !resolved.data) {
-        if (resolved.status === 401 || resolved.status === 403) {
-          this.onAuthRejected('api');
-          return;
-        }
-        const t = getUiStrings(this.uiLanguage);
-        if (resolved.status === 404) {
-          this.removeUnavailableDialogLocally(normalizedDialog.rootId, normalizedDialog.selfId);
-          this.showToast(
-            `${t.dialogUnavailableRemovedPrefix} ${normalizedDialog.selfId}`,
-            'warning',
-          );
-          return;
-        }
-        this.showToast(
-          `${t.deepLinkDialogLoadFailedPrefix} ${normalizedDialog.selfId}: ${resolved.error || t.unknownError}`,
-          'error',
-        );
+    const resolved = await this.apiClient.resolveDialogStatus(
+      normalizedDialog.rootId,
+      normalizedDialog.selfId,
+    );
+    if (!resolved.success || !resolved.data) {
+      if (resolved.status === 401 || resolved.status === 403) {
+        this.onAuthRejected('api');
         return;
       }
-      status = resolved.data.status;
+      const t = getUiStrings(this.uiLanguage);
+      if (resolved.status === 404) {
+        this.removeUnavailableDialogLocally(normalizedDialog.rootId, normalizedDialog.selfId);
+        this.showToast(`${t.dialogUnavailableRemovedPrefix} ${normalizedDialog.selfId}`, 'warning');
+        return;
+      }
+      this.showToast(
+        `${t.deepLinkDialogLoadFailedPrefix} ${normalizedDialog.selfId}: ${resolved.error || t.unknownError}`,
+        'error',
+      );
+      return;
     }
+    const status = resolved.data.status;
     this.currentDialogStatus = status;
     this.wsManager.sendRaw({
       type: 'display_dialog',
@@ -12117,6 +12111,8 @@ export class DomindsApp extends HTMLElement {
           // Ignore stale/out-of-band ready events from older display requests.
           return true;
         }
+        const readyStatus = this.requirePersistableStatus(readyMsg.dialog.status, 'dialog_ready');
+        this.currentDialogStatus = readyStatus;
 
         // Update currentDialog with the ready dialog's ID (from both create and display)
         const nextDialog: DialogInfo = {
@@ -12130,6 +12126,7 @@ export class DomindsApp extends HTMLElement {
           assignmentFromAsker: readyMsg.assignmentFromAsker,
         };
         this.currentDialog = nextDialog;
+        this.updateInputPanelVisibility();
 
         this.applyDiligenceState(nextDiligenceState);
         this.diligenceRtwsDirty = false;

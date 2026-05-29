@@ -4132,7 +4132,7 @@ export class DiskFileDialogStore extends DialogStore {
    * Note: Event emission is handled by processReminderUpdates() in Dialog
    */
   public async persistReminders(dialog: Dialog, reminders: Reminder[]): Promise<void> {
-    await DialogPersistence._saveReminderState(this.dialogId, reminders);
+    await DialogPersistence._saveReminderState(this.dialogId, reminders, dialog.status);
     await DialogPersistence.appendRemindersReconciledRecord(
       this.dialogId,
       reminders,

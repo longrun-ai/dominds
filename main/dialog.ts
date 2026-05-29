@@ -919,6 +919,53 @@ export abstract class Dialog {
     return changed;
   }
 
+  private buildVisibleReminderContents(
+    taskSharedReminders: readonly Reminder[],
+    runtimeReminders: readonly Reminder[],
+  ): ReminderContent[] {
+    const visibleReminders = [
+      ...this.reminders.map((reminder) => cloneReminder(reminder)),
+      ...taskSharedReminders.map((reminder) => cloneReminder(reminder)),
+      ...runtimeReminders.map((reminder) => cloneReminder(reminder)),
+    ];
+    visibleReminders.sort(compareReminderDisplayOrder);
+    return visibleReminders.map((r: Reminder) => ({
+      content: r.content,
+      meta: r.meta as Record<string, unknown> | undefined,
+      reminder_id: r.id,
+      renderRevision: computeReminderRenderRevision(r),
+      echoback: reminderEchoBackEnabled(r),
+      scope: r.scope,
+      renderMode: r.renderMode ?? 'markdown',
+    }));
+  }
+
+  private emitFullRemindersUpdate(reminders: ReminderContent[]): void {
+    const fullRemindersEvt: FullRemindersEvent = {
+      type: 'full_reminders_update',
+      reminders,
+    };
+    postDialogEvent(this, fullRemindersEvt);
+  }
+
+  /**
+   * Emits current visible reminders without reconciling tool-owned state or writing persistence.
+   * This is for read-only dialog display, especially completed/archived dialogs opened from old tabs.
+   */
+  public async emitReminderSnapshot(): Promise<ReminderContent[]> {
+    const taskSharedTarget: SharedReminderTarget = {
+      kind: 'task',
+      agentId: this.agentId,
+      taskDocPath: this.taskDocPath,
+    };
+    const runtimeTarget: SharedReminderTarget = { kind: 'agent', agentId: this.agentId };
+    const taskSharedReminders = await loadSharedReminders(taskSharedTarget);
+    const runtimeReminders = await loadSharedReminders(runtimeTarget);
+    const reminders = this.buildVisibleReminderContents(taskSharedReminders, runtimeReminders);
+    this.emitFullRemindersUpdate(reminders);
+    return reminders;
+  }
+
   /**
    * Process reminder updates before LLM generation.
    * Calls updateReminder on each tool that owns reminders to allow them to update/drop/keep their reminders.
@@ -965,28 +1012,8 @@ export abstract class Dialog {
       });
     }
 
-    const visibleReminders = [
-      ...this.reminders.map((reminder) => cloneReminder(reminder)),
-      ...taskSharedReminders,
-      ...runtimeReminders,
-    ];
-    visibleReminders.sort(compareReminderDisplayOrder);
-    const reminders: ReminderContent[] = visibleReminders.map((r: Reminder) => ({
-      content: r.content,
-      meta: r.meta as Record<string, unknown> | undefined,
-      reminder_id: r.id,
-      renderRevision: computeReminderRenderRevision(r),
-      echoback: reminderEchoBackEnabled(r),
-      scope: r.scope,
-      renderMode: r.renderMode ?? 'markdown',
-    }));
-
-    // Emit full_reminders_update event with complete reminder list including metadata
-    const fullRemindersEvt: FullRemindersEvent = {
-      type: 'full_reminders_update',
-      reminders,
-    };
-    postDialogEvent(this, fullRemindersEvt);
+    const reminders = this.buildVisibleReminderContents(taskSharedReminders, runtimeReminders);
+    this.emitFullRemindersUpdate(reminders);
 
     return reminders;
   }

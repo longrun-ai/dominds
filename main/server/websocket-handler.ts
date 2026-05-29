@@ -335,6 +335,46 @@ function readOptionalPersistableDialogStatus(raw: unknown):
   return { kind: 'value', status };
 }
 
+const DIALOG_STATUS_RESOLUTION_CANDIDATES: readonly DialogPersistenceStatus[] = [
+  'running',
+  'completed',
+  'archived',
+];
+
+type DialogDisplayRestoreResult = {
+  status: DialogPersistenceStatus;
+  dialogState: NonNullable<Awaited<ReturnType<typeof DialogPersistence.restoreDialog>>>;
+  metadata: NonNullable<Awaited<ReturnType<typeof DialogPersistence.loadDialogMetadata>>>;
+};
+
+function orderedDialogStatusCandidates(
+  preferredStatus: DialogPersistenceStatus,
+): DialogPersistenceStatus[] {
+  return [
+    preferredStatus,
+    ...DIALOG_STATUS_RESOLUTION_CANDIDATES.filter((status) => status !== preferredStatus),
+  ];
+}
+
+async function restoreDialogForDisplay(
+  dialogId: DialogID,
+  preferredStatus: DialogPersistenceStatus,
+): Promise<DialogDisplayRestoreResult | null> {
+  for (const status of orderedDialogStatusCandidates(preferredStatus)) {
+    const metadata = await DialogPersistence.loadDialogMetadata(dialogId, status);
+    if (!metadata) continue;
+
+    const dialogState = await DialogPersistence.restoreDialog(dialogId, status);
+    if (!dialogState) {
+      throw new Error(
+        `Dialog ${dialogId.valueOf()} metadata exists in ${status}, but dialog restoration failed`,
+      );
+    }
+    return { status, dialogState, metadata };
+  }
+  return null;
+}
+
 function formatDeclaredDeadSideDialogNotice(
   language: 'zh' | 'en',
   dialogId: string,
@@ -1424,15 +1464,21 @@ async function handleDisplayDialog(ws: WebSocket, packet: DisplayDialogRequest):
       );
       return;
     }
-    const requestedStatus =
+    const preferredStatus =
       requestedStatusInput.kind === 'missing' ? 'running' : requestedStatusInput.status;
-    const dialogState = await DialogPersistence.restoreDialog(dialogIdObj, requestedStatus);
-    const metadata = await DialogPersistence.loadDialogMetadata(dialogIdObj, requestedStatus);
-
-    if (!dialogState || !metadata) {
+    const restoredForDisplay = await restoreDialogForDisplay(dialogIdObj, preferredStatus);
+    if (!restoredForDisplay) {
       throw new Error(
-        `Dialog ${dialogIdObj.valueOf()} not found in ${requestedStatus}; dialog context is stale`,
+        `Dialog ${dialogIdObj.valueOf()} not found in running/completed/archived; dialog context is stale`,
       );
+    }
+    const { dialogState, metadata, status: requestedStatus } = restoredForDisplay;
+    if (requestedStatus !== preferredStatus) {
+      log.debug('display_dialog: resolved stale requested status', undefined, {
+        dialogId: dialogIdObj.valueOf(),
+        requestedStatus: preferredStatus,
+        resolvedStatus: requestedStatus,
+      });
     }
     const rootPrimingConfig =
       dialogIdObj.selfId === dialogIdObj.rootId ? getMainDialogPrimingConfig(metadata) : undefined;
@@ -1638,11 +1684,16 @@ async function handleDisplayDialog(ws: WebSocket, packet: DisplayDialogRequest):
       log.warn(`Failed to emit Q4H state for ${dialogIdObj}:`, err);
     }
 
-    // Proactively emit reminders for the newly active dialog
-    // todo: maybe emit only to the requestiong websocket, not publish via PubChan as curr impl
+    // Proactively emit reminders for the newly active dialog.
+    // Historical dialogs are display-only: do not run owner reconciliation or write reminder files
+    // just because an old browser tab reconnected to a completed/archived dialog URL.
     try {
-      await syncPendingTellaskReminderBestEffort(dialog, 'handleDisplayDialog');
-      await dialog.processReminderUpdates();
+      if (requestedStatus === 'running') {
+        await syncPendingTellaskReminderBestEffort(dialog, 'handleDisplayDialog');
+        await dialog.processReminderUpdates();
+      } else {
+        await dialog.emitReminderSnapshot();
+      }
     } catch (err) {
       log.warn(`Failed to emit proactive reminders for ${dialogIdObj}:`, err);
     }
@@ -1739,13 +1790,8 @@ async function handleAckA2H(ws: WebSocket, packet: AckA2HRequest): Promise<void>
     }
     const candidateStatuses: DialogPersistenceStatus[] =
       requestedStatusInput.kind === 'value'
-        ? [
-            requestedStatusInput.status,
-            ...(['running', 'completed', 'archived'] as const).filter(
-              (status) => status !== requestedStatusInput.status,
-            ),
-          ]
-        : ['running', 'completed', 'archived'];
+        ? orderedDialogStatusCandidates(requestedStatusInput.status)
+        : [...DIALOG_STATUS_RESOLUTION_CANDIDATES];
     let removed: Awaited<
       ReturnType<typeof DialogPersistence.acknowledgeAnswerToHumanState>
     > | null = null;
@@ -1864,19 +1910,29 @@ async function handleDisplayCourse(ws: WebSocket, packet: DisplayCourseRequest):
         );
         return;
       }
-      const requestedStatus =
+      const preferredStatus =
         requestedStatusInput.kind === 'missing' ? 'running' : requestedStatusInput.status;
-      const metadata = await DialogPersistence.loadDialogMetadata(dialogId, requestedStatus);
-      if (!metadata) {
+      const restoredForDisplay = await restoreDialogForDisplay(dialogId, preferredStatus);
+      if (!restoredForDisplay) {
         log.warn('Metadata not found for display_course', undefined, {
           dialogId: dialogId.selfId,
-          status: requestedStatus,
+          requestedStatus: preferredStatus,
         });
         return;
       }
+      const { status: requestedStatus } = restoredForDisplay;
+      if (requestedStatus !== preferredStatus) {
+        log.debug('display_course: resolved stale requested status', undefined, {
+          dialogId: dialogId.valueOf(),
+          requestedStatus: preferredStatus,
+          resolvedStatus: requestedStatus,
+        });
+      }
 
       const totalCourses =
-        (await DialogPersistence.getCurrentCourseNumber(dialogId, requestedStatus)) || course;
+        (await DialogPersistence.getCurrentCourseNumber(dialogId, requestedStatus)) ||
+        restoredForDisplay.dialogState.currentCourse ||
+        course;
       if (course > totalCourses) {
         ws.send(
           JSON.stringify({

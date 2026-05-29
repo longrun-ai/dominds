@@ -34,6 +34,7 @@
     "persistence-malformed-main-dialog-quarantine": "tsx persistence/malformed-main-dialog-quarantine.ts",
     "persistence-move-dialog-status": "tsx persistence/move-dialog-status.ts",
     "persistence-reminders-owner-meta": "tsx persistence/reminders-owner-meta.ts",
+    "persistence-reminders-status-path": "tsx persistence/reminders-status-path.ts",
     "persistence-sideDialog-reconciled-course": "tsx persistence/sideDialog-reconciled-course.ts",
     "persistence-asker-stack-jsonl": "tsx persistence/asker-stack-jsonl.ts",
     "persistence-dialog-fork": "tsx persistence/dialog-fork.ts",
