@@ -58,10 +58,7 @@ import {
   formatReminderItemGuide,
   formatReminderMaintenanceReference,
   isAgentFacingCriticalUserInterjectionRemediationGuideContent,
-  type ReminderContextFollowingDialogState,
   type ReminderContextFooterState,
-  type ReminderContextHealthState,
-  type ReminderContextReplyObligationState,
   type ReminderMaintenanceReferenceItem,
 } from '../../runtime/driver-messages';
 import {
@@ -117,6 +114,7 @@ import { assembleDriveContextMessages } from './context';
 import {
   consumeCriticalCountdown,
   decideKernelDriverContextHealth,
+  getContextHealthRemediationLevel,
   KERNEL_DRIVER_DEFAULT_CRITICAL_COUNTDOWN_GENERATIONS,
   resetContextHealthRoundState,
   resolveCautionRemediationCadenceGenerations,
@@ -137,6 +135,7 @@ import {
   validateKernelDriverPolicyInvariants,
   type KernelDriverPolicyState,
 } from './guardrails';
+import { resolveReminderContextFooterStateFromSignals } from './reminder-context';
 import { resolvePromptReplyGuidance } from './reply-guidance';
 import {
   evaluateDiligenceAutoContinueGate,
@@ -458,21 +457,6 @@ function isUserOriginPrompt(prompt: KernelDriverPrompt | undefined): boolean {
   return prompt.origin === 'user' && normalizeQ4HAnswerCallId(prompt.q4hAnswerCallId) === undefined;
 }
 
-function resolveReminderContextFollowingDialogState(
-  prompt: KernelDriverPrompt | undefined,
-  currentTurnDialogMsgsForContext: readonly ChatMessage[],
-): ReminderContextFollowingDialogState {
-  if (prompt === undefined || currentTurnDialogMsgsForContext.length === 0) return 'none';
-  return prompt.origin === 'user' ? 'user_message' : 'runtime_notice';
-}
-
-function resolveReminderContextHealthState(
-  snapshot: ContextHealthSnapshot | undefined,
-): ReminderContextHealthState {
-  const remediationLevel = getContextHealthRemediationLevel(snapshot);
-  return remediationLevel === undefined ? 'normal' : remediationLevel;
-}
-
 async function resolveReminderContextFooterState(args: {
   dlg: Dialog;
   prompt: KernelDriverPrompt | undefined;
@@ -485,21 +469,26 @@ async function resolveReminderContextFooterState(args: {
     args.dlg.status,
   );
   const pendingUserInterjectionReply = latest?.pendingUserInterjectionReply !== undefined;
-  const interDialogReplyObligation: ReminderContextReplyObligationState =
-    deferredReplyReassertion?.reason === 'user_interjection_with_parked_original_task'
-      ? 'parked_by_user_interjection'
-      : activeReplyObligation !== undefined
-        ? 'active'
-        : 'none';
-  return {
-    followingDialogState: resolveReminderContextFollowingDialogState(
-      args.prompt,
-      args.currentTurnDialogMsgsForContext,
-    ),
+  const hasDeferredReplyReassertion =
+    deferredReplyReassertion?.reason === 'user_interjection_with_parked_original_task';
+  const hasActiveReplyObligation = activeReplyObligation !== undefined;
+  // A side dialog final response without a still-active or parked reply obligation means the
+  // handoff has already been reported back. If a real user message is now present, the reminder
+  // footer should tell the model to handle that current exchange normally instead of making the
+  // model rediscover from old transcript/reminder context that the delegated work is done.
+  const hasCompletedHandoffWithoutPendingReply =
+    latest?.sideDialogFinalResponse !== undefined &&
+    !hasDeferredReplyReassertion &&
+    !hasActiveReplyObligation;
+  return resolveReminderContextFooterStateFromSignals({
+    prompt: args.prompt,
+    currentTurnDialogMsgsForContext: args.currentTurnDialogMsgsForContext,
+    contextHealth: args.dlg.getLastContextHealth(),
     pendingUserInterjectionReply,
-    interDialogReplyObligation,
-    contextHealthState: resolveReminderContextHealthState(args.dlg.getLastContextHealth()),
-  };
+    hasCompletedHandoffWithoutPendingReply,
+    hasDeferredReplyReassertion,
+    hasActiveReplyObligation,
+  });
 }
 
 function splitDialogMsgsForReminderInsertion(args: {
@@ -1030,15 +1019,6 @@ const CONTEXT_HEALTH_LARGE_TOOL_RETURN_UNAVAILABLE_ZH =
   '这次函数返回内容太大，清理头脑之前不会显示给你。';
 const CONTEXT_HEALTH_LARGE_TOOL_RETURN_UNAVAILABLE_EN =
   'This function returned too much content. It will not be shown to you before you clear your mind.';
-
-function getContextHealthRemediationLevel(
-  snapshot: ContextHealthSnapshot | undefined,
-): 'caution' | 'critical' | undefined {
-  if (snapshot?.kind !== 'available') {
-    return undefined;
-  }
-  return snapshot.level === 'caution' || snapshot.level === 'critical' ? snapshot.level : undefined;
-}
 
 function pickContextHealthForLargeToolResultVisibility(args: {
   previous: ContextHealthSnapshot | undefined;

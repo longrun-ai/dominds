@@ -26,6 +26,15 @@ export const KERNEL_DRIVER_DEFAULT_CAUTION_REMEDIATION_CADENCE_GENERATIONS = 10;
 
 const stateByDialogKey: Map<string, ContextHealthRoundState> = new Map();
 
+export function getContextHealthRemediationLevel(
+  snapshot: ContextHealthSnapshot | undefined,
+): 'caution' | 'critical' | undefined {
+  if (snapshot?.kind !== 'available') {
+    return undefined;
+  }
+  return snapshot.level === 'caution' || snapshot.level === 'critical' ? snapshot.level : undefined;
+}
+
 function getOrCreateState(dialogKey: string): ContextHealthRoundState {
   const existing = stateByDialogKey.get(dialogKey);
   if (existing) return existing;

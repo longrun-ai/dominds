@@ -207,109 +207,279 @@ function formatReminderItemProjectionNote(language: LanguageCode): string {
   return language === 'zh' ? '运行时提醒项投影：' : 'Runtime reminder projection:';
 }
 
-export type ReminderContextFollowingDialogState = 'user_message' | 'runtime_notice' | 'none';
-export type ReminderContextReplyObligationState = 'none' | 'active' | 'parked_by_user_interjection';
-export type ReminderContextHealthState = 'normal' | 'caution' | 'critical';
+export type ReminderContextFollowingMessage =
+  | Readonly<{ kind: 'user_message' }>
+  | Readonly<{ kind: 'human_answer' }>
+  | Readonly<{ kind: 'runtime_notice' }>
+  | Readonly<{ kind: 'none' }>;
 
+export type ReminderContextHealth =
+  | Readonly<{ kind: 'normal' }>
+  | Readonly<{ kind: 'caution' }>
+  | Readonly<{ kind: 'critical' }>;
+
+export type ReminderContextBusiness =
+  | Readonly<{ kind: 'none' }>
+  | Readonly<{ kind: 'active_reply_obligation' }>
+  | Readonly<{ kind: 'pending_user_interjection' }>
+  | Readonly<{ kind: 'pending_user_interjection_with_active_reply' }>
+  | Readonly<{ kind: 'pending_user_interjection_with_parked_reply' }>
+  | Readonly<{ kind: 'user_followup_after_completed_handoff' }>;
+
+// Keep these as separate axes instead of a handful of booleans because the footer is
+// LLM-facing copy, not an internal debug dump. Each axis answers one question the model should
+// not have to infer from nearby transcript:
+// - followingMessage: what kind of message, if any, appears immediately after this reminder block;
+// - contextHealth: whether old reminder content must yield to course-transition remediation;
+// - business: whether there is an unfinished handoff, an unanswered user interjection, or a
+//   completed handoff followed by a user follow-up.
+//
+// The completed-handoff follow-up case exists because a finished sideline handoff can still
+// leave reminder-maintenance references visible. If the footer only says "this is reminder
+// context" or "continue autonomously", the model may keep adding/deleting reminders even though
+// the old handoff has already been reported back and the user is simply talking again. Runtime
+// must classify that case precisely here and say it plainly in the footer. The same business
+// state can appear with followingMessage=user_message on the first turn and with
+// followingMessage=none on a later tool-followup turn; both should keep the same "talk with the
+// user normally" expectation.
 export type ReminderContextFooterState = Readonly<{
-  followingDialogState: ReminderContextFollowingDialogState;
-  pendingUserInterjectionReply: boolean;
-  interDialogReplyObligation: ReminderContextReplyObligationState;
-  contextHealthState: ReminderContextHealthState;
+  followingMessage: ReminderContextFollowingMessage;
+  contextHealth: ReminderContextHealth;
+  business: ReminderContextBusiness;
 }>;
+
+function formatZhReminderBusinessTail(business: ReminderContextBusiness): string {
+  switch (business.kind) {
+    case 'none':
+      return '';
+    case 'user_followup_after_completed_handoff':
+      // Runtime has already identified a real user message after the earlier handoff was
+      // reported back as complete. This is not an active reply-obligation state anymore: the
+      // model should simply communicate with the user according to the current message.
+      //
+      // Keep the wording deliberately neutral about reminders and tools. A user may explicitly
+      // ask the agent to reorganize reminders so a later long-running handoff can resume from a
+      // corrected state. If this footer said "do not organize reminders" or "only answer", it
+      // would block a valid user request and recreate the same kind of over-specific guidance
+      // bug in the opposite direction.
+      return '现在是用户在追问你。前面那件转交任务已经回报完成了，不需要再推进；请按用户这条消息正常交流和处理。';
+    case 'pending_user_interjection_with_parked_reply':
+      // A real user message interrupted an unfinished handoff. The old handoff is parked,
+      // so the model must not rush back to reply closure before the user sees an answer.
+      return '当前仍有真实用户插话尚未得到可见回复，且原有回贴任务已暂存；先完成对用户插话的回应，不要抢先切回原来的回贴收口。';
+    case 'pending_user_interjection':
+      // No special handoff state is competing with the user; the shortest useful instruction
+      // is simply to answer the still-unanswered user interjection.
+      return '当前仍有真实用户插话尚未得到可见回复；先完成对用户插话的回应。';
+    case 'pending_user_interjection_with_active_reply':
+      // A user interjection is pending while a handoff is still active. The user still gets the
+      // next visible answer; reply closure only happens if answering that user message naturally
+      // becomes the final handoff delivery.
+      return '当前仍有真实用户插话尚未得到可见回复，同时还有回贴任务未完成；先完成对用户插话的回应，只有在这条用户插话本身已经自然到达最终交付时，才进入回贴收口。';
+    case 'active_reply_obligation':
+      // There is still an unfinished handoff, but no user interjection is pending. Say this is
+      // a final-delivery constraint, not a command to abandon necessary current work.
+      return '当前仍有回贴任务未完成；它是最终交付要求，不是要求你立刻停止当前必要工作，但到达最终交付时必须按运行时指定方式收口。';
+    default: {
+      const _exhaustive: never = business;
+      throw new Error(`Unhandled zh reminder business state: ${String(_exhaustive)}`);
+    }
+  }
+}
+
+function formatEnReminderBusinessTail(business: ReminderContextBusiness): string {
+  switch (business.kind) {
+    case 'none':
+      return '';
+    case 'user_followup_after_completed_handoff':
+      // Runtime has already identified a real user message after the earlier handoff was
+      // reported back as complete. This is not an active reply-obligation state anymore: the
+      // model should simply communicate with the user according to the current message.
+      //
+      // Keep the wording deliberately neutral about reminders and tools. A user may explicitly
+      // ask the agent to reorganize reminders so a later long-running handoff can resume from a
+      // corrected state. If this footer said "do not organize reminders" or "only answer", it
+      // would block a valid user request and recreate the same kind of over-specific guidance
+      // bug in the opposite direction.
+      return 'The user is asking you a follow-up now. The earlier handed-off task has already been reported back as complete, so there is nothing more to advance there. Talk with the user normally and handle this current message.';
+    case 'pending_user_interjection_with_parked_reply':
+      // A real user message interrupted an unfinished handoff. The old handoff is parked,
+      // so the model must not rush back to reply closure before the user sees an answer.
+      return "There is still a real user interjection without a visible reply, and the earlier handoff is parked; finish answering the user's interjection first, and do not switch back to closing the earlier reply yet.";
+    case 'pending_user_interjection':
+      // No special handoff state is competing with the user; the shortest useful instruction
+      // is simply to answer the still-unanswered user interjection.
+      return "There is still a real user interjection without a visible reply; finish answering the user's interjection first.";
+    case 'pending_user_interjection_with_active_reply':
+      // A user interjection is pending while a handoff is still active. The user still gets the
+      // next visible answer; reply closure only happens if answering that user message naturally
+      // becomes the final handoff delivery.
+      return "There is still a real user interjection without a visible reply, while a reply task is also unfinished; finish answering the user's interjection first, and enter reply closure only if this user interjection itself naturally reaches final delivery.";
+    case 'active_reply_obligation':
+      // There is still an unfinished handoff, but no user interjection is pending. Say this is
+      // a final-delivery constraint, not a command to abandon necessary current work.
+      return 'A reply task is still unfinished; it is a final-delivery requirement, not a demand to stop necessary current work immediately, but final delivery must close through the runtime-specified path.';
+    default: {
+      const _exhaustive: never = business;
+      throw new Error(`Unhandled en reminder business state: ${String(_exhaustive)}`);
+    }
+  }
+}
+
+function formatZhReminderContextHealthTail(contextHealth: ReminderContextHealth): string {
+  switch (contextHealth.kind) {
+    case 'normal':
+      return '';
+    case 'caution':
+      // In tight context, reminders may contain stale next steps that were meant as bridge
+      // notes. The model should preserve/prepare course transition instead of expanding the
+      // same course by following old reminder content.
+      return '当前上下文已吃紧：提醒项正文里的“下一步/接续动作/任务安排”默认都是给下一程以清醒头脑复核后执行的，不是让你在本程继续跑。不要为了执行提醒项里的旧下一步继续扩张上下文；本程最高优先级是按上下文吃紧处置要求保全接续信息，并尽快 `clear_mind`。';
+    case 'critical':
+      // Critical context is stricter than caution: do not do ordinary work from reminders;
+      // preserve what matters and clear the course immediately.
+      return '当前上下文已告急：提醒项正文里的“下一步/接续动作/任务安排”默认都是给下一程以清醒头脑复核后执行的，不是让你在本程继续跑。不要执行提醒项里的旧下一步、旧诉请或旧工具重试；本程最高优先级是按上下文告急处置要求保全接续信息，并立即 `clear_mind`。';
+    default: {
+      const _exhaustive: never = contextHealth;
+      throw new Error(`Unhandled zh reminder context health state: ${String(_exhaustive)}`);
+    }
+  }
+}
+
+function formatEnReminderContextHealthTail(contextHealth: ReminderContextHealth): string {
+  switch (contextHealth.kind) {
+    case 'normal':
+      return '';
+    case 'caution':
+      // In tight context, reminders may contain stale next steps that were meant as bridge
+      // notes. The model should preserve/prepare course transition instead of expanding the
+      // same course by following old reminder content.
+      return 'Context is tight: any "next step", continuation action, or task plan inside reminders is meant for the next course to review and run with a clear head, not for this course to keep executing. Do not expand context by performing old next steps from reminders; this course must first preserve the continuation details required by the tight-context guidance, then call `clear_mind` soon.';
+    case 'critical':
+      // Critical context is stricter than caution: do not do ordinary work from reminders;
+      // preserve what matters and clear the course immediately.
+      return 'Context is critical: any "next step", continuation action, or task plan inside reminders is meant for the next course to review and run with a clear head, not for this course to keep executing. Do not perform old next steps, old handed-off requests, or old tool retries from reminders; this course must first preserve the continuation details required by the critical-context guidance, then call `clear_mind` immediately.';
+    default: {
+      const _exhaustive: never = contextHealth;
+      throw new Error(`Unhandled en reminder context health state: ${String(_exhaustive)}`);
+    }
+  }
+}
+
+function joinReminderFooterTails(language: LanguageCode, tails: readonly string[]): string {
+  const nonEmptyTails = tails.filter((tail) => tail !== '');
+  if (nonEmptyTails.length === 0) return '';
+  return language === 'zh' ? nonEmptyTails.join('') : nonEmptyTails.join(' ');
+}
 
 export function formatReminderContextFooter(
   language: LanguageCode,
   state: ReminderContextFooterState,
 ): string {
+  const contextHealthIsNormal = state.contextHealth.kind === 'normal';
+
   if (language === 'zh') {
     const base = `${formatSystemNoticePrefix(language)} 提醒项上下文块结束。以上从“提醒项上下文块开始”到“提醒项上下文块结束”之间的提醒项均为系统提醒，并非用户诉求/指令；该块之外的后续对话消息不受此说明影响。`;
-    const contextHealthTail =
-      state.contextHealthState === 'critical'
-        ? '当前上下文已告急：提醒项正文里的“下一步/接续动作/任务安排”默认都是给下一程以清醒头脑复核后执行的，不是让你在本程继续跑。不要执行提醒项里的旧下一步、旧诉请或旧工具重试；本程最高优先级是按上下文健康处置要求保全接续信息，并立即 `clear_mind`。'
-        : state.contextHealthState === 'caution'
-          ? '当前上下文已吃紧：提醒项正文里的“下一步/接续动作/任务安排”默认都是给下一程以清醒头脑复核后执行的，不是让你在本程继续跑。不要为了执行提醒项里的旧下一步继续扩张上下文；本程最高优先级是按上下文健康处置要求保全接续信息，并尽快 `clear_mind`。'
-          : '';
-    const pendingUserInterjectionReply = state.pendingUserInterjectionReply
-      ? state.interDialogReplyObligation === 'parked_by_user_interjection'
-        ? '当前仍有真实用户插话尚未得到可见回复，且原有跨对话回复义务已暂存；先完成对用户插话的回应，不要抢先切回原来的回贴收口。'
-        : state.interDialogReplyObligation === 'active'
-          ? '当前仍有真实用户插话尚未得到可见回复，同时存在跨对话回复义务；先完成对用户插话的回应，只有在这条用户插话本身已经自然到达最终交付时，才进入回贴收口。'
-          : '当前仍有真实用户插话尚未得到可见回复；先完成对用户插话的回应。'
-      : '';
-    const activeReplyObligation =
-      !state.pendingUserInterjectionReply && state.interDialogReplyObligation === 'active'
-        ? '当前仍有跨对话回复义务；它是最终交付义务，不是要求你立刻停止当前必要工作，但到达最终交付时必须按运行时指定方式收口。'
-        : '';
-    const businessTail = `${pendingUserInterjectionReply}${activeReplyObligation}`;
-    const statusTail = `${contextHealthTail}${businessTail}`;
-    if (state.followingDialogState === 'user_message') {
-      return (
-        `${base}本轮提醒项块之后会紧接一条本轮真实的新用户消息；后续消息是用户的新诉求/指令，不是提醒项投影。` +
-        '提醒项块说明到此为止，不得外溢到那条消息：不要把后续用户消息称为“系统提示/没有新消息”，也不要因为本块说明而降低它的指令优先级。' +
-        `请按那条用户消息的原始语义继续处理；若它要求更新你的职责、偏好或心智资产，应照常落实；上下文健康处置要求仍按系统提示优先于普通任务动作。${statusTail}`
-      );
+    const contextHealthTail = formatZhReminderContextHealthTail(state.contextHealth);
+    const businessTail = formatZhReminderBusinessTail(state.business);
+    const statusTail = joinReminderFooterTails(language, [contextHealthTail, businessTail]);
+
+    switch (state.followingMessage.kind) {
+      case 'user_message':
+        // The reminder block is inserted immediately before the real user message. This
+        // branch prevents the reminder wrapper from lowering or re-labeling that message.
+        return (
+          `${base}本轮提醒项块之后会紧接一条本轮真实的新用户消息；后续消息是用户的新诉求/指令，不是提醒项投影。` +
+          '提醒项块说明到此为止，不得外溢到那条消息：不要把后续用户消息称为“系统提示/没有新消息”，也不要因为本块说明而降低它的指令优先级。' +
+          `请按那条用户消息的原始语义继续处理；若它要求更新你的职责、偏好或心智资产，应照常落实；若系统提示上下文吃紧或告急，先按那条系统要求处理，再做普通任务动作。${statusTail}`
+        );
+      case 'human_answer':
+        // This is a human answer to an askHuman question, not a fresh open-ended request. The
+        // model should use the answer to resume the waiting work without reclassifying it as a
+        // new user instruction.
+        return (
+          `${base}本轮提醒项块之后会接着出现用户对一个提问的回答；那是用来继续等待中的工作，不是新的普通用户诉求/指令。` +
+          `请用那条回答继续原本等待答案的任务，不要把提醒项块说明外溢到那条回答上。${statusTail}`
+        );
+      case 'runtime_notice':
+        // Runtime notices are deliberate driver instructions. Keep them distinct from user
+        // requests while allowing their own wording to drive the next action.
+        return `${base}本轮提醒项块之后会接着出现一条运行时提示；它不是用户的新诉求/指令，请按其中的运行时要求继续推进。${statusTail}`;
+      case 'none':
+        if (!contextHealthIsNormal) {
+          // Under context-health remediation, the health instruction owns the turn. Do not add
+          // ordinary continuation wording that could encourage more work from old reminders.
+          return (
+            `${base}本轮没有新的用户消息或运行时提示；这是工具调用后的自动续推。` +
+            `不要把“没有新消息”理解为空系统提示。${statusTail}`
+          );
+        }
+        // Normal tool-followup rounds may continue real business work, but reminder maintenance
+        // paths are merely references. This is the guard against loops that only add/delete/merge
+        // reminders after a task is otherwise done.
+        return (
+          `${base}本轮没有新的用户消息或运行时提示；这是工具调用后的自动续推。` +
+          '请基于提醒项之外的已有任务状态判断下一步：若已有明确、相关且有价值的任务动作，就继续执行；若唯一看似可做的动作只是新增、更新、删除、压缩或整理提醒项，则不要单独为提醒项维护继续调用工具。若当前确实只能等待外部结果或用户输入，不要为了避免“等待”而寻找无关小事。' +
+          `不要把“没有新消息”理解为空系统提示。${businessTail}`
+        );
+      default: {
+        const _exhaustive: never = state.followingMessage;
+        throw new Error(`Unhandled zh reminder following-message state: ${String(_exhaustive)}`);
+      }
     }
-    if (state.followingDialogState === 'runtime_notice') {
-      return `${base}本轮提醒项块之后会接着出现一条运行时提示；它不是用户的新诉求/指令，请按其中的运行时要求继续推进。${statusTail}`;
-    }
-    if (state.contextHealthState !== 'normal') {
-      return (
-        `${base}本轮没有新的用户消息或运行时提示；这是工具调用后的自动续推。` +
-        `不要把“没有新消息”理解为空系统提示。${statusTail}`
-      );
-    }
-    return (
-      `${base}本轮没有新的用户消息或运行时提示；这是工具调用后的自动续推。` +
-      '请基于已有任务状态判断下一步：若已有明确、相关且有价值的动作，就继续执行；若当前确实只能等待外部结果或用户输入，不要为了避免“等待”而寻找无关小事。' +
-      `不要把“没有新消息”理解为空系统提示。${businessTail}`
-    );
   }
 
   const base =
     `${formatSystemNoticePrefix(language)} Reminder context block ends. The reminder items between ` +
     '"Reminder context block begins" and "Reminder context block ends" are system reminders, ' +
     'not user requests/instructions; this reminder-block guidance does not apply to subsequent dialog messages outside this block. ';
-  const contextHealthTail =
-    state.contextHealthState === 'critical'
-      ? 'Context health is critical: any "next step", continuation action, or task plan inside reminders is meant for the next course to review and run with a clear head, not for this course to keep executing. Do not perform old next steps, old inter-dialog requests, or old tool retries from reminders; this course must first preserve the continuation details required by the context-health guidance, then call `clear_mind` immediately. '
-      : state.contextHealthState === 'caution'
-        ? 'Context health is tight: any "next step", continuation action, or task plan inside reminders is meant for the next course to review and run with a clear head, not for this course to keep executing. Do not expand context by performing old next steps from reminders; this course must first preserve the continuation details required by the context-health guidance, then call `clear_mind` soon. '
-        : '';
-  const pendingUserInterjectionReply = state.pendingUserInterjectionReply
-    ? state.interDialogReplyObligation === 'parked_by_user_interjection'
-      ? "There is still a real user interjection without a visible reply, and the earlier inter-dialog reply obligation is parked; finish answering the user's interjection first, and do not switch back to closing the earlier reply yet. "
-      : state.interDialogReplyObligation === 'active'
-        ? "There is still a real user interjection without a visible reply, while an inter-dialog reply obligation also exists; finish answering the user's interjection first, and enter reply closure only if this user interjection itself naturally reaches final delivery. "
-        : "There is still a real user interjection without a visible reply; finish answering the user's interjection first. "
-    : '';
-  const activeReplyObligation =
-    !state.pendingUserInterjectionReply && state.interDialogReplyObligation === 'active'
-      ? 'An inter-dialog reply obligation is still active; it is a final delivery obligation, not a demand to stop necessary current work immediately, but final delivery must close through the runtime-specified path. '
-      : '';
-  const businessTail = `${pendingUserInterjectionReply}${activeReplyObligation}`;
-  const statusTail = `${contextHealthTail}${businessTail}`;
-  if (state.followingDialogState === 'user_message') {
-    return (
-      `${base}A real new user message for this round immediately follows this reminder block; the following message is a new user request/instruction, not a reminder projection. ` +
-      'The reminder-block guidance ends here and must not spill over onto that message: do not label the following user message as a "system notice" or "no new message", and do not lower its instruction priority because of this block. ' +
-      `Handle that user message according to its original meaning; if it asks you to update your responsibilities, preferences, or mind assets, carry that out normally. Context-health remediation still takes system-guided priority over ordinary task actions. ${statusTail}`
-    );
+  const contextHealthTail = formatEnReminderContextHealthTail(state.contextHealth);
+  const businessTail = formatEnReminderBusinessTail(state.business);
+  const statusTail = joinReminderFooterTails(language, [contextHealthTail, businessTail]);
+
+  switch (state.followingMessage.kind) {
+    case 'user_message':
+      // The reminder block is inserted immediately before the real user message. This branch
+      // prevents the reminder wrapper from lowering or re-labeling that message.
+      return (
+        `${base}A real new user message for this round immediately follows this reminder block; the following message is a new user request/instruction, not a reminder projection. ` +
+        'The reminder-block guidance ends here and must not spill over onto that message: do not label the following user message as a "system notice" or "no new message", and do not lower its instruction priority because of this block. ' +
+        `Handle that user message according to its original meaning; if it asks you to update your responsibilities, preferences, or mind assets, carry that out normally. If the system says context is tight or critical, follow that system guidance before ordinary task actions. ${statusTail}`
+      );
+    case 'human_answer':
+      // This is a human answer to an askHuman question, not a fresh open-ended request. The
+      // model should use the answer to resume the waiting work without reclassifying it as a
+      // new user instruction.
+      return (
+        `${base}A human answer to one of your questions follows this reminder block; it is for resuming the waiting work, not a new ordinary user request/instruction. ` +
+        `Use that answer to continue the task that was waiting for it, and do not let the reminder-block guidance spill over onto that answer. ${statusTail}`
+      );
+    case 'runtime_notice':
+      // Runtime notices are deliberate driver instructions. Keep them distinct from user requests
+      // while allowing their own wording to drive the next action.
+      return `${base}A runtime notice follows this reminder block in this round; it is not a new user request/instruction, so follow that runtime guidance and continue the work. ${statusTail}`;
+    case 'none':
+      if (!contextHealthIsNormal) {
+        // Under context-health remediation, the health instruction owns the turn. Do not add
+        // ordinary continuation wording that could encourage more work from old reminders.
+        return (
+          `${base}There is no new user message or runtime notice in this round; this is an automatic continuation after a tool call. ` +
+          `Do not interpret the absence of a new message as an empty system notice. ${statusTail}`
+        );
+      }
+      // Normal tool-followup rounds may continue real business work, but reminder maintenance
+      // paths are merely references. This is the guard against loops that only add/delete/merge
+      // reminders after a task is otherwise done.
+      return (
+        `${base}There is no new user message or runtime notice in this round; this is an automatic continuation after a tool call. ` +
+        'Judge the next step from existing task state outside the reminder items: if there is a clear, relevant, valuable actual task action, continue with it; if the only apparent action is to add, update, delete, compress, or organize reminders, do not keep calling tools solely for reminder maintenance. If the work genuinely can only wait for an external result or user input, do not invent unrelated work just to avoid "waiting". ' +
+        `Do not interpret the absence of a new message as an empty system notice. ${businessTail}`
+      );
+    default: {
+      const _exhaustive: never = state.followingMessage;
+      throw new Error(`Unhandled en reminder following-message state: ${String(_exhaustive)}`);
+    }
   }
-  if (state.followingDialogState === 'runtime_notice') {
-    return `${base}A runtime notice follows this reminder block in this round; it is not a new user request/instruction, so follow that runtime guidance and continue the work. ${statusTail}`;
-  }
-  if (state.contextHealthState !== 'normal') {
-    return (
-      `${base}There is no new user message or runtime notice in this round; this is an automatic continuation after a tool call. ` +
-      `Do not interpret the absence of a new message as an empty system notice. ${statusTail}`
-    );
-  }
-  return (
-    `${base}There is no new user message or runtime notice in this round; this is an automatic continuation after a tool call. ` +
-    'Judge the next step from the existing task state: if there is a clear, relevant, valuable action, continue with it; if the work genuinely can only wait for an external result or user input, do not invent unrelated work just to avoid "waiting". ' +
-    `Do not interpret the absence of a new message as an empty system notice. ${businessTail}`
-  );
 }
 
 export type ReminderMaintenanceReferenceItem = Readonly<{
@@ -444,14 +614,14 @@ export function formatReminderMaintenanceReference(
 
   if (language === 'zh') {
     return [
-      `${formatSystemNoticePrefix(language)} 我把下面的提醒项维护通道仅作为操作参考；如果我需要维护某条 reminder，我会按对应 reminder_id 选择工具。我不会把这些参考当成当前轮必须立即执行的动作，也不会因此延迟回应后续真实用户消息。`,
+      `${formatSystemNoticePrefix(language)} 我把下面的提醒项维护通道仅作为操作参考；如果我在处理真实用户消息、运行时处置指令或当前任务动作时确实需要维护某条 reminder，我会按对应 reminder_id 选择工具。我不会把这些参考当成当前轮必须立即执行的动作；没有新的用户消息、运行时提示或提醒项之外的任务动作时，我不会只为了清理/整理提醒项而继续调用提醒项工具，也不会因此延迟回应后续真实用户消息。`,
       '',
       ...lines,
     ].join('\n');
   }
 
   return [
-    `${formatSystemNoticePrefix(language)} I treat the following reminder-maintenance channels as an operational reference only. If I need to maintain a reminder, I match the corresponding reminder_id and choose the tool from there. I do not treat these references as actions I must perform immediately in this turn, and I do not let them delay my response to any following real user message.`,
+    `${formatSystemNoticePrefix(language)} I treat the following reminder-maintenance channels as an operational reference only. If I truly need to maintain a reminder while handling a real user message, runtime instruction, or current task action, I match the corresponding reminder_id and choose the tool from there. I do not treat these references as actions I must perform immediately in this turn; when there is no new user message, no runtime notice, and no task action outside reminders, I do not keep calling reminder tools solely to clean up or organize reminders, and I do not let them delay my response to any following real user message.`,
     '',
     ...lines,
   ].join('\n');

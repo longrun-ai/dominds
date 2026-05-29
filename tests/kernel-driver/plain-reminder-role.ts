@@ -57,10 +57,9 @@ async function main(): Promise<void> {
             type: 'environment_msg',
             role: 'user',
             content: formatReminderContextFooter('zh', {
-              followingDialogState: 'user_message',
-              pendingUserInterjectionReply: false,
-              interDialogReplyObligation: 'none',
-              contextHealthState: 'normal',
+              followingMessage: { kind: 'user_message' },
+              business: { kind: 'none' },
+              contextHealth: { kind: 'normal' },
             }),
           },
         ]

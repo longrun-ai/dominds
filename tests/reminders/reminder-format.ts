@@ -28,10 +28,9 @@ async function main() {
     'Expected zh reminder context guide to explain separate Reminder widget presentation',
   );
   const zhContextFooter = formatReminderContextFooter('zh', {
-    followingDialogState: 'user_message',
-    pendingUserInterjectionReply: false,
-    interDialogReplyObligation: 'none',
-    contextHealthState: 'normal',
+    followingMessage: { kind: 'user_message' },
+    business: { kind: 'none' },
+    contextHealth: { kind: 'normal' },
   });
   assert(
     zhContextFooter.includes('从“提醒项上下文块开始”到“提醒项上下文块结束”之间'),
@@ -54,18 +53,21 @@ async function main() {
     'Expected zh reminder context footer to preserve real user-message obligations after the reminder block',
   );
   const zhAutoContinueFooter = formatReminderContextFooter('zh', {
-    followingDialogState: 'none',
-    pendingUserInterjectionReply: false,
-    interDialogReplyObligation: 'none',
-    contextHealthState: 'normal',
+    followingMessage: { kind: 'none' },
+    business: { kind: 'none' },
+    contextHealth: { kind: 'normal' },
   });
   assert(
     zhAutoContinueFooter.includes('本轮没有新的用户消息或运行时提示'),
     'Expected zh auto-continue reminder footer to explicitly say no new message follows',
   );
   assert(
-    zhAutoContinueFooter.includes('若已有明确、相关且有价值的动作，就继续执行'),
-    'Expected zh auto-continue reminder footer to make continuation conditional on relevant work',
+    zhAutoContinueFooter.includes('基于提醒项之外的已有任务状态判断下一步'),
+    'Expected zh auto-continue reminder footer to make continuation depend on task state outside reminders',
+  );
+  assert(
+    zhAutoContinueFooter.includes('不要单独为提醒项维护继续调用工具'),
+    'Expected zh auto-continue reminder footer to prevent reminder-only tool continuation',
   );
   assert(
     zhAutoContinueFooter.includes('不要为了避免“等待”而寻找无关小事'),
@@ -76,54 +78,116 @@ async function main() {
     'Expected zh auto-continue reminder footer to prevent empty system notice misread',
   );
   const zhRuntimeFooter = formatReminderContextFooter('zh', {
-    followingDialogState: 'runtime_notice',
-    pendingUserInterjectionReply: false,
-    interDialogReplyObligation: 'none',
-    contextHealthState: 'normal',
+    followingMessage: { kind: 'runtime_notice' },
+    business: { kind: 'none' },
+    contextHealth: { kind: 'normal' },
   });
   assert(
     zhRuntimeFooter.includes('本轮提醒项块之后会接着出现一条运行时提示'),
     'Expected zh reminder context footer to explicitly identify following runtime notice',
   );
+  const zhHumanAnswerFooter = formatReminderContextFooter('zh', {
+    followingMessage: { kind: 'human_answer' },
+    business: { kind: 'none' },
+    contextHealth: { kind: 'normal' },
+  });
+  assert(
+    zhHumanAnswerFooter.includes('用户对一个提问的回答'),
+    'Expected zh reminder context footer to explicitly identify following human answer',
+  );
+  assert(
+    zhHumanAnswerFooter.includes('不是新的普通用户诉求/指令'),
+    'Expected zh human-answer footer not to treat the answer as a fresh ordinary user request',
+  );
   const zhInterjectionPendingFooter = formatReminderContextFooter('zh', {
-    followingDialogState: 'none',
-    pendingUserInterjectionReply: true,
-    interDialogReplyObligation: 'parked_by_user_interjection',
-    contextHealthState: 'normal',
+    followingMessage: { kind: 'none' },
+    business: { kind: 'pending_user_interjection_with_parked_reply' },
+    contextHealth: { kind: 'normal' },
   });
   assert(
     zhInterjectionPendingFooter.includes('真实用户插话尚未得到可见回复'),
     'Expected zh reminder footer to surface pending user interjection reply',
   );
   assert(
-    zhInterjectionPendingFooter.includes('跨对话回复义务已暂存'),
-    'Expected zh reminder footer to describe parked inter-dialog reply obligation',
+    zhInterjectionPendingFooter.includes('原有回贴任务已暂存'),
+    'Expected zh reminder footer to describe parked handoff in simple wording',
   );
   const zhInterjectionActiveFooter = formatReminderContextFooter('zh', {
-    followingDialogState: 'none',
-    pendingUserInterjectionReply: true,
-    interDialogReplyObligation: 'active',
-    contextHealthState: 'normal',
+    followingMessage: { kind: 'none' },
+    business: { kind: 'pending_user_interjection_with_active_reply' },
+    contextHealth: { kind: 'normal' },
   });
   assert(
-    zhInterjectionActiveFooter.includes('同时存在跨对话回复义务'),
-    'Expected zh reminder footer to describe active inter-dialog reply obligation while user interjection is pending',
+    zhInterjectionActiveFooter.includes('同时还有回贴任务未完成'),
+    'Expected zh reminder footer to describe active handoff while user interjection is pending',
+  );
+  assert(
+    !zhInterjectionActiveFooter.includes('前面那件转交任务已经回报完成了'),
+    'Expected zh active handoff footer not to use completed-handoff follow-up wording',
+  );
+  const zhCompletedSideReplyUserMessageFooter = formatReminderContextFooter('zh', {
+    followingMessage: { kind: 'user_message' },
+    business: { kind: 'user_followup_after_completed_handoff' },
+    contextHealth: { kind: 'normal' },
+  });
+  assert(
+    zhCompletedSideReplyUserMessageFooter.includes('后续消息是用户的新诉求/指令'),
+    'Expected zh completed-side-reply footer before a real user message to preserve that user message',
+  );
+  assert(
+    zhCompletedSideReplyUserMessageFooter.includes('现在是用户在追问你'),
+    'Expected zh completed-side-reply footer before a real user message to state the follow-up scenario',
+  );
+  assert(
+    !zhCompletedSideReplyUserMessageFooter.includes('本轮没有新的用户消息或运行时提示'),
+    'Expected zh completed-side-reply footer before a real user message not to use auto-continuation wording',
+  );
+  const zhCompletedSideReplyInterjectionFooter = formatReminderContextFooter('zh', {
+    followingMessage: { kind: 'none' },
+    business: { kind: 'user_followup_after_completed_handoff' },
+    contextHealth: { kind: 'normal' },
+  });
+  assert(
+    zhCompletedSideReplyInterjectionFooter.includes('现在是用户在追问你'),
+    'Expected zh completed-side-reply footer to state the already-classified user follow-up scenario plainly',
+  );
+  assert(
+    zhCompletedSideReplyInterjectionFooter.includes('请按用户这条消息正常交流和处理'),
+    'Expected zh completed-side-reply footer to make normal user interaction the current goal',
+  );
+  assert(
+    !zhCompletedSideReplyInterjectionFooter.includes('不要把整理提醒项当成当前目标'),
+    'Expected zh completed-side-reply footer not to forbid reminder cleanup requested by the user',
+  );
+  assert(
+    !zhCompletedSideReplyInterjectionFooter.includes('不要整理提醒项'),
+    'Expected zh completed-side-reply footer not to ban reminder organization',
+  );
+  assert(
+    !zhCompletedSideReplyInterjectionFooter.includes('不要调用工具'),
+    'Expected zh completed-side-reply footer not to forbid tool calls needed to answer the follow-up',
+  );
+  assert(
+    !zhCompletedSideReplyInterjectionFooter.includes('跨对话回复义务'),
+    'Expected zh completed-side-reply footer to avoid technical reply-obligation wording',
+  );
+  assert(
+    !zhCompletedSideReplyInterjectionFooter.includes('reply'),
+    'Expected zh completed-side-reply footer to avoid reply-tool jargon',
   );
   const zhActiveReplyFooter = formatReminderContextFooter('zh', {
-    followingDialogState: 'none',
-    pendingUserInterjectionReply: false,
-    interDialogReplyObligation: 'active',
-    contextHealthState: 'normal',
+    followingMessage: { kind: 'none' },
+    business: { kind: 'active_reply_obligation' },
+    contextHealth: { kind: 'normal' },
   });
   assert(
-    zhActiveReplyFooter.includes('当前仍有跨对话回复义务'),
-    'Expected zh reminder footer to surface active inter-dialog reply obligation',
+    zhActiveReplyFooter.includes('当前仍有回贴任务未完成'),
+    'Expected zh reminder footer to surface active handoff',
   );
   const zhCautionFooter = formatReminderContextFooter('zh', {
-    followingDialogState: 'none',
-    pendingUserInterjectionReply: false,
-    interDialogReplyObligation: 'none',
-    contextHealthState: 'caution',
+    followingMessage: { kind: 'none' },
+    business: { kind: 'none' },
+    contextHealth: { kind: 'caution' },
   });
   assert(
     zhCautionFooter.includes('当前上下文已吃紧'),
@@ -142,14 +206,13 @@ async function main() {
     'Expected zh caution footer to prioritize clear_mind',
   );
   assert(
-    !zhCautionFooter.includes('若已有明确、相关且有价值的动作，就继续执行'),
+    !zhCautionFooter.includes('若已有明确、相关且有价值的任务动作，就继续执行'),
     'Expected zh caution footer not to encourage ordinary continuation from reminders',
   );
   const zhCriticalFooter = formatReminderContextFooter('zh', {
-    followingDialogState: 'none',
-    pendingUserInterjectionReply: false,
-    interDialogReplyObligation: 'none',
-    contextHealthState: 'critical',
+    followingMessage: { kind: 'none' },
+    business: { kind: 'none' },
+    contextHealth: { kind: 'critical' },
   });
   assert(
     zhCriticalFooter.includes('当前上下文已告急'),
@@ -244,6 +307,10 @@ async function main() {
   assert(
     zhMaintenanceReference.includes('我把下面的提醒项维护通道仅作为操作参考'),
     'Expected zh maintenance reference to use first-person assistant framing',
+  );
+  assert(
+    zhMaintenanceReference.includes('不会只为了清理/整理提醒项而继续调用提醒项工具'),
+    'Expected zh maintenance reference to prevent reminder-only cleanup loops',
   );
   assert(
     !zhMaintenanceReference.includes('只有你已经决定'),
@@ -379,10 +446,9 @@ async function main() {
     'Expected en reminder context guide to explain separate Reminder widget presentation',
   );
   const enContextFooter = formatReminderContextFooter('en', {
-    followingDialogState: 'user_message',
-    pendingUserInterjectionReply: false,
-    interDialogReplyObligation: 'none',
-    contextHealthState: 'normal',
+    followingMessage: { kind: 'user_message' },
+    business: { kind: 'none' },
+    contextHealth: { kind: 'normal' },
   });
   assert(
     enContextFooter.includes(
@@ -409,18 +475,21 @@ async function main() {
     'Expected en reminder context footer to preserve real user-message obligations after the reminder block',
   );
   const enAutoContinueFooter = formatReminderContextFooter('en', {
-    followingDialogState: 'none',
-    pendingUserInterjectionReply: false,
-    interDialogReplyObligation: 'none',
-    contextHealthState: 'normal',
+    followingMessage: { kind: 'none' },
+    business: { kind: 'none' },
+    contextHealth: { kind: 'normal' },
   });
   assert(
     enAutoContinueFooter.includes('There is no new user message or runtime notice in this round'),
     'Expected en auto-continue reminder footer to explicitly say no new message follows',
   );
   assert(
-    enAutoContinueFooter.includes('if there is a clear, relevant, valuable action'),
-    'Expected en auto-continue reminder footer to make continuation conditional on relevant work',
+    enAutoContinueFooter.includes('existing task state outside the reminder items'),
+    'Expected en auto-continue reminder footer to make continuation depend on task state outside reminders',
+  );
+  assert(
+    enAutoContinueFooter.includes('do not keep calling tools solely for reminder maintenance'),
+    'Expected en auto-continue reminder footer to prevent reminder-only tool continuation',
   );
   assert(
     enAutoContinueFooter.includes('do not invent unrelated work just to avoid "waiting"'),
@@ -431,10 +500,9 @@ async function main() {
     'Expected en auto-continue reminder footer to prevent empty system notice misread',
   );
   const enRuntimeFooter = formatReminderContextFooter('en', {
-    followingDialogState: 'runtime_notice',
-    pendingUserInterjectionReply: false,
-    interDialogReplyObligation: 'none',
-    contextHealthState: 'normal',
+    followingMessage: { kind: 'runtime_notice' },
+    business: { kind: 'none' },
+    contextHealth: { kind: 'normal' },
   });
   assert(
     enRuntimeFooter.includes('A runtime notice follows this reminder block in this round'),
@@ -444,48 +512,117 @@ async function main() {
     enRuntimeFooter.includes('not a new user request/instruction'),
     'Expected en runtime reminder footer to clarify runtime notices are not new user requests/instructions',
   );
+  const enHumanAnswerFooter = formatReminderContextFooter('en', {
+    followingMessage: { kind: 'human_answer' },
+    business: { kind: 'none' },
+    contextHealth: { kind: 'normal' },
+  });
+  assert(
+    enHumanAnswerFooter.includes('A human answer to one of your questions follows'),
+    'Expected en reminder context footer to explicitly identify following human answer',
+  );
+  assert(
+    enHumanAnswerFooter.includes('not a new ordinary user request/instruction'),
+    'Expected en human-answer footer not to treat the answer as a fresh ordinary user request',
+  );
   const enInterjectionPendingFooter = formatReminderContextFooter('en', {
-    followingDialogState: 'none',
-    pendingUserInterjectionReply: true,
-    interDialogReplyObligation: 'parked_by_user_interjection',
-    contextHealthState: 'normal',
+    followingMessage: { kind: 'none' },
+    business: { kind: 'pending_user_interjection_with_parked_reply' },
+    contextHealth: { kind: 'normal' },
   });
   assert(
     enInterjectionPendingFooter.includes('real user interjection without a visible reply'),
     'Expected en reminder footer to surface pending user interjection reply',
   );
   assert(
-    enInterjectionPendingFooter.includes('earlier inter-dialog reply obligation is parked'),
-    'Expected en reminder footer to describe parked inter-dialog reply obligation',
+    enInterjectionPendingFooter.includes('the earlier handoff is parked'),
+    'Expected en reminder footer to describe parked handoff in simple wording',
   );
   const enInterjectionActiveFooter = formatReminderContextFooter('en', {
-    followingDialogState: 'none',
-    pendingUserInterjectionReply: true,
-    interDialogReplyObligation: 'active',
-    contextHealthState: 'normal',
+    followingMessage: { kind: 'none' },
+    business: { kind: 'pending_user_interjection_with_active_reply' },
+    contextHealth: { kind: 'normal' },
   });
   assert(
-    enInterjectionActiveFooter.includes('while an inter-dialog reply obligation also exists'),
-    'Expected en reminder footer to describe active inter-dialog reply obligation while user interjection is pending',
+    enInterjectionActiveFooter.includes('while a reply task is also unfinished'),
+    'Expected en reminder footer to describe active handoff while user interjection is pending',
+  );
+  assert(
+    !enInterjectionActiveFooter.includes('has already been reported back as complete'),
+    'Expected en active handoff footer not to use completed-handoff follow-up wording',
+  );
+  const enCompletedSideReplyUserMessageFooter = formatReminderContextFooter('en', {
+    followingMessage: { kind: 'user_message' },
+    business: { kind: 'user_followup_after_completed_handoff' },
+    contextHealth: { kind: 'normal' },
+  });
+  assert(
+    enCompletedSideReplyUserMessageFooter.includes(
+      'the following message is a new user request/instruction',
+    ),
+    'Expected en completed-side-reply footer before a real user message to preserve that user message',
+  );
+  assert(
+    enCompletedSideReplyUserMessageFooter.includes('The user is asking you a follow-up now'),
+    'Expected en completed-side-reply footer before a real user message to state the follow-up scenario',
+  );
+  assert(
+    !enCompletedSideReplyUserMessageFooter.includes(
+      'There is no new user message or runtime notice in this round',
+    ),
+    'Expected en completed-side-reply footer before a real user message not to use auto-continuation wording',
+  );
+  const enCompletedSideReplyInterjectionFooter = formatReminderContextFooter('en', {
+    followingMessage: { kind: 'none' },
+    business: { kind: 'user_followup_after_completed_handoff' },
+    contextHealth: { kind: 'normal' },
+  });
+  assert(
+    enCompletedSideReplyInterjectionFooter.includes('The user is asking you a follow-up now'),
+    'Expected en completed-side-reply footer to state the already-classified user follow-up scenario plainly',
+  );
+  assert(
+    enCompletedSideReplyInterjectionFooter.includes(
+      'Talk with the user normally and handle this current message',
+    ),
+    'Expected en completed-side-reply footer to make normal user interaction the current goal',
+  );
+  assert(
+    !enCompletedSideReplyInterjectionFooter.includes('treat reminder cleanup as the current goal'),
+    'Expected en completed-side-reply footer not to forbid reminder cleanup requested by the user',
+  );
+  assert(
+    !enCompletedSideReplyInterjectionFooter.includes('do not organize reminders'),
+    'Expected en completed-side-reply footer not to ban reminder organization',
+  );
+  assert(
+    !enCompletedSideReplyInterjectionFooter.includes('do not call tools'),
+    'Expected en completed-side-reply footer not to forbid tool calls needed to answer the follow-up',
+  );
+  assert(
+    !enCompletedSideReplyInterjectionFooter.includes('inter-dialog reply obligation'),
+    'Expected en completed-side-reply footer to avoid technical reply-obligation wording',
+  );
+  assert(
+    !enCompletedSideReplyInterjectionFooter.includes('reply*'),
+    'Expected en completed-side-reply footer to avoid reply-tool jargon',
   );
   const enActiveReplyFooter = formatReminderContextFooter('en', {
-    followingDialogState: 'none',
-    pendingUserInterjectionReply: false,
-    interDialogReplyObligation: 'active',
-    contextHealthState: 'normal',
+    followingMessage: { kind: 'none' },
+    business: { kind: 'active_reply_obligation' },
+    contextHealth: { kind: 'normal' },
   });
   assert(
-    enActiveReplyFooter.includes('An inter-dialog reply obligation is still active'),
-    'Expected en reminder footer to surface active inter-dialog reply obligation',
+    enActiveReplyFooter.includes('A reply task is still unfinished'),
+    'Expected en reminder footer to surface active handoff',
   );
   const enCautionFooter = formatReminderContextFooter('en', {
-    followingDialogState: 'none',
-    pendingUserInterjectionReply: false,
-    interDialogReplyObligation: 'none',
-    contextHealthState: 'caution',
+    followingMessage: { kind: 'none' },
+    business: { kind: 'none' },
+    contextHealth: { kind: 'caution' },
   });
   assert(
-    enCautionFooter.includes('Context health is tight'),
+    enCautionFooter.includes('Context is tight'),
     'Expected en caution footer to surface tight context health',
   );
   assert(
@@ -501,21 +638,20 @@ async function main() {
     'Expected en caution footer to prioritize clear_mind',
   );
   assert(
-    !enCautionFooter.includes('if there is a clear, relevant, valuable action'),
+    !enCautionFooter.includes('if there is a clear, relevant, valuable actual task action'),
     'Expected en caution footer not to encourage ordinary continuation from reminders',
   );
   const enCriticalFooter = formatReminderContextFooter('en', {
-    followingDialogState: 'none',
-    pendingUserInterjectionReply: false,
-    interDialogReplyObligation: 'none',
-    contextHealthState: 'critical',
+    followingMessage: { kind: 'none' },
+    business: { kind: 'none' },
+    contextHealth: { kind: 'critical' },
   });
   assert(
-    enCriticalFooter.includes('Context health is critical'),
+    enCriticalFooter.includes('Context is critical'),
     'Expected en critical footer to surface critical context health',
   );
   assert(
-    enCriticalFooter.includes('Do not perform old next steps, old inter-dialog requests'),
+    enCriticalFooter.includes('Do not perform old next steps, old handed-off requests'),
     'Expected en critical footer to block old reminder actions',
   );
   assert(
@@ -606,6 +742,12 @@ async function main() {
   assert(
     enMaintenanceReference.includes('I treat the following reminder-maintenance channels'),
     'Expected en maintenance reference to use first-person assistant framing',
+  );
+  assert(
+    enMaintenanceReference.includes(
+      'I do not keep calling reminder tools solely to clean up or organize reminders',
+    ),
+    'Expected en maintenance reference to prevent reminder-only cleanup loops',
   );
   assert(
     enMaintenanceReference.includes('reminder_id=rem03abc'),
