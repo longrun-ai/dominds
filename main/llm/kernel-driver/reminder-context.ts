@@ -1,6 +1,7 @@
 import type { ContextHealthSnapshot } from '@longrun-ai/kernel/types/context-health';
 import type {
   ReminderContextBusiness,
+  ReminderContextDialogScope,
   ReminderContextFollowingMessage,
   ReminderContextFooterState,
   ReminderContextHealth,
@@ -83,6 +84,7 @@ export function resolveReminderContextBusinessState(args: {
 }
 
 export function resolveReminderContextFooterStateFromSignals(args: {
+  dialogScope: ReminderContextDialogScope;
   prompt: KernelDriverPrompt | undefined;
   currentTurnDialogMsgsForContext: readonly ChatMessage[];
   contextHealth: ContextHealthSnapshot | undefined;
@@ -98,6 +100,7 @@ export function resolveReminderContextFooterStateFromSignals(args: {
   return {
     followingMessage,
     contextHealth: resolveReminderContextHealth(args.contextHealth),
+    dialogScope: args.dialogScope,
     business: resolveReminderContextBusinessState({
       followingMessage,
       pendingUserInterjectionReply: args.pendingUserInterjectionReply,

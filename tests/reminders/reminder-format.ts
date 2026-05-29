@@ -3,10 +3,33 @@ import {
   formatReminderContextGuide,
   formatReminderItemGuide,
   formatReminderMaintenanceReference,
+  type ReminderContextFooterState,
 } from '../../main/runtime/driver-messages';
 
 function assert(condition: boolean, message: string): void {
   if (!condition) throw new Error(message);
+}
+
+type ReminderFooterStateWithoutScope = Omit<ReminderContextFooterState, 'dialogScope'>;
+
+function formatMainReminderContextFooter(
+  language: 'zh' | 'en',
+  state: ReminderFooterStateWithoutScope,
+): string {
+  return formatReminderContextFooter(language, {
+    dialogScope: { kind: 'main_dialog' },
+    ...state,
+  });
+}
+
+function formatSideReminderContextFooter(
+  language: 'zh' | 'en',
+  state: ReminderFooterStateWithoutScope,
+): string {
+  return formatReminderContextFooter(language, {
+    dialogScope: { kind: 'side_dialog' },
+    ...state,
+  });
 }
 
 async function main() {
@@ -27,7 +50,7 @@ async function main() {
     zhContextGuide.includes('用户通过独立的 Reminder 小组件/面板项看到这些提醒'),
     'Expected zh reminder context guide to explain separate Reminder widget presentation',
   );
-  const zhContextFooter = formatReminderContextFooter('zh', {
+  const zhContextFooter = formatMainReminderContextFooter('zh', {
     followingMessage: { kind: 'user_message' },
     business: { kind: 'none' },
     contextHealth: { kind: 'normal' },
@@ -52,7 +75,7 @@ async function main() {
     zhContextFooter.includes('若它要求更新你的职责、偏好或心智资产，应照常落实'),
     'Expected zh reminder context footer to preserve real user-message obligations after the reminder block',
   );
-  const zhAutoContinueFooter = formatReminderContextFooter('zh', {
+  const zhAutoContinueFooter = formatMainReminderContextFooter('zh', {
     followingMessage: { kind: 'none' },
     business: { kind: 'none' },
     contextHealth: { kind: 'normal' },
@@ -70,20 +93,24 @@ async function main() {
     'Expected zh auto-continue reminder footer to prevent treating reminder maintenance as progress',
   );
   assert(
-    zhAutoContinueFooter.includes('先按当前工具规则考虑 `tellaskBack({ tellaskContent })`'),
-    'Expected zh auto-continue reminder footer to prefer tellaskBack for Side Dialog requester clarification',
+    zhAutoContinueFooter.includes('当前是主线对话'),
+    'Expected zh main auto-continue reminder footer to say the dialog scope directly',
+  );
+  assert(
+    !zhAutoContinueFooter.includes('tellaskBack'),
+    'Expected zh main auto-continue reminder footer not to mention Side Dialog tellaskBack',
   );
   assert(
     zhAutoContinueFooter.includes('才用 `askHuman({ tellaskContent })`'),
-    'Expected zh auto-continue reminder footer to reserve askHuman for truly human input',
+    'Expected zh main auto-continue reminder footer to reserve askHuman for truly human input',
   );
   assert(
-    zhAutoContinueFooter.includes('主线对话可由鞭策续推'),
+    zhAutoContinueFooter.includes('鞭策开启时会继续续推'),
     'Expected zh auto-continue reminder footer to preserve Main Dialog diligence keep-alive',
   );
   assert(
-    zhAutoContinueFooter.includes('未完成支线会收到回贴提醒'),
-    'Expected zh auto-continue reminder footer to preserve unfinished Side Dialog reply reminders',
+    !zhAutoContinueFooter.includes('需要回贴时会收到回贴提醒'),
+    'Expected zh main auto-continue reminder footer not to include Side Dialog reply-reminder wording',
   );
   assert(
     zhAutoContinueFooter.includes('不要为了避免停顿而寻找无关小事'),
@@ -93,7 +120,32 @@ async function main() {
     zhAutoContinueFooter.includes('不要把“没有新消息”理解为空系统提示'),
     'Expected zh auto-continue reminder footer to prevent empty system notice misread',
   );
-  const zhRuntimeFooter = formatReminderContextFooter('zh', {
+  const zhSideAutoContinueFooter = formatSideReminderContextFooter('zh', {
+    followingMessage: { kind: 'none' },
+    business: { kind: 'none' },
+    contextHealth: { kind: 'normal' },
+  });
+  assert(
+    zhSideAutoContinueFooter.includes('当前是支线对话'),
+    'Expected zh side auto-continue reminder footer to say the dialog scope directly',
+  );
+  assert(
+    zhSideAutoContinueFooter.includes('先按当前工具规则考虑 `tellaskBack({ tellaskContent })`'),
+    'Expected zh side auto-continue reminder footer to prefer tellaskBack for requester clarification',
+  );
+  assert(
+    zhSideAutoContinueFooter.includes('才用 `askHuman({ tellaskContent })`'),
+    'Expected zh side auto-continue reminder footer to reserve askHuman for truly human input',
+  );
+  assert(
+    zhSideAutoContinueFooter.includes('需要回贴时会收到回贴提醒'),
+    'Expected zh side auto-continue reminder footer to preserve Side Dialog reply reminders',
+  );
+  assert(
+    !zhSideAutoContinueFooter.includes('鞭策开启时会继续续推'),
+    'Expected zh side auto-continue reminder footer not to include Main Dialog diligence wording',
+  );
+  const zhRuntimeFooter = formatMainReminderContextFooter('zh', {
     followingMessage: { kind: 'runtime_notice' },
     business: { kind: 'none' },
     contextHealth: { kind: 'normal' },
@@ -102,7 +154,7 @@ async function main() {
     zhRuntimeFooter.includes('本轮提醒项块之后会接着出现一条 Dominds 提示'),
     'Expected zh reminder context footer to explicitly identify following Dominds notice',
   );
-  const zhHumanAnswerFooter = formatReminderContextFooter('zh', {
+  const zhHumanAnswerFooter = formatMainReminderContextFooter('zh', {
     followingMessage: { kind: 'human_answer' },
     business: { kind: 'none' },
     contextHealth: { kind: 'normal' },
@@ -115,7 +167,7 @@ async function main() {
     zhHumanAnswerFooter.includes('不是新的普通用户诉求/指令'),
     'Expected zh human-answer footer not to treat the answer as a fresh ordinary user request',
   );
-  const zhInterjectionPendingFooter = formatReminderContextFooter('zh', {
+  const zhInterjectionPendingFooter = formatMainReminderContextFooter('zh', {
     followingMessage: { kind: 'none' },
     business: { kind: 'pending_user_interjection_with_parked_reply' },
     contextHealth: { kind: 'normal' },
@@ -128,7 +180,7 @@ async function main() {
     zhInterjectionPendingFooter.includes('原有回贴任务已暂存'),
     'Expected zh reminder footer to describe parked handoff in simple wording',
   );
-  const zhInterjectionActiveFooter = formatReminderContextFooter('zh', {
+  const zhInterjectionActiveFooter = formatMainReminderContextFooter('zh', {
     followingMessage: { kind: 'none' },
     business: { kind: 'pending_user_interjection_with_active_reply' },
     contextHealth: { kind: 'normal' },
@@ -141,7 +193,7 @@ async function main() {
     !zhInterjectionActiveFooter.includes('前面那件转交任务已经回报完成了'),
     'Expected zh active handoff footer not to use completed-handoff follow-up wording',
   );
-  const zhCompletedSideReplyUserMessageFooter = formatReminderContextFooter('zh', {
+  const zhCompletedSideReplyUserMessageFooter = formatSideReminderContextFooter('zh', {
     followingMessage: { kind: 'user_message' },
     business: { kind: 'user_followup_after_completed_handoff' },
     contextHealth: { kind: 'normal' },
@@ -158,7 +210,7 @@ async function main() {
     !zhCompletedSideReplyUserMessageFooter.includes('本轮没有新的用户消息或 Dominds 提示'),
     'Expected zh completed-side-reply footer before a real user message not to use auto-continuation wording',
   );
-  const zhCompletedSideReplyInterjectionFooter = formatReminderContextFooter('zh', {
+  const zhCompletedSideReplyInterjectionFooter = formatSideReminderContextFooter('zh', {
     followingMessage: { kind: 'none' },
     business: { kind: 'user_followup_after_completed_handoff' },
     contextHealth: { kind: 'normal' },
@@ -191,7 +243,7 @@ async function main() {
     !zhCompletedSideReplyInterjectionFooter.includes('reply'),
     'Expected zh completed-side-reply footer to avoid reply-tool jargon',
   );
-  const zhActiveReplyFooter = formatReminderContextFooter('zh', {
+  const zhActiveReplyFooter = formatMainReminderContextFooter('zh', {
     followingMessage: { kind: 'none' },
     business: { kind: 'active_reply_obligation' },
     contextHealth: { kind: 'normal' },
@@ -200,7 +252,7 @@ async function main() {
     zhActiveReplyFooter.includes('当前仍有回贴任务未完成'),
     'Expected zh reminder footer to surface active handoff',
   );
-  const zhCautionFooter = formatReminderContextFooter('zh', {
+  const zhCautionFooter = formatMainReminderContextFooter('zh', {
     followingMessage: { kind: 'none' },
     business: { kind: 'none' },
     contextHealth: { kind: 'caution' },
@@ -225,7 +277,7 @@ async function main() {
     !zhCautionFooter.includes('若已有明确、相关且有价值的任务动作，就继续执行'),
     'Expected zh caution footer not to encourage ordinary continuation from reminders',
   );
-  const zhCriticalFooter = formatReminderContextFooter('zh', {
+  const zhCriticalFooter = formatMainReminderContextFooter('zh', {
     followingMessage: { kind: 'none' },
     business: { kind: 'none' },
     contextHealth: { kind: 'critical' },
@@ -461,7 +513,7 @@ async function main() {
     ),
     'Expected en reminder context guide to explain separate Reminder widget presentation',
   );
-  const enContextFooter = formatReminderContextFooter('en', {
+  const enContextFooter = formatMainReminderContextFooter('en', {
     followingMessage: { kind: 'user_message' },
     business: { kind: 'none' },
     contextHealth: { kind: 'normal' },
@@ -490,7 +542,7 @@ async function main() {
     enContextFooter.includes('responsibilities, preferences, or mind assets'),
     'Expected en reminder context footer to preserve real user-message obligations after the reminder block',
   );
-  const enAutoContinueFooter = formatReminderContextFooter('en', {
+  const enAutoContinueFooter = formatMainReminderContextFooter('en', {
     followingMessage: { kind: 'none' },
     business: { kind: 'none' },
     contextHealth: { kind: 'normal' },
@@ -508,26 +560,24 @@ async function main() {
     'Expected en auto-continue reminder footer to prevent treating reminder maintenance as progress',
   );
   assert(
-    enAutoContinueFooter.includes('consider `tellaskBack({ tellaskContent })` first'),
-    'Expected en auto-continue reminder footer to prefer tellaskBack for Side Dialog requester clarification',
+    enAutoContinueFooter.includes('This is a Main Dialog'),
+    'Expected en main auto-continue reminder footer to say the dialog scope directly',
   );
   assert(
-    enAutoContinueFooter.includes('use `askHuman({ tellaskContent })` only when'),
-    'Expected en auto-continue reminder footer to reserve askHuman for truly human input',
+    !enAutoContinueFooter.includes('tellaskBack'),
+    'Expected en main auto-continue reminder footer not to mention Side Dialog tellaskBack',
   );
   assert(
-    enAutoContinueFooter.includes(
-      "let the current dialog continue through Dominds' existing mechanism",
-    ),
-    'Expected en auto-continue reminder footer to preserve Dominds keep-alive mechanisms',
+    enAutoContinueFooter.includes('Use `askHuman({ tellaskContent })` only when'),
+    'Expected en main auto-continue reminder footer to reserve askHuman for truly human input',
   );
   assert(
-    enAutoContinueFooter.includes('Main Dialogs can be pushed by diligence'),
+    enAutoContinueFooter.includes('diligence can continue it when enabled'),
     'Expected en auto-continue reminder footer to preserve Main Dialog diligence keep-alive',
   );
   assert(
-    enAutoContinueFooter.includes('unfinished Side Dialogs can receive reply reminders'),
-    'Expected en auto-continue reminder footer to preserve unfinished Side Dialog reply reminders',
+    !enAutoContinueFooter.includes('receive reply reminders'),
+    'Expected en main auto-continue reminder footer not to include Side Dialog reply-reminder wording',
   );
   assert(
     enAutoContinueFooter.includes('do not invent unrelated work just to avoid a pause'),
@@ -537,7 +587,32 @@ async function main() {
     enAutoContinueFooter.includes('Do not interpret the absence of a new message'),
     'Expected en auto-continue reminder footer to prevent empty system notice misread',
   );
-  const enRuntimeFooter = formatReminderContextFooter('en', {
+  const enSideAutoContinueFooter = formatSideReminderContextFooter('en', {
+    followingMessage: { kind: 'none' },
+    business: { kind: 'none' },
+    contextHealth: { kind: 'normal' },
+  });
+  assert(
+    enSideAutoContinueFooter.includes('This is a Side Dialog'),
+    'Expected en side auto-continue reminder footer to say the dialog scope directly',
+  );
+  assert(
+    enSideAutoContinueFooter.includes('consider `tellaskBack({ tellaskContent })` first'),
+    'Expected en side auto-continue reminder footer to prefer tellaskBack for requester clarification',
+  );
+  assert(
+    enSideAutoContinueFooter.includes('use `askHuman({ tellaskContent })` only when'),
+    'Expected en side auto-continue reminder footer to reserve askHuman for truly human input',
+  );
+  assert(
+    enSideAutoContinueFooter.includes('receive reply reminders when a reply is needed'),
+    'Expected en side auto-continue reminder footer to preserve Side Dialog reply reminders',
+  );
+  assert(
+    !enSideAutoContinueFooter.includes('diligence can continue it when enabled'),
+    'Expected en side auto-continue reminder footer not to include Main Dialog diligence wording',
+  );
+  const enRuntimeFooter = formatMainReminderContextFooter('en', {
     followingMessage: { kind: 'runtime_notice' },
     business: { kind: 'none' },
     contextHealth: { kind: 'normal' },
@@ -550,7 +625,7 @@ async function main() {
     enRuntimeFooter.includes('not a new user request/instruction'),
     'Expected en Dominds reminder footer to clarify Dominds notices are not new user requests/instructions',
   );
-  const enHumanAnswerFooter = formatReminderContextFooter('en', {
+  const enHumanAnswerFooter = formatMainReminderContextFooter('en', {
     followingMessage: { kind: 'human_answer' },
     business: { kind: 'none' },
     contextHealth: { kind: 'normal' },
@@ -563,7 +638,7 @@ async function main() {
     enHumanAnswerFooter.includes('not a new ordinary user request/instruction'),
     'Expected en human-answer footer not to treat the answer as a fresh ordinary user request',
   );
-  const enInterjectionPendingFooter = formatReminderContextFooter('en', {
+  const enInterjectionPendingFooter = formatMainReminderContextFooter('en', {
     followingMessage: { kind: 'none' },
     business: { kind: 'pending_user_interjection_with_parked_reply' },
     contextHealth: { kind: 'normal' },
@@ -576,7 +651,7 @@ async function main() {
     enInterjectionPendingFooter.includes('the earlier handoff is parked'),
     'Expected en reminder footer to describe parked handoff in simple wording',
   );
-  const enInterjectionActiveFooter = formatReminderContextFooter('en', {
+  const enInterjectionActiveFooter = formatMainReminderContextFooter('en', {
     followingMessage: { kind: 'none' },
     business: { kind: 'pending_user_interjection_with_active_reply' },
     contextHealth: { kind: 'normal' },
@@ -589,7 +664,7 @@ async function main() {
     !enInterjectionActiveFooter.includes('has already been reported back as complete'),
     'Expected en active handoff footer not to use completed-handoff follow-up wording',
   );
-  const enCompletedSideReplyUserMessageFooter = formatReminderContextFooter('en', {
+  const enCompletedSideReplyUserMessageFooter = formatSideReminderContextFooter('en', {
     followingMessage: { kind: 'user_message' },
     business: { kind: 'user_followup_after_completed_handoff' },
     contextHealth: { kind: 'normal' },
@@ -610,7 +685,7 @@ async function main() {
     ),
     'Expected en completed-side-reply footer before a real user message not to use auto-continuation wording',
   );
-  const enCompletedSideReplyInterjectionFooter = formatReminderContextFooter('en', {
+  const enCompletedSideReplyInterjectionFooter = formatSideReminderContextFooter('en', {
     followingMessage: { kind: 'none' },
     business: { kind: 'user_followup_after_completed_handoff' },
     contextHealth: { kind: 'normal' },
@@ -645,7 +720,7 @@ async function main() {
     !enCompletedSideReplyInterjectionFooter.includes('reply*'),
     'Expected en completed-side-reply footer to avoid reply-tool jargon',
   );
-  const enActiveReplyFooter = formatReminderContextFooter('en', {
+  const enActiveReplyFooter = formatMainReminderContextFooter('en', {
     followingMessage: { kind: 'none' },
     business: { kind: 'active_reply_obligation' },
     contextHealth: { kind: 'normal' },
@@ -654,7 +729,7 @@ async function main() {
     enActiveReplyFooter.includes('A reply task is still unfinished'),
     'Expected en reminder footer to surface active handoff',
   );
-  const enCautionFooter = formatReminderContextFooter('en', {
+  const enCautionFooter = formatMainReminderContextFooter('en', {
     followingMessage: { kind: 'none' },
     business: { kind: 'none' },
     contextHealth: { kind: 'caution' },
@@ -679,7 +754,7 @@ async function main() {
     !enCautionFooter.includes('if there is a clear, relevant, valuable actual task action'),
     'Expected en caution footer not to encourage ordinary continuation from reminders',
   );
-  const enCriticalFooter = formatReminderContextFooter('en', {
+  const enCriticalFooter = formatMainReminderContextFooter('en', {
     followingMessage: { kind: 'none' },
     business: { kind: 'none' },
     contextHealth: { kind: 'critical' },

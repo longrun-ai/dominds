@@ -227,6 +227,10 @@ export type ReminderContextHealth =
   | Readonly<{ kind: 'caution' }>
   | Readonly<{ kind: 'critical' }>;
 
+export type ReminderContextDialogScope =
+  | Readonly<{ kind: 'main_dialog' }>
+  | Readonly<{ kind: 'side_dialog' }>;
+
 export type ReminderContextBusiness =
   | Readonly<{ kind: 'none' }>
   | Readonly<{ kind: 'active_reply_obligation' }>
@@ -240,8 +244,16 @@ export type ReminderContextBusiness =
 // not have to infer from nearby transcript:
 // - followingMessage: what kind of message, if any, appears immediately after this reminder block;
 // - contextHealth: whether old reminder content must yield to course-transition remediation;
+// - dialogScope: whether this is a Main Dialog or Side Dialog;
 // - business: whether there is an unfinished handoff, an unanswered user interjection, or a
 //   completed handoff followed by a user follow-up.
+//
+// dialogScope must be programmatically supplied by runtime. In the reminder-only continuation
+// case, Main Dialogs and Side Dialogs have different valid clarification paths: Main Dialogs can
+// ask the human directly when needed, while Side Dialogs should first ask their requester via
+// tellaskBack when the missing piece belongs to the requester. Leaving "if you are in a Side
+// Dialog" in the model-facing footer makes the model infer a fact the runtime already knows, and
+// that ambiguity has caused reminder-churn / wrong Q4H routing.
 //
 // The completed-handoff follow-up case exists because a finished sideline handoff can still
 // leave reminder-maintenance references visible. If the footer only says "this is reminder
@@ -254,6 +266,7 @@ export type ReminderContextBusiness =
 export type ReminderContextFooterState = Readonly<{
   followingMessage: ReminderContextFollowingMessage;
   contextHealth: ReminderContextHealth;
+  dialogScope: ReminderContextDialogScope;
   business: ReminderContextBusiness;
 }>;
 
@@ -395,6 +408,46 @@ function joinReminderFooterTails(language: LanguageCode, tails: readonly string[
   return language === 'zh' ? nonEmptyTails.join('') : nonEmptyTails.join(' ');
 }
 
+function formatZhNormalAutoContinueByDialogScope(scope: ReminderContextDialogScope): string {
+  switch (scope.kind) {
+    case 'main_dialog':
+      // Main Dialogs own the broad task and do not have a requester to tellaskBack. When the only
+      // apparent action is reminder maintenance, ask the human only for genuinely missing human
+      // input/authorization; otherwise hand control back to the Main Dialog keep-alive setting
+      // instead of making up work.
+      return '当前是主线对话。请基于提醒项之外的已有任务状态判断下一步：若已有明确、相关且有价值的任务动作，就继续执行；若唯一看似可做的只是新增、更新、删除、压缩或整理提醒项，不要把提醒项维护当成续推动作。若确实缺少人类本人澄清、裁决、验收口径、授权或输入，才用 `askHuman({ tellaskContent })` 提出一个最小且可回答的问题。若不缺这些信息、也没有真实任务动作，不要为了避免停顿而寻找无关小事；让主线按 Dominds 的主线机制处理，鞭策开启时会继续续推，鞭策关闭且没有真实动作时可以自然收住。';
+    case 'side_dialog':
+      // Side Dialogs are answering a requester. If blocked on requirement clarification, a business
+      // decision, acceptance criteria, or requester-held input, tellaskBack is the local loop and
+      // askHuman is only for information that truly must come from the human.
+      return '当前是支线对话。请基于提醒项之外的已有任务状态判断下一步：若已有明确、相关且有价值的任务动作，就继续执行；若唯一看似可做的只是新增、更新、删除、压缩或整理提醒项，不要把提醒项维护当成续推动作。若缺少需求澄清、业务裁决、验收口径、授权或输入，先判断缺的东西该由谁补：如果诉请者能补需求澄清/业务裁决/验收口径/缺失输入，先按当前工具规则考虑 `tellaskBack({ tellaskContent })` 回问诉请者；只有确实需要人类本人澄清、决策、授权或输入时，才用 `askHuman({ tellaskContent })` 提出一个最小且可回答的问题。若不缺这些信息、也没有真实任务动作，不要为了避免停顿而寻找无关小事；让支线按 Dominds 的支线机制处理：需要回贴时会收到回贴提醒，已完成且无新诉求时可以自然收住。';
+    default: {
+      const _exhaustive: never = scope;
+      throw new Error(`Unhandled zh reminder dialog scope: ${String(_exhaustive)}`);
+    }
+  }
+}
+
+function formatEnNormalAutoContinueByDialogScope(scope: ReminderContextDialogScope): string {
+  switch (scope.kind) {
+    case 'main_dialog':
+      // Main Dialogs own the broad task and do not have a requester to tellaskBack. When the only
+      // apparent action is reminder maintenance, ask the human only for genuinely missing human
+      // input/authorization; otherwise hand control back to the Main Dialog keep-alive setting
+      // instead of making up work.
+      return "This is a Main Dialog. Judge the next step from existing task state outside the reminder items: if there is a clear, relevant, valuable actual task action, continue with it; if the only apparent action is to add, update, delete, compress, or organize reminders, do not treat reminder maintenance as task progress. Use `askHuman({ tellaskContent })` only when you truly need clarification, a decision, acceptance criteria, authorization, or input from the human; ask one minimal, answerable question. If you do not need any of that and there is no real task action, do not invent unrelated work just to avoid a pause; let the Main Dialog follow Dominds' mainline mechanism: diligence can continue it when enabled, and when diligence is disabled with no real action, it may naturally settle.";
+    case 'side_dialog':
+      // Side Dialogs are answering a requester. If blocked on requirement clarification, a business
+      // decision, acceptance criteria, or requester-held input, tellaskBack is the local loop and
+      // askHuman is only for information that truly must come from the human.
+      return "This is a Side Dialog. Judge the next step from existing task state outside the reminder items: if there is a clear, relevant, valuable actual task action, continue with it; if the only apparent action is to add, update, delete, compress, or organize reminders, do not treat reminder maintenance as task progress. If you are missing clarification, a business decision, acceptance criteria, authorization, or input, first identify who should provide it: when the requester can provide the missing requirement clarification, business decision, acceptance criteria, or missing input, follow the current tool rules and consider `tellaskBack({ tellaskContent })` first; use `askHuman({ tellaskContent })` only when the needed clarification, decision, authorization, or input truly must come from the human. If you do not need any of that and there is no real task action, do not invent unrelated work just to avoid a pause; let the Side Dialog follow Dominds' sideline mechanism: it can receive reply reminders when a reply is needed, and when it is complete with no new request, it may naturally settle.";
+    default: {
+      const _exhaustive: never = scope;
+      throw new Error(`Unhandled en reminder dialog scope: ${String(_exhaustive)}`);
+    }
+  }
+}
+
 export function formatReminderContextFooter(
   language: LanguageCode,
   state: ReminderContextFooterState,
@@ -438,16 +491,12 @@ export function formatReminderContextFooter(
           );
         }
         // Normal tool-followup rounds may continue real business work, but reminder maintenance
-        // paths are merely references. This branch gives the model a better off-ramp than
-        // reminder churn without contradicting Dominds keep-alive design: Main Dialogs can be
-        // pushed by diligence, unfinished Side Dialogs can receive direct-reply reminders, and
-        // only completed/no-new-request Side Dialogs may naturally settle. If a Side Dialog needs
-        // requester clarification/decision/acceptance criteria, the closer path is tellaskBack;
-        // askHuman is only for input/authorization that truly must come from the human. Otherwise
-        // hand control back to the current dialog mechanism instead of inventing reminder work.
+        // paths are merely references. Runtime already knows whether this is a Main Dialog or Side
+        // Dialog, so do not ask the model to self-classify before choosing askHuman vs tellaskBack.
+        const scopeTail = formatZhNormalAutoContinueByDialogScope(state.dialogScope);
         return (
           `${base}本轮没有新的用户消息或 Dominds 提示；这是工具调用后的自动续推。` +
-          '请基于提醒项之外的已有任务状态判断下一步：若已有明确、相关且有价值的任务动作，就继续执行；若唯一看似可做的只是新增、更新、删除、压缩或整理提醒项，不要把提醒项维护当成续推动作。此时先判断是否缺澄清、裁决、验收口径、授权或输入：若你在支线对话中，且缺的是诉请者能补的需求澄清/业务裁决/验收口径/缺失输入，先按当前工具规则考虑 `tellaskBack({ tellaskContent })` 回问诉请者；只有确实需要人类本人澄清、决策、授权或输入时，才用 `askHuman({ tellaskContent })` 提出一个最小且可回答的问题。若不缺这些信息、也没有真实任务动作，不要为了避免停顿而寻找无关小事；让当前对话按 Dominds 既有机制继续：主线对话可由鞭策续推，未完成支线会收到回贴提醒，已完成且无新诉求的支线可以自然收住。' +
+          scopeTail +
           `不要把“没有新消息”理解为空系统提示。${businessTail}`
         );
       default: {
@@ -496,16 +545,12 @@ export function formatReminderContextFooter(
         );
       }
       // Normal tool-followup rounds may continue real business work, but reminder maintenance
-      // paths are merely references. This branch gives the model a better off-ramp than reminder
-      // churn without contradicting Dominds keep-alive design: Main Dialogs can be pushed by
-      // diligence, unfinished Side Dialogs can receive direct-reply reminders, and only
-      // completed/no-new-request Side Dialogs may naturally settle. If a Side Dialog needs
-      // requester clarification/decision/acceptance criteria, the closer path is tellaskBack;
-      // askHuman is only for input/authorization that truly must come from the human. Otherwise
-      // hand control back to the current dialog mechanism instead of inventing reminder work.
+      // paths are merely references. Runtime already knows whether this is a Main Dialog or Side
+      // Dialog, so do not ask the model to self-classify before choosing askHuman vs tellaskBack.
+      const scopeTail = formatEnNormalAutoContinueByDialogScope(state.dialogScope);
       return (
         `${base}There is no new user message or Dominds notice in this round; this is an automatic continuation after a tool call. ` +
-        "Judge the next step from existing task state outside the reminder items: if there is a clear, relevant, valuable actual task action, continue with it; if the only apparent action is to add, update, delete, compress, or organize reminders, do not treat reminder maintenance as task progress. First decide whether you are missing clarification, decision, acceptance criteria, authorization, or input. In a Side Dialog, if the requester can provide the missing requirement clarification, business decision, acceptance criteria, or missing input, follow the current tool rules and consider `tellaskBack({ tellaskContent })` first; use `askHuman({ tellaskContent })` only when the needed clarification, decision, authorization, or input truly must come from the human. If you do not need any of that and there is no real task action, do not invent unrelated work just to avoid a pause; let the current dialog continue through Dominds' existing mechanism: Main Dialogs can be pushed by diligence, unfinished Side Dialogs can receive reply reminders, and completed Side Dialogs with no new request may naturally settle. " +
+        `${scopeTail} ` +
         `Do not interpret the absence of a new message as an empty system notice. ${businessTail}`
       );
     default: {

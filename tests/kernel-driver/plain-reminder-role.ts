@@ -57,6 +57,7 @@ async function main(): Promise<void> {
             type: 'environment_msg',
             role: 'user',
             content: formatReminderContextFooter('zh', {
+              dialogScope: { kind: 'main_dialog' },
               followingMessage: { kind: 'user_message' },
               business: { kind: 'none' },
               contextHealth: { kind: 'normal' },

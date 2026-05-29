@@ -30,8 +30,18 @@ const currentTurnUserMsgs: ChatMessage[] = [
   },
 ];
 
+type FooterSignalArgs = Parameters<typeof resolveReminderContextFooterStateFromSignals>[0];
+type FooterSignalArgsWithoutScope = Omit<FooterSignalArgs, 'dialogScope'>;
+
+function resolveSideReminderContextFooterStateFromSignals(args: FooterSignalArgsWithoutScope) {
+  return resolveReminderContextFooterStateFromSignals({
+    dialogScope: { kind: 'side_dialog' },
+    ...args,
+  });
+}
+
 function main(): void {
-  const completedHandoffFollowup = resolveReminderContextFooterStateFromSignals({
+  const completedHandoffFollowup = resolveSideReminderContextFooterStateFromSignals({
     prompt: userPrompt,
     currentTurnDialogMsgsForContext: currentTurnUserMsgs,
     contextHealth: undefined,
@@ -41,11 +51,12 @@ function main(): void {
     hasActiveReplyObligation: false,
   });
   assert.deepEqual(completedHandoffFollowup.followingMessage, { kind: 'user_message' });
+  assert.deepEqual(completedHandoffFollowup.dialogScope, { kind: 'side_dialog' });
   assert.deepEqual(completedHandoffFollowup.business, {
     kind: 'user_followup_after_completed_handoff',
   });
 
-  const missingCurrentTurnMessage = resolveReminderContextFooterStateFromSignals({
+  const missingCurrentTurnMessage = resolveSideReminderContextFooterStateFromSignals({
     prompt: userPrompt,
     currentTurnDialogMsgsForContext: [],
     contextHealth: undefined,
@@ -57,21 +68,22 @@ function main(): void {
   assert.deepEqual(missingCurrentTurnMessage.followingMessage, { kind: 'none' });
   assert.deepEqual(missingCurrentTurnMessage.business, { kind: 'none' });
 
-  const completedHandoffFollowupOnToolContinuation = resolveReminderContextFooterStateFromSignals({
-    prompt: undefined,
-    currentTurnDialogMsgsForContext: [],
-    contextHealth: undefined,
-    pendingUserInterjectionReply: true,
-    hasCompletedHandoffWithoutPendingReply: true,
-    hasDeferredReplyReassertion: false,
-    hasActiveReplyObligation: false,
-  });
+  const completedHandoffFollowupOnToolContinuation =
+    resolveSideReminderContextFooterStateFromSignals({
+      prompt: undefined,
+      currentTurnDialogMsgsForContext: [],
+      contextHealth: undefined,
+      pendingUserInterjectionReply: true,
+      hasCompletedHandoffWithoutPendingReply: true,
+      hasDeferredReplyReassertion: false,
+      hasActiveReplyObligation: false,
+    });
   assert.deepEqual(completedHandoffFollowupOnToolContinuation.followingMessage, { kind: 'none' });
   assert.deepEqual(completedHandoffFollowupOnToolContinuation.business, {
     kind: 'user_followup_after_completed_handoff',
   });
 
-  const humanAnswerContinuation = resolveReminderContextFooterStateFromSignals({
+  const humanAnswerContinuation = resolveSideReminderContextFooterStateFromSignals({
     prompt: humanAnswerPrompt,
     currentTurnDialogMsgsForContext: [
       {
@@ -92,7 +104,7 @@ function main(): void {
   assert.deepEqual(humanAnswerContinuation.followingMessage, { kind: 'human_answer' });
   assert.deepEqual(humanAnswerContinuation.business, { kind: 'none' });
 
-  const activeReplyWithPendingUserInterjection = resolveReminderContextFooterStateFromSignals({
+  const activeReplyWithPendingUserInterjection = resolveSideReminderContextFooterStateFromSignals({
     prompt: userPrompt,
     currentTurnDialogMsgsForContext: currentTurnUserMsgs,
     contextHealth: undefined,
@@ -105,7 +117,7 @@ function main(): void {
     kind: 'pending_user_interjection_with_active_reply',
   });
 
-  const parkedReplyWinsOverGenericInterjection = resolveReminderContextFooterStateFromSignals({
+  const parkedReplyWinsOverGenericInterjection = resolveSideReminderContextFooterStateFromSignals({
     prompt: undefined,
     currentTurnDialogMsgsForContext: [],
     contextHealth: undefined,
@@ -119,7 +131,7 @@ function main(): void {
     kind: 'pending_user_interjection_with_parked_reply',
   });
 
-  const criticalHealth = resolveReminderContextFooterStateFromSignals({
+  const criticalHealth = resolveSideReminderContextFooterStateFromSignals({
     prompt: undefined,
     currentTurnDialogMsgsForContext: [],
     contextHealth: { kind: 'available', level: 'critical', usage: { promptTokens: 1 } },
@@ -130,6 +142,18 @@ function main(): void {
   });
   assert.deepEqual(criticalHealth.contextHealth, { kind: 'critical' });
   assert.deepEqual(criticalHealth.business, { kind: 'none' });
+
+  const mainDialogScope = resolveReminderContextFooterStateFromSignals({
+    dialogScope: { kind: 'main_dialog' },
+    prompt: undefined,
+    currentTurnDialogMsgsForContext: [],
+    contextHealth: undefined,
+    pendingUserInterjectionReply: false,
+    hasCompletedHandoffWithoutPendingReply: false,
+    hasDeferredReplyReassertion: false,
+    hasActiveReplyObligation: false,
+  });
+  assert.deepEqual(mainDialogScope.dialogScope, { kind: 'main_dialog' });
 
   console.log('kernel-driver reminder-context-footer-state: PASS');
 }

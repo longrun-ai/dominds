@@ -480,7 +480,10 @@ async function resolveReminderContextFooterState(args: {
     latest?.sideDialogFinalResponse !== undefined &&
     !hasDeferredReplyReassertion &&
     !hasActiveReplyObligation;
+  const dialogScope: ReminderContextFooterState['dialogScope'] =
+    args.dlg instanceof SideDialog ? { kind: 'side_dialog' } : { kind: 'main_dialog' };
   return resolveReminderContextFooterStateFromSignals({
+    dialogScope,
     prompt: args.prompt,
     currentTurnDialogMsgsForContext: args.currentTurnDialogMsgsForContext,
     contextHealth: args.dlg.getLastContextHealth(),
