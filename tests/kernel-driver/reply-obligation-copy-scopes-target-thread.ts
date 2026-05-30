@@ -5,7 +5,6 @@ import {
   formatAssignmentFromAskerDialog,
 } from '../../main/runtime/inter-dialog-format';
 import {
-  buildReplyObligationReassertionText,
   buildReplyToolReminderText,
   buildSideDialogRoleHeaderCopy,
 } from '../../main/runtime/reply-prompt-copy';
@@ -95,29 +94,20 @@ function main(): void {
   assert.match(askBackReminder, /请现在调用 `replyTellaskBack\(\{ replyContent \}\)` 发送/u);
   assert.match(askBackReminder, /你刚才已经写出了可以发回去的内容，但还没调用 `replyTellaskBack`/u);
 
-  const askBackReassertion = buildReplyObligationReassertionText({
-    language: 'en',
-    directive: askBackDirective,
-    replyTargetAgentId: 'pangu',
-  });
-  assert.match(askBackReassertion, /@pangu is still waiting for your 【TellaskBack】 reply/u);
-  assert.match(askBackReassertion, /call `replyTellaskBack` to send it/u);
-  assert.match(askBackReassertion, /not asking you to reply immediately/u);
-
   const assignmentDirective = {
     expectedReplyCallName: 'replyTellaskSessionless' as const,
     targetDialogId: 'main-dialog',
     targetCallId: 'root-to-pangu-call',
     tellaskContent: 'Finish the parent side dialog after the nested work returns.',
   };
-  const assignmentReassertion = buildReplyObligationReassertionText({
+  const assignmentReminder = buildReplyToolReminderText({
     language: 'zh',
     directive: assignmentDirective,
     replyTargetAgentId: 'tester',
   });
-  assert.match(assignmentReassertion, /@tester 还在等你完成【一次性诉请】的回贴/u);
-  assert.match(assignmentReassertion, /调用 `replyTellaskSessionless` 发送/u);
-  assert.match(assignmentReassertion, /这里不是催你立刻回复/u);
+  assert.match(assignmentReminder, /@tester 还在等你完成【一次性诉请】的回贴/u);
+  assert.match(assignmentReminder, /调用 `replyTellaskSessionless\(\{ replyContent \}\)` 发送/u);
+  assert.match(assignmentReminder, /请现在用这个工具发送/u);
 
   console.log('kernel-driver reply-obligation-copy-scopes-target-thread: PASS');
 }

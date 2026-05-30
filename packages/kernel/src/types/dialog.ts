@@ -565,11 +565,6 @@ export interface NewA2HAnsweredEvent {
     taskDocPath: string;
     content: string;
     answeredAt: string;
-    userInterjection: {
-      msgId: string;
-      course: number;
-      genseq: number;
-    };
     answerRef: {
       course: number;
       genseq: number;

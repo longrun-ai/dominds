@@ -37,7 +37,6 @@ export function resolveReminderContextBusinessState(args: {
   followingMessage: ReminderContextFollowingMessage;
   pendingUserInterjectionReply: boolean;
   hasCompletedHandoffWithoutPendingReply: boolean;
-  hasDeferredReplyReassertion: boolean;
   hasActiveReplyObligation: boolean;
 }): ReminderContextBusiness {
   if (args.followingMessage.kind === 'human_answer') {
@@ -69,9 +68,6 @@ export function resolveReminderContextBusinessState(args: {
     if (args.hasCompletedHandoffWithoutPendingReply) {
       return { kind: 'user_followup_after_completed_handoff' };
     }
-    if (args.hasDeferredReplyReassertion) {
-      return { kind: 'pending_user_interjection_with_parked_reply' };
-    }
     if (args.hasActiveReplyObligation) {
       return { kind: 'pending_user_interjection_with_active_reply' };
     }
@@ -90,7 +86,6 @@ export function resolveReminderContextFooterStateFromSignals(args: {
   contextHealth: ContextHealthSnapshot | undefined;
   pendingUserInterjectionReply: boolean;
   hasCompletedHandoffWithoutPendingReply: boolean;
-  hasDeferredReplyReassertion: boolean;
   hasActiveReplyObligation: boolean;
 }): ReminderContextFooterState {
   const followingMessage = resolveReminderContextFollowingMessage({
@@ -105,7 +100,6 @@ export function resolveReminderContextFooterStateFromSignals(args: {
       followingMessage,
       pendingUserInterjectionReply: args.pendingUserInterjectionReply,
       hasCompletedHandoffWithoutPendingReply: args.hasCompletedHandoffWithoutPendingReply,
-      hasDeferredReplyReassertion: args.hasDeferredReplyReassertion,
       hasActiveReplyObligation: args.hasActiveReplyObligation,
     }),
   };

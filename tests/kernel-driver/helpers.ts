@@ -27,6 +27,7 @@ export type MockEntry = {
   role: 'user' | 'tool' | 'assistant';
   response: string;
   thinkingResponse?: string;
+  answeringResponse?: string;
   omitDefaultThinking?: boolean;
   delayMs?: number;
   chunkDelayMs?: number;

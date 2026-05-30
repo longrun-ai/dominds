@@ -159,19 +159,21 @@ This ensures crash recovery and enables the backend to resume from any persisted
 
 When a dialog still carries an inter-dialog reply obligation, but the user temporarily interjects and asks it to handle a local question first, the system must distinguish between the **UI projection** and the **true driving source state**.
 
-Plainly: the system should answer the user's interjection first. Once the user receives a visible answer, the backend records that answer as A2H (Answer to Human) in Human Attention so the user can find and acknowledge it even if the dialog immediately continues automatically.
+Plainly: the system should answer the user's interjection first. Once the user receives a visible answer, the backend records that answer as A2H (Answer to Human) in Human Attention so the user can find and acknowledge it even if the dialog immediately continues automatically. In addition to recovering A2H from visible `saying`, the LLM may also produce structured `answering` output (or call the equivalent `answerHuman` tool entry) to create A2H directly.
 
 **Normative semantics**:
 
 1. Every user interjection message is driven as a complete normal round.
 2. If that round needs tools, the system MUST finish the full tool round and any post-tool follow-up before treating the interjection as answered.
 3. A visible assistant `saying` settles the pending user-interjection reply only when no same-round function/tellask call remains after that `saying`.
-4. Settling the interjection appends an A2H item to the dialog's `a2h.yaml`. A2H is an acknowledgement queue, not a problem report and not durable drive work.
-5. If an inter-dialog reply obligation still exists after the interjection is answered, the backend automatically reasserts that obligation and continues. The user should not need to click `Continue` merely because the interjection answer completed.
-6. A2H disappears when the user acknowledges it. This is intentionally "read then burn"; the canonical answer remains in the dialog transcript at `answerRef`.
+4. The model may also produce structured `answering` output (or call `answerHuman({ answerContent })`) to express "this is an answer for the human." That output is always appended to the dialog's `a2h.yaml`, but it is not the same thing as a Side Dialog's formal reply to its requester.
+5. If an inter-dialog reply obligation still exists after the interjection is answered, it remains ordinary durable reply-obligation state. Subsequent continuation is driven by the normal business paths: queued prompts, reply reminders, diligence push, or explicit resume when the dialog is genuinely blocked.
+6. A2H disappears when the user acknowledges it. This is intentionally "read then burn"; `answerRef` only links back to the course/genseq that produced the answer. When A2H comes from visible `saying`, the canonical text remains in the transcript; when it comes from structured `answering`, the A2H item itself carries that one-way output text.
 7. The Human Attention panel shows Q4H and A2H together. Q4H waits for a human answer; A2H waits only for human acknowledgement.
 
 **Strict boundary**: a formal `askHuman` answer is not part of this "user interjection" category. As soon as a prompt carries a real `q4hAnswerCallId`, it belongs to the askHuman reply channel and semantically continues an already-materialized question/answer chain; it must never be downgraded into temporary local side-chat.
+
+**Modeling boundary**: Dominds does not structurally model "current human question context", does not maintain coordinates for "which human question this A2H answers", and does not store `userInterjection` coordinates in A2H. `a2h` / `answering` is only one-way structured modeling at the LLM output layer: the model produced text meant for the human, and the runtime put it into the human-acknowledgement queue. Questions, interjections, task obligations, and continuation duties remain represented by existing business facts such as prompts, Q4H, reply obligations, and queued prompts.
 
 **Key point**: pending user-interjection reply and inter-dialog reply obligation are independent business facts. Reminder/footer copy can use those two facts directly: if the interjection is still pending, prioritize answering the user; if it is settled and the reply obligation remains active, continue toward the required inter-dialog closure.
 
@@ -179,14 +181,15 @@ Plainly: the system should answer the user's interjection first. Once the user r
 
 - Do not flatten every `origin === 'user'` prompt into "interjection"; a non-empty `q4hAnswerCallId` means askHuman answer continuation and follows a different semantic path.
 - Do not treat A2H as Q4H. A2H does not block drive and does not route input to an agent.
+- Do not treat A2H as a "human question context" database. A2H only carries answer text, acknowledgement state, and answer provenance.
 - Do not store A2H in the Problems panel. It belongs to Human Attention and is removed by Ack.
 
 You need all of the following together to understand the behavior correctly:
 
-- reply-guidance suppression / deferred reassertion for interjection turns
+- reply-guidance suppression for interjection turns
 - pending user-interjection reply settlement after visible final `saying`
 - A2H persistence and Ack flow
-- automatic reply-obligation reassertion after the user-visible answer
+- ordinary continuation through active reply obligations, diligence push, and queued prompts after the user-visible answer
 
 This is an intentionally cross-module semantic contract. Do not locally "simplify" one piece based only on its surface meaning.
 

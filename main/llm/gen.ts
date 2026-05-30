@@ -28,6 +28,7 @@ export class LlmStreamErrorEmittedError extends Error {
 
 export type LlmBatchOutput =
   | { kind: 'message'; message: ChatMessage }
+  | { kind: 'answering'; content: string }
   | { kind: 'invalid_func_call'; call: LlmInvalidFuncCall }
   | { kind: 'web_search_call'; call: LlmWebSearchCall }
   | { kind: 'native_tool_call'; call: OpenAiResponsesNativeToolCall }
@@ -184,6 +185,7 @@ export interface LlmStreamReceiver {
   sayingStart: () => Promise<void>;
   sayingChunk: (chunk: string) => Promise<void>;
   sayingFinish: () => Promise<void>;
+  answering?: (content: string) => Promise<void>;
   funcCall: (
     callId: string,
     name: string,

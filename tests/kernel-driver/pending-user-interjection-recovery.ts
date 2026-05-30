@@ -114,11 +114,6 @@ async function main(): Promise<void> {
       'course JSONL recovery should synthesize one A2H record for the visible interjection answer',
     );
     assert.equal(
-      recoveredAnswers[0]?.userInterjection.msgId,
-      userRecord.msgId,
-      'recovered A2H should point back to the original user interjection',
-    );
-    assert.equal(
       recoveredAnswers[0]?.content,
       'Here is the answer after the tool result.',
       'recovered A2H content should match the post-tool visible assistant answer',
@@ -169,15 +164,48 @@ async function main(): Promise<void> {
       'ordinary user chat should not synthesize A2H during course JSONL recovery',
     );
 
+    const a2hSettledDlg = await createMainDialog('tester');
+    await DialogPersistence.mutateDialogLatest(
+      a2hSettledDlg.id,
+      () => ({
+        kind: 'patch',
+        patch: {
+          pendingUserInterjectionReply: {
+            msgId: 'a2h-settled-user-interjection',
+            course: toDialogCourseNumber(1),
+            genseq: toCallSiteGenseqNo(1),
+          },
+        },
+      }),
+      a2hSettledDlg.status,
+    );
+    await DialogPersistence.appendAnswerToHumanState(
+      a2hSettledDlg.id,
+      {
+        id: 'a2h-existing-answer-after-pending',
+        content: 'Structured answer already written before latest cleanup.',
+        answeredAt: '2026-05-21T00:01:30.000Z',
+        answerRef: {
+          course: toDialogCourseNumber(1),
+          genseq: toCallSiteGenseqNo(1),
+        },
+      },
+      a2hSettledDlg.status,
+    );
+    const a2hSettledLatest = await DialogPersistence.loadDialogLatest(
+      a2hSettledDlg.id,
+      a2hSettledDlg.status,
+    );
+    assert.equal(
+      a2hSettledLatest?.pendingUserInterjectionReply,
+      undefined,
+      'recovery should clear pending interjection when A2H was already recorded after the pending user turn',
+    );
+
     const archivedAnswer: AnswerToHumanItem = {
       id: 'a2h-archived-ack-regression',
       content: 'Archived answer awaiting ack.',
       answeredAt: '2026-05-21T00:02:00.000Z',
-      userInterjection: {
-        msgId: userRecord.msgId,
-        course: toDialogCourseNumber(1),
-        genseq: toCallSiteGenseqNo(1),
-      },
       answerRef: {
         course: toDialogCourseNumber(1),
         genseq: toCallSiteGenseqNo(2),

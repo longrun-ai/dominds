@@ -314,20 +314,6 @@ async function main(): Promise<void> {
       undefined,
       root.status,
     );
-    await DialogPersistence.setDeferredReplyReassertion(
-      deferredSideDialog.id,
-      {
-        reason: 'user_interjection_with_parked_original_task',
-        directive: deferredDirective,
-        userInterjection: {
-          msgId: 'deferred-reply-guidance-user-interjection',
-          course: 1,
-          genseq: 1,
-        },
-      },
-      deferredSideDialog.status,
-    );
-
     const suppliedDeferredReply = await supplySideDialogResponseToAssignedAskerIfPendingV2({
       sideDialog: deferredSideDialog,
       responseText: 'Deferred reply delivered exactly once.',
@@ -342,14 +328,6 @@ async function main(): Promise<void> {
       suppliedDeferredReply,
       true,
       'expected sideDialog reply resolution path to accept the deferred reply delivery',
-    );
-    assert.equal(
-      await DialogPersistence.getDeferredReplyReassertion(
-        deferredSideDialog.id,
-        deferredSideDialog.status,
-      ),
-      undefined,
-      'replyTellask delivery must clear deferred reply reassertion for the sideDialog',
     );
     assert.equal(
       await DialogPersistence.loadActiveTellaskReplyObligation(

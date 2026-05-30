@@ -63,10 +63,10 @@ import { log } from '../../log';
 import {
   ACTIVE_REPLY_TOOL_PREFIX_EN,
   ACTIVE_REPLY_TOOL_PREFIX_ZH,
+  ANSWERING_REPLY_REMINDER_PREFIX_EN,
+  ANSWERING_REPLY_REMINDER_PREFIX_ZH,
   NO_ACTIVE_REPLY_PREFIX_EN,
   NO_ACTIVE_REPLY_PREFIX_ZH,
-  REPLY_REASSERTION_PREFIX_EN,
-  REPLY_REASSERTION_PREFIX_ZH,
   REPLY_SUPPRESSION_PREFIX_EN,
   REPLY_SUPPRESSION_PREFIX_ZH,
   isReplyToolReminderPromptContent,
@@ -98,6 +98,9 @@ interface MockResponse {
 
   /** Optional thinking content override; set response to "" to produce thinking only. */
   thinkingResponse?: string;
+
+  /** Optional structured answer-to-human output. */
+  answeringResponse?: string;
 
   /** Suppress the mock provider's default thinking prelude for this response. */
   omitDefaultThinking?: boolean;
@@ -178,10 +181,10 @@ const RUNTIME_PROMPT_WRAPPER_PREFIXES = [
   '【系统提示】 上下文状态：🔴 告急；收到用户插话',
   ACTIVE_REPLY_TOOL_PREFIX_EN,
   ACTIVE_REPLY_TOOL_PREFIX_ZH,
+  ANSWERING_REPLY_REMINDER_PREFIX_EN,
+  ANSWERING_REPLY_REMINDER_PREFIX_ZH,
   NO_ACTIVE_REPLY_PREFIX_EN,
   NO_ACTIVE_REPLY_PREFIX_ZH,
-  REPLY_REASSERTION_PREFIX_EN,
-  REPLY_REASSERTION_PREFIX_ZH,
   REPLY_SUPPRESSION_PREFIX_EN,
   REPLY_SUPPRESSION_PREFIX_ZH,
 ] as const;
@@ -659,6 +662,10 @@ responses:
       await receiver.sayingFinish();
     }
 
+    if (matched?.answeringResponse !== undefined && matched.answeringResponse.trim() !== '') {
+      await receiver.answering?.(matched.answeringResponse);
+    }
+
     const funcCalls = matched?.funcCalls ?? [];
     for (let i = 0; i < funcCalls.length; i++) {
       const call = funcCalls[i];
@@ -807,6 +814,10 @@ responses:
         kind: 'invalid_func_call',
         call,
       }));
+      const answeringOutputs: LlmBatchOutput[] =
+        matched?.answeringResponse !== undefined && matched.answeringResponse.trim() !== ''
+          ? [{ kind: 'answering', content: matched.answeringResponse }]
+          : [];
       const messages =
         thinking !== undefined
           ? saying
@@ -818,10 +829,11 @@ responses:
 
       return {
         messages,
-        ...(invalidFuncCallOutputs.length > 0
+        ...(invalidFuncCallOutputs.length > 0 || answeringOutputs.length > 0
           ? {
               outputs: [
                 ...messages.map((message): LlmBatchOutput => ({ kind: 'message', message })),
+                ...answeringOutputs,
                 ...invalidFuncCallOutputs,
               ],
             }

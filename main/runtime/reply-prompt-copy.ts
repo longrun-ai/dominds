@@ -8,8 +8,8 @@ export const NO_ACTIVE_REPLY_PREFIX_EN = '[Dominds no reply needed]';
 export const NO_ACTIVE_REPLY_PREFIX_ZH = '[Dominds 无需回贴]';
 export const REPLY_TOOL_REMINDER_PREFIX_EN = '[Dominds send the reply now]';
 export const REPLY_TOOL_REMINDER_PREFIX_ZH = '[Dominds 现在发送回贴]';
-export const REPLY_REASSERTION_PREFIX_EN = '[Dominds resume earlier work]';
-export const REPLY_REASSERTION_PREFIX_ZH = '[Dominds 接回原任务]';
+export const ANSWERING_REPLY_REMINDER_PREFIX_EN = '[Dominds requester still needs reply]';
+export const ANSWERING_REPLY_REMINDER_PREFIX_ZH = '[Dominds 诉请者仍需回贴]';
 export const REPLY_SUPPRESSION_PREFIX_EN = '[Dominds handle this interjection first]';
 export const REPLY_SUPPRESSION_PREFIX_ZH = '[Dominds 先接住这轮]';
 
@@ -24,19 +24,6 @@ function formatReplyTargetAgentId(agentId: string | undefined, language: Languag
     return `@${agentId}`;
   }
   return language === 'zh' ? '对方' : 'the other dialog';
-}
-
-function buildReplyObligationReassertionLine(args: ReplyObligationCopyArgs): string {
-  const toolName = args.directive.expectedReplyCallName;
-  const replyTarget = formatReplyTargetAgentId(args.replyTargetAgentId, args.language);
-  const kindLabel = getTellaskKindLabel({
-    language: args.language,
-    name: args.directive.expectedReplyCallName,
-    bracketed: true,
-  });
-  return args.language === 'zh'
-    ? `${replyTarget} 还在等你完成${kindLabel}的回贴。等你准备好最终内容后，调用 \`${toolName}\` 发送。这里不是催你立刻回复。`
-    : `${replyTarget} is still waiting for your ${kindLabel} reply. When the final content is ready, call \`${toolName}\` to send it. This is not asking you to reply immediately.`;
 }
 
 function buildReplyToolReminderLine(args: ReplyObligationCopyArgs): string {
@@ -142,50 +129,29 @@ export function buildSideDialogRoleHeaderCopy(args: {
 }
 
 // Business scenario: a real user interjected while a longer-running requester reply was still
-// open. Dominds has parked the older reply task and will reassert it after the user sees a local
-// answer. The model-facing copy must not ask the model to decide whether the old request or the
-// new user message wins; Dominds already decided. It also must not ban tools generally: tools are
-// fine when the current user message itself needs them, but old request/reminder context must not
-// pull the model back into the parked work before the visible user answer.
+// open. The current user message wins the immediate turn; the older reply task remains ordinary
+// durable state for later drive logic. The model-facing copy must not ask the model to decide
+// whether the old request or the new user message wins; Dominds already decided. It also must not
+// ban tools generally: tools are fine when the current user message itself needs them, but old
+// request/reminder context must not pull the model back into earlier handoff work before the
+// visible user answer.
 export function buildReplyObligationSuppressionGuideText(language: LanguageCode): string {
   if (language === 'zh') {
     return [
       REPLY_SUPPRESSION_PREFIX_ZH,
       '本轮最新用户消息是真实用户插话；先按这条最新用户消息回答，让用户看到你已经接住了当前话题。',
-      '原来的长线诉请、回贴任务、技能/SOP 触发条件都已暂存；不要在回答当前用户消息前切回旧任务、旧工具流程或旧收口。',
+      '原来的长线诉请、回贴任务、技能/SOP 触发条件都不能抢在当前用户消息前面；不要在回答当前用户消息前切回旧任务、旧工具流程或旧收口。',
       '只有当前用户消息本身需要，才使用工具；不要因为旧长线任务、旧技能提示或旧提醒项去调用工具。',
-      '等当前用户插话已经得到可见回复后，Dominds 会再提醒你接回原来的长线。',
+      '当前用户插话得到可见回复后，Dominds 会按已有回复义务、续推和普通驱动规则继续处理后续状态。',
     ].join('\n');
   }
   return [
     REPLY_SUPPRESSION_PREFIX_EN,
     'The latest user message in this turn is a real user interjection; answer that latest user message first so the user can see you handled the current topic.',
-    'The earlier long-line request, reply task, and skill/SOP triggers are parked; do not switch back to the old task, old tool flow, or old closure before answering the current user message.',
+    'The earlier long-line request, reply task, and skill/SOP triggers must not jump ahead of the current user message; do not switch back to the old task, old tool flow, or old closure before answering the current user message.',
     'Use tools only if the current user message itself requires them; do not call tools because of the earlier long-line task, old skill hints, or old reminders.',
-    'After the current user interjection has a visible reply, Dominds will remind you to resume the earlier long-line thread.',
+    'After the current user interjection has a visible reply, Dominds will continue according to the existing reply obligation, diligence push, and normal drive rules.',
   ].join('\n');
-}
-
-// Business scenario: the visible answer to the user interjection has been delivered, so the
-// previously parked long-line reply task becomes current again. This is intentionally softer than
-// the "send now" reminder: the original task resumes, but the final reply tool is still used only
-// when final content is ready.
-export function buildReplyObligationReassertionText(args: ReplyObligationCopyArgs): string {
-  return args.language === 'zh'
-    ? [
-        REPLY_REASSERTION_PREFIX_ZH,
-        '',
-        '刚才那轮插话已经处理完了，现在继续原来的长线任务。',
-        '',
-        buildReplyObligationReassertionLine(args),
-      ].join('\n')
-    : [
-        REPLY_REASSERTION_PREFIX_EN,
-        '',
-        'The interjection has been handled. Now continue the original longer-running task.',
-        '',
-        buildReplyObligationReassertionLine(args),
-      ].join('\n');
 }
 
 // Business scenario: the model already wrote content that can be sent back to the requester but
@@ -219,17 +185,53 @@ export function buildReplyToolReminderText(args: {
       ].join('\n');
 }
 
+// Business scenario: the model produced structured `answering` (or called `answerHuman`) while a
+// Side Dialog still owes a formal reply to its requester. A2H is a human-attention record; it is
+// intentionally not the requester delivery channel. Keep this as a reply-tool reminder so a later
+// plain-text answer can use the same direct-fallback recovery semantics as ordinary reminders.
+export function buildAnsweringReplyReminderText(args: {
+  language: LanguageCode;
+  directive: TellaskReplyDirective;
+  replyTargetAgentId?: string;
+}): string {
+  const prefix =
+    args.language === 'zh'
+      ? ANSWERING_REPLY_REMINDER_PREFIX_ZH
+      : ANSWERING_REPLY_REMINDER_PREFIX_EN;
+  const replyTarget = formatReplyTargetAgentId(args.replyTargetAgentId, args.language);
+  const kindLabel = getTellaskKindLabel({
+    language: args.language,
+    name: args.directive.expectedReplyCallName,
+    bracketed: true,
+  });
+  return args.language === 'zh'
+    ? [
+        prefix,
+        '',
+        '`answering` / `answerHuman` 只会记录给人类看的 A2H 答复，不会把正式回贴送达诉请者。',
+        '',
+        `${replyTarget} 还在等你完成${kindLabel}的回贴。若最终内容已经准备好，请现在调用 \`${args.directive.expectedReplyCallName}({ replyContent })\` 发送；不要用 \`answering\` 或 \`answerHuman\` 代替诉请者回贴。`,
+      ].join('\n')
+    : [
+        prefix,
+        '',
+        '`answering` / `answerHuman` only records an A2H answer for the human. It does not deliver the formal reply to the requester.',
+        '',
+        `${replyTarget} is still waiting for your ${kindLabel} reply. If the final content is ready, call \`${args.directive.expectedReplyCallName}({ replyContent })\` now; do not use \`answering\` or \`answerHuman\` as the requester reply path.`,
+      ].join('\n');
+}
+
 export function isReplyToolReminderPromptContent(content: string): boolean {
   return (
     content.startsWith(REPLY_TOOL_REMINDER_PREFIX_ZH) ||
-    content.startsWith(REPLY_TOOL_REMINDER_PREFIX_EN)
+    content.startsWith(REPLY_TOOL_REMINDER_PREFIX_EN) ||
+    content.startsWith(ANSWERING_REPLY_REMINDER_PREFIX_ZH) ||
+    content.startsWith(ANSWERING_REPLY_REMINDER_PREFIX_EN)
   );
 }
 
 export function isStandaloneRuntimeGuidePromptContent(content: string): boolean {
   return (
-    content.startsWith(REPLY_REASSERTION_PREFIX_ZH) ||
-    content.startsWith(REPLY_REASSERTION_PREFIX_EN) ||
     content.startsWith(REPLY_SUPPRESSION_PREFIX_ZH) ||
     content.startsWith(REPLY_SUPPRESSION_PREFIX_EN)
   );

@@ -238,7 +238,6 @@ export type ReminderContextBusiness =
   | Readonly<{ kind: 'active_reply_obligation' }>
   | Readonly<{ kind: 'pending_user_interjection' }>
   | Readonly<{ kind: 'pending_user_interjection_with_active_reply' }>
-  | Readonly<{ kind: 'pending_user_interjection_with_parked_reply' }>
   | Readonly<{ kind: 'user_followup_after_completed_handoff' }>;
 
 // Keep these as separate axes instead of a handful of booleans because the footer is
@@ -294,10 +293,6 @@ function formatZhReminderBusinessTail(business: ReminderContextBusiness): string
       // would block a valid user request and recreate the same kind of over-specific guidance
       // bug in the opposite direction.
       return '现在是用户在追问你。前面那件转交任务已经回报完成了，不需要再推进；请按用户这条消息正常交流和处理。';
-    case 'pending_user_interjection_with_parked_reply':
-      // A real user message interrupted an unfinished handoff. The old handoff is parked,
-      // so the model must not rush back to reply closure before the user sees an answer.
-      return '当前仍有真实用户插话尚未得到可见回复，且原有回贴任务已暂存；先完成对用户插话的回应，不要抢先切回原来的回贴收口。';
     case 'pending_user_interjection':
       // No special handoff state is competing with the user; the shortest useful instruction
       // is simply to answer the still-unanswered user interjection.
@@ -340,10 +335,6 @@ function formatEnReminderBusinessTail(business: ReminderContextBusiness): string
       // would block a valid user request and recreate the same kind of over-specific guidance
       // bug in the opposite direction.
       return 'The user is asking you a follow-up now. The earlier handed-off task has already been reported back as complete, so there is nothing more to advance there. Talk with the user normally and handle this current message.';
-    case 'pending_user_interjection_with_parked_reply':
-      // A real user message interrupted an unfinished handoff. The old handoff is parked,
-      // so the model must not rush back to reply closure before the user sees an answer.
-      return "There is still a real user interjection without a visible reply, and the earlier handoff is parked; finish answering the user's interjection first, and do not switch back to closing the earlier reply yet.";
     case 'pending_user_interjection':
       // No special handoff state is competing with the user; the shortest useful instruction
       // is simply to answer the still-unanswered user interjection.
@@ -1192,7 +1183,7 @@ export function formatDomindsNoteFbrToollessViolation(
       `Dominds 提示：当前是扪心自问（FBR）支线对话（无工具模式）。${detail}`,
       '',
       '- 本对话无任何工具：禁止函数工具调用。',
-      '- 本对话禁止任何 tellask-special 函数（包括 `tellaskBack` / `tellask` / `tellaskSessionless` / `askHuman`）。',
+      '- 本对话禁止任何 tellask-special 函数（包括 `tellaskBack` / `tellask` / `tellaskSessionless` / `askHuman` / `answerHuman`）。',
       '- 请只基于诉请正文（以及本支线对话自身的会话历史，如有）进行推理与总结。',
     ].join('\n');
   }
@@ -1211,7 +1202,7 @@ export function formatDomindsNoteFbrToollessViolation(
     `Dominds note: this is a tool-less FBR Side Dialog (triggered by \`freshBootsReasoning\`). ${detail}`,
     '',
     '- No tools are available: do not emit function tool calls.',
-    '- No tellask-special functions are allowed (`tellaskBack` / `tellask` / `tellaskSessionless` / `askHuman`).',
+    '- No tellask-special functions are allowed (`tellaskBack` / `tellask` / `tellaskSessionless` / `askHuman` / `answerHuman`).',
     '- Provide pure reasoning and a summary grounded in the tellask body (and this Side Dialog’s own tellaskSession history, if any).',
   ].join('\n');
 }

@@ -1,4 +1,4 @@
-import type { AnswerToHumanItem, TellaskReplyDirective } from '@longrun-ai/kernel/types/storage';
+import type { TellaskReplyDirective } from '@longrun-ai/kernel/types/storage';
 import { Dialog, DialogID, MainDialog, SideDialog } from '../../dialog';
 import { ensureDialogLoaded } from '../../dialog-instance-registry';
 import { DialogPersistence } from '../../persistence';
@@ -6,14 +6,13 @@ import { isUserInterjectionPauseStopReason } from '../../runtime/interjection-pa
 import {
   ACTIVE_REPLY_TOOL_PREFIX_EN,
   ACTIVE_REPLY_TOOL_PREFIX_ZH,
+  ANSWERING_REPLY_REMINDER_PREFIX_EN,
+  ANSWERING_REPLY_REMINDER_PREFIX_ZH,
   NO_ACTIVE_REPLY_PREFIX_EN,
   NO_ACTIVE_REPLY_PREFIX_ZH,
-  REPLY_REASSERTION_PREFIX_EN,
-  REPLY_REASSERTION_PREFIX_ZH,
   REPLY_TOOL_REMINDER_PREFIX_EN,
   REPLY_TOOL_REMINDER_PREFIX_ZH,
   buildActiveReplyToolNote,
-  buildReplyObligationReassertionText,
   buildReplyObligationSuppressionGuideText,
 } from '../../runtime/reply-prompt-copy';
 import { getWorkLanguage } from '../../runtime/work-language';
@@ -56,8 +55,8 @@ function buildPromptContentWithExactReplyToolName(args: {
   const reminderPrefixes = [
     REPLY_TOOL_REMINDER_PREFIX_EN,
     REPLY_TOOL_REMINDER_PREFIX_ZH,
-    REPLY_REASSERTION_PREFIX_EN,
-    REPLY_REASSERTION_PREFIX_ZH,
+    ANSWERING_REPLY_REMINDER_PREFIX_EN,
+    ANSWERING_REPLY_REMINDER_PREFIX_ZH,
   ];
   const directive = args.activeReplyDirective;
   if (!directive) {
@@ -265,18 +264,16 @@ async function shouldSuppressInterDialogReplyGuidanceForUserInterjection(args: {
   prompt: KernelDriverPrompt | undefined;
 }): Promise<boolean> {
   // WARNING:
-  // This suppression decision is not a cosmetic prompt tweak. It is one leg of the full
-  // interjection-pause state machine:
-  // 1. user interjection suppresses the live reply obligation here;
-  // 2. `flow.ts` answers locally and stores a deferred reply reassertion;
-  // 3. after a visible local answer, the driver reasserts the reply obligation automatically.
+  // This suppression decision is not a cosmetic prompt tweak. A real user interjection should be
+  // answered locally before old reply obligations or pending callee work pull the model back into
+  // earlier handoff closure.
   //
   // Do not "simplify" this into a pure display-state check or a pure active-callee check.
   // Proceeding dialogs with a still-active reply obligation are part of the same rule: a fresh
   // user interjection should still suppress the live reply obligation and answer locally first.
-  // The business anchor is the deferred reply reassertion. A stale paused execution marker still
-  // means a repeated interjection should behave as local side conversation, but it is not durable
-  // drive work and must not force a manual Continue after the answer is visible.
+  // A stale paused execution marker still means a repeated interjection should behave as local
+  // side conversation, but it is not durable drive work and must not force a manual Continue after
+  // the answer is visible.
   const prompt = args.prompt;
   if (!prompt) {
     return false;
@@ -288,9 +285,6 @@ async function shouldSuppressInterDialogReplyGuidanceForUserInterjection(args: {
     return false;
   }
   const latest = await DialogPersistence.loadDialogLatest(args.dlg.id, args.dlg.status);
-  if (latest?.deferredReplyReassertion?.reason === 'user_interjection_with_parked_original_task') {
-    return true;
-  }
   if (
     latest?.executionMarker?.kind === 'interrupted' &&
     isUserInterjectionPauseStopReason(latest.executionMarker.reason)
@@ -315,7 +309,6 @@ export async function resolvePromptReplyGuidance(args: {
   language?: 'zh' | 'en';
 }): Promise<{
   activeReplyDirective: KernelDriverPrompt['tellaskReplyDirective'];
-  deferredReplyReassertionDirective: KernelDriverPrompt['tellaskReplyDirective'];
   isQ4HAnswerPrompt: boolean;
   promptContent: string | undefined;
   persistedTellaskReplyDirective: KernelDriverPrompt['tellaskReplyDirective'];
@@ -373,9 +366,6 @@ export async function resolvePromptReplyGuidance(args: {
           });
   return {
     activeReplyDirective,
-    deferredReplyReassertionDirective: suppressInterDialogReplyGuidance
-      ? availableReplyDirective
-      : undefined,
     isQ4HAnswerPrompt,
     promptContent,
     persistedTellaskReplyDirective: resolvePromptPersistedReplyDirective({
@@ -394,20 +384,4 @@ export async function resolvePromptReplyGuidance(args: {
 
 export function buildReplyObligationSuppressionGuide(args: { language: 'zh' | 'en' }): string {
   return buildReplyObligationSuppressionGuideText(args.language);
-}
-
-export async function buildReplyObligationReassertionPrompt(args: {
-  dlg: Dialog;
-  directive: NonNullable<KernelDriverPrompt['tellaskReplyDirective']>;
-  language: 'zh' | 'en';
-  answeredUserInterjection: AnswerToHumanItem;
-}): Promise<string> {
-  return buildReplyObligationReassertionText({
-    language: args.language,
-    directive: args.directive,
-    replyTargetAgentId: await resolveReplyTargetAgentId({
-      dlg: args.dlg,
-      directive: args.directive,
-    }),
-  });
 }

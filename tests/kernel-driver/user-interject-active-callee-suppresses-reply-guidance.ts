@@ -14,7 +14,6 @@ import {
   ACTIVE_REPLY_TOOL_PREFIX_EN,
   NO_ACTIVE_REPLY_PREFIX_EN,
   REPLY_TOOL_REMINDER_PREFIX_EN,
-  buildReplyObligationReassertionText,
   buildReplyObligationSuppressionGuideText,
 } from '../../main/runtime/reply-prompt-copy';
 import { setWorkLanguage } from '../../main/runtime/work-language';
@@ -368,15 +367,15 @@ async function runRepeatedRootInterjectionScenario(): Promise<void> {
   );
   assert.equal(
     runtimeGuideRecords.length,
-    0,
-    'root interjections while blocked on side dialogs should not append reply suppression runtime-guide records',
+    2,
+    'root interjections while blocked on side dialogs should append one reply suppression runtime-guide record per interjection',
   );
 
-  const deferred = await DialogPersistence.getDeferredReplyReassertion(root.id, root.status);
+  const latest = await DialogPersistence.loadDialogLatest(root.id, root.status);
   assert.equal(
-    deferred,
+    latest?.pendingUserInterjectionReply,
     undefined,
-    'root interjections while blocked on side dialogs should not arm deferred reply reassertion',
+    'visible user-interjection answers should clear the pending reply marker',
   );
 }
 
@@ -396,35 +395,11 @@ async function runProceedingReplyObligationScenario(): Promise<void> {
     ...replyDirective,
     targetDialogId: root.id.selfId,
   };
-  const reassertionPrompt = buildReplyObligationReassertionText({
-    language: 'en',
-    directive: boundReplyDirective,
-    replyTargetAgentId: 'tester',
-  });
   await writeMockDb(process.cwd(), [
     {
       message: interjectPrompt,
       role: 'user',
       response: interjectResponse,
-    },
-    {
-      message: reassertionPrompt,
-      role: 'user',
-      response: '',
-      omitDefaultThinking: true,
-      funcCalls: [
-        {
-          id: 'reply-back-target-proceeding-delivery',
-          name: 'replyTellaskBack',
-          arguments: { replyContent: interjectResponse },
-        },
-      ],
-    },
-    {
-      message: 'Reply delivered via `replyTellaskBack`.',
-      role: 'tool',
-      response: '',
-      omitDefaultThinking: true,
     },
   ]);
 
@@ -463,7 +438,7 @@ async function runProceedingReplyObligationScenario(): Promise<void> {
 
   assert.ok(
     assistantSayingContents(root.msgs).includes(interjectResponse),
-    'expected visible answer to the user interjection before runtime reasserts the long-line reply obligation',
+    'expected visible answer to the user interjection before ordinary long-line reply handling resumes',
   );
 
   const latest = await DialogPersistence.loadDialogLatest(root.id, root.status);
@@ -473,45 +448,21 @@ async function runProceedingReplyObligationScenario(): Promise<void> {
     'visible user-interjection answer should clear the pending reply marker',
   );
   const answersToHuman = await DialogPersistence.loadAnswersToHumanState(root.id, root.status);
-  const proceedingAnswer = answersToHuman.find(
-    (answer) =>
-      answer.userInterjection.msgId === 'root-user-interject-while-proceeding-reply-obligation' &&
-      answer.content === interjectResponse,
-  );
+  const proceedingAnswer = answersToHuman.find((answer) => answer.content === interjectResponse);
   assert.equal(
     proceedingAnswer !== undefined,
     true,
-    'visible user-interjection answer should persist an A2H credential',
+    'visible user-interjection answer should persist an A2H record',
   );
-  if (scheduled.length === 0) {
-    await executeDriveRound({
-      runtime: createKernelDriverRuntimeState(),
-      driveArgs: [root, undefined, true, makeDriveOptions({ source: 'backend_loop' })],
-      scheduleDrive: (scheduledDialog, options) => {
-        assert.equal(scheduledDialog, root);
-        scheduled.push(options);
-      },
-      driveDialog: async () => {},
-    });
-  }
   assert.equal(
     scheduled.length,
-    1,
-    'visible A2H should enable exactly one long-line reassertion follow-up',
+    0,
+    'visible A2H should not synthesize a special follow-up; normal drive rules own continuation',
   );
-  const followUp = scheduled[0];
-  assert.ok(followUp, 'expected scheduled reassertion follow-up');
-  assert.notEqual(
-    followUp.driveOptions?.businessContinuation?.kind,
-    undefined,
-    'A2H-gated follow-up should carry an explicit business continuation',
-  );
-
-  const deferred = await DialogPersistence.getDeferredReplyReassertion(root.id, root.status);
-  assert.equal(
-    deferred,
-    undefined,
-    'A2H-credentialed reassertion should consume the parked long-line reply obligation',
+  assert.deepEqual(
+    await DialogPersistence.loadActiveTellaskReplyObligation(root.id, root.status),
+    boundReplyDirective,
+    'visible A2H should leave the active reply obligation for the ordinary state machine',
   );
   const deliveredEvents = await DialogPersistence.loadCourseEvents(
     root.id,
@@ -523,25 +474,241 @@ async function runProceedingReplyObligationScenario(): Promise<void> {
     (event): event is Extract<(typeof deliveredEvents)[number], { type: 'human_text_record' }> =>
       event.type === 'human_text_record',
   );
-  const proceedingUserRecord = humanTextRecords.find(
-    (event) => event.msgId === 'root-user-interject-while-proceeding-reply-obligation',
-  );
-  assert.ok(proceedingUserRecord, 'expected persisted proceeding user interjection record');
-  assert.deepEqual(
-    proceedingAnswer?.userInterjection,
-    {
-      msgId: proceedingUserRecord.msgId,
-      course: root.currentCourse,
-      genseq: proceedingUserRecord.genseq,
-    },
-    'A2H credential should bind to the exact answered user interjection coordinate',
-  );
   assertNoInjectedReplyGuidance(
     humanTextRecords.filter((event) => event.origin === 'user').map((event) => event.content),
   );
 }
 
-async function runToolOnlyInterjectionDoesNotReassertScenario(): Promise<void> {
+async function runProceedingReplyObligationStructuredAnsweringScenario(): Promise<void> {
+  const interjectPrompt =
+    'Answer this local question through structured answering before replying to the tellasker.';
+  const answeringContent = 'Handled the local question through structured answering.';
+  const replyDirective = {
+    expectedReplyCallName: 'replyTellaskBack' as const,
+    targetCallId: 'reply-back-target-structured-answering',
+    targetDialogId: '',
+    tellaskContent: 'Please deliver the tellasker reply once ready.',
+  };
+
+  const root = await createMainDialog('tester');
+  root.disableDiligencePush = true;
+  const boundReplyDirective = {
+    ...replyDirective,
+    targetDialogId: root.id.selfId,
+  };
+  await writeMockDb(process.cwd(), [
+    {
+      message: interjectPrompt,
+      role: 'user',
+      response: '',
+      omitDefaultThinking: true,
+      answeringResponse: answeringContent,
+    },
+  ]);
+
+  await root.persistUserMessage(
+    'There is still a tellasker reply obligation to deliver.',
+    'root-runtime-reply-directive-structured-answering',
+    'markdown',
+    'runtime',
+    'en',
+    undefined,
+    boundReplyDirective,
+  );
+  await DialogPersistence.setActiveTellaskReplyObligation(
+    root.id,
+    boundReplyDirective,
+    root.status,
+  );
+
+  const scheduled: KernelDriverDriveCallOptions[] = [];
+  await executeDriveRound({
+    runtime: createKernelDriverRuntimeState(),
+    driveArgs: [
+      root,
+      makeUserPrompt(interjectPrompt, 'root-user-interject-structured-answering', {
+        userLanguageCode: 'en',
+      }),
+      true,
+      makeDriveOptions({ suppressDiligencePush: true }),
+    ],
+    scheduleDrive: (scheduledDialog, options) => {
+      assert.equal(scheduledDialog, root);
+      scheduled.push(options);
+    },
+    driveDialog: async () => {},
+  });
+
+  const answersToHuman = await DialogPersistence.loadAnswersToHumanState(root.id, root.status);
+  assert.ok(
+    answersToHuman.some((answer) => answer.content === answeringContent),
+    'structured answering should persist an A2H record for the user interjection',
+  );
+  assert.equal(
+    scheduled.length,
+    0,
+    'structured A2H should not synthesize a special follow-up; normal drive rules own continuation',
+  );
+}
+
+async function runStructuredAnsweringWithVisibleSayingDoesNotDuplicateA2HScenario(): Promise<void> {
+  const interjectPrompt =
+    'Answer visibly and also provide structured answering before replying to the tellasker.';
+  const visibleAnswer = 'Visible transcript answer for the local question.';
+  const answeringContent = 'Structured A2H answer for the local question.';
+  const replyDirective = {
+    expectedReplyCallName: 'replyTellaskBack' as const,
+    targetCallId: 'reply-back-target-answering-and-saying',
+    targetDialogId: '',
+    tellaskContent: 'Please deliver the tellasker reply once ready.',
+  };
+
+  const root = await createMainDialog('tester');
+  root.disableDiligencePush = true;
+  const boundReplyDirective = {
+    ...replyDirective,
+    targetDialogId: root.id.selfId,
+  };
+  await writeMockDb(process.cwd(), [
+    {
+      message: interjectPrompt,
+      role: 'user',
+      response: visibleAnswer,
+      omitDefaultThinking: true,
+      answeringResponse: answeringContent,
+    },
+  ]);
+
+  await root.persistUserMessage(
+    'There is still a tellasker reply obligation to deliver.',
+    'root-runtime-reply-directive-answering-and-saying',
+    'markdown',
+    'runtime',
+    'en',
+    undefined,
+    boundReplyDirective,
+  );
+  await DialogPersistence.setActiveTellaskReplyObligation(
+    root.id,
+    boundReplyDirective,
+    root.status,
+  );
+
+  const scheduled: KernelDriverDriveCallOptions[] = [];
+  await executeDriveRound({
+    runtime: createKernelDriverRuntimeState(),
+    driveArgs: [
+      root,
+      makeUserPrompt(interjectPrompt, 'root-user-interject-answering-and-saying', {
+        userLanguageCode: 'en',
+      }),
+      true,
+      makeDriveOptions({ suppressDiligencePush: true }),
+    ],
+    scheduleDrive: (scheduledDialog, options) => {
+      assert.equal(scheduledDialog, root);
+      scheduled.push(options);
+    },
+    driveDialog: async () => {},
+  });
+
+  assert.ok(
+    assistantSayingContents(root.msgs).includes(visibleAnswer),
+    'visible saying should still remain in the transcript',
+  );
+  const answersToHuman = await DialogPersistence.loadAnswersToHumanState(root.id, root.status);
+  assert.deepEqual(
+    answersToHuman.map((answer) => answer.content),
+    [answeringContent],
+    'same-round structured answering should suppress duplicate A2H recovery from visible saying',
+  );
+  assert.equal(
+    scheduled.length,
+    0,
+    'structured A2H should not synthesize a special long-line follow-up',
+  );
+}
+
+async function runInvalidAnswerHumanStillAllowsVisibleInterjectionAnswerScenario(): Promise<void> {
+  const interjectPrompt =
+    'Answer this local question visibly, then accidentally call answerHuman incorrectly.';
+  const visibleAnswer = 'Visible answer should still settle the local user interjection.';
+  const replyDirective = {
+    expectedReplyCallName: 'replyTellaskBack' as const,
+    targetCallId: 'reply-back-target-invalid-answer-human',
+    targetDialogId: '',
+    tellaskContent: 'Please deliver the tellasker reply once ready.',
+  };
+
+  const root = await createMainDialog('tester');
+  root.disableDiligencePush = true;
+  const boundReplyDirective = {
+    ...replyDirective,
+    targetDialogId: root.id.selfId,
+  };
+  await writeMockDb(process.cwd(), [
+    {
+      message: interjectPrompt,
+      role: 'user',
+      response: visibleAnswer,
+      omitDefaultThinking: true,
+      funcCalls: [
+        {
+          id: 'invalid-answer-human-after-visible-answer',
+          name: 'answerHuman',
+          arguments: {},
+        },
+      ],
+    },
+  ]);
+
+  await root.persistUserMessage(
+    'There is still a tellasker reply obligation to deliver.',
+    'root-runtime-reply-directive-invalid-answer-human',
+    'markdown',
+    'runtime',
+    'en',
+    undefined,
+    boundReplyDirective,
+  );
+  await DialogPersistence.setActiveTellaskReplyObligation(
+    root.id,
+    boundReplyDirective,
+    root.status,
+  );
+
+  const scheduled: KernelDriverDriveCallOptions[] = [];
+  await executeDriveRound({
+    runtime: createKernelDriverRuntimeState(),
+    driveArgs: [
+      root,
+      makeUserPrompt(interjectPrompt, 'root-user-interject-invalid-answer-human', {
+        userLanguageCode: 'en',
+      }),
+      true,
+      makeDriveOptions({ suppressDiligencePush: true }),
+    ],
+    scheduleDrive: (scheduledDialog, options) => {
+      assert.equal(scheduledDialog, root);
+      scheduled.push(options);
+    },
+    driveDialog: async () => {},
+  });
+
+  const answersToHuman = await DialogPersistence.loadAnswersToHumanState(root.id, root.status);
+  assert.equal(
+    answersToHuman.filter((answer) => answer.content === visibleAnswer).length,
+    1,
+    'invalid answerHuman should not prevent the same-round visible answer from becoming A2H',
+  );
+  assert.equal(
+    scheduled.length,
+    0,
+    'visible A2H should not synthesize a special long-line follow-up after invalid answerHuman',
+  );
+}
+
+async function runToolOnlyInterjectionDoesNotAutoContinueLongLineScenario(): Promise<void> {
   const interjectPrompt = 'Discuss the blocker before resuming the tellasker reply.';
 
   await writeMockDb(process.cwd(), [
@@ -616,12 +783,12 @@ async function runToolOnlyInterjectionDoesNotReassertScenario(): Promise<void> {
   assert.equal(
     latest?.pendingRuntimePrompt,
     undefined,
-    'a tool-only interjection must not queue automatic long-line reassertion before a visible user answer',
+    'a tool-only interjection must not queue automatic long-line continuation before a visible user answer',
   );
   assert.equal(
     root.peekQueuedPrompt(),
     undefined,
-    'a tool-only interjection must not enqueue an in-memory long-line reassertion prompt',
+    'a tool-only interjection must not enqueue an in-memory long-line continuation prompt',
   );
   assert.equal(
     latest?.pendingUserInterjectionReply?.msgId,
@@ -631,18 +798,17 @@ async function runToolOnlyInterjectionDoesNotReassertScenario(): Promise<void> {
   assert.equal(
     scheduled.length,
     0,
-    'a tool-only interjection must not schedule the parked long-line reassertion follow-up',
-  );
-  const deferred = await DialogPersistence.getDeferredReplyReassertion(root.id, root.status);
-  assert.equal(
-    deferred?.directive.targetCallId,
-    'reply-back-target-tool-only',
-    'the parked long-line reply obligation should remain durable while the user answer is pending',
+    'a tool-only interjection must not schedule an automatic long-line follow-up',
   );
   assert.deepEqual(
-    deferred?.userInterjection,
-    latest?.pendingUserInterjectionReply,
-    'the parked long-line reply obligation should be bound to the exact pending user interjection coordinate',
+    await DialogPersistence.loadActiveTellaskReplyObligation(root.id, root.status),
+    {
+      expectedReplyCallName: 'replyTellaskBack',
+      targetCallId: 'reply-back-target-tool-only',
+      targetDialogId: root.id.selfId,
+      tellaskContent: 'Please deliver the tellasker reply once ready.',
+    },
+    'the ordinary active reply obligation should remain durable while the user answer is pending',
   );
 }
 
@@ -654,7 +820,7 @@ function runSuppressionGuidePriorityScenario(): void {
   );
   assert.ok(
     zhGuide.includes('不要在回答当前用户消息前切回旧任务、旧工具流程或旧收口'),
-    'zh suppression guide should park old task/tool/closure instructions until after visible answer',
+    'zh suppression guide should keep old task/tool/closure instructions behind the visible answer',
   );
   assert.ok(
     zhGuide.includes('不要因为旧长线任务、旧技能提示或旧提醒项去调用工具'),
@@ -721,11 +887,6 @@ async function runQ4HAnswerNeverCountsAsInterjectionScenario(): Promise<void> {
     false,
     'formal askHuman answers must never be downgraded into user-interjection suppression',
   );
-  assert.equal(
-    guidance.deferredReplyReassertionDirective,
-    undefined,
-    'askHuman answers should not arm deferred reply reassertion',
-  );
   assert.deepEqual(guidance.activeReplyDirective, {
     expectedReplyCallName: 'replyTellaskBack',
     targetCallId: 'reply-back-target-q4h',
@@ -757,7 +918,10 @@ async function main(): Promise<void> {
     await runSideDialogScenario();
     await runRepeatedRootInterjectionScenario();
     await runProceedingReplyObligationScenario();
-    await runToolOnlyInterjectionDoesNotReassertScenario();
+    await runProceedingReplyObligationStructuredAnsweringScenario();
+    await runStructuredAnsweringWithVisibleSayingDoesNotDuplicateA2HScenario();
+    await runInvalidAnswerHumanStillAllowsVisibleInterjectionAnswerScenario();
+    await runToolOnlyInterjectionDoesNotAutoContinueLongLineScenario();
     runSuppressionGuidePriorityScenario();
     await runQ4HAnswerNeverCountsAsInterjectionScenario();
   });

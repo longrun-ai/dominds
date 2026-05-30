@@ -268,13 +268,13 @@ function buildTellaskCollaborationProtocol(
   const lines: string[] = [
     ...pickLocalized(language, {
       zh: [
-        '- Tellask 统一走函数工具通道：`tellaskBack` / `tellask` / `tellaskSessionless` / `askHuman` / `freshBootsReasoning`。',
+        '- Tellask special 统一走函数工具通道：`tellaskBack` / `tellask` / `tellaskSessionless` / `askHuman` / `answerHuman` / `freshBootsReasoning`。',
         '- 对队友诉请默认使用 `tellask` 并复用 `sessionSlug`；仅在确认一次性诉请足够、且后续不需要更新任务安排/提前收口时才使用 `tellaskSessionless`，并需说明理由。',
         '- 并行协调默认允许：不要把智能体队友当成真人同事；祂不会因为你又发一条诉请而被打扰。同一个队友 + 同一个 `sessionSlug` = 接着同一件事说；`tellaskSessionless` 或不同 `sessionSlug` = 另一件独立任务。',
         '- 例外优先级（强制）：`tellaskBack` 仅用于回问诉请者，不适用队友长线默认规则，也不携带 `sessionSlug`。',
       ],
       en: [
-        '- Tellask must use the function-tool channel: `tellaskBack` / `tellask` / `tellaskSessionless` / `askHuman` / `freshBootsReasoning`.',
+        '- Tellask special calls must use the function-tool channel: `tellaskBack` / `tellask` / `tellaskSessionless` / `askHuman` / `answerHuman` / `freshBootsReasoning`.',
         '- For teammate tellasks, default to `tellask` and continue with the same `sessionSlug`; use `tellaskSessionless` only when a one-shot is truly sufficient and later assignment updates / early wrap-up are not needed.',
         '- Parallel coordination is allowed by default: do not treat an agent teammate like a human coworker who can only handle one conversation at a time. Same teammate + same `sessionSlug` = continue the same task; `tellaskSessionless` or a different `sessionSlug` = another independent task.',
         '- Mandatory exception precedence: `tellaskBack` is ask-back-only and outside the teammate-session default; it does not carry `sessionSlug`.',
@@ -314,7 +314,7 @@ function buildFbrGuidelines(
     zh: [
       '- FBR 由 `freshBootsReasoning` 触发，不属于普通队友诉请分类；请按本节规则执行。',
       '- FBR 不可调用 `tellaskBack`；其回贴标记由 Dominds 在跨对话传递正文中自动注入。',
-      '- FBR 禁止一切 tellask（包括 `tellaskBack` / `tellask` / `tellaskSessionless` / `askHuman`）。',
+      '- FBR 禁止一切 tellask-special（包括 `tellaskBack` / `tellask` / `tellaskSessionless` / `askHuman` / `answerHuman`）。',
       '- 当用户明确要求“做一次 FBR/扪心自问”，对话主理人必须发起 `freshBootsReasoning`。',
       fbrContextHealthRule,
       '- FBR 的标准入口是 `freshBootsReasoning({ tellaskContent, effort? })`；禁止用 `tellask` / `tellaskSessionless` 对自己发起 self-target 诉请来替代。',
@@ -331,7 +331,7 @@ function buildFbrGuidelines(
     en: [
       '- FBR is triggered by `freshBootsReasoning`, not by normal teammate tellasks; follow this section’s rules.',
       '- FBR cannot call `tellaskBack`; its reply marker is injected by Dominds into the inter-dialog transfer payload.',
-      '- FBR forbids all tellask calls (including `tellaskBack` / `tellask` / `tellaskSessionless` / `askHuman`).',
+      '- FBR forbids all tellask-special calls (including `tellaskBack` / `tellask` / `tellaskSessionless` / `askHuman` / `answerHuman`).',
       '- When the user explicitly requests “do an FBR / fresh boots reasoning”, the Dialog Responder must call `freshBootsReasoning`.',
       fbrContextHealthRule,
       '- The standard FBR entry is `freshBootsReasoning({ tellaskContent, effort? })`; do not emulate FBR via self-targeted `tellask` / `tellaskSessionless`.',
@@ -356,6 +356,7 @@ function buildTellaskInteractionRules(language: LanguageCode): string {
       '- `tellask`：用于可恢复的长线诉请（必须提供 `targetAgentId` / `sessionSlug` / `tellaskContent`）。',
       '- `tellaskSessionless`：用于一次性诉请（必须提供 `targetAgentId` / `tellaskContent`）；它不能接着旧任务改要求，后续再次调用只是另一件独立任务，不会影响旧任务继续执行，也不会打扰同一队友正在执行的其它独立诉请。不要把智能体队友当成需要排队说话的真人同事。',
       '- `askHuman`：用于 Q4H（向人类请求必要澄清/决策/授权/缺失输入）。',
+      '- `answerHuman`：用于把当前要给人类看的答复记录为 A2H（answer to human）；不要用它向队友回贴。',
       '- `freshBootsReasoning`：用于发起扪心自问（FBR）支线（`tellaskContent` 必填，`effort` 可选）。',
     ],
     en: [
@@ -363,6 +364,7 @@ function buildTellaskInteractionRules(language: LanguageCode): string {
       '- `tellask`: resumable tellask (requires `targetAgentId` / `sessionSlug` / `tellaskContent`).',
       '- `tellaskSessionless`: one-shot tellask (requires `targetAgentId` / `tellaskContent`); it cannot continue an earlier task or change its requirements. Later calls are separate tasks and do not affect earlier work for the same teammate. Do not treat agent teammates like human coworkers who need you to wait in line to talk.',
       '- `askHuman`: Q4H for necessary clarification/decision/authorization/missing input.',
+      '- `answerHuman`: record the current human-facing answer as A2H (answer to human); do not use it to reply to teammates.',
       '- `freshBootsReasoning`: starts an FBR Side Dialog (requires `tellaskContent`, optional `effort`).',
     ],
   });
@@ -498,6 +500,7 @@ export function buildSystemPrompt(input: BuildSystemPromptInput): string {
 - 回问诉请：支线对话用 \`tellaskBack\` 回问诉请者以澄清。
 - 扪心自问（FBR）：由 \`freshBootsReasoning\` 触发的“无工具”支线推理机制。
 - 向人请示（Q4H）：通过 \`askHuman\` 向人类请求必要的澄清/决策/授权/缺失输入。
+- 答复人类（A2H）：通过 \`answerHuman\` 记录当前要给人类看的答复。
 - 长线诉请：使用 \`tellask\` + \`sessionSlug\` 的可恢复多轮协作。
 - 一次性诉请：一次性、不可恢复的诉请。
 - 主线对话：承载共享差遣牒并负责整体推进的对话。
@@ -558,7 +561,7 @@ ${input.toolsetManualIntro}
 
 ## 交互协议
 
-### Tellask Special Functions（队友/FBR/Q4H）
+### Tellask Special Functions（队友/FBR/Q4H/A2H）
 ${tellaskInteractionRules}
 
 ### 函数工具（仅原生 function-calling）
@@ -598,6 +601,7 @@ System notices convey important state changes (e.g., context caution/critical, D
 - TellaskBack: a Side Dialog uses \`tellaskBack\` to ask the tellasker for clarification.
 - Fresh Boots Reasoning (FBR): a tool-less Side Dialog reasoning mechanism triggered by \`freshBootsReasoning\`.
 - Q4H (Question for Human): use \`askHuman\` to request necessary clarification/decision/authorization/missing input from a human.
+- A2H (Answer to Human): use \`answerHuman\` to record the current human-facing answer.
 - Tellask Session: resumable multi-turn work using \`tellask\` with \`sessionSlug\`.
 - Fresh Tellask: a one-shot, non-resumable Tellask.
 - Main Dialog: the dialog that owns the shared Taskdoc and overall progress.
@@ -658,7 +662,7 @@ ${input.toolsetManualIntro}
 
 ## Interaction Protocols
 
-### Tellask Special Functions (teammates/FBR/Q4H)
+### Tellask Special Functions (teammates/FBR/Q4H/A2H)
 ${tellaskInteractionRules}
 
 ### Function Tools (native function-calling only)

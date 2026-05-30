@@ -181,7 +181,7 @@ async function main() {
   );
   const zhInterjectionPendingFooter = formatMainReminderContextFooter('zh', {
     followingMessage: { kind: 'none' },
-    business: { kind: 'pending_user_interjection_with_parked_reply' },
+    business: { kind: 'pending_user_interjection_with_active_reply' },
     contextHealth: { kind: 'normal' },
   });
   assert(
@@ -189,8 +189,8 @@ async function main() {
     'Expected zh reminder footer to surface pending user interjection reply',
   );
   assert(
-    zhInterjectionPendingFooter.includes('原有回贴任务已暂存'),
-    'Expected zh reminder footer to describe parked handoff in simple wording',
+    zhInterjectionPendingFooter.includes('同时还有回贴任务未完成'),
+    'Expected zh reminder footer to describe active handoff while user interjection is pending',
   );
   const zhInterjectionActiveFooter = formatMainReminderContextFooter('zh', {
     followingMessage: { kind: 'none' },
@@ -670,7 +670,7 @@ async function main() {
   );
   const enInterjectionPendingFooter = formatMainReminderContextFooter('en', {
     followingMessage: { kind: 'none' },
-    business: { kind: 'pending_user_interjection_with_parked_reply' },
+    business: { kind: 'pending_user_interjection_with_active_reply' },
     contextHealth: { kind: 'normal' },
   });
   assert(
@@ -678,8 +678,8 @@ async function main() {
     'Expected en reminder footer to surface pending user interjection reply',
   );
   assert(
-    enInterjectionPendingFooter.includes('the earlier handoff is parked'),
-    'Expected en reminder footer to describe parked handoff in simple wording',
+    enInterjectionPendingFooter.includes('while a reply task is also unfinished'),
+    'Expected en reminder footer to describe active handoff while user interjection is pending',
   );
   const enInterjectionActiveFooter = formatMainReminderContextFooter('en', {
     followingMessage: { kind: 'none' },

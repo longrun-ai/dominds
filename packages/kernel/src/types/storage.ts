@@ -115,13 +115,6 @@ export interface DialogAskerStackState {
   askerStack: AskerDialogStackFrame[];
 }
 
-export type DialogDeferredReplyReassertion = Readonly<{
-  reason: 'user_interjection_with_parked_original_task';
-  directive: TellaskReplyDirective;
-  userInterjection: DialogPendingUserInterjectionReply;
-  resumeGuideSurfaced?: boolean;
-}>;
-
 export type DialogPendingUserInterjectionReply = Readonly<{
   msgId: string;
   course: DialogCourseNumber;
@@ -307,6 +300,7 @@ export type DialogTellaskCallIndexEntry = Readonly<{
     | 'replyTellaskSessionless'
     | 'replyTellaskBack'
     | 'askHuman'
+    | 'answerHuman'
     | 'freshBootsReasoning';
   course: DialogCourseNumber;
   genseq: CallSiteGenseqNo;
@@ -338,7 +332,6 @@ export interface DialogLatestFile {
   latestAssignmentAnchor?: DialogLatestAssignmentAnchorState;
   sideDialogFinalResponse?: DialogSideDialogFinalResponseState;
   fbrState?: DialogFbrState;
-  deferredReplyReassertion?: DialogDeferredReplyReassertion;
   pendingUserInterjectionReply?: DialogPendingUserInterjectionReply;
   // Durable runtime prompt that must survive restart and be consumed before ordinary
   // business-continuation driving, including new-course prompts and reply-tool reminders after
@@ -644,6 +637,7 @@ export type TellaskCallRecordName =
   | 'replyTellaskSessionless'
   | 'replyTellaskBack'
   | 'askHuman'
+  | 'answerHuman'
   | 'freshBootsReasoning';
 
 export interface TellaskCallRecord extends RootGenerationRef {
@@ -1146,11 +1140,6 @@ export interface AnswerToHumanItem {
   id: string;
   content: string;
   answeredAt: string;
-  userInterjection: {
-    msgId: string;
-    course: number;
-    genseq: number;
-  };
   answerRef: {
     course: number;
     genseq: number;

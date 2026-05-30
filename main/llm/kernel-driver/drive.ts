@@ -150,6 +150,8 @@ import {
   formatResolvedTellaskFuncResultContent,
   isTellaskCallFunctionName,
   processTellaskFunctionRound,
+  recordAnswerToHuman,
+  type AnswerHumanStructuredOutput,
   type TellaskCallFunctionName,
 } from './tellask-special';
 import type {
@@ -463,23 +465,18 @@ async function resolveReminderContextFooterState(args: {
   currentTurnDialogMsgsForContext: readonly ChatMessage[];
 }): Promise<ReminderContextFooterState> {
   const latest = await DialogPersistence.loadDialogLatest(args.dlg.id, args.dlg.status);
-  const deferredReplyReassertion = latest?.deferredReplyReassertion;
   const activeReplyObligation = await DialogPersistence.loadActiveTellaskReplyObligation(
     args.dlg.id,
     args.dlg.status,
   );
   const pendingUserInterjectionReply = latest?.pendingUserInterjectionReply !== undefined;
-  const hasDeferredReplyReassertion =
-    deferredReplyReassertion?.reason === 'user_interjection_with_parked_original_task';
   const hasActiveReplyObligation = activeReplyObligation !== undefined;
   // Business scenario: a user can reopen a completed Side Dialog to ask a follow-up. A recorded
-  // final response with no active/parked reply task means the old handoff has already been
+  // final response with no active reply task means the old handoff has already been
   // reported back; if a real user message is now present, the footer should say "talk with the
   // user now" instead of making the model infer that from old transcript/reminder context.
   const hasCompletedHandoffWithoutPendingReply =
-    latest?.sideDialogFinalResponse !== undefined &&
-    !hasDeferredReplyReassertion &&
-    !hasActiveReplyObligation;
+    latest?.sideDialogFinalResponse !== undefined && !hasActiveReplyObligation;
   const dialogScope: ReminderContextFooterState['dialogScope'] =
     args.dlg instanceof SideDialog ? { kind: 'side_dialog' } : { kind: 'main_dialog' };
   return resolveReminderContextFooterStateFromSignals({
@@ -489,7 +486,6 @@ async function resolveReminderContextFooterState(args: {
     contextHealth: args.dlg.getLastContextHealth(),
     pendingUserInterjectionReply,
     hasCompletedHandoffWithoutPendingReply,
-    hasDeferredReplyReassertion,
     hasActiveReplyObligation,
   });
 }
@@ -579,11 +575,6 @@ async function maybeResolveAnsweredUserInterjection(args: {
     id: `a2h-${Buffer.from(answerIdSource).toString('base64url')}`,
     content: args.assistantSayingContent,
     answeredAt: formatUnifiedTimestamp(new Date()),
-    userInterjection: {
-      msgId: pending.msgId,
-      course: pending.course,
-      genseq: pending.genseq,
-    },
     answerRef: {
       course,
       genseq: args.assistantSayingGenseq,
@@ -1002,6 +993,7 @@ const TELLASK_SPECIAL_VIRTUAL_TOOLS: readonly FuncTool[] = [
   {
     type: 'func',
     name: 'askHuman',
+    followupMode: 'deferred',
     description: 'Ask for required clarification/decision from human.',
     parameters: {
       type: 'object',
@@ -1013,6 +1005,23 @@ const TELLASK_SPECIAL_VIRTUAL_TOOLS: readonly FuncTool[] = [
     },
     call: async (): Promise<ToolCallOutput> => {
       throw new Error('askHuman is handled by kernel-driver tellask-special channel');
+    },
+  },
+  {
+    type: 'func',
+    name: 'answerHuman',
+    followupMode: 'deferred',
+    description: 'Record the current human-facing answer for human attention.',
+    parameters: {
+      type: 'object',
+      properties: {
+        answerContent: { type: 'string' },
+      },
+      required: ['answerContent'],
+      additionalProperties: false,
+    },
+    call: async (): Promise<ToolCallOutput> => {
+      throw new Error('answerHuman is handled by kernel-driver tellask-special channel');
     },
   },
 ];
@@ -1350,26 +1359,6 @@ async function renderRemindersForContext(dlg: Dialog): Promise<ChatMessage[]> {
         ]),
     ...renderedItems,
   ];
-}
-
-function hasSameReplyDirective(
-  left: KernelDriverPrompt['tellaskReplyDirective'],
-  right: KernelDriverPrompt['tellaskReplyDirective'],
-): boolean {
-  if (!left || !right) {
-    return left === right;
-  }
-  if (left.expectedReplyCallName !== right.expectedReplyCallName) {
-    return false;
-  }
-  if (
-    left.targetDialogId !== right.targetDialogId ||
-    left.targetCallId !== right.targetCallId ||
-    left.tellaskContent !== right.tellaskContent
-  ) {
-    return false;
-  }
-  return true;
 }
 
 function buildPendingTellaskFuncResult(args: {
@@ -1791,6 +1780,29 @@ async function emitAssistantSaying(dlg: Dialog, content: string): Promise<void> 
   await dlg.sayingFinish();
 }
 
+async function recordStructuredAnswering(args: {
+  dlg: Dialog;
+  content: string;
+  source: string;
+}): Promise<AnswerToHumanItem | undefined> {
+  if (args.content.trim() === '') return undefined;
+  const course = args.dlg.activeGenCourseOrUndefined ?? args.dlg.currentCourse;
+  const genseq = args.dlg.activeGenSeqOrUndefined ?? 1;
+  return await recordAnswerToHuman({
+    dlg: args.dlg,
+    answerContent: args.content,
+    course,
+    genseq,
+    answerIdSource: [
+      args.dlg.id.rootId,
+      args.dlg.id.selfId,
+      `c${String(course)}`,
+      `g${String(genseq)}`,
+      args.source,
+    ].join('|'),
+  });
+}
+
 function formatInvalidFuncCallRuntimeGuide(
   language: 'zh' | 'en',
   call: LlmInvalidFuncCall,
@@ -1888,6 +1900,7 @@ type RoutedFunctionResult = {
   shouldStopAfterPendingTellaskWait: boolean;
   pairedMessages: ChatMessage[];
   tellaskToolOutputs: ChatMessage[];
+  answerHumanOutputs: readonly AnswerHumanStructuredOutput[];
 };
 
 type ToolRoundStopDiagnostics = Readonly<{
@@ -2811,6 +2824,7 @@ async function executeFunctionRound(args: {
       shouldStopAfterPendingTellaskWait: false,
       pairedMessages: [],
       tellaskToolOutputs: [],
+      answerHumanOutputs: [],
     };
   }
   throwIfAborted(args.abortSignal, args.dlg);
@@ -2826,6 +2840,7 @@ async function executeFunctionRound(args: {
         'replyTellaskSessionless',
         'replyTellaskBack',
         'askHuman',
+        'answerHuman',
         'freshBootsReasoning',
         ...(allowTellaskBack ? (['tellaskBack'] as const) : []),
       ])
@@ -2954,6 +2969,7 @@ async function executeFunctionRound(args: {
     shouldStopAfterPendingTellaskWait: tellaskRound.shouldStopAfterPendingTellaskWait,
     pairedMessages,
     tellaskToolOutputs: [...tellaskRound.toolOutputs],
+    answerHumanOutputs: tellaskRound.answerHumanOutputs,
   };
 }
 
@@ -3212,10 +3228,11 @@ export async function driveDialogStreamCore(
   let lastAssistantSayingGenseq: number | null = null;
   let lastAssistantThinkingContent: string | null = null;
   let lastAssistantThinkingGenseq: number | null = null;
+  let lastAssistantAnsweringContent: string | null = null;
+  let lastAssistantAnsweringGenseq: number | null = null;
   let lastFunctionCallGenseq: number | null = null;
   let lastAssistantReplyTarget: KernelDriverPrompt['calleeDialogReplyTarget'] | undefined;
   let lastBusinessContinuation: DialogBusinessContinuation = { kind: 'none' };
-  let answeredUserInterjection: AnswerToHumanItem | undefined;
   let currentPromptIsUserInterjection = false;
   let currentUserInterjectionReply: DialogPendingUserInterjectionReply | undefined;
   let fbrConclusion:
@@ -3558,75 +3575,23 @@ export async function driveDialogStreamCore(
               prompt: currentPrompt,
               language: promptLanguage,
             });
-            const deferredReplyReassertionDirective =
-              replyGuidance.deferredReplyReassertionDirective;
             currentPromptIsUserInterjection =
               currentPrompt.origin === 'user' &&
               replyGuidance.suppressInterDialogReplyGuidance &&
-              deferredReplyReassertionDirective !== undefined;
+              !replyGuidance.isQ4HAnswerPrompt;
             if (currentPromptIsUserInterjection) {
-              // WARNING:
-              // User interjection suppression is a reversible state transition, not a one-shot
-              // latch. The normal cycle is:
-              // - user interjects -> suppress reply obligation
-              // - the visible local answer auto-reasserts the reply obligation
-              // - user interjects again -> suppress it again
-              //
-              // Legacy blocked-Continue paths may also re-enter here. A repeated interjection MUST
-              // re-arm the deferred state and re-materialize the suppression guide, even when the
-              // underlying reply directive itself did not change.
-              const deferredDirective = deferredReplyReassertionDirective;
-              if (deferredDirective === undefined) {
-                throw new Error(
-                  `kernel-driver user interjection invariant violation: missing deferred reply directive for dialog=${dlg.id.valueOf()} msgId=${currentPrompt.msgId}`,
-                );
-              }
-              const existingDeferredReplyReassertion =
-                await DialogPersistence.getDeferredReplyReassertion(dlg.id, dlg.status);
               currentUserInterjectionReply = {
                 msgId: currentPrompt.msgId,
                 course: toDialogCourseNumber(dlg.activeGenCourseOrUndefined ?? dlg.currentCourse),
                 genseq: toCallSiteGenseqNo(dlg.activeGenSeq),
               };
-              const nextDeferredReplyReassertion = {
-                reason: 'user_interjection_with_parked_original_task' as const,
-                directive: deferredDirective,
-                userInterjection: currentUserInterjectionReply,
-              };
-              const mustRearmDeferredReplyReassertion =
-                existingDeferredReplyReassertion === undefined ||
-                existingDeferredReplyReassertion.resumeGuideSurfaced === true ||
-                existingDeferredReplyReassertion.userInterjection.msgId !==
-                  nextDeferredReplyReassertion.userInterjection.msgId ||
-                existingDeferredReplyReassertion.userInterjection.course !==
-                  nextDeferredReplyReassertion.userInterjection.course ||
-                existingDeferredReplyReassertion.userInterjection.genseq !==
-                  nextDeferredReplyReassertion.userInterjection.genseq ||
-                !hasSameReplyDirective(
-                  existingDeferredReplyReassertion.directive,
-                  nextDeferredReplyReassertion.directive,
-                );
-              if (mustRearmDeferredReplyReassertion) {
-                await DialogPersistence.setDeferredReplyReassertion(
-                  dlg.id,
-                  nextDeferredReplyReassertion,
-                  dlg.status,
-                );
-              }
-              if (mustRearmDeferredReplyReassertion) {
-                currentRuntimeGuideMsg = replyGuidance.transientGuideContent
-                  ? {
-                      type: 'transient_guide_msg',
-                      role: 'assistant',
-                      content: replyGuidance.transientGuideContent,
-                    }
-                  : undefined;
-              }
-            } else if (
-              currentPrompt.origin === 'user' &&
-              !replyGuidance.suppressInterDialogReplyGuidance
-            ) {
-              await DialogPersistence.setDeferredReplyReassertion(dlg.id, undefined, dlg.status);
+              currentRuntimeGuideMsg = replyGuidance.transientGuideContent
+                ? {
+                    type: 'transient_guide_msg',
+                    role: 'assistant',
+                    content: replyGuidance.transientGuideContent,
+                  }
+                : undefined;
             }
             if (
               !replyGuidance.suppressInterDialogReplyGuidance &&
@@ -4001,6 +3966,8 @@ export async function driveDialogStreamCore(
             let streamAttemptSayingGenseq: number | undefined;
             let streamAttemptThinkingContent: string | undefined;
             let streamAttemptThinkingGenseq: number | undefined;
+            let streamAttemptAnsweringContent: string | undefined;
+            let streamAttemptAnsweringGenseq: number | undefined;
             type StreamActiveState = { kind: 'idle' } | { kind: 'thinking' } | { kind: 'saying' };
             let streamActive: StreamActiveState = { kind: 'idle' };
             const rollbackStreamAttempt = async (): Promise<void> => {
@@ -4033,6 +4000,8 @@ export async function driveDialogStreamCore(
               streamAttemptSayingGenseq = undefined;
               streamAttemptThinkingContent = undefined;
               streamAttemptThinkingGenseq = undefined;
+              streamAttemptAnsweringContent = undefined;
+              streamAttemptAnsweringGenseq = undefined;
               sawWebSearchSideChannelOutput = false;
               sawNativeToolSideChannelOutput = false;
               streamedFuncCalls.length = 0;
@@ -4145,6 +4114,36 @@ export async function driveDialogStreamCore(
                 streamAttemptSayingContent = currentSayingContent;
                 streamAttemptSayingGenseq = sayingMessage.genseq;
               },
+              answering: async (content: string) => {
+                throwIfAborted(abortSignal, dlg);
+                if (streamActive.kind !== 'idle') {
+                  const detail = `Protocol violation: answering while ${streamActive.kind} is active`;
+                  await dlg.streamError(detail);
+                  throw new LlmStreamErrorEmittedError({
+                    detail,
+                    i18nStopReason: buildHumanSystemStopReasonTextI18n({
+                      detail,
+                      kind: 'conflicting_stream',
+                    }),
+                  });
+                }
+                if (content.trim() !== '') {
+                  if (streamAttemptAnsweringContent !== undefined) {
+                    const detail =
+                      'Protocol violation: multiple answering outputs in one generation';
+                    await dlg.streamError(detail);
+                    throw new LlmStreamErrorEmittedError({
+                      detail,
+                      i18nStopReason: buildHumanSystemStopReasonTextI18n({
+                        detail,
+                        kind: 'conflicting_stream',
+                      }),
+                    });
+                  }
+                  streamAttemptAnsweringContent = content;
+                  streamAttemptAnsweringGenseq = dlg.activeGenSeq;
+                }
+              },
               funcCall: async (
                 callId: string,
                 name: string,
@@ -4228,6 +4227,8 @@ export async function driveDialogStreamCore(
                 streamAttemptSayingGenseq = undefined;
                 streamAttemptThinkingContent = undefined;
                 streamAttemptThinkingGenseq = undefined;
+                streamAttemptAnsweringContent = undefined;
+                streamAttemptAnsweringGenseq = undefined;
                 sawWebSearchSideChannelOutput = false;
                 sawNativeToolSideChannelOutput = false;
                 streamedFuncCalls.length = 0;
@@ -4260,6 +4261,7 @@ export async function driveDialogStreamCore(
                 const hasFunctionCall = streamedFuncCalls.length > 0;
                 if (
                   !hasFinishedMessageContent &&
+                  streamAttemptAnsweringContent === undefined &&
                   !hasFunctionCall &&
                   invalidFuncCallCount === 0 &&
                   !sawWebSearchSideChannelOutput &&
@@ -4286,6 +4288,20 @@ export async function driveDialogStreamCore(
                 streamAttemptThinkingGenseq === undefined ? null : streamAttemptThinkingGenseq;
               if (streamAttemptSayingContent === undefined) {
                 lastAssistantReplyTarget = currentReplyTarget;
+              }
+            }
+            if (streamAttemptAnsweringContent !== undefined) {
+              const answer = await recordStructuredAnswering({
+                dlg,
+                content: streamAttemptAnsweringContent,
+                source: 'structured-answering',
+              });
+              if (answer !== undefined) {
+                lastAssistantAnsweringContent = answer.content;
+                lastAssistantAnsweringGenseq =
+                  streamAttemptAnsweringGenseq === undefined
+                    ? answer.answerRef.genseq
+                    : streamAttemptAnsweringGenseq;
               }
             }
             return { usage: res.usage, llmGenModel: res.llmGenModel };
@@ -4315,6 +4331,7 @@ export async function driveDialogStreamCore(
                     (message): LlmBatchOutput => ({ kind: 'message', message }),
                   )
                 : [];
+          let batchAnsweringSeen = false;
           for (const output of batchOutputs) {
             switch (output.kind) {
               case 'message': {
@@ -4338,6 +4355,33 @@ export async function driveDialogStreamCore(
                 }
                 if (msg.type === 'func_call_msg') {
                   streamedFuncCalls.push(msg);
+                }
+                break;
+              }
+              case 'answering': {
+                if (output.content.trim() === '') {
+                  break;
+                }
+                if (batchAnsweringSeen) {
+                  const detail = 'Protocol violation: multiple answering outputs in one generation';
+                  await dlg.streamError(detail);
+                  throw new LlmStreamErrorEmittedError({
+                    detail,
+                    i18nStopReason: buildHumanSystemStopReasonTextI18n({
+                      detail,
+                      kind: 'conflicting_stream',
+                    }),
+                  });
+                }
+                batchAnsweringSeen = true;
+                const answer = await recordStructuredAnswering({
+                  dlg,
+                  content: output.content,
+                  source: 'structured-answering',
+                });
+                if (answer !== undefined) {
+                  lastAssistantAnsweringContent = answer.content;
+                  lastAssistantAnsweringGenseq = answer.answerRef.genseq;
                 }
                 break;
               }
@@ -4384,6 +4428,7 @@ export async function driveDialogStreamCore(
                   c.name === 'tellaskSessionless' ||
                   c.name === 'tellaskBack' ||
                   c.name === 'askHuman' ||
+                  c.name === 'answerHuman' ||
                   c.name === 'freshBootsReasoning',
               ).length
             : 0;
@@ -4416,6 +4461,8 @@ export async function driveDialogStreamCore(
                 lastAssistantSayingGenseq,
                 lastAssistantThinkingContent,
                 lastAssistantThinkingGenseq,
+                lastAssistantAnsweringContent,
+                lastAssistantAnsweringGenseq,
                 lastFunctionCallGenseq,
                 lastAssistantReplyTarget,
                 lastBusinessContinuation,
@@ -4463,9 +4510,11 @@ export async function driveDialogStreamCore(
             const rawCallGenseq = call.genseq;
             if (!Number.isFinite(rawCallGenseq) || rawCallGenseq <= 0) continue;
             const callGenseq = Math.floor(rawCallGenseq);
-            currentRoundFunctionCallGenseqs.push(callGenseq);
-            if (lastFunctionCallGenseq === null || callGenseq > lastFunctionCallGenseq) {
-              lastFunctionCallGenseq = callGenseq;
+            if (call.name !== 'answerHuman') {
+              currentRoundFunctionCallGenseqs.push(callGenseq);
+              if (lastFunctionCallGenseq === null || callGenseq > lastFunctionCallGenseq) {
+                lastFunctionCallGenseq = callGenseq;
+              }
             }
           }
           const userInterjectionMsgIdForVisibleAnswer =
@@ -4474,30 +4523,6 @@ export async function driveDialogStreamCore(
               : currentGenerationBelongsToUserToolChain
                 ? currentUserPromptMsgId
                 : undefined;
-          if (userInterjectionMsgIdForVisibleAnswer !== undefined) {
-            const streamedCurrentRoundSayingContent =
-              batchOutputs.length === 0 &&
-              lastAssistantSayingGenseq !== previousAssistantSayingGenseq
-                ? lastAssistantSayingContent
-                : null;
-            const streamedCurrentRoundSayingGenseq =
-              batchOutputs.length === 0 &&
-              lastAssistantSayingGenseq !== previousAssistantSayingGenseq
-                ? lastAssistantSayingGenseq
-                : null;
-            const answer = await maybeResolveAnsweredUserInterjection({
-              dlg,
-              userPromptMsgId: userInterjectionMsgIdForVisibleAnswer,
-              assistantSayingContent:
-                currentRoundAssistantSayingContent ?? streamedCurrentRoundSayingContent,
-              assistantSayingGenseq:
-                currentRoundAssistantSayingGenseq ?? streamedCurrentRoundSayingGenseq,
-              functionCallGenseqs: currentRoundFunctionCallGenseqs,
-            });
-            if (answer !== undefined) {
-              answeredUserInterjection = answer;
-            }
-          }
 
           const routed = await executeFunctionRound({
             dlg,
@@ -4513,6 +4538,38 @@ export async function driveDialogStreamCore(
               current: contextHealthForGen,
             }),
           });
+          for (const answering of routed.answerHumanOutputs) {
+            lastAssistantAnsweringContent = answering.answerContent;
+            lastAssistantAnsweringGenseq = answering.genseq;
+          }
+          const currentRoundAnsweringGenseq = dlg.activeGenSeqOrUndefined;
+          const hasCurrentRoundAnsweringOutput =
+            currentRoundAnsweringGenseq !== undefined &&
+            lastAssistantAnsweringGenseq === currentRoundAnsweringGenseq;
+          if (
+            userInterjectionMsgIdForVisibleAnswer !== undefined &&
+            !hasCurrentRoundAnsweringOutput
+          ) {
+            const streamedCurrentRoundSayingContent =
+              batchOutputs.length === 0 &&
+              lastAssistantSayingGenseq !== previousAssistantSayingGenseq
+                ? lastAssistantSayingContent
+                : null;
+            const streamedCurrentRoundSayingGenseq =
+              batchOutputs.length === 0 &&
+              lastAssistantSayingGenseq !== previousAssistantSayingGenseq
+                ? lastAssistantSayingGenseq
+                : null;
+            await maybeResolveAnsweredUserInterjection({
+              dlg,
+              userPromptMsgId: userInterjectionMsgIdForVisibleAnswer,
+              assistantSayingContent:
+                currentRoundAssistantSayingContent ?? streamedCurrentRoundSayingContent,
+              assistantSayingGenseq:
+                currentRoundAssistantSayingGenseq ?? streamedCurrentRoundSayingGenseq,
+              functionCallGenseqs: currentRoundFunctionCallGenseqs,
+            });
+          }
           if (routed.tellaskToolOutputs.length > 0) {
             newMsgs.push(...routed.tellaskToolOutputs);
           }
@@ -4996,10 +5053,11 @@ export async function driveDialogStreamCore(
     lastAssistantSayingGenseq,
     lastAssistantThinkingContent,
     lastAssistantThinkingGenseq,
+    lastAssistantAnsweringContent,
+    lastAssistantAnsweringGenseq,
     lastFunctionCallGenseq,
     lastAssistantReplyTarget,
     lastBusinessContinuation,
-    answeredUserInterjection,
     fbrConclusion,
   };
 }

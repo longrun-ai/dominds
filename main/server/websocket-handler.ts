@@ -1675,7 +1675,6 @@ async function handleDisplayDialog(ws: WebSocket, packet: DisplayDialogRequest):
           taskDocPath: a.taskDocPath,
           content: a.content,
           answeredAt: a.answeredAt,
-          userInterjection: a.userInterjection,
           answerRef: a.answerRef,
         })),
       };
@@ -1733,7 +1732,6 @@ async function handleGetQ4HState(ws: WebSocket, _packet: GetQ4HStateRequest): Pr
       taskDocPath: a.taskDocPath,
       content: a.content,
       answeredAt: a.answeredAt,
-      userInterjection: a.userInterjection,
       answerRef: a.answerRef,
     }));
 

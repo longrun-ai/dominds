@@ -62,7 +62,6 @@ import type {
   DialogBusinessContinuation,
   DialogCalleeReplyTarget,
   DialogCourseNumber,
-  DialogDeferredReplyReassertion,
   DialogFbrState,
   DialogFollowupReason,
   DialogGenerationRunState,
@@ -2237,6 +2236,7 @@ function isTellaskCallIndexCallName(
     value === 'replyTellaskSessionless' ||
     value === 'replyTellaskBack' ||
     value === 'askHuman' ||
+    value === 'answerHuman' ||
     value === 'freshBootsReasoning'
   );
 }
@@ -2554,34 +2554,6 @@ function parseDialogLatestFile(value: unknown): DialogLatestFile | null {
   })();
   if (fbrState === null) return null;
 
-  const deferredReplyReassertionRaw = (value as Record<string, unknown>).deferredReplyReassertion;
-  const deferredReplyReassertion: DialogDeferredReplyReassertion | null | undefined = (() => {
-    if (deferredReplyReassertionRaw === undefined) return undefined;
-    if (!isRecord(deferredReplyReassertionRaw)) return null;
-    if (deferredReplyReassertionRaw.reason !== 'user_interjection_with_parked_original_task') {
-      return null;
-    }
-    const directive = parseTellaskReplyDirective(deferredReplyReassertionRaw.directive);
-    if (directive === null) return null;
-    const userInterjection = parseDialogPendingUserInterjectionReply(
-      deferredReplyReassertionRaw.userInterjection,
-    );
-    if (userInterjection === null) return null;
-    const resumeGuideSurfacedRaw = deferredReplyReassertionRaw.resumeGuideSurfaced;
-    if (resumeGuideSurfacedRaw !== undefined && typeof resumeGuideSurfacedRaw !== 'boolean') {
-      return null;
-    }
-    return {
-      reason: 'user_interjection_with_parked_original_task',
-      directive,
-      userInterjection,
-      ...(resumeGuideSurfacedRaw === undefined
-        ? {}
-        : { resumeGuideSurfaced: resumeGuideSurfacedRaw }),
-    };
-  })();
-  if (deferredReplyReassertion === null) return null;
-
   const pendingRuntimePromptRaw = (value as Record<string, unknown>).pendingRuntimePrompt;
   const pendingRuntimePrompt: DialogPendingRuntimePrompt | null | undefined = (() => {
     if (pendingRuntimePromptRaw === undefined) return undefined;
@@ -2609,7 +2581,6 @@ function parseDialogLatestFile(value: unknown): DialogLatestFile | null {
     latestAssignmentAnchor,
     sideDialogFinalResponse,
     fbrState,
-    deferredReplyReassertion,
     pendingUserInterjectionReply,
     pendingRuntimePrompt,
     disableDiligencePush: value.disableDiligencePush,
@@ -2735,16 +2706,6 @@ function isAnswerToHumanItem(value: unknown): value is AnswerToHumanItem {
   if (typeof value.id !== 'string') return false;
   if (typeof value.content !== 'string') return false;
   if (typeof value.answeredAt !== 'string') return false;
-  if (!isRecord(value.userInterjection)) return false;
-  if (typeof value.userInterjection.msgId !== 'string') return false;
-  if (typeof value.userInterjection.course !== 'number') return false;
-  if (!Number.isInteger(value.userInterjection.course) || value.userInterjection.course <= 0) {
-    return false;
-  }
-  if (typeof value.userInterjection.genseq !== 'number') return false;
-  if (!Number.isInteger(value.userInterjection.genseq) || value.userInterjection.genseq <= 0) {
-    return false;
-  }
   if (!isRecord(value.answerRef)) return false;
   if (typeof value.answerRef.course !== 'number') return false;
   if (!Number.isInteger(value.answerRef.course) || value.answerRef.course <= 0) return false;
@@ -2921,6 +2882,7 @@ function isTellaskCallFunctionName(name: string): name is TellaskCallRecordName 
     name === 'replyTellaskSessionless' ||
     name === 'replyTellaskBack' ||
     name === 'askHuman' ||
+    name === 'answerHuman' ||
     name === 'freshBootsReasoning'
   );
 }
@@ -4204,13 +4166,6 @@ export class DiskFileDialogStore extends DialogStore {
       targetCallId: payload.targetCallId,
     };
     await this.appendEvent(dialog, course, record);
-    const deferredReplyReassertion = await DialogPersistence.getDeferredReplyReassertion(
-      dialog.id,
-      dialog.status,
-    );
-    if (deferredReplyReassertion?.directive.targetCallId === payload.targetCallId) {
-      await DialogPersistence.setDeferredReplyReassertion(dialog.id, undefined, dialog.status);
-    }
     const activeObligation = await DialogPersistence.loadActiveTellaskReplyObligation(
       dialog.id,
       dialog.status,
@@ -4338,6 +4293,7 @@ export class DiskFileDialogStore extends DialogStore {
       | 'replyTellaskSessionless'
       | 'replyTellaskBack'
       | 'askHuman'
+      | 'answerHuman'
       | 'freshBootsReasoning',
     rawArgumentsText: string,
     genseq: number,
@@ -8186,7 +8142,15 @@ export class DialogPersistence {
           filePath: answersFilePath,
         });
       }
-      return parsed.answers;
+      return parsed.answers.map((answer) => ({
+        id: answer.id,
+        content: answer.content,
+        answeredAt: answer.answeredAt,
+        answerRef: {
+          course: answer.answerRef.course,
+          genseq: answer.answerRef.genseq,
+        },
+      }));
     } catch (error: unknown) {
       if (getErrorCode(error) === 'ENOENT') return [];
       throw error;
@@ -8282,11 +8246,6 @@ export class DialogPersistence {
     if (answerId === '') {
       throw new Error(
         `A2H append invariant violation: empty answer id (dialog=${dialogId.valueOf()})`,
-      );
-    }
-    if (answer.content.trim() === '') {
-      throw new Error(
-        `A2H append invariant violation: empty answer content (dialog=${dialogId.valueOf()} answerId=${answer.id})`,
       );
     }
 
@@ -11714,36 +11673,6 @@ export class DialogPersistence {
     );
   }
 
-  static async setDeferredReplyReassertion(
-    dialogId: DialogID,
-    deferredReplyReassertion: DialogLatestFile['deferredReplyReassertion'],
-    status: DialogStatusKind = 'running',
-  ): Promise<void> {
-    await this.mutateDialogLatest(
-      dialogId,
-      (previous) => {
-        if (deferredReplyReassertion !== undefined) {
-          return { kind: 'patch', patch: { deferredReplyReassertion } };
-        }
-        if (previous.deferredReplyReassertion === undefined) {
-          return { kind: 'noop' };
-        }
-        const next = { ...previous };
-        delete next.deferredReplyReassertion;
-        return { kind: 'replace', next };
-      },
-      status,
-    );
-  }
-
-  static async getDeferredReplyReassertion(
-    dialogId: DialogID,
-    status: DialogStatusKind = 'running',
-  ): Promise<DialogLatestFile['deferredReplyReassertion']> {
-    const latest = await this.loadDialogLatest(dialogId, status);
-    return latest?.deferredReplyReassertion;
-  }
-
   // === FILE SYSTEM UTILITIES ===
 
   /**
@@ -11981,16 +11910,24 @@ export class DialogPersistence {
       id: `a2h-${Buffer.from(answerIdSource).toString('base64url')}`,
       content: lastVisibleAnswer.content,
       answeredAt: formatUnifiedTimestamp(new Date()),
-      userInterjection: {
-        msgId: pendingUserInterjectionReply.msgId,
-        course: pendingUserInterjectionReply.course,
-        genseq: pendingUserInterjectionReply.genseq,
-      },
       answerRef: {
         course: toDialogCourseNumber(args.course),
         genseq: toCallSiteGenseqNo(lastVisibleAnswer.genseq),
       },
     };
+  }
+
+  private static answerRefSettlesPendingUserInterjection(
+    answerRef: AnswerToHumanItem['answerRef'],
+    pending: DialogLatestFile['pendingUserInterjectionReply'],
+  ): boolean {
+    if (pending === undefined) {
+      return false;
+    }
+    if (answerRef.course > pending.course) {
+      return true;
+    }
+    return answerRef.course === pending.course && answerRef.genseq >= pending.genseq;
   }
 
   private static async normalizeDialogLatestPendingUserInterjectionReply(
@@ -12000,6 +11937,19 @@ export class DialogPersistence {
   ): Promise<DialogLatestFile> {
     if (latest.pendingUserInterjectionReply === undefined) {
       return latest;
+    }
+    const existingAnswers = await this.loadAnswersToHumanState(dialogId, status);
+    if (
+      existingAnswers.some((answer) =>
+        this.answerRefSettlesPendingUserInterjection(
+          answer.answerRef,
+          latest.pendingUserInterjectionReply,
+        ),
+      )
+    ) {
+      const next = { ...latest };
+      delete next.pendingUserInterjectionReply;
+      return next;
     }
     const events = await this.readCourseEvents(dialogId, latest.currentCourse, status);
     const normalizedPending = this.resolvePendingUserInterjectionReplyFromCourseEvents(
@@ -12014,7 +11964,6 @@ export class DialogPersistence {
         pending: latest.pendingUserInterjectionReply,
       });
       if (recoveredAnswer !== undefined) {
-        const existingAnswers = await this.loadAnswersToHumanState(dialogId, status);
         if (!existingAnswers.some((item) => item.id === recoveredAnswer.id)) {
           await this.appendAnswerToHumanState(dialogId, recoveredAnswer, status);
         }

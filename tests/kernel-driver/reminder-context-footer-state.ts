@@ -47,7 +47,6 @@ function main(): void {
     contextHealth: undefined,
     pendingUserInterjectionReply: false,
     hasCompletedHandoffWithoutPendingReply: true,
-    hasDeferredReplyReassertion: false,
     hasActiveReplyObligation: false,
   });
   assert.deepEqual(completedHandoffFollowup.followingMessage, { kind: 'user_message' });
@@ -62,7 +61,6 @@ function main(): void {
     contextHealth: undefined,
     pendingUserInterjectionReply: false,
     hasCompletedHandoffWithoutPendingReply: true,
-    hasDeferredReplyReassertion: false,
     hasActiveReplyObligation: false,
   });
   assert.deepEqual(missingCurrentTurnMessage.followingMessage, { kind: 'none' });
@@ -75,7 +73,6 @@ function main(): void {
       contextHealth: undefined,
       pendingUserInterjectionReply: true,
       hasCompletedHandoffWithoutPendingReply: true,
-      hasDeferredReplyReassertion: false,
       hasActiveReplyObligation: false,
     });
   assert.deepEqual(completedHandoffFollowupOnToolContinuation.followingMessage, { kind: 'none' });
@@ -98,7 +95,6 @@ function main(): void {
     contextHealth: undefined,
     pendingUserInterjectionReply: true,
     hasCompletedHandoffWithoutPendingReply: true,
-    hasDeferredReplyReassertion: false,
     hasActiveReplyObligation: false,
   });
   assert.deepEqual(humanAnswerContinuation.followingMessage, { kind: 'human_answer' });
@@ -110,25 +106,10 @@ function main(): void {
     contextHealth: undefined,
     pendingUserInterjectionReply: true,
     hasCompletedHandoffWithoutPendingReply: false,
-    hasDeferredReplyReassertion: false,
     hasActiveReplyObligation: true,
   });
   assert.deepEqual(activeReplyWithPendingUserInterjection.business, {
     kind: 'pending_user_interjection_with_active_reply',
-  });
-
-  const parkedReplyWinsOverGenericInterjection = resolveSideReminderContextFooterStateFromSignals({
-    prompt: undefined,
-    currentTurnDialogMsgsForContext: [],
-    contextHealth: undefined,
-    pendingUserInterjectionReply: true,
-    hasCompletedHandoffWithoutPendingReply: false,
-    hasDeferredReplyReassertion: true,
-    hasActiveReplyObligation: true,
-  });
-  assert.deepEqual(parkedReplyWinsOverGenericInterjection.followingMessage, { kind: 'none' });
-  assert.deepEqual(parkedReplyWinsOverGenericInterjection.business, {
-    kind: 'pending_user_interjection_with_parked_reply',
   });
 
   const criticalHealth = resolveSideReminderContextFooterStateFromSignals({
@@ -137,7 +118,6 @@ function main(): void {
     contextHealth: { kind: 'available', level: 'critical', usage: { promptTokens: 1 } },
     pendingUserInterjectionReply: false,
     hasCompletedHandoffWithoutPendingReply: false,
-    hasDeferredReplyReassertion: false,
     hasActiveReplyObligation: false,
   });
   assert.deepEqual(criticalHealth.contextHealth, { kind: 'critical' });
@@ -150,7 +130,6 @@ function main(): void {
     contextHealth: undefined,
     pendingUserInterjectionReply: false,
     hasCompletedHandoffWithoutPendingReply: false,
-    hasDeferredReplyReassertion: false,
     hasActiveReplyObligation: false,
   });
   assert.deepEqual(mainDialogScope.dialogScope, { kind: 'main_dialog' });

@@ -4,13 +4,12 @@ const USER_INTERJECTION_PAUSE_STOP_DETAIL = 'user_interjection_pause_resume_orig
 
 // WARNING:
 // This special stop reason is only a UI/run-control projection for legacy paused-interjection
-// state. New answered-interjection flow reasserts the reply obligation automatically instead of
-// depending on this stop reason. It is intentionally encoded as `system_stop`, but it does NOT mean
-// the same thing as ordinary system-stop failure semantics.
+// state. New answered-interjection flow depends on pending interjection settlement plus ordinary
+// drive rules instead of this stop reason. It is intentionally encoded as `system_stop`, but it
+// does NOT mean the same thing as ordinary system-stop failure semantics.
 //
-// Not every user interjection should use this reason. If there is no parked original task to
-// resume afterwards, the interjection should simply complete and the dialog should fall back to
-// its true underlying state without showing this resumption panel.
+// New user interjections should simply complete and the dialog should fall back to its true
+// underlying state without showing this legacy resumption panel.
 //
 // In particular, askHuman answers are NOT "user interjections" for this purpose. A prompt carrying
 // a real `q4hAnswerCallId` belongs to the askHuman reply channel and must never be routed through
@@ -18,8 +17,8 @@ const USER_INTERJECTION_PAUSE_STOP_DETAIL = 'user_interjection_pause_resume_orig
 //
 // Do not change this file in isolation. The complete behavior depends on coordinated logic across:
 // - `reply-guidance.ts`          suppressing tellasker reply obligation during interjection chat
-// - `flow.ts`                   answering locally, then automatically reasserting reply obligation
-// - `dialog-display-state.ts`   preserving legacy paused projection until Continue
+// - `flow.ts`                   answering locally, then using ordinary continuation rules
+// - `dialog-display-state.ts`   preserving legacy paused projection until Continue during recovery
 // - `websocket-handler.ts`      treating Continue as "resume attempt" rather than immediate success
 //
 // Reading only this stop reason or only `displayState.kind === 'stopped'` gives an incomplete and

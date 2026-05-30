@@ -468,17 +468,6 @@ export async function supplyResponseToAskerDialog(args: {
           replyResolutionRecord.ts,
           callerDialog.status,
         );
-        const deferredReplyReassertion = await DialogPersistence.getDeferredReplyReassertion(
-          sideDialogId,
-          callerDialog.status,
-        );
-        if (deferredReplyReassertion?.directive.targetCallId === resolvedCallId) {
-          await DialogPersistence.setDeferredReplyReassertion(
-            sideDialogId,
-            undefined,
-            callerDialog.status,
-          );
-        }
         const activeReplyObligation = await DialogPersistence.loadActiveTellaskReplyObligation(
           sideDialogId,
           callerDialog.status,

@@ -366,11 +366,6 @@ export interface Q4HStateResponse {
     taskDocPath: string;
     content: string;
     answeredAt: string;
-    userInterjection: {
-      msgId: string;
-      course: number;
-      genseq: number;
-    };
     answerRef: {
       course: number;
       genseq: number;

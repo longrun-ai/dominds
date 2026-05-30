@@ -1,10 +1,8 @@
 import type { DialogDisplayState } from '@longrun-ai/kernel/types/display-state';
 import type { DialogQueuedPromptState } from '@longrun-ai/kernel/types/drive-intent';
 import type {
-  AnswerToHumanItem,
   DialogBusinessContinuation,
   DialogPendingRuntimePrompt,
-  DialogPendingUserInterjectionReply,
   DialogReplyDeliveryState,
 } from '@longrun-ai/kernel/types/storage';
 import { generateShortId } from '@longrun-ai/kernel/utils/id';
@@ -29,7 +27,6 @@ import {
 import { globalDialogRegistry } from '../../dialog-global-registry';
 import { isInterruptedDialogBlockedWithoutExplicitResume } from '../../dialog-interruption';
 import { createEmptyDialogNextStepState } from '../../dialog-latest-state';
-import { postDialogEvent } from '../../evt-registry';
 import { log } from '../../log';
 import { loadAgentMinds } from '../../minds/load';
 import { DialogPersistence } from '../../persistence';
@@ -40,6 +37,7 @@ import {
 } from '../../runtime/driver-messages';
 import { isUserInterjectionPauseStopReason } from '../../runtime/interjection-pause-stop';
 import {
+  buildAnsweringReplyReminderText,
   buildReplyToolReminderText,
   isReplyToolReminderPromptContent,
 } from '../../runtime/reply-prompt-copy';
@@ -56,11 +54,7 @@ import {
 import { driveDialogStreamCore } from './drive';
 import { buildKernelDriverPolicy, validateKernelDriverPolicyInvariants } from './guardrails';
 import { cancelIdleReminderWake, maybeStartIdleReminderWake } from './idle-reminder-wake';
-import {
-  buildReplyObligationReassertionPrompt,
-  resolvePromptReplyGuidance,
-  resolveReplyTargetAgentId,
-} from './reply-guidance';
+import { resolvePromptReplyGuidance, resolveReplyTargetAgentId } from './reply-guidance';
 import type { CalleeReplyTarget, ScheduleDriveFn } from './sideDialog';
 import {
   supplySideDialogResponseToAssignedAskerIfPendingV2,
@@ -118,109 +112,6 @@ type FollowUpPrompt =
   | DialogQueuedPromptState
   | RuntimeReplyReminderPrompt
   | RuntimeSideDialogReplyReminderPrompt;
-
-async function confirmAnsweredUserInterjectionCredential(args: {
-  dialog: Dialog;
-  credential: AnswerToHumanItem | undefined;
-  userInterjection: DialogPendingUserInterjectionReply;
-}): Promise<AnswerToHumanItem | undefined> {
-  const credential = args.credential;
-  if (credential === undefined) {
-    return undefined;
-  }
-  const dialog = args.dialog;
-  const latest = await DialogPersistence.loadDialogLatest(dialog.id, dialog.status);
-  const answers = await DialogPersistence.loadAnswersToHumanState(dialog.id, dialog.status);
-  const persistedCredential = answers.find((answer) => answer.id === credential.id);
-  if (persistedCredential === undefined) {
-    return undefined;
-  }
-  if (
-    persistedCredential.userInterjection.msgId !== credential.userInterjection.msgId ||
-    persistedCredential.userInterjection.course !== credential.userInterjection.course ||
-    persistedCredential.userInterjection.genseq !== credential.userInterjection.genseq ||
-    persistedCredential.answerRef.course !== credential.answerRef.course ||
-    persistedCredential.answerRef.genseq !== credential.answerRef.genseq
-  ) {
-    return undefined;
-  }
-  if (
-    persistedCredential.userInterjection.msgId !== args.userInterjection.msgId ||
-    persistedCredential.userInterjection.course !== args.userInterjection.course ||
-    persistedCredential.userInterjection.genseq !== args.userInterjection.genseq
-  ) {
-    return undefined;
-  }
-  const pending = latest?.pendingUserInterjectionReply;
-  if (pending === undefined) {
-    return persistedCredential;
-  }
-  if (
-    pending.msgId !== persistedCredential.userInterjection.msgId ||
-    pending.course !== persistedCredential.userInterjection.course ||
-    pending.genseq !== persistedCredential.userInterjection.genseq
-  ) {
-    return undefined;
-  }
-  await DialogPersistence.mutateDialogLatest(
-    dialog.id,
-    (previous) => {
-      const previousPending = previous.pendingUserInterjectionReply;
-      if (
-        previousPending === undefined ||
-        previousPending.msgId !== persistedCredential.userInterjection.msgId ||
-        previousPending.course !== persistedCredential.userInterjection.course ||
-        previousPending.genseq !== persistedCredential.userInterjection.genseq
-      ) {
-        return { kind: 'noop' };
-      }
-      const next = { ...previous };
-      delete next.pendingUserInterjectionReply;
-      return { kind: 'replace', next };
-    },
-    dialog.status,
-  );
-  return persistedCredential;
-}
-
-async function resolveLatestAnsweredUserInterjectionCredential(
-  dialog: Dialog,
-  userInterjection: DialogPendingUserInterjectionReply,
-): Promise<AnswerToHumanItem | undefined> {
-  const answers = await DialogPersistence.loadAnswersToHumanState(dialog.id, dialog.status);
-  for (let index = answers.length - 1; index >= 0; index -= 1) {
-    const answer = answers[index];
-    if (
-      answer.userInterjection.msgId === userInterjection.msgId &&
-      answer.userInterjection.course === userInterjection.course &&
-      answer.userInterjection.genseq === userInterjection.genseq
-    ) {
-      return answer;
-    }
-  }
-  return undefined;
-}
-
-async function resolveAnsweredUserInterjectionCredentialForPrompt(args: {
-  dialog: Dialog;
-  userPromptMsgId: string | undefined;
-}): Promise<AnswerToHumanItem | undefined> {
-  const userPromptMsgId = args.userPromptMsgId;
-  if (userPromptMsgId === undefined) {
-    return undefined;
-  }
-  const answers = await DialogPersistence.loadAnswersToHumanState(
-    args.dialog.id,
-    args.dialog.status,
-  );
-  for (let index = answers.length - 1; index >= 0; index -= 1) {
-    const answer = answers[index];
-    if (answer.userInterjection.msgId === userPromptMsgId) {
-      return answer;
-    }
-  }
-  return undefined;
-}
 
 function buildRuntimeReplyReminderFollowUp(args: {
   directive: NonNullable<KernelDriverPrompt['tellaskReplyDirective']>;
@@ -579,6 +470,21 @@ async function buildReplyToolReminderPrompt(args: {
   language: 'zh' | 'en';
 }): Promise<string> {
   return buildReplyToolReminderText({
+    language: args.language,
+    directive: args.directive,
+    replyTargetAgentId: await resolveReplyTargetAgentId({
+      dlg: args.dlg,
+      directive: args.directive,
+    }),
+  });
+}
+
+async function buildAnsweringReplyReminderPrompt(args: {
+  dlg: Dialog;
+  directive: NonNullable<KernelDriverPrompt['tellaskReplyDirective']>;
+  language: 'zh' | 'en';
+}): Promise<string> {
+  return buildAnsweringReplyReminderText({
     language: args.language,
     directive: args.directive,
     replyTargetAgentId: await resolveReplyTargetAgentId({
@@ -1549,139 +1455,6 @@ async function inspectSideDialogBusinessContinuationDrive(args: {
   };
 }
 
-async function maybeResolveDeferredReplyReassertionPrompt(
-  dialog: KernelDriverDriveArgs[0],
-): Promise<KernelDriverRuntimePrompt | undefined> {
-  const latest = await DialogPersistence.loadDialogLatest(dialog.id, dialog.status);
-  if (latest?.pendingUserInterjectionReply !== undefined) {
-    return undefined;
-  }
-  const deferredReplyReassertion = await DialogPersistence.getDeferredReplyReassertion(
-    dialog.id,
-    dialog.status,
-  );
-  if (!deferredReplyReassertion) {
-    return undefined;
-  }
-  const activeDirective = await loadActiveTellaskReplyDirective(dialog);
-  if (
-    !activeDirective ||
-    activeDirective.targetCallId !== deferredReplyReassertion.directive.targetCallId
-  ) {
-    await DialogPersistence.setDeferredReplyReassertion(dialog.id, undefined, dialog.status);
-    return undefined;
-  }
-  // WARNING:
-  // `resumeGuideSurfaced` means the reply-obligation reassertion has already been materialized as a
-  // runtime guide and injected into both dialog.msgs and persisted course history at blocked
-  // Continue time. Once that has happened, later real resume must not emit a second visible prompt:
-  // normal context replay is now the source of truth for the model-facing reminder.
-  if (deferredReplyReassertion.resumeGuideSurfaced === true) {
-    await DialogPersistence.setDeferredReplyReassertion(dialog.id, undefined, dialog.status);
-    return undefined;
-  }
-  const answeredUserInterjection = await confirmAnsweredUserInterjectionCredential({
-    dialog,
-    credential: await resolveLatestAnsweredUserInterjectionCredential(
-      dialog,
-      deferredReplyReassertion.userInterjection,
-    ),
-    userInterjection: deferredReplyReassertion.userInterjection,
-  });
-  if (answeredUserInterjection === undefined) {
-    return undefined;
-  }
-  await DialogPersistence.setDeferredReplyReassertion(dialog.id, undefined, dialog.status);
-  const language = getWorkLanguage();
-  return {
-    content: await buildReplyObligationReassertionPrompt({
-      dlg: dialog,
-      directive: deferredReplyReassertion.directive,
-      language,
-      answeredUserInterjection,
-    }),
-    msgId: generateShortId(),
-    grammar: 'markdown',
-    origin: 'runtime',
-    userLanguageCode: language,
-    tellaskReplyDirective: deferredReplyReassertion.directive,
-  };
-}
-
-async function maybeSurfaceDeferredReplyReassertionGuideForBlockedContinue(
-  dialog: Dialog,
-): Promise<void> {
-  const deferredReplyReassertion = await DialogPersistence.getDeferredReplyReassertion(
-    dialog.id,
-    dialog.status,
-  );
-  if (!deferredReplyReassertion || deferredReplyReassertion.resumeGuideSurfaced === true) {
-    return;
-  }
-  const activeDirective = await loadActiveTellaskReplyDirective(dialog);
-  if (
-    !activeDirective ||
-    activeDirective.targetCallId !== deferredReplyReassertion.directive.targetCallId
-  ) {
-    await DialogPersistence.setDeferredReplyReassertion(dialog.id, undefined, dialog.status);
-    return;
-  }
-  const language = getWorkLanguage();
-  const answeredUserInterjection = await confirmAnsweredUserInterjectionCredential({
-    dialog,
-    credential: await resolveLatestAnsweredUserInterjectionCredential(
-      dialog,
-      deferredReplyReassertion.userInterjection,
-    ),
-    userInterjection: deferredReplyReassertion.userInterjection,
-  });
-  if (answeredUserInterjection === undefined) {
-    return;
-  }
-  const content = await buildReplyObligationReassertionPrompt({
-    dlg: dialog,
-    directive: deferredReplyReassertion.directive,
-    language,
-    answeredUserInterjection,
-  });
-  // WARNING:
-  // This helper intentionally does three things at once:
-  // 1. append the guide into dialog.msgs so an in-memory later resume sees it naturally;
-  // 2. persist a runtime_guide_record so reload/replay reconstructs the same context;
-  // 3. emit runtime_guide_evt so the user immediately sees the reassertion bubble after Continue.
-  //
-  // Do not "optimize" this into only an event or only a deferred prompt. The whole point is that
-  // once a legacy blocked Continue path surfaces the guide, it becomes a first-class historical
-  // context fact and later real driving should need no special duplicate reassertion path.
-  await surfaceRuntimeGuide(dialog, content);
-  await DialogPersistence.setDeferredReplyReassertion(
-    dialog.id,
-    {
-      reason: 'user_interjection_with_parked_original_task',
-      directive: deferredReplyReassertion.directive,
-      userInterjection: deferredReplyReassertion.userInterjection,
-      resumeGuideSurfaced: true,
-    },
-    dialog.status,
-  );
-}
-
-async function surfaceRuntimeGuide(dialog: Dialog, content: string): Promise<void> {
-  const genseq = dialog.activeGenSeqOrUndefined ?? 1;
-  await dialog.addChatMessages({
-    type: 'transient_guide_msg',
-    role: 'assistant',
-    content,
-  });
-  await DialogPersistence.persistRuntimeGuide(dialog, content, genseq);
-  postDialogEvent(dialog, {
-    type: 'runtime_guide_evt',
-    course: dialog.currentCourse,
-    genseq,
-    content,
-  });
-}
-
 async function resolveEffectivePrompt(
   dialog: KernelDriverDriveArgs[0],
   humanPrompt?: KernelDriverPrompt,
@@ -1700,7 +1473,7 @@ async function resolveEffectivePrompt(
     const queuedPrompt: QueuedPrompt | undefined = dialog.peekQueuedPrompt();
     if (!queuedPrompt) {
       return {
-        prompt: await maybeResolveDeferredReplyReassertionPrompt(dialog),
+        prompt: undefined,
         fromQueuedPrompt: false,
         droppedStaleQueuedContinuation,
       };
@@ -2129,7 +1902,7 @@ export async function executeDriveRound(args: {
       //
       // Do not refactor this branch using only `displayState` or only the previous interrupted
       // marker. The correct behavior emerges from combining fresh suspension facts, queued prompt
-      // state, and the deferred reply reassertion logic elsewhere.
+      // state, and ordinary reply-obligation state.
       const hasSupplyResponseContinuation = hasSupplyResponseBusinessContinuation(
         dialog,
         driveOptions,
@@ -2146,7 +1919,6 @@ export async function executeDriveRound(args: {
         if (resumeFromInterjectionPause) {
           const restoredState = await computeIdleDisplayState(dialog);
           await setDialogDisplayState(dialog.id, restoredState);
-          await maybeSurfaceDeferredReplyReassertionGuideForBlockedContinue(dialog);
           log.debug(
             'kernel-driver continue after interjection pause restored true suspended state from fresh persistence facts',
             undefined,
@@ -2363,19 +2135,13 @@ export async function executeDriveRound(args: {
       dlg: dialog,
       prompt: effectivePrompt,
     });
-    // Only park into the special interjection resumption-panel state when this user turn has
-    // suppressed a still-pending inter-dialog reply obligation that must be reasserted later.
-    // User interjections without a parked original task should simply finish and fall back to the
-    // dialog's true underlying state, without showing the special resumption panel.
-    //
     // Q4H answers are explicitly outside this branch even though they also come from the human.
     // They belong to the askHuman reply channel and must continue the suspended askHuman round,
     // never be mistaken for ad hoc interjection chat.
     shouldPauseAfterLocalUserInterjection =
       effectivePrompt?.origin === 'user' &&
       !replyGuidance.isQ4HAnswerPrompt &&
-      replyGuidance.suppressInterDialogReplyGuidance &&
-      replyGuidance.deferredReplyReassertionDirective !== undefined;
+      replyGuidance.suppressInterDialogReplyGuidance;
     activeTellaskReplyDirective =
       replyGuidance.activeReplyDirective ?? replyContinuationScope.directive();
     activePromptWasReplyToolReminder = isReplyToolReminderPrompt(effectivePrompt);
@@ -2483,65 +2249,62 @@ export async function executeDriveRound(args: {
     let tailError: unknown;
     try {
       if (
-        shouldPauseAfterLocalUserInterjection &&
-        effectivePrompt?.origin === 'user' &&
+        dialog instanceof SideDialog &&
+        driveResult &&
         !interruptedBySignal &&
-        followUp === undefined &&
-        driveResult?.lastAssistantSayingContent !== undefined &&
-        driveResult.lastAssistantSayingContent !== null &&
-        driveResult.lastAssistantSayingContent.trim() !== ''
+        driveResult.fbrConclusion === undefined &&
+        driveResult.lastAssistantAnsweringContent !== null &&
+        driveResult.lastAssistantAnsweringContent.trim() !== '' &&
+        resolveDirectFallbackResponse({ driveResult, dialog }) === undefined &&
+        followUp === undefined
       ) {
-        const deferredReplyReassertion = await DialogPersistence.getDeferredReplyReassertion(
-          dialog.id,
-          dialog.status,
-        );
-        if (
-          deferredReplyReassertion !== undefined &&
-          deferredReplyReassertion.reason === 'user_interjection_with_parked_original_task'
-        ) {
-          const answeredUserInterjection = await confirmAnsweredUserInterjectionCredential({
-            dialog,
-            credential:
-              driveResult.answeredUserInterjection ??
-              (await resolveAnsweredUserInterjectionCredentialForPrompt({
-                dialog,
-                userPromptMsgId: effectivePrompt?.msgId,
-              })),
-            userInterjection: deferredReplyReassertion.userInterjection,
-          });
-          if (answeredUserInterjection !== undefined) {
-            const language = getWorkLanguage();
-            const prompt = await buildReplyObligationReassertionPrompt({
+        const suspension = await dialog.getSuspensionStatus();
+        const backgroundCalleeBlocksImplicitReply =
+          suspension.backgroundCalleeDialogs &&
+          !activePromptWasReplyToolReminder &&
+          !activePromptCarriesReplyDirective;
+        if (!suspension.canDrive || backgroundCalleeBlocksImplicitReply) {
+          log.debug(
+            'kernel-driver skip sideDialog answering reminder while tellaskee is not finalized',
+            undefined,
+            {
+              rootId: dialog.id.rootId,
+              selfId: dialog.id.selfId,
+              waitingQ4H: suspension.q4h,
+              backgroundCalleeDialogs: suspension.backgroundCalleeDialogs,
+              backgroundCalleeBlocksImplicitReply,
+            },
+          );
+        } else if (activeTellaskReplyDirective === undefined) {
+          log.debug(
+            'kernel-driver skip sideDialog answering reminder because no active tellask reply directive is bound to this drive',
+            undefined,
+            {
+              rootId: dialog.id.rootId,
+              selfId: dialog.id.selfId,
+            },
+          );
+        } else {
+          const language = getWorkLanguage();
+          followUp = buildRuntimeReplyReminderFollowUp({
+            directive: activeTellaskReplyDirective,
+            prompt: await buildAnsweringReplyReminderPrompt({
               dlg: dialog,
-              directive: deferredReplyReassertion.directive,
+              directive: activeTellaskReplyDirective,
               language,
-              answeredUserInterjection,
-            });
-            followUp = {
-              kind: 'runtime_reply_reminder',
-              prompt,
-              msgId: generateShortId(),
-              grammar: 'markdown',
-              origin: 'runtime',
-              userLanguageCode: language,
-              tellaskReplyDirective: deferredReplyReassertion.directive,
-            };
-            await DialogPersistence.setDeferredReplyReassertion(
-              dialog.id,
-              undefined,
-              dialog.status,
-            );
-            log.debug(
-              'kernel-driver queued automatic reply-obligation reassertion after user interjection answer',
-              undefined,
-              {
-                dialogId: dialog.id.valueOf(),
-                rootId: dialog.id.rootId,
-                selfId: dialog.id.selfId,
-                targetCallId: deferredReplyReassertion.directive.targetCallId,
-              },
-            );
-          }
+            }),
+            language,
+            calleeDialogReplyTarget,
+          });
+          log.debug(
+            'kernel-driver queued sideDialog replyTellask reminder after answering-only output',
+            undefined,
+            {
+              dialogId: dialog.id.valueOf(),
+              targetCallId: activeTellaskReplyDirective.targetCallId,
+              targetCallerDialogId: calleeDialogReplyTarget?.callerDialogId,
+            },
+          );
         }
       }
 

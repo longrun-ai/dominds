@@ -1,11 +1,13 @@
 import { inspect } from 'util';
 
-import type { NewQ4HAskedEvent } from '@longrun-ai/kernel/types/dialog';
+import type { NewA2HAnsweredEvent, NewQ4HAskedEvent } from '@longrun-ai/kernel/types/dialog';
 import {
   toCallSiteCourseNo,
   toCallSiteGenseqNo,
+  toDialogCourseNumber,
   toRootGenerationAnchor,
   type ActiveCalleeDispatchRecord,
+  type AnswerToHumanItem,
   type CallSiteCourseNo,
   type CallSiteGenseqNo,
   type DialogReplyDeliveryState,
@@ -82,6 +84,7 @@ const TELLASK_SPECIAL_FUNCTION_NAMES = [
   'replyTellaskSessionless',
   'replyTellaskBack',
   'askHuman',
+  'answerHuman',
   'freshBootsReasoning',
 ] as const;
 
@@ -130,6 +133,11 @@ export type TellaskCall =
     }>
   | Readonly<{
       callId: string;
+      callName: 'answerHuman';
+      answerContent: string;
+    }>
+  | Readonly<{
+      callId: string;
       callName: 'freshBootsReasoning';
       tellaskContent: string;
       effort?: number;
@@ -147,7 +155,8 @@ export type InvalidTellaskFunctionCall = Readonly<{
 }>;
 
 type ReplyTellaskCallName = 'replyTellask' | 'replyTellaskSessionless' | 'replyTellaskBack';
-type NonReplyTellaskCallName = Exclude<TellaskCall['callName'], ReplyTellaskCallName>;
+type FuncRequestedSpecialCallName = ReplyTellaskCallName | 'answerHuman';
+type NonReplyTellaskCallName = Exclude<TellaskCall['callName'], FuncRequestedSpecialCallName>;
 const MULTIPLE_ASKHUMAN_CALLS_ERROR =
   '不允许一轮多次调用 askHuman，必须单次调用问所有问题。 Do not call askHuman multiple times in one round; ask all questions in a single askHuman call.';
 const MULTIPLE_REPLY_TELLASK_CALLS_ERROR =
@@ -161,6 +170,12 @@ function isReplyTellaskCallName(name: string): name is ReplyTellaskCallName {
   return (
     name === 'replyTellask' || name === 'replyTellaskSessionless' || name === 'replyTellaskBack'
   );
+}
+
+function usesFuncRequestedSpecialLifecycle(
+  name: TellaskCallFunctionName,
+): name is FuncRequestedSpecialCallName {
+  return isReplyTellaskCallName(name) || name === 'answerHuman';
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -665,6 +680,20 @@ function parseTellaskCall(
           callId: call.id,
           callName: 'askHuman',
           tellaskContent: tellaskContent.value,
+        },
+      };
+    }
+    case 'answerHuman': {
+      const answerContent = readRequiredStringField(args, 'answerContent');
+      if (!answerContent.ok) {
+        return answerContent;
+      }
+      return {
+        ok: true,
+        value: {
+          callId: call.id,
+          callName: 'answerHuman',
+          answerContent: answerContent.value,
         },
       };
     }
@@ -2780,6 +2809,114 @@ async function executeReplyTellaskCall(args: {
   }
 }
 
+function formatAnswerHumanResultContent(args: { answerContent: string }): string {
+  const language = getWorkLanguage();
+  return language === 'zh'
+    ? `已记录给人类的答复。\n\n${args.answerContent}`
+    : `Recorded the answer for the human.\n\n${args.answerContent}`;
+}
+
+export type AnswerHumanStructuredOutput = Readonly<{
+  callId: string;
+  answerContent: string;
+  course: number;
+  genseq: number;
+  answer: AnswerToHumanItem;
+}>;
+
+export async function recordAnswerToHuman(args: {
+  dlg: Dialog;
+  answerContent: string;
+  course: number;
+  genseq: number;
+  answerIdSource: string;
+}): Promise<AnswerToHumanItem> {
+  const answer: AnswerToHumanItem = {
+    id: `a2h-${Buffer.from(args.answerIdSource).toString('base64url')}`,
+    content: args.answerContent,
+    answeredAt: formatUnifiedTimestamp(new Date()),
+    answerRef: {
+      course: toDialogCourseNumber(args.course),
+      genseq: toCallSiteGenseqNo(args.genseq),
+    },
+  };
+
+  await DialogPersistence.appendAnswerToHumanState(args.dlg.id, answer, args.dlg.status);
+  const metadata = await DialogPersistence.loadDialogMetadata(args.dlg.id, args.dlg.status);
+  const taskDocPath = metadata?.taskDocPath ?? args.dlg.taskDocPath ?? '';
+  const event: NewA2HAnsweredEvent = {
+    type: 'new_a2h_answered',
+    answer: {
+      ...answer,
+      selfId: args.dlg.id.selfId,
+      rootId: args.dlg.id.rootId,
+      agentId: metadata?.agentId ?? args.dlg.agentId,
+      taskDocPath,
+    },
+  };
+  postDialogEvent(args.dlg, event);
+
+  await DialogPersistence.mutateDialogLatest(
+    args.dlg.id,
+    (previous) => {
+      const previousPending = previous.pendingUserInterjectionReply;
+      if (previousPending === undefined) {
+        return { kind: 'noop' };
+      }
+      const next = { ...previous };
+      delete next.pendingUserInterjectionReply;
+      return { kind: 'replace', next };
+    },
+    args.dlg.status,
+  );
+
+  return answer;
+}
+
+async function executeAnswerHumanCall(args: {
+  dlg: Dialog;
+  call: Extract<ExecutableValidTellaskCall, { callName: 'answerHuman' }>;
+}): Promise<{ messages: ChatMessage[]; answering: AnswerHumanStructuredOutput }> {
+  const genseq = args.dlg.activeGenSeqOrUndefined ?? 1;
+  const course = args.dlg.activeGenCourseOrUndefined ?? args.dlg.currentCourse;
+  const answerContent = args.call.answerContent;
+
+  const answer = await recordAnswerToHuman({
+    dlg: args.dlg,
+    answerContent,
+    course,
+    genseq,
+    answerIdSource: [
+      args.dlg.id.rootId,
+      args.dlg.id.selfId,
+      `c${String(course)}`,
+      `g${String(genseq)}`,
+      `answerHuman:${args.call.callId}`,
+      args.call.callId,
+    ].join('|'),
+  });
+
+  return {
+    messages: [
+      {
+        type: 'func_result_msg',
+        role: 'tool',
+        genseq,
+        id: args.call.callId,
+        name: args.call.callName,
+        content: formatAnswerHumanResultContent({ answerContent }),
+      },
+    ],
+    answering: {
+      callId: args.call.callId,
+      answerContent,
+      course,
+      genseq,
+      answer,
+    },
+  };
+}
+
 type ExecutableValidTellaskCall =
   | Readonly<{
       callName: 'tellask';
@@ -2819,6 +2956,11 @@ type ExecutableValidTellaskCall =
   | Readonly<{
       callName: 'askHuman';
       tellaskContent: string;
+      callId: string;
+    }>
+  | Readonly<{
+      callName: 'answerHuman';
+      answerContent: string;
       callId: string;
     }>
   | Readonly<{
@@ -2867,6 +3009,12 @@ function toExecutableValidTellaskCall(call: TellaskCall): ExecutableValidTellask
         tellaskContent: call.tellaskContent,
         callId: call.callId,
       };
+    case 'answerHuman':
+      return {
+        callName: call.callName,
+        answerContent: call.answerContent,
+        callId: call.callId,
+      };
     case 'freshBootsReasoning':
       return {
         callName: call.callName,
@@ -2882,9 +3030,14 @@ async function executeValidTellaskCalls(args: {
   calls: readonly ExecutableValidTellaskCall[];
   callbacks: KernelDriverDriveCallbacks;
   activePromptReplyDirective?: TellaskReplyDirective;
-}): Promise<{ toolOutputs: ChatMessage[]; successfulReplyCallIds: string[] }> {
+}): Promise<{
+  toolOutputs: ChatMessage[];
+  successfulReplyCallIds: string[];
+  answerHumanOutputs: AnswerHumanStructuredOutput[];
+}> {
   const results: ChatMessage[][] = [];
   const successfulReplyCallIds: string[] = [];
+  const answerHumanOutputs: AnswerHumanStructuredOutput[] = [];
   const deferredScheduleCalls: Array<
     Readonly<{ dialog: Dialog; options: KernelDriverDriveCallOptions }>
   > = [];
@@ -2905,12 +3058,16 @@ async function executeValidTellaskCalls(args: {
         case 'replyTellaskSessionless':
         case 'replyTellaskBack':
         case 'askHuman':
+        case 'answerHuman':
         case 'freshBootsReasoning':
           return undefined;
       }
     })();
-    if (!isReplyTellaskCallName(call.callName)) {
-      const nonReplyCall = call as Exclude<ExecutableValidTellaskCall, { replyContent: string }>;
+    if (!usesFuncRequestedSpecialLifecycle(call.callName)) {
+      const nonReplyCall = call as Extract<
+        ExecutableValidTellaskCall,
+        { callName: NonReplyTellaskCallName }
+      >;
       const sessionSlug =
         nonReplyCall.callName === 'tellask' ? nonReplyCall.sessionSlug : undefined;
       await emitTellaskCallEvents({
@@ -2946,6 +3103,15 @@ async function executeValidTellaskCalls(args: {
           successfulReplyCallIds.push(call.callId);
         }
         results.push(replyResult.messages);
+        continue;
+      }
+      case 'answerHuman': {
+        const answerResult = await executeAnswerHumanCall({
+          dlg: args.dlg,
+          call,
+        });
+        results.push(answerResult.messages);
+        answerHumanOutputs.push(answerResult.answering);
         continue;
       }
       case 'tellask': {
@@ -3014,6 +3180,7 @@ async function executeValidTellaskCalls(args: {
   return {
     toolOutputs: results.flatMap((result) => result),
     successfulReplyCallIds,
+    answerHumanOutputs,
   };
 }
 
@@ -3022,9 +3189,13 @@ export async function executeTellaskCalls(args: {
   calls: readonly TellaskCall[];
   callbacks: KernelDriverDriveCallbacks;
   activePromptReplyDirective?: TellaskReplyDirective;
-}): Promise<{ toolOutputs: ChatMessage[]; successfulReplyCallIds: string[] }> {
+}): Promise<{
+  toolOutputs: ChatMessage[];
+  successfulReplyCallIds: string[];
+  answerHumanOutputs: AnswerHumanStructuredOutput[];
+}> {
   if (args.calls.length === 0) {
-    return { toolOutputs: [], successfulReplyCallIds: [] };
+    return { toolOutputs: [], successfulReplyCallIds: [], answerHumanOutputs: [] };
   }
 
   return await executeValidTellaskCalls({
@@ -3045,6 +3216,7 @@ export type TellaskFunctionRoundResult = Readonly<{
   hasImmediateTellaskOutputs: boolean;
   immediateTellaskOutputCallIds: readonly string[];
   invalidTellaskCallIds: readonly string[];
+  answerHumanOutputs: readonly AnswerHumanStructuredOutput[];
   shouldStopAfterReplyTool: boolean;
   shouldStopAfterPendingTellaskWait: boolean;
 }>;
@@ -3155,7 +3327,7 @@ export async function processTellaskFunctionRound(args: {
         getRawArgumentsText(handled.originalCall),
         handled.originalCall.genseq,
         {
-          deliveryMode: isReplyTellaskCallName(handled.call.callName)
+          deliveryMode: usesFuncRequestedSpecialLifecycle(handled.call.callName)
             ? 'func_call_requested'
             : 'tellask_call_start',
           ...(isReplyTellaskCallName(handled.call.callName) &&
@@ -3270,7 +3442,10 @@ export async function processTellaskFunctionRound(args: {
       tellaskFuncResultByCallId.set(result.id, result);
       tellaskFuncResults.push(result);
       const originatingCall = specialCallById.get(result.id);
-      if (originatingCall !== undefined && isReplyTellaskCallName(originatingCall.callName)) {
+      if (
+        originatingCall !== undefined &&
+        usesFuncRequestedSpecialLifecycle(originatingCall.callName)
+      ) {
         continue;
       }
       hasImmediateTellaskOutputs = true;
@@ -3345,6 +3520,7 @@ export async function processTellaskFunctionRound(args: {
     hasImmediateTellaskOutputs,
     immediateTellaskOutputCallIds,
     invalidTellaskCallIds: orderedInvalidCalls.map((issue) => issue.originalCall.id),
+    answerHumanOutputs: tellaskExecution.answerHumanOutputs,
     shouldStopAfterReplyTool: tellaskExecution.successfulReplyCallIds.length > 0,
     shouldStopAfterPendingTellaskWait,
   };
