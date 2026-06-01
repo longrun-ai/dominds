@@ -174,17 +174,24 @@ providers:
         context_window: '272K'
   minimaxi.com-token-plan:
     name: MiniMax CN Token Plan
-    apiType: anthropic-compatible
-    baseUrl: https://api.minimaxi.com/anthropic
+    apiType: openai-compatible
+    apiQuirks:
+      - minimax-reasoning-details
+    baseUrl: https://api.minimaxi.com/v1
     apiKeyEnvVar: MINIMAX_CN_TP_API_KEY
-    tech_spec_url: https://platform.minimaxi.com/docs/api-reference/text-anthropic-api
+    tech_spec_url: https://platform.minimaxi.com/docs/api-reference/text-openai-api
     api_mgmt_url: https://platform.minimaxi.com/
     model_param_options:
-      anthropic-compatible:
+      openai-compatible:
         thinking:
           prominent: true
+          type: boolean|object
+          description: OpenAI-compatible MiniMax thinking control. Set true to send thinking.type=enabled, false to send thinking.type=disabled, or provide the provider-specific thinking object documented by MiniMax. Leave unset to use the provider/model default.
+        reasoning_split:
+          prominent: true
           type: boolean
-          description: Set true to send thinking.type=enabled, or false to send thinking.type=disabled when supported. Leave unset to use the provider/model default.
+          default: true
+          description: Enable MiniMax Interleaved Thinking friendly format; when true, reasoning is returned separately in reasoning_details and Dominds preserves it for subsequent turns.
         temperature:
           type: number
           min: 0
@@ -196,9 +203,10 @@ providers:
           min: 0
           max: 1
           description: Fully supported. Nucleus sampling parameter.
-        json_response:
-          type: boolean
-          description: Force JSON object output via Anthropic tool_choice mode.
+        text_format:
+          type: enum
+          values: [text, json_object, json_schema]
+          description: OpenAI-compatible Chat Completions response_format mode.
     models:
       MiniMax-M3:
         name: MiniMax M3
@@ -234,17 +242,24 @@ providers:
         context_window: '204K'
   minimaxi.com:
     name: MiniMax CN
-    apiType: anthropic-compatible
-    baseUrl: https://api.minimaxi.com/anthropic
+    apiType: openai-compatible
+    apiQuirks:
+      - minimax-reasoning-details
+    baseUrl: https://api.minimaxi.com/v1
     apiKeyEnvVar: MINIMAX_CN_API_KEY
-    tech_spec_url: https://platform.minimaxi.com/docs/api-reference/text-anthropic-api
+    tech_spec_url: https://platform.minimaxi.com/docs/api-reference/text-openai-api
     api_mgmt_url: https://platform.minimaxi.com/
     model_param_options:
-      anthropic-compatible:
+      openai-compatible:
         thinking:
           prominent: true
+          type: boolean|object
+          description: OpenAI-compatible MiniMax thinking control. Set true to send thinking.type=enabled, false to send thinking.type=disabled, or provide the provider-specific thinking object documented by MiniMax. Leave unset to use the provider/model default.
+        reasoning_split:
+          prominent: true
           type: boolean
-          description: Set true to send thinking.type=enabled, or false to send thinking.type=disabled when supported. Leave unset to use the provider/model default.
+          default: true
+          description: Enable MiniMax Interleaved Thinking friendly format; when true, reasoning is returned separately in reasoning_details and Dominds preserves it for subsequent turns.
         temperature:
           type: number
           min: 0
@@ -256,9 +271,10 @@ providers:
           min: 0
           max: 1
           description: Fully supported. Nucleus sampling parameter.
-        json_response:
-          type: boolean
-          description: Force JSON object output via Anthropic tool_choice mode.
+        text_format:
+          type: enum
+          values: [text, json_object, json_schema]
+          description: OpenAI-compatible Chat Completions response_format mode.
     models:
       MiniMax-M3:
         name: MiniMax M3
@@ -294,17 +310,24 @@ providers:
         context_window: '204K'
   minimax.io-token-plan:
     name: MiniMax International Token Plan
-    apiType: anthropic-compatible
-    baseUrl: https://api.minimax.io/anthropic
+    apiType: openai-compatible
+    apiQuirks:
+      - minimax-reasoning-details
+    baseUrl: https://api.minimax.io/v1
     apiKeyEnvVar: MINIMAX_TP_API_KEY
-    tech_spec_url: https://platform.minimax.io/docs/api-reference/text-anthropic-api
+    tech_spec_url: https://platform.minimax.io/docs/api-reference/text-openai-api
     api_mgmt_url: https://platform.minimax.io/
     model_param_options:
-      anthropic-compatible:
+      openai-compatible:
         thinking:
           prominent: true
+          type: boolean|object
+          description: OpenAI-compatible MiniMax thinking control. Set true to send thinking.type=enabled, false to send thinking.type=disabled, or provide the provider-specific thinking object documented by MiniMax. Leave unset to use the provider/model default.
+        reasoning_split:
+          prominent: true
           type: boolean
-          description: Set true to send thinking.type=enabled, or false to send thinking.type=disabled when supported. Leave unset to use the provider/model default.
+          default: true
+          description: Enable MiniMax Interleaved Thinking friendly format; when true, reasoning is returned separately in reasoning_details and Dominds preserves it for subsequent turns.
         temperature:
           type: number
           min: 0
@@ -316,9 +339,10 @@ providers:
           min: 0
           max: 1
           description: Fully supported. Nucleus sampling parameter.
-        json_response:
-          type: boolean
-          description: Force JSON object output via Anthropic tool_choice mode.
+        text_format:
+          type: enum
+          values: [text, json_object, json_schema]
+          description: OpenAI-compatible Chat Completions response_format mode.
     models:
       MiniMax-M3:
         name: MiniMax M3
@@ -354,17 +378,24 @@ providers:
         context_window: '204K'
   minimax.io:
     name: MiniMax International
-    apiType: anthropic-compatible
-    baseUrl: https://api.minimax.io/anthropic
+    apiType: openai-compatible
+    apiQuirks:
+      - minimax-reasoning-details
+    baseUrl: https://api.minimax.io/v1
     apiKeyEnvVar: MINIMAX_API_KEY
-    tech_spec_url: https://platform.minimax.io/docs/api-reference/text-anthropic-api
+    tech_spec_url: https://platform.minimax.io/docs/api-reference/text-openai-api
     api_mgmt_url: https://platform.minimax.io/
     model_param_options:
-      anthropic-compatible:
+      openai-compatible:
         thinking:
           prominent: true
+          type: boolean|object
+          description: OpenAI-compatible MiniMax thinking control. Set true to send thinking.type=enabled, false to send thinking.type=disabled, or provide the provider-specific thinking object documented by MiniMax. Leave unset to use the provider/model default.
+        reasoning_split:
+          prominent: true
           type: boolean
-          description: Set true to send thinking.type=enabled, or false to send thinking.type=disabled when supported. Leave unset to use the provider/model default.
+          default: true
+          description: Enable MiniMax Interleaved Thinking friendly format; when true, reasoning is returned separately in reasoning_details and Dominds preserves it for subsequent turns.
         temperature:
           type: number
           min: 0
@@ -376,9 +407,10 @@ providers:
           min: 0
           max: 1
           description: Fully supported. Nucleus sampling parameter.
-        json_response:
-          type: boolean
-          description: Force JSON object output via Anthropic tool_choice mode.
+        text_format:
+          type: enum
+          values: [text, json_object, json_schema]
+          description: OpenAI-compatible Chat Completions response_format mode.
     models:
       MiniMax-M3:
         name: MiniMax M3

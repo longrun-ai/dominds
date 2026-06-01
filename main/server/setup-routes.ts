@@ -450,7 +450,7 @@ function extractProminentModelParams(
       if (opt.prominent !== true) continue;
       if (typeof opt.description !== 'string') continue;
 
-      if (opt.type === 'boolean') {
+      if (opt.type === 'boolean' || opt.type === 'boolean|object') {
         out.push({
           kind: 'boolean',
           namespace,

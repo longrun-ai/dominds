@@ -68,6 +68,10 @@ export type ModelParamOption =
       default?: boolean;
     })
   | (ModelParamOptionBase & {
+      type: 'boolean|object';
+      default?: boolean;
+    })
+  | (ModelParamOptionBase & {
       type: 'string';
       default?: string;
     })

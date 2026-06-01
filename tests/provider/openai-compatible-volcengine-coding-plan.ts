@@ -3,7 +3,10 @@ import type { ChatCompletion, ChatCompletionChunk } from 'openai/resources/chat/
 import os from 'os';
 import path from 'path';
 
-import { VOLCENGINE_INVALID_PARAMETER_AGGRESSIVE_RETRY_API_QUIRK } from '../../main/llm/api-quirks';
+import {
+  MINIMAX_REASONING_DETAILS_API_QUIRK,
+  VOLCENGINE_INVALID_PARAMETER_AGGRESSIVE_RETRY_API_QUIRK,
+} from '../../main/llm/api-quirks';
 import type { ChatMessage } from '../../main/llm/client';
 import { LlmConfig, type ProviderConfig } from '../../main/llm/client';
 import type { LlmStreamReceiver } from '../../main/llm/gen';
@@ -23,6 +26,7 @@ function assert(condition: boolean, message: string): void {
 
 type ChunkDeltaExtra = {
   reasoning_content?: string;
+  reasoning_details?: unknown;
 };
 
 function chunk(args: {
@@ -141,6 +145,61 @@ async function testVolcanoArkAllowsSegmentAlternation(): Promise<void> {
   assert(streamErrors.length === 0, `unexpected stream errors: ${streamErrors.join('|')}`);
 }
 
+async function testReasoningDetailsStreamingIsPreserved(): Promise<void> {
+  const events: string[] = [];
+  const streamErrors: string[] = [];
+  const providerData: unknown[] = [];
+  const receiver: LlmStreamReceiver = {
+    ...makeReceiver(events, streamErrors),
+    thinkingFinish: async (_reasoning, data) => {
+      events.push('thinkingFinish');
+      providerData.push(data);
+    },
+  };
+
+  await consumeOpenAiCompatibleChatCompletionStreamForTest({
+    stream: stream([
+      chunk({
+        delta: {
+          reasoning_details: [{ type: 'reasoning.text', text: 'think', index: 0 }],
+        },
+      }),
+      chunk({
+        delta: {
+          reasoning_details: [{ type: 'reasoning.text', text: 'thinking', index: 0 }],
+        },
+      }),
+      chunk({
+        delta: {
+          reasoning_details: [{ type: 'reasoning.text', text: ' deeply', index: 0 }],
+        },
+      }),
+      chunk({ delta: { content: 'done' }, finishReason: 'stop' }),
+    ]),
+    receiver,
+    genseq: 8,
+  });
+
+  assert(
+    events.join('|') ===
+      'thinkingStart|thinking:think|thinking:ing|thinking: deeply|thinkingFinish|sayingStart|saying:done|sayingFinish',
+    `unexpected reasoning_details stream events: ${events.join('|')}`,
+  );
+  const saved = providerData[0];
+  assert(
+    typeof saved === 'object' &&
+      saved !== null &&
+      Array.isArray((saved as Record<string, unknown>)['openai_compatible_reasoning_details']),
+    'expected reasoning_details to be preserved in provider_data',
+  );
+  const savedDetails = (saved as Record<string, unknown>)['openai_compatible_reasoning_details'];
+  assert(
+    Array.isArray(savedDetails) && savedDetails.length === 2,
+    'expected cumulative snapshot then delta reasoning_details to both be preserved',
+  );
+  assert(streamErrors.length === 0, `unexpected stream errors: ${streamErrors.join('|')}`);
+}
+
 async function testGenericAllowsSegmentAlternation(): Promise<void> {
   const events: string[] = [];
   const streamErrors: string[] = [];
@@ -161,6 +220,41 @@ async function testGenericAllowsSegmentAlternation(): Promise<void> {
     `unexpected generic segment alternation events: ${events.join('|')}`,
   );
   assert(streamErrors.length === 0, `unexpected stream errors: ${streamErrors.join('|')}`);
+}
+
+async function testInvalidReasoningDetailsStreamPayloadIsLoud(): Promise<void> {
+  const events: string[] = [];
+  const streamErrors: string[] = [];
+  const receiver = makeReceiver(events, streamErrors);
+  let threw = false;
+
+  try {
+    await consumeOpenAiCompatibleChatCompletionStreamForTest({
+      stream: stream([
+        chunk({
+          delta: {
+            reasoning_details: 'not-an-array',
+          },
+        }),
+      ]),
+      receiver,
+      genseq: 17,
+    });
+  } catch (error: unknown) {
+    threw = true;
+    const message = error instanceof Error ? error.message : String(error);
+    assert(
+      message.includes('invalid reasoning_details stream payload'),
+      `expected invalid reasoning_details error, got ${message}`,
+    );
+  }
+
+  assert(threw, 'expected invalid reasoning_details stream payload to throw');
+  assert(
+    streamErrors.join('|').includes('invalid reasoning_details stream payload'),
+    'expected stream_error event for invalid reasoning_details payload',
+  );
+  assert(events.length === 0, `unexpected stream events: ${events.join('|')}`);
 }
 
 async function testMissingToolCallTypeIsTolerated(): Promise<void> {
@@ -366,6 +460,7 @@ async function testInvalidToolArgumentsPassThroughToToolCall(): Promise<void> {
 
 function completion(args: {
   toolCalls?: NonNullable<ChatCompletion.Choice['message']['tool_calls']>;
+  reasoningDetails?: Array<{ type: string; text: string; [key: string]: string | number }>;
 }): ChatCompletion {
   return {
     id: 'chatcmpl-test',
@@ -380,12 +475,40 @@ function completion(args: {
         message: {
           role: 'assistant',
           content: null,
+          ...(args.reasoningDetails !== undefined
+            ? { reasoning_details: args.reasoningDetails }
+            : {}),
           tool_calls: args.toolCalls ?? [],
           refusal: null,
         },
       },
     ],
   };
+}
+
+function testBatchReasoningDetailsArePreserved(): void {
+  const outputs = chatCompletionToBatchOutputsForTest(
+    completion({
+      reasoningDetails: [{ type: 'reasoning.text', text: 'batch thinking', index: 0 }],
+    }),
+    13,
+  );
+  const thinkingOutput = outputs.find(
+    (output) => output.kind === 'message' && output.message.type === 'thinking_msg',
+  );
+  assert(thinkingOutput !== undefined, 'expected batch reasoning_details thinking message');
+  assert(
+    thinkingOutput.kind === 'message' && thinkingOutput.message.type === 'thinking_msg',
+    'expected batch output to be a thinking message',
+  );
+  assert(
+    thinkingOutput.message.content === 'batch thinking',
+    'expected batch reasoning_details text to become thinking content',
+  );
+  assert(
+    Array.isArray(thinkingOutput.message.provider_data?.['openai_compatible_reasoning_details']),
+    'expected batch reasoning_details to be preserved in provider_data',
+  );
 }
 
 function testBatchToolCallsUseOpenAiCompatibleRules(): void {
@@ -448,7 +571,7 @@ function testBatchToolCallMissingNameIsLoud(): void {
 
 function requireProvider(provider: ProviderConfig | undefined): ProviderConfig {
   if (provider === undefined) {
-    throw new Error('Expected volcano-engine-coding-plan provider');
+    throw new Error('Expected provider');
   }
   return provider;
 }
@@ -553,6 +676,32 @@ async function testBuiltinVolcanoArkCodingPlanProvider(): Promise<void> {
   });
 }
 
+async function testBuiltinMiniMaxProvidersUseOpenAiCompatibleReasoningDetails(): Promise<void> {
+  const cfg = await LlmConfig.load();
+  for (const providerKey of [
+    'minimaxi.com-token-plan',
+    'minimaxi.com',
+    'minimax.io-token-plan',
+    'minimax.io',
+  ]) {
+    const provider = requireProvider(cfg.getProvider(providerKey));
+    assert(provider.apiType === 'openai-compatible', `${providerKey} should use openai-compatible`);
+    assert(
+      provider.baseUrl.endsWith('/v1'),
+      `${providerKey} should point at the OpenAI-compatible /v1 endpoint`,
+    );
+    assert(
+      Array.isArray(provider.apiQuirks) &&
+        provider.apiQuirks.includes(MINIMAX_REASONING_DETAILS_API_QUIRK),
+      `${providerKey} should enable MiniMax reasoning_details preservation`,
+    );
+    assert(
+      provider.model_param_options?.['openai-compatible']?.reasoning_split?.default === true,
+      `${providerKey} should advertise reasoning_split=true`,
+    );
+  }
+}
+
 function testOpenAiCompatibleExtraParams(): void {
   const extraParams = buildOpenAiCompatibleExtraParamsForTest({
     agent: new Team.Member({
@@ -562,12 +711,14 @@ function testOpenAiCompatibleExtraParams(): void {
     }),
     openAiParams: {
       reasoning_effort: 'medium',
+      reasoning_split: true,
     },
   });
   assert(
     extraParams.reasoning_effort === 'medium',
     'expected reasoning_effort to be preserved without thinking flag',
   );
+  assert(extraParams.reasoning_split === true, 'expected reasoning_split to be preserved');
   assert(extraParams.thinking === undefined, 'expected no implicit thinking payload');
 
   const thinkingParams = buildOpenAiCompatibleExtraParamsForTest({
@@ -599,6 +750,27 @@ function testOpenAiCompatibleExtraParams(): void {
   assert(
     thinkingObjectParams.thinking === thinkingObject,
     'expected generic openai-compatible thinking object to pass through unchanged',
+  );
+
+  const minimaxQuirkParams = buildOpenAiCompatibleExtraParamsForTest({
+    providerConfig: {
+      name: 'MiniMax Test',
+      apiType: 'openai-compatible',
+      apiQuirks: [MINIMAX_REASONING_DETAILS_API_QUIRK],
+      baseUrl: 'https://api.minimax.io/v1',
+      apiKeyEnvVar: 'MINIMAX_API_KEY',
+      models: { 'MiniMax-M2.7': { name: 'MiniMax M2.7' } },
+    },
+    agent: new Team.Member({
+      id: 'tester',
+      name: 'Tester',
+      model: 'MiniMax-M2.7',
+    }),
+    openAiParams: {},
+  });
+  assert(
+    minimaxQuirkParams.reasoning_split === true,
+    'expected MiniMax reasoning_details quirk to enable reasoning_split by default',
   );
 
   let disabledObjectConflict = false;
@@ -771,16 +943,20 @@ async function testOpenAiCompatibleRejectedRequestSurvivesDebugCaptureFailure():
 
 async function main(): Promise<void> {
   await testVolcanoArkAllowsSegmentAlternation();
+  await testReasoningDetailsStreamingIsPreserved();
   await testGenericAllowsSegmentAlternation();
+  await testInvalidReasoningDetailsStreamPayloadIsLoud();
   await testMissingToolCallTypeIsTolerated();
   await testMissingToolCallIdIsSynthesized();
   await testEmptyStreamedToolCallPlaceholderIsIgnored();
   await testStreamedToolCallWithArgumentsMissingNameIsLoud();
   await testStreamedToolCallMissingNameWithoutRecoveryHookThrows();
   await testInvalidToolArgumentsPassThroughToToolCall();
+  testBatchReasoningDetailsArePreserved();
   testBatchToolCallsUseOpenAiCompatibleRules();
   testBatchToolCallMissingNameIsLoud();
   await testBuiltinVolcanoArkCodingPlanProvider();
+  await testBuiltinMiniMaxProvidersUseOpenAiCompatibleReasoningDetails();
   testOpenAiCompatibleExtraParams();
   await testOpenAiCompatibleRejectedRequestKeepsFailureClassification();
   await testOpenAiCompatibleRejectedRequestSurvivesDebugCaptureFailure();

@@ -3536,18 +3536,23 @@ export class DiskFileDialogStore extends DialogStore {
     };
     postDialogEvent(dialog, thinkingChunkEvt);
   }
-  public async thinkingFinish(dialog: Dialog, reasoning?: ReasoningPayload): Promise<void> {
+  public async thinkingFinish(
+    dialog: Dialog,
+    reasoning?: ReasoningPayload,
+    provider_data?: ProviderData,
+  ): Promise<void> {
     const course = dialog.activeGenCourseOrUndefined ?? dialog.currentCourse;
     // Persist thinking content as a message event
     if (reasoning) this.thinkingReasoning = reasoning;
     const thinkingContent = this.thinkingContent;
-    if (this.thinkingStarted || thinkingContent || this.thinkingReasoning) {
+    if (this.thinkingStarted || thinkingContent || this.thinkingReasoning || provider_data) {
       const thinkingMessageEvent: AgentThoughtRecord = {
         ts: formatUnifiedTimestamp(new Date()),
         type: 'agent_thought_record',
         genseq: dialog.activeGenSeq,
         content: thinkingContent,
         ...(this.thinkingReasoning !== undefined ? { reasoning: this.thinkingReasoning } : {}),
+        ...(provider_data !== undefined ? { provider_data } : {}),
       };
       await this.appendEvent(dialog, course, thinkingMessageEvent);
     }

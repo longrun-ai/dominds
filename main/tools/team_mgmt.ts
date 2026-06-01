@@ -905,6 +905,11 @@ function formatModelParamOptionLine(
         extras.push(`default=${opt.default ? 'true' : 'false'}`);
       break;
     }
+    case 'boolean|object': {
+      if (typeof opt.default === 'boolean')
+        extras.push(`default=${opt.default ? 'true' : 'false'}`);
+      break;
+    }
     case 'string': {
       if (typeof opt.default === 'string') extras.push(`default=${opt.default}`);
       break;

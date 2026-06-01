@@ -7,6 +7,7 @@ import type { LlmRetryStrategy } from './gen';
 export type LlmFailureKind = 'retriable' | 'rejected' | 'fatal';
 
 export const KIMI_CODE_API_QUIRK = 'kimi-code';
+export const MINIMAX_REASONING_DETAILS_API_QUIRK = 'minimax-reasoning-details';
 export const SAME_CONTEXT_EMPTY_RESPONSE_API_QUIRK = 'same-context-empty-response';
 export const VOLCENGINE_INVALID_PARAMETER_AGGRESSIVE_RETRY_API_QUIRK =
   'volcengine-invalid-parameter-aggressive-retry';

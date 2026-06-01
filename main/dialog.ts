@@ -2098,8 +2098,11 @@ export abstract class Dialog {
     await this.dlgStore.markdownChunk(this, chunk);
   }
 
-  public async thinkingFinish(reasoning?: ReasoningPayload): Promise<void> {
-    await this.dlgStore.thinkingFinish(this, reasoning);
+  public async thinkingFinish(
+    reasoning?: ReasoningPayload,
+    provider_data?: ProviderData,
+  ): Promise<void> {
+    await this.dlgStore.thinkingFinish(this, reasoning, provider_data);
   }
 
   public async markdownFinish(): Promise<void> {
@@ -2771,7 +2774,11 @@ export abstract class DialogStore {
   // Explicit phase notifications (driver-driven)
   public thinkingStart(_dialog: Dialog): void {}
   public thinkingChunk(_dialog: Dialog, _chunk: string): void {}
-  public thinkingFinish(_dialog: Dialog, _reasoning?: ReasoningPayload): void {}
+  public thinkingFinish(
+    _dialog: Dialog,
+    _reasoning?: ReasoningPayload,
+    _provider_data?: ProviderData,
+  ): void {}
   public markdownStart(_dialog: Dialog): void {}
   public markdownChunk(_dialog: Dialog, _chunk: string): void {}
   public markdownFinish(_dialog: Dialog): void {}

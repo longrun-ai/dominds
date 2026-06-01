@@ -28,14 +28,24 @@ import type { FunctionDefinition } from 'openai/resources/shared';
 import path from 'path';
 
 import type { LlmUsageStats } from '@longrun-ai/kernel/types/context-health';
-import type { ReasoningPayload } from '@longrun-ai/kernel/types/storage';
+import type {
+  JsonArray,
+  JsonObject,
+  JsonValue,
+  ProviderData,
+  ReasoningPayload,
+} from '@longrun-ai/kernel/types/storage';
 import { createLogger } from '../../log';
 import { getTextForLanguage } from '../../runtime/i18n-text';
 import { getWorkLanguage } from '../../runtime/work-language';
 import { DOMINDS_RUNNING_VERSION } from '../../server/dominds-running-version';
 import type { Team } from '../../team';
 import type { FuncTool } from '../../tool';
-import { KIMI_CODE_API_QUIRK, normalizeProviderApiQuirks } from '../api-quirks';
+import {
+  KIMI_CODE_API_QUIRK,
+  MINIMAX_REASONING_DETAILS_API_QUIRK,
+  normalizeProviderApiQuirks,
+} from '../api-quirks';
 import type { ChatMessage, FuncResultMsg, ModelInfo, ProviderConfig } from '../client';
 import {
   LlmStreamErrorEmittedError,
@@ -84,14 +94,17 @@ const OPENAI_COMPATIBLE_REJECTED_REQUEST_ERROR_CODE = 'OPENAI_COMPATIBLE_REJECTE
 
 type ChatCompletionMessageWithReasoning = ChatCompletionMessageParam & {
   reasoning_content?: string;
+  reasoning_details?: JsonArray;
 };
 
 type OpenAiCompatibleChatExtraParams = {
   thinking?: boolean | Record<string, unknown>;
   reasoning_effort?: NonNullable<Team.ModelParams['openai-compatible']>['reasoning_effort'];
+  reasoning_split?: boolean;
   prompt_cache_key?: string;
 };
 
+const OPENAI_COMPATIBLE_REASONING_DETAILS_PROVIDER_DATA_KEY = 'openai_compatible_reasoning_details';
 const KIMI_CODE_REASONING_EFFORTS = new Set(['low', 'medium', 'high']);
 const KIMI_CLI_CLOAK_API_QUIRK = 'kimi-cli-cloak';
 const DISABLE_ASSISTANT_TOOL_CALL_REASONING_CONTENT_API_QUIRK =
@@ -781,12 +794,37 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
 
+function isJsonPrimitive(value: unknown): value is string | number | boolean | null {
+  return (
+    typeof value === 'string' ||
+    (typeof value === 'number' && Number.isFinite(value)) ||
+    typeof value === 'boolean' ||
+    value === null
+  );
+}
+
+function isJsonValue(value: unknown): value is JsonValue {
+  if (isJsonPrimitive(value)) return true;
+  if (Array.isArray(value)) return value.every((item) => isJsonValue(item));
+  if (!isRecord(value)) return false;
+  return Object.values(value).every((item) => isJsonValue(item));
+}
+
+function isJsonObject(value: unknown): value is JsonObject {
+  return isRecord(value) && Object.values(value).every((item) => isJsonValue(item));
+}
+
 function isKimiCodeProvider(providerConfig: ProviderConfig): boolean {
   return normalizeProviderApiQuirks(providerConfig).has(KIMI_CODE_API_QUIRK);
 }
 
 function isKimiCliCloakProvider(providerConfig: ProviderConfig): boolean {
   return normalizeProviderApiQuirks(providerConfig).has(KIMI_CLI_CLOAK_API_QUIRK);
+}
+
+function isMiniMaxReasoningDetailsProvider(providerConfig: ProviderConfig | undefined): boolean {
+  if (providerConfig === undefined) return false;
+  return normalizeProviderApiQuirks(providerConfig).has(MINIMAX_REASONING_DETAILS_API_QUIRK);
 }
 
 function isKimiCodeReasoningEffort(
@@ -1006,16 +1044,23 @@ function buildOpenAiCompatibleExtraParams(args: {
       `Invalid openai-compatible model_params: thinking disabled conflicts with reasoning_effort=${reasoningEffort} for model '${model}'.`,
     );
   }
-  if (thinking === undefined && reasoningEffort === undefined) return {};
+  const reasoningSplit =
+    args.openAiParams.reasoning_split ??
+    (isMiniMaxReasoningDetailsProvider(args.providerConfig) ? true : undefined);
+  if (thinking === undefined && reasoningEffort === undefined && reasoningSplit === undefined) {
+    return {};
+  }
   const thinkingPayload =
     typeof thinking === 'boolean' ? { type: thinking ? 'enabled' : 'disabled' } : thinking;
   return {
     ...(thinkingPayload !== undefined ? { thinking: thinkingPayload } : {}),
     ...(reasoningEffort !== undefined ? { reasoning_effort: reasoningEffort } : {}),
+    ...(reasoningSplit !== undefined ? { reasoning_split: reasoningSplit } : {}),
   };
 }
 
 function buildKimiCodeOpenAiCompatibleExtraParams(args: {
+  providerConfig?: ProviderConfig;
   agent: Team.Member;
   openAiParams: NonNullable<Team.ModelParams['openai-compatible']>;
   requestContext?: LlmRequestContext;
@@ -1024,6 +1069,9 @@ function buildKimiCodeOpenAiCompatibleExtraParams(args: {
   const thinking = args.openAiParams.thinking;
   const reasoningEffort = args.openAiParams.reasoning_effort;
   const promptCacheKey = args.requestContext?.promptCacheKey?.trim();
+  const reasoningSplit =
+    args.openAiParams.reasoning_split ??
+    (isMiniMaxReasoningDetailsProvider(args.providerConfig) ? true : undefined);
 
   if (reasoningEffort !== undefined && !isKimiCodeReasoningEffort(reasoningEffort)) {
     throw new Error(
@@ -1035,6 +1083,7 @@ function buildKimiCodeOpenAiCompatibleExtraParams(args: {
     promptCacheKey !== undefined && promptCacheKey.length > 0
       ? { prompt_cache_key: promptCacheKey }
       : {};
+  if (reasoningSplit !== undefined) base.reasoning_split = reasoningSplit;
 
   if (thinking === undefined) {
     return {
@@ -1198,15 +1247,84 @@ function extractReasoningContentField(value: unknown): string | undefined {
   return content.length > 0 ? content : undefined;
 }
 
-function attachReasoningContent(
+function extractReasoningDetailsField(value: unknown): JsonArray | undefined {
+  if (!isRecord(value)) return undefined;
+  const details = value.reasoning_details;
+  if (details === undefined) return undefined;
+  if (!Array.isArray(details)) {
+    throw new Error('Invalid openai-compatible reasoning_details: expected array');
+  }
+  if (!details.every((item) => isJsonValue(item))) {
+    throw new Error('Invalid openai-compatible reasoning_details: expected JSON values');
+  }
+  if (details.length === 0) return undefined;
+  return details.map((item) => item) as JsonArray;
+}
+
+function extractReasoningTextFromDetails(details: JsonArray): string | undefined {
+  let out = '';
+  for (const detail of details) {
+    if (!isJsonObject(detail)) continue;
+    const text = detail.text;
+    if (typeof text === 'string') out += text;
+  }
+  return out.length > 0 ? out : undefined;
+}
+
+function appendReasoningDetails(existing: JsonArray | undefined, next: JsonArray): JsonArray {
+  return existing === undefined ? next : [...existing, ...next];
+}
+
+function buildOpenAiCompatibleReasoningProviderData(
+  reasoningDetails: JsonArray | undefined,
+): ProviderData | undefined {
+  if (reasoningDetails === undefined) return undefined;
+  return {
+    [OPENAI_COMPATIBLE_REASONING_DETAILS_PROVIDER_DATA_KEY]: reasoningDetails,
+  };
+}
+
+function extractOpenAiCompatibleReasoningDetailsProviderData(
+  providerData: ProviderData | undefined,
+): JsonArray | undefined {
+  const value = providerData?.[OPENAI_COMPATIBLE_REASONING_DETAILS_PROVIDER_DATA_KEY];
+  if (value === undefined) return undefined;
+  if (!Array.isArray(value)) {
+    throw new Error(
+      `Invalid provider_data.${OPENAI_COMPATIBLE_REASONING_DETAILS_PROVIDER_DATA_KEY}: expected array`,
+    );
+  }
+  if (!value.every((item) => isJsonValue(item))) {
+    throw new Error(
+      `Invalid provider_data.${OPENAI_COMPATIBLE_REASONING_DETAILS_PROVIDER_DATA_KEY}: expected JSON values`,
+    );
+  }
+  if (value.length === 0) return undefined;
+  return value;
+}
+
+type PendingReasoningFields = {
+  content: string;
+  reasoningDetails?: JsonArray;
+};
+
+function attachReasoningFields(
   message: ChatCompletionMessageParam,
-  reasoningContent: string | undefined,
+  pending: PendingReasoningFields | undefined,
+  useReasoningDetails: boolean,
 ): ChatCompletionMessageParam {
-  if (!reasoningContent) return message;
+  if (pending === undefined) return message;
   if (!isRecord(message) || message.role !== 'assistant') return message;
+  if (useReasoningDetails && pending.reasoningDetails !== undefined) {
+    return {
+      ...message,
+      reasoning_details: pending.reasoningDetails,
+    } as ChatCompletionMessageWithReasoning;
+  }
+  if (pending.content.length === 0) return message;
   return {
     ...message,
-    reasoning_content: reasoningContent,
+    reasoning_content: pending.content,
   } as ChatCompletionMessageWithReasoning;
 }
 
@@ -1650,11 +1768,14 @@ function mergeAdjacentMessages(input: ChatCompletionMessageParam[]): ChatComplet
     const hasToolCalls = 'tool_calls' in item && Array.isArray(item.tool_calls);
     const hasReasoningContent =
       'reasoning_content' in item && typeof item.reasoning_content === 'string';
+    const hasReasoningDetails =
+      'reasoning_details' in item && Array.isArray(item.reasoning_details);
     if (
       (role !== 'user' && role !== 'assistant' && role !== 'system') ||
       typeof content !== 'string' ||
       hasToolCalls ||
-      hasReasoningContent
+      hasReasoningContent ||
+      hasReasoningDetails
     ) {
       merged.push(item);
       continue;
@@ -1667,7 +1788,8 @@ function mergeAdjacentMessages(input: ChatCompletionMessageParam[]): ChatComplet
       prev.role === role &&
       typeof prev.content === 'string' &&
       !('tool_calls' in prev && Array.isArray(prev.tool_calls)) &&
-      !('reasoning_content' in prev && typeof prev.reasoning_content === 'string')
+      !('reasoning_content' in prev && typeof prev.reasoning_content === 'string') &&
+      !('reasoning_details' in prev && Array.isArray(prev.reasoning_details))
     ) {
       prev.content = `${prev.content}\n${content}`;
       continue;
@@ -1713,39 +1835,60 @@ async function buildChatCompletionMessages(
   const attachToolCallReasoning = shouldAttachReasoningContentToAssistantToolCalls(
     options?.providerConfig,
   );
-  let pendingReasoningContent: string | undefined;
-  let assistantTurnReasoningContent: string | undefined;
+  const attachReasoningDetails = isMiniMaxReasoningDetailsProvider(options?.providerConfig);
+  let pendingReasoningFields: PendingReasoningFields | undefined;
+  let assistantTurnReasoningFields: PendingReasoningFields | undefined;
 
-  const takePendingReasoningContent = (): string | undefined => {
-    const current = pendingReasoningContent;
-    pendingReasoningContent = undefined;
+  const takePendingReasoningFields = (): PendingReasoningFields | undefined => {
+    const current = pendingReasoningFields;
+    pendingReasoningFields = undefined;
     return current;
   };
 
-  const appendReasoningContent = (value: string): void => {
-    if (value.length === 0) return;
-    pendingReasoningContent =
-      pendingReasoningContent && pendingReasoningContent.length > 0
-        ? `${pendingReasoningContent}\n${value}`
-        : value;
+  const appendReasoningFields = (value: string, providerData: ProviderData | undefined): void => {
+    const reasoningDetails = extractOpenAiCompatibleReasoningDetailsProviderData(providerData);
+    const content =
+      value.length > 0
+        ? value
+        : reasoningDetails !== undefined
+          ? (extractReasoningTextFromDetails(reasoningDetails) ?? '')
+          : '';
+    if (value.length === 0 && reasoningDetails === undefined) return;
+    pendingReasoningFields =
+      pendingReasoningFields === undefined
+        ? { content, ...(reasoningDetails !== undefined ? { reasoningDetails } : {}) }
+        : {
+            content:
+              pendingReasoningFields.content.length > 0 && content.length > 0
+                ? `${pendingReasoningFields.content}\n${content}`
+                : pendingReasoningFields.content.length > 0
+                  ? pendingReasoningFields.content
+                  : content,
+            ...(reasoningDetails !== undefined
+              ? { reasoningDetails }
+              : pendingReasoningFields.reasoningDetails !== undefined
+                ? { reasoningDetails: pendingReasoningFields.reasoningDetails }
+                : {}),
+          };
   };
 
-  const noteAssistantTurnReasoningContent = (value: string | undefined): void => {
+  const noteAssistantTurnReasoningFields = (value: PendingReasoningFields | undefined): void => {
     if (!value) return;
-    assistantTurnReasoningContent = value;
+    assistantTurnReasoningFields = value;
   };
 
   const flushPendingReasoningAsAssistantMessage = (): void => {
-    const reasoningContent = takePendingReasoningContent();
-    if (!reasoningContent) return;
-    noteAssistantTurnReasoningContent(reasoningContent);
+    const reasoningFields = takePendingReasoningFields();
+    if (!reasoningFields) return;
+    noteAssistantTurnReasoningFields(reasoningFields);
     input.push(
-      attachReasoningContent(
+      attachReasoningFields(
         {
           role: 'assistant',
           content: '',
         },
-        reasoningContent,
+        reasoningFields,
+        attachReasoningDetails,
       ),
     );
   };
@@ -1756,18 +1899,18 @@ async function buildChatCompletionMessages(
 
   for (const msg of normalized) {
     if (msg.type === 'thinking_msg') {
-      appendReasoningContent(extractThinkingReasoningText(msg));
+      appendReasoningFields(extractThinkingReasoningText(msg), msg.provider_data);
       continue;
     }
 
     if (msg.type === 'func_call_msg') {
       const mapped = chatMessageToChatCompletionMessage(msg);
-      const pending = takePendingReasoningContent();
-      noteAssistantTurnReasoningContent(pending);
-      const reasoningContent = attachToolCallReasoning
-        ? (pending ?? assistantTurnReasoningContent)
+      const pending = takePendingReasoningFields();
+      noteAssistantTurnReasoningFields(pending);
+      const reasoningFields = attachToolCallReasoning
+        ? (pending ?? assistantTurnReasoningFields)
         : undefined;
-      input.push(attachReasoningContent(mapped, reasoningContent));
+      input.push(attachReasoningFields(mapped, reasoningFields, attachReasoningDetails));
       continue;
     }
 
@@ -1792,7 +1935,7 @@ async function buildChatCompletionMessages(
       msg.type === 'tellask_result_msg' ||
       msg.type === 'tellask_carryover_msg'
     ) {
-      assistantTurnReasoningContent = undefined;
+      assistantTurnReasoningFields = undefined;
     }
 
     const mapped =
@@ -1809,9 +1952,9 @@ async function buildChatCompletionMessages(
             options?.onUserImageIngest,
           )
         : chatMessageToChatCompletionMessage(msg);
-    const reasoningContent = takePendingReasoningContent();
-    noteAssistantTurnReasoningContent(reasoningContent);
-    input.push(attachReasoningContent(mapped, reasoningContent));
+    const reasoningFields = takePendingReasoningFields();
+    noteAssistantTurnReasoningFields(reasoningFields);
+    input.push(attachReasoningFields(mapped, reasoningFields, attachReasoningDetails));
   }
 
   flushPendingReasoningAsAssistantMessage();
@@ -1872,7 +2015,7 @@ function synthesizeCallId(genseq: number, index: number): string {
 
 function buildOpenAiCompatibleStreamError(args: {
   detail: string;
-  kind: 'conflicting_stream' | 'invalid_tool_call';
+  kind: 'conflicting_stream' | 'invalid_tool_call' | 'malformed_stream';
 }): LlmStreamErrorEmittedError {
   return new LlmStreamErrorEmittedError({
     detail: args.detail,
@@ -1960,11 +2103,15 @@ async function maybeEmitFuncCall(
 async function emitOpenAiCompatibleStreamError(args: {
   receiver: LlmStreamReceiver;
   detail: string;
-  kind: 'conflicting_stream' | 'invalid_tool_call';
+  kind: 'conflicting_stream' | 'invalid_tool_call' | 'malformed_stream';
   errorCode: string;
   logMeta?: Record<string, unknown>;
 }): Promise<never> {
-  log.error(args.detail, new Error(args.errorCode), args.logMeta);
+  if (args.logMeta === undefined) {
+    log.error(args.detail, new Error(args.errorCode));
+  } else {
+    log.error(args.detail, new Error(args.errorCode), args.logMeta);
+  }
   if (args.receiver.streamError) {
     await args.receiver.streamError(args.detail);
   }
@@ -1983,6 +2130,8 @@ async function consumeOpenAiCompatibleChatCompletionStream(args: {
   let sayingStarted = false;
   let thinkingStarted = false;
   let currentThinkingContent = '';
+  let currentReasoningDetails: JsonArray | undefined;
+  let currentReasoningDetailsText = '';
   type ActiveStream = 'idle' | 'thinking' | 'saying';
   let activeStream: ActiveStream = 'idle';
   let usage: LlmUsageStats = { kind: 'unavailable' };
@@ -1992,9 +2141,14 @@ async function consumeOpenAiCompatibleChatCompletionStream(args: {
 
   const finishThinkingSegment = async (): Promise<void> => {
     if (!thinkingStarted) return;
-    await args.receiver.thinkingFinish(buildReasoningPayloadFromText(currentThinkingContent));
+    await args.receiver.thinkingFinish(
+      buildReasoningPayloadFromText(currentThinkingContent),
+      buildOpenAiCompatibleReasoningProviderData(currentReasoningDetails),
+    );
     thinkingStarted = false;
     currentThinkingContent = '';
+    currentReasoningDetails = undefined;
+    currentReasoningDetailsText = '';
     if (activeStream === 'thinking') activeStream = 'idle';
   };
 
@@ -2035,7 +2189,40 @@ async function consumeOpenAiCompatibleChatCompletionStream(args: {
       if (!choice) continue;
 
       const delta = choice.delta;
-      const reasoningDelta = extractReasoningContentField(delta as unknown);
+      let reasoningDetails: JsonArray | undefined;
+      try {
+        reasoningDetails = extractReasoningDetailsField(delta as unknown);
+      } catch (error: unknown) {
+        const message = error instanceof Error ? error.message : String(error);
+        await emitOpenAiCompatibleStreamError({
+          receiver: args.receiver,
+          detail: `OPENAI-COMPATIBLE invalid reasoning_details stream payload: ${message}`,
+          kind: 'malformed_stream',
+          errorCode: 'openai_compatible_invalid_reasoning_details',
+        });
+      }
+      const reasoningDetailsText =
+        reasoningDetails !== undefined
+          ? extractReasoningTextFromDetails(reasoningDetails)
+          : undefined;
+      const reasoningDelta =
+        reasoningDetailsText !== undefined
+          ? reasoningDetailsText.startsWith(currentReasoningDetailsText)
+            ? reasoningDetailsText.slice(currentReasoningDetailsText.length)
+            : reasoningDetailsText
+          : extractReasoningContentField(delta as unknown);
+      if (reasoningDetails !== undefined) {
+        currentReasoningDetails =
+          reasoningDetailsText !== undefined &&
+          reasoningDetailsText.startsWith(currentReasoningDetailsText)
+            ? reasoningDetails
+            : appendReasoningDetails(currentReasoningDetails, reasoningDetails);
+        currentReasoningDetailsText =
+          reasoningDetailsText !== undefined &&
+          reasoningDetailsText.startsWith(currentReasoningDetailsText)
+            ? reasoningDetailsText
+            : `${currentReasoningDetailsText}${reasoningDelta ?? ''}`;
+      }
       if (typeof reasoningDelta === 'string' && reasoningDelta.length > 0) {
         await ensureCanEnterThinking();
         if (!thinkingStarted) {
@@ -2046,6 +2233,12 @@ async function consumeOpenAiCompatibleChatCompletionStream(args: {
         }
         currentThinkingContent += reasoningDelta;
         await args.receiver.thinkingChunk(reasoningDelta);
+      } else if (reasoningDetails !== undefined && !thinkingStarted) {
+        await ensureCanEnterThinking();
+        thinkingStarted = true;
+        currentThinkingContent = '';
+        await args.receiver.thinkingStart();
+        activeStream = 'thinking';
       }
 
       const content = delta.content;
@@ -2166,7 +2359,10 @@ async function consumeOpenAiCompatibleChatCompletionStream(args: {
     }
   } finally {
     if (thinkingStarted) {
-      await args.receiver.thinkingFinish(buildReasoningPayloadFromText(currentThinkingContent));
+      await args.receiver.thinkingFinish(
+        buildReasoningPayloadFromText(currentThinkingContent),
+        buildOpenAiCompatibleReasoningProviderData(currentReasoningDetails),
+      );
     }
     if (sayingStarted) await args.receiver.sayingFinish();
   }
@@ -2194,14 +2390,23 @@ function chatCompletionToBatchOutputs(response: ChatCompletion, genseq: number):
   const msg = choice ? choice.message : undefined;
   if (!msg) return outputs;
 
-  const reasoningContent = extractReasoningContentField(msg as unknown);
-  if (reasoningContent && reasoningContent.length > 0) {
+  const reasoningDetails = extractReasoningDetailsField(msg as unknown);
+  const reasoningContent =
+    reasoningDetails !== undefined
+      ? extractReasoningTextFromDetails(reasoningDetails)
+      : extractReasoningContentField(msg as unknown);
+  if ((reasoningContent && reasoningContent.length > 0) || reasoningDetails !== undefined) {
+    const content = reasoningContent ?? '';
+    const reasoning = buildReasoningPayloadFromText(content);
     const message: ChatMessage = {
       type: 'thinking_msg',
       role: 'assistant',
       genseq,
-      content: reasoningContent,
-      reasoning: buildReasoningPayloadFromText(reasoningContent),
+      content,
+      ...(reasoning !== undefined ? { reasoning } : {}),
+      ...(reasoningDetails !== undefined
+        ? { provider_data: buildOpenAiCompatibleReasoningProviderData(reasoningDetails) }
+        : {}),
     };
     outputs.push({ kind: 'message', message });
   }

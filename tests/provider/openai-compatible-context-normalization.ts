@@ -1,3 +1,4 @@
+import { MINIMAX_REASONING_DETAILS_API_QUIRK } from '../../main/llm/api-quirks';
 import type { ChatMessage } from '../../main/llm/client';
 import { buildOpenAiCompatibleRequestMessagesWrapper } from '../../main/llm/gen/openai-compatible';
 
@@ -23,6 +24,17 @@ function isAssistantReasoningMessage(
     value.role === 'assistant' &&
     typeof value.content === 'string' &&
     typeof value.reasoning_content === 'string'
+  );
+}
+
+function isAssistantReasoningDetailsMessage(
+  value: unknown,
+): value is { role: 'assistant'; content: string; reasoning_details: unknown[] } {
+  return (
+    isRecord(value) &&
+    value.role === 'assistant' &&
+    typeof value.content === 'string' &&
+    Array.isArray(value.reasoning_details)
   );
 }
 
@@ -196,6 +208,73 @@ async function main() {
     messagesWithDisabledToolCallReasoning[1] !== undefined &&
       isAssistantReasoningMessage(messagesWithDisabledToolCallReasoning[1]),
     'Expected disable-assistant-tool-call-reasoning-content quirk to keep text assistant reasoning_content',
+  );
+
+  const reasoningDetailsContext: ChatMessage[] = [
+    {
+      type: 'prompting_msg',
+      role: 'user',
+      genseq: 10,
+      msgId: 'user-10',
+      grammar: 'markdown',
+      content: 'Continue after preserved MiniMax reasoning.',
+    },
+    {
+      type: 'thinking_msg',
+      role: 'assistant',
+      genseq: 10,
+      content: 'Preserved MiniMax thinking.',
+      provider_data: {
+        openai_compatible_reasoning_details: [
+          { type: 'reasoning.text', text: 'Preserved MiniMax thinking.', index: 0 },
+        ],
+      },
+    },
+    {
+      type: 'saying_msg',
+      role: 'assistant',
+      genseq: 10,
+      content: 'Visible answer.',
+    },
+  ];
+  const genericReasoningDetailsMessages = await buildOpenAiCompatibleRequestMessagesWrapper(
+    '',
+    reasoningDetailsContext,
+  );
+  const genericDetailsMessage = requireAssistantReasoningMessage(
+    genericReasoningDetailsMessages[1],
+  );
+  assert(
+    genericDetailsMessage.reasoning_content === 'Preserved MiniMax thinking.',
+    'Expected non-MiniMax providers to replay preserved reasoning_details as generic reasoning_content',
+  );
+
+  const reasoningDetailsMessages = await buildOpenAiCompatibleRequestMessagesWrapper(
+    '',
+    reasoningDetailsContext,
+    {
+      providerConfig: {
+        name: 'MiniMax Test',
+        apiType: 'openai-compatible',
+        apiQuirks: [MINIMAX_REASONING_DETAILS_API_QUIRK],
+        baseUrl: 'https://api.minimax.io/v1',
+        apiKeyEnvVar: 'MINIMAX_API_KEY',
+        models: {
+          'MiniMax-M2.7': { name: 'MiniMax M2.7' },
+        },
+      },
+    },
+  );
+  const detailsMessage = reasoningDetailsMessages[1];
+  assert(
+    isAssistantReasoningDetailsMessage(detailsMessage),
+    'Expected preserved reasoning_details to map onto the next MiniMax assistant message',
+  );
+  assert(
+    detailsMessage.reasoning_details[0] !== undefined &&
+      isRecord(detailsMessage.reasoning_details[0]) &&
+      detailsMessage.reasoning_details[0].text === 'Preserved MiniMax thinking.',
+    'Expected reasoning_details payload to keep provider detail text',
   );
 
   const assistantTurnToolCallContext: ChatMessage[] = [

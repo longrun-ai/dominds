@@ -4036,7 +4036,7 @@ export async function driveDialogStreamCore(
                 currentThinkingContent += chunk;
                 await dlg.thinkingChunk(chunk);
               },
-              thinkingFinish: async (reasoning) => {
+              thinkingFinish: async (reasoning, providerData) => {
                 throwIfAborted(abortSignal, dlg);
                 if (streamActive.kind !== 'thinking') {
                   const detail = `Protocol violation: thinkingFinish while ${streamActive.kind} is active`;
@@ -4051,14 +4051,19 @@ export async function driveDialogStreamCore(
                 }
                 streamActive = { kind: 'idle' };
                 if (reasoning) currentThinkingReasoning = reasoning;
-                await dlg.thinkingFinish(reasoning);
-                if (currentThinkingContent.length > 0 || currentThinkingReasoning !== undefined) {
+                await dlg.thinkingFinish(reasoning, providerData);
+                if (
+                  currentThinkingContent.length > 0 ||
+                  currentThinkingReasoning !== undefined ||
+                  providerData !== undefined
+                ) {
                   const thinkingMessage: ThinkingMsg = {
                     type: 'thinking_msg',
                     role: 'assistant',
                     genseq: dlg.activeGenSeq,
                     content: currentThinkingContent,
                     reasoning: currentThinkingReasoning,
+                    ...(providerData !== undefined ? { provider_data: providerData } : {}),
                   };
                   newMsgs.push(thinkingMessage);
                   streamAttemptThinkingContent = currentThinkingContent;

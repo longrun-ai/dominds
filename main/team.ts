@@ -389,6 +389,7 @@ export namespace Team {
     text_format_json_schema?: string; // JSON-encoded schema object when text_format=json_schema.
     text_format_json_schema_strict?: boolean; // Strict schema adherence when text_format=json_schema.
     reasoning_effort?: 'none' | 'minimal' | 'low' | 'medium' | 'high' | 'xhigh'; // For compatible reasoning-capable models.
+    reasoning_split?: boolean; // Enable separated reasoning_details stream if supported.
     thinking?: boolean | OpenAiCompatibleThinkingMode | Record<string, unknown>; // Boolean shorthand, Kimi Code mode, or provider-specific object.
   };
 
@@ -1681,6 +1682,7 @@ export namespace Team {
     'text_format_json_schema',
     'text_format_json_schema_strict',
     'reasoning_effort',
+    'reasoning_split',
     'thinking',
   ] as const;
   export const TEAM_YAML_MODEL_PARAMS_CODEX_KEYS = [
@@ -3034,6 +3036,7 @@ export namespace Team {
           )})`,
         );
       }
+      asOptionalBoolean(params.reasoning_split, `${at2}.reasoning_split`);
 
       const textFormat = params.text_format;
       if (

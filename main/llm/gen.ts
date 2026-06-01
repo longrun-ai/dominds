@@ -1,6 +1,7 @@
 import type { LlmUsageStats } from '@longrun-ai/kernel/types/context-health';
 import type { DialogDisplayTextI18n } from '@longrun-ai/kernel/types/display-state';
 import type {
+  ProviderData,
   ReasoningPayload,
   ToolResultImageArtifact,
   ToolResultImageDisposition,
@@ -181,7 +182,7 @@ export type LlmInvalidFuncCall = Readonly<{
 export interface LlmStreamReceiver {
   thinkingStart: () => Promise<void>;
   thinkingChunk: (chunk: string) => Promise<void>;
-  thinkingFinish: (reasoning?: ReasoningPayload) => Promise<void>;
+  thinkingFinish: (reasoning?: ReasoningPayload, providerData?: ProviderData) => Promise<void>;
   sayingStart: () => Promise<void>;
   sayingChunk: (chunk: string) => Promise<void>;
   sayingFinish: () => Promise<void>;
