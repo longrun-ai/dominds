@@ -1139,7 +1139,6 @@ export function getApiClient(config?: { baseURL?: string; timeout?: number }): A
     if (!baseURL) {
       const { protocol, hostname, port } = window.location;
       // Always use same-origin API base URL in both dev and prod.
-      // In dev, Vite proxy forwards /api and /ws to backend.
       baseURL = `${protocol}//${hostname}${port ? `:${port}` : ''}`;
     }
     const timeout = config?.timeout || 30000;

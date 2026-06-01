@@ -187,7 +187,7 @@ async function preparePromptAuditRuntime(team: Team): Promise<PromptAuditRuntime
 
   let providerCfg: ProviderConfig;
   try {
-    const { LlmConfig } = await import('../llm/client');
+    const { LlmConfig } = await import('../llm/client.js');
     const llmCfg = await LlmConfig.load();
     const resolved = llmCfg.getProvider(providerKey);
     if (!resolved) {
@@ -222,7 +222,7 @@ async function preparePromptAuditRuntime(team: Team): Promise<PromptAuditRuntime
     }
   }
 
-  const { getLlmGenerator } = await import('../llm/gen/registry');
+  const { getLlmGenerator } = await import('../llm/gen/registry.js');
   const llmGen = getLlmGenerator(providerCfg.apiType);
   if (!llmGen) {
     return {

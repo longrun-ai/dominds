@@ -702,7 +702,7 @@ export async function handleToolsetManual(rawBody: string): Promise<ToolsetManua
   if (!req) return { success: false, error: 'Invalid request body' };
 
   try {
-    const { renderToolsetManualContent } = await import('../tools/toolset-manual');
+    const { renderToolsetManualContent } = await import('../tools/toolset-manual.js');
     const markdown = await renderToolsetManualContent({
       toolsetId: req.toolsetId,
       language: req.uiLanguage,

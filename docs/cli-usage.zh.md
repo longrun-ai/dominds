@@ -6,7 +6,7 @@
 
 > 注：本文统一使用 **rtws（运行时工作区）** 表示 Dominds 运行时使用的根目录（默认是启动 `dominds` 时所在目录，可通过 `-C <dir>` 切换）。相对路径形式的 `-C` 由 `dominds` supervisor 按原始启动目录解析为绝对路径，再启动 runner。
 
-> 进程模型：生产模式下，`dominds` 是轻量 supervisor，负责解析 `-C` 等全局选项、在解析后的 rtws 中启动 `dominds-runner`、让 runner 继承当前终端 stdio，并在长期运行的 WebUI runner 崩溃后用指数退避保活重启（初始 1 秒，最长 30 分钟）。self-update 重启也由 supervisor 协调，因此旧 runner 可以完整退出并释放 server 资源，再启动新版 runner；如果旧 runner 在发出重启请求后仍不退出，supervisor 会终止它再启动下一轮 runner。开发模式 WebUI（`NODE_ENV=dev` 或 `--mode dev`，包括 `dev-server.sh`）不走 supervisor，由开发启动器自行管理。
+> 进程模型：生产模式下，`dominds` 是轻量 supervisor，负责解析 `-C` 等全局选项、在解析后的 rtws 中启动 `dominds-runner`、让 runner 继承当前终端 stdio，并在长期运行的 WebUI runner 崩溃后用指数退避保活重启（初始 1 秒，最长 30 分钟）。self-update 重启也由 supervisor 协调，因此旧 runner 可以完整退出并释放 server 资源，再启动新版 runner；如果旧 runner 在发出重启请求后仍不退出，supervisor 会终止它再启动下一轮 runner。开发模式 WebUI（`NODE_ENV=dev` 或 `--mode dev`，包括外层 `dev-server.sh`）不走 supervisor；开发启动器会先构建 WebUI 静态 bundle，然后以前台进程运行 WebUI backend。
 
 > 说明：`dominds tui` / `dominds run` 相关功能目前尚未提供稳定实现（子命令名保留用于未来规划），因此本指南不再展开 TUI 的命令选项与用法细节。
 

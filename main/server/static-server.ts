@@ -1,9 +1,8 @@
 /**
  * Module: server/static-server
  *
- * Static file serving functionality for production mode only
- * Development mode: Vite handles all static file serving
- * Production mode: Backend serves static files from the packaged webapp build output.
+ * Static file serving functionality for WebUI dist assets.
+ * Development and production both serve the same static build output.
  */
 import { createReadStream, existsSync, promises as fsPromises } from 'fs';
 import { ServerResponse } from 'http';
@@ -20,7 +19,7 @@ export interface StaticServerOptions {
 }
 
 /**
- * Serve static files with mode-specific behavior
+ * Serve static files from the webapp build output.
  */
 export async function serveStatic(
   pathname: string,
@@ -28,43 +27,6 @@ export async function serveStatic(
   options: StaticServerOptions,
 ): Promise<boolean> {
   try {
-    // In development mode, Vite handles all static file serving
-    // Backend only serves API routes and WebSocket connections
-    if (options.mode === 'development') {
-      // Provide helpful message for root endpoint in dev mode
-      if (pathname === '/') {
-        const frontendOrigin = process.env.DOMINDS_DEV_FRONTEND_ORIGIN?.trim();
-        const frontendUrlLine = frontendOrigin
-          ? `Frontend URL: ${frontendOrigin}/\n`
-          : 'Frontend URL: set by your outer dev-server.sh\n';
-        res.writeHead(200, { 'Content-Type': 'text/plain; charset=utf-8' });
-        res.end(`Dominds Backend Server (Development Mode)
-
-API Server is running in development mode
-Frontend (Vite dev server) should be started by your outer dev-server.sh
-
-Available API endpoints:
-• GET /api/live-reload - Development status
-• GET /api/team/config - Team configuration
-• GET /api/dialogs - List all dialogs
-• POST /api/dialogs - Create new dialog
-• GET /api/dialogs/:root/sideDialogs/:self/list-node - Get one dialog-list sideDialog node
-• GET /api/dialogs/:root/hierarchy - Get dialog hierarchy
-• GET /api/task-documents - Taskdoc listing
-• GET /api/task-documents/suggestions?q=... - Worker-backed Taskdoc suggestions
-
-WebSocket endpoint: /ws
-Backend API endpoint: /api
-
-${frontendUrlLine}Frontend API: /api (same-origin; proxied to backend by Vite)
-Frontend WS:  /ws (same-origin; proxied to backend by Vite)
-`);
-        return true;
-      }
-      return false; // Let Vite handle static files
-    }
-
-    // Production mode: serve from staticDir
     let filePath: string;
     const staticDir = resolve(options.domindsInstallRoot, options.staticDir);
 
@@ -138,7 +100,7 @@ async function sendFile(filePath: string, res: ServerResponse, ext: string): Pro
 }
 
 /**
- * Send HTML file with mode-specific processing
+ * Send an HTML file.
  */
 export async function sendHtml(
   filePath: string,
@@ -148,7 +110,6 @@ export async function sendHtml(
   try {
     const content = await fsPromises.readFile(filePath, 'utf8');
 
-    // No special processing needed - Vite handles HMR in development
     res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
     res.end(content);
   } catch (error) {

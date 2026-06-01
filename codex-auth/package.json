@@ -12,6 +12,7 @@
     "directory": "codex-auth"
   },
   "type": "module",
+  "packageManager": "pnpm@11.5.0",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
   "bin": {
@@ -30,7 +31,8 @@
   },
   "engines": {
     "node": ">=24 <25",
-    "npm": ">=11.9.0"
+    "npm": ">=11.16.0",
+    "pnpm": ">=11.5.0"
   },
   "scripts": {
     "build": "tsc -p tsconfig.json",
@@ -40,12 +42,12 @@
     "prepublishOnly": "node ../scripts/require-pnpm-publish.mjs && pnpm run build"
   },
   "dependencies": {
-    "undici": "^7.22.0"
+    "undici": "^8.3.0"
   },
   "devDependencies": {
-    "@types/node": "^25.3.5",
-    "prettier": "^3.8.1",
+    "@types/node": "^25.9.1",
+    "prettier": "^3.8.3",
     "prettier-plugin-organize-imports": "^4.3.0",
-    "typescript": "^5.9.3"
+    "typescript": "^6.0.3"
   }
 }

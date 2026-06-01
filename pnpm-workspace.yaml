@@ -1,9 +1,11 @@
 packages:
-  - "."
-  - "packages/*"
-  - "webapp"
-  - "codex-auth"
-  - "tests"
+  - '.'
+  - 'packages/*'
+  - 'webapp'
+  - 'codex-auth'
+  - 'tests'
 
 allowBuilds:
   esbuild: true
+
+minimumReleaseAge: 0

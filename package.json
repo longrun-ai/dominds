@@ -62,32 +62,32 @@
     "url": "https://github.com/longrun-ai/dominds/issues"
   },
   "homepage": "https://github.com/longrun-ai/dominds#readme",
-  "packageManager": "pnpm@10.30.3",
+  "packageManager": "pnpm@11.5.0",
   "engines": {
     "node": ">=24.5 <25",
-    "npm": ">=11.9.0",
-    "pnpm": ">=10.30.3"
+    "npm": ">=11.16.0",
+    "pnpm": ">=11.5.0"
   },
   "dependencies": {
-    "@anthropic-ai/sdk": "^0.91.1",
+    "@anthropic-ai/sdk": "^0.100.1",
     "@longrun-ai/codex-auth": "workspace:*",
     "@longrun-ai/kernel": "workspace:*",
     "@longrun-ai/shell": "workspace:*",
-    "@modelcontextprotocol/sdk": "^1.27.1",
+    "@modelcontextprotocol/sdk": "^1.29.0",
     "async-mutex": "^0.5.0",
-    "openai": "^6.35.0",
+    "openai": "^6.39.1",
     "selfsigned": "^5.5.0",
-    "ws": "^8.19.0",
-    "yaml": "^2.8.2",
-    "zod": "^4.3.6"
+    "ws": "^8.21.0",
+    "yaml": "^2.9.0",
+    "zod": "^4.4.3"
   },
   "devDependencies": {
-    "@types/node": "^25.3.5",
+    "@types/node": "^25.9.1",
     "@types/ws": "^8.18.1",
-    "esbuild": "^0.27.3",
-    "prettier": "^3.8.1",
+    "esbuild": "^0.28.0",
+    "prettier": "^3.8.3",
     "prettier-plugin-organize-imports": "^4.3.0",
-    "tsx": "^4.21.0",
-    "typescript": "^5.9.3"
+    "tsx": "^4.22.4",
+    "typescript": "^6.0.3"
   }
 }

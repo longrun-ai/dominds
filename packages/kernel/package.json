@@ -7,7 +7,7 @@
   "publishConfig": {
     "access": "public"
   },
-  "packageManager": "pnpm@10.30.3",
+  "packageManager": "pnpm@11.5.0",
   "main": "dist/index.js",
   "types": "src/index.ts",
   "exports": {
@@ -82,8 +82,8 @@
   },
   "engines": {
     "node": ">=24 <25",
-    "npm": ">=11.9.0",
-    "pnpm": ">=10.30.3"
+    "npm": ">=11.16.0",
+    "pnpm": ">=11.5.0"
   },
   "license": "LGPL-3.0-or-later"
 }

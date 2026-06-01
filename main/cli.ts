@@ -402,7 +402,7 @@ async function runOneShot(params: ParsedSupervisorArgs): Promise<number> {
 async function runDevelopmentRunner(params: ParsedSupervisorArgs): Promise<number> {
   try {
     process.chdir(params.cwd);
-    const { main: runnerMain } = await import('./cli-runner');
+    const { main: runnerMain } = await import('./cli-runner.js');
     await runnerMain(params.runnerArgv);
     return 0;
   } catch (error: unknown) {

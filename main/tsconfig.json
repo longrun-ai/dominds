@@ -3,7 +3,6 @@
   "compilerOptions": {
     "outDir": "../dist",
     "declaration": true,
-    "baseUrl": ".",
     "paths": {
       "@longrun-ai/kernel": ["../packages/kernel/dist/index.d.ts"],
       "@longrun-ai/kernel/*": ["../packages/kernel/dist/*"],

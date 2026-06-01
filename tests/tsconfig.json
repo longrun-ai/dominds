@@ -1,7 +1,6 @@
 {
   "extends": "../tsconfig.base.json",
   "compilerOptions": {
-    "baseUrl": ".",
     "noEmit": true,
     "target": "ES2022",
     "lib": ["ES2022"],

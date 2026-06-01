@@ -5,10 +5,12 @@
 // Import CSS file
 import 'highlight.js/styles/github-dark.css';
 import 'katex/dist/katex.min.css';
+import './assets/base.css';
+import './assets/tokens.css';
 
-import './components/dominds-app.tsx';
-import './components/dominds-connection-status.tsx';
-import './components/dominds-setup.tsx';
+import './components/dominds-app';
+import './components/dominds-connection-status';
+import './components/dominds-setup';
 
 // Initialize the application
 document.addEventListener('DOMContentLoaded', async () => {

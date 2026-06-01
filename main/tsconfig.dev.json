@@ -1,6 +1,8 @@
 {
   "extends": "./tsconfig.json",
   "compilerOptions": {
+    "declaration": false,
+    "rootDir": "..",
     "paths": {
       "@longrun-ai/kernel": ["../packages/kernel/src/index.ts"],
       "@longrun-ai/kernel/*": ["../packages/kernel/src/*"],

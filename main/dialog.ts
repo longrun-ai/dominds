@@ -91,7 +91,7 @@ async function queueRootDialogDrive(
   rootId: string,
   meta: { source: string; reason: string },
 ): Promise<void> {
-  const { globalDialogRegistry } = await import('./dialog-global-registry');
+  const { globalDialogRegistry } = await import('./dialog-global-registry.js');
   globalDialogRegistry.queueRootDrive(rootId, meta);
 }
 
