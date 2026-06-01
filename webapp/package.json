@@ -15,7 +15,7 @@
     "dev": "echo 'Dominds WebApp is served by backend server.' && echo 'Dev: cd ../../ && ./dev-server.sh'",
     "test": "echo 'Dominds WebApp: Use lint:types for type checking.'",
     "build": "node ./scripts/build.mjs",
-    "clean": "rm -rf dist",
+    "clean": "node ../scripts/rm-dir.mjs dist",
     "serve": "echo 'Dominds WebApp is served by backend server.' && echo 'Dev: cd ../../ && ./dev-server.sh'",
     "format": "prettier --write \"src/**/*.{js,jsx,ts,tsx}\" && prettier --write \"src/**/*.{css,md,json,html}\"",
     "format:check": "prettier --check \"src/**/*.{js,jsx,ts,tsx}\" && prettier --check \"src/**/*.{css,md,json,html}\"",

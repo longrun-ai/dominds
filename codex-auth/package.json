@@ -36,7 +36,7 @@
   },
   "scripts": {
     "build": "tsc -p tsconfig.json",
-    "clean": "rm -rf dist",
+    "clean": "node ../scripts/rm-dir.mjs dist",
     "doctor": "node dist/bin/auth-doctor.js",
     "format": "prettier --write \"src/**/*\" \"docs/**/*\" README.md",
     "prepublishOnly": "node ../scripts/require-pnpm-publish.mjs && pnpm run build"

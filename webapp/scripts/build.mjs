@@ -16,7 +16,7 @@ function toDistHref(outputPath) {
   const absoluteOutputPath = path.isAbsolute(outputPath)
     ? outputPath
     : path.resolve(process.cwd(), outputPath);
-  return `./${toPosixPath(path.relative(distDir, absoluteOutputPath))}`;
+  return `/${toPosixPath(path.relative(distDir, absoluteOutputPath))}`;
 }
 
 function findEntryOutput(outputs) {
@@ -38,7 +38,7 @@ async function renderIndexHtml(params) {
   );
   html = html.replace(
     /<link rel="icon" type="image\/svg\+xml" href="src\/assets\/favicon\.svg" \/>/,
-    '<link rel="icon" type="image/svg+xml" href="./assets/favicon.svg" />',
+    '<link rel="icon" type="image/svg+xml" href="/assets/favicon.svg" />',
   );
 
   if (params.cssHref) {
