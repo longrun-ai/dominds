@@ -172,11 +172,11 @@ providers:
         input_length: 272000
         output_length: 32768
         context_window: '272K'
-  minimaxi.com-coding-plan:
-    name: MiniMax CN Coding Plan
+  minimaxi.com-token-plan:
+    name: MiniMax CN Token Plan
     apiType: anthropic-compatible
     baseUrl: https://api.minimaxi.com/anthropic
-    apiKeyEnvVar: MINIMAX_CN_CP_API_KEY
+    apiKeyEnvVar: MINIMAX_CN_TP_API_KEY
     tech_spec_url: https://platform.minimaxi.com/docs/api-reference/text-anthropic-api
     api_mgmt_url: https://platform.minimaxi.com/
     model_param_options:
@@ -200,6 +200,17 @@ providers:
           type: boolean
           description: Force JSON object output via Anthropic tool_choice mode.
     models:
+      MiniMax-M3:
+        name: MiniMax M3
+        optimal_max_tokens: 300000
+        critical_max_tokens: 500000
+        supports_thinking: true
+        default_thinking: true
+        supports_image_input: true
+        context_length: 1000000
+        input_length: 1000000
+        output_length: 32768
+        context_window: '1M'
       MiniMax-M2.7:
         name: MiniMax M2.7
         supports_image_input: false
@@ -249,6 +260,17 @@ providers:
           type: boolean
           description: Force JSON object output via Anthropic tool_choice mode.
     models:
+      MiniMax-M3:
+        name: MiniMax M3
+        optimal_max_tokens: 300000
+        critical_max_tokens: 500000
+        supports_thinking: true
+        default_thinking: true
+        supports_image_input: true
+        context_length: 1000000
+        input_length: 1000000
+        output_length: 32768
+        context_window: '1M'
       MiniMax-M2.7:
         name: MiniMax M2.7
         supports_image_input: false
@@ -270,11 +292,11 @@ providers:
         input_length: 204800
         output_length: 8192
         context_window: '204K'
-  minimax.io-coding-plan:
-    name: MiniMax International Coding Plan
+  minimax.io-token-plan:
+    name: MiniMax International Token Plan
     apiType: anthropic-compatible
     baseUrl: https://api.minimax.io/anthropic
-    apiKeyEnvVar: MINIMAX_CP_API_KEY
+    apiKeyEnvVar: MINIMAX_TP_API_KEY
     tech_spec_url: https://platform.minimax.io/docs/api-reference/text-anthropic-api
     api_mgmt_url: https://platform.minimax.io/
     model_param_options:
@@ -298,6 +320,17 @@ providers:
           type: boolean
           description: Force JSON object output via Anthropic tool_choice mode.
     models:
+      MiniMax-M3:
+        name: MiniMax M3
+        optimal_max_tokens: 300000
+        critical_max_tokens: 500000
+        supports_thinking: true
+        default_thinking: true
+        supports_image_input: true
+        context_length: 1000000
+        input_length: 1000000
+        output_length: 32768
+        context_window: '1M'
       MiniMax-M2.7:
         name: MiniMax M2.7
         supports_image_input: false
@@ -347,6 +380,17 @@ providers:
           type: boolean
           description: Force JSON object output via Anthropic tool_choice mode.
     models:
+      MiniMax-M3:
+        name: MiniMax M3
+        optimal_max_tokens: 300000
+        critical_max_tokens: 500000
+        supports_thinking: true
+        default_thinking: true
+        supports_image_input: true
+        context_length: 1000000
+        input_length: 1000000
+        output_length: 32768
+        context_window: '1M'
       MiniMax-M2.7:
         name: MiniMax M2.7
         supports_image_input: false
