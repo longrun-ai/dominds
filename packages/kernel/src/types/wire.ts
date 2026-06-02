@@ -138,6 +138,7 @@ export interface DomindsSelfUpdateStatus {
 export interface DomindsRuntimeStatus {
   workspace: string;
   version: string;
+  spaHash: string | null;
   mode: DomindsRuntimeMode;
   selfUpdate: DomindsSelfUpdateStatus;
 }

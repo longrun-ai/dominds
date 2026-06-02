@@ -273,6 +273,10 @@ export class DomindsApp extends HTMLElement {
   private currentTheme: 'light' | 'dark' = this.getCurrentTheme();
   private backendRtws: string = '';
   private backendVersion: string = '';
+  private loadedBackendVersion: string | null = null;
+  private loadedSpaHash: string | null = null;
+  private runtimeStatusInitialized: boolean = false;
+  private runtimeAssetReloadScheduled: boolean = false;
   private backendMode: 'development' | 'production' | null = null;
   private domindsSelfUpdate: DomindsSelfUpdateStatus | null = null;
   private domindsSelfUpdateCheckInFlight: boolean = false;
@@ -2261,10 +2265,37 @@ export class DomindsApp extends HTMLElement {
     this.updateDomindsVersionUi();
   }
 
-  private applyDomindsRuntimeStatus(status: DomindsRuntimeStatus): void {
+  private applyDomindsRuntimeStatus(
+    status: DomindsRuntimeStatus,
+    options: { allowBuildOnlyReload: boolean },
+  ): void {
     const workspace = status.workspace.trim();
+    const version = status.version.trim();
+    const spaHash = status.spaHash === null ? null : status.spaHash.trim();
+    const normalizedSpaHash = spaHash === '' ? null : spaHash;
+    const versionChanged =
+      version !== '' && this.loadedBackendVersion !== null && version !== this.loadedBackendVersion;
+    const buildChanged =
+      normalizedSpaHash !== null &&
+      this.loadedSpaHash !== null &&
+      normalizedSpaHash !== this.loadedSpaHash;
+
+    if (
+      !this.runtimeAssetReloadScheduled &&
+      (versionChanged || (options.allowBuildOnlyReload && buildChanged))
+    ) {
+      this.runtimeAssetReloadScheduled = true;
+      window.location.reload();
+      return;
+    }
+    if (!this.runtimeStatusInitialized) {
+      this.runtimeStatusInitialized = true;
+      this.loadedBackendVersion = version !== '' ? version : null;
+      this.loadedSpaHash = normalizedSpaHash;
+    }
+
     this.backendRtws = workspace;
-    this.backendVersion = status.version.trim();
+    this.backendVersion = version;
     this.backendMode = status.mode;
     this.domindsSelfUpdate = status.selfUpdate;
     this.showDomindsSelfUpdateFailureIfNeeded(status.selfUpdate);
@@ -12037,12 +12068,12 @@ export class DomindsApp extends HTMLElement {
         if (dialogContainer instanceof DomindsDialogContainer) {
           dialogContainer.setServerWorkLanguage(message.serverWorkLanguage);
         }
-        this.applyDomindsRuntimeStatus(message.runtimeStatus);
+        this.applyDomindsRuntimeStatus(message.runtimeStatus, { allowBuildOnlyReload: true });
         this.applyUiLanguageToDom();
         return true;
       }
       case 'dominds_runtime_status': {
-        this.applyDomindsRuntimeStatus(message.runtimeStatus);
+        this.applyDomindsRuntimeStatus(message.runtimeStatus, { allowBuildOnlyReload: false });
         return true;
       }
       case 'ui_language_set': {

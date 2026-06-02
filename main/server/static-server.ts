@@ -18,6 +18,20 @@ export interface StaticServerOptions {
   staticDir: string;
 }
 
+function isFingerprintedAssetPath(pathname: string): boolean {
+  return /^\/assets\/.+-[A-Z0-9]{8,}\.[A-Za-z0-9]+$/.test(pathname);
+}
+
+function getStaticCacheControl(pathname: string, ext: string): string {
+  if (ext === '.html') {
+    return 'no-store';
+  }
+  if (isFingerprintedAssetPath(pathname)) {
+    return 'public, max-age=31536000, immutable';
+  }
+  return 'no-cache';
+}
+
 /**
  * Serve static files from the webapp build output.
  */
@@ -58,14 +72,14 @@ export async function serveStatic(
       if (!looksLikeAsset) {
         const indexPath = join(staticDir, 'index.html');
         if (existsSync(indexPath)) {
-          return await sendFile(indexPath, res, '.html');
+          return await sendFile(indexPath, res, '.html', '/index.html');
         }
       }
       return false;
     }
 
     const ext = extname(filePath);
-    return await sendFile(filePath, res, ext);
+    return await sendFile(filePath, res, ext, pathname);
   } catch (error) {
     log.error('Error serving static file:', error);
     return false;
@@ -75,7 +89,12 @@ export async function serveStatic(
 /**
  * Send a file with appropriate headers
  */
-async function sendFile(filePath: string, res: ServerResponse, ext: string): Promise<boolean> {
+async function sendFile(
+  filePath: string,
+  res: ServerResponse,
+  ext: string,
+  pathname: string,
+): Promise<boolean> {
   try {
     const mimeType = getMimeType(ext);
     const stats = await fsPromises.stat(filePath);
@@ -83,7 +102,7 @@ async function sendFile(filePath: string, res: ServerResponse, ext: string): Pro
     res.writeHead(200, {
       'Content-Type': mimeType,
       'Content-Length': stats.size,
-      'Cache-Control': 'no-cache', // Disable caching for development
+      'Cache-Control': getStaticCacheControl(pathname, ext),
     });
 
     const stream = createReadStream(filePath);
@@ -110,7 +129,10 @@ export async function sendHtml(
   try {
     const content = await fsPromises.readFile(filePath, 'utf8');
 
-    res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
+    res.writeHead(200, {
+      'Content-Type': 'text/html; charset=utf-8',
+      'Cache-Control': 'no-store',
+    });
     res.end(content);
   } catch (error) {
     log.error(`Error sending HTML file ${filePath}:`, error);
