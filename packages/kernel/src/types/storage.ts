@@ -167,6 +167,7 @@ export type DialogLatestAssignmentAnchorState = Readonly<{
 export type DialogFollowupReason = Readonly<
   | { kind: 'ordinary_tool_result'; callIds: readonly string[] }
   | { kind: 'invalid_tool_recovery'; callIds: readonly string[] }
+  | { kind: 'repeated_tool_call_reminder'; callIds: readonly string[] }
   | { kind: 'reply_delivery_result'; replyDeliveryId: string; replyCallId: string }
   | { kind: 'result_arrival'; batchId: string }
   | { kind: 'runtime_guidance'; msgId: string }

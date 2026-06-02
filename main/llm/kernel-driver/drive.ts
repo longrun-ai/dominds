@@ -1856,6 +1856,209 @@ function formatInvalidFuncCallRuntimeGuide(
     .join('\n');
 }
 
+function stableJsonStringify(value: unknown): string {
+  if (value === null) return 'null';
+  if (typeof value === 'string') return JSON.stringify(value);
+  if (typeof value === 'number' || typeof value === 'boolean') return JSON.stringify(value);
+  if (Array.isArray(value)) {
+    return `[${value.map((entry) => stableJsonStringify(entry)).join(',')}]`;
+  }
+  if (typeof value === 'object') {
+    const record = value as Record<string, unknown>;
+    return `{${Object.keys(record)
+      .sort()
+      .map((key) => `${JSON.stringify(key)}:${stableJsonStringify(record[key])}`)
+      .join(',')}}`;
+  }
+  return JSON.stringify(String(value));
+}
+
+function canonicalizeToolCallArguments(rawArguments: string): string {
+  try {
+    return stableJsonStringify(JSON.parse(rawArguments) as unknown);
+  } catch {
+    return rawArguments;
+  }
+}
+
+function canonicalizeToolResult(result: FuncResultMsg): string {
+  return stableJsonStringify({
+    content: result.content,
+    contentItems: result.contentItems ?? null,
+  });
+}
+
+function buildToolResultFingerprint(
+  call: FuncCallMsg,
+  result: FuncResultMsg,
+): ToolResultFingerprint {
+  return {
+    toolName: call.name,
+    argumentsFingerprint: canonicalizeToolCallArguments(call.arguments),
+    resultFingerprint: canonicalizeToolResult(result),
+  };
+}
+
+function sameToolResultFingerprint(
+  left: ToolResultFingerprint,
+  right: ToolResultFingerprint,
+): boolean {
+  return (
+    left.toolName === right.toolName &&
+    left.argumentsFingerprint === right.argumentsFingerprint &&
+    left.resultFingerprint === right.resultFingerprint
+  );
+}
+
+function formatRepeatedToolCallRuntimeGuide(args: {
+  language: 'zh' | 'en';
+  toolName: string;
+  callIds: readonly string[];
+  argumentsFingerprint: string;
+  resultContent: string;
+}): string {
+  const resultPreview =
+    args.resultContent.length > 800
+      ? `${args.resultContent.slice(0, 800)}\n...`
+      : args.resultContent;
+  if (args.language === 'en') {
+    return [
+      '[Runtime notice] You have just made the same tool call three times, with identical arguments, and Dominds observed the exact same tool result each time.',
+      '',
+      `- tool: ${args.toolName}`,
+      `- callIds: ${args.callIds.join(', ')}`,
+      '- arguments:',
+      '```json',
+      args.argumentsFingerprint,
+      '```',
+      '- repeated result:',
+      '```text',
+      resultPreview,
+      '```',
+      '',
+      'Question this behavior before calling tools again. The repeated result strongly suggests the same call will not produce new information. Re-read the user request and the tool result, then correct course: answer from the available information, choose a different action, or explain what is blocked.',
+    ].join('\n');
+  }
+  return [
+    '[Dominds 提示] 你刚才连续三次调用了同一个工具，参数完全相同，Dominds 观察到三次工具返回值也完全相同。',
+    '',
+    `- 工具: ${args.toolName}`,
+    `- callIds: ${args.callIds.join(', ')}`,
+    '- 参数:',
+    '```json',
+    args.argumentsFingerprint,
+    '```',
+    '- 重复返回值:',
+    '```text',
+    resultPreview,
+    '```',
+    '',
+    '请先质疑这个行为，不要机械地再次调用同一个工具。同样的调用大概率不会产生新信息。请重新阅读用户诉求和工具返回值，然后自行纠正：基于已有信息作答、换一种行动，或明确说明当前阻塞点。',
+  ].join('\n');
+}
+
+function formatRepeatedToolCallStoppedDetail(args: {
+  language: 'zh' | 'en';
+  toolName: string;
+  callIds: readonly string[];
+}): string {
+  if (args.language === 'en') {
+    return (
+      `Stopped because the LLM ignored Dominds' repeated-tool-call correction notice and again made ` +
+      `the same tool call three times with identical results. This indicates an LLM behavior/personality problem: ` +
+      `it is looping on ${args.toolName} instead of reconsidering the task. callIds=${args.callIds.join(', ')}`
+    );
+  }
+  return (
+    `已停止：LLM 已收到 Dominds 的重复工具调用纠正提醒，但仍然再次连续三次调用同一个工具并得到完全相同的结果。` +
+    `这说明当前 LLM 存在行为/个性问题：它在 ${args.toolName} 上机械循环，而不是重新判断任务。` +
+    `callIds=${args.callIds.join(', ')}`
+  );
+}
+
+function latestRepeatedToolCallReminderIndex(messages: readonly ChatMessage[]): number | undefined {
+  for (let index = messages.length - 1; index >= 0; index -= 1) {
+    const msg = messages[index];
+    if (!msg) continue;
+    if (msg.type === 'transient_guide_msg') {
+      if (
+        msg.content.startsWith(
+          '[Runtime notice] You have just made the same tool call three times',
+        ) ||
+        msg.content.startsWith('[Dominds 提示] 你刚才连续三次调用了同一个工具')
+      ) {
+        return index;
+      }
+    }
+    if (msg.type === 'prompting_msg') {
+      return undefined;
+    }
+  }
+  return undefined;
+}
+
+function inspectRepeatedToolCallSequence(args: {
+  messages: readonly ChatMessage[];
+  language: 'zh' | 'en';
+}): RepeatedToolCallInspection | undefined {
+  const latestReminderIndex = latestRepeatedToolCallReminderIndex(args.messages);
+  const messages =
+    latestReminderIndex === undefined
+      ? args.messages
+      : args.messages.slice(latestReminderIndex + 1);
+  const recentPairs: Array<
+    Readonly<{
+      call: FuncCallMsg;
+      result: FuncResultMsg;
+      fingerprint: ToolResultFingerprint;
+    }>
+  > = [];
+  for (let index = messages.length - 1; index >= 1; index -= 1) {
+    const result = messages[index];
+    const call = messages[index - 1];
+    if (result?.type !== 'func_result_msg' || call?.type !== 'func_call_msg') {
+      continue;
+    }
+    if (result.id !== call.id) {
+      continue;
+    }
+    recentPairs.push({
+      call,
+      result,
+      fingerprint: buildToolResultFingerprint(call, result),
+    });
+    index -= 1;
+    if (recentPairs.length >= 3) break;
+  }
+  if (recentPairs.length < 3) return undefined;
+  const [latest, second, third] = recentPairs;
+  if (!latest || !second || !third) {
+    throw new Error('repeated tool-call inspection invariant violation: missing recent pair');
+  }
+  if (
+    !sameToolResultFingerprint(latest.fingerprint, second.fingerprint) ||
+    !sameToolResultFingerprint(latest.fingerprint, third.fingerprint)
+  ) {
+    return undefined;
+  }
+  const chronologicalPairs = [third, second, latest];
+  const callIds = chronologicalPairs.map((pair) => pair.call.id);
+  return {
+    toolName: latest.call.name,
+    callIds,
+    argumentsFingerprint: latest.fingerprint.argumentsFingerprint,
+    resultContent: latest.result.content,
+    reminderContent: formatRepeatedToolCallRuntimeGuide({
+      language: args.language,
+      toolName: latest.call.name,
+      callIds,
+      argumentsFingerprint: latest.fingerprint.argumentsFingerprint,
+      resultContent: latest.result.content,
+    }),
+    repeatedAfterReminder: latestReminderIndex !== undefined,
+  };
+}
+
 async function persistInvalidFuncCallRuntimeGuide(args: {
   dlg: Dialog;
   call: LlmInvalidFuncCall;
@@ -1897,12 +2100,28 @@ type RoutedFunctionResult = {
   immediateFollowupCallIds: readonly string[];
   immediateTellaskOutputCallIds: readonly string[];
   invalidTellaskCallIds: readonly string[];
+  repeatedToolCallReminderCallIds: readonly string[];
   shouldStopAfterReplyTool: boolean;
   shouldStopAfterPendingTellaskWait: boolean;
   pairedMessages: ChatMessage[];
   tellaskToolOutputs: ChatMessage[];
   answerHumanOutputs: readonly AnswerHumanStructuredOutput[];
 };
+
+type ToolResultFingerprint = Readonly<{
+  toolName: string;
+  argumentsFingerprint: string;
+  resultFingerprint: string;
+}>;
+
+type RepeatedToolCallInspection = Readonly<{
+  toolName: string;
+  callIds: readonly string[];
+  argumentsFingerprint: string;
+  resultContent: string;
+  reminderContent: string;
+  repeatedAfterReminder: boolean;
+}>;
 
 type ToolRoundStopDiagnostics = Readonly<{
   course: number;
@@ -1916,6 +2135,7 @@ type ToolRoundStopDiagnostics = Readonly<{
     immediateFollowupCallIds: readonly string[];
     immediateTellaskOutputCallIds: readonly string[];
     invalidTellaskCallIds: readonly string[];
+    repeatedToolCallReminderCallIds: readonly string[];
     shouldStopAfterReplyTool: boolean;
     shouldStopAfterPendingTellaskWait: boolean;
     pairedMessageTypes: readonly string[];
@@ -2025,6 +2245,7 @@ function summarizeRoutedFunctionResult(
     immediateFollowupCallIds: routed.immediateFollowupCallIds,
     immediateTellaskOutputCallIds: routed.immediateTellaskOutputCallIds,
     invalidTellaskCallIds: routed.invalidTellaskCallIds,
+    repeatedToolCallReminderCallIds: routed.repeatedToolCallReminderCallIds,
     shouldStopAfterReplyTool: routed.shouldStopAfterReplyTool,
     shouldStopAfterPendingTellaskWait: routed.shouldStopAfterPendingTellaskWait,
     pairedMessageTypes: routed.pairedMessages.map((msg) => msg.type),
@@ -2089,6 +2310,7 @@ function shouldCaptureUnexpectedIdleAfterToolRound(args: {
   if (diagnostics.routed.hasImmediateTellaskOutputs) return true;
   if (diagnostics.routed.immediateFollowupCallIds.length > 0) return true;
   if (diagnostics.routed.immediateTellaskOutputCallIds.length > 0) return true;
+  if (diagnostics.routed.repeatedToolCallReminderCallIds.length > 0) return true;
   return false;
 }
 
@@ -2318,6 +2540,12 @@ function buildImmediateFollowupTriggerExpectation(args: {
     reasons.push({
       kind: 'invalid_tool_recovery',
       callIds: [...invalidRecoveryCallIds],
+    });
+  }
+  if (args.routed.repeatedToolCallReminderCallIds.length > 0) {
+    reasons.push({
+      kind: 'repeated_tool_call_reminder',
+      callIds: args.routed.repeatedToolCallReminderCallIds,
     });
   }
   if (reasons.length === 0) {
@@ -2821,6 +3049,7 @@ async function executeFunctionRound(args: {
       immediateFollowupCallIds: [],
       immediateTellaskOutputCallIds: [],
       invalidTellaskCallIds: [],
+      repeatedToolCallReminderCallIds: [],
       shouldStopAfterReplyTool: false,
       shouldStopAfterPendingTellaskWait: false,
       pairedMessages: [],
@@ -2966,6 +3195,7 @@ async function executeFunctionRound(args: {
     immediateFollowupCallIds,
     immediateTellaskOutputCallIds: tellaskRound.immediateTellaskOutputCallIds,
     invalidTellaskCallIds: tellaskRound.invalidTellaskCallIds,
+    repeatedToolCallReminderCallIds: [],
     shouldStopAfterReplyTool: tellaskRound.shouldStopAfterReplyTool,
     shouldStopAfterPendingTellaskWait: tellaskRound.shouldStopAfterPendingTellaskWait,
     pairedMessages,
@@ -4530,7 +4760,7 @@ export async function driveDialogStreamCore(
                 ? currentUserPromptMsgId
                 : undefined;
 
-          const routed = await executeFunctionRound({
+          let routed = await executeFunctionRound({
             dlg,
             agent,
             agentTools,
@@ -4583,6 +4813,42 @@ export async function driveDialogStreamCore(
             newMsgs.push(...routed.pairedMessages);
           }
           await dlg.addChatMessages(...newMsgs);
+
+          const repeatedToolCallInspection = inspectRepeatedToolCallSequence({
+            messages: dlg.msgs,
+            language: getWorkLanguage(),
+          });
+          if (repeatedToolCallInspection !== undefined) {
+            if (repeatedToolCallInspection.repeatedAfterReminder) {
+              const detail = formatRepeatedToolCallStoppedDetail({
+                language: getWorkLanguage(),
+                toolName: repeatedToolCallInspection.toolName,
+                callIds: repeatedToolCallInspection.callIds,
+              });
+              log.error(
+                'kernel-driver stopped after repeated identical tool calls ignored guidance',
+                undefined,
+                {
+                  rootId: dlg.id.rootId,
+                  selfId: dlg.id.selfId,
+                  course: dlg.activeGenCourseOrUndefined ?? dlg.currentCourse,
+                  genseq: dlg.activeGenSeq,
+                  toolName: repeatedToolCallInspection.toolName,
+                  callIds: repeatedToolCallInspection.callIds,
+                },
+              );
+              await dlg.streamError(detail);
+              throw new LlmStreamErrorEmittedError({
+                detail,
+                i18nStopReason: buildHumanSystemStopReasonTextI18n({ detail }),
+              });
+            }
+            await persistAndEmitRuntimeGuide(dlg, repeatedToolCallInspection.reminderContent);
+            routed = {
+              ...routed,
+              repeatedToolCallReminderCallIds: repeatedToolCallInspection.callIds,
+            };
+          }
 
           const persistedFbrState = await loadDialogFbrState(dlg);
           if (persistedFbrState) {
@@ -4690,6 +4956,7 @@ export async function driveDialogStreamCore(
           const shouldStartImmediatePostToolGeneration =
             routed.hasImmediateFollowupToolCalls ||
             routed.hasImmediateTellaskOutputs ||
+            routed.repeatedToolCallReminderCallIds.length > 0 ||
             invalidFuncCallCount > 0;
           if (shouldStartImmediatePostToolGeneration) {
             const expectation = buildImmediateFollowupTriggerExpectation({
@@ -4705,6 +4972,7 @@ export async function driveDialogStreamCore(
                   `(dialog=${dlg.id.valueOf()}, course=${String(dlg.activeGenCourseOrUndefined ?? dlg.currentCourse)}, ` +
                   `genseq=${String(dlg.activeGenSeq)}, immediateToolCalls=${String(routed.hasImmediateFollowupToolCalls)}, ` +
                   `immediateTellaskOutputs=${String(routed.hasImmediateTellaskOutputs)}, ` +
+                  `repeatedToolCallReminderCallIds=${routed.repeatedToolCallReminderCallIds.join('+')}, ` +
                   `invalidFuncCallCount=${String(invalidFuncCallCount)})`,
               );
             }

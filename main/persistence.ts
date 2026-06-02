@@ -1908,6 +1908,10 @@ function parseDialogFollowupReason(value: unknown): DialogFollowupReason | null 
       const callIds = parseStringArrayField(value.callIds);
       return callIds === null ? null : { kind: 'invalid_tool_recovery', callIds };
     }
+    case 'repeated_tool_call_reminder': {
+      const callIds = parseStringArrayField(value.callIds);
+      return callIds === null ? null : { kind: 'repeated_tool_call_reminder', callIds };
+    }
     case 'reply_delivery_result':
       if (
         typeof value.replyDeliveryId !== 'string' ||
