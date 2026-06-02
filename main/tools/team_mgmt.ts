@@ -32,6 +32,7 @@ import {
   listProblems,
   reconcileProblemsByPrefix,
 } from '../problems';
+import { domindsRtwsRootAbs } from '../rtws';
 import { Team } from '../team';
 import { notifyTeamConfigUpdated } from '../team-config-updates';
 import type { FuncTool, Tool, ToolArguments, ToolCallOutput } from '../tool';
@@ -196,7 +197,7 @@ function lintTeamYamlStyle(raw: string): string[] {
 
 async function lintTeamYamlStyleProblems(): Promise<void> {
   const stylePrefix = TEAM_YAML_PROBLEM_PREFIX + 'style/';
-  const cwd = path.resolve(process.cwd());
+  const cwd = domindsRtwsRootAbs();
   const teamYamlAbs = path.resolve(cwd, TEAM_YAML_REL);
   try {
     const st = await fs.stat(teamYamlAbs);
@@ -274,10 +275,13 @@ function toMindsRelativePath(raw: string): string {
 }
 
 function ensureMindsScopedPath(rel: string): { rel: string; abs: string } {
-  const cwd = path.resolve(process.cwd());
+  const cwd = domindsRtwsRootAbs();
   const mindsAbs = path.resolve(cwd, MINDS_DIR);
   const abs = path.resolve(cwd, rel);
-  const isInside = abs === mindsAbs || abs.startsWith(mindsAbs + path.sep);
+  const relativeFromMinds = path.relative(mindsAbs, abs);
+  const isInside =
+    relativeFromMinds === '' ||
+    (!relativeFromMinds.startsWith('..') && !path.isAbsolute(relativeFromMinds));
   if (!isInside) {
     throw new Error(`Path must be within ${MINDS_DIR}/`);
   }
@@ -360,7 +364,7 @@ async function refreshDerivedStateAfterTeamMgmtWrite(params: {
   const touchesMcp = touchesTarget(MCP_YAML_REL);
   if (!touchesTeam && !touchesApps && !touchesMcp) return;
 
-  const rtwsRootAbs = process.cwd();
+  const rtwsRootAbs = domindsRtwsRootAbs();
   if (touchesApps) {
     try {
       await registerEnabledAppsToolProxies({ rtwsRootAbs });
@@ -460,7 +464,7 @@ type MindsDirState =
   | { kind: 'not_directory'; abs: string };
 
 async function getMindsDirState(): Promise<MindsDirState> {
-  const cwd = path.resolve(process.cwd());
+  const cwd = domindsRtwsRootAbs();
   const abs = path.resolve(cwd, MINDS_DIR);
   try {
     const st = await fs.stat(abs);
@@ -490,7 +494,7 @@ function formatMindsMissingNotice(language: LanguageCode): string {
 }
 
 async function ensureMindsRootDirExists(): Promise<void> {
-  const cwd = path.resolve(process.cwd());
+  const cwd = domindsRtwsRootAbs();
   const abs = path.resolve(cwd, MINDS_DIR);
   await fs.mkdir(abs, { recursive: true });
 }
@@ -3860,7 +3864,7 @@ export function renderTeamManual(language: LanguageCode): string {
         '这些 `.minds/team/<id>/*` 文件属于团队对该角色的长期定义资产，默认应保持稳定、稀疏、慢变；它们不是该成员自己的日常经验仓库。成员在工作中积累的日常经验、近期排障线索、短中期可复用笔记，默认应优先沉淀到 `personal_memory`；凡是推荐给成员配 `personal_memory` 的场景，也默认同时推荐配 `skills` 与 `resources` 工具集，让成员能维护个人技能指引并读取已登记资源。需要向全队同步的当前有效状态、关键决策、下一步与仍成立阻塞，应写入 Taskdoc `progress` 这一准实时任务公告牌；个人/当前对话短期手头工作与临时 bridge 细节则留在 reminders。',
         '如果某成员承担团队管理职责（尤其获得 `team_mgmt`），其 `persona.*.md` 必须明确要求：执行任何团队管理操作前先查看 `man({ "toolsetId": "team_mgmt" })` 的相关章节，并按手册标准做法维护 `.minds/**` 下的团队心智资产（如 `team.yaml`、成员 mind 文件、skills、priming 等）。',
         '“角色归属对象”不等于“写权限”：`.minds/team/<id>/*` 虽然对应某个成员角色，但是否能修改，取决于当前成员是否被授予 `team_mgmt` 或等效团队资产维护权限；“这是你自己的 persona/knowhow/pitfalls” 不等于你可以自己改写它。',
-        '典型内容示例（可直接作为起点，按团队语境改写）：\n- `.minds/team/coder/persona.zh.md`\n```markdown\n### 核心身份\n- 专业程序员，负责按规格完成代码开发。\n### 工作边界\n- 不负责需求分析或产品策略决策。\n- 只根据已确认的开发规格进行实现与重构。\n### 交付标准\n- 输出可运行代码，并附关键验证步骤。\n```\n- `.minds/team/coder/knowhow.zh.md`\n```markdown\n- 熟悉本仓库主要模块边界、构建命令与常用验证入口。\n- 优先沿调用链和数据流定位根因，再决定修改点。\n- 遇到接口、配置或契约变更时，要同步检查文档、类型和回归影响。\n```\n- `.minds/team/coder/pitfalls.zh.md`\n```markdown\n- 不要只在症状层打补丁；修改前先定位调用链与数据流。\n- 涉及权限/配置时，不要跳过对应校验工具；若只剩“已解决但未清理的问题”，再用 `team_mgmt_clear_problems(...)` 收尾。\n- 涉及高风险改动时，不要一口气铺开大改；先给最小可审查方案，再逐步扩展。\n- 涉及 agentic 能力规划或开发时，不要不自觉套用传统软件工程里“程序化完善 unhappy path 兜底”的思路。对有智能体在环的业务流程步骤，继续程序化追加 unhappy path 判断，默认应视为负面行为和设计退步，而不是加分项；它不同于仅软件在环的业务流程环节，很容易引入巨量技术债务，而且业务效果往往不理想。此时应优先安排截图视觉确认、语义把关等保留智能体在环特性的兜底路径。\n```\n迁移说明：rtws 成员文件现已优先读取 `knowhow/pitfalls`；只有在新文件名不存在时，才回退接受旧的 `knowledge/lessons`。一旦存在新文件名，就只注入新文件内容，旧文件内容会被忽略。builtin mind 只认 canonical 文件名，不读取旧别名。请尽快完成改名迁移；过渡期之后，未来版本将不再识别 `knowledge/lessons`。\n写法约束：`persona/knowhow/pitfalls` 文件里不要再写与系统提示模板重复的总标题。系统提示模板会自动添加：`## 角色设定` / `## 经验知识` / `## 避坑指南`（英文模板对应 `## Persona` / `## Know-How` / `## Pitfalls`）。',
+        '典型内容示例（可直接作为起点，按团队语境改写）：\n- `.minds/team/coder/persona.zh.md`\n```markdown\n### 核心身份\n- 专业程序员，负责按规格完成代码开发。\n### 工作边界\n- 不负责需求分析或产品策略决策。\n- 只根据已确认的开发规格进行实现与重构。\n### 交付标准\n- 输出可运行代码，并附关键验证步骤。\n```\n- `.minds/team/coder/knowhow.zh.md`\n```markdown\n- 熟悉本仓库主要模块边界、构建命令与常用验证入口。\n- 优先沿调用链和数据流定位根因，再决定修改点。\n- 遇到接口、配置或契约变更时，要同步检查文档、类型和回归影响。\n```\n- `.minds/team/coder/pitfalls.zh.md`\n```markdown\n- 不要只在症状层打补丁；修改前先定位调用链与数据流。\n- 涉及权限/配置时，不要跳过对应校验工具；若只剩“已解决但未清理的问题”，再用 `team_mgmt_clear_problems(...)` 收尾。\n- 涉及高风险改动时，不要一口气铺开大改；先给最小可审查方案，再逐步扩展。\n- 涉及 agentic 能力规划或开发时，不要不自觉套用传统软件工程里“程序化完善 unhappy path 兜底”的思路。对有智能体在环的业务流程步骤，继续程序化追加 unhappy path 判断，默认应视为负面行为和设计退步，而不是加分项；它不同于仅软件在环的业务流程环节，很容易引入巨量技术债务，而且业务效果往往不理想。此时应优先安排截图视觉确认、语义把关等保留智能体在环特性的兜底路径。\n```\n文件名规则：rtws 成员文件只读取 canonical 文件名：`persona.*.md` / `knowhow.*.md` / `pitfalls.*.md`；旧的 `knowledge/lessons` 别名不再接受。\n写法约束：`persona/knowhow/pitfalls` 文件里不要再写与系统提示模板重复的总标题。系统提示模板会自动添加：`## 角色设定` / `## 经验知识` / `## 避坑指南`（英文模板对应 `## Persona` / `## Know-How` / `## Pitfalls`）。',
         '团队机制默认范式是“长期 agent”（long-lived teammates）：`members` 列表表示稳定存在、可随时被诉请的队友，并非“按需子角色/临时 sub-role”。这是产品机制，而非部署/运行偏好。\n如需切换当前由谁执行/扮演，用 CLI/TUI 的 `-m/--member <id>` 显式选择。\n`members.<id>.gofor` 是给其他队友/人类看的“正向诉请路由卡”（建议 5 行内）：写什么时候应该找这个队友、适合把什么问题交给 TA、以及可以期待什么帮助/产出。\n`members.<id>.nogo` 是可选的“反向路由卡”：写哪些事项不要找这个队友、应改找哪类队友/路径。两者都只服务外部路由；不要把该成员自己的执行守则、工作模式、验收标准或完整职责文档堆在这里；这些应写入 `.minds/team/<id>/*` 或 `.minds/team/domains/*.md`。它们都支持三种形态：string（单句）、YAML list（普通 bullet）、YAML object（带标签的结构化摘要，object key 完全 freeform，value 必须是 string）。\n示例（gofor / nogo）：\n```yaml\nmembers:\n  qa_guard:\n    name: QA Guard\n    gofor:\n      - 适合在发布前需要回归把关时找 TA\n      - 适合让 TA 梳理高风险改动与手工核验点\n      - 可以期待 TA 返回回归结论、风险清单与建议动作\n    nogo:\n      - 不要找 TA 做主实现或新功能开发\n      - 若是产品文案/信息架构问题，应改找对应实现或设计角色\n```\n示例（gofor, object；按 YAML key 顺序渲染，key freeform）：\n```yaml\nmembers:\n  coordinator:\n    name: 协调者\n    gofor:\n      When: 当你需要协调跨成员推进、拆分任务或收口结果时\n      Ask: 让 TA 负责诉请路由、任务拆分与结果集成\n      Returns: 可期待计划主线、委派方案与验收结论\n    nogo:\n      Avoid: 不要把具体实现、测试细节或文档落地直接塞给 TA\n      RouteTo: 这些应改找对应专职队友\n      Note: 若要写该成员自己的执行守则，请改写进 persona/knowhow/pitfalls\n```\n如果你把这类结构化内容写成 `- When: ...` / `- Ask: ...` 或 `- Avoid: ...` / `- RouteTo: ...` 的 YAML list，也仍然允许；但 `team_mgmt_validate_team_cfg({})` 会给 warning，建议改用 object，因为可读性更好。',
         '如何为不同角色指定默认模型：用 `member_defaults.provider/model` 设全局默认；对特定成员在 `members.<id>.provider/model` 里覆盖即可。例如：默认用 `gpt-5.2`，代码编写域成员用 `gpt-5.2-codex`。',
         '模型参数（例如 `reasoning_effort` / `verbosity` / `temperature`）应写在 `member_defaults.model_params.codex.*` 或 `members.<id>.model_params.codex.*` 下（对内置 `codex` provider）。不要把这些参数直接写在 `member_defaults`/`members.<id>` 根上。',
@@ -3938,7 +3942,7 @@ export function renderTeamManual(language: LanguageCode): string {
         '`default_responder` is not technically required, but strongly recommended in practice: without it, runtime falls back to implementation-defined Dialog Responder selection (for example visible-member/built-in fallback), which can drift across environments/runs.',
         'Strongly recommended: for each member, configure `.minds/team/<id>/{persona,knowhow,pitfalls}.*.md` assets to define role ownership, work boundaries, positive knowledge accumulation, and negative lessons/traps. The same `<id>` must exist in `members.<id>` in `team.yaml`.',
         'These `.minds/team/<id>/*` files are the team-defined long-lived assets for that role, and should usually stay stable, sparse, and slow-changing. They are not the member’s everyday experience warehouse. Day-to-day lessons, recent debugging clues, and medium-term reusable personal notes should usually go to `personal_memory`; whenever the handbook recommends granting `personal_memory` to a member, it also recommends granting the `skills` and `resources` toolsets so the member can maintain personal skill guidance and read registered resources. Current effective state, key decisions, next steps, and still-active blockers that the team must synchronize on belong in Taskdoc `progress`, the quasi-real-time task bulletin board; personal/current-dialog short-term current-work and bridge details belong in reminders.',
-        'Typical content examples (use as a starting point, then adapt to your team context):\n- `.minds/team/coder/persona.en.md`\n```markdown\n### Core Identity\n- Professional programmer responsible for implementing approved development specs.\n### Work Boundaries\n- Not responsible for requirement discovery or product strategy.\n- Implements/refactors only against confirmed specs.\n### Delivery Standard\n- Deliver runnable code plus key verification steps.\n```\n- `.minds/team/coder/knowhow.en.md`\n```markdown\n- Knows the repo\'s main module boundaries, build commands, and common validation entry points.\n- Prefers tracing call chains and data flow to root cause before choosing an edit point.\n- When interfaces, config, or contracts change, also checks docs, types, and regression impact.\n```\n- `.minds/team/coder/pitfalls.en.md`\n```markdown\n- Do not patch only the symptom layer; trace the call chain and data flow first.\n- After changing permissions/config, do not skip the corresponding validators; if only "Resolved But Not Yet Cleared" remains, finish with `team_mgmt_clear_problems(...)`.\n- For high-risk changes, do not fan out into a big rewrite immediately; start with a minimal reviewable plan before expansion.\n- When planning or building agentic functionality, do not unconsciously import the traditional software-engineering instinct to \"complete\" unhappy paths with more programmatic fallback logic. For agent-in-the-loop business-process steps, adding more procedural unhappy-path branches should be treated as a negative behavior and a design regression by default, not as extra credit; unlike software-only-in-the-loop business-process steps, it often creates large technical debt while still producing weak business outcomes. Prefer screenshot-based visual confirmation, semantic review, or similar fallback paths that preserve the agent-in-the-loop nature of the step instead.\n```\nMigration note: rtws member files now prefer `knowhow/pitfalls`; they only fall back to legacy `knowledge/lessons` when the new filenames do not exist. Once a new filename exists, only the new file content is injected and the legacy file is ignored. Builtin minds only recognize canonical filenames and do not read legacy aliases. Please rename promptly; after the transition period, a future release will stop recognizing `knowledge/lessons`.\nAuthoring rule: do not add top-level titles that duplicate the system prompt wrapper. The system prompt already adds: `## Persona` / `## Know-How` / `## Pitfalls` (zh template: `## 角色设定` / `## 经验知识` / `## 避坑指南`).',
+        'Typical content examples (use as a starting point, then adapt to your team context):\n- `.minds/team/coder/persona.en.md`\n```markdown\n### Core Identity\n- Professional programmer responsible for implementing approved development specs.\n### Work Boundaries\n- Not responsible for requirement discovery or product strategy.\n- Implements/refactors only against confirmed specs.\n### Delivery Standard\n- Deliver runnable code plus key verification steps.\n```\n- `.minds/team/coder/knowhow.en.md`\n```markdown\n- Knows the repo\'s main module boundaries, build commands, and common validation entry points.\n- Prefers tracing call chains and data flow to root cause before choosing an edit point.\n- When interfaces, config, or contracts change, also checks docs, types, and regression impact.\n```\n- `.minds/team/coder/pitfalls.en.md`\n```markdown\n- Do not patch only the symptom layer; trace the call chain and data flow first.\n- After changing permissions/config, do not skip the corresponding validators; if only "Resolved But Not Yet Cleared" remains, finish with `team_mgmt_clear_problems(...)`.\n- For high-risk changes, do not fan out into a big rewrite immediately; start with a minimal reviewable plan before expansion.\n- When planning or building agentic functionality, do not unconsciously import the traditional software-engineering instinct to \"complete\" unhappy paths with more programmatic fallback logic. For agent-in-the-loop business-process steps, adding more procedural unhappy-path branches should be treated as a negative behavior and a design regression by default, not as extra credit; unlike software-only-in-the-loop business-process steps, it often creates large technical debt while still producing weak business outcomes. Prefer screenshot-based visual confirmation, semantic review, or similar fallback paths that preserve the agent-in-the-loop nature of the step instead.\n```\nFilename rule: rtws member files only read canonical filenames: `persona.*.md` / `knowhow.*.md` / `pitfalls.*.md`; legacy `knowledge/lessons` aliases are no longer accepted.\nAuthoring rule: do not add top-level titles that duplicate the system prompt wrapper. The system prompt already adds: `## Persona` / `## Know-How` / `## Pitfalls` (zh template: `## 角色设定` / `## 经验知识` / `## 避坑指南`).',
         'The team mechanism default is long-lived agents (long-lived teammates): `members` is a stable roster of callable teammates, not “on-demand sub-roles”. This is a product mechanism, not a deployment preference.\nTo pick who acts, use `-m/--member <id>` in CLI/TUI.\n`members.<id>.gofor` is a positive routing card for other teammates/humans (≤ 5 lines): write when someone should ask this teammate, what kinds of asks fit, and what help/output to expect.\n`members.<id>.nogo` is an optional negative routing card: write what should not be routed to this teammate and what kind of teammate/path should take it instead. Both fields are external routing metadata; do not dump the member’s own operating rules, work mode, acceptance bar, or full role spec here. Those belong in `.minds/team/<id>/*` or `.minds/team/domains/*.md`.\nBoth fields support three shapes: string (single sentence), YAML list (plain bullets), and YAML object (structured labeled summary; object keys are fully freeform and values must be strings).\nExample (`gofor` / `nogo`):\n```yaml\nmembers:\n  qa_guard:\n    name: QA Guard\n    gofor:\n      - Go to this teammate for pre-release regression gating\n      - Ask this teammate to map high-risk changes and manual checks\n      - Expect a regression verdict, risk list, and recommended next actions\n    nogo:\n      - Do not route net-new feature implementation here\n      - For product copy or information architecture, ask the relevant implementer/designer instead\n```\nExample (object form; rendered in YAML key order, freeform keys):\n```yaml\nmembers:\n  coordinator:\n    name: Coordinator\n    gofor:\n      When: when you need cross-member coordination, task breakdown, or result convergence\n      Ask: route requests, split work, and integrate outcomes\n      Returns: an execution plan, delegation decisions, and acceptance conclusions\n    nogo:\n      Avoid: do not route concrete implementation, test-authoring, or doc-writing directly here\n      RouteTo: send those asks to the relevant specialist teammate instead\n      Note: put the member’s own operating rules in persona/knowhow/pitfalls instead\n```\nIf you write the same structured content as a YAML list like `- When: ...` / `- Ask: ...` or `- Avoid: ...` / `- RouteTo: ...`, it is still accepted, but `team_mgmt_validate_team_cfg({})` will warn and suggest YAML object form for readability.',
         'Per-role default models: set global defaults via `member_defaults.provider/model`, then override `members.<id>.provider/model` per member (e.g. use `gpt-5.2` by default, and `gpt-5.2-codex` for code-writing members).',
         'Model params (e.g. `reasoning_effort` / `verbosity` / `temperature`) must be nested under `member_defaults.model_params.codex.*` or `members.<id>.model_params.codex.*` (for the built-in `codex` provider). Do not put them directly under `member_defaults`/`members.<id>` root.',
@@ -4064,9 +4068,9 @@ export function renderMindsManual(language: LanguageCode): string {
         'persona.*.md：角色设定（稳定的工作方式与职责）。它会进入该成员的 `role=system` 提示，因此默认应直接写给该智能体本人，使用第二人称“你”来规定职责、边界与工作方式；不要把它写成第三人称人物简介，更不要使用“祂”这类旁白口吻。',
         'knowhow.*.md：正向知识/经验沉淀。它会进入 `## 经验知识`，适合写“当前成员在该职责下反复要用到的稳定事实 / 索引 / 约定 / 判断依据 / 已验证有效的方法”；更偏向帮助该成员复用长期适用的做法，而不是把“最近一次排障过程”或“今天查到的某个链接”原样堆进去。只有当这类材料已经上升为长期适用的方法、索引或判断规则时，才值得写入。',
         'pitfalls.*.md：负向经验教训。它会进入 `## 避坑指南`，适合写“哪些坑不要再踩 / 哪些信号意味着风险 / 出现什么情况时先做什么、不要做什么”；更偏向避坑、防复发和失败模式约束。只有当某个失败案例已经沉淀成长期有效的反例或禁忌时，才适合写入；不要写成任务流水账、会议纪要或第三人称成长故事。',
-        '迁移约束（当前实现）：rtws 成员文件读取顺序为 `persona.zh.md -> persona.md`，`knowhow.zh.md -> knowhow.md -> knowledge.zh.md -> knowledge.md`，`pitfalls.zh.md -> pitfalls.md -> lessons.zh.md -> lessons.md`。也就是说，旧名 `knowledge/lessons` 只在新名不存在时才作为 fallback 接受；一旦新文件名存在，就只注入新文件内容。builtin mind 只认 canonical 文件名，不读取旧别名。请尽快迁移改名；过渡期之后，未来版本将不再识别 `knowledge/lessons`。',
+        '文件名规则（当前实现）：rtws 成员文件读取顺序为 `persona.zh.md -> persona.md`，`knowhow.zh.md -> knowhow.md`，`pitfalls.zh.md -> pitfalls.md`。旧名 `knowledge/lessons` 不再作为 fallback 接受；请直接使用 canonical 文件名。',
         '若该成员承担团队管理职责（尤其获得 `team_mgmt`），其 `persona.*.md` 必须明确写出：执行任何团队管理操作前先查看 `man({ "toolsetId": "team_mgmt" })` 的相关章节，并按手册标准做法维护 `.minds/**` 团队心智资产。',
-        '语言选择（按当前实现）：优先读取 `persona.zh.md` / `knowhow.zh.md` / `pitfalls.zh.md` 这类工作语言文件，再按各自 fallback 顺序回退到无语言后缀与旧名兼容文件；不会跨语言回退到另一种语言文件。',
+        '语言选择（按当前实现）：优先读取 `persona.zh.md` / `knowhow.zh.md` / `pitfalls.zh.md` 这类工作语言文件，再按各自 fallback 顺序回退到无语言后缀文件；不会跨语言回退到另一种语言文件。',
         '标题层级约束：`persona/knowhow/pitfalls` 文件里不要再写重复的总标题。系统提示模板会自动添加：`## 角色设定` / `## 经验知识` / `## 避坑指南`（英文模板对应 `## Persona` / `## Know-How` / `## Pitfalls`）。因此正文通常应从 `###` 小节或普通 bullet 开始，而不是再写 `#` / `##`，也不要再把文件名或这些章节名重复当标题写一遍。',
       ]) +
       fmtCodeBlock('text', [
@@ -4110,9 +4114,9 @@ export function renderMindsManual(language: LanguageCode): string {
       'persona.*.md: persona and operating style. It is injected into that member\'s `role=system` prompt, so write it directly to the agent in second person ("you") when specifying responsibilities, boundaries, and working style; do not turn it into a third-person biography.',
       'knowhow.*.md: positive knowledge / proven know-how. It lands in `## Know-How`, so use it for stable facts, indexes, conventions, decision cues, and validated methods that the member repeatedly reuses in this responsibility. Do not dump raw “latest debugging notes” or a link you found today unless it has already been distilled into a long-lived method, index, or judgment rule.',
       'pitfalls.*.md: negative lessons / anti-traps. It lands in `## Pitfalls`, so prefer “what not to repeat” guidance such as risk signals, failure modes, and heuristics like “if signal X appears -> do / avoid Y -> because Z”. Only promote a failure case here once it has become a durable negative example or warning pattern; do not treat it as a task log, meeting minutes, or a third-person growth narrative.',
-      'Migration rule (current implementation): rtws member files read `persona.en.md -> persona.md`, `knowhow.en.md -> knowhow.md -> knowledge.en.md -> knowledge.md`, and `pitfalls.en.md -> pitfalls.md -> lessons.en.md -> lessons.md`. Legacy `knowledge/lessons` are fallback-only: once a new filename exists, only the new file content is injected. Builtin minds only recognize canonical filenames and do not read legacy aliases. Please rename promptly; after the transition period, a future release will stop recognizing `knowledge/lessons`.',
+      'Filename rule (current implementation): rtws member files read `persona.en.md -> persona.md`, `knowhow.en.md -> knowhow.md`, and `pitfalls.en.md -> pitfalls.md`. Legacy `knowledge/lessons` names are no longer accepted as fallback; use canonical filenames directly.',
       'If the member carries team-management responsibility (especially with `team_mgmt`), `persona.*.md` must explicitly require reading the relevant `man({ "toolsetId": "team_mgmt" })` chapters before any team-management action, and maintaining `.minds/**` team mind assets by handbook-standard workflow.',
-      "Language selection (current implementation): prefer work-language variants such as `persona.en.md` / `knowhow.en.md` / `pitfalls.en.md`, then follow each file kind's fallback order through default-name and legacy-name variants. There is no cross-language fallback to another language-specific file.",
+      "Language selection (current implementation): prefer work-language variants such as `persona.en.md` / `knowhow.en.md` / `pitfalls.en.md`, then fall back to each file kind's default filename. There is no cross-language fallback to another language-specific file.",
       'Heading rule: do not add top-level titles that duplicate the system prompt wrapper. The system prompt already adds: `## Persona` / `## Know-How` / `## Pitfalls` (zh template: `## 角色设定` / `## 经验知识` / `## 避坑指南`). In practice, bodies should usually start at `###` subsections or plain bullets rather than another `#` / `##`, and should not restate the filename or wrapper title as a heading.',
     ]) +
     fmtCodeBlock('text', [
@@ -4907,7 +4911,7 @@ export const teamMgmtValidateTeamCfgTool: FuncTool = {
         return fail(msg, [{ type: 'environment_msg', role: 'user', content: msg }]);
       }
 
-      const cwd = path.resolve(process.cwd());
+      const cwd = domindsRtwsRootAbs();
       const teamYamlAbs = path.resolve(cwd, TEAM_YAML_REL);
       try {
         const st = await fs.stat(teamYamlAbs);
@@ -5100,7 +5104,7 @@ export const teamMgmtValidateMcpCfgTool: FuncTool = {
         return fail(msg, [{ type: 'environment_msg', role: 'user', content: msg }]);
       }
 
-      const cwd = path.resolve(process.cwd());
+      const cwd = domindsRtwsRootAbs();
       const mcpYamlAbs = path.resolve(cwd, MCP_YAML_REL);
       let mcpRaw: string | null = null;
       let declaredServerCount = 0;

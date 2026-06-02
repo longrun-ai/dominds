@@ -7,6 +7,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { Dialog, SideDialog } from '../dialog';
 import { ChatMessage } from '../llm/client';
+import { domindsRtwsRootAbs } from '../rtws';
 import { getWorkLanguage } from '../runtime/work-language';
 import {
   formatEffectiveTaskDocFromSections,
@@ -45,7 +46,7 @@ export async function formatTaskDocContent(dlg: Dialog): Promise<ChatMessage> {
 
   const isSideDialog = dlg instanceof SideDialog;
   const taskdocMaintainerId = isSideDialog ? dlg.mainDialog.agentId : dlg.agentId;
-  const workspaceRoot = path.resolve(process.cwd());
+  const workspaceRoot = domindsRtwsRootAbs();
   const fullPath = path.resolve(workspaceRoot, taskDocPath);
 
   // Security check - ensure path is within rtws (runtime workspace)

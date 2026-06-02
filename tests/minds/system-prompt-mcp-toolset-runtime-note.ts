@@ -28,6 +28,7 @@ function buildPrompt(language: 'zh' | 'en'): string {
     pitfalls: 'pitfalls',
     skillsText: 'skills',
     envIntro: 'env',
+    rtwsRootAbs: '/tmp/dominds-test-rtws',
     teamIntro: 'team',
     funcToolRulesText: '',
     policyText: 'policy',

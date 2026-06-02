@@ -11,6 +11,7 @@ import fs from 'fs/promises';
 import path from 'path';
 import { getAccessDeniedMessage, hasReadAccess, hasWriteAccess } from '../access-control';
 import type { ChatMessage } from '../llm/client';
+import { domindsRtwsRootAbs } from '../rtws';
 import { getWorkLanguage } from '../runtime/work-language';
 import type { FuncTool, ToolArguments, ToolCallOutput } from '../tool';
 import { toolFailure, toolSuccess } from '../tool';
@@ -32,12 +33,13 @@ function failed(result: string, messages?: ChatMessage[]): TxtToolCallResult {
 }
 
 function ensureInsideWorkspace(rel: string): string {
-  const file = path.resolve(process.cwd(), rel);
-  const cwd = path.resolve(process.cwd());
-  if (!file.startsWith(cwd)) {
-    throw new Error('Path must be within rtws (runtime workspace)');
+  const cwd = domindsRtwsRootAbs();
+  const file = path.resolve(cwd, rel);
+  const relative = path.relative(cwd, file);
+  if (relative === '' || (!relative.startsWith('..') && !path.isAbsolute(relative))) {
+    return file;
   }
-  return file;
+  throw new Error('Path must be within rtws (runtime workspace)');
 }
 
 function resolveLocalFilesystemPath(inputPath: string): string {

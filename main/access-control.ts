@@ -9,6 +9,7 @@
 import type { LanguageCode } from '@longrun-ai/kernel/types/language';
 import path from 'path';
 import { log } from './log';
+import { domindsRtwsRootAbs } from './rtws';
 import { Team } from './team';
 
 function isEncapsulatedTaskPath(targetPath: string): boolean {
@@ -77,7 +78,7 @@ function hasFileExtAccess(
 }
 
 function resolveRtwsRelativePath(targetPath: string): string | null {
-  const cwd = path.resolve(process.cwd());
+  const cwd = domindsRtwsRootAbs();
   const resolvedPath = path.resolve(cwd, targetPath);
   const relativePath = path.relative(cwd, resolvedPath);
   if (relativePath === '' || (!relativePath.startsWith('..') && !path.isAbsolute(relativePath))) {

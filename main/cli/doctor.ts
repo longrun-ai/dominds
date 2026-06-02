@@ -20,6 +20,7 @@ import {
   type AppsResolutionEntry,
   type AppsResolutionSource,
 } from '../apps/resolution-file';
+import { domindsRtwsRootAbs } from '../rtws';
 
 type DoctorArgs = Readonly<{ appId: string | null }>;
 
@@ -371,7 +372,7 @@ async function main(argv: readonly string[] = process.argv.slice(2)): Promise<vo
     return;
   }
 
-  const rtwsRootAbs = process.cwd();
+  const rtwsRootAbs = domindsRtwsRootAbs();
   const report = await runDoctor({ rtwsRootAbs, appId: args.appId });
   console.log(`Doctor report for ${path.resolve(rtwsRootAbs)}`);
   console.log(`Tracked apps: ${report.diagnoses.length}`);

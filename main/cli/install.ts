@@ -32,6 +32,7 @@ import {
 } from '../apps/resolution-file';
 import { runDomindsAppJsonViaLocalPackage, runDomindsAppJsonViaNpx } from '../apps/run-app-json';
 import { refreshAppsDerivedState } from '../apps/workspace-app-state';
+import { domindsRtwsRootAbs } from '../rtws';
 import { formatDoctorGuidance, formatMutationBoundaryNote } from './apps-cli-hints';
 
 type InstallArgs = Readonly<{
@@ -153,7 +154,7 @@ async function resolveInstallSource(params: {
 }
 
 async function main(argv: readonly string[] = process.argv.slice(2)): Promise<void> {
-  const rtwsRootAbs = process.cwd();
+  const rtwsRootAbs = domindsRtwsRootAbs();
 
   let args: InstallArgs;
   try {

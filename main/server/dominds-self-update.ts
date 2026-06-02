@@ -14,6 +14,7 @@ import type {
 import { formatUnifiedTimestamp } from '@longrun-ai/kernel/utils/time';
 
 import { createLogger } from '../log';
+import { domindsRtwsRootAbs } from '../rtws';
 import {
   DOMINDS_SUPERVISOR_RESTART_WEBUI,
   type DomindsSupervisorRestartStrategy,
@@ -141,7 +142,7 @@ type RestartTraceContext = Readonly<{
 
 const IDLE_RESTART_STATE: RestartState = { kind: 'idle' };
 const PROCESS_START_ARGV = [...process.argv];
-const PROCESS_START_CWD = process.cwd();
+const PROCESS_START_CWD = domindsRtwsRootAbs();
 
 let runtimeConfig: RuntimeConfig | null = null;
 let latestObservation: LatestObservation = { kind: 'unknown' };
@@ -214,7 +215,7 @@ function sanitizeDebugFileSegment(value: string): string {
 
 function buildRestartTraceContext(): RestartTraceContext {
   const capturedAt = formatUnifiedTimestamp(new Date());
-  const debugDir = path.resolve(process.cwd(), '.dialogs', 'debug');
+  const debugDir = path.resolve(domindsRtwsRootAbs(), '.dialogs', 'debug');
   const traceFile = path.join(
     debugDir,
     [
@@ -238,7 +239,7 @@ async function appendRestartTrace(
     capturedAt: formatUnifiedTimestamp(new Date()),
     pid: process.pid,
     platform: process.platform,
-    rtwsRootAbs: process.cwd(),
+    rtwsRootAbs: domindsRtwsRootAbs(),
   };
   await fsPromises.mkdir(trace.debugDir, { recursive: true });
   await fsPromises.appendFile(trace.traceFile, `${JSON.stringify(payload)}\n`, 'utf-8');
@@ -742,7 +743,7 @@ function extractCommandFailureDiagnostics(error: unknown): CommandFailureDiagnos
     killed: typeof killed === 'boolean' ? killed : null,
     stdout: truncateCommandOutput(getErrorProp(error, 'stdout')),
     stderr: truncateCommandOutput(getErrorProp(error, 'stderr')),
-    cwd: process.cwd(),
+    cwd: domindsRtwsRootAbs(),
     pathEnv: typeof process.env.PATH === 'string' ? process.env.PATH : null,
     durationMs: typeof durationMs === 'number' ? durationMs : null,
     timeoutMs: typeof timeoutMs === 'number' ? timeoutMs : null,
@@ -1656,7 +1657,7 @@ async function requestSupervisorRestart(params: {
   const cfg = assertRuntimeConfig();
   const message: DomindsSupervisorRestartWebuiMessage = {
     type: DOMINDS_SUPERVISOR_RESTART_WEBUI,
-    cwd: process.cwd(),
+    cwd: domindsRtwsRootAbs(),
     host: cfg.host,
     port: cfg.port,
     traceFile: params.trace.traceFile,
@@ -1750,7 +1751,7 @@ async function requestDomindsRestart(params: {
 
   restartState = { kind: 'restarting', targetVersion: params.targetVersion };
   publishStatusUpdateSoon();
-  const restartCwd = process.cwd();
+  const restartCwd = domindsRtwsRootAbs();
   const trace = buildRestartTraceContext();
   activeRestartTraceFile = trace.traceFile;
   try {

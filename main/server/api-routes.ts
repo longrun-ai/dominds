@@ -51,6 +51,7 @@ import {
   saveDialogCourseAsIndividualPrimingScript,
   searchApplicablePrimingScripts,
 } from '../priming';
+import { domindsRtwsRootAbs } from '../rtws';
 import { getWorkLanguage } from '../runtime/work-language';
 import { Team } from '../team';
 import { createToolAvailabilitySnapshot } from '../tool-availability';
@@ -2022,7 +2023,7 @@ function buildWorkspacePreviewRoutePath(pathRel: string): string {
 }
 
 async function getWorkspaceRootRealAbs(): Promise<string> {
-  const workspaceRootAbs = path.resolve(process.cwd());
+  const workspaceRootAbs = domindsRtwsRootAbs();
   try {
     return await fsPromises.realpath(workspaceRootAbs);
   } catch {
@@ -2045,7 +2046,7 @@ async function resolveWorkspacePreviewPath(pathRel: string): Promise<{
   candidateAbsPath: string;
   resolvedAbsPath: string;
 }> {
-  const workspaceRootAbs = path.resolve(process.cwd());
+  const workspaceRootAbs = domindsRtwsRootAbs();
   const workspaceRootRealAbs = await getWorkspaceRootRealAbs();
   const candidateAbsPath =
     pathRel.length < 1 ? workspaceRootAbs : path.resolve(workspaceRootAbs, pathRel);
@@ -2322,7 +2323,7 @@ async function handleGetToolAvailability(
   res: ServerResponse,
 ): Promise<boolean> {
   try {
-    await registerEnabledAppsToolProxies({ rtwsRootAbs: process.cwd() });
+    await registerEnabledAppsToolProxies({ rtwsRootAbs: domindsRtwsRootAbs() });
     const urlObj = new URL(req.url ?? '', 'http://127.0.0.1');
     const rootIdRaw = urlObj.searchParams.get('rootId');
     const selfIdRaw = urlObj.searchParams.get('selfId');

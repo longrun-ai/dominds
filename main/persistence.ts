@@ -156,6 +156,7 @@ import {
   type DomindsPersistenceFileFormat,
   type DomindsPersistenceFileSource,
 } from './persistence-errors';
+import { domindsRtwsRootAbs } from './rtws';
 import { AsyncFifoMutex } from './runtime/async-fifo-mutex';
 import { isStandaloneRuntimeGuidePromptContent } from './runtime/reply-prompt-copy';
 import { materializeReminder, Reminder } from './tool';
@@ -327,7 +328,7 @@ async function writeInvariantDebugDump(args: {
   details: Record<string, unknown>;
 }): Promise<void> {
   const capturedAt = formatUnifiedTimestamp(new Date());
-  const debugDir = path.resolve(process.cwd(), '.dialogs', 'debug');
+  const debugDir = path.resolve(domindsRtwsRootAbs(), '.dialogs', 'debug');
   const fileName = [
     args.prefix,
     sanitizeDebugFileSegment(capturedAt),
@@ -338,7 +339,7 @@ async function writeInvariantDebugDump(args: {
   const payload = {
     kind: args.kind,
     capturedAt,
-    rtwsRootAbs: process.cwd(),
+    rtwsRootAbs: domindsRtwsRootAbs(),
     rootId: args.dialogId.rootId,
     selfId: args.dialogId.selfId,
     dialogId: args.dialogId.valueOf(),
@@ -6521,7 +6522,7 @@ export class DialogPersistence {
    * Get the base dialogs directory path
    */
   static getDialogsRootDir(): string {
-    return path.join(process.cwd(), this.DIALOGS_DIR);
+    return path.join(domindsRtwsRootAbs(), this.DIALOGS_DIR);
   }
 
   /**

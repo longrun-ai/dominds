@@ -49,6 +49,7 @@ import { postDialogEvent, postDialogEventById } from '../../evt-registry';
 import { extractErrorDetails, log } from '../../log';
 import { loadAgentMinds } from '../../minds/load';
 import { DialogPersistence } from '../../persistence';
+import { domindsRtwsRootAbs } from '../../rtws';
 import {
   formatAgentFacingContextHealthV3RemediationGuide,
   formatDomindsNoteFbrToollessViolation,
@@ -2118,7 +2119,7 @@ async function maybeWriteUnexpectedIdleAfterToolRoundDebugDump(args: {
   }
 
   const capturedAt = formatUnifiedTimestamp(new Date());
-  const debugDir = path.resolve(process.cwd(), '.dialogs', 'debug');
+  const debugDir = path.resolve(domindsRtwsRootAbs(), '.dialogs', 'debug');
   const fileName = [
     'kernel-driver-unexpected-idle-after-tool-round',
     sanitizeDebugFileSegment(capturedAt),
@@ -2133,7 +2134,7 @@ async function maybeWriteUnexpectedIdleAfterToolRoundDebugDump(args: {
   const payload = {
     kind: 'kernel_driver_unexpected_idle_after_tool_round',
     capturedAt,
-    rtwsRootAbs: process.cwd(),
+    rtwsRootAbs: domindsRtwsRootAbs(),
     dialog: {
       rootId: args.dlg.id.rootId,
       selfId: args.dlg.id.selfId,
@@ -2171,7 +2172,7 @@ async function writeMissingImmediateFollowupTriggerDebugDump(args: {
   repairOutcome: ImmediateFollowupTriggerRepairOutcome;
 }): Promise<string> {
   const capturedAt = formatUnifiedTimestamp(new Date());
-  const debugDir = path.resolve(process.cwd(), '.dialogs', 'debug');
+  const debugDir = path.resolve(domindsRtwsRootAbs(), '.dialogs', 'debug');
   const trigger = args.expectation.trigger;
   const fileName = [
     'kernel-driver-missing-immediate-followup-trigger',
@@ -2189,7 +2190,7 @@ async function writeMissingImmediateFollowupTriggerDebugDump(args: {
         ? 'kernel_driver_missing_immediate_followup_trigger_repaired'
         : 'kernel_driver_missing_immediate_followup_trigger_repair_failed',
     capturedAt,
-    rtwsRootAbs: process.cwd(),
+    rtwsRootAbs: domindsRtwsRootAbs(),
     repairOutcome: args.repairOutcome,
     checkPoint: args.checkPoint,
     dialog: {
@@ -2237,7 +2238,7 @@ async function maybeWriteIdleWithActiveReplyObligationDebugDump(args: {
   }
 
   const capturedAt = formatUnifiedTimestamp(new Date());
-  const debugDir = path.resolve(process.cwd(), '.dialogs', 'debug');
+  const debugDir = path.resolve(domindsRtwsRootAbs(), '.dialogs', 'debug');
   const fileName = [
     'kernel-driver-idle-with-active-reply-obligation',
     sanitizeDebugFileSegment(capturedAt),
@@ -2251,7 +2252,7 @@ async function maybeWriteIdleWithActiveReplyObligationDebugDump(args: {
   const payload = {
     kind: 'kernel_driver_idle_with_active_reply_obligation',
     capturedAt,
-    rtwsRootAbs: process.cwd(),
+    rtwsRootAbs: domindsRtwsRootAbs(),
     dialog: {
       rootId: args.dlg.id.rootId,
       selfId: args.dlg.id.selfId,

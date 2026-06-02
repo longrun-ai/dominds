@@ -582,7 +582,7 @@ Authoring rule (important):
 - In practice, prefer second-person "you" when defining responsibilities, boundaries, working style, and delivery expectations.
 - Do not write `persona.*.md` as a third-person biography or as operator-facing documentation for a human/team manager.
 - `knowhow.*.md` / `pitfalls.*.md` also end up in the member's system prompt, specifically under `## Know-How` / `## Pitfalls`. `knowhow` should lean toward positive knowledge accumulation such as stable facts, indexes, conventions, decision cues, and validated methods; `pitfalls` should lean toward negative lessons and anti-traps such as what not to repeat, which signals imply risk, and “if X happens, do Y, avoid Z”. Both should still be written to help that member act, not to narrate the member from the outside.
-- Migration rule: rtws member files now prefer `knowhow/pitfalls`, and only fall back to legacy `knowledge/lessons` when the new filenames do not exist. Once a new filename exists, only the new file content is injected and the legacy file is ignored. Builtin minds only recognize canonical filenames and do not read legacy aliases. Rename promptly; after the transition period, a future release will stop recognizing `knowledge/lessons`.
+- Filename rule: rtws member files read `persona.<workLanguageCode>.md` → `persona.md`, `knowhow.<workLanguageCode>.md` → `knowhow.md`, and `pitfalls.<workLanguageCode>.md` → `pitfalls.md`. Legacy `knowledge/lessons` filenames are no longer accepted.
 - Heading levels should follow the system-prompt wrapper too: the outer template already provides `## Persona` / `## Know-How` / `## Pitfalls`, so bodies should usually start at `###` or plain bullets instead of repeating `#` / `##` or restating the wrapper title.
 
 Suggested structure:

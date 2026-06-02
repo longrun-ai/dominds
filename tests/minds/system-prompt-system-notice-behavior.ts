@@ -14,6 +14,7 @@ function buildPrompt(language: 'zh' | 'en', toolsetManualIntro: string): string 
     pitfalls: 'pitfalls',
     skillsText: 'skills',
     envIntro: 'env',
+    rtwsRootAbs: '/tmp/dominds-test-rtws',
     teamIntro: 'team',
     funcToolRulesText: '',
     policyText: 'policy',
@@ -41,6 +42,10 @@ function main(): void {
   assert.ok(
     zh.includes('Dominds：你当前所在的智能体自主运行环境'),
     'zh prompt should define Dominds as the current autonomous agent runtime',
+  );
+  assert.ok(
+    zh.includes('rtws 根目录：`/tmp/dominds-test-rtws`'),
+    'zh prompt should include the rtws root path',
   );
   assert.ok(
     zh.includes('不是用户的新诉求'),
@@ -81,6 +86,10 @@ function main(): void {
   assert.ok(
     en.includes('Dominds: your current autonomous agent runtime'),
     'en prompt should define Dominds as the current autonomous agent runtime',
+  );
+  assert.ok(
+    en.includes('rtws root: `/tmp/dominds-test-rtws`'),
+    'en prompt should include the rtws root path',
   );
   assert.ok(
     en.includes('not as a new user request'),

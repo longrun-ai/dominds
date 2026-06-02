@@ -3,6 +3,7 @@
 import { loadAppLockFile, upsertLockedApp, writeAppLockFileIfChanged } from '../apps/app-lock-file';
 import { hasRtwsDeclaredAppDependency } from '../apps/manifest';
 import { refreshAppsDerivedState } from '../apps/workspace-app-state';
+import { domindsRtwsRootAbs } from '../rtws';
 import { formatDoctorGuidance, formatMutationBoundaryNote } from './apps-cli-hints';
 
 type UpdateArgs = Readonly<{ appId: string | null }>;
@@ -48,7 +49,7 @@ async function main(argv: readonly string[] = process.argv.slice(2)): Promise<vo
     return;
   }
 
-  const rtwsRootAbs = process.cwd();
+  const rtwsRootAbs = domindsRtwsRootAbs();
   if (
     args.appId !== null &&
     !(await hasRtwsDeclaredAppDependency({ rtwsRootAbs, appId: args.appId }))

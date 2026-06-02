@@ -27,6 +27,8 @@
     "cli-validate-team-def-subcommand": "tsx cli/validate-team-def-subcommand.ts",
     "mindset-i18n": "tsx minds/mindset-i18n.ts",
     "skills-i18n": "tsx minds/skills-i18n.ts",
+    "mindset-system-notice-behavior": "tsx minds/system-prompt-system-notice-behavior.ts",
+    "mindset-context-health-mode": "tsx minds/system-prompt-context-health-mode.ts",
     "mindset-collab-marker-scope": "tsx minds/system-prompt-collab-marker-scope.ts",
     "mindset-mcp-toolset-runtime-note": "tsx minds/system-prompt-mcp-toolset-runtime-note.ts",
     "minds-memory-system-reminder-contract": "tsx minds/memory-system-reminder-contract.ts",

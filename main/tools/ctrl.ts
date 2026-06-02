@@ -35,6 +35,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import type { Dialog, VisibleReminderTarget } from '../dialog';
 import { InvalidReminderIndexError, SideDialog } from '../dialog';
+import { domindsRtwsRootAbs } from '../rtws';
 import { formatNewCourseStartPrompt } from '../runtime/driver-messages';
 import { formatToolActionResult } from '../runtime/tool-result-messages';
 import { getWorkLanguage } from '../runtime/work-language';
@@ -902,7 +903,7 @@ export const changeMindTool: FuncTool = {
     const taskDocPath = dlg.taskDocPath;
     if (!taskDocPath) return toolFailure(t.noTaskDocPathConfigured);
 
-    const workspaceRoot = path.resolve(process.cwd());
+    const workspaceRoot = domindsRtwsRootAbs();
     const fullPath = path.resolve(workspaceRoot, taskDocPath);
     if (!isPathWithinDirectory(fullPath, workspaceRoot)) {
       return toolFailure(t.pathMustBeWithinWorkspace);
@@ -1029,7 +1030,7 @@ export const doMindTool: FuncTool = {
     const taskDocPath = dlg.taskDocPath;
     if (!taskDocPath) return toolFailure(t.noTaskDocPathConfigured);
 
-    const workspaceRoot = path.resolve(process.cwd());
+    const workspaceRoot = domindsRtwsRootAbs();
     const fullPath = path.resolve(workspaceRoot, taskDocPath);
     if (!isPathWithinDirectory(fullPath, workspaceRoot)) {
       return toolFailure(t.pathMustBeWithinWorkspace);
@@ -1143,7 +1144,7 @@ export const neverMindTool: FuncTool = {
     const taskDocPath = dlg.taskDocPath;
     if (!taskDocPath) return toolFailure(t.noTaskDocPathConfigured);
 
-    const workspaceRoot = path.resolve(process.cwd());
+    const workspaceRoot = domindsRtwsRootAbs();
     const fullPath = path.resolve(workspaceRoot, taskDocPath);
     if (!isPathWithinDirectory(fullPath, workspaceRoot)) {
       return toolFailure(t.pathMustBeWithinWorkspace);
@@ -1287,7 +1288,7 @@ export const mindMoreTool: FuncTool = {
     const taskDocPath = dlg.taskDocPath;
     if (!taskDocPath) return toolFailure(t.noTaskDocPathConfigured);
 
-    const workspaceRoot = path.resolve(process.cwd());
+    const workspaceRoot = domindsRtwsRootAbs();
     const fullPath = path.resolve(workspaceRoot, taskDocPath);
     if (!isPathWithinDirectory(fullPath, workspaceRoot)) {
       return toolFailure(t.pathMustBeWithinWorkspace);
@@ -1377,7 +1378,7 @@ export const recallTaskdocTool: FuncTool = {
     const taskDocPath = dlg.taskDocPath;
     if (!taskDocPath) return toolFailure(t.noTaskDocPathConfigured);
 
-    const workspaceRoot = path.resolve(process.cwd());
+    const workspaceRoot = domindsRtwsRootAbs();
     const fullPath = path.resolve(workspaceRoot, taskDocPath);
     if (!isPathWithinDirectory(fullPath, workspaceRoot)) {
       return toolFailure(t.pathMustBeWithinWorkspace);

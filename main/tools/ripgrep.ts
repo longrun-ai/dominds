@@ -7,6 +7,7 @@ import { spawn } from 'child_process';
 import fs from 'fs/promises';
 import * as readline from 'node:readline';
 import path from 'path';
+import { domindsRtwsRootAbs } from '../rtws';
 import { Team } from '../team';
 import type { FuncTool, ToolArguments, ToolCallOutput } from '../tool';
 import { toolFailure, toolPartialFailure, toolSuccess } from '../tool';
@@ -174,7 +175,7 @@ function detectForbiddenRipgrepSearchPath(
   member: Team.Member,
   searchPath: string,
 ): ForbiddenSearchPath | null {
-  const cwd = path.resolve(process.cwd());
+  const cwd = domindsRtwsRootAbs();
   const abs = path.resolve(cwd, searchPath);
   const relFromRoot = path.relative(cwd, abs);
   if (isEncapsulatedTaskPath(relFromRoot)) return '*.tsk/';

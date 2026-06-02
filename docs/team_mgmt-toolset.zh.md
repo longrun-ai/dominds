@@ -494,7 +494,7 @@ members:
 - 也就是说，`persona.*.md` 应优先使用第二人称“你”来规定职责边界、工作方式与交付标准。
 - 不要把 `persona.*.md` 写成第三人称人物简介，不要把它当成给团队管理员/人类读者的说明书，也不要使用“祂”这类旁白口吻。
 - `knowhow.*.md` / `pitfalls.*.md` 也同样会进入该成员的系统提示，分别落在 `## 经验知识` / `## 避坑指南`。`knowhow` 应偏向正向的知识与经验沉淀，例如稳定事实、索引、约定、判断依据、已验证有效的方法；`pitfalls` 应偏向负向的教训与避坑规则，例如哪些坑不要再踩、哪些信号意味着风险、遇到 X 时先做 Y 不要做 Z。两者都应以“帮助该成员当下工作”为目标，而不是面向旁观者写注释。
-- 迁移规则：rtws 成员文件现已优先读取 `knowhow/pitfalls`，只有在新文件名不存在时，才回退兼容旧的 `knowledge/lessons`。一旦新文件名存在，就只注入新文件内容，旧文件内容会被忽略。builtin mind 只认 canonical 文件名，不读取旧别名。请尽快完成改名迁移；过渡期之后，未来版本将不再识别 `knowledge/lessons`。
+- 文件名规则：rtws 成员文件读取 `persona.<workLanguageCode>.md` → `persona.md`、`knowhow.<workLanguageCode>.md` → `knowhow.md`、`pitfalls.<workLanguageCode>.md` → `pitfalls.md`。旧的 `knowledge/lessons` 文件名不再接受。
 - 标题层级也要按 system prompt 模板来写：系统外层已经自动提供 `## 角色设定` / `## 经验知识` / `## 避坑指南`，所以正文通常应从 `###` 或普通 bullet 开始，不要再写 `#` / `##`，也不要把文件名或这些章节名重复当标题。
 
 建议的结构：

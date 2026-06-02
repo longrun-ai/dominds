@@ -24,6 +24,7 @@ function buildPrompt(dialogScope: 'mainDialog' | 'sideDialog', language: Languag
     pitfalls: 'pitfalls',
     skillsText: 'skills',
     envIntro: 'env',
+    rtwsRootAbs: '/tmp/dominds-test-rtws',
     teamIntro: 'team',
     funcToolRulesText: '',
     policyText: 'policy',

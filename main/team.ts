@@ -18,6 +18,7 @@ import { LlmConfig } from './llm/client';
 import { log } from './log';
 import { parseMcpYaml } from './mcp/config';
 import { reconcileProblemsByPrefix } from './problems';
+import { domindsRtwsRootAbs } from './rtws';
 import type { Tool } from './tool';
 import { getTool, getToolset, getToolsetMeta, listToolsets } from './tools/registry';
 
@@ -905,7 +906,7 @@ export namespace Team {
       return [];
     }
     return await listDynamicAppToolsetsForMember({
-      rtwsRootAbs: params.rtwsRootAbs ?? process.cwd(),
+      rtwsRootAbs: params.rtwsRootAbs ?? domindsRtwsRootAbs(),
       taskDocPath: params.taskDocPath,
       memberId: params.member.id,
     });
@@ -1076,7 +1077,7 @@ export namespace Team {
       const mcpDeclared = await readMcpDeclaredToolsets();
       let enabledAppToolsets = new Set<string>();
       try {
-        const snapshot = await loadEnabledAppsSnapshot({ rtwsRootAbs: process.cwd() });
+        const snapshot = await loadEnabledAppsSnapshot({ rtwsRootAbs: domindsRtwsRootAbs() });
         enabledAppToolsets = new Set(
           snapshot.enabledApps.flatMap((app) =>
             (app.installJson.contributes?.toolsets ?? []).map((toolset) => toolset.id),
@@ -1443,7 +1444,7 @@ export namespace Team {
 
       let appTeammates: ReadonlyArray<AppTeammatesSnippet> = [];
       try {
-        appTeammates = await loadEnabledAppTeammates({ rtwsRootAbs: process.cwd() });
+        appTeammates = await loadEnabledAppTeammates({ rtwsRootAbs: domindsRtwsRootAbs() });
       } catch (err: unknown) {
         addIssue(
           'apps/teammates/load',

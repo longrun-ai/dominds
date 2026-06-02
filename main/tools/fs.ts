@@ -10,6 +10,7 @@ import path from 'path';
 import { createInterface } from 'readline';
 import { getAccessDeniedMessage, hasReadAccess, hasWriteAccess } from '../access-control';
 import { log } from '../log';
+import { domindsRtwsRootAbs } from '../rtws';
 import { getWorkLanguage } from '../runtime/work-language';
 import type { FuncTool, ToolArguments, ToolCallOutput } from '../tool';
 import { toolFailure, toolSuccess } from '../tool';
@@ -74,7 +75,7 @@ function symlinkTargetText(target?: string): string {
 }
 
 function isPathInsideRtws(absPath: string): boolean {
-  const cwd = path.resolve(process.cwd());
+  const cwd = domindsRtwsRootAbs();
   const relative = path.relative(cwd, absPath);
   return relative === '' || (!relative.startsWith('..') && !path.isAbsolute(relative));
 }

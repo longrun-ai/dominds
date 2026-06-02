@@ -16,6 +16,7 @@ import path from 'path';
 import { promisify } from 'util';
 import type { Dialog } from '../dialog';
 import type { ChatMessage } from '../llm/client';
+import { domindsRtwsRootAbs } from '../rtws';
 import {
   formatAutoMaintainedReminderManualMirrorBan,
   formatSystemNoticePrefix,
@@ -3342,7 +3343,7 @@ export const readonlyShellTool: FuncTool = {
     }
 
     const forbiddenHiddenDir = detectReadonlyShellForbiddenHiddenDirAccess(
-      path.resolve(process.cwd()),
+      domindsRtwsRootAbs(),
       command,
     );
     if (forbiddenHiddenDir) {

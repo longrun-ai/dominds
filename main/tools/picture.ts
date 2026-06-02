@@ -5,6 +5,7 @@ import path from 'path';
 import { getAccessDeniedMessage, hasReadAccess, hasWriteAccess } from '../access-control';
 import type { Dialog } from '../dialog';
 import { DialogPersistence } from '../persistence';
+import { domindsRtwsRootAbs } from '../rtws';
 import { getWorkLanguage } from '../runtime/work-language';
 import type { FuncTool, ToolArguments, ToolCallOutput } from '../tool';
 import { toolFailure, toolSuccess } from '../tool';
@@ -31,8 +32,8 @@ function yamlQuote(value: string): string {
 }
 
 function ensureInsideWorkspace(rel: string): string {
-  const absPath = path.resolve(process.cwd(), rel);
-  const cwd = path.resolve(process.cwd());
+  const cwd = domindsRtwsRootAbs();
+  const absPath = path.resolve(cwd, rel);
   const relative = path.relative(cwd, absPath);
   if (relative === '' || (!relative.startsWith('..') && !path.isAbsolute(relative))) {
     return absPath;

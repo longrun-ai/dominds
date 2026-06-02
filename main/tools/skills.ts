@@ -12,6 +12,7 @@ import YAML from 'yaml';
 import type { LanguageCode } from '@longrun-ai/kernel/types/language';
 import { getAccessDeniedMessage, hasReadAccess } from '../access-control';
 import { normalizeMarkdownText, parseMarkdownFrontmatter } from '../markdown/frontmatter';
+import { domindsRtwsRootAbs } from '../rtws';
 import { formatToolActionResult } from '../runtime/tool-result-messages';
 import { getWorkLanguage } from '../runtime/work-language';
 import { readWorkspaceSkill } from '../skills/load';
@@ -168,7 +169,7 @@ function skillFileName(variant: SkillVariant): string {
 }
 
 function isPathInsideRtws(absPath: string): boolean {
-  const cwd = path.resolve(process.cwd());
+  const cwd = domindsRtwsRootAbs();
   const relative = path.relative(cwd, absPath);
   return relative === '' || (!relative.startsWith('..') && !path.isAbsolute(relative));
 }
@@ -1183,7 +1184,7 @@ export const readSkillTool: FuncTool = {
       );
     }
     const skill = await readWorkspaceSkill({
-      rtwsRootAbs: process.cwd(),
+      rtwsRootAbs: domindsRtwsRootAbs(),
       memberId: caller.id,
       language,
       skillId,

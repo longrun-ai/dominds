@@ -13,6 +13,7 @@ import type {
 import { formatUnifiedTimestamp } from '@longrun-ai/kernel/utils/time';
 import { resolveDynamicAppToolAvailabilityForMember } from './apps/runtime';
 import { getMcpRuntimeLeasesForDialog } from './mcp/supervisor';
+import { domindsRtwsRootAbs } from './rtws';
 import { Team } from './team';
 import type { Tool } from './tool';
 import {
@@ -156,7 +157,7 @@ async function buildAppDynamicLayer(params: {
   dialog?: ToolAvailabilityContext['dialog'];
 }): Promise<AppDynamicToolAvailabilityLayer> {
   const result = await resolveDynamicAppToolAvailabilityForMember({
-    rtwsRootAbs: process.cwd(),
+    rtwsRootAbs: domindsRtwsRootAbs(),
     memberId: params.memberId,
     taskDocPath: params.taskDocPath,
     agentId: params.agentId,

@@ -30,6 +30,22 @@
 1. 改写成允许的只读检查命令
 2. 把复杂逻辑拆成几条更简单的探查命令
 
+### `ACCESS_DENIED`
+
+含义：`readonly_shell` 或相关探查工具触发了 rtws 保留路径边界。
+
+常见触发：
+
+- rtws 根目录下的 `.minds/**`
+- rtws 根目录下的 `.dialogs/**`
+- 封装的 `*.tsk/` 差遣牒包
+
+恢复：
+
+1. 对 `.minds/**`，在团队配置了对应工具集时使用 `team_mgmt_*` 工具。
+2. 排查 Dominds 对话时，在嵌套 rtws 下复现，例如 `ux-rtws/.dialogs/**`。
+3. 不要通过这个通用 inspect-and-patch 工具集探查或修改 `*.tsk/` 包。
+
 ## 常见问答
 
 ### 这个工具集是干什么的？

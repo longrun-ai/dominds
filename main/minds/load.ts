@@ -13,6 +13,7 @@ import { Dialog, SideDialog } from '../dialog';
 import { ChatMessage } from '../llm/client';
 import { log } from '../log';
 import { getMcpDeclaredServerRuntimeStatuses } from '../mcp/supervisor';
+import { domindsRtwsRootAbs } from '../rtws';
 import { getWorkLanguage } from '../runtime/work-language';
 import { loadWorkspaceSkills, renderWorkspaceSkillsPrompt } from '../skills/load';
 import { Team } from '../team';
@@ -211,8 +212,9 @@ export async function loadAgentMinds(
 }> {
   const workingLanguage = getWorkLanguage();
   const missingToolsetPolicy = options?.missingToolsetPolicy ?? 'warn';
+  const rtwsRootAbs = domindsRtwsRootAbs();
   try {
-    await registerEnabledAppsToolProxies({ rtwsRootAbs: process.cwd() });
+    await registerEnabledAppsToolProxies({ rtwsRootAbs });
   } catch (error: unknown) {
     log.warn(
       `Failed to refresh enabled app tool proxies before loading agent minds: ${error instanceof Error ? error.message : String(error)}`,
@@ -235,23 +237,13 @@ export async function loadAgentMinds(
   });
   const knowhowRaw = await readAgentMindPreferred({
     id: agent.id,
-    rtwsPreferredFilenames: [
-      `knowhow.${workingLanguage}.md`,
-      'knowhow.md',
-      `knowledge.${workingLanguage}.md`,
-      'knowledge.md',
-    ],
+    rtwsPreferredFilenames: [`knowhow.${workingLanguage}.md`, 'knowhow.md'],
     builtinPreferredFilenames: [`knowhow.${workingLanguage}.md`, 'knowhow.md'],
     noFileDefault: '',
   });
   const pitfallsRaw = await readAgentMindPreferred({
     id: agent.id,
-    rtwsPreferredFilenames: [
-      `pitfalls.${workingLanguage}.md`,
-      'pitfalls.md',
-      `lessons.${workingLanguage}.md`,
-      'lessons.md',
-    ],
+    rtwsPreferredFilenames: [`pitfalls.${workingLanguage}.md`, 'pitfalls.md'],
     builtinPreferredFilenames: [`pitfalls.${workingLanguage}.md`, 'pitfalls.md'],
     noFileDefault: '',
   });
@@ -300,7 +292,7 @@ export async function loadAgentMinds(
       .filter((toolsetName) => declaredMcpToolsetNames?.has(toolsetName)),
   );
   const workspaceSkills = await loadWorkspaceSkills({
-    rtwsRootAbs: process.cwd(),
+    rtwsRootAbs,
     memberId: agent.id,
     language: workingLanguage,
     visibleMcpServerIds,
@@ -454,6 +446,7 @@ export async function loadAgentMinds(
     pitfalls,
     skillsText,
     envIntro,
+    rtwsRootAbs,
     teamIntro,
     funcToolRulesText,
     policyText,

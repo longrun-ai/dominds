@@ -39,6 +39,8 @@ async function main(): Promise<void> {
   console.log();
   console.log(excerptAround(zhMinds, 'pitfalls.*.md：'));
   console.log();
+  console.log(excerptAround(zhMinds, '文件名规则（当前实现）：'));
+  console.log();
   console.log(excerptAround(zhMinds, '标题层级约束：'));
   console.log();
 
@@ -49,6 +51,8 @@ async function main(): Promise<void> {
   console.log();
   console.log(excerptAround(enMinds, 'pitfalls.*.md:'));
   console.log();
+  console.log(excerptAround(enMinds, 'Filename rule (current implementation):'));
+  console.log();
   console.log(excerptAround(enMinds, 'Heading rule:'));
   console.log();
 
@@ -58,7 +62,7 @@ async function main(): Promise<void> {
     '- Check that `knowhow/pitfalls` semantics match the intended positive/negative split.',
   );
   console.log(
-    '- Check that migration wording matches runtime behavior: new names preferred, legacy names fallback-only.',
+    '- Check that filename wording matches runtime behavior: only canonical knowhow/pitfalls names are accepted.',
   );
   console.log(
     '- Check that heading guidance still matches the actual system-prompt wrapper titles.',

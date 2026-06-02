@@ -52,6 +52,7 @@ export type BuildSystemPromptInput = {
   pitfalls: string;
   skillsText: string;
   envIntro: string;
+  rtwsRootAbs: string;
   teamIntro: string;
   funcToolRulesText: string;
   policyText: string;
@@ -491,6 +492,7 @@ export function buildSystemPrompt(input: BuildSystemPromptInput): string {
 ## 术语表
 
 - Dominds：你当前所在的智能体自主运行环境；它负责维护对话、提醒项、换程、队友诉请和系统提示。看到“Dominds 提示”时，把它当作当前运行环境给你的状态说明或行动引导，不是用户的新诉求。
+- rtws 根目录：\`${input.rtwsRootAbs}\`。这是 Dominds 后台进程全生命周期不变量；它仅用于路径导航，不参与权限判定。
 - 诉请：对智能体的结构化请求。
 - 诉请内容（tellaskContent）：tellask 系列函数的正文参数，用于承载上下文/约束/验收。
 - 提及列表（mentionList）：仅用于 \`tellask\` / \`tellaskSessionless\` 的队友目标列表（\`@<agentId>\`）。
@@ -592,6 +594,7 @@ System notices convey important state changes (e.g., context caution/critical, D
 ## Glossary
 
 - Dominds: your current autonomous agent runtime. It maintains dialogs, reminders, course transitions, teammate tellasks, and system notices. When you see a "Dominds notice", treat it as state or action guidance from the current runtime, not as a new user request.
+- rtws root: \`${input.rtwsRootAbs}\`. This is invariant for the lifetime of the Dominds backend process; use it only for path navigation, not permission decisions.
 - Tellask: a structured request addressed to an agent.
 - Mention list (\`mentionList\`): teammate targets for \`tellask\` / \`tellaskSessionless\` only (\`@<agentId>\`).
 - Tellask content (\`tellaskContent\`): main call payload carrying context/constraints/acceptance.

@@ -14,6 +14,7 @@ function buildPrompt(mode: 'normal' | 'caution' | 'critical'): string {
     pitfalls: 'pitfalls',
     skillsText: 'skills',
     envIntro: 'env',
+    rtwsRootAbs: '/tmp/dominds-test-rtws',
     teamIntro: 'team',
     funcToolRulesText: '',
     policyText: 'policy',

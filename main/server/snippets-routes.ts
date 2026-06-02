@@ -19,6 +19,7 @@ import YAML from 'yaml';
 import { createLogger } from '../log';
 import { getMcpPrompt, listMcpPrompts, renderMcpPrompt } from '../mcp/resources';
 import { withMcpCatalogClient } from '../mcp/supervisor';
+import { domindsRtwsRootAbs } from '../rtws';
 import '../tools/builtins';
 
 const log = createLogger('snippets-routes');
@@ -154,7 +155,7 @@ async function buildSnippetCatalog(
   const serverRoot = path.resolve(__dirname, '..', '..');
   const builtinCatalogAbs = path.resolve(serverRoot, 'dist', 'snippets', 'catalog.yaml');
   const builtinCatalogFallbackAbs = path.resolve(serverRoot, 'snippets', 'catalog.yaml');
-  const rtwsRoot = path.resolve(process.cwd());
+  const rtwsRoot = domindsRtwsRootAbs();
   const rtwsCatalogAbs = path.resolve(rtwsRoot, '.minds', 'snippets', 'catalog.yaml');
 
   const builtinCatalog =
@@ -433,7 +434,8 @@ function safeBasenameToName(filename: string): string {
 }
 
 function ensureInsideDir(dirAbs: string, candidateAbs: string): boolean {
-  return candidateAbs === dirAbs || candidateAbs.startsWith(dirAbs + path.sep);
+  const relative = path.relative(dirAbs, candidateAbs);
+  return relative === '' || (!relative.startsWith('..') && !path.isAbsolute(relative));
 }
 
 async function listMarkdownFilesRecursively(dirAbs: string): Promise<string[]> {
@@ -509,7 +511,7 @@ async function readBuiltinSnippets(): Promise<SnippetTemplate[]> {
 }
 
 async function readRtwsSnippets(): Promise<SnippetTemplate[]> {
-  const rtwsRoot = path.resolve(process.cwd());
+  const rtwsRoot = domindsRtwsRootAbs();
   const snippetsDir = path.resolve(rtwsRoot, '.minds', 'snippets');
   const files = await listMarkdownFilesRecursively(snippetsDir);
   const templates: SnippetTemplate[] = [];
@@ -621,7 +623,7 @@ export async function handleSaveRtwsSnippet(
   const req = parseSaveRtwsPromptTemplateRequest(parsed);
   if (!req) return { success: false, error: 'Invalid request body' };
 
-  const rtwsRoot = path.resolve(process.cwd());
+  const rtwsRoot = domindsRtwsRootAbs();
   const snippetsDir = path.resolve(rtwsRoot, '.minds', 'snippets');
   const safeName =
     typeof req.fileName === 'string' && req.fileName.trim() !== ''
@@ -681,7 +683,7 @@ export async function handleCreateRtwsSnippetGroup(
   const req = parseCreateRtwsSnippetGroupRequest(parsed);
   if (!req) return { success: false, error: 'Invalid request body' };
 
-  const rtwsRoot = path.resolve(process.cwd());
+  const rtwsRoot = domindsRtwsRootAbs();
   const snippetsDir = path.resolve(rtwsRoot, '.minds', 'snippets');
   try {
     return await ensureRtwsCatalogGroup(snippetsDir, req);

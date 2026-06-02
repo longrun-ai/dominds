@@ -48,6 +48,7 @@ import { main as updateMain } from './cli/update';
 import { main as validateTeamDefMain } from './cli/validate-team-def';
 import { main as webuiMain } from './cli/webui';
 import { setRtwsProcessTitle } from './process-title';
+import { domindsRtwsRootAbs } from './rtws';
 import './tools/builtins';
 
 type HttpWithEnvProxy = typeof http & {
@@ -146,7 +147,7 @@ export async function main(argv: readonly string[] = process.argv.slice(2)): Pro
 
   // Handle no arguments - default to webui
   if (args.length === 0) {
-    loadRtwsDotenv({ cwd: process.cwd() });
+    loadRtwsDotenv({ cwd: domindsRtwsRootAbs() });
     configureEnvProxySupport();
     await runSubcommand('webui', []);
     return;
@@ -193,7 +194,7 @@ export async function main(argv: readonly string[] = process.argv.slice(2)): Pro
     // Load runtime workspace env files into process.env once, in the main entry.
     // Precedence: `.env` then `.env.local` (later overwrites earlier), and both
     // overwrite any existing process.env values.
-    loadRtwsDotenv({ cwd: process.cwd() });
+    loadRtwsDotenv({ cwd: domindsRtwsRootAbs() });
     configureEnvProxySupport();
   }
 
@@ -212,13 +213,13 @@ export async function main(argv: readonly string[] = process.argv.slice(2)): Pro
   if (!shouldSkipRtwsSetup && shouldLoadApps) {
     try {
       // Register toolset proxies so Team.load() can validate toolset bindings (read/man/manual included).
-      await registerEnabledAppsToolProxies({ rtwsRootAbs: process.cwd() });
+      await registerEnabledAppsToolProxies({ rtwsRootAbs: domindsRtwsRootAbs() });
 
       // Start apps-host only for interactive runtime commands (do not auto-start app frontends for read/man/manual).
       const shouldStartAppsHost = subcommand === 'tui' || subcommand === 'run';
       if (shouldStartAppsHost) {
         await initAppsRuntime({
-          rtwsRootAbs: process.cwd(),
+          rtwsRootAbs: domindsRtwsRootAbs(),
           kernel: { scheme: 'http', host: '127.0.0.1', port: 0 },
         });
       }

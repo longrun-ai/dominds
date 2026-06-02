@@ -7,6 +7,7 @@ import {
 } from '../apps/configuration-file';
 import { hasRtwsDeclaredAppDependency } from '../apps/manifest';
 import { refreshAppsDerivedState } from '../apps/workspace-app-state';
+import { domindsRtwsRootAbs } from '../rtws';
 import { formatDoctorGuidance, formatMutationBoundaryNote } from './apps-cli-hints';
 
 type EnableArgs = Readonly<{ appId: string }>;
@@ -49,7 +50,7 @@ async function main(argv: readonly string[] = process.argv.slice(2)): Promise<vo
     return;
   }
 
-  const rtwsRootAbs = process.cwd();
+  const rtwsRootAbs = domindsRtwsRootAbs();
   if (!(await hasRtwsDeclaredAppDependency({ rtwsRootAbs, appId: args.appId }))) {
     console.error(`Error: app '${args.appId}' is not declared in .minds/app.yaml dependencies`);
     console.error(formatDoctorGuidance({ appId: args.appId }));

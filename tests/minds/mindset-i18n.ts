@@ -89,6 +89,35 @@ async function main(): Promise<void> {
       assert.ok(systemPrompt.includes('persona-default'));
     }
 
+    await writeText(
+      path.join(tmpRoot, '.minds', 'team', 'alice', 'knowledge.en.md'),
+      'legacy-knowledge',
+    );
+    await writeText(
+      path.join(tmpRoot, '.minds', 'team', 'alice', 'lessons.en.md'),
+      'legacy-lessons',
+    );
+    setWorkLanguage('en');
+    {
+      const { systemPrompt } = await loadAgentMinds('alice');
+      assert.ok(
+        !systemPrompt.includes('legacy-knowledge'),
+        'legacy knowledge.* files should no longer be injected',
+      );
+      assert.ok(
+        !systemPrompt.includes('legacy-lessons'),
+        'legacy lessons.* files should no longer be injected',
+      );
+    }
+
+    await writeText(path.join(tmpRoot, '.minds', 'team', 'alice', 'knowhow.en.md'), 'knowhow-en');
+    await writeText(path.join(tmpRoot, '.minds', 'team', 'alice', 'pitfalls.en.md'), 'pitfalls-en');
+    {
+      const { systemPrompt } = await loadAgentMinds('alice');
+      assert.ok(systemPrompt.includes('knowhow-en'));
+      assert.ok(systemPrompt.includes('pitfalls-en'));
+    }
+
     // Work-language-specific loading is independent per language.
     await writeText(path.join(tmpRoot, '.minds', 'team', 'alice', 'persona.zh.md'), 'persona-zh');
     setWorkLanguage('zh');

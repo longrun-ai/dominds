@@ -14,6 +14,7 @@ import { createLogger } from './log';
 import { startMcpSupervisor } from './mcp/supervisor';
 import { recoverOpenGenerationAfterRestart } from './recovery/open-generation-recovery';
 import { recoverPendingReplyDeliveryAfterRestart } from './recovery/reply-delivery-recovery';
+import { domindsRtwsRootAbs } from './rtws';
 import { getWorkLanguage, resolveWorkLanguage, setWorkLanguage } from './runtime/work-language';
 import { AuthConfig, computeAuthConfig, formatServerOrigin } from './server/auth';
 import { findAutoHttpsCertificateForHost } from './server/certificates';
@@ -318,7 +319,7 @@ export async function startServer(opts: ServerOptions = {}): Promise<StartedServ
     };
   }
   try {
-    const rtwsRootAbs = process.cwd();
+    const rtwsRootAbs = domindsRtwsRootAbs();
     configureDomindsSelfUpdate({
       host,
       port: boundPort,

@@ -9,6 +9,7 @@ import { type Dialog } from '../dialog';
 import { createLogger } from '../log';
 import { DialogPersistence } from '../persistence';
 import { reconcileProblemsByPrefix, removeProblemsByPrefix, upsertProblem } from '../problems';
+import { domindsRtwsRootAbs } from '../rtws';
 import { getWorkLanguage } from '../runtime/work-language';
 import { toolSuccess, type Tool, type ToolArguments, type ToolCallOutput } from '../tool';
 import {
@@ -1859,7 +1860,7 @@ async function resolveStdioServerCwd(cfg: McpServerConfig, serverId: string): Pr
   if (cfg.transport !== 'stdio') {
     throw new Error(`MCP server '${serverId}' resolveStdioServerCwd requires stdio transport`);
   }
-  const baseCwd = path.resolve(process.cwd());
+  const baseCwd = domindsRtwsRootAbs();
   const resolved = cfg.cwd === undefined ? baseCwd : path.resolve(baseCwd, cfg.cwd);
   try {
     const st = await fs.promises.stat(resolved);

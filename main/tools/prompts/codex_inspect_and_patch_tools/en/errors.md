@@ -30,6 +30,22 @@ Recovery:
 1. Rewrite the command using allowed read-only primitives
 2. Split complex logic into simpler allowed inspection commands
 
+### `ACCESS_DENIED`
+
+Meaning: `readonly_shell` or a related inspect tool hit a reserved rtws path boundary.
+
+Typical triggers:
+
+- `.minds/**` at the rtws root
+- `.dialogs/**` at the rtws root
+- `*.tsk/` encapsulated Taskdoc packages
+
+Recovery:
+
+1. For `.minds/**`, use the `team_mgmt_*` tools when the team has configured them.
+2. For Dominds dialog debugging, reproduce under a nested rtws such as `ux-rtws/.dialogs/**`.
+3. Do not inspect or patch `*.tsk/` packages through this generic inspect-and-patch toolset.
+
 ## FAQ
 
 ### What is this toolset for?
