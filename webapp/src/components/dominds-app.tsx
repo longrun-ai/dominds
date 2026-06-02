@@ -13395,6 +13395,7 @@ export class DomindsApp extends HTMLElement {
   }
 
   private handleA2HAcknowledged(event: A2HAcknowledgedEvent): void {
+    const wasVisibleHumanAttentionCount = this.humanAttentionCount;
     const removeIndex = this.a2hAnswers.findIndex(
       (answer) =>
         answer.id === event.answerId &&
@@ -13404,6 +13405,9 @@ export class DomindsApp extends HTMLElement {
     if (removeIndex >= 0) {
       this.a2hAnswers.splice(removeIndex, 1);
       this.updateQ4HComponent();
+      if (wasVisibleHumanAttentionCount > 0 && this.humanAttentionCount === 0) {
+        this.collapseBottomPanelQ4HTabIfExpanded();
+      }
       return;
     }
     this.wsManager.sendRaw({ type: 'get_q4h_state' });
