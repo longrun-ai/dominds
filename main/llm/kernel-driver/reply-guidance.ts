@@ -1,5 +1,11 @@
 import type { TellaskReplyDirective } from '@longrun-ai/kernel/types/storage';
-import { Dialog, DialogID, MainDialog, SideDialog } from '../../dialog';
+import {
+  Dialog,
+  DialogID,
+  MainDialog,
+  SideDialog,
+  buildSideDialogAssignmentPromptMeta,
+} from '../../dialog';
 import { ensureDialogLoaded } from '../../dialog-instance-registry';
 import { DialogPersistence } from '../../persistence';
 import { isUserInterjectionPauseStopReason } from '../../runtime/interjection-pause-stop';
@@ -18,6 +24,8 @@ import {
 import { getWorkLanguage } from '../../runtime/work-language';
 import { loadActiveTellaskReplyDirective } from './tellask-special';
 import type { KernelDriverPrompt } from './types';
+
+type SideDialogAssignmentPromptMeta = ReturnType<typeof buildSideDialogAssignmentPromptMeta>;
 
 export async function resolveReplyTargetAgentId(args: {
   dlg: Dialog;
@@ -102,7 +110,7 @@ function buildPromptContentWithExactReplyToolName(args: {
   return `${note}\n\n${args.prompt.content}`;
 }
 
-function hasSameReplyDirective(
+export function hasSameReplyDirective(
   left: TellaskReplyDirective | undefined,
   right: TellaskReplyDirective | undefined,
 ): boolean {
@@ -122,46 +130,22 @@ function hasSameReplyDirective(
   return true;
 }
 
-function buildCurrentSideDialogAssignmentDirective(
-  dlg: SideDialog,
-): NonNullable<KernelDriverPrompt['tellaskReplyDirective']> {
-  switch (dlg.assignmentFromAsker.callName) {
-    case 'tellask':
-      return {
-        expectedReplyCallName: 'replyTellask',
-        targetDialogId: dlg.assignmentFromAsker.askerDialogId,
-        targetCallId: dlg.assignmentFromAsker.callId,
-        tellaskContent: dlg.assignmentFromAsker.tellaskContent,
-      };
-    case 'tellaskSessionless':
-    case 'freshBootsReasoning':
-      return {
-        expectedReplyCallName: 'replyTellaskSessionless',
-        targetDialogId: dlg.assignmentFromAsker.askerDialogId,
-        targetCallId: dlg.assignmentFromAsker.callId,
-        tellaskContent: dlg.assignmentFromAsker.tellaskContent,
-      };
-    default: {
-      const _exhaustive: never = dlg.assignmentFromAsker.callName;
-      throw new Error(`Unsupported sideDialog assignment callName: ${_exhaustive}`);
-    }
-  }
-}
-
-async function resolveFreshCurrentSideDialogAssignmentDirective(args: {
+async function resolveFreshCurrentSideDialogAssignmentPromptMeta(args: {
   dlg: Dialog;
   prompt: KernelDriverPrompt | undefined;
-}): Promise<KernelDriverPrompt['tellaskReplyDirective']> {
+}): Promise<SideDialogAssignmentPromptMeta | undefined> {
   if (!(args.dlg instanceof SideDialog)) {
     return undefined;
   }
-  const currentAssignmentDirective = buildCurrentSideDialogAssignmentDirective(args.dlg);
+  const currentAssignmentPromptMeta = buildSideDialogAssignmentPromptMeta(args.dlg);
   if (args.prompt?.origin === 'runtime') {
     const promptDirective = args.prompt.tellaskReplyDirective;
     if (!promptDirective) {
       return undefined;
     }
-    if (!hasSameReplyDirective(promptDirective, currentAssignmentDirective)) {
+    if (
+      !hasSameReplyDirective(promptDirective, currentAssignmentPromptMeta.tellaskReplyDirective)
+    ) {
       return undefined;
     }
   } else if (args.prompt?.origin !== 'user') {
@@ -171,14 +155,14 @@ async function resolveFreshCurrentSideDialogAssignmentDirective(args: {
   if (!latest) {
     return undefined;
   }
-  if (latest.sideDialogFinalResponse?.callId === currentAssignmentDirective.targetCallId.trim()) {
+  const targetCallId = currentAssignmentPromptMeta.tellaskReplyDirective.targetCallId.trim();
+  if (latest.sideDialogFinalResponse?.callId === targetCallId) {
     return undefined;
   }
-  const targetCallId = currentAssignmentDirective.targetCallId.trim();
   if (latest.tellaskResults.results.some((entry) => entry.callId.trim() === targetCallId)) {
     return undefined;
   }
-  return currentAssignmentDirective;
+  return currentAssignmentPromptMeta;
 }
 
 async function resolveFreshPendingAskBackReplyDirective(args: {
@@ -312,6 +296,8 @@ export async function resolvePromptReplyGuidance(args: {
   isQ4HAnswerPrompt: boolean;
   promptContent: string | undefined;
   persistedTellaskReplyDirective: KernelDriverPrompt['tellaskReplyDirective'];
+  suppressedCalleeDialogReplyTarget: KernelDriverPrompt['calleeDialogReplyTarget'];
+  suppressedTellaskReplyDirective: KernelDriverPrompt['tellaskReplyDirective'];
   suppressInterDialogReplyGuidance: boolean;
   transientGuideContent: string | undefined;
 }> {
@@ -319,8 +305,8 @@ export async function resolvePromptReplyGuidance(args: {
   const isQ4HAnswerPrompt =
     typeof prompt?.q4hAnswerCallId === 'string' && prompt.q4hAnswerCallId.trim() !== '';
   const latest = await DialogPersistence.loadDialogLatest(args.dlg.id, args.dlg.status);
-  const persistedCurrentSideDialogAssignmentDirective =
-    await resolveFreshCurrentSideDialogAssignmentDirective({
+  const persistedCurrentSideDialogAssignmentPromptMeta =
+    await resolveFreshCurrentSideDialogAssignmentPromptMeta({
       dlg: args.dlg,
       prompt,
     });
@@ -336,7 +322,7 @@ export async function resolvePromptReplyGuidance(args: {
       : undefined;
   const persistedActiveReplyObligation = await loadActiveTellaskReplyDirective(args.dlg);
   const persistedActiveReplyDirective =
-    persistedCurrentSideDialogAssignmentDirective ??
+    persistedCurrentSideDialogAssignmentPromptMeta?.tellaskReplyDirective ??
     persistedPendingAskBackReplyDirective ??
     persistedPendingRuntimePromptDirective ??
     persistedActiveReplyObligation;
@@ -372,6 +358,12 @@ export async function resolvePromptReplyGuidance(args: {
       promptDirective: prompt?.tellaskReplyDirective,
       persistedDirective: persistedActiveReplyDirective,
     }),
+    suppressedCalleeDialogReplyTarget: suppressInterDialogReplyGuidance
+      ? persistedCurrentSideDialogAssignmentPromptMeta?.calleeDialogReplyTarget
+      : undefined,
+    suppressedTellaskReplyDirective: suppressInterDialogReplyGuidance
+      ? persistedActiveReplyDirective
+      : undefined,
     suppressInterDialogReplyGuidance,
     transientGuideContent:
       suppressInterDialogReplyGuidance && prompt !== undefined

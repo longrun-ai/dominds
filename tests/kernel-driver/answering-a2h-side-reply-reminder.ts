@@ -8,10 +8,12 @@ import {
   type KernelDriverRuntimeSideDialogPrompt,
 } from '../../main/llm/kernel-driver/types';
 import { DialogPersistence } from '../../main/persistence';
+import { buildUserInterjectionPauseStopReason } from '../../main/runtime/interjection-pause-stop';
 import { isReplyToolReminderPromptContent } from '../../main/runtime/reply-prompt-copy';
 import {
   createMainDialog,
   makeDriveOptions,
+  makeUserPrompt,
   withTempRtws,
   writeMockDb,
   writeStandardMinds,
@@ -126,6 +128,171 @@ async function runAnsweringReminderScenario(args: {
   );
 }
 
+async function runUserInterjectionAnswerHumanResumesSuppressedReplyObligation(): Promise<void> {
+  const root = await createMainDialog('tester');
+  root.disableDiligencePush = true;
+
+  const request = 'Finish the side-dialog task after handling local human interjections.';
+  const callId = 'suppressed-user-interjection-side-call';
+  const sideDialog = await root.createSideDialog('pangu', ['@pangu'], request, {
+    callName: 'tellask',
+    originMemberId: 'tester',
+    askerDialogId: root.id.selfId,
+    callId,
+    callSiteCourse: 1,
+    callSiteGenseq: 1,
+    sessionSlug: 'suppressed-user-interjection-session',
+    collectiveTargets: ['pangu'],
+  });
+  sideDialog.disableDiligencePush = true;
+
+  const interjectionPauseReason = buildUserInterjectionPauseStopReason();
+  await DialogPersistence.mutateDialogLatest(
+    sideDialog.id,
+    () => ({
+      kind: 'patch',
+      patch: {
+        displayState: {
+          kind: 'stopped',
+          reason: interjectionPauseReason,
+          continueEnabled: true,
+        },
+        executionMarker: {
+          kind: 'interrupted',
+          reason: interjectionPauseReason,
+        },
+      },
+    }),
+    sideDialog.status,
+  );
+
+  const interjectionPrompt = 'Please acknowledge this local interruption before resuming.';
+  const answerHumanContent = 'Acknowledged the local interruption; now resume the requester work.';
+  await writeMockDb(process.cwd(), [
+    {
+      message: interjectionPrompt,
+      role: 'user',
+      response: '',
+      omitDefaultThinking: true,
+      funcCalls: [
+        {
+          id: 'answer-human-suppressed-side-interjection',
+          name: 'answerHuman',
+          arguments: {
+            answerContent: answerHumanContent,
+          },
+        },
+      ],
+    },
+  ]);
+
+  const scheduledDrives: CapturedScheduledDrive[] = [];
+  await executeDriveRound({
+    runtime: createKernelDriverRuntimeState(),
+    driveArgs: [
+      sideDialog,
+      makeUserPrompt(interjectionPrompt, 'suppressed-side-user-interjection', {
+        userLanguageCode: 'en',
+      }),
+      true,
+      makeDriveOptions({ suppressDiligencePush: true }),
+    ],
+    scheduleDrive: (dialog, options) => {
+      assert.equal(dialog.id.selfId, sideDialog.id.selfId);
+      scheduledDrives.push({ dialog, options });
+    },
+    driveDialog: async () => {
+      throw new Error('test does not use nested driveDialog invocations');
+    },
+  });
+
+  const answers = await DialogPersistence.loadAnswersToHumanState(sideDialog.id, sideDialog.status);
+  assert.equal(answers.length, 1, 'answerHuman should append one A2H record');
+  assert.equal(answers[0]?.content, answerHumanContent);
+  assert.equal(
+    scheduledDrives.length,
+    1,
+    'answerHuman after a suppressed user interjection should resume the requester reply obligation',
+  );
+  const scheduledContinuation = scheduledDrives[0]?.options.driveOptions?.businessContinuation;
+  if (scheduledContinuation?.kind !== 'inter_dialog_reply') {
+    throw new Error(
+      'expected scheduled drive to carry the resumed inter-dialog reply continuation',
+    );
+  }
+  assert.equal(
+    scheduledContinuation.tellaskReplyDirective.targetCallId,
+    callId,
+    'scheduled continuation should preserve the requester reply directive',
+  );
+  assert.equal(
+    scheduledContinuation.calleeDialogReplyTarget?.callerDialogId,
+    root.id.selfId,
+    'scheduled continuation should preserve the requester dialog target',
+  );
+  assert.equal(
+    scheduledContinuation.calleeDialogReplyTarget?.callType,
+    'B',
+    'scheduled continuation should preserve the tellask call type',
+  );
+  assert.equal(
+    scheduledContinuation.calleeDialogReplyTarget?.callId,
+    callId,
+    'scheduled continuation should preserve the requester reply target',
+  );
+
+  const queuedReplyReminder = sideDialog.peekQueuedPrompt();
+  if (queuedReplyReminder?.kind !== 'new_course_runtime_sideDialog') {
+    throw new Error(
+      'expected queued sideDialog runtime reply reminder after suppressed user interjection',
+    );
+  }
+  assert.equal(queuedReplyReminder.tellaskReplyDirective.targetCallId, callId);
+  assert.equal(queuedReplyReminder.tellaskReplyDirective.expectedReplyCallName, 'replyTellask');
+  assert.equal(
+    queuedReplyReminder.calleeDialogReplyTarget.callerDialogId,
+    root.id.selfId,
+    'suppressed-interjection continuation should preserve the requester dialog target',
+  );
+  assert.equal(
+    queuedReplyReminder.calleeDialogReplyTarget.callType,
+    'B',
+    'suppressed-interjection continuation should preserve the tellask call type',
+  );
+  assert.equal(
+    queuedReplyReminder.calleeDialogReplyTarget.callId,
+    callId,
+    'suppressed-interjection continuation should preserve the requester reply target',
+  );
+  assert.equal(
+    isReplyToolReminderPromptContent(queuedReplyReminder.prompt),
+    true,
+    'suppressed-interjection continuation should use the reply reminder prompt',
+  );
+
+  const latest = await DialogPersistence.loadDialogLatest(sideDialog.id, sideDialog.status);
+  assert.equal(
+    latest?.pendingRuntimePrompt?.tellaskReplyDirective?.targetCallId,
+    callId,
+    'suppressed-interjection reply reminder must be durable for backend/restart recovery',
+  );
+  assert.equal(
+    latest?.pendingRuntimePrompt?.calleeDialogReplyTarget?.callerDialogId,
+    root.id.selfId,
+    'suppressed-interjection reply target dialog must be durable for backend/restart recovery',
+  );
+  assert.equal(
+    latest?.pendingRuntimePrompt?.calleeDialogReplyTarget?.callType,
+    'B',
+    'suppressed-interjection reply target call type must be durable for backend/restart recovery',
+  );
+  assert.equal(
+    latest?.pendingRuntimePrompt?.calleeDialogReplyTarget?.callId,
+    callId,
+    'suppressed-interjection reply target must be durable for backend/restart recovery',
+  );
+}
+
 async function main(): Promise<void> {
   await withTempRtws(async (tmpRoot) => {
     await writeStandardMinds(tmpRoot, { includePangu: true });
@@ -169,6 +336,7 @@ async function main(): Promise<void> {
       prompt: answerHumanPrompt,
       answeringContent: answerHumanContent,
     });
+    await runUserInterjectionAnswerHumanResumesSuppressedReplyObligation();
   });
 
   console.log('kernel-driver answering A2H side reply reminder: PASS');

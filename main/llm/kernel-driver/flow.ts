@@ -10,7 +10,12 @@ import {
   applyRegisteredAppDialogRunControls,
   renderAppRunControlBlockForPreDrive,
 } from '../../apps/run-control';
-import { DialogID, SideDialog, type Dialog } from '../../dialog';
+import {
+  buildSideDialogAssignmentPromptMeta,
+  DialogID,
+  SideDialog,
+  type Dialog,
+} from '../../dialog';
 import {
   clearActiveRun,
   computeIdleDisplayState,
@@ -54,7 +59,11 @@ import {
 import { driveDialogStreamCore } from './drive';
 import { buildKernelDriverPolicy, validateKernelDriverPolicyInvariants } from './guardrails';
 import { cancelIdleReminderWake, maybeStartIdleReminderWake } from './idle-reminder-wake';
-import { resolvePromptReplyGuidance, resolveReplyTargetAgentId } from './reply-guidance';
+import {
+  hasSameReplyDirective,
+  resolvePromptReplyGuidance,
+  resolveReplyTargetAgentId,
+} from './reply-guidance';
 import type { CalleeReplyTarget, ScheduleDriveFn } from './sideDialog';
 import {
   supplySideDialogResponseToAssignedAskerIfPendingV2,
@@ -170,18 +179,6 @@ function isReplyToolReminderPrompt(prompt: KernelDriverPrompt | undefined): bool
   return typeof prompt?.content === 'string' && isReplyToolReminderPromptContent(prompt.content);
 }
 
-function hasSameReplyDirective(
-  left: NonNullable<KernelDriverPrompt['tellaskReplyDirective']>,
-  right: NonNullable<KernelDriverPrompt['tellaskReplyDirective']>,
-): boolean {
-  return (
-    left.expectedReplyCallName === right.expectedReplyCallName &&
-    left.targetDialogId === right.targetDialogId &&
-    left.targetCallId === right.targetCallId &&
-    left.tellaskContent === right.tellaskContent
-  );
-}
-
 function hasSameCalleeReplyTarget(
   left: NonNullable<KernelDriverPrompt['calleeDialogReplyTarget']>,
   right: NonNullable<KernelDriverPrompt['calleeDialogReplyTarget']>,
@@ -193,32 +190,6 @@ function hasSameCalleeReplyTarget(
     left.callSiteCourse === right.callSiteCourse &&
     left.callSiteGenseq === right.callSiteGenseq
   );
-}
-
-function buildCurrentSideDialogAssignmentReplyDirective(
-  dialog: SideDialog,
-): NonNullable<KernelDriverPrompt['tellaskReplyDirective']> {
-  switch (dialog.assignmentFromAsker.callName) {
-    case 'tellask':
-      return {
-        expectedReplyCallName: 'replyTellask',
-        targetDialogId: dialog.assignmentFromAsker.askerDialogId,
-        targetCallId: dialog.assignmentFromAsker.callId,
-        tellaskContent: dialog.assignmentFromAsker.tellaskContent,
-      };
-    case 'tellaskSessionless':
-    case 'freshBootsReasoning':
-      return {
-        expectedReplyCallName: 'replyTellaskSessionless',
-        targetDialogId: dialog.assignmentFromAsker.askerDialogId,
-        targetCallId: dialog.assignmentFromAsker.callId,
-        tellaskContent: dialog.assignmentFromAsker.tellaskContent,
-      };
-    default: {
-      const _exhaustive: never = dialog.assignmentFromAsker.callName;
-      throw new Error(`Unsupported sideDialog assignment callName: ${_exhaustive}`);
-    }
-  }
 }
 
 function isQueuedReplyObligationContinuation(
@@ -295,7 +266,9 @@ async function claimQueuedReplyObligationContinuation(args: {
   }
 
   if (args.dialog instanceof SideDialog) {
-    const assignmentDirective = buildCurrentSideDialogAssignmentReplyDirective(args.dialog);
+    const assignmentDirective = buildSideDialogAssignmentPromptMeta(
+      args.dialog,
+    ).tellaskReplyDirective;
     if (hasSameReplyDirective(assignmentDirective, directive)) {
       return 'claimed';
     }
@@ -345,7 +318,9 @@ async function resolveSideDialogReplyDirectiveForAssistantOutput(args: {
     return args.currentDirective;
   }
 
-  const assignmentDirective = buildCurrentSideDialogAssignmentReplyDirective(args.dialog);
+  const assignmentDirective = buildSideDialogAssignmentPromptMeta(
+    args.dialog,
+  ).tellaskReplyDirective;
   if (assignmentDirective.targetCallId !== targetCallId) {
     return args.currentDirective;
   }
@@ -1653,6 +1628,12 @@ export async function executeDriveRound(args: {
   let calleeDialogReplyTarget: CalleeReplyTarget | undefined = replyContinuationScope.target();
   let activeTellaskReplyDirective: KernelDriverPrompt['tellaskReplyDirective'] | undefined =
     replyContinuationScope.directive();
+  let suppressedCalleeDialogReplyTargetAfterUserInterjection:
+    | KernelDriverPrompt['calleeDialogReplyTarget']
+    | undefined;
+  let suppressedTellaskReplyDirectiveAfterUserInterjection:
+    | KernelDriverPrompt['tellaskReplyDirective']
+    | undefined;
   let activePromptWasReplyToolReminder = false;
   let shouldPauseAfterLocalUserInterjection = false;
   let resumeFromInterjectionPause = false;
@@ -2144,6 +2125,14 @@ export async function executeDriveRound(args: {
       replyGuidance.suppressInterDialogReplyGuidance;
     activeTellaskReplyDirective =
       replyGuidance.activeReplyDirective ?? replyContinuationScope.directive();
+    suppressedTellaskReplyDirectiveAfterUserInterjection =
+      replyGuidance.suppressInterDialogReplyGuidance
+        ? replyGuidance.suppressedTellaskReplyDirective
+        : undefined;
+    suppressedCalleeDialogReplyTargetAfterUserInterjection =
+      replyGuidance.suppressInterDialogReplyGuidance
+        ? replyGuidance.suppressedCalleeDialogReplyTarget
+        : undefined;
     activePromptWasReplyToolReminder = isReplyToolReminderPrompt(effectivePrompt);
     let activePromptCarriesReplyDirective =
       effectivePrompt?.tellaskReplyDirective !== undefined &&
@@ -2275,36 +2264,70 @@ export async function executeDriveRound(args: {
               backgroundCalleeBlocksImplicitReply,
             },
           );
-        } else if (activeTellaskReplyDirective === undefined) {
-          log.debug(
-            'kernel-driver skip sideDialog answering reminder because no active tellask reply directive is bound to this drive',
-            undefined,
-            {
-              rootId: dialog.id.rootId,
-              selfId: dialog.id.selfId,
-            },
-          );
         } else {
-          const language = getWorkLanguage();
-          followUp = buildRuntimeReplyReminderFollowUp({
-            directive: activeTellaskReplyDirective,
-            prompt: await buildAnsweringReplyReminderPrompt({
-              dlg: dialog,
-              directive: activeTellaskReplyDirective,
+          const replyDirectiveForAnswering =
+            activeTellaskReplyDirective ?? suppressedTellaskReplyDirectiveAfterUserInterjection;
+          if (replyDirectiveForAnswering === undefined) {
+            log.debug(
+              'kernel-driver skip sideDialog answering reminder because no active tellask reply directive is bound to this drive',
+              undefined,
+              {
+                rootId: dialog.id.rootId,
+                selfId: dialog.id.selfId,
+              },
+            );
+          } else {
+            if (
+              calleeDialogReplyTarget !== undefined &&
+              calleeDialogReplyTarget.callId !== replyDirectiveForAnswering.targetCallId
+            ) {
+              throw new Error(
+                `sideDialog answering reminder invariant violation: reply target callId does not match directive ` +
+                  `(dialog=${dialog.id.valueOf()}, targetCallId=${calleeDialogReplyTarget.callId}, ` +
+                  `directiveTargetCallId=${replyDirectiveForAnswering.targetCallId})`,
+              );
+            }
+            const currentAssignmentPromptMeta = buildSideDialogAssignmentPromptMeta(dialog);
+            const currentAssignmentReplyTarget = hasSameReplyDirective(
+              replyDirectiveForAnswering,
+              currentAssignmentPromptMeta.tellaskReplyDirective,
+            )
+              ? currentAssignmentPromptMeta.calleeDialogReplyTarget
+              : undefined;
+            const replyTargetForAnswering =
+              calleeDialogReplyTarget ??
+              (suppressedTellaskReplyDirectiveAfterUserInterjection !== undefined &&
+              hasSameReplyDirective(
+                replyDirectiveForAnswering,
+                suppressedTellaskReplyDirectiveAfterUserInterjection,
+              )
+                ? suppressedCalleeDialogReplyTargetAfterUserInterjection
+                : undefined) ??
+              currentAssignmentReplyTarget;
+            const language = getWorkLanguage();
+            followUp = buildRuntimeReplyReminderFollowUp({
+              directive: replyDirectiveForAnswering,
+              prompt: await buildAnsweringReplyReminderPrompt({
+                dlg: dialog,
+                directive: replyDirectiveForAnswering,
+                language,
+              }),
               language,
-            }),
-            language,
-            calleeDialogReplyTarget,
-          });
-          log.debug(
-            'kernel-driver queued sideDialog replyTellask reminder after answering-only output',
-            undefined,
-            {
-              dialogId: dialog.id.valueOf(),
-              targetCallId: activeTellaskReplyDirective.targetCallId,
-              targetCallerDialogId: calleeDialogReplyTarget?.callerDialogId,
-            },
-          );
+              calleeDialogReplyTarget: replyTargetForAnswering,
+            });
+            log.debug(
+              'kernel-driver queued sideDialog replyTellask reminder after answering-only output',
+              undefined,
+              {
+                dialogId: dialog.id.valueOf(),
+                targetCallId: replyDirectiveForAnswering.targetCallId,
+                targetCallerDialogId: replyTargetForAnswering?.callerDialogId,
+                resumedAfterUserInterjection:
+                  activeTellaskReplyDirective === undefined &&
+                  suppressedTellaskReplyDirectiveAfterUserInterjection !== undefined,
+              },
+            );
+          }
         }
       }
 

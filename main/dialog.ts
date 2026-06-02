@@ -334,7 +334,7 @@ function getSideDialogAskerStackCurrentAssignment(
   throw new Error('SideDialog askerStack invariant violation: missing assignment frame');
 }
 
-function buildSideDialogAssignmentPromptMeta(
+export function buildSideDialogAssignmentPromptMeta(
   sideDialog: SideDialog,
 ): Pick<DialogRuntimeSideDialogPrompt, 'tellaskReplyDirective' | 'calleeDialogReplyTarget'> {
   const assignment = sideDialog.assignmentFromAsker;
