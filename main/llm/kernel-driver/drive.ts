@@ -1976,36 +1976,15 @@ function formatRepeatedToolCallStoppedDetail(args: {
   );
 }
 
-function latestRepeatedToolCallReminderIndex(messages: readonly ChatMessage[]): number | undefined {
-  for (let index = messages.length - 1; index >= 0; index -= 1) {
-    const msg = messages[index];
-    if (!msg) continue;
-    if (msg.type === 'transient_guide_msg') {
-      if (
-        msg.content.startsWith(
-          '[Runtime notice] You have just made the same tool call three times',
-        ) ||
-        msg.content.startsWith('[Dominds 提示] 你刚才连续三次调用了同一个工具')
-      ) {
-        return index;
-      }
-    }
-    if (msg.type === 'prompting_msg') {
-      return undefined;
-    }
-  }
-  return undefined;
-}
+const REPEATED_TOOL_CALL_STOP_WINDOW_GENSEQS = 5;
 
-function inspectRepeatedToolCallSequence(args: {
-  messages: readonly ChatMessage[];
+function inspectRepeatedToolCallRound(args: {
+  state: RepeatedToolCallMonitorState;
+  currentCourse: number;
+  pairedMessages: readonly ChatMessage[];
   language: 'zh' | 'en';
 }): RepeatedToolCallInspection | undefined {
-  const latestReminderIndex = latestRepeatedToolCallReminderIndex(args.messages);
-  const messages =
-    latestReminderIndex === undefined
-      ? args.messages
-      : args.messages.slice(latestReminderIndex + 1);
+  ensureRepeatedToolCallMonitorCourse(args.state, args.currentCourse);
   const recentPairs: Array<
     Readonly<{
       call: FuncCallMsg;
@@ -2013,10 +1992,10 @@ function inspectRepeatedToolCallSequence(args: {
       fingerprint: ToolResultFingerprint;
     }>
   > = [];
-  for (let index = messages.length - 1; index >= 1; index -= 1) {
-    const result = messages[index];
-    const call = messages[index - 1];
-    if (result?.type !== 'func_result_msg' || call?.type !== 'func_call_msg') {
+  for (let index = 0; index < args.pairedMessages.length - 1; index += 1) {
+    const call = args.pairedMessages[index];
+    const result = args.pairedMessages[index + 1];
+    if (call?.type !== 'func_call_msg' || result?.type !== 'func_result_msg') {
       continue;
     }
     if (result.id !== call.id) {
@@ -2027,36 +2006,52 @@ function inspectRepeatedToolCallSequence(args: {
       result,
       fingerprint: buildToolResultFingerprint(call, result),
     });
-    index -= 1;
-    if (recentPairs.length >= 3) break;
   }
-  if (recentPairs.length < 3) return undefined;
-  const [latest, second, third] = recentPairs;
-  if (!latest || !second || !third) {
-    throw new Error('repeated tool-call inspection invariant violation: missing recent pair');
-  }
-  if (
-    !sameToolResultFingerprint(latest.fingerprint, second.fingerprint) ||
-    !sameToolResultFingerprint(latest.fingerprint, third.fingerprint)
-  ) {
-    return undefined;
-  }
-  const chronologicalPairs = [third, second, latest];
-  const callIds = chronologicalPairs.map((pair) => pair.call.id);
-  return {
-    toolName: latest.call.name,
-    callIds,
-    argumentsFingerprint: latest.fingerprint.argumentsFingerprint,
-    resultContent: latest.result.content,
-    reminderContent: formatRepeatedToolCallRuntimeGuide({
-      language: args.language,
-      toolName: latest.call.name,
+
+  for (const pair of recentPairs) {
+    const currentSequence = args.state.sequence;
+    if (
+      currentSequence !== undefined &&
+      sameToolResultFingerprint(currentSequence.fingerprint, pair.fingerprint)
+    ) {
+      currentSequence.callIds.push(pair.call.id);
+      if (currentSequence.callIds.length > 3) {
+        currentSequence.callIds.splice(0, currentSequence.callIds.length - 3);
+      }
+      currentSequence.resultContent = pair.result.content;
+    } else {
+      args.state.sequence = {
+        fingerprint: pair.fingerprint,
+        callIds: [pair.call.id],
+        resultContent: pair.result.content,
+      };
+    }
+
+    const sequence = args.state.sequence;
+    if (sequence === undefined || sequence.callIds.length < 3) {
+      continue;
+    }
+    const recentReminder =
+      args.state.lastReminderGenseq !== undefined &&
+      pair.call.genseq > args.state.lastReminderGenseq &&
+      pair.call.genseq - args.state.lastReminderGenseq <= REPEATED_TOOL_CALL_STOP_WINDOW_GENSEQS;
+    const callIds = [...sequence.callIds];
+    return {
+      toolName: pair.call.name,
       callIds,
-      argumentsFingerprint: latest.fingerprint.argumentsFingerprint,
-      resultContent: latest.result.content,
-    }),
-    repeatedAfterReminder: latestReminderIndex !== undefined,
-  };
+      argumentsFingerprint: pair.fingerprint.argumentsFingerprint,
+      resultContent: sequence.resultContent,
+      reminderContent: formatRepeatedToolCallRuntimeGuide({
+        language: args.language,
+        toolName: pair.call.name,
+        callIds,
+        argumentsFingerprint: pair.fingerprint.argumentsFingerprint,
+        resultContent: sequence.resultContent,
+      }),
+      repeatedAfterReminder: recentReminder,
+    };
+  }
+  return undefined;
 }
 
 async function persistInvalidFuncCallRuntimeGuide(args: {
@@ -2122,6 +2117,32 @@ type RepeatedToolCallInspection = Readonly<{
   reminderContent: string;
   repeatedAfterReminder: boolean;
 }>;
+
+type RepeatedToolCallMonitorState = {
+  course?: number;
+  sequence?: {
+    fingerprint: ToolResultFingerprint;
+    callIds: string[];
+    resultContent: string;
+  };
+  lastReminderGenseq?: number;
+};
+
+function resetRepeatedToolCallMonitor(state: RepeatedToolCallMonitorState): void {
+  state.sequence = undefined;
+  state.lastReminderGenseq = undefined;
+}
+
+function ensureRepeatedToolCallMonitorCourse(
+  state: RepeatedToolCallMonitorState,
+  course: number,
+): void {
+  if (state.course === course) {
+    return;
+  }
+  resetRepeatedToolCallMonitor(state);
+  state.course = course;
+}
 
 type ToolRoundStopDiagnostics = Readonly<{
   course: number;
@@ -3475,6 +3496,7 @@ export async function driveDialogStreamCore(
     | undefined;
   let pubRemindersVer = dlg.remindersVer;
   let lastToolRoundStopDiagnostics: ToolRoundStopDiagnostics | undefined;
+  const repeatedToolCallMonitor: RepeatedToolCallMonitorState = {};
 
   let pendingPrompt: KernelDriverPrompt | undefined = humanPrompt;
   let resolvingImmediateToolResultForUserPrompt = false;
@@ -3726,6 +3748,9 @@ export async function driveDialogStreamCore(
         let llmGenModelForGen: string = model;
         const currentPrompt = pendingPrompt;
         const currentReplyTarget = currentPrompt?.calleeDialogReplyTarget;
+        if (currentGenerationBelongsToUserPrompt) {
+          resetRepeatedToolCallMonitor(repeatedToolCallMonitor);
+        }
         let currentBusinessContinuation: DialogBusinessContinuation =
           driveOptions?.businessContinuation ?? { kind: 'none' };
         if (currentPrompt?.tellaskReplyDirective !== undefined) {
@@ -4814,8 +4839,10 @@ export async function driveDialogStreamCore(
           }
           await dlg.addChatMessages(...newMsgs);
 
-          const repeatedToolCallInspection = inspectRepeatedToolCallSequence({
-            messages: dlg.msgs,
+          const repeatedToolCallInspection = inspectRepeatedToolCallRound({
+            state: repeatedToolCallMonitor,
+            currentCourse: dlg.activeGenCourseOrUndefined ?? dlg.currentCourse,
+            pairedMessages: routed.pairedMessages,
             language: getWorkLanguage(),
           });
           if (repeatedToolCallInspection !== undefined) {
@@ -4844,6 +4871,8 @@ export async function driveDialogStreamCore(
               });
             }
             await persistAndEmitRuntimeGuide(dlg, repeatedToolCallInspection.reminderContent);
+            repeatedToolCallMonitor.lastReminderGenseq = dlg.activeGenSeq;
+            repeatedToolCallMonitor.sequence = undefined;
             routed = {
               ...routed,
               repeatedToolCallReminderCallIds: repeatedToolCallInspection.callIds,
