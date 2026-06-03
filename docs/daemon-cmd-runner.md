@@ -115,6 +115,8 @@ Ownership boundaries are simple:
 - `pid: number`
 - `stdout?: boolean`
 - `stderr?: boolean`
+- `wait_for_new_output?: boolean`
+- `timeout_ms?: number`
 
 ### Semantics
 
@@ -123,6 +125,9 @@ Ownership boundaries are simple:
 - output order is always `stdout` first, then `stderr`
 - each stream gets its own heading, content block, and scroll notice
 - unrequested streams are omitted entirely
+- when `wait_for_new_output=true`, the runner waits until at least one requested stream receives output after the request is accepted
+- if `timeout_ms` is provided, the wait is bounded by that many milliseconds, capped at `86400000` (24h), and returns the current snapshot with an explicit timeout notice
+- `timeout_ms` cannot be combined with `wait_for_new_output=false`; that contradictory argument set returns an error
 
 ### Why this is better
 

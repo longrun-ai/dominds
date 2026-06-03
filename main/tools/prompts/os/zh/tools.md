@@ -79,6 +79,8 @@ stopped_at: <停止时间戳>
 - `pid`（必需）：守护进程 PID（数字）
 - `stdout`（可选）：是否包含 stdout 输出（默认 `true`）
 - `stderr`（可选）：是否包含 stderr 输出（默认 `true`）
+- `wait_for_new_output`（可选）：是否等待所请求的 stdout/stderr 流出现新输出后再返回（默认 `false`；提供 `timeout_ms` 时默认视为 `true`）
+- `timeout_ms`（可选）：等待新输出的最长毫秒数，最大 `86400000`（24 小时）；超时后返回当前快照并提示超时；不可与 `wait_for_new_output:false` 同时使用
 
 **返回：**
 

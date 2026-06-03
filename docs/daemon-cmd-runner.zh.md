@@ -114,6 +114,8 @@ runner 自己作为进程组 leader，daemon 默认继承该 pgid。这样 `stop
   - `pid: number`
   - `stdout?: boolean`
   - `stderr?: boolean`
+  - `wait_for_new_output?: boolean`
+  - `timeout_ms?: number`
 
 ### 语义
 
@@ -122,6 +124,9 @@ runner 自己作为进程组 leader，daemon 默认继承该 pgid。这样 `stop
 - 返回顺序固定为 `stdout` 在前、`stderr` 在后
 - 每个流各自带自己的标题、内容、scroll notice
 - 未请求的流不展示
+- `wait_for_new_output=true` 时，runner 会等到请求的流中至少一个在请求被接受后出现新输出再返回
+- 提供 `timeout_ms` 时，等待最多持续指定毫秒数，上限为 `86400000`（24 小时）；超时后返回当前快照，并显式提示等待超时
+- `timeout_ms` 不可与 `wait_for_new_output=false` 同时使用；这种矛盾参数会直接报错
 
 ### 取舍理由
 

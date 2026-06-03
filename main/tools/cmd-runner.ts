@@ -9,6 +9,7 @@ import {
   parseCmdRunnerInitMessage,
   parseCmdRunnerRequestLine,
   type CmdRunnerInitialIpcMessage,
+  type CmdRunnerOutputWaitStatus,
   type CmdRunnerRequest,
   type CmdRunnerResponse,
   type CmdRunnerStatusPayload,
@@ -22,10 +23,15 @@ const execFileAsync = promisify(execFile);
 class ScrollingBuffer {
   private lines: string[] = [];
   private linesScrolledOut = 0;
+  private version = 0;
 
   constructor(private readonly maxLines: number) {}
 
   addText(text: string): void {
+    if (text.length === 0) {
+      return;
+    }
+    this.version += 1;
     const newLines = text.split('\n');
     if (newLines[newLines.length - 1] === '') {
       newLines.pop();
@@ -43,7 +49,12 @@ class ScrollingBuffer {
     return {
       content: this.lines.join('\n'),
       linesScrolledOut: this.linesScrolledOut,
+      version: this.version,
     };
+  }
+
+  getVersion(): number {
+    return this.version;
   }
 }
 
@@ -59,6 +70,17 @@ type RunnerState = {
   exitSignal: string | null;
   stdout: ScrollingBuffer;
   stderr: ScrollingBuffer;
+};
+
+type InternalOutputWaitStatus = CmdRunnerOutputWaitStatus | 'client_closed';
+
+type OutputWaiter = {
+  stdout: boolean;
+  stderr: boolean;
+  initialStdoutVersion: number;
+  initialStderrVersion: number;
+  timeoutHandle?: NodeJS.Timeout;
+  resolve: (status: InternalOutputWaitStatus) => void;
 };
 
 async function flushIpc(msg: CmdRunnerInitialIpcMessage): Promise<void> {
@@ -214,6 +236,73 @@ async function main(): Promise<void> {
   let closeRequested = false;
   let timeoutHandle: NodeJS.Timeout | undefined;
   let initialResultSent = false;
+  const outputWaiters: OutputWaiter[] = [];
+
+  const requestedOutputChanged = (waiter: OutputWaiter): boolean =>
+    (waiter.stdout && state.stdout.getVersion() !== waiter.initialStdoutVersion) ||
+    (waiter.stderr && state.stderr.getVersion() !== waiter.initialStderrVersion);
+
+  const removeOutputWaiter = (waiter: OutputWaiter): void => {
+    const index = outputWaiters.indexOf(waiter);
+    if (index !== -1) {
+      outputWaiters.splice(index, 1);
+    }
+  };
+
+  const settleOutputWaiter = (waiter: OutputWaiter, status: InternalOutputWaitStatus): void => {
+    removeOutputWaiter(waiter);
+    if (waiter.timeoutHandle !== undefined) {
+      clearTimeout(waiter.timeoutHandle);
+    }
+    waiter.resolve(status);
+  };
+
+  const notifyOutputWaiters = (): void => {
+    for (const waiter of [...outputWaiters]) {
+      if (requestedOutputChanged(waiter)) {
+        settleOutputWaiter(waiter, 'output');
+        continue;
+      }
+      if (!state.isRunning) {
+        settleOutputWaiter(waiter, 'exited');
+      }
+    }
+  };
+
+  const waitForRequestedNewOutput = async (
+    request: Extract<CmdRunnerRequest, { type: 'get_output' }>,
+    socket: net.Socket,
+  ): Promise<InternalOutputWaitStatus> => {
+    if (!state.isRunning) {
+      return 'exited';
+    }
+    return await new Promise<InternalOutputWaitStatus>((resolve) => {
+      let waiter: OutputWaiter | undefined;
+      const onSocketClosed = (): void => {
+        if (waiter !== undefined) {
+          settleOutputWaiter(waiter, 'client_closed');
+        }
+      };
+      waiter = {
+        stdout: request.stdout,
+        stderr: request.stderr,
+        initialStdoutVersion: state.stdout.getVersion(),
+        initialStderrVersion: state.stderr.getVersion(),
+        resolve: (status) => {
+          socket.off('close', onSocketClosed);
+          resolve(status);
+        },
+      };
+      if (request.timeoutMs !== undefined) {
+        waiter.timeoutHandle = setTimeout(() => {
+          settleOutputWaiter(waiter, 'timeout');
+        }, request.timeoutMs);
+      }
+      socket.once('close', onSocketClosed);
+      outputWaiters.push(waiter);
+      notifyOutputWaiters();
+    });
+  };
   const tryFlushInitialResult = async (msg: CmdRunnerInitialIpcMessage): Promise<boolean> => {
     if (initialResultSent) {
       return false;
@@ -299,6 +388,7 @@ async function main(): Promise<void> {
     state.isRunning = false;
     state.exitCode = code;
     state.exitSignal = signal;
+    notifyOutputWaiters();
     void (async () => {
       if (state.daemonCommandLine === null && !initialResultSent) {
         await tryFlushInitialResult({
@@ -331,9 +421,11 @@ async function main(): Promise<void> {
 
   stdout.on('data', (data: Buffer) => {
     state.stdout.addText(data.toString());
+    notifyOutputWaiters();
   });
   stderr.on('data', (data: Buffer) => {
     state.stderr.addText(data.toString());
+    notifyOutputWaiters();
   });
 
   await ensureSocketParentDir(endpoint);
@@ -372,13 +464,24 @@ async function main(): Promise<void> {
             return;
           }
           if (request.type === 'get_output') {
+            const waitStatus = request.waitForNewOutput
+              ? await waitForRequestedNewOutput(request, socket)
+              : undefined;
+            if (waitStatus === 'client_closed') {
+              return;
+            }
             const payload = buildStatusPayload(state);
             writeSocketResponse(socket, {
               type: 'output',
               ok: true,
+              ...(waitStatus === undefined ? {} : { waitStatus }),
               ...payload,
-              stdout: request.stdout ? payload.stdout : { content: '', linesScrolledOut: 0 },
-              stderr: request.stderr ? payload.stderr : { content: '', linesScrolledOut: 0 },
+              stdout: request.stdout
+                ? payload.stdout
+                : { content: '', linesScrolledOut: 0, version: 0 },
+              stderr: request.stderr
+                ? payload.stderr
+                : { content: '', linesScrolledOut: 0, version: 0 },
             });
             return;
           }

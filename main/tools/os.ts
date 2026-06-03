@@ -45,10 +45,12 @@ import {
   toolSuccess,
 } from '../tool';
 import {
+  MAX_CMD_RUNNER_OUTPUT_WAIT_TIMEOUT_MS,
   parseCmdRunnerInitialIpcMessage,
   parseCmdRunnerResponseLine,
   type CmdRunnerInitMessage,
   type CmdRunnerInitialIpcMessage,
+  type CmdRunnerOutputWaitStatus,
   type CmdRunnerResponse,
 } from './cmd-runner-protocol';
 import { truncateToolOutputText } from './output-limit';
@@ -245,6 +247,8 @@ interface GetDaemonOutputArgs {
   pid: number;
   stdout: boolean;
   stderr: boolean;
+  waitForNewOutput: boolean;
+  timeoutMs?: number;
 }
 
 type ShellSpawnSpec = Readonly<{
@@ -828,6 +832,8 @@ type OsToolMessages = Readonly<{
   daemonOutputHeader: (pid: number, streamLabel: string) => string;
   noOutput: string;
   scrolledOutNotice: (lines: number) => string;
+  daemonOutputWaitTimedOut: (pid: number, streamLabel: string, timeoutMs: number) => string;
+  daemonOutputWaitExited: (pid: number, streamLabel: string) => string;
 }>;
 
 function getOsToolMessages(language: LanguageCode): OsToolMessages {
@@ -847,6 +853,10 @@ function getOsToolMessages(language: LanguageCode): OsToolMessages {
       daemonOutputHeader: (pid, streamLabel) => `📤 守护进程 ${pid} ${streamLabel} 输出：\n`,
       noOutput: '(无输出)',
       scrolledOutNotice: (lines) => `\n\n⚠️  有 ${lines} 行已滚出可视范围`,
+      daemonOutputWaitTimedOut: (pid, streamLabel, timeoutMs) =>
+        `⏱️ 等待守护进程 ${pid} 的 ${streamLabel} 新输出已超时（timeout_ms=${timeoutMs}）。以下是当前快照。\n\n`,
+      daemonOutputWaitExited: (pid, streamLabel) =>
+        `⏹️ 等待守护进程 ${pid} 的 ${streamLabel} 新输出期间进程已退出；未观察到新的所选流输出。以下是最终快照。\n\n`,
     };
   }
 
@@ -865,6 +875,10 @@ function getOsToolMessages(language: LanguageCode): OsToolMessages {
     daemonOutputHeader: (pid, streamLabel) => `📤 Daemon ${pid} ${streamLabel} output:\n`,
     noOutput: '(no output)',
     scrolledOutNotice: (lines) => `\n\n⚠️  ${lines} lines have scrolled out of view`,
+    daemonOutputWaitTimedOut: (pid, streamLabel, timeoutMs) =>
+      `⏱️ Timed out waiting for new ${streamLabel} output from daemon ${pid} (timeout_ms=${timeoutMs}). Current snapshot follows.\n\n`,
+    daemonOutputWaitExited: (pid, streamLabel) =>
+      `⏹️ Daemon ${pid} exited while waiting for new ${streamLabel} output; no new requested-stream output was observed. Final snapshot follows.\n\n`,
   };
 }
 
@@ -1151,12 +1165,43 @@ function parseGetDaemonOutputArgs(args: ToolArguments): GetDaemonOutputArgs {
   if (stderrRaw !== undefined && typeof stderrRaw !== 'boolean') {
     throw new Error('get_daemon_output.stderr must be a boolean if provided');
   }
+  const waitForNewOutputRaw = args.wait_for_new_output;
+  if (waitForNewOutputRaw !== undefined && typeof waitForNewOutputRaw !== 'boolean') {
+    throw new Error('get_daemon_output.wait_for_new_output must be a boolean if provided');
+  }
+  const timeoutMsRaw = args.timeout_ms;
+  if (timeoutMsRaw !== undefined && typeof timeoutMsRaw !== 'number') {
+    throw new Error('get_daemon_output.timeout_ms must be a number if provided');
+  }
+  const timeoutMs =
+    timeoutMsRaw === undefined
+      ? undefined
+      : Number.isInteger(timeoutMsRaw) &&
+          timeoutMsRaw >= 0 &&
+          timeoutMsRaw <= MAX_CMD_RUNNER_OUTPUT_WAIT_TIMEOUT_MS
+        ? timeoutMsRaw
+        : (() => {
+            throw new Error(
+              `get_daemon_output.timeout_ms must be a non-negative integer <= ${String(MAX_CMD_RUNNER_OUTPUT_WAIT_TIMEOUT_MS)}`,
+            );
+          })();
   const stdout = stdoutRaw ?? true;
   const stderr = stderrRaw ?? true;
   if (!stdout && !stderr) {
     throw new Error('get_daemon_output requires at least one of stdout/stderr to be true');
   }
-  return { pid, stdout, stderr };
+  if (waitForNewOutputRaw === false && timeoutMs !== undefined) {
+    throw new Error(
+      'get_daemon_output.timeout_ms cannot be provided when wait_for_new_output is false',
+    );
+  }
+  return {
+    pid,
+    stdout,
+    stderr,
+    waitForNewOutput: waitForNewOutputRaw ?? timeoutMs !== undefined,
+    ...(timeoutMs === undefined ? {} : { timeoutMs }),
+  };
 }
 
 function getWindowsShellLabel(shell: string | undefined): string {
@@ -1352,6 +1397,15 @@ type ResolveRunnerBackedDaemonResult =
   | Readonly<{ kind: 'gone' }>
   | Readonly<{ kind: 'error'; errorText: string }>;
 
+type ResolveRunnerBackedDaemonOutputResult =
+  | Readonly<{
+      kind: 'live';
+      daemon: RunnerBackedDaemon;
+      waitStatus?: CmdRunnerOutputWaitStatus;
+    }>
+  | Readonly<{ kind: 'gone' }>
+  | Readonly<{ kind: 'error'; errorText: string }>;
+
 type CmdRunnerEntrypointResolution =
   | Readonly<{ ok: true; scriptAbs: string; execArgv: string[] }>
   | Readonly<{ ok: false; errorText: string }>;
@@ -1412,7 +1466,7 @@ function runnerResponseMatchesReminder(
 async function callRunner(
   endpoint: string,
   request: Readonly<Record<string, unknown>>,
-  timeoutMs = 5_000,
+  timeoutMs: number | null | undefined = 5_000,
 ): Promise<CmdRunnerResponse> {
   return await new Promise<CmdRunnerResponse>((resolve, reject) => {
     const socket = net.createConnection(endpoint);
@@ -1422,21 +1476,31 @@ async function callRunner(
     const finalize = (fn: () => void): void => {
       if (settled) return;
       settled = true;
-      clearTimeout(timeoutHandle);
+      if (timeoutHandle !== undefined) {
+        clearTimeout(timeoutHandle);
+      }
       socket.destroy();
       fn();
     };
 
-    const timeoutHandle = setTimeout(() => {
-      finalize(() => {
-        reject(new Error(`cmd_runner request timed out for endpoint ${endpoint}`));
-      });
-    }, timeoutMs);
+    const timeoutHandle =
+      timeoutMs === null
+        ? undefined
+        : setTimeout(() => {
+            finalize(() => {
+              reject(new Error(`cmd_runner request timed out for endpoint ${endpoint}`));
+            });
+          }, timeoutMs);
 
     socket.setEncoding('utf8');
     socket.once('error', (error) => {
       finalize(() => {
         reject(error);
+      });
+    });
+    socket.once('close', () => {
+      finalize(() => {
+        reject(new Error(`cmd_runner connection closed before response for endpoint ${endpoint}`));
       });
     });
     socket.on('data', (chunk) => {
@@ -1539,6 +1603,58 @@ async function resolveDaemonFromMeta(
           : `stale daemon cleanup failed for pid ${String(meta.pid)}: ${String(error)}`,
     };
   }
+}
+
+function getRunnerRequestTimeoutForDaemonOutput(
+  args: GetDaemonOutputArgs,
+): number | null | undefined {
+  if (!args.waitForNewOutput) {
+    return undefined;
+  }
+  if (args.timeoutMs !== undefined) {
+    return Math.max(5_000, args.timeoutMs + 5_000);
+  }
+  return null;
+}
+
+async function resolveDaemonOutputFromMeta(
+  meta: ShellCmdReminderMeta,
+  args: GetDaemonOutputArgs,
+): Promise<ResolveRunnerBackedDaemonOutputResult> {
+  if (meta.runnerEndpoint !== undefined && meta.runnerEndpoint.trim() !== '') {
+    try {
+      const response = await callRunner(
+        meta.runnerEndpoint,
+        {
+          type: 'get_output',
+          stdout: args.stdout,
+          stderr: args.stderr,
+          waitForNewOutput: args.waitForNewOutput,
+          ...(args.timeoutMs === undefined ? {} : { timeoutMs: args.timeoutMs }),
+        },
+        getRunnerRequestTimeoutForDaemonOutput(args),
+      );
+      if (
+        response.ok &&
+        response.type === 'output' &&
+        runnerResponseMatchesReminder(meta, response)
+      ) {
+        return {
+          kind: 'live',
+          daemon: buildRunnerBackedDaemon(meta, response),
+          ...(response.waitStatus === undefined ? {} : { waitStatus: response.waitStatus }),
+        };
+      }
+    } catch {
+      // Fall through to stale-or-gone detection.
+    }
+  }
+
+  const resolved = await resolveDaemonFromMeta(meta);
+  if (resolved.kind !== 'live') {
+    return resolved;
+  }
+  return { kind: 'live', daemon: resolved.daemon };
 }
 
 function formatRunnerBackedDaemonStatusDetails(
@@ -1711,6 +1827,16 @@ const getDaemonOutputSchema: JsonSchema = {
       type: 'boolean',
       description:
         'Whether to include stderr output (default: true unless stdout is explicitly set)',
+    },
+    wait_for_new_output: {
+      type: 'boolean',
+      description:
+        'Whether to wait until at least one requested stream receives new output before returning (default: false, or true when timeout_ms is provided)',
+    },
+    timeout_ms: {
+      type: 'integer',
+      description:
+        'Optional non-negative maximum time in milliseconds to wait for new output, up to 86400000 (24h); providing this implies wait_for_new_output=true unless wait_for_new_output is explicitly false, which is rejected',
     },
   },
   required: ['pid'],
@@ -3540,21 +3666,29 @@ export const stopDaemonTool: FuncTool = {
   },
 };
 
+function formatRequestedDaemonOutputStreams(stdout: boolean, stderr: boolean): string {
+  if (stdout && stderr) {
+    return 'stdout/stderr';
+  }
+  return stdout ? 'stdout' : 'stderr';
+}
+
 // Get daemon output tool implementation
 export const getDaemonOutputTool: FuncTool = {
   type: 'func',
   name: 'get_daemon_output',
   description:
-    'Retrieve captured stdout/stderr output from a tracked daemon process by PID. By default both streams are returned together; you may disable either stream explicitly. Returns (no output) if a requested stream has not produced output yet.',
+    'Retrieve captured stdout/stderr output from a tracked daemon process by PID. By default both streams are returned together; you may disable either stream explicitly. Set wait_for_new_output=true to wait until a requested stream receives new output before returning; timeout_ms optionally bounds that wait. Returns (no output) if a requested stream has not produced output yet.',
   descriptionI18n: {
-    en: 'Retrieve captured stdout/stderr output from a tracked daemon process by PID. By default both streams are returned together; you may disable either stream explicitly. Returns (no output) if a requested stream has not produced output yet.',
-    zh: '根据 PID 获取已追踪守护进程的 stdout/stderr 输出。默认会同时返回两个流，也可显式关闭其中一个；若所请求的流尚无输出，则返回 (no output)。',
+    en: 'Retrieve captured stdout/stderr output from a tracked daemon process by PID. By default both streams are returned together; you may disable either stream explicitly. Set wait_for_new_output=true to wait until a requested stream receives new output before returning; timeout_ms optionally bounds that wait. Returns (no output) if a requested stream has not produced output yet.',
+    zh: '根据 PID 获取已追踪守护进程的 stdout/stderr 输出。默认会同时返回两个流，也可显式关闭其中一个；设置 wait_for_new_output=true 时会等到所请求流出现新输出后再返回，timeout_ms 可选用于限制等待毫秒数；若所请求的流尚无输出，则返回 (no output)。',
   },
   parameters: getDaemonOutputSchema,
   async call(dlg: Dialog, caller: Team.Member, args: ToolArguments): Promise<ToolCallOutput> {
     const language = getWorkLanguage();
     const t = getOsToolMessages(language);
-    const { pid, stdout, stderr } = parseGetDaemonOutputArgs(args);
+    const parsedArgs = parseGetDaemonOutputArgs(args);
+    const { pid, stdout, stderr } = parsedArgs;
 
     const reminders = await loadSharedReminders({ kind: 'agent', agentId: dlg.agentId });
     const reminder = reminders.find(
@@ -3564,7 +3698,7 @@ export const getDaemonOutputTool: FuncTool = {
       return toolFailure(t.noDaemonFound(pid));
     }
 
-    const resolved = await resolveDaemonFromMeta(reminder.meta);
+    const resolved = await resolveDaemonOutputFromMeta(reminder.meta, parsedArgs);
     if (resolved.kind === 'gone') {
       await removeDaemonRemindersForPid(dlg, pid);
       return toolFailure(t.noDaemonFound(pid));
@@ -3577,6 +3711,13 @@ export const getDaemonOutputTool: FuncTool = {
     let result = '';
     const fenceConsole = '```console';
     const fenceEnd = '```';
+    const requestedStreams = formatRequestedDaemonOutputStreams(stdout, stderr);
+
+    if (resolved.waitStatus === 'timeout') {
+      result += t.daemonOutputWaitTimedOut(pid, requestedStreams, parsedArgs.timeoutMs ?? 0);
+    } else if (resolved.waitStatus === 'exited') {
+      result += t.daemonOutputWaitExited(pid, requestedStreams);
+    }
 
     if (stdout) {
       const stdoutContent = truncateToolOutputText(daemon.stdoutContent, {

@@ -79,6 +79,8 @@ Get daemon process output.
 - `pid` (required): Daemon process ID (number)
 - `stdout` (optional): Whether to include stdout output (default: `true`)
 - `stderr` (optional): Whether to include stderr output (default: `true`)
+- `wait_for_new_output` (optional): Whether to wait until a requested stdout/stderr stream receives new output before returning (default: `false`; providing `timeout_ms` implies `true`)
+- `timeout_ms` (optional): Maximum milliseconds to wait for new output, capped at `86400000` (24h); on timeout, returns the current snapshot with a timeout notice; cannot be combined with `wait_for_new_output:false`
 
 **Returns:**
 

@@ -1,6 +1,8 @@
 import os from 'node:os';
 import path from 'node:path';
 
+export const MAX_CMD_RUNNER_OUTPUT_WAIT_TIMEOUT_MS = 24 * 60 * 60 * 1_000;
+
 export type CmdRunnerSpawnSpec = Readonly<{
   command: string;
   args: string[];
@@ -42,13 +44,22 @@ export type CmdRunnerInitialIpcMessage =
 export type CmdRunnerRequest =
   | Readonly<{ type: 'ping' }>
   | Readonly<{ type: 'get_status' }>
-  | Readonly<{ type: 'get_output'; stdout: boolean; stderr: boolean }>
+  | Readonly<{
+      type: 'get_output';
+      stdout: boolean;
+      stderr: boolean;
+      waitForNewOutput: boolean;
+      timeoutMs?: number;
+    }>
   | Readonly<{ type: 'stop'; entirePg: boolean }>;
 
 export type CmdRunnerStreamSnapshot = Readonly<{
   content: string;
   linesScrolledOut: number;
+  version: number;
 }>;
+
+export type CmdRunnerOutputWaitStatus = 'output' | 'timeout' | 'exited';
 
 export type CmdRunnerStatusPayload = Readonly<{
   daemonPid: number;
@@ -68,7 +79,8 @@ export type CmdRunnerStatusPayload = Readonly<{
 export type CmdRunnerResponse =
   | (Readonly<{ type: 'pong'; ok: true }> & CmdRunnerStatusPayload)
   | (Readonly<{ type: 'status'; ok: true }> & CmdRunnerStatusPayload)
-  | (Readonly<{ type: 'output'; ok: true }> & CmdRunnerStatusPayload)
+  | (Readonly<{ type: 'output'; ok: true; waitStatus?: CmdRunnerOutputWaitStatus }> &
+      CmdRunnerStatusPayload)
   | (Readonly<{ type: 'stop_result'; ok: true }> & CmdRunnerStatusPayload)
   | Readonly<{
       type: 'error';
@@ -115,13 +127,45 @@ function parseStreamSnapshot(raw: unknown, label: string): CmdRunnerStreamSnapsh
   }
   const content = asString(raw['content']);
   const linesScrolledOut = asNumber(raw['linesScrolledOut']);
+  const version = asNumber(raw['version']);
   if (content === null) {
     throw new Error(`Invalid cmd_runner ${label}.content: expected string`);
   }
   if (linesScrolledOut === null) {
     throw new Error(`Invalid cmd_runner ${label}.linesScrolledOut: expected number`);
   }
-  return { content, linesScrolledOut };
+  if (version === null) {
+    throw new Error(`Invalid cmd_runner ${label}.version: expected number`);
+  }
+  return { content, linesScrolledOut, version };
+}
+
+function parseOptionalTimeoutMs(raw: unknown, label: string): number | undefined {
+  if (raw === undefined) {
+    return undefined;
+  }
+  const value = asNumber(raw);
+  if (
+    value === null ||
+    !Number.isInteger(value) ||
+    value < 0 ||
+    value > MAX_CMD_RUNNER_OUTPUT_WAIT_TIMEOUT_MS
+  ) {
+    throw new Error(
+      `Invalid cmd_runner ${label}: expected non-negative integer <= ${String(MAX_CMD_RUNNER_OUTPUT_WAIT_TIMEOUT_MS)}`,
+    );
+  }
+  return value;
+}
+
+function parseOutputWaitStatus(raw: unknown): CmdRunnerOutputWaitStatus | undefined {
+  if (raw === undefined) {
+    return undefined;
+  }
+  if (raw === 'output' || raw === 'timeout' || raw === 'exited') {
+    return raw;
+  }
+  throw new Error(`Invalid cmd_runner output waitStatus: ${String(raw)}`);
 }
 
 function parseStatusPayload(raw: Record<string, unknown>): CmdRunnerStatusPayload {
@@ -324,10 +368,31 @@ export function parseCmdRunnerRequestLine(line: string): CmdRunnerRequest {
   if (type === 'get_output') {
     const stdout = asBoolean(raw['stdout']);
     const stderr = asBoolean(raw['stderr']);
+    const waitForNewOutputRaw = raw['waitForNewOutput'];
+    const waitForNewOutput =
+      waitForNewOutputRaw === undefined ? false : asBoolean(waitForNewOutputRaw);
+    const timeoutMs = parseOptionalTimeoutMs(raw['timeoutMs'], 'get_output.timeoutMs');
     if (stdout === null || stderr === null) {
       throw new Error('Invalid cmd_runner get_output request: stdout/stderr must be boolean');
     }
-    return { type, stdout, stderr };
+    if (waitForNewOutput === null) {
+      throw new Error('Invalid cmd_runner get_output request: waitForNewOutput must be boolean');
+    }
+    if (!stdout && !stderr) {
+      throw new Error('Invalid cmd_runner get_output request: at least one stream is required');
+    }
+    if (!waitForNewOutput && timeoutMs !== undefined) {
+      throw new Error(
+        'Invalid cmd_runner get_output request: timeoutMs requires waitForNewOutput=true',
+      );
+    }
+    return {
+      type,
+      stdout,
+      stderr,
+      waitForNewOutput,
+      ...(timeoutMs === undefined ? {} : { timeoutMs }),
+    };
   }
   throw new Error(`Invalid cmd_runner request type: ${String(type)}`);
 }
@@ -354,6 +419,15 @@ export function parseCmdRunnerResponseLine(line: string): CmdRunnerResponse {
   }
   if (type !== 'pong' && type !== 'status' && type !== 'output' && type !== 'stop_result') {
     throw new Error(`Invalid cmd_runner response type: ${String(type)}`);
+  }
+  if (type === 'output') {
+    const waitStatus = parseOutputWaitStatus(raw['waitStatus']);
+    return {
+      type,
+      ok: true,
+      ...(waitStatus === undefined ? {} : { waitStatus }),
+      ...parseStatusPayload(raw),
+    };
   }
   return {
     type,
