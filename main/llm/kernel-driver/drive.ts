@@ -180,6 +180,8 @@ const KERNEL_DRIVER_DEFAULT_RETRY_POLICY: KernelDriverRetryPolicy = {
   maxDelayMs: 30 * 60 * 1000, // 30 minutes
 };
 
+const CLEAR_MIND_TOOL_NAME = 'clear_mind';
+
 const KERNEL_DRIVER_EMPTY_LLM_RESPONSE_ERROR_CODE = 'DOMINDS_LLM_EMPTY_RESPONSE';
 
 // Wrapper isolation boundary:
@@ -2691,6 +2693,40 @@ function shouldImmediatelyFollowUpToolOutcome(
   return shouldImmediatelyFollowUpSuccessfulToolResult(tool);
 }
 
+function isFailedToolOutcome(outcome: ToolOutcome): boolean {
+  return outcome === 'failure' || outcome === 'partial_failure';
+}
+
+type FailedToolResultSummary = Readonly<{
+  callId: string;
+  toolName: string;
+  outcome: ToolOutcome;
+}>;
+
+function formatClearMindBlockedByFailedSiblingTools(
+  failedTools: readonly FailedToolResultSummary[],
+): string {
+  const language = getWorkLanguage();
+  const details = failedTools
+    .map((tool) => `- ${tool.toolName} (callId=${tool.callId}, outcome=${String(tool.outcome)})`)
+    .join('\n');
+  return language === 'zh'
+    ? [
+        '错误：本轮 clear_mind 与其它工具一起调用，但其它工具返回了失败结果。',
+        '',
+        details,
+        '',
+        'clear_mind 已拒绝开启新一程。请先确保其它工具调用正常完成（必要时修正参数、重试或处理失败），然后再次调用 clear_mind。',
+      ].join('\n')
+    : [
+        'Error: clear_mind was called in the same round as other tools, and at least one other tool returned a failure result.',
+        '',
+        details,
+        '',
+        'clear_mind refused to start a new course. Ensure the other tool calls complete normally first (fix arguments, retry, or handle the failure), then call clear_mind again.',
+      ].join('\n');
+}
+
 type ExecutedFuncCallResult = Readonly<{
   func: FuncCallMsg;
   originalFunc: FuncCallMsg;
@@ -2897,6 +2933,7 @@ async function executeFunctionCalls(args: {
   funcCalls: readonly FuncCallMsg[];
   abortSignal: AbortSignal | undefined;
   contextHealthForToolResultVisibility: ContextHealthSnapshot | undefined;
+  failedPriorToolResults?: readonly FailedToolResultSummary[];
 }): Promise<ExecutedFuncCallResult[]> {
   const preparedCalls: Array<PreparedFuncCall & { originalFunc: FuncCallMsg }> = args.funcCalls.map(
     (func) => {
@@ -2940,116 +2977,172 @@ async function executeFunctionCalls(args: {
     );
   }
 
-  const functionPromises = preparedCalls.map(
-    async ({
-      func,
-      originalFunc,
-      callGenseq,
-      argsStr,
-      tool,
-      preparedInvocationArgs,
-    }): Promise<ExecutedFuncCallResult> => {
-      let result: FuncResultMsg;
-      let outcome: ToolOutcome = 'success';
-      let forceImmediateFollowup = false;
-      let rethrowError: unknown;
-      if (!tool) {
+  const executePreparedCall = async ({
+    func,
+    originalFunc,
+    callGenseq,
+    argsStr,
+    tool,
+    preparedInvocationArgs,
+  }: PreparedFuncCall & { originalFunc: FuncCallMsg }): Promise<ExecutedFuncCallResult> => {
+    let result: FuncResultMsg;
+    let outcome: ToolOutcome = 'success';
+    let forceImmediateFollowup = false;
+    let rethrowError: unknown;
+    if (!tool) {
+      outcome = 'failure';
+      const output = toolFailure(`Tool '${func.name}' not found`);
+      result = {
+        type: 'func_result_msg',
+        id: func.id,
+        rawId: func.rawId,
+        effectiveId: func.effectiveId,
+        name: func.name,
+        content: output.content,
+        role: 'tool',
+        genseq: callGenseq,
+      };
+    } else {
+      if (!preparedInvocationArgs || !preparedInvocationArgs.ok) {
         outcome = 'failure';
-        const output = toolFailure(`Tool '${func.name}' not found`);
+        const errorText =
+          preparedInvocationArgs?.error ?? 'Arguments could not be prepared for tool invocation';
+        log.debug('kernel-driver rejected function call arguments before execution', undefined, {
+          funcName: func.name,
+          arguments: argsStr,
+          error: errorText,
+        });
         result = {
           type: 'func_result_msg',
           id: func.id,
           rawId: func.rawId,
           effectiveId: func.effectiveId,
           name: func.name,
-          content: output.content,
+          content: toolFailure(`Invalid arguments: ${errorText}`).content,
           role: 'tool',
           genseq: callGenseq,
         };
       } else {
-        if (!preparedInvocationArgs || !preparedInvocationArgs.ok) {
-          outcome = 'failure';
-          const errorText =
-            preparedInvocationArgs?.error ?? 'Arguments could not be prepared for tool invocation';
-          log.debug('kernel-driver rejected function call arguments before execution', undefined, {
-            funcName: func.name,
-            arguments: argsStr,
-            error: errorText,
+        try {
+          throwIfAborted(args.abortSignal, args.dlg);
+          const output: ToolCallOutput = await tool.call(
+            args.dlg,
+            args.agent,
+            preparedInvocationArgs.args,
+          );
+          throwIfAborted(args.abortSignal, args.dlg);
+          const visibleResult = applyContextHealthToolResultVisibilityLimit({
+            dlg: args.dlg,
+            output,
+            contextHealth: args.contextHealthForToolResultVisibility,
+            language: getWorkLanguage(),
           });
+          const visibleOutput = visibleResult.output;
+          forceImmediateFollowup = visibleResult.largeReturnUnavailable;
+          outcome = visibleOutput.outcome;
           result = {
             type: 'func_result_msg',
             id: func.id,
             rawId: func.rawId,
             effectiveId: func.effectiveId,
             name: func.name,
-            content: toolFailure(`Invalid arguments: ${errorText}`).content,
+            content: visibleOutput.content,
+            contentItems: Array.isArray(visibleOutput.contentItems)
+              ? [...visibleOutput.contentItems]
+              : undefined,
             role: 'tool',
             genseq: callGenseq,
           };
-        } else {
-          try {
-            throwIfAborted(args.abortSignal, args.dlg);
-            const output: ToolCallOutput = await tool.call(
-              args.dlg,
-              args.agent,
-              preparedInvocationArgs.args,
-            );
-            throwIfAborted(args.abortSignal, args.dlg);
-            const visibleResult = applyContextHealthToolResultVisibilityLimit({
-              dlg: args.dlg,
-              output,
-              contextHealth: args.contextHealthForToolResultVisibility,
-              language: getWorkLanguage(),
-            });
-            const visibleOutput = visibleResult.output;
-            forceImmediateFollowup = visibleResult.largeReturnUnavailable;
-            outcome = visibleOutput.outcome;
-            result = {
-              type: 'func_result_msg',
-              id: func.id,
-              rawId: func.rawId,
-              effectiveId: func.effectiveId,
-              name: func.name,
-              content: visibleOutput.content,
-              contentItems: Array.isArray(visibleOutput.contentItems)
-                ? [...visibleOutput.contentItems]
-                : undefined,
-              role: 'tool',
-              genseq: callGenseq,
-            };
-          } catch (err) {
-            outcome = 'failure';
-            const errText = err instanceof Error ? `${err.name}: ${err.message}` : String(err);
-            const failureOutput = toolFailure(
-              `Function '${func.name}' execution failed: ${errText}`,
-            );
-            result = {
-              type: 'func_result_msg',
-              id: func.id,
-              rawId: func.rawId,
-              effectiveId: func.effectiveId,
-              name: func.name,
-              content: failureOutput.content,
-              role: 'tool',
-              genseq: callGenseq,
-            };
-            if (args.abortSignal?.aborted || err instanceof KernelDriverInterruptedError) {
-              result = buildInterruptedFuncResult({ func, callGenseq, err });
-              rethrowError = err;
-            }
+        } catch (err) {
+          outcome = 'failure';
+          const errText = err instanceof Error ? `${err.name}: ${err.message}` : String(err);
+          const failureOutput = toolFailure(`Function '${func.name}' execution failed: ${errText}`);
+          result = {
+            type: 'func_result_msg',
+            id: func.id,
+            rawId: func.rawId,
+            effectiveId: func.effectiveId,
+            name: func.name,
+            content: failureOutput.content,
+            role: 'tool',
+            genseq: callGenseq,
+          };
+          if (args.abortSignal?.aborted || err instanceof KernelDriverInterruptedError) {
+            result = buildInterruptedFuncResult({ func, callGenseq, err });
+            rethrowError = err;
           }
         }
       }
+    }
 
-      await args.dlg.receiveFuncResult(result);
-      if (rethrowError !== undefined) {
-        throw rethrowError;
-      }
-      return { func, originalFunc, outcome, forceImmediateFollowup, result };
-    },
+    await args.dlg.receiveFuncResult(result);
+    if (rethrowError !== undefined) {
+      throw rethrowError;
+    }
+    return { func, originalFunc, outcome, forceImmediateFollowup, result };
+  };
+
+  const blockClearMindCall = async (
+    prepared: PreparedFuncCall & { originalFunc: FuncCallMsg },
+    failedTools: readonly FailedToolResultSummary[],
+  ): Promise<ExecutedFuncCallResult> => {
+    const output = toolFailure(formatClearMindBlockedByFailedSiblingTools(failedTools));
+    const result: FuncResultMsg = {
+      type: 'func_result_msg',
+      id: prepared.func.id,
+      rawId: prepared.func.rawId,
+      effectiveId: prepared.func.effectiveId,
+      name: prepared.func.name,
+      content: output.content,
+      role: 'tool',
+      genseq: prepared.callGenseq,
+    };
+    await args.dlg.receiveFuncResult(result);
+    return {
+      func: prepared.func,
+      originalFunc: prepared.originalFunc,
+      outcome: output.outcome,
+      forceImmediateFollowup: false,
+      result,
+    };
+  };
+
+  const clearMindCalls = preparedCalls.filter((call) => call.func.name === CLEAR_MIND_TOOL_NAME);
+  const siblingCalls = preparedCalls.filter((call) => call.func.name !== CLEAR_MIND_TOOL_NAME);
+  const failedPriorToolResults = args.failedPriorToolResults ?? [];
+  if (clearMindCalls.length === 0 || siblingCalls.length === 0) {
+    if (clearMindCalls.length > 0 && failedPriorToolResults.length > 0) {
+      return await Promise.all(
+        clearMindCalls.map((call) => blockClearMindCall(call, failedPriorToolResults)),
+      );
+    }
+    return await Promise.all(preparedCalls.map((call) => executePreparedCall(call)));
+  }
+
+  const siblingExecutions = await Promise.all(
+    siblingCalls.map((call) => executePreparedCall(call)),
   );
+  const failedSiblingToolResults: FailedToolResultSummary[] = [
+    ...failedPriorToolResults,
+    ...siblingExecutions
+      .filter((execution) => isFailedToolOutcome(execution.outcome))
+      .map((execution) => ({
+        callId: execution.result.id,
+        toolName: execution.result.name,
+        outcome: execution.outcome,
+      })),
+  ];
+  if (failedSiblingToolResults.length > 0) {
+    const clearMindExecutions = await Promise.all(
+      clearMindCalls.map((call) => blockClearMindCall(call, failedSiblingToolResults)),
+    );
+    return [...siblingExecutions, ...clearMindExecutions];
+  }
 
-  return await Promise.all(functionPromises);
+  const clearMindExecutions = await Promise.all(
+    clearMindCalls.map((call) => executePreparedCall(call)),
+  );
+  return [...siblingExecutions, ...clearMindExecutions];
 }
 
 async function executeFunctionRound(args: {
@@ -3105,6 +3198,19 @@ async function executeFunctionRound(args: {
     activePromptReplyDirective: args.activePromptReplyDirective,
   });
   throwIfAborted(args.abortSignal, args.dlg);
+  const failedTellaskToolResults = tellaskRound.invalidTellaskCallIds.map((callId) => {
+    const call = args.funcCalls.find((candidate) => candidate.id === callId);
+    if (call === undefined) {
+      throw new Error(
+        `kernel-driver tellask result invariant violation: missing invalid tellask call '${callId}'`,
+      );
+    }
+    return {
+      callId,
+      toolName: call.name,
+      outcome: 'failure' as const,
+    };
+  });
 
   const genericExecutions = await executeFunctionCalls({
     dlg: args.dlg,
@@ -3113,6 +3219,7 @@ async function executeFunctionRound(args: {
     funcCalls: tellaskRound.normalCalls,
     abortSignal: args.abortSignal,
     contextHealthForToolResultVisibility: args.contextHealthForToolResultVisibility,
+    failedPriorToolResults: failedTellaskToolResults,
   });
   const genericExecutionByOriginalCall = new Map(
     genericExecutions.map((execution) => [execution.originalFunc, execution] as const),
