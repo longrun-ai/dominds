@@ -31,7 +31,7 @@ function collectSharedReminderUpdatePeerDialogs(args: {
   scope: SharedReminderUpdateImpactScope;
 }): Dialog[] {
   const peers: Dialog[] = [];
-  for (const candidate of globalDialogRegistry.getLoadedActiveDialogsForRuntimeInspection()) {
+  for (const candidate of globalDialogRegistry.getLoadedInFlightDialogsForSharedReminderImpact()) {
     if (
       sharedReminderUpdateImpactsDialog({
         scope: args.scope,

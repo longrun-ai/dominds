@@ -2706,14 +2706,6 @@ export class MainDialog extends Dialog {
   }
 
   /**
-   * Runtime inspection snapshot for dialogs loaded in this root tree and still active.
-   * This is not a persisted running-dialog inventory.
-   */
-  getLoadedActiveDialogsForRuntimeInspection(): Dialog[] {
-    return Array.from(this._localRegistry.values()).filter((dialog) => dialog.status === 'running');
-  }
-
-  /**
    * Remove a dialog from the local registry.
    */
   unregisterDialog(selfId: string): void {

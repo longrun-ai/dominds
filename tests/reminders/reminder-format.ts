@@ -469,7 +469,7 @@ async function main() {
     audience: 'updater',
   });
   assert(
-    zhTaskParallelImpact.includes('当前运行时已加载同一智能体在当前差遣牒任务内的其它并行对话'),
+    zhTaskParallelImpact.includes('当前进行时存在同一智能体在当前差遣牒任务内的其它并行对话'),
     'Expected zh task parallel-impact notice to limit impact to same-task dialogs',
   );
   assert(
@@ -487,7 +487,7 @@ async function main() {
     audience: 'peer',
   });
   assert(
-    zhAgentParallelImpact.includes('当前运行时已加载同一智能体的其它并行对话'),
+    zhAgentParallelImpact.includes('当前进行时存在同一智能体的其它并行对话'),
     'Expected zh agent parallel-impact notice to mention same-agent parallel dialogs',
   );
   assert(
@@ -999,7 +999,9 @@ async function main() {
     audience: 'updater',
   });
   assert(
-    enTaskParallelImpact.includes('loaded other parallel dialogs for the same agent and Taskdoc'),
+    enTaskParallelImpact.includes(
+      'current in-flight work has other parallel dialogs for the same agent and Taskdoc',
+    ),
     'Expected en task parallel-impact notice to limit impact to same-task dialogs',
   );
   assert(
@@ -1017,7 +1019,9 @@ async function main() {
     audience: 'peer',
   });
   assert(
-    enAgentParallelImpact.includes('loaded other parallel dialogs for the same agent'),
+    enAgentParallelImpact.includes(
+      'current in-flight work has other parallel dialogs for the same agent',
+    ),
     'Expected en agent parallel-impact notice to mention same-agent parallel dialogs',
   );
   assert(

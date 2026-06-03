@@ -274,13 +274,50 @@ class GlobalDialogRegistry {
   }
 
   /**
-   * Runtime inspection snapshot for dialogs already loaded in this process and still active.
-   * This is not a persisted running-dialog inventory and must not be used to discover work.
+   * One-shot runtime snapshot for shared-reminder impact routing.
+   *
+   * This intentionally does not enumerate persisted "all running dialogs". It walks only the roots
+   * this runtime has already registered, and includes only dialogs with direct in-memory evidence
+   * of current work: locked running main dialogs and the loaded active-callee frontier under each
+   * root. Dialogs that merely remain in memory/history but have no current-work signal are not
+   * considered parallel work.
    */
-  getLoadedActiveDialogsForRuntimeInspection(): Dialog[] {
-    return Array.from(this.entries.values()).flatMap((entry) =>
-      entry.mainDialog.getLoadedActiveDialogsForRuntimeInspection(),
-    );
+  getLoadedInFlightDialogsForSharedReminderImpact(): Dialog[] {
+    const dialogs: Dialog[] = [];
+    for (const entry of this.entries.values()) {
+      const rootDialog = entry.mainDialog;
+      const visitedDialogIds = new Set<string>();
+      const stack: Dialog[] = [];
+      if (rootDialog.status === 'running' && rootDialog.isLocked()) {
+        dialogs.push(rootDialog);
+        visitedDialogIds.add(rootDialog.id.valueOf());
+      }
+      for (const calleeId of rootDialog.activeCalleeDialogIds) {
+        const loadedCallee = rootDialog.lookupDialog(calleeId.selfId);
+        if (loadedCallee && loadedCallee.status === 'running') {
+          stack.push(loadedCallee);
+        }
+      }
+
+      while (stack.length > 0) {
+        const current = stack.pop();
+        if (!current || visitedDialogIds.has(current.id.valueOf())) {
+          continue;
+        }
+        visitedDialogIds.add(current.id.valueOf());
+        if (current.status !== 'running') {
+          continue;
+        }
+        dialogs.push(current);
+        for (const calleeId of current.activeCalleeDialogIds) {
+          const loadedCallee = rootDialog.lookupDialog(calleeId.selfId);
+          if (loadedCallee && loadedCallee.status === 'running') {
+            stack.push(loadedCallee);
+          }
+        }
+      }
+    }
+    return dialogs;
   }
 
   getLastDriveTrigger(rootId: string): DriveTriggerEvent | undefined {

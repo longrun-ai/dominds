@@ -727,8 +727,8 @@ export function formatSharedReminderUpdateImpactNotice(
       scope === 'task' ? '任务范围' : scope === 'agent' ? '智能体范围' : '运行时范围';
     const impactedDialogs =
       scope === 'task'
-        ? '当前运行时已加载同一智能体在当前差遣牒任务内的其它并行对话'
-        : '当前运行时已加载同一智能体的其它并行对话';
+        ? '当前进行时存在同一智能体在当前差遣牒任务内的其它并行对话'
+        : '当前进行时存在同一智能体的其它并行对话';
     if (args.audience === 'updater') {
       return `共享范围影响：你刚更新的 reminder_id=${reminderId} 是${scopeName}提醒项，不是当前对话私有；${impactedDialogs}，其它能看到这条提醒项的对话也会看到这次更新。如果新内容只应影响当前对话，请另建对话范围提醒项，让内容仅在本对话范围可见，并把共享项修正回共享语义。`;
     }
@@ -744,8 +744,8 @@ export function formatSharedReminderUpdateImpactNotice(
     scope === 'task' ? 'task-scope' : scope === 'agent' ? 'agent-scope' : 'runtime-scope';
   const impactedDialogs =
     scope === 'task'
-      ? 'The current runtime has loaded other parallel dialogs for the same agent and Taskdoc'
-      : 'The current runtime has loaded other parallel dialogs for the same agent';
+      ? 'The current in-flight work has other parallel dialogs for the same agent and Taskdoc'
+      : 'The current in-flight work has other parallel dialogs for the same agent';
   if (args.audience === 'updater') {
     return `Shared-scope impact: the reminder you just updated, reminder_id=${reminderId}, is ${scopeName}, not private to the current dialog. ${impactedDialogs}, so other dialogs that can see this reminder will see this update too. If the new content should affect only the current dialog, create a dialog-scope reminder instead so it is visible only inside this dialog, and correct the shared reminder back to shared meaning.`;
   }
