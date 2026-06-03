@@ -125,8 +125,11 @@ import { emitThinkingEvents } from './events';
 import {
   advanceFbrState,
   buildFbrPromptForState,
+  buildProgrammaticFbrContextCriticalContent,
   buildProgrammaticFbrUnreasonableSituationContent,
+  forceFbrContextCautionFinalizationState,
   inspectFbrConclusionAttempt,
+  isFbrContextCautionFinalizationState,
   isFbrFinalizationState,
   markFbrPromptDelivered,
 } from './fbr';
@@ -449,6 +452,43 @@ function buildKernelDriverFbrPrompt(
     grammar: 'markdown',
     origin: 'runtime',
   };
+}
+
+function resolveLatestModelOutputGenseq(dlg: Dialog): number | undefined {
+  for (let index = dlg.msgs.length - 1; index >= 0; index -= 1) {
+    const msg = dlg.msgs[index];
+    if (msg === undefined) {
+      continue;
+    }
+    switch (msg.type) {
+      case 'saying_msg':
+      case 'thinking_msg':
+      case 'func_call_msg': {
+        const genseq = Math.floor(msg.genseq);
+        if (Number.isFinite(genseq) && genseq > 0) {
+          return genseq;
+        }
+        break;
+      }
+      default:
+        break;
+    }
+  }
+  return undefined;
+}
+
+function resolveProgrammaticFbrConclusionGenseq(args: {
+  dlg: Dialog;
+  lastAssistantSayingGenseq: number | null;
+  lastFunctionCallGenseq: number | null;
+}): number {
+  return (
+    args.lastAssistantSayingGenseq ??
+    args.lastFunctionCallGenseq ??
+    resolveLatestModelOutputGenseq(args.dlg) ??
+    args.dlg.activeGenSeqOrUndefined ??
+    1
+  );
 }
 
 function normalizeQ4HAnswerCallId(raw: string | undefined): string | undefined {
@@ -1063,7 +1103,7 @@ function formatContextHealthLargeToolReturnUnavailable(args: {
         '1. 把需要回传给主线对话的结论、证据定位和风险整理清楚。',
         '2. 对于下一程恢复工作需要的信息，写入提醒项。',
         '',
-        '然后尽快完成当前支线回复；如果你有 clear_mind({})，再调用它开启新一程。',
+        '然后调用 clear_mind({}) 开启新一程，并尽快完成当前支线回复。',
         '',
         `详情：本次返回约 ${approxBytes} 字节。`,
       ].join('\n');
@@ -1089,7 +1129,7 @@ function formatContextHealthLargeToolReturnUnavailable(args: {
       '1. Organize the conclusions, evidence pointers, and risks that need to go back to the Mainline dialog.',
       '2. Write any details needed to resume the next course into reminders.',
       '',
-      'Then finish the current Sideline dialog reply as soon as possible; if you have clear_mind({}), call it to start a new course.',
+      'Then call clear_mind({}) to start a new course, and finish the current Sideline dialog reply as soon as possible.',
       '',
       `Detail: this return was about ${approxBytes} bytes.`,
     ].join('\n');
@@ -1137,6 +1177,9 @@ function applyContextHealthToolResultVisibilityLimit(args: {
   contextHealth: ContextHealthSnapshot | undefined;
   language: 'zh' | 'en';
 }): Readonly<{ output: ToolCallOutput; largeReturnUnavailable: boolean }> {
+  if (isFbrSideDialog(args.dlg)) {
+    return { output: args.output, largeReturnUnavailable: false };
+  }
   if (getContextHealthRemediationLevel(args.contextHealth) === undefined) {
     return { output: args.output, largeReturnUnavailable: false };
   }
@@ -3643,8 +3686,45 @@ export async function driveDialogStreamCore(
         genIterNo += 1;
         throwIfAborted(abortSignal, dlg);
 
-        const activeFbrState = await loadDialogFbrState(dlg);
+        let activeFbrState = await loadDialogFbrState(dlg);
         if (isFbrSideDialog(dlg)) {
+          const fbrContextHealthLevel = getContextHealthRemediationLevel(
+            dlg.getLastContextHealth(),
+          );
+          if (activeFbrState !== undefined && fbrContextHealthLevel === 'critical') {
+            log.warn('kernel-driver ending FBR with critical context fixed conclusion', undefined, {
+              rootId: dlg.id.rootId,
+              selfId: dlg.id.selfId,
+              course: dlg.currentCourse,
+              phase: activeFbrState.phase,
+              iteration: activeFbrState.iteration,
+            });
+            fbrConclusion = {
+              responseText: buildProgrammaticFbrContextCriticalContent({
+                language: getWorkLanguage(),
+              }),
+              responseGenseq: resolveProgrammaticFbrConclusionGenseq({
+                dlg,
+                lastAssistantSayingGenseq,
+                lastFunctionCallGenseq,
+              }),
+              replyResolutionCallId: `fbr-context-critical-${generateShortId()}`,
+            };
+            await persistDialogFbrState(dlg, undefined);
+            dlg.setFbrConclusionToolsEnabled(false);
+            finalDisplayState = await computeIdleDisplayState(dlg);
+            break driveCoreLoop;
+          }
+          if (
+            activeFbrState !== undefined &&
+            fbrContextHealthLevel === 'caution' &&
+            !isFbrContextCautionFinalizationState(activeFbrState) &&
+            (pendingPrompt === undefined || pendingPrompt.origin === 'runtime')
+          ) {
+            activeFbrState = forceFbrContextCautionFinalizationState(activeFbrState);
+            await persistDialogFbrState(dlg, activeFbrState);
+            pendingPrompt = buildKernelDriverFbrPrompt(dlg, activeFbrState);
+          }
           dlg.setFbrConclusionToolsEnabled(
             activeFbrState !== undefined && isFbrFinalizationState(activeFbrState),
           );
@@ -3876,7 +3956,10 @@ export async function driveDialogStreamCore(
         const currentPromptFromFbrState =
           currentPrompt !== undefined &&
           currentFbrState !== undefined &&
-          currentFbrState.promptDelivered !== true;
+          currentFbrState.promptDelivered !== true &&
+          isFbrSideDialog(dlg) &&
+          currentPrompt.origin === 'runtime' &&
+          currentPrompt.content === buildKernelDriverFbrPrompt(dlg, currentFbrState).content;
         pendingPrompt = undefined;
 
         if (currentPrompt) {
@@ -5038,11 +5121,11 @@ export async function driveDialogStreamCore(
                 language: getWorkLanguage(),
                 finalizationAttempts: persistedFbrState.effort,
               }),
-              responseGenseq:
-                lastAssistantSayingGenseq ??
-                lastFunctionCallGenseq ??
-                dlg.activeGenSeqOrUndefined ??
-                1,
+              responseGenseq: resolveProgrammaticFbrConclusionGenseq({
+                dlg,
+                lastAssistantSayingGenseq,
+                lastFunctionCallGenseq,
+              }),
               replyResolutionCallId: `fbr-conclusion-${generateShortId()}`,
             };
             if (!isFbrSideDialog(dlg)) {

@@ -43,7 +43,7 @@ function expectedSidelineReplacement(originalBytes: number): string {
     '1. 把需要回传给主线对话的结论、证据定位和风险整理清楚。',
     '2. 对于下一程恢复工作需要的信息，写入提醒项。',
     '',
-    '然后尽快完成当前支线回复；如果你有 clear_mind({})，再调用它开启新一程。',
+    '然后调用 clear_mind({}) 开启新一程，并尽快完成当前支线回复。',
     '',
     `详情：本次返回约 ${new Intl.NumberFormat('zh-CN').format(originalBytes)} 字节。`,
   ].join('\n');
@@ -468,7 +468,8 @@ async function main(): Promise<void> {
       const sideResultContent = sideFuncResults[0]?.content ?? '';
       assert.equal(sideResultContent, expectedSideReplacement);
       assert.match(sideResultContent, /把需要回传给主线对话的结论、证据定位和风险整理清楚/);
-      assert.match(sideResultContent, /然后尽快完成当前支线回复/);
+      assert.match(sideResultContent, /然后调用 clear_mind\(\{\}\) 开启新一程/);
+      assert.doesNotMatch(sideResultContent, /如果/);
       assert.doesNotMatch(sideResultContent, /写入差遣牒合适章节/);
       assert.doesNotMatch(sideResultContent, /side-start/);
       assert.doesNotMatch(sideResultContent, /side-end/);

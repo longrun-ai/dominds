@@ -250,6 +250,89 @@ export function buildFbrFinalizationPrompt(args: {
   ].join('\n');
 }
 
+export function buildFbrContextCautionFinalizationPrompt(args: {
+  attempt: number;
+  language: LanguageCode;
+}): string {
+  if (args.language === 'zh') {
+    const retryLine =
+      args.attempt <= 1
+        ? 'FBR 上下文状态：🟡 吃紧'
+        : `FBR 上下文仍然吃紧；这是第 ${args.attempt} 次要求你用结论函数收口。`;
+    return [
+      retryLine,
+      '',
+      '当前 FBR 已经因为上下文压力提前进入最终收口。把这视为问题复杂度、推理成本或噪音累积已经不适合继续发散/收敛的信号。',
+      '',
+      `现在必须且只能调用以下两个函数之一结束本次 FBR：`,
+      `- \`${FBR_LOW_NOISE_CONCLUSION_TOOL_NAME}({ content })\``,
+      `- \`${FBR_UNREASONABLE_SITUATION_TOOL_NAME}({ content })\``,
+      '',
+      '选择规则：',
+      '- 如果基于已经完成的发散、收敛推演，仍能形成稳定共识：调用低噪高信息结论函数。',
+      '- 如果已有推演仍相互矛盾、证据不足、关键上下文缺失，或上下文吃紧本身说明问题过于复杂：调用“不合理现状”函数。',
+      '',
+      '强制要求：',
+      '- 不要 clear_mind，不要继续发散/收敛，不要调用其它函数，不要输出普通文本。',
+      '- content 必须由你基于已经做过的推演自行形成；运行时不会替你程序化转译或代写结论。',
+      '- 最终 content 只保留稳定共识、关键未知项、最重要的下一步；未获独立支撑的离谱想法必须当噪音丢弃。',
+    ].join('\n');
+  }
+
+  const retryLine =
+    args.attempt <= 1
+      ? 'FBR context state: 🟡 caution'
+      : `FBR context is still tight; this is reminder ${args.attempt} requiring you to close through a conclusion function.`;
+  return [
+    retryLine,
+    '',
+    'This FBR is entering final closure early because of context pressure. Treat that as a signal that problem complexity, reasoning cost, or accumulated noise is no longer suitable for continued divergence/convergence.',
+    '',
+    'You must now end this FBR by calling exactly one of:',
+    `- \`${FBR_LOW_NOISE_CONCLUSION_TOOL_NAME}({ content })\``,
+    `- \`${FBR_UNREASONABLE_SITUATION_TOOL_NAME}({ content })\``,
+    '',
+    'Choose as follows:',
+    '- If the divergence/convergence already performed still supports stable consensus, call the low-noise highly-informative conclusion function.',
+    '- If the existing reasoning remains contradictory, under-evidenced, missing key context, or context pressure itself shows the problem is too complex, call the unreasonable-situation function.',
+    '',
+    'Hard requirements:',
+    '- Do not clear_mind, do not keep diverging/converging, do not call any other function, and do not output plain text.',
+    '- The content must be formed by you from the reasoning already performed; the runtime will not programmatically translate or write the conclusion for you.',
+    '- Keep only stable consensus, key unknowns, and the single most important next steps; discard unsupported wild ideas as noise.',
+  ].join('\n');
+}
+
+export function buildProgrammaticFbrContextCriticalContent(args: {
+  language: LanguageCode;
+}): string {
+  if (args.language === 'zh') {
+    return [
+      '当前 FBR 问题过于复杂，不能继续负责地扩展推理，也不能在剩余上下文内形成可靠的低噪结论。',
+      '',
+      '原因：',
+      '- 上下文已经达到告急水平；这本身应视为问题复杂度、证据需求或推理分支数量超过当前 FBR 可控范围的信号。',
+      '- Dominds 不会在告急状态下程序化总结对话、抽取已有推演或替模型转译结论；那会显著提高遗漏、失真和幻觉风险。',
+      '',
+      '建议：',
+      '- 将诉请拆解为更小、更清晰的子问题。',
+      '- 为每个子问题分别固定 Goal / Facts / Constraints / Evidence / Unknowns 后，各自重新发起 FBR。',
+    ].join('\n');
+  }
+
+  return [
+    'This FBR problem is too complex to keep expanding reasoning responsibly or produce a reliable low-noise conclusion within the remaining context.',
+    '',
+    'Reasons:',
+    '- Context has reached the critical level; this should itself be treated as a signal that problem complexity, evidence needs, or branch count exceeded what the current FBR can control.',
+    '- Dominds will not programmatically summarize the dialog, extract existing reasoning, or translate it into a conclusion under critical context pressure; doing so would materially increase omission, distortion, and hallucination risk.',
+    '',
+    'Suggested next steps:',
+    '- Split the request into smaller, clearer subproblems.',
+    '- For each subproblem, stabilize Goal / Facts / Constraints / Evidence / Unknowns, then run its own FBR pass.',
+  ].join('\n');
+}
+
 export function buildProgrammaticFbrUnreasonableSituationContent(args: {
   language: LanguageCode;
   finalizationAttempts: number;
@@ -379,53 +462,95 @@ export function isFbrFinalizationState(state: DialogFbrState): boolean {
   return state.phase === 'finalization';
 }
 
-export function advanceFbrState(state: DialogFbrState): DialogFbrState | undefined {
-  if (state.phase === 'divergence') {
-    if (state.iteration < state.effort) {
-      return {
-        kind: 'serial',
-        effort: state.effort,
-        phase: 'divergence',
-        iteration: state.iteration + 1,
-        promptDelivered: false,
-      };
-    }
+export function isFbrContextCautionFinalizationState(state: DialogFbrState): boolean {
+  return state.phase === 'finalization' && state.finalizationReason === 'context_caution';
+}
+
+export function forceFbrContextCautionFinalizationState(state: DialogFbrState): DialogFbrState {
+  if (state.phase === 'finalization') {
     return {
-      kind: 'serial',
-      effort: state.effort,
-      phase: 'convergence',
-      iteration: 1,
+      ...state,
+      finalizationReason: 'context_caution',
       promptDelivered: false,
     };
-  }
-  if (state.phase === 'convergence') {
-    if (state.iteration < state.effort) {
-      return {
-        kind: 'serial',
-        effort: state.effort,
-        phase: 'convergence',
-        iteration: state.iteration + 1,
-        promptDelivered: false,
-      };
-    }
-    return {
-      kind: 'serial',
-      effort: state.effort,
-      phase: 'finalization',
-      iteration: 1,
-      promptDelivered: false,
-    };
-  }
-  if (state.iteration >= state.effort) {
-    return undefined;
   }
   return {
     kind: 'serial',
     effort: state.effort,
     phase: 'finalization',
-    iteration: state.iteration + 1,
+    iteration: 1,
     promptDelivered: false,
+    finalizationReason: 'context_caution',
   };
+}
+
+export function advanceFbrState(state: DialogFbrState): DialogFbrState | undefined {
+  switch (state.phase) {
+    case 'divergence': {
+      if (state.iteration < state.effort) {
+        return {
+          kind: 'serial',
+          effort: state.effort,
+          phase: 'divergence',
+          iteration: state.iteration + 1,
+          promptDelivered: false,
+        };
+      }
+      return {
+        kind: 'serial',
+        effort: state.effort,
+        phase: 'convergence',
+        iteration: 1,
+        promptDelivered: false,
+      };
+    }
+    case 'convergence': {
+      if (state.iteration < state.effort) {
+        return {
+          kind: 'serial',
+          effort: state.effort,
+          phase: 'convergence',
+          iteration: state.iteration + 1,
+          promptDelivered: false,
+        };
+      }
+      return {
+        kind: 'serial',
+        effort: state.effort,
+        phase: 'finalization',
+        iteration: 1,
+        promptDelivered: false,
+        finalizationReason: 'planned',
+      };
+    }
+    case 'finalization': {
+      if (state.finalizationReason === 'context_caution') {
+        return {
+          kind: 'serial',
+          effort: state.effort,
+          phase: 'finalization',
+          iteration: state.iteration + 1,
+          promptDelivered: false,
+          finalizationReason: 'context_caution',
+        };
+      }
+      if (state.iteration >= state.effort) {
+        return undefined;
+      }
+      return {
+        kind: 'serial',
+        effort: state.effort,
+        phase: 'finalization',
+        iteration: state.iteration + 1,
+        promptDelivered: false,
+        finalizationReason: 'planned',
+      };
+    }
+    default: {
+      const _exhaustive: never = state;
+      return _exhaustive;
+    }
+  }
 }
 
 export function buildFbrPromptForState(args: {
@@ -436,36 +561,47 @@ export function buildFbrPromptForState(args: {
   language: LanguageCode;
   collectiveTargets?: string[];
 }): string {
-  if (args.state.phase === 'divergence') {
-    return formatAssignmentFromAskerDialog({
-      callName: 'freshBootsReasoning',
-      fromAgentId: args.fromAgentId,
-      toAgentId: args.toAgentId,
-      tellaskContent: appendDistinctPerspectiveFbrBody({
-        body: args.tellaskContent,
+  switch (args.state.phase) {
+    case 'divergence':
+      return formatAssignmentFromAskerDialog({
+        callName: 'freshBootsReasoning',
+        fromAgentId: args.fromAgentId,
+        toAgentId: args.toAgentId,
+        tellaskContent: appendDistinctPerspectiveFbrBody({
+          body: args.tellaskContent,
+          iteration: args.state.iteration,
+          total: args.state.effort,
+          language: args.language,
+          isFinalRound: args.state.iteration === args.state.effort,
+        }),
+        language: args.language,
+        collectiveTargets: args.collectiveTargets,
+        fbrRound: {
+          iteration: args.state.iteration,
+          total: args.state.effort,
+        },
+      });
+    case 'convergence':
+      return buildFbrConvergencePrompt({
         iteration: args.state.iteration,
         total: args.state.effort,
         language: args.language,
-        isFinalRound: args.state.iteration === args.state.effort,
-      }),
-      language: args.language,
-      collectiveTargets: args.collectiveTargets,
-      fbrRound: {
-        iteration: args.state.iteration,
+      });
+    case 'finalization':
+      if (args.state.finalizationReason === 'context_caution') {
+        return buildFbrContextCautionFinalizationPrompt({
+          attempt: args.state.iteration,
+          language: args.language,
+        });
+      }
+      return buildFbrFinalizationPrompt({
+        attempt: args.state.iteration,
         total: args.state.effort,
-      },
-    });
+        language: args.language,
+      });
+    default: {
+      const _exhaustive: never = args.state;
+      return _exhaustive;
+    }
   }
-  if (args.state.phase === 'convergence') {
-    return buildFbrConvergencePrompt({
-      iteration: args.state.iteration,
-      total: args.state.effort,
-      language: args.language,
-    });
-  }
-  return buildFbrFinalizationPrompt({
-    attempt: args.state.iteration,
-    total: args.state.effort,
-    language: args.language,
-  });
 }

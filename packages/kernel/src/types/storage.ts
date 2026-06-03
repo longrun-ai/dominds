@@ -360,13 +360,22 @@ export type DialogExecutionMarker =
       reason: DialogDeadReason;
     };
 
-export type DialogFbrState = Readonly<{
-  kind: 'serial';
-  effort: number;
-  phase: 'divergence' | 'convergence' | 'finalization';
-  iteration: number;
-  promptDelivered: boolean;
-}>;
+export type DialogFbrState =
+  | Readonly<{
+      kind: 'serial';
+      effort: number;
+      phase: 'divergence' | 'convergence';
+      iteration: number;
+      promptDelivered: boolean;
+    }>
+  | Readonly<{
+      kind: 'serial';
+      effort: number;
+      phase: 'finalization';
+      iteration: number;
+      promptDelivered: boolean;
+      finalizationReason: 'planned' | 'context_caution';
+    }>;
 
 export interface CourseMetadataFile {
   course: number;

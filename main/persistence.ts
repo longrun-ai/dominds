@@ -2545,16 +2545,33 @@ function parseDialogLatestFile(value: unknown): DialogLatestFile | null {
     if (typeof fbrStateRaw.iteration !== 'number' || !Number.isInteger(fbrStateRaw.iteration)) {
       return null;
     }
-    if (fbrStateRaw.iteration < 1 || fbrStateRaw.iteration > fbrStateRaw.effort) {
+    if (fbrStateRaw.iteration < 1) {
       return null;
     }
     if (typeof fbrStateRaw.promptDelivered !== 'boolean') return null;
+    if (phase !== 'finalization' && fbrStateRaw.iteration > fbrStateRaw.effort) {
+      return null;
+    }
+    if (phase !== 'finalization') {
+      return {
+        kind: 'serial',
+        effort: fbrStateRaw.effort,
+        phase,
+        iteration: fbrStateRaw.iteration,
+        promptDelivered: fbrStateRaw.promptDelivered,
+      };
+    }
+    const finalizationReason = fbrStateRaw.finalizationReason;
+    if (finalizationReason !== 'planned' && finalizationReason !== 'context_caution') {
+      return null;
+    }
     return {
       kind: 'serial',
       effort: fbrStateRaw.effort,
       phase,
       iteration: fbrStateRaw.iteration,
       promptDelivered: fbrStateRaw.promptDelivered,
+      finalizationReason,
     };
   })();
   if (fbrState === null) return null;
