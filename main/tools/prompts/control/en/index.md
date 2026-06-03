@@ -64,7 +64,7 @@ Scope rule:
 
 - `dialog`: current-dialog current work
 - `task`: current work under the current Taskdoc, and the default scope
-- `agent`: urgent, short-lived, globally visible cues you should keep seeing in all later dialogs you lead
+- `agent`: urgent, short-lived, globally visible cues you should keep seeing across later dialogs you lead
 
 ### Taskdoc
 

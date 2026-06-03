@@ -29,10 +29,59 @@ async function bestEffortTaskkill(pid: number, force: boolean): Promise<void> {
   }
 }
 
+async function bestEffortListWindowsDescendantPids(pid: number): Promise<number[]> {
+  assertValidPid(pid);
+  try {
+    const command = `
+$processes = Get-CimInstance Win32_Process | Select-Object ProcessId,ParentProcessId
+$frontier = @(${String(pid)})
+$result = @()
+while ($frontier.Count -gt 0) {
+  $next = @()
+  foreach ($parentPid in $frontier) {
+    foreach ($child in $processes | Where-Object { $_.ParentProcessId -eq $parentPid }) {
+      $childPid = [int]$child.ProcessId
+      $result += $childPid
+      $next += $childPid
+    }
+  }
+  $frontier = $next
+}
+$result | ForEach-Object { [Console]::Out.WriteLine($_) }
+`;
+    const { stdout } = await execFileAsync('powershell.exe', ['-NoProfile', '-Command', command], {
+      windowsHide: true,
+      maxBuffer: 1024 * 1024,
+    });
+    const parsed: number[] = [];
+    for (const line of stdout.split(/\r?\n/)) {
+      const trimmed = line.trim();
+      if (trimmed === '') {
+        continue;
+      }
+      const parsedPid = Number(trimmed);
+      if (Number.isInteger(parsedPid) && parsedPid > 0) {
+        parsed.push(parsedPid);
+      }
+    }
+    return parsed;
+  } catch {
+    return [];
+  }
+}
+
 export async function bestEffortKillWindowsProcessTree(pid: number): Promise<void> {
   assertValidPid(pid);
+  const descendantPids = await bestEffortListWindowsDescendantPids(pid);
+  for (const descendantPid of descendantPids.slice().reverse()) {
+    await bestEffortTaskkill(descendantPid, false);
+  }
   await bestEffortTaskkill(pid, false);
   await sleepMs(1_000);
+  for (const descendantPid of descendantPids.slice().reverse()) {
+    await bestEffortTaskkill(descendantPid, true);
+    bestEffortKillPid(descendantPid);
+  }
   await bestEffortTaskkill(pid, true);
   bestEffortKillPid(pid);
 }

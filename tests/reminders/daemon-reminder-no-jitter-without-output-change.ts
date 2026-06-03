@@ -1,7 +1,4 @@
 import assert from 'node:assert/strict';
-import * as fs from 'node:fs/promises';
-import * as os from 'node:os';
-import * as path from 'node:path';
 import { setTimeout as delay } from 'node:timers/promises';
 
 import { DialogStore, MainDialog } from '../../main/dialog';
@@ -13,18 +10,7 @@ import {
   stopDaemonTool,
 } from '../../main/tools/os';
 import { registerReminderOwner, unregisterReminderOwner } from '../../main/tools/registry';
-
-async function withTempCwd<T>(fn: (sandboxDir: string) => Promise<T>): Promise<T> {
-  const sandboxDir = await fs.mkdtemp(path.join(os.tmpdir(), 'dominds-daemon-no-jitter-'));
-  const previousCwd = process.cwd();
-  process.chdir(sandboxDir);
-  try {
-    return await fn(sandboxDir);
-  } finally {
-    process.chdir(previousCwd);
-    await fs.rm(sandboxDir, { recursive: true, force: true });
-  }
-}
+import { daemonScriptShell, withTempCwd, writeDaemonScriptCommand } from './daemon-test-utils';
 
 function createDialog(agentId: string): MainDialog {
   return new MainDialog(
@@ -44,15 +30,24 @@ function requireReminder<T>(value: T | undefined, label: string): T {
 }
 
 async function main(): Promise<void> {
-  await withTempCwd(async () => {
+  await withTempCwd('dominds-daemon-no-jitter-', async (sandboxDir) => {
     registerReminderOwner(shellCmdReminderOwner);
     try {
       const dialog = createDialog('tester');
       const caller = {} as Team.Member;
 
+      const command = await writeDaemonScriptCommand(
+        sandboxDir,
+        'daemon-output-later.js',
+        `
+setTimeout(() => console.log('daemon-output'), 3000);
+setInterval(() => {}, 10000);
+`,
+        `Start-Sleep -Seconds 3; Write-Output 'daemon-output'; while ($true) { Start-Sleep -Seconds 10 }`,
+      );
       await shellCmdTool.call(dialog, caller, {
-        command:
-          'node -e "setTimeout(() => console.log(\'daemon-output\'), 3000); setInterval(() => {}, 10000)"',
+        command,
+        shell: daemonScriptShell(),
         timeoutSeconds: 1,
       });
 

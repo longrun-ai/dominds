@@ -253,7 +253,7 @@ async function main(): Promise<void> {
     await waitForAllDialogsUnlocked(cautionRoot, 8_000);
 
     const cautionSideDialog = cautionRoot
-      .getAllDialogs()
+      .getLoadedDialogTreeSnapshot()
       .find((dialog): dialog is SideDialog => dialog instanceof SideDialog);
     assert.ok(cautionSideDialog, 'expected caution FBR side dialog');
     const cautionPromptings = cautionSideDialog.msgs.filter(
@@ -300,7 +300,7 @@ async function main(): Promise<void> {
     await waitForAllDialogsUnlocked(criticalRoot, 8_000);
 
     const criticalSideDialog = criticalRoot
-      .getAllDialogs()
+      .getLoadedDialogTreeSnapshot()
       .find((dialog): dialog is SideDialog => dialog instanceof SideDialog);
     assert.ok(criticalSideDialog, 'expected critical FBR side dialog');
     const criticalPromptings = criticalSideDialog.msgs.filter(

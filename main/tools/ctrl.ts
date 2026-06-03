@@ -33,10 +33,22 @@ import type { ContextHealthSnapshot } from '@longrun-ai/kernel/types/context-hea
 import type { LanguageCode } from '@longrun-ai/kernel/types/language';
 import * as fs from 'fs';
 import * as path from 'path';
-import type { Dialog, VisibleReminderTarget } from '../dialog';
-import { InvalidReminderIndexError, SideDialog } from '../dialog';
+import {
+  InvalidReminderIndexError,
+  SideDialog,
+  type Dialog,
+  type VisibleReminderTarget,
+} from '../dialog';
 import { domindsRtwsRootAbs } from '../rtws';
-import { formatNewCourseStartPrompt } from '../runtime/driver-messages';
+import {
+  formatNewCourseStartPrompt,
+  formatSharedReminderUpdateImpactNotice,
+} from '../runtime/driver-messages';
+import {
+  dispatchSharedReminderUpdateImpact,
+  type SharedReminderUpdateImpactDispatch,
+  type SharedReminderUpdateImpactScope,
+} from '../runtime/shared-reminder-update-impact';
 import { formatToolActionResult } from '../runtime/tool-result-messages';
 import { getWorkLanguage } from '../runtime/work-language';
 import { mutateSharedReminders, type SharedReminderTarget } from '../shared-reminders';
@@ -359,6 +371,65 @@ function replaceReminderContent(
   });
 }
 
+function resolveSharedReminderUpdateImpactScope(
+  target: VisibleReminderTarget,
+): SharedReminderUpdateImpactScope | undefined {
+  if (target.source !== 'runtime') {
+    return undefined;
+  }
+  if (target.target.kind === 'task') {
+    return 'task';
+  }
+  return target.reminder.scope === 'runtime' ? 'runtime' : 'agent';
+}
+
+function appendSharedReminderUpdateImpactToToolResult(
+  output: ToolCallOutput,
+  language: LanguageCode,
+  reminderId: string,
+  dispatch: SharedReminderUpdateImpactDispatch | undefined,
+): ToolCallOutput {
+  if (dispatch === undefined) {
+    return output;
+  }
+  const notice = formatSharedReminderUpdateImpactNotice(language, {
+    reminderId,
+    scope: dispatch.scope,
+    audience: 'updater',
+  });
+  const dispatchLine =
+    language === 'zh'
+      ? `已向 ${dispatch.dispatchedDialogCount}/${dispatch.peerDialogCount} 个受影响的并行对话派发提醒。`
+      : `Dispatched notices to ${dispatch.dispatchedDialogCount}/${dispatch.peerDialogCount} affected parallel dialog(s).`;
+  return {
+    ...output,
+    content: `${output.content}\n\n${notice}\n${dispatchLine}`,
+  };
+}
+
+async function formatUpdateReminderSuccessResult(args: {
+  dlg: Dialog;
+  target: VisibleReminderTarget;
+  language: LanguageCode;
+}): Promise<ToolCallOutput> {
+  const scope = resolveSharedReminderUpdateImpactScope(args.target);
+  const dispatch =
+    scope === undefined
+      ? undefined
+      : await dispatchSharedReminderUpdateImpact({
+          updater: args.dlg,
+          reminderId: args.target.reminder.id,
+          scope,
+          language: args.language,
+        });
+  return appendSharedReminderUpdateImpactToToolResult(
+    formatToolActionResult(args.language, 'updated'),
+    args.language,
+    args.target.reminder.id,
+    dispatch,
+  );
+}
+
 async function deleteResolvedReminderTarget(
   dlg: Dialog,
   target: VisibleReminderTarget,
@@ -599,7 +670,7 @@ export const addReminderTool: FuncTool = {
     'Add a manually maintained reminder for current work. Scope defaults to task so the reminder survives continuing the same Taskdoc in another dialog; dialog is only for truly dialog-local notes; agent is visible to this agent across dialogs and should be reserved for urgent short-lived global cues. Do not manually record runtime-maintained environment state such as background process status or in-flight background asks.',
   descriptionI18n: {
     en: 'Add a manually maintained reminder for current work. Scope defaults to task so the reminder survives continuing the same Taskdoc in another dialog; dialog is only for truly dialog-local notes; agent is visible to this agent across dialogs and should be reserved for urgent short-lived global cues. Do not manually record runtime-maintained environment state such as background process status or in-flight background asks.',
-    zh: '添加手工维护的手头工作提醒。scope 默认 task，以便同一差遣牒任务换新对话继续时仍可见；dialog 只用于真正对话局部的事项；agent 会在本智能体所有对话中可见，仅用于紧急、短期、全局刺眼提醒。不要手工记录后台进程状态、后台进行中诉请等 runtime 会自动维护的环境状态。',
+    zh: '添加手工维护的手头工作提醒。scope 默认 task，以便同一差遣牒任务换新对话继续时仍可见；dialog 只用于真正对话局部的事项；agent 会在本智能体后续对话中继续可见，仅用于紧急、短期、全局刺眼提醒。不要手工记录后台进程状态、后台进行中诉请等 runtime 会自动维护的环境状态。',
   },
   parameters: {
     type: 'object',
@@ -751,7 +822,11 @@ export const updateReminderTool: FuncTool = {
           reminderRenderMode,
         );
         if (!updated) return toolFailure(t.reminderTargetChanged);
-        return formatToolActionResult(language, 'updated');
+        return await formatUpdateReminderSuccessResult({
+          dlg,
+          target: resolved.target,
+          language,
+        });
       }
       const updated = await updateResolvedReminderTarget(
         dlg,
@@ -761,7 +836,11 @@ export const updateReminderTool: FuncTool = {
         reminderRenderMode,
       );
       if (!updated) return toolFailure(t.reminderTargetChanged);
-      return formatToolActionResult(language, 'updated');
+      return await formatUpdateReminderSuccessResult({
+        dlg,
+        target: resolved.target,
+        language,
+      });
     }
 
     const reminderMeta = buildContinuationPackageReminderMeta({
@@ -778,7 +857,11 @@ export const updateReminderTool: FuncTool = {
       reminderRenderMode,
     );
     if (!updated) return toolFailure(t.reminderTargetChanged);
-    return formatToolActionResult(language, 'updated');
+    return await formatUpdateReminderSuccessResult({
+      dlg,
+      target: resolved.target,
+      language,
+    });
   },
 };
 

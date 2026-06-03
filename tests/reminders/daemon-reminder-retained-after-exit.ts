@@ -1,7 +1,4 @@
 import assert from 'node:assert/strict';
-import * as fs from 'node:fs/promises';
-import * as os from 'node:os';
-import * as path from 'node:path';
 import { setTimeout as delay } from 'node:timers/promises';
 
 import { DialogStore, MainDialog } from '../../main/dialog';
@@ -13,20 +10,7 @@ import {
   shellCmdTool,
 } from '../../main/tools/os';
 import { registerReminderOwner, unregisterReminderOwner } from '../../main/tools/registry';
-
-async function withTempCwd<T>(fn: () => Promise<T>): Promise<T> {
-  const sandboxDir = await fs.mkdtemp(
-    path.join(os.tmpdir(), 'dominds-daemon-retained-after-exit-'),
-  );
-  const previousCwd = process.cwd();
-  process.chdir(sandboxDir);
-  try {
-    return await fn();
-  } finally {
-    process.chdir(previousCwd);
-    await fs.rm(sandboxDir, { recursive: true, force: true });
-  }
-}
+import { daemonScriptShell, withTempCwd, writeDaemonScriptCommand } from './daemon-test-utils';
 
 function createDialog(agentId: string): MainDialog {
   return new MainDialog(
@@ -53,16 +37,26 @@ function requireReminder(dialog: MainDialog) {
 }
 
 async function main(): Promise<void> {
-  await withTempCwd(async () => {
+  await withTempCwd('dominds-daemon-retained-after-exit-', async (sandboxDir) => {
     setWorkLanguage('zh');
     registerReminderOwner(shellCmdReminderOwner);
     try {
       const dialog = createDialog('tester');
       const caller = {} as Team.Member;
 
+      const command = await writeDaemonScriptCommand(
+        sandboxDir,
+        'final-output-then-exit.js',
+        `
+console.log('final-stdout');
+console.error('final-stderr');
+setTimeout(() => process.exit(0), 1500);
+`,
+        `Write-Output 'final-stdout'; [Console]::Error.WriteLine('final-stderr'); Start-Sleep -Milliseconds 1500; exit 0`,
+      );
       await shellCmdTool.call(dialog, caller, {
-        command:
-          "node -e \"console.log('final-stdout'); console.error('final-stderr'); setTimeout(() => process.exit(0), 1500)\"",
+        command,
+        shell: daemonScriptShell(),
         timeoutSeconds: 1,
       });
 

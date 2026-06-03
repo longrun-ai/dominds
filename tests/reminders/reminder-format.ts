@@ -3,6 +3,7 @@ import {
   formatReminderContextGuide,
   formatReminderItemGuide,
   formatReminderMaintenanceReference,
+  formatSharedReminderUpdateImpactNotice,
   type ReminderContextFooterState,
 } from '../../main/runtime/driver-messages';
 
@@ -437,12 +438,20 @@ async function main() {
   });
   assert(zhTask.includes('任务范围'), 'Expected zh task reminder guide to mark task scope');
   assert(
-    zhTask.includes('当前差遣牒任务内、所有由你主理的对话里提醒你'),
+    zhTask.includes('当前差遣牒任务内的相关对话里提醒你'),
     'Expected zh task reminder guide to explain same-task persistence',
   );
   assert(
     zhTask.includes('当前任务的手头工作提示'),
     'Expected zh task reminder guide to use current-work wording',
+  );
+  assert(
+    zhTask.includes('改写成对话范围提醒'),
+    'Expected zh task reminder guide to use user-facing dialog-scope wording',
+  );
+  assert(
+    !zhTask.includes('dialog 范围提醒'),
+    'Expected zh task reminder guide not to expose implementation wording for dialog scope',
   );
 
   const zhAgent = formatReminderItemGuide('zh', 'rem12abc', '紧急全局提醒\n', {
@@ -452,6 +461,38 @@ async function main() {
   assert(
     zhAgent.includes('紧急、短期、全局刺眼提醒'),
     'Expected zh agent reminder guide to constrain agent scope',
+  );
+
+  const zhTaskParallelImpact = formatSharedReminderUpdateImpactNotice('zh', {
+    reminderId: 'rem09abc',
+    scope: 'task',
+    audience: 'updater',
+  });
+  assert(
+    zhTaskParallelImpact.includes('当前运行时已加载同一智能体在当前差遣牒任务内的其它并行对话'),
+    'Expected zh task parallel-impact notice to limit impact to same-task dialogs',
+  );
+  assert(
+    zhTaskParallelImpact.includes('另建对话范围提醒项'),
+    'Expected zh parallel-impact notice to recommend dialog-scope reminder for private content',
+  );
+  assert(
+    zhTaskParallelImpact.includes('仅在本对话范围可见'),
+    'Expected zh parallel-impact notice to state dialog-local visibility',
+  );
+
+  const zhAgentParallelImpact = formatSharedReminderUpdateImpactNotice('zh', {
+    reminderId: 'rem12abc',
+    scope: 'agent',
+    audience: 'peer',
+  });
+  assert(
+    zhAgentParallelImpact.includes('当前运行时已加载同一智能体的其它并行对话'),
+    'Expected zh agent parallel-impact notice to mention same-agent parallel dialogs',
+  );
+  assert(
+    zhAgentParallelImpact.includes('刚更新了它'),
+    'Expected zh peer impact notice to describe another dialog update',
   );
 
   const zhToolManaged = formatReminderItemGuide('zh', 'rem01abc', 'Managed content\n', {
@@ -935,7 +976,7 @@ async function main() {
   });
   assert(enTask.includes('TASK SCOPE'), 'Expected en task reminder guide to mark task scope');
   assert(
-    enTask.includes('every dialog you lead for the current Taskdoc'),
+    enTask.includes('across relevant dialogs for the current Taskdoc'),
     'Expected en task reminder guide to explain same-task persistence',
   );
   assert(
@@ -950,6 +991,38 @@ async function main() {
   assert(
     enAgent.includes('urgent, short-lived, globally visible cues'),
     'Expected en agent reminder guide to constrain agent scope',
+  );
+
+  const enTaskParallelImpact = formatSharedReminderUpdateImpactNotice('en', {
+    reminderId: 'rem09abc',
+    scope: 'task',
+    audience: 'updater',
+  });
+  assert(
+    enTaskParallelImpact.includes('loaded other parallel dialogs for the same agent and Taskdoc'),
+    'Expected en task parallel-impact notice to limit impact to same-task dialogs',
+  );
+  assert(
+    enTaskParallelImpact.includes('create a dialog-scope reminder instead'),
+    'Expected en parallel-impact notice to recommend dialog-scope reminder for private content',
+  );
+  assert(
+    enTaskParallelImpact.includes('visible only inside this dialog'),
+    'Expected en parallel-impact notice to state dialog-local visibility',
+  );
+
+  const enAgentParallelImpact = formatSharedReminderUpdateImpactNotice('en', {
+    reminderId: 'rem12abc',
+    scope: 'agent',
+    audience: 'peer',
+  });
+  assert(
+    enAgentParallelImpact.includes('loaded other parallel dialogs for the same agent'),
+    'Expected en agent parallel-impact notice to mention same-agent parallel dialogs',
+  );
+  assert(
+    enAgentParallelImpact.includes('Another parallel dialog for the same agent just updated it'),
+    'Expected en peer impact notice to describe another dialog update',
   );
 
   const enToolManaged = formatReminderItemGuide('en', 'rem03abc', 'Managed content\n', {

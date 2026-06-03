@@ -217,7 +217,7 @@ async function main(): Promise<void> {
     );
     await waitForAllDialogsUnlocked(sideRoot, 3_000);
     const sideDialog = sideRoot
-      .getAllDialogs()
+      .getLoadedDialogTreeSnapshot()
       .find((dialog) => dialog.id.selfId !== dialog.id.rootId);
     assert.ok(sideDialog, 'expected side dialog to be created before restart simulation');
     await DialogPersistence.mutateDialogLatest(sideDialog.id, () => ({

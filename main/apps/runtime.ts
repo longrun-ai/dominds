@@ -187,7 +187,9 @@ async function resolveTargetDialog(
     return sideDialog;
   }
 
-  const matches = targetRoot.getAllDialogs().filter((dialog) => dialog.agentId === target.agentId);
+  const matches = targetRoot
+    .getLoadedDialogTreeSnapshot()
+    .filter((dialog) => dialog.agentId === target.agentId);
   if (matches.length === 1) {
     return matches[0];
   }

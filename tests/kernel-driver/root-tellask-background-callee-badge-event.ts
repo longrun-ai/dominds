@@ -86,7 +86,7 @@ async function main(): Promise<void> {
     assert.equal(summary.backgroundCalleeDialogCount, 1);
     assert.equal(summary.backgroundFreshBootsReasoningCalleeCount, 0);
 
-    const sideDialog = root.getAllDialogs().find((dialog) => dialog.id.selfId !== root.id.selfId);
+    const sideDialog = root.getLoadedDialogTreeSnapshot().find((dialog) => dialog.id.selfId !== root.id.selfId);
     assert.ok(sideDialog, 'expected background side dialog to exist');
     await supplyResponseToAskerDialog(
       root,

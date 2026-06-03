@@ -55,7 +55,7 @@ async function main(): Promise<void> {
         scheduleDrive: (dialog) => {
           scheduleSnapshots.push({
             scheduledSelfId: dialog.id.selfId,
-            dialogCountAtSchedule: root.getAllDialogs().length,
+            dialogCountAtSchedule: root.getLoadedDialogTreeSnapshot().length,
           });
         },
         driveDialog: async () => {

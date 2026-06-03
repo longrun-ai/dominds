@@ -64,7 +64,7 @@ function sleep(ms: number): Promise<void> {
 async function waitForDialogsToUnlock(root: MainDialog, timeoutMs: number): Promise<void> {
   const startedAt = Date.now();
   for (;;) {
-    const locked = root.getAllDialogs().some((d) => d.isLocked());
+    const locked = root.getLoadedDialogTreeSnapshot().some((d) => d.isLocked());
     if (!locked) return;
     if (Date.now() - startedAt > timeoutMs) {
       throw new Error('Timed out waiting for sideDialog background drives to finish');

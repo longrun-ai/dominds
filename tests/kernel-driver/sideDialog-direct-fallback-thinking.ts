@@ -543,7 +543,7 @@ async function main(): Promise<void> {
     });
 
     const firstThinkingOnlySideDialog = root
-      .getAllDialogs()
+      .getLoadedDialogTreeSnapshot()
       .find(
         (dialog): dialog is SideDialog =>
           dialog instanceof SideDialog &&
@@ -690,7 +690,7 @@ async function main(): Promise<void> {
       driveDialog: async () => {},
     });
     const reminderThenToolSideDialog = root
-      .getAllDialogs()
+      .getLoadedDialogTreeSnapshot()
       .find(
         (dialog): dialog is SideDialog =>
           dialog instanceof SideDialog &&
@@ -912,7 +912,7 @@ async function main(): Promise<void> {
     });
 
     const thinkingThenTellaskSideDialog = root
-      .getAllDialogs()
+      .getLoadedDialogTreeSnapshot()
       .find(
         (dialog): dialog is SideDialog =>
           dialog instanceof SideDialog &&
@@ -991,7 +991,7 @@ async function main(): Promise<void> {
     });
 
     const toolThenPlainProgressSideDialog = root
-      .getAllDialogs()
+      .getLoadedDialogTreeSnapshot()
       .find(
         (dialog): dialog is SideDialog =>
           dialog instanceof SideDialog &&
@@ -1065,7 +1065,7 @@ async function main(): Promise<void> {
       driveDialog: async () => {},
     });
     const durableToolThenPlainProgressSideDialog = root
-      .getAllDialogs()
+      .getLoadedDialogTreeSnapshot()
       .find(
         (dialog): dialog is SideDialog =>
           dialog instanceof SideDialog &&

@@ -5,7 +5,7 @@ import {
   type PubChan,
   type SubChan,
 } from '@longrun-ai/kernel/evt';
-import { scheduleGlobalDialogMutexCleanupForRoot, type MainDialog } from './dialog';
+import { scheduleGlobalDialogMutexCleanupForRoot, type Dialog, type MainDialog } from './dialog';
 import { createLogger } from './log';
 import { DialogPersistence } from './persistence';
 
@@ -271,6 +271,16 @@ class GlobalDialogRegistry {
 
   isRootDriveQueued(rootId: string): boolean {
     return this.entries.get(rootId)?.driveQueued === true;
+  }
+
+  /**
+   * Runtime inspection snapshot for dialogs already loaded in this process and still active.
+   * This is not a persisted running-dialog inventory and must not be used to discover work.
+   */
+  getLoadedActiveDialogsForRuntimeInspection(): Dialog[] {
+    return Array.from(this.entries.values()).flatMap((entry) =>
+      entry.mainDialog.getLoadedActiveDialogsForRuntimeInspection(),
+    );
   }
 
   getLastDriveTrigger(rootId: string): DriveTriggerEvent | undefined {

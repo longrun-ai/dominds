@@ -25,6 +25,7 @@ import type {
 import type {
   DialogCalleeReplyTarget,
   DialogQueuedDeferredQ4HAnswerState,
+  DialogQueuedNewCourseRuntimeGuideState,
   DialogQueuedNewCourseRuntimeReplyState,
   DialogQueuedNewCourseRuntimeSideDialogState,
   DialogQueuedPromptState,
@@ -68,6 +69,7 @@ import {
   formatUserLanguagePreferenceChangedNotice,
 } from './runtime/driver-messages';
 import { formatAssignmentFromAskerDialog } from './runtime/inter-dialog-format';
+import type { SharedReminderUpdateImpactScope } from './runtime/shared-reminder-update-impact';
 import { getWorkLanguage } from './runtime/work-language';
 import {
   loadSharedReminders,
@@ -116,6 +118,11 @@ type NewCourseHook = (args: {
   prompt: DialogRuntimePrompt;
   runControl?: DialogRunControlSpec;
 }) => Promise<NewCourseHookResult>;
+
+type ReminderCollectionProcessResult = Readonly<{
+  changed: boolean;
+  updatedReminderIds: string[];
+}>;
 
 export class DialogID {
   public readonly selfId: string;
@@ -863,8 +870,11 @@ export abstract class Dialog {
     return null;
   }
 
-  private async processReminderCollection(reminders: Reminder[]): Promise<boolean> {
+  private async processReminderCollection(
+    reminders: Reminder[],
+  ): Promise<ReminderCollectionProcessResult> {
     let changed = false;
+    const updatedReminderIds: string[] = [];
     const indicesToRemove: number[] = [];
 
     for (let i = 0; i < reminders.length; i++) {
@@ -896,19 +906,37 @@ export abstract class Dialog {
               priority: reminder.priority,
               renderMode: reminder.renderMode,
             });
-            const contentChanged = updatedReminder.content !== reminder.content;
-            const metaChanged = updatedReminder.meta !== reminder.meta;
-            if (contentChanged || metaChanged) {
+            const reminderChanged =
+              computeReminderRenderRevision(updatedReminder) !==
+              computeReminderRenderRevision(reminder);
+            if (reminderChanged) {
               reminders[i] = updatedReminder;
               changed = true;
+              updatedReminderIds.push(updatedReminder.id);
             }
             break;
           }
           case 'keep':
             break;
+          default: {
+            const _exhaustive: never = result.treatment;
+            return _exhaustive;
+          }
         }
-      } catch (error) {
-        log.error(`Error updating reminder from tool ${reminder.owner}:`, error);
+      } catch (error: unknown) {
+        const detail =
+          `Reminder owner update failed ` +
+          `(rootId=${this.id.rootId}, selfId=${this.id.selfId}, course=${this.currentCourse}, ` +
+          `reminderId=${reminder.id}, owner=${reminder.owner.name}, taskDocPath=${this.taskDocPath})`;
+        await this.reportReminderRuntimeFailure(detail, error, {
+          rootId: this.id.rootId,
+          selfId: this.id.selfId,
+          course: this.currentCourse,
+          reminderId: reminder.id,
+          ownerName: reminder.owner.name,
+          taskDocPath: this.taskDocPath,
+        });
+        throw error;
       }
     }
 
@@ -916,7 +944,7 @@ export abstract class Dialog {
       reminders.splice(indicesToRemove[i], 1);
     }
 
-    return changed;
+    return { changed, updatedReminderIds };
   }
 
   private buildVisibleReminderContents(
@@ -946,6 +974,42 @@ export abstract class Dialog {
       reminders,
     };
     postDialogEvent(this, fullRemindersEvt);
+  }
+
+  private async reportReminderRuntimeFailure(
+    detail: string,
+    error: unknown,
+    context: Record<string, string | number | undefined>,
+  ): Promise<void> {
+    try {
+      await this.streamError(detail);
+    } catch (streamError: unknown) {
+      log.warn('Failed to emit stream_error_evt for reminder runtime failure', streamError, {
+        ...context,
+        streamErrorMessage:
+          streamError instanceof Error ? streamError.message : String(streamError),
+      });
+    }
+    log.error(detail, error, {
+      ...context,
+      errorMessage: error instanceof Error ? error.message : String(error),
+    });
+  }
+
+  private async dispatchSharedReminderOwnerUpdateImpacts(
+    reminderIds: readonly string[],
+    scope: SharedReminderUpdateImpactScope,
+  ): Promise<void> {
+    const { dispatchSharedReminderUpdateImpact } =
+      await import('./runtime/shared-reminder-update-impact.js');
+    for (const reminderId of reminderIds) {
+      await dispatchSharedReminderUpdateImpact({
+        updater: this,
+        reminderId,
+        scope,
+        language: getWorkLanguage(),
+      });
+    }
   }
 
   /**
@@ -980,10 +1044,10 @@ export abstract class Dialog {
     const runtimeTarget: SharedReminderTarget = { kind: 'agent', agentId: this.agentId };
     const taskSharedReminders = await loadSharedReminders(taskSharedTarget);
     const runtimeReminders = await loadSharedReminders(runtimeTarget);
-    const localChanged = await this.processReminderCollection(this.reminders);
-    const taskSharedChanged = await this.processReminderCollection(taskSharedReminders);
-    const runtimeChanged = await this.processReminderCollection(runtimeReminders);
-    if (localChanged || taskSharedChanged || runtimeChanged) {
+    const localResult = await this.processReminderCollection(this.reminders);
+    const taskSharedResult = await this.processReminderCollection(taskSharedReminders);
+    const runtimeResult = await this.processReminderCollection(runtimeReminders);
+    if (localResult.changed || taskSharedResult.changed || runtimeResult.changed) {
       this.touchReminders();
     }
 
@@ -991,25 +1055,66 @@ export abstract class Dialog {
     // Must be awaited to preserve ordering (avoid out-of-date writes winning).
     try {
       await this.dlgStore.persistReminders(this, this.reminders);
-    } catch (err) {
-      log.warn('Failed to persist reminders', err, { dialogId: this.id.valueOf() });
+    } catch (err: unknown) {
+      const detail =
+        `Failed to persist dialog-local reminders ` +
+        `(rootId=${this.id.rootId}, selfId=${this.id.selfId}, course=${this.currentCourse})`;
+      await this.reportReminderRuntimeFailure(detail, err, {
+        rootId: this.id.rootId,
+        selfId: this.id.selfId,
+        course: this.currentCourse,
+        taskDocPath: this.taskDocPath,
+      });
+      throw err;
     }
     try {
       await replaceSharedReminders(taskSharedTarget, taskSharedReminders);
-    } catch (err) {
-      log.warn('Failed to persist task-scoped reminders', err, {
-        dialogId: this.id.valueOf(),
+    } catch (err: unknown) {
+      const detail =
+        `Failed to persist task-scoped reminders ` +
+        `(rootId=${this.id.rootId}, selfId=${this.id.selfId}, course=${this.currentCourse}, ` +
+        `agentId=${this.agentId}, taskDocPath=${this.taskDocPath})`;
+      await this.reportReminderRuntimeFailure(detail, err, {
+        rootId: this.id.rootId,
+        selfId: this.id.selfId,
+        course: this.currentCourse,
         agentId: this.agentId,
         taskDocPath: this.taskDocPath,
       });
+      throw err;
     }
+    await this.dispatchSharedReminderOwnerUpdateImpacts(
+      taskSharedResult.updatedReminderIds,
+      'task',
+    );
+
     try {
       await replaceSharedReminders(runtimeTarget, runtimeReminders);
-    } catch (err) {
-      log.warn('Failed to persist agent-scoped reminders', err, {
-        dialogId: this.id.valueOf(),
+    } catch (err: unknown) {
+      const detail =
+        `Failed to persist agent-scoped reminders ` +
+        `(rootId=${this.id.rootId}, selfId=${this.id.selfId}, course=${this.currentCourse}, ` +
+        `agentId=${this.agentId})`;
+      await this.reportReminderRuntimeFailure(detail, err, {
+        rootId: this.id.rootId,
+        selfId: this.id.selfId,
+        course: this.currentCourse,
         agentId: this.agentId,
+        taskDocPath: this.taskDocPath,
       });
+      throw err;
+    }
+    for (const reminderId of runtimeResult.updatedReminderIds) {
+      const reminder = runtimeReminders.find((candidate) => candidate.id === reminderId);
+      if (!reminder) {
+        throw new Error(
+          `Updated shared reminder ${reminderId} disappeared before update impact dispatch`,
+        );
+      }
+      await this.dispatchSharedReminderOwnerUpdateImpacts(
+        [reminderId],
+        reminder.scope === 'runtime' ? 'runtime' : 'agent',
+      );
     }
 
     const reminders = this.buildVisibleReminderContents(taskSharedReminders, runtimeReminders);
@@ -1570,6 +1675,31 @@ export abstract class Dialog {
       userLanguageCode: created.userLanguageCode,
       origin: 'runtime',
       tellaskReplyDirective: created.tellaskReplyDirective,
+      skipTaskdoc: created.skipTaskdoc,
+    });
+    return created;
+  }
+
+  public async queueRuntimeGuidePrompt(options: {
+    prompt: string;
+    msgId: string;
+    grammar: 'markdown';
+    userLanguageCode?: LanguageCode;
+    skipTaskdoc?: boolean;
+  }): Promise<DialogQueuedPromptState> {
+    const common = this.runtimePromptCommon(options);
+    const created: DialogQueuedNewCourseRuntimeGuideState = {
+      ...common,
+      kind: 'new_course_runtime_guide',
+      skipTaskdoc: options.skipTaskdoc,
+    };
+    this.enqueueQueuedPromptState(created);
+    await this.persistPendingRuntimePrompt({
+      content: created.prompt,
+      msgId: created.msgId,
+      grammar: created.grammar ?? 'markdown',
+      userLanguageCode: created.userLanguageCode,
+      origin: 'runtime',
       skipTaskdoc: created.skipTaskdoc,
     });
     return created;
@@ -2530,7 +2660,7 @@ export class SideDialog extends Dialog {
 export class MainDialog extends Dialog {
   private _status: 'running' | 'completed' | 'archived' = 'running';
 
-  // Tracks all dialogs in this dialog tree for O(1) lookup
+  // Tracks dialogs loaded into this root's in-memory dialog tree for O(1) lookup
   private _localRegistry: Map<string, Dialog> = new Map();
   // Tracks Type-B registered sideDialogs by agentId!sessionSlug
   private _sideDialogRegistry: Map<string, SideDialog> = new Map();
@@ -2569,10 +2699,18 @@ export class MainDialog extends Dialog {
   }
 
   /**
-   * Get all registered dialogs in this dialog tree.
+   * Snapshot of dialogs loaded in this root's in-memory dialog tree.
    */
-  getAllDialogs(): Dialog[] {
+  getLoadedDialogTreeSnapshot(): Dialog[] {
     return Array.from(this._localRegistry.values());
+  }
+
+  /**
+   * Runtime inspection snapshot for dialogs loaded in this root tree and still active.
+   * This is not a persisted running-dialog inventory.
+   */
+  getLoadedActiveDialogsForRuntimeInspection(): Dialog[] {
+    return Array.from(this._localRegistry.values()).filter((dialog) => dialog.status === 'running');
   }
 
   /**

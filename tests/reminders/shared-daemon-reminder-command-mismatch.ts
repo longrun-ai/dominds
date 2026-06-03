@@ -1,10 +1,8 @@
 import assert from 'node:assert/strict';
 import * as fs from 'node:fs/promises';
-import * as os from 'node:os';
 import * as path from 'node:path';
 
-import type { DialogStore } from '../../main/dialog';
-import { MainDialog } from '../../main/dialog';
+import { DialogStore, MainDialog } from '../../main/dialog';
 import type { Team } from '../../main/team';
 import {
   resetTrackedDaemonsForTests,
@@ -13,6 +11,7 @@ import {
   stopDaemonTool,
 } from '../../main/tools/os';
 import { registerReminderOwner, unregisterReminderOwner } from '../../main/tools/registry';
+import { daemonScriptShell, withTempCwd, writeDaemonScriptCommand } from './daemon-test-utils';
 
 function requireMetaRecord(meta: unknown): Record<string, unknown> {
   assert.equal(typeof meta, 'object', 'Expected daemon reminder meta to exist');
@@ -29,21 +28,9 @@ function requireNumber(value: unknown, label: string): number {
   return value;
 }
 
-async function withTempCwd<T>(fn: (sandboxDir: string) => Promise<T>): Promise<T> {
-  const sandboxDir = await fs.mkdtemp(path.join(os.tmpdir(), 'dominds-shared-daemon-command-'));
-  const previousCwd = process.cwd();
-  process.chdir(sandboxDir);
-  try {
-    return await fn(sandboxDir);
-  } finally {
-    process.chdir(previousCwd);
-    await fs.rm(sandboxDir, { recursive: true, force: true });
-  }
-}
-
 function createDialog(agentId: string): MainDialog {
   return new MainDialog(
-    {} as unknown as DialogStore,
+    new DialogStore(),
     'shared-daemon-reminder-command-mismatch.tsk',
     undefined,
     agentId,
@@ -78,15 +65,24 @@ function isProcessAlive(pid: number): boolean {
 }
 
 async function main(): Promise<void> {
-  await withTempCwd(async (sandboxDir) => {
+  await withTempCwd('dominds-shared-daemon-command-', async (sandboxDir) => {
     registerReminderOwner(shellCmdReminderOwner);
     let daemonPid: number | undefined;
     try {
       const dialogA = createDialog('tester');
       const caller = {} as Team.Member;
 
+      const command = await writeDaemonScriptCommand(
+        sandboxDir,
+        'long-running-daemon.js',
+        `
+setInterval(() => {}, 10000);
+`,
+        `while ($true) { Start-Sleep -Seconds 10 }`,
+      );
       await shellCmdTool.call(dialogA, caller, {
-        command: `node -e "setInterval(() => {}, 10000)"`,
+        command,
+        shell: daemonScriptShell(),
         timeoutSeconds: 1,
       });
 
@@ -97,6 +93,7 @@ async function main(): Promise<void> {
         sandboxDir,
         '.dialogs',
         'reminders',
+        'agents',
         'tester',
         `${reminderA.id}.json`,
       );

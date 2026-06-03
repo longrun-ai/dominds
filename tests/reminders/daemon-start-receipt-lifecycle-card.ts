@@ -1,26 +1,10 @@
 import assert from 'node:assert/strict';
-import * as fs from 'node:fs/promises';
-import * as os from 'node:os';
-import * as path from 'node:path';
 
 import { DialogStore, MainDialog } from '../../main/dialog';
 import { setWorkLanguage } from '../../main/runtime/work-language';
 import type { Team } from '../../main/team';
 import { shellCmdTool, stopDaemonTool } from '../../main/tools/os';
-
-async function withTempCwd<T>(fn: () => Promise<T>): Promise<T> {
-  const sandboxDir = await fs.mkdtemp(
-    path.join(os.tmpdir(), 'dominds-daemon-start-receipt-lifecycle-card-'),
-  );
-  const previousCwd = process.cwd();
-  process.chdir(sandboxDir);
-  try {
-    return await fn();
-  } finally {
-    process.chdir(previousCwd);
-    await fs.rm(sandboxDir, { recursive: true, force: true });
-  }
-}
+import { daemonScriptShell, withTempCwd, writeDaemonScriptCommand } from './daemon-test-utils';
 
 function createDialog(agentId: string): MainDialog {
   return new MainDialog(
@@ -43,14 +27,23 @@ function requirePidFromOutput(output: string): number {
 }
 
 async function main(): Promise<void> {
-  await withTempCwd(async () => {
+  await withTempCwd('dominds-daemon-start-receipt-lifecycle-card-', async (sandboxDir) => {
     setWorkLanguage('zh');
     const dialog = createDialog('tester');
     const caller = {} as Team.Member;
 
+    const command = await writeDaemonScriptCommand(
+      sandboxDir,
+      'long-running-daemon.js',
+      `
+setInterval(() => {}, 10000);
+`,
+      `while ($true) { Start-Sleep -Seconds 10 }`,
+    );
     const output = (
       await shellCmdTool.call(dialog, caller, {
-        command: `node -e "setInterval(() => {}, 10000)"`,
+        command,
+        shell: daemonScriptShell(),
         timeoutSeconds: 1,
       })
     ).content;

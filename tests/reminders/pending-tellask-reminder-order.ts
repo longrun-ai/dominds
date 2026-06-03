@@ -1,6 +1,5 @@
 import assert from 'node:assert/strict';
 import * as fs from 'node:fs/promises';
-import * as os from 'node:os';
 import * as path from 'node:path';
 
 import type { SideDialogAssignmentFromAsker } from '@longrun-ai/kernel/types/storage';
@@ -18,22 +17,11 @@ import {
   syncPendingTellaskReminderState,
 } from '../../main/tools/pending-tellask-reminder';
 import { createMainDialog } from '../kernel-driver/helpers';
+import { withTempCwd } from './daemon-test-utils';
 
 async function writeYaml(filePath: string, value: unknown): Promise<void> {
   await fs.mkdir(path.dirname(filePath), { recursive: true });
   await fs.writeFile(filePath, YAML.stringify(value), 'utf-8');
-}
-
-async function withTempCwd<T>(fn: () => Promise<T>): Promise<T> {
-  const sandboxDir = await fs.mkdtemp(path.join(os.tmpdir(), 'dominds-pending-reminder-order-'));
-  const previousCwd = process.cwd();
-  process.chdir(sandboxDir);
-  try {
-    return await fn();
-  } finally {
-    process.chdir(previousCwd);
-    await fs.rm(sandboxDir, { recursive: true, force: true });
-  }
 }
 
 async function persistActiveCalleeDispatch(args: {
@@ -105,7 +93,7 @@ async function persistActiveCalleeDispatch(args: {
 }
 
 async function main(): Promise<void> {
-  await withTempCwd(async () => {
+  await withTempCwd('dominds-pending-reminder-order-', async () => {
     const root = await createMainDialog('tester');
     const pendingReminderCreatedAt = '2026-04-16 10:00:00';
     const firstPendingActivityAt = '2026-04-16 10:04:00';
@@ -223,7 +211,7 @@ async function main(): Promise<void> {
     );
   });
 
-  await withTempCwd(async () => {
+  await withTempCwd('dominds-pending-reminder-order-', async () => {
     const root = await createMainDialog('tester');
     await assert.rejects(
       DialogPersistence.saveActiveCalleeDispatches(

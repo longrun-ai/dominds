@@ -1,11 +1,11 @@
 import assert from 'node:assert/strict';
-import type { DialogStore } from '../../main/dialog';
-import { MainDialog } from '../../main/dialog';
+import { DialogStore, MainDialog } from '../../main/dialog';
 import { setWorkLanguage } from '../../main/runtime/work-language';
 import type { Team } from '../../main/team';
 import type { Reminder } from '../../main/tool';
 import { shellCmdReminderOwner, shellCmdTool, stopDaemonTool } from '../../main/tools/os';
 import { registerReminderOwner, unregisterReminderOwner } from '../../main/tools/registry';
+import { daemonScriptShell, withTempCwd, writeDaemonScriptCommand } from './daemon-test-utils';
 
 function requireMetaRecord(meta: Reminder['meta']): Record<string, unknown> {
   assert.equal(typeof meta, 'object', 'Expected daemon reminder meta to exist');
@@ -33,12 +33,7 @@ function requireObjectRecord(value: unknown, label: string): Record<string, unkn
 }
 
 function createDialog(): MainDialog {
-  return new MainDialog(
-    {} as unknown as DialogStore,
-    'daemon-reminder-render.tsk',
-    undefined,
-    'tester',
-  );
+  return new MainDialog(new DialogStore(), 'daemon-reminder-render.tsk', undefined, 'tester');
 }
 
 function requireDaemonPid(reminder: Reminder | undefined): number {
@@ -56,55 +51,64 @@ function requireDaemonPid(reminder: Reminder | undefined): number {
 }
 
 async function main(): Promise<void> {
-  setWorkLanguage('zh');
-  registerReminderOwner(shellCmdReminderOwner);
-  try {
-    const dialog = createDialog();
-    const caller = {} as Team.Member;
-
-    await shellCmdTool.call(dialog, caller, {
-      command: `node -e "console.log('daemon-ready'); setInterval(() => {}, 10000)"`,
-      timeoutSeconds: 1,
-    });
-
-    const reminder = (await dialog.listVisibleReminders()).find(
-      (candidate) => candidate.owner?.name === shellCmdReminderOwner.name,
-    );
-    const pid = requireDaemonPid(reminder);
-
+  await withTempCwd('dominds-daemon-reminder-render-', async (sandboxDir) => {
+    setWorkLanguage('zh');
+    registerReminderOwner(shellCmdReminderOwner);
     try {
-      const rendered = await shellCmdReminderOwner.renderReminder(dialog, reminder!);
-      if (!('content' in rendered) || typeof rendered.content !== 'string') {
-        throw new Error('Expected daemon reminder render output to carry string content');
-      }
-      assert.equal(rendered.type, 'environment_msg');
-      assert.equal(rendered.role, 'user');
-      assert.match(rendered.content, /守护进程生命周期提醒 \[/);
-      assert.match(rendered.content, /当前运行环境中 daemon 仍在运行/);
-      assert.match(
-        rendered.content,
-        /🟢 node -e "console\.log\('daemon-ready'\); setInterval\(\(\) => \{\}, 10000\)" 运行中/,
+      const dialog = createDialog();
+      const caller = {} as Team.Member;
+
+      const command = await writeDaemonScriptCommand(
+        sandboxDir,
+        'daemon-ready.js',
+        `
+console.log('daemon-ready');
+setInterval(() => {}, 10000);
+`,
+        `Write-Output 'daemon-ready'; while ($true) { Start-Sleep -Seconds 10 }`,
       );
-      assert.match(rendered.content, /状态快照/);
-      const stderrIndex = rendered.content.indexOf('stderr 缓冲区快照');
-      const stdoutIndex = rendered.content.indexOf('stdout 缓冲区快照');
-      assert.ok(stderrIndex >= 0);
-      assert.ok(stdoutIndex >= 0);
-      assert.ok(stderrIndex < stdoutIndex);
-      assert.match(rendered.content, /stdout 缓冲区快照/);
-      assert.match(rendered.content, /daemon-ready/);
-      assert.match(rendered.content, /系统维护 \/ 实时真源/);
-      assert.match(rendered.content, /禁止做任何用户可见回应/);
-      assert.match(rendered.content, /禁止单独发送“静默吸收”“已收到”等占位语句/);
-      assert.doesNotMatch(rendered.content, /请按需要检查/);
-      assert.doesNotMatch(rendered.content, /Latest stdout/);
-      assert.doesNotMatch(rendered.content, /Use stop_daemon/);
+      await shellCmdTool.call(dialog, caller, {
+        command,
+        shell: daemonScriptShell(),
+        timeoutSeconds: 1,
+      });
+
+      const reminder = (await dialog.listVisibleReminders()).find(
+        (candidate) => candidate.owner?.name === shellCmdReminderOwner.name,
+      );
+      const pid = requireDaemonPid(reminder);
+
+      try {
+        const rendered = await shellCmdReminderOwner.renderReminder(dialog, reminder!);
+        if (!('content' in rendered) || typeof rendered.content !== 'string') {
+          throw new Error('Expected daemon reminder render output to carry string content');
+        }
+        assert.equal(rendered.type, 'environment_msg');
+        assert.equal(rendered.role, 'user');
+        assert.match(rendered.content, /守护进程生命周期提醒 \[/);
+        assert.match(rendered.content, /当前运行环境中 daemon 仍在运行/);
+        assert.match(rendered.content, /🟢 .*daemon-ready(?:\.(?:js|ps1))?.* 运行中/);
+        assert.match(rendered.content, /状态快照/);
+        const stderrIndex = rendered.content.indexOf('stderr 缓冲区快照');
+        const stdoutIndex = rendered.content.indexOf('stdout 缓冲区快照');
+        assert.ok(stderrIndex >= 0);
+        assert.ok(stdoutIndex >= 0);
+        assert.ok(stderrIndex < stdoutIndex);
+        assert.match(rendered.content, /stdout 缓冲区快照/);
+        assert.match(rendered.content, /daemon-ready/);
+        assert.match(rendered.content, /系统维护 \/ 实时真源/);
+        assert.match(rendered.content, /禁止做任何用户可见回应/);
+        assert.match(rendered.content, /禁止单独发送“静默吸收”“已收到”等占位语句/);
+        assert.doesNotMatch(rendered.content, /请按需要检查/);
+        assert.doesNotMatch(rendered.content, /Latest stdout/);
+        assert.doesNotMatch(rendered.content, /Use stop_daemon/);
+      } finally {
+        await stopDaemonTool.call(dialog, caller, { pid });
+      }
     } finally {
-      await stopDaemonTool.call(dialog, caller, { pid });
+      unregisterReminderOwner(shellCmdReminderOwner.name);
     }
-  } finally {
-    unregisterReminderOwner(shellCmdReminderOwner.name);
-  }
+  });
 }
 
 void main()

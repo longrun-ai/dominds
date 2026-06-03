@@ -712,6 +712,51 @@ export function formatReminderMaintenanceReference(
   ].join('\n');
 }
 
+export function formatSharedReminderUpdateImpactNotice(
+  language: LanguageCode,
+  args: {
+    reminderId: string;
+    scope: 'task' | 'agent' | 'runtime';
+    audience: 'updater' | 'peer';
+  },
+): string {
+  const reminderId = args.reminderId;
+  const scope = args.scope;
+  if (language === 'zh') {
+    const scopeName =
+      scope === 'task' ? '任务范围' : scope === 'agent' ? '智能体范围' : '运行时范围';
+    const impactedDialogs =
+      scope === 'task'
+        ? '当前运行时已加载同一智能体在当前差遣牒任务内的其它并行对话'
+        : '当前运行时已加载同一智能体的其它并行对话';
+    if (args.audience === 'updater') {
+      return `共享范围影响：你刚更新的 reminder_id=${reminderId} 是${scopeName}提醒项，不是当前对话私有；${impactedDialogs}，其它能看到这条提醒项的对话也会看到这次更新。如果新内容只应影响当前对话，请另建对话范围提醒项，让内容仅在本对话范围可见，并把共享项修正回共享语义。`;
+    }
+    return [
+      `${formatSystemNoticePrefix(language)} 共享范围提醒项已更新`,
+      '',
+      `reminder_id=${reminderId} 是${scopeName}提醒项，不是当前对话私有；${impactedDialogs}。同一智能体的某个并行对话刚更新了它，你所在对话也会看到这次更新。`,
+      '请把它作为最新共享参考；如果发现它混入了当前对话私有状态，应按当前任务需要修正为共享语义，或另建对话范围提醒项承载只属于本对话的内容。',
+    ].join('\n');
+  }
+
+  const scopeName =
+    scope === 'task' ? 'task-scope' : scope === 'agent' ? 'agent-scope' : 'runtime-scope';
+  const impactedDialogs =
+    scope === 'task'
+      ? 'The current runtime has loaded other parallel dialogs for the same agent and Taskdoc'
+      : 'The current runtime has loaded other parallel dialogs for the same agent';
+  if (args.audience === 'updater') {
+    return `Shared-scope impact: the reminder you just updated, reminder_id=${reminderId}, is ${scopeName}, not private to the current dialog. ${impactedDialogs}, so other dialogs that can see this reminder will see this update too. If the new content should affect only the current dialog, create a dialog-scope reminder instead so it is visible only inside this dialog, and correct the shared reminder back to shared meaning.`;
+  }
+  return [
+    `${formatSystemNoticePrefix(language)} Shared-scope reminder updated`,
+    '',
+    `reminder_id=${reminderId} is ${scopeName}, not private to the current dialog. ${impactedDialogs}. Another parallel dialog for the same agent just updated it, so this dialog will see the update too.`,
+    'Use it as the latest shared reference. If it appears to contain current-dialog-private state, correct it back to shared meaning as needed, or create a dialog-scope reminder for content that belongs only to this dialog.',
+  ].join('\n');
+}
+
 export function formatReminderItemGuide(
   language: LanguageCode,
   reminderId: string,
@@ -775,13 +820,13 @@ export function formatReminderItemGuide(
       scope === 'task' ? '（任务范围）' : scope === 'agent' ? '（智能体范围）' : '';
     const scopeGuide =
       scope === 'task'
-        ? `${projectionNote}你设置了任务范围提醒项，Dominds 会在当前差遣牒任务内、所有由你主理的对话里提醒你。请把它当作当前任务的手头工作提示，不要自动当成系统下发的下一步动作。`
+        ? `${projectionNote}你设置了任务范围提醒项，Dominds 会在当前差遣牒任务内的相关对话里提醒你。请把它当作当前任务的手头工作提示，不要自动当成系统下发的下一步动作。`
         : scope === 'agent'
-          ? `${projectionNote}你设置了智能体范围提醒项，Dominds 会在所有由你主理的对话里提醒你。它只适合紧急、短期、全局刺眼提醒；不要用来记录普通任务状态，也不要自动当成系统下发的下一步动作。`
+          ? `${projectionNote}你设置了智能体范围提醒项，Dominds 会在由你主理的后续对话里提醒你。它只适合紧急、短期、全局刺眼提醒；不要用来记录普通任务状态，也不要自动当成系统下发的下一步动作。`
           : `${projectionNote}你设置了提醒项，Dominds 会在需要时提醒你。请把它当作用来保留当前对话里容易丢的手头工作信息的提示，不要自动当成系统下发的下一步动作。`;
     const scopeMaintenance =
       scope === 'task'
-        ? '你应保持简洁、及时更新；不再需要时就删除。若它只对当前对话有效，应改写成 dialog 范围提醒；若需要全队同步当前任务状态，应写入差遣牒 progress，而不是扩大提醒范围。'
+        ? '你应保持简洁、及时更新；不再需要时就删除。若它只对当前对话有效，应改写成对话范围提醒；若需要全队同步当前任务状态，应写入差遣牒 progress，而不是扩大提醒范围。'
         : scope === 'agent'
           ? '你应主动保持极少量、短期、强相关；不再需要时必须删除。普通任务进展不要放在 agent 范围，当前任务内跨对话可见请改用 task 范围。'
           : '你应保持简洁、及时更新；不再需要时就删除。若后续准备换程，也可以把它整理成接续包。';
@@ -832,9 +877,9 @@ ${content}`;
   const scopeLabel = scope === 'task' ? ' (TASK SCOPE)' : scope === 'agent' ? ' (AGENT SCOPE)' : '';
   const scopeGuide =
     scope === 'task'
-      ? `${enProjectionPrefix}You set a task-scope reminder so Dominds can remind you in every dialog you lead for the current Taskdoc. Treat it as a current-work reference for this task, not as an automatically assigned next action.`
+      ? `${enProjectionPrefix}You set a task-scope reminder so Dominds can remind you across relevant dialogs for the current Taskdoc. Treat it as a current-work reference for this task, not as an automatically assigned next action.`
       : scope === 'agent'
-        ? `${enProjectionPrefix}You set an agent-scope reminder so Dominds can remind you in every dialog you lead. This is only for urgent, short-lived, globally visible cues; do not use it for ordinary task state, and do not treat it as an automatically assigned next action.`
+        ? `${enProjectionPrefix}You set an agent-scope reminder so Dominds can remind you across later dialogs you lead. This is only for urgent, short-lived, globally visible cues; do not use it for ordinary task state, and do not treat it as an automatically assigned next action.`
         : `${enProjectionPrefix}You set a reminder so Dominds can remind you when needed. Treat it as a current-work reference for easy-to-lose details in the current dialog, not as an automatically assigned next action.`;
   const scopeMaintenance =
     scope === 'task'

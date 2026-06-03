@@ -73,7 +73,7 @@
 
 ### Q: What's the difference between dialog, task, agent reminders, and memory?
 
-A: `dialog` reminders are only for the current dialog's current work. `task` reminders are for current work under the same Taskdoc and are the default for `add_reminder`. `agent` reminders stay visible in all later dialogs you lead, but only for urgent, short-lived, globally visible cues. None of them are long-term knowledge. `personal_memory` is for durable facts and reusable knowledge saved to disk; if the information should synchronize the team's current effective state, key decisions, next step, or still-active blockers, write it to Taskdoc `progress` instead of a reminder.
+A: `dialog` reminders are only for the current dialog's current work. `task` reminders are for current work under the same Taskdoc and are the default for `add_reminder`. `agent` reminders stay visible in later dialogs you lead, but only for urgent, short-lived, globally visible cues. None of them are long-term knowledge. `personal_memory` is for durable facts and reusable knowledge saved to disk; if the information should synchronize the team's current effective state, key decisions, next step, or still-active blockers, write it to Taskdoc `progress` instead of a reminder.
 
 ### Q: How do I choose `dialog`, `task`, and `agent`?
 

@@ -137,6 +137,8 @@ async function main(): Promise<void> {
   } finally {
     unregisterAppReminderOwnersForApps({ appIds: [appId] });
   }
+
+  console.log('OK');
 }
 
 void main().catch((error: unknown) => {

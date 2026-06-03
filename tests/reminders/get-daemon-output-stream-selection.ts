@@ -1,6 +1,5 @@
 import assert from 'node:assert/strict';
-import type { DialogStore } from '../../main/dialog';
-import { MainDialog } from '../../main/dialog';
+import { DialogStore, MainDialog } from '../../main/dialog';
 import { setWorkLanguage } from '../../main/runtime/work-language';
 import type { Team } from '../../main/team';
 import {
@@ -10,10 +9,11 @@ import {
   stopDaemonTool,
 } from '../../main/tools/os';
 import { registerReminderOwner, unregisterReminderOwner } from '../../main/tools/registry';
+import { daemonScriptShell, withTempCwd, writeDaemonScriptCommand } from './daemon-test-utils';
 
 function createDialog(): MainDialog {
   return new MainDialog(
-    {} as unknown as DialogStore,
+    new DialogStore(),
     'get-daemon-output-stream-selection.tsk',
     undefined,
     'tester',
@@ -31,66 +31,79 @@ function requireDaemonPid(reminderMeta: unknown): number {
 }
 
 async function main(): Promise<void> {
-  setWorkLanguage('en');
-  registerReminderOwner(shellCmdReminderOwner);
-  try {
-    const dialog = createDialog();
-    const caller = {} as Team.Member;
-    await shellCmdTool.call(dialog, caller, {
-      command: `node -e "console.log('stdout-line'); console.error('stderr-line'); setInterval(() => {}, 10000)"`,
-      timeoutSeconds: 1,
-    });
-
-    const reminder = (await dialog.listVisibleReminders()).find(
-      (candidate) => candidate.owner?.name === shellCmdReminderOwner.name,
-    );
-    assert.ok(reminder, 'Expected daemon reminder to exist');
-    const pid = requireDaemonPid(reminder.meta);
-
+  await withTempCwd('dominds-get-daemon-output-stream-selection-', async (sandboxDir) => {
+    setWorkLanguage('en');
+    registerReminderOwner(shellCmdReminderOwner);
     try {
-      const both = (await getDaemonOutputTool.call(dialog, caller, { pid })).content;
-      assert.match(both, /stdout/);
-      assert.match(both, /stderr/);
-      assert.match(both, /stdout-line/);
-      assert.match(both, /stderr-line/);
+      const dialog = createDialog();
+      const caller = {} as Team.Member;
+      const command = await writeDaemonScriptCommand(
+        sandboxDir,
+        'stdout-stderr-daemon.js',
+        `
+console.log('stdout-line');
+console.error('stderr-line');
+setInterval(() => {}, 10000);
+`,
+        `Write-Output 'stdout-line'; [Console]::Error.WriteLine('stderr-line'); while ($true) { Start-Sleep -Seconds 10 }`,
+      );
+      await shellCmdTool.call(dialog, caller, {
+        command,
+        shell: daemonScriptShell(),
+        timeoutSeconds: 1,
+      });
 
-      const onlyStdout = (
-        await getDaemonOutputTool.call(dialog, caller, {
-          pid,
-          stdout: true,
-          stderr: false,
-        })
-      ).content;
-      assert.match(onlyStdout, /stdout/);
-      assert.doesNotMatch(onlyStdout, /stderr-line/);
-      assert.match(onlyStdout, /stdout-line/);
+      const reminder = (await dialog.listVisibleReminders()).find(
+        (candidate) => candidate.owner?.name === shellCmdReminderOwner.name,
+      );
+      assert.ok(reminder, 'Expected daemon reminder to exist');
+      const pid = requireDaemonPid(reminder.meta);
 
-      const onlyStderr = (
-        await getDaemonOutputTool.call(dialog, caller, {
-          pid,
-          stdout: false,
-          stderr: true,
-        })
-      ).content;
-      assert.match(onlyStderr, /stderr/);
-      assert.doesNotMatch(onlyStderr, /stdout-line/);
-      assert.match(onlyStderr, /stderr-line/);
+      try {
+        const both = (await getDaemonOutputTool.call(dialog, caller, { pid })).content;
+        assert.match(both, /stdout/);
+        assert.match(both, /stderr/);
+        assert.match(both, /stdout-line/);
+        assert.match(both, /stderr-line/);
 
-      await assert.rejects(
-        async () =>
+        const onlyStdout = (
+          await getDaemonOutputTool.call(dialog, caller, {
+            pid,
+            stdout: true,
+            stderr: false,
+          })
+        ).content;
+        assert.match(onlyStdout, /stdout/);
+        assert.doesNotMatch(onlyStdout, /stderr-line/);
+        assert.match(onlyStdout, /stdout-line/);
+
+        const onlyStderr = (
           await getDaemonOutputTool.call(dialog, caller, {
             pid,
             stdout: false,
-            stderr: false,
-          }),
-        /at least one of stdout\/stderr to be true/,
-      );
+            stderr: true,
+          })
+        ).content;
+        assert.match(onlyStderr, /stderr/);
+        assert.doesNotMatch(onlyStderr, /stdout-line/);
+        assert.match(onlyStderr, /stderr-line/);
+
+        await assert.rejects(
+          async () =>
+            await getDaemonOutputTool.call(dialog, caller, {
+              pid,
+              stdout: false,
+              stderr: false,
+            }),
+          /at least one of stdout\/stderr to be true/,
+        );
+      } finally {
+        await stopDaemonTool.call(dialog, caller, { pid });
+      }
     } finally {
-      await stopDaemonTool.call(dialog, caller, { pid });
+      unregisterReminderOwner(shellCmdReminderOwner.name);
     }
-  } finally {
-    unregisterReminderOwner(shellCmdReminderOwner.name);
-  }
+  });
 }
 
 void main()

@@ -30,8 +30,8 @@
 Reminders are temporary current-work notes with three scopes:
 
 - `dialog`: current-dialog only
-- `task`: visible in every dialog you lead for the current Taskdoc
-- `agent`: visible in all dialogs you lead, but only for urgent, short-lived, globally visible cues
+- `task`: visible across dialogs for the current Taskdoc
+- `agent`: visible in later dialogs you lead, but only for urgent, short-lived, globally visible cues
 
 Default to `task`. Use `dialog` only when the note is truly dialog-local; use `agent` only when the note is urgent, short-lived, and globally visible.
 
@@ -39,7 +39,7 @@ Default to `task`. Use `dialog` only when the note is truly dialog-local; use `a
 
 - `dialog` reminders stay in the current dialog only
 - `task` reminders stay visible under the current Taskdoc
-- `agent` reminders stay visible in all later dialogs you lead
+- `agent` reminders stay visible in later dialogs you lead
 - Can be added, modified, or deleted at any time
 - Should stay compact, scannable, and directly actionable by default
 - Before `clear_mind`, the Main Dialog first records undocumented discussion details the next course needs to know into Taskdoc, then creates a structured continuation-package reminder; a Side Dialog directly maintains sufficiently detailed continuation-package reminders. If Dominds has already warned that context is tight or critical, Side Dialog reminders have no fixed length limit and rough multi-reminder carry-over is acceptable
@@ -47,7 +47,7 @@ Default to `task`. Use `dialog` only when the note is truly dialog-local; use `a
 **Difference from memory:**
 | Feature | dialog reminder | task reminder | agent reminder | personal memory |
 |---------|-----------------|---------------|----------------|-----------------|
-| Persistence | Current dialog only | Current Taskdoc | Across all later dialogs you lead | Long-term / file-backed |
+| Persistence | Current dialog only | Current Taskdoc | Across later dialogs you lead | Long-term / file-backed |
 | Visibility | Current dialog | Current-task dialogs | Current Dialog Responder | Current agent |
 | Best for | Current next step, blocker, volatile clue | Current work under one task | Urgent, short-lived, global cue | Stable facts / reusable knowledge |
 
@@ -61,7 +61,7 @@ Default to `task`. Use `dialog` only when the note is truly dialog-local; use `a
   - current blockers
   - temporary paths, ids, commands, sample inputs
   - bridge notes that matter only for this dialog / current course
-- Use `agent` only for urgent, short-lived, globally visible cues that should appear in every dialog you lead.
+- Use `agent` only for urgent, short-lived, globally visible cues that should appear across dialogs you lead.
 - If the content is a durable fact or knowledge asset rather than an active current-work cue, it likely belongs in `personal_memory`, not in any reminder scope.
 
 ### 2. Taskdoc
@@ -125,7 +125,7 @@ Taskdoc is a **task contract** and the task's **team-shared source of current tr
 - **Easy-to-lose details**: temporary paths, ids, commands, sample inputs
 - **Course transition**: continuation-package notes before `clear_mind`, including rough multi-reminder carry-over when already degraded
 - **Task carry-over**: if you should keep seeing the note under the current Taskdoc, use `task`
-- **Global urgent cue**: if you should keep seeing it in all later dialogs you lead, and it is urgent, short-lived, and globally visible, use `agent`
+- **Global urgent cue**: if you should keep seeing it across later dialogs you lead, and it is urgent, short-lived, and globally visible, use `agent`
 
 ### 2. Taskdoc Update Timing
 
@@ -161,7 +161,7 @@ Taskdoc is a **task contract** and the task's **team-shared source of current tr
 
 ## Limitations and Notes
 
-1. `dialog` reminders end with the dialog; `task` reminders stay visible under the current Taskdoc; `agent` reminders stay visible in all later dialogs you lead
+1. `dialog` reminders end with the dialog; `task` reminders stay visible under the current Taskdoc; `agent` reminders stay visible in later dialogs you lead
 2. Use `do_mind` to create missing Taskdoc sections; use `mind_more` for small Taskdoc additions; use `change_mind` for full-section replacement of existing sections only after merging existing content and calling `recall_taskdoc` for the current `content_hash`; use `never_mind` when a whole section file should be deleted. Do not treat `mind_more` as a chronology tool; when cleanup, stale-entry removal, or same-topic consolidation is needed, use `recall_taskdoc` then `change_mind`
 3. `do_mind` / `mind_more` / `change_mind` / `never_mind` do not start a new course
 4. A continuation-package reminder should keep only details still not covered by Taskdoc but easy to lose during resume; in the Main Dialog, undocumented discussion details from current dialog history that the next course needs to know should be written to the appropriate Taskdoc sections first; in a Side Dialog after Dominds warns that context is tight or critical, maintain sufficiently detailed continuation-package reminders only

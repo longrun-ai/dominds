@@ -143,8 +143,8 @@ async function main(): Promise<void> {
       'asker should not receive the old cleared-mind invalidation failure notice',
     );
 
-    const allDialogs = mainDialog.getAllDialogs();
-    const sideDialog = allDialogs.find((dialog) => dialog.id.selfId !== mainDialog.id.selfId);
+    const loadedDialogs = mainDialog.getLoadedDialogTreeSnapshot();
+    const sideDialog = loadedDialogs.find((dialog) => dialog.id.selfId !== mainDialog.id.selfId);
     assert.ok(sideDialog, 'expected a sideDialog to exist');
     assert.equal(sideDialog.currentCourse, 2, 'tellaskee sideDialog should advance to course #2');
   });

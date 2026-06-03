@@ -219,7 +219,7 @@ export async function waitForAllDialogsUnlocked(
   timeoutMs: number,
 ): Promise<void> {
   await waitFor(
-    async () => !root.getAllDialogs().some((d) => d.isLocked()),
+    async () => !root.getLoadedDialogTreeSnapshot().some((d) => d.isLocked()),
     timeoutMs,
     'all background dialog drives to finish',
   );

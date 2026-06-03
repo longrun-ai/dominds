@@ -13,6 +13,7 @@ import fsSync from 'fs';
 import { createRequire } from 'module';
 import net from 'net';
 import path from 'path';
+import { pathToFileURL } from 'url';
 import { promisify } from 'util';
 import type { Dialog } from '../dialog';
 import type { ChatMessage } from '../llm/client';
@@ -1362,8 +1363,8 @@ function resolveCmdRunnerEntrypointAbs(): CmdRunnerEntrypointResolution {
   }
   const tsCandidate = path.resolve(__dirname, 'cmd-runner.ts');
   if (fsSync.existsSync(tsCandidate)) {
-    const tsxLoaderAbs = requireFn.resolve('tsx');
-    return { ok: true, scriptAbs: tsCandidate, execArgv: ['--import', tsxLoaderAbs] };
+    const tsxLoaderUrl = pathToFileURL(requireFn.resolve('tsx')).href;
+    return { ok: true, scriptAbs: tsCandidate, execArgv: ['--import', tsxLoaderUrl] };
   }
   return {
     ok: false,

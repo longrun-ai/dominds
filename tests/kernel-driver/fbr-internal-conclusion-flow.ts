@@ -298,7 +298,7 @@ async function main(): Promise<void> {
     await waitForAllDialogsUnlocked(successRoot, 8_000);
 
     const successSideDialog = successRoot
-      .getAllDialogs()
+      .getLoadedDialogTreeSnapshot()
       .find((dialog): dialog is SideDialog => dialog instanceof SideDialog);
     assert.ok(successSideDialog, 'expected FBR success sideDialog to exist');
     assert.equal(
@@ -425,7 +425,7 @@ async function main(): Promise<void> {
     await waitForAllDialogsUnlocked(fallbackRoot, 8_000);
 
     const fallbackSideDialog = fallbackRoot
-      .getAllDialogs()
+      .getLoadedDialogTreeSnapshot()
       .find((dialog): dialog is SideDialog => dialog instanceof SideDialog);
     assert.ok(fallbackSideDialog, 'expected fallback FBR sideDialog to exist');
     assert.equal(

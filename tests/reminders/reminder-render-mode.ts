@@ -1,36 +1,24 @@
 import assert from 'node:assert/strict';
 import * as fs from 'node:fs/promises';
-import * as os from 'node:os';
-import * as path from 'node:path';
 
 import { DialogStore, MainDialog } from '../../main/dialog';
 import { DialogPersistence } from '../../main/persistence';
 import type { Team } from '../../main/team';
 import { addReminderTool, updateReminderTool } from '../../main/tools/ctrl';
-
-async function withTempCwd<T>(fn: () => Promise<T>): Promise<T> {
-  const sandboxDir = await fs.mkdtemp(path.join(os.tmpdir(), 'dominds-reminder-render-mode-'));
-  const previousCwd = process.cwd();
-  process.chdir(sandboxDir);
-  try {
-    return await fn();
-  } finally {
-    process.chdir(previousCwd);
-    await fs.rm(sandboxDir, { recursive: true, force: true });
-  }
-}
+import { withTempCwd } from './daemon-test-utils';
 
 function createDialog(agentId: string): MainDialog {
   return new MainDialog(new DialogStore(), 'reminder-render-mode.tsk', undefined, agentId);
 }
 
 async function main(): Promise<void> {
-  await withTempCwd(async () => {
+  await withTempCwd('dominds-reminder-render-mode-', async () => {
     const dlg = createDialog('tester');
     const caller = {} as Team.Member;
 
     await addReminderTool.call(dlg, caller, {
       content: '**Keep** this as markdown',
+      scope: 'dialog',
     });
     const markdownReminder = dlg.reminders[0];
     assert.equal(markdownReminder?.renderMode, 'markdown');
@@ -43,6 +31,7 @@ async function main(): Promise<void> {
 
     await addReminderTool.call(dlg, caller, {
       content: '**Literal asterisks wanted**',
+      scope: 'dialog',
       render_mode: 'plain',
     });
     const plainReminder = dlg.reminders[1];
