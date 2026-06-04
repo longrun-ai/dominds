@@ -11852,6 +11852,7 @@ export class DialogPersistence {
   ): DialogLatestFile['pendingUserInterjectionReply'] {
     let pendingUserInterjectionReply: DialogLatestFile['pendingUserInterjectionReply'];
     let visibleReplySettled = false;
+    let visibleReplyGenseq: number | undefined;
     for (const event of events) {
       if (event.type === 'human_text_record') {
         if (event.origin !== 'user') continue;
@@ -11864,6 +11865,7 @@ export class DialogPersistence {
           genseq: toCallSiteGenseqNo(event.genseq),
         };
         visibleReplySettled = false;
+        visibleReplyGenseq = undefined;
         continue;
       }
       if (pendingUserInterjectionReply === undefined) {
@@ -11871,10 +11873,14 @@ export class DialogPersistence {
       }
       if (event.type === 'agent_words_record') {
         visibleReplySettled = true;
+        visibleReplyGenseq = event.genseq;
         continue;
       }
       if (event.type === 'func_call_record' || event.type === 'tellask_call_record') {
-        visibleReplySettled = false;
+        if (visibleReplyGenseq === undefined || event.genseq <= visibleReplyGenseq) {
+          visibleReplySettled = false;
+          visibleReplyGenseq = undefined;
+        }
       }
     }
     return visibleReplySettled ? undefined : pendingUserInterjectionReply;
@@ -11887,13 +11893,27 @@ export class DialogPersistence {
     pending: DialogLatestFile['pendingUserInterjectionReply'];
   }): AnswerToHumanItem | undefined {
     let pendingUserInterjectionReply: DialogLatestFile['pendingUserInterjectionReply'];
-    let lastVisibleAnswer: { content: string; genseq: number } | undefined;
-    let visibleReplySettled = false;
+    let visibleAnswer: { content: string; genseq: number } | undefined;
+    let hasAutoDriveAfterVisibleAnswer = false;
+    let possibleAutoDriveStartGenseq: number | undefined;
 
     for (const event of args.events) {
       if (event.type === 'human_text_record') {
-        if (event.origin !== 'user') continue;
+        if (event.origin !== 'user') {
+          if (
+            visibleAnswer !== undefined &&
+            possibleAutoDriveStartGenseq !== undefined &&
+            event.genseq === possibleAutoDriveStartGenseq
+          ) {
+            hasAutoDriveAfterVisibleAnswer = true;
+          }
+          continue;
+        }
         if (typeof event.q4hAnswerCallId === 'string' && event.q4hAnswerCallId.trim() !== '') {
+          pendingUserInterjectionReply = undefined;
+          visibleAnswer = undefined;
+          hasAutoDriveAfterVisibleAnswer = false;
+          possibleAutoDriveStartGenseq = undefined;
           continue;
         }
         pendingUserInterjectionReply = {
@@ -11901,25 +11921,64 @@ export class DialogPersistence {
           course: toDialogCourseNumber(args.course),
           genseq: toCallSiteGenseqNo(event.genseq),
         };
-        visibleReplySettled = false;
-        lastVisibleAnswer = undefined;
+        visibleAnswer = undefined;
+        hasAutoDriveAfterVisibleAnswer = false;
+        possibleAutoDriveStartGenseq = undefined;
         continue;
       }
       if (pendingUserInterjectionReply === undefined) {
         continue;
       }
       if (event.type === 'agent_words_record') {
-        visibleReplySettled = true;
-        lastVisibleAnswer = { content: event.content, genseq: event.genseq };
+        if (
+          visibleAnswer !== undefined &&
+          (hasAutoDriveAfterVisibleAnswer ||
+            (possibleAutoDriveStartGenseq !== undefined &&
+              event.genseq === possibleAutoDriveStartGenseq))
+        ) {
+          hasAutoDriveAfterVisibleAnswer = true;
+          continue;
+        }
+        visibleAnswer = { content: event.content, genseq: event.genseq };
+        continue;
+      }
+      if (event.type === 'gen_start_record') {
+        if (
+          visibleAnswer !== undefined &&
+          (typeof event.msgId !== 'string' || event.msgId.trim() === '')
+        ) {
+          hasAutoDriveAfterVisibleAnswer = true;
+          possibleAutoDriveStartGenseq = undefined;
+        } else if (visibleAnswer !== undefined) {
+          possibleAutoDriveStartGenseq = event.genseq;
+        }
+        continue;
+      }
+      if (event.type === 'agent_thought_record' || event.type === 'runtime_guide_record') {
+        if (
+          visibleAnswer !== undefined &&
+          possibleAutoDriveStartGenseq !== undefined &&
+          event.genseq === possibleAutoDriveStartGenseq
+        ) {
+          hasAutoDriveAfterVisibleAnswer = true;
+        }
         continue;
       }
       if (event.type === 'func_call_record' || event.type === 'tellask_call_record') {
-        visibleReplySettled = false;
-        lastVisibleAnswer = undefined;
+        if (visibleAnswer !== undefined && event.genseq > visibleAnswer.genseq) {
+          hasAutoDriveAfterVisibleAnswer = true;
+          continue;
+        }
+        visibleAnswer = undefined;
+        possibleAutoDriveStartGenseq = undefined;
       }
     }
 
-    if (!visibleReplySettled || pendingUserInterjectionReply === undefined || !lastVisibleAnswer) {
+    if (
+      pendingUserInterjectionReply === undefined ||
+      visibleAnswer === undefined ||
+      !hasAutoDriveAfterVisibleAnswer
+    ) {
       return undefined;
     }
     if (pendingUserInterjectionReply.msgId !== args.pending?.msgId) {
@@ -11930,16 +11989,16 @@ export class DialogPersistence {
       args.dialogId.rootId,
       args.dialogId.selfId,
       `c${String(args.course)}`,
-      `g${String(lastVisibleAnswer.genseq)}`,
+      `g${String(visibleAnswer.genseq)}`,
       pendingUserInterjectionReply.msgId,
     ].join('|');
     return {
       id: `a2h-${Buffer.from(answerIdSource).toString('base64url')}`,
-      content: lastVisibleAnswer.content,
+      content: visibleAnswer.content,
       answeredAt: formatUnifiedTimestamp(new Date()),
       answerRef: {
         course: toDialogCourseNumber(args.course),
-        genseq: toCallSiteGenseqNo(lastVisibleAnswer.genseq),
+        genseq: toCallSiteGenseqNo(visibleAnswer.genseq),
       },
     };
   }

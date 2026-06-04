@@ -110,13 +110,444 @@ async function main(): Promise<void> {
     const recoveredAnswers = await DialogPersistence.loadAnswersToHumanState(dlg.id, dlg.status);
     assert.equal(
       recoveredAnswers.length,
+      0,
+      'course JSONL recovery should not synthesize A2H when a direct visible answer has no later automatic drive',
+    );
+
+    const autoContinueDlg = await createMainDialog('tester');
+    await DialogPersistence.appendEvent(
+      autoContinueDlg.id,
       1,
-      'course JSONL recovery should synthesize one A2H record for the visible interjection answer',
+      {
+        ts: '2026-05-21T00:00:10.000Z',
+        type: 'human_text_record',
+        genseq: 1,
+        msgId: 'pending-user-interjection-auto-continue-user',
+        content: 'Please answer and continue automatically.',
+        grammar: 'markdown',
+        origin: 'user',
+      },
+      autoContinueDlg.status,
+    );
+    await DialogPersistence.appendEvent(
+      autoContinueDlg.id,
+      1,
+      {
+        ts: '2026-05-21T00:00:11.000Z',
+        type: 'agent_words_record',
+        genseq: 1,
+        content: 'Here is the visible answer before automatic continuation.',
+      },
+      autoContinueDlg.status,
+    );
+    await DialogPersistence.appendEvent(
+      autoContinueDlg.id,
+      1,
+      {
+        ts: '2026-05-21T00:00:12.000Z',
+        type: 'gen_start_record',
+        genseq: 2,
+      },
+      autoContinueDlg.status,
+    );
+    await DialogPersistence.appendEvent(
+      autoContinueDlg.id,
+      1,
+      {
+        ts: '2026-05-21T00:00:13.000Z',
+        type: 'agent_words_record',
+        genseq: 2,
+        content: 'Automatic continuation output should not replace the first visible answer.',
+      },
+      autoContinueDlg.status,
+    );
+    await DialogPersistence.mutateDialogLatest(
+      autoContinueDlg.id,
+      () => ({
+        kind: 'patch',
+        patch: {
+          pendingUserInterjectionReply: {
+            msgId: 'pending-user-interjection-auto-continue-user',
+            course: toDialogCourseNumber(1),
+            genseq: toCallSiteGenseqNo(1),
+          },
+        },
+      }),
+      autoContinueDlg.status,
+    );
+    const autoContinueLatest = await DialogPersistence.loadDialogLatest(
+      autoContinueDlg.id,
+      autoContinueDlg.status,
     );
     assert.equal(
-      recoveredAnswers[0]?.content,
-      'Here is the answer after the tool result.',
-      'recovered A2H content should match the post-tool visible assistant answer',
+      autoContinueLatest?.pendingUserInterjectionReply,
+      undefined,
+      'course JSONL recovery should clear stale latest pending state after an auto-continued visible reply',
+    );
+    const autoContinueAnswers = await DialogPersistence.loadAnswersToHumanState(
+      autoContinueDlg.id,
+      autoContinueDlg.status,
+    );
+    assert.equal(
+      autoContinueAnswers.length,
+      1,
+      'course JSONL recovery should synthesize A2H when a visible interjection answer is followed by automatic drive',
+    );
+    assert.equal(
+      autoContinueAnswers[0]?.content,
+      'Here is the visible answer before automatic continuation.',
+      'recovered A2H content should match the pre-continuation visible assistant answer',
+    );
+
+    const runtimeGuideAutoContinueDlg = await createMainDialog('tester');
+    await DialogPersistence.appendEvent(
+      runtimeGuideAutoContinueDlg.id,
+      1,
+      {
+        ts: '2026-05-21T00:00:15.000Z',
+        type: 'human_text_record',
+        genseq: 1,
+        msgId: 'pending-user-interjection-before-runtime-guide',
+        content: 'Please answer before the runtime guide auto continuation.',
+        grammar: 'markdown',
+        origin: 'user',
+      },
+      runtimeGuideAutoContinueDlg.status,
+    );
+    await DialogPersistence.appendEvent(
+      runtimeGuideAutoContinueDlg.id,
+      1,
+      {
+        ts: '2026-05-21T00:00:16.000Z',
+        type: 'agent_words_record',
+        genseq: 1,
+        content: 'Direct answer before a prompt-bound runtime guide continuation.',
+      },
+      runtimeGuideAutoContinueDlg.status,
+    );
+    await DialogPersistence.appendEvent(
+      runtimeGuideAutoContinueDlg.id,
+      1,
+      {
+        ts: '2026-05-21T00:00:17.000Z',
+        type: 'gen_start_record',
+        genseq: 2,
+        msgId: 'runtime-guide-auto-continuation',
+      },
+      runtimeGuideAutoContinueDlg.status,
+    );
+    await DialogPersistence.appendEvent(
+      runtimeGuideAutoContinueDlg.id,
+      1,
+      {
+        ts: '2026-05-21T00:00:18.000Z',
+        type: 'runtime_guide_record',
+        genseq: 2,
+        content: 'Runtime guide continuation evidence.',
+      },
+      runtimeGuideAutoContinueDlg.status,
+    );
+    await DialogPersistence.mutateDialogLatest(
+      runtimeGuideAutoContinueDlg.id,
+      () => ({
+        kind: 'patch',
+        patch: {
+          pendingUserInterjectionReply: {
+            msgId: 'pending-user-interjection-before-runtime-guide',
+            course: toDialogCourseNumber(1),
+            genseq: toCallSiteGenseqNo(1),
+          },
+        },
+      }),
+      runtimeGuideAutoContinueDlg.status,
+    );
+    await DialogPersistence.loadDialogLatest(
+      runtimeGuideAutoContinueDlg.id,
+      runtimeGuideAutoContinueDlg.status,
+    );
+    const runtimeGuideAutoContinueAnswers = await DialogPersistence.loadAnswersToHumanState(
+      runtimeGuideAutoContinueDlg.id,
+      runtimeGuideAutoContinueDlg.status,
+    );
+    assert.equal(
+      runtimeGuideAutoContinueAnswers.length,
+      1,
+      'course JSONL recovery should synthesize one A2H from prompt-bound runtime guide continuation evidence',
+    );
+    assert.equal(
+      runtimeGuideAutoContinueAnswers[0]?.content,
+      'Direct answer before a prompt-bound runtime guide continuation.',
+      'course JSONL recovery should treat prompt-bound runtime guide records as automatic continuation evidence',
+    );
+
+    const toolAutoContinueDlg = await createMainDialog('tester');
+    await DialogPersistence.appendEvent(
+      toolAutoContinueDlg.id,
+      1,
+      {
+        ts: '2026-05-21T00:00:18.100Z',
+        type: 'human_text_record',
+        genseq: 1,
+        msgId: 'pending-user-interjection-before-auto-tool',
+        content: 'Please answer before the automatic tool continuation.',
+        grammar: 'markdown',
+        origin: 'user',
+      },
+      toolAutoContinueDlg.status,
+    );
+    await DialogPersistence.appendEvent(
+      toolAutoContinueDlg.id,
+      1,
+      {
+        ts: '2026-05-21T00:00:18.200Z',
+        type: 'agent_words_record',
+        genseq: 1,
+        content: 'Direct answer before an automatic tool continuation.',
+      },
+      toolAutoContinueDlg.status,
+    );
+    await DialogPersistence.appendEvent(
+      toolAutoContinueDlg.id,
+      1,
+      {
+        ts: '2026-05-21T00:00:18.300Z',
+        type: 'gen_start_record',
+        genseq: 2,
+      },
+      toolAutoContinueDlg.status,
+    );
+    await DialogPersistence.appendEvent(
+      toolAutoContinueDlg.id,
+      1,
+      {
+        ts: '2026-05-21T00:00:18.400Z',
+        type: 'func_call_record',
+        genseq: 2,
+        id: 'auto-tool-after-visible-answer',
+        name: 'env_get',
+        rawArgumentsText: '{"key":"DOMINDS_TEST_AUTO_TOOL"}',
+      },
+      toolAutoContinueDlg.status,
+    );
+    await DialogPersistence.mutateDialogLatest(
+      toolAutoContinueDlg.id,
+      () => ({
+        kind: 'patch',
+        patch: {
+          pendingUserInterjectionReply: {
+            msgId: 'pending-user-interjection-before-auto-tool',
+            course: toDialogCourseNumber(1),
+            genseq: toCallSiteGenseqNo(1),
+          },
+        },
+      }),
+      toolAutoContinueDlg.status,
+    );
+    const toolAutoContinueLatest = await DialogPersistence.loadDialogLatest(
+      toolAutoContinueDlg.id,
+      toolAutoContinueDlg.status,
+    );
+    assert.equal(
+      toolAutoContinueLatest?.pendingUserInterjectionReply,
+      undefined,
+      'course JSONL recovery should clear pending when automatic continuation starts with a tool call',
+    );
+    const toolAutoContinueAnswers = await DialogPersistence.loadAnswersToHumanState(
+      toolAutoContinueDlg.id,
+      toolAutoContinueDlg.status,
+    );
+    assert.equal(
+      toolAutoContinueAnswers.length,
+      1,
+      'course JSONL recovery should synthesize one A2H when automatic continuation starts with a tool call',
+    );
+    assert.equal(
+      toolAutoContinueAnswers[0]?.content,
+      'Direct answer before an automatic tool continuation.',
+      'course JSONL recovery should synthesize A2H when automatic continuation starts with a tool call',
+    );
+
+    const manualNextDriveCrashDlg = await createMainDialog('tester');
+    await DialogPersistence.appendEvent(
+      manualNextDriveCrashDlg.id,
+      1,
+      {
+        ts: '2026-05-21T00:00:20.000Z',
+        type: 'human_text_record',
+        genseq: 1,
+        msgId: 'pending-user-interjection-before-manual-crash',
+        content: 'Please answer before I send another message.',
+        grammar: 'markdown',
+        origin: 'user',
+      },
+      manualNextDriveCrashDlg.status,
+    );
+    await DialogPersistence.appendEvent(
+      manualNextDriveCrashDlg.id,
+      1,
+      {
+        ts: '2026-05-21T00:00:21.000Z',
+        type: 'agent_words_record',
+        genseq: 1,
+        content: 'Direct answer before the next manual drive starts.',
+      },
+      manualNextDriveCrashDlg.status,
+    );
+    await DialogPersistence.appendEvent(
+      manualNextDriveCrashDlg.id,
+      1,
+      {
+        ts: '2026-05-21T00:00:22.000Z',
+        type: 'gen_start_record',
+        genseq: 2,
+        msgId: 'next-manual-user-message-not-yet-persisted',
+      },
+      manualNextDriveCrashDlg.status,
+    );
+    await DialogPersistence.mutateDialogLatest(
+      manualNextDriveCrashDlg.id,
+      () => ({
+        kind: 'patch',
+        patch: {
+          pendingUserInterjectionReply: {
+            msgId: 'pending-user-interjection-before-manual-crash',
+            course: toDialogCourseNumber(1),
+            genseq: toCallSiteGenseqNo(1),
+          },
+        },
+      }),
+      manualNextDriveCrashDlg.status,
+    );
+    const manualNextDriveCrashLatest = await DialogPersistence.loadDialogLatest(
+      manualNextDriveCrashDlg.id,
+      manualNextDriveCrashDlg.status,
+    );
+    assert.equal(
+      manualNextDriveCrashLatest?.pendingUserInterjectionReply,
+      undefined,
+      'course JSONL recovery should clear stale pending state for a visible answer before a prompt-bound next gen_start',
+    );
+    const manualNextDriveCrashAnswers = await DialogPersistence.loadAnswersToHumanState(
+      manualNextDriveCrashDlg.id,
+      manualNextDriveCrashDlg.status,
+    );
+    assert.equal(
+      manualNextDriveCrashAnswers.length,
+      0,
+      'course JSONL recovery should not treat a prompt-bound next gen_start as automatic drive before its prompt record is persisted',
+    );
+
+    const q4hAnswerAfterVisibleDlg = await createMainDialog('tester');
+    await DialogPersistence.appendEvent(
+      q4hAnswerAfterVisibleDlg.id,
+      1,
+      {
+        ts: '2026-05-21T00:00:30.000Z',
+        type: 'human_text_record',
+        genseq: 1,
+        msgId: 'pending-user-interjection-before-q4h-answer',
+        content: 'Please answer before I answer the pending Q4H.',
+        grammar: 'markdown',
+        origin: 'user',
+      },
+      q4hAnswerAfterVisibleDlg.status,
+    );
+    await DialogPersistence.appendEvent(
+      q4hAnswerAfterVisibleDlg.id,
+      1,
+      {
+        ts: '2026-05-21T00:00:31.000Z',
+        type: 'agent_words_record',
+        genseq: 1,
+        content: 'Direct answer before the Q4H answer continuation.',
+      },
+      q4hAnswerAfterVisibleDlg.status,
+    );
+    await DialogPersistence.appendEvent(
+      q4hAnswerAfterVisibleDlg.id,
+      1,
+      {
+        ts: '2026-05-21T00:00:32.000Z',
+        type: 'gen_start_record',
+        genseq: 2,
+        msgId: 'q4h-answer-msg',
+      },
+      q4hAnswerAfterVisibleDlg.status,
+    );
+    await DialogPersistence.appendEvent(
+      q4hAnswerAfterVisibleDlg.id,
+      1,
+      {
+        ts: '2026-05-21T00:00:33.000Z',
+        type: 'human_text_record',
+        genseq: 2,
+        msgId: 'q4h-answer-msg',
+        content: 'Here is the Q4H answer.',
+        grammar: 'markdown',
+        origin: 'user',
+        q4hAnswerCallId: 'q4h-call-after-visible-answer',
+      },
+      q4hAnswerAfterVisibleDlg.status,
+    );
+    await DialogPersistence.appendEvent(
+      q4hAnswerAfterVisibleDlg.id,
+      1,
+      {
+        ts: '2026-05-21T00:00:34.000Z',
+        type: 'agent_words_record',
+        genseq: 2,
+        content: 'Follow-up after the Q4H answer should not make the old direct answer A2H.',
+      },
+      q4hAnswerAfterVisibleDlg.status,
+    );
+    await DialogPersistence.appendEvent(
+      q4hAnswerAfterVisibleDlg.id,
+      1,
+      {
+        ts: '2026-05-21T00:00:35.000Z',
+        type: 'gen_start_record',
+        genseq: 3,
+      },
+      q4hAnswerAfterVisibleDlg.status,
+    );
+    await DialogPersistence.appendEvent(
+      q4hAnswerAfterVisibleDlg.id,
+      1,
+      {
+        ts: '2026-05-21T00:00:36.000Z',
+        type: 'agent_words_record',
+        genseq: 3,
+        content:
+          'Automatic continuation after Q4H should still not attach to the old direct answer.',
+      },
+      q4hAnswerAfterVisibleDlg.status,
+    );
+    await DialogPersistence.mutateDialogLatest(
+      q4hAnswerAfterVisibleDlg.id,
+      () => ({
+        kind: 'patch',
+        patch: {
+          pendingUserInterjectionReply: {
+            msgId: 'pending-user-interjection-before-q4h-answer',
+            course: toDialogCourseNumber(1),
+            genseq: toCallSiteGenseqNo(1),
+          },
+        },
+      }),
+      q4hAnswerAfterVisibleDlg.status,
+    );
+    await DialogPersistence.loadDialogLatest(
+      q4hAnswerAfterVisibleDlg.id,
+      q4hAnswerAfterVisibleDlg.status,
+    );
+    const q4hAnswerAfterVisibleAnswers = await DialogPersistence.loadAnswersToHumanState(
+      q4hAnswerAfterVisibleDlg.id,
+      q4hAnswerAfterVisibleDlg.status,
+    );
+    assert.equal(
+      q4hAnswerAfterVisibleAnswers.length,
+      0,
+      'course JSONL recovery should not treat a prompt-bound Q4H answer continuation as automatic drive',
     );
 
     const ordinaryDlg = await createMainDialog('tester');
@@ -225,7 +656,7 @@ async function main(): Promise<void> {
     );
     assert.equal(
       archivedAnswersBeforeAck.length,
-      2,
+      1,
       'archived dialog should retain all A2H answers until they are acknowledged',
     );
     for (const answer of archivedAnswersBeforeAck) {

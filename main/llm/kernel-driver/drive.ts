@@ -576,12 +576,20 @@ function samePendingUserInterjectionCoordinate(
   return left.msgId === right.msgId && left.course === right.course && left.genseq === right.genseq;
 }
 
+type VisibleUserInterjectionAnswerCandidate = Readonly<{
+  userPromptMsgId: string;
+  assistantSayingContent: string | null;
+  assistantSayingGenseq: number | null;
+  functionCallGenseqs: readonly number[];
+}>;
+
 async function maybeResolveAnsweredUserInterjection(args: {
   dlg: Dialog;
   userPromptMsgId: string | undefined;
   assistantSayingContent: string | null;
   assistantSayingGenseq: number | null;
   functionCallGenseqs: readonly number[];
+  recordAnswerToHuman: boolean;
 }): Promise<AnswerToHumanItem | undefined> {
   if (
     args.userPromptMsgId === undefined ||
@@ -607,42 +615,47 @@ async function maybeResolveAnsweredUserInterjection(args: {
   }
 
   const course = args.dlg.activeGenCourseOrUndefined ?? args.dlg.currentCourse;
-  const answerIdSource = [
-    args.dlg.id.rootId,
-    args.dlg.id.selfId,
-    `c${String(course)}`,
-    `g${String(args.assistantSayingGenseq)}`,
-    pending.msgId,
-  ].join('|');
-  const answer: AnswerToHumanItem = {
-    id: `a2h-${Buffer.from(answerIdSource).toString('base64url')}`,
-    content: args.assistantSayingContent,
-    answeredAt: formatUnifiedTimestamp(new Date()),
-    answerRef: {
-      course,
-      genseq: args.assistantSayingGenseq,
-    },
-  };
+  const answer: AnswerToHumanItem | undefined = args.recordAnswerToHuman
+    ? {
+        id: `a2h-${Buffer.from(
+          [
+            args.dlg.id.rootId,
+            args.dlg.id.selfId,
+            `c${String(course)}`,
+            `g${String(args.assistantSayingGenseq)}`,
+            pending.msgId,
+          ].join('|'),
+        ).toString('base64url')}`,
+        content: args.assistantSayingContent,
+        answeredAt: formatUnifiedTimestamp(new Date()),
+        answerRef: {
+          course,
+          genseq: args.assistantSayingGenseq,
+        },
+      }
+    : undefined;
 
-  const existingAnswers = await DialogPersistence.loadAnswersToHumanState(
-    args.dlg.id,
-    args.dlg.status,
-  );
-  if (!existingAnswers.some((item) => item.id === answer.id)) {
-    await DialogPersistence.appendAnswerToHumanState(args.dlg.id, answer, args.dlg.status);
-    const metadata = await DialogPersistence.loadDialogMetadata(args.dlg.id, args.dlg.status);
-    const taskDocPath = metadata?.taskDocPath ?? args.dlg.taskDocPath ?? '';
-    const event: NewA2HAnsweredEvent = {
-      type: 'new_a2h_answered',
-      answer: {
-        ...answer,
-        selfId: args.dlg.id.selfId,
-        rootId: args.dlg.id.rootId,
-        agentId: metadata?.agentId ?? args.dlg.agentId,
-        taskDocPath,
-      },
-    };
-    postDialogEvent(args.dlg, event);
+  if (answer !== undefined) {
+    const existingAnswers = await DialogPersistence.loadAnswersToHumanState(
+      args.dlg.id,
+      args.dlg.status,
+    );
+    if (!existingAnswers.some((item) => item.id === answer.id)) {
+      await DialogPersistence.appendAnswerToHumanState(args.dlg.id, answer, args.dlg.status);
+      const metadata = await DialogPersistence.loadDialogMetadata(args.dlg.id, args.dlg.status);
+      const taskDocPath = metadata?.taskDocPath ?? args.dlg.taskDocPath ?? '';
+      const event: NewA2HAnsweredEvent = {
+        type: 'new_a2h_answered',
+        answer: {
+          ...answer,
+          selfId: args.dlg.id.selfId,
+          rootId: args.dlg.id.rootId,
+          agentId: metadata?.agentId ?? args.dlg.agentId,
+          taskDocPath,
+        },
+      };
+      postDialogEvent(args.dlg, event);
+    }
   }
   await DialogPersistence.mutateDialogLatest(
     args.dlg.id,
@@ -4997,6 +5010,9 @@ export async function driveDialogStreamCore(
           const hasCurrentRoundAnsweringOutput =
             currentRoundAnsweringGenseq !== undefined &&
             lastAssistantAnsweringGenseq === currentRoundAnsweringGenseq;
+          let pendingVisibleUserInterjectionAnswer:
+            | VisibleUserInterjectionAnswerCandidate
+            | undefined;
           if (
             userInterjectionMsgIdForVisibleAnswer !== undefined &&
             !hasCurrentRoundAnsweringOutput
@@ -5011,16 +5027,29 @@ export async function driveDialogStreamCore(
               lastAssistantSayingGenseq !== previousAssistantSayingGenseq
                 ? lastAssistantSayingGenseq
                 : null;
-            await maybeResolveAnsweredUserInterjection({
-              dlg,
+            pendingVisibleUserInterjectionAnswer = {
               userPromptMsgId: userInterjectionMsgIdForVisibleAnswer,
               assistantSayingContent:
                 currentRoundAssistantSayingContent ?? streamedCurrentRoundSayingContent,
               assistantSayingGenseq:
                 currentRoundAssistantSayingGenseq ?? streamedCurrentRoundSayingGenseq,
               functionCallGenseqs: currentRoundFunctionCallGenseqs,
-            });
+            };
           }
+          const settleVisibleUserInterjectionAnswer = async (
+            recordAnswerToHuman: boolean,
+          ): Promise<void> => {
+            const pendingAnswer = pendingVisibleUserInterjectionAnswer;
+            if (pendingAnswer === undefined) {
+              return;
+            }
+            pendingVisibleUserInterjectionAnswer = undefined;
+            await maybeResolveAnsweredUserInterjection({
+              dlg,
+              ...pendingAnswer,
+              recordAnswerToHuman,
+            });
+          };
           if (routed.tellaskToolOutputs.length > 0) {
             newMsgs.push(...routed.tellaskToolOutputs);
           }
@@ -5091,6 +5120,7 @@ export async function driveDialogStreamCore(
                 }
                 await persistDialogFbrState(dlg, undefined);
                 dlg.setFbrConclusionToolsEnabled(false);
+                await settleVisibleUserInterjectionAnswer(false);
                 break;
               }
               if (inspection.kind === 'rejected') {
@@ -5113,6 +5143,7 @@ export async function driveDialogStreamCore(
               await persistDialogFbrState(dlg, nextFbrState);
               dlg.setFbrConclusionToolsEnabled(isFbrFinalizationState(nextFbrState));
               pendingPrompt = buildKernelDriverFbrPrompt(dlg, nextFbrState);
+              await settleVisibleUserInterjectionAnswer(true);
               continue;
             }
 
@@ -5135,6 +5166,7 @@ export async function driveDialogStreamCore(
             }
             await persistDialogFbrState(dlg, undefined);
             dlg.setFbrConclusionToolsEnabled(false);
+            await settleVisibleUserInterjectionAnswer(false);
             break;
           }
 
@@ -5158,6 +5190,7 @@ export async function driveDialogStreamCore(
                 )
                 .map((call) => call.name),
             });
+            await settleVisibleUserInterjectionAnswer(false);
             break;
           }
 
@@ -5165,6 +5198,7 @@ export async function driveDialogStreamCore(
           if (queuedNewCoursePrompt !== undefined) {
             pendingPrompt = queuedNewCoursePrompt;
             skipTaskdocForThisDrive = false;
+            await settleVisibleUserInterjectionAnswer(true);
             continue;
           }
 
@@ -5211,6 +5245,7 @@ export async function driveDialogStreamCore(
               remindersVer: dlg.remindersVer,
               pubRemindersVer,
             });
+            await settleVisibleUserInterjectionAnswer(true);
             break;
           }
 
@@ -5236,6 +5271,7 @@ export async function driveDialogStreamCore(
               pubRemindersVer,
             });
             await preserveDiligenceBudgetAcrossQ4H(dlg);
+            await settleVisibleUserInterjectionAnswer(false);
             break;
           }
 
@@ -5258,6 +5294,7 @@ export async function driveDialogStreamCore(
                 rootId: dlg.id.rootId,
                 selfId: dlg.id.selfId,
               });
+              await settleVisibleUserInterjectionAnswer(false);
               break;
             }
             const healthFirst = await maybeContinueWithHealthPromptBeforeDiligence({
@@ -5270,6 +5307,7 @@ export async function driveDialogStreamCore(
               if (healthFirst.resetTaskdoc) {
                 skipTaskdocForThisDrive = false;
               }
+              await settleVisibleUserInterjectionAnswer(true);
               continue;
             }
             const next = await maybeContinueWithDiligencePrompt({
@@ -5279,6 +5317,7 @@ export async function driveDialogStreamCore(
             });
             if (next.kind === 'continue') {
               pendingPrompt = next.prompt;
+              await settleVisibleUserInterjectionAnswer(true);
               continue;
             }
             lastToolRoundStopDiagnostics = buildToolRoundStopDiagnostics({
@@ -5293,6 +5332,7 @@ export async function driveDialogStreamCore(
               remindersVer: dlg.remindersVer,
               pubRemindersVer,
             });
+            await settleVisibleUserInterjectionAnswer(false);
             break;
           }
           await repairMissingImmediateFollowupTrigger({
@@ -5307,6 +5347,7 @@ export async function driveDialogStreamCore(
           resolvingImmediateToolResultUserPromptMsgId = resolvingImmediateToolResultForUserPrompt
             ? currentUserPromptMsgId
             : undefined;
+          await settleVisibleUserInterjectionAnswer(true);
           continue;
         } catch (err) {
           generationBodyError = err;

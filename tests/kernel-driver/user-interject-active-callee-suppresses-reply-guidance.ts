@@ -448,21 +448,20 @@ async function runProceedingReplyObligationScenario(): Promise<void> {
     'visible user-interjection answer should clear the pending reply marker',
   );
   const answersToHuman = await DialogPersistence.loadAnswersToHumanState(root.id, root.status);
-  const proceedingAnswer = answersToHuman.find((answer) => answer.content === interjectResponse);
   assert.equal(
-    proceedingAnswer !== undefined,
-    true,
-    'visible user-interjection answer should persist an A2H record',
+    answersToHuman.some((answer) => answer.content === interjectResponse),
+    false,
+    'direct visible user-interjection answer should not persist A2H when no automatic follow-up drive runs',
   );
   assert.equal(
     scheduled.length,
     0,
-    'visible A2H should not synthesize a special follow-up; normal drive rules own continuation',
+    'direct visible answer should not synthesize a special follow-up; normal drive rules own continuation',
   );
   assert.deepEqual(
     await DialogPersistence.loadActiveTellaskReplyObligation(root.id, root.status),
     boundReplyDirective,
-    'visible A2H should leave the active reply obligation for the ordinary state machine',
+    'direct visible answer should leave the active reply obligation for the ordinary state machine',
   );
   const deliveredEvents = await DialogPersistence.loadCourseEvents(
     root.id,
