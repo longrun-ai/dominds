@@ -85,16 +85,17 @@ Taskdoc is a **task contract** and the task's **team-shared source of current tr
 
 ## Tool Overview
 
-| Tool            | Function                                         |
-| --------------- | ------------------------------------------------ |
-| add_reminder    | Add reminder                                     |
-| delete_reminder | Delete reminder                                  |
-| update_reminder | Update reminder content                          |
-| do_mind         | Create new Taskdoc section                       |
-| mind_more       | Append entries to Taskdoc (defaults to progress) |
-| change_mind     | Replace existing Taskdoc section                 |
-| never_mind      | Delete Taskdoc section file                      |
-| recall_taskdoc  | Read taskdoc chapter                             |
+| Tool             | Function                                         |
+| ---------------- | ------------------------------------------------ |
+| add_reminder     | Add reminder                                     |
+| delete_reminder  | Delete reminder                                  |
+| update_reminder  | Update reminder content                          |
+| migrate_reminder | Move an over-shared reminder back to this dialog |
+| do_mind          | Create new Taskdoc section                       |
+| mind_more        | Append entries to Taskdoc (defaults to progress) |
+| change_mind      | Replace existing Taskdoc section                 |
+| never_mind       | Delete Taskdoc section file                      |
+| recall_taskdoc   | Read taskdoc chapter                             |
 
 ## Inter-dialog Reply Routing
 

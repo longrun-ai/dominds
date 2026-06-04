@@ -22,6 +22,7 @@ import {
   clearMindTool,
   deleteReminderTool,
   doMindTool,
+  migrateReminderTool,
   mindMoreTool,
   neverMindTool,
   recallTaskdocTool,
@@ -276,6 +277,7 @@ function buildIntrinsicControlToolset(dialog: ToolAvailabilityContext['dialog'])
     addReminderTool,
     deleteReminderTool,
     updateReminderTool,
+    migrateReminderTool,
     clearMindTool,
     recallTaskdocTool,
   ];

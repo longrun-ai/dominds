@@ -112,7 +112,30 @@ updated_at: <更新时间戳>
 
 - `REMINDER_NOT_FOUND`：提醒 id 不存在
 
-### 4. clear_mind
+### 4. migrate_reminder
+
+把当前可见的共享 reminder 迁回当前对话范围。
+
+**适用：**
+
+- 你刚更新 task/agent 共享提醒项后，发现新内容其实只属于当前对话
+- Dominds 已提醒这次共享更新影响了同智能体并行对话，需要从其它并行对话撤下
+
+**参数：**
+
+- `reminder_id`（必需）：提醒 id
+- `scope`（必需）：只能是 `dialog`
+
+**示例：**
+
+```js
+migrate_reminder({
+  reminder_id: 'abc123de',
+  scope: 'dialog',
+});
+```
+
+### 5. clear_mind
 
 开启新一程对话。
 

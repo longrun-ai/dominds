@@ -24,6 +24,7 @@ import {
   clearMindTool,
   deleteReminderTool,
   doMindTool,
+  migrateReminderTool,
   mindMoreTool,
   neverMindTool,
   recallTaskdocTool,
@@ -307,6 +308,7 @@ export async function loadAgentMinds(
     addReminderTool,
     deleteReminderTool,
     updateReminderTool,
+    migrateReminderTool,
     clearMindTool,
     recallTaskdocTool,
   ];

@@ -3,6 +3,7 @@ import {
   formatReminderContextGuide,
   formatReminderItemGuide,
   formatReminderMaintenanceReference,
+  formatSharedReminderMigrationImpactNotice,
   formatSharedReminderUpdateImpactNotice,
   type ReminderContextFooterState,
 } from '../../main/runtime/driver-messages';
@@ -473,25 +474,31 @@ async function main() {
     'Expected zh task parallel-impact notice to limit impact to same-task dialogs',
   );
   assert(
-    zhTaskParallelImpact.includes('另建对话范围提醒项'),
-    'Expected zh parallel-impact notice to recommend dialog-scope reminder for private content',
+    zhTaskParallelImpact.includes(
+      'migrate_reminder({ "reminder_id": "rem09abc", "scope": "dialog" })',
+    ),
+    'Expected zh parallel-impact notice to recommend migrate_reminder for private content',
   );
   assert(
-    zhTaskParallelImpact.includes('仅在本对话范围可见'),
+    zhTaskParallelImpact.includes('确保提醒项的影响范围合理'),
+    'Expected zh updater impact notice to ask the updater to consider reminder impact scope',
+  );
+  assert(
+    zhTaskParallelImpact.includes('仅本对话可见'),
     'Expected zh parallel-impact notice to state dialog-local visibility',
   );
 
-  const zhAgentParallelImpact = formatSharedReminderUpdateImpactNotice('zh', {
+  const zhAgentParallelImpactEarly = formatSharedReminderUpdateImpactNotice('zh', {
     reminderId: 'rem12abc',
     scope: 'agent',
     audience: 'peer',
   });
   assert(
-    zhAgentParallelImpact.includes('当前进行时存在同一智能体的其它并行对话'),
+    zhAgentParallelImpactEarly.includes('当前进行时存在同一智能体的其它并行对话'),
     'Expected zh agent parallel-impact notice to mention same-agent parallel dialogs',
   );
   assert(
-    zhAgentParallelImpact.includes('刚更新了它'),
+    zhAgentParallelImpactEarly.includes('刚更新了它'),
     'Expected zh peer impact notice to describe another dialog update',
   );
 
@@ -1005,11 +1012,17 @@ async function main() {
     'Expected en task parallel-impact notice to limit impact to same-task dialogs',
   );
   assert(
-    enTaskParallelImpact.includes('create a dialog-scope reminder instead'),
-    'Expected en parallel-impact notice to recommend dialog-scope reminder for private content',
+    enTaskParallelImpact.includes(
+      'migrate_reminder({ "reminder_id": "rem09abc", "scope": "dialog" })',
+    ),
+    'Expected en parallel-impact notice to recommend migrate_reminder for private content',
   );
   assert(
-    enTaskParallelImpact.includes('visible only inside this dialog'),
+    enTaskParallelImpact.includes("make sure the reminder's impact scope is appropriate"),
+    'Expected en updater impact notice to ask the updater to consider reminder impact scope',
+  );
+  assert(
+    enTaskParallelImpact.includes('visible only in this dialog'),
     'Expected en parallel-impact notice to state dialog-local visibility',
   );
 
@@ -1027,6 +1040,67 @@ async function main() {
   assert(
     enAgentParallelImpact.includes('Another parallel dialog for the same agent just updated it'),
     'Expected en peer impact notice to describe another dialog update',
+  );
+  assert(
+    enAgentParallelImpact.includes('actually maintained by another dialog this time'),
+    'Expected en peer impact notice to say another dialog maintained the shared reminder',
+  );
+  assert(
+    enAgentParallelImpact.includes('whether it is relevant to this dialog context'),
+    'Expected en peer impact notice to require self-judgment against this dialog context',
+  );
+  assert(
+    enAgentParallelImpact.includes('do not correct the shared content from this dialog'),
+    'Expected en peer impact notice to avoid asking the peer dialog to repair updater-private content',
+  );
+  assert(
+    !enAgentParallelImpact.includes('current-dialog-private state'),
+    'Expected en peer impact notice not to describe updater-private content as current-dialog-private state',
+  );
+  assert(
+    enAgentParallelImpact.includes(
+      'migrate_reminder({ "reminder_id": "rem12abc", "scope": "dialog" })',
+    ),
+    'Expected en peer impact notice to name migrate_reminder as the updater-side remedy',
+  );
+  const zhAgentParallelImpact = formatSharedReminderUpdateImpactNotice('zh', {
+    reminderId: 'rem12abc',
+    scope: 'agent',
+    audience: 'peer',
+  });
+  assert(
+    zhAgentParallelImpact.includes('不要在本对话替它修正共享内容'),
+    'Expected zh peer impact notice not to ask the peer to repair updater-private content',
+  );
+  assert(
+    zhAgentParallelImpact.includes('实际上由另一对话维护'),
+    'Expected zh peer impact notice to say another dialog maintained the shared reminder',
+  );
+  assert(
+    zhAgentParallelImpact.includes('自行判断它与本对话当前上下文是否有关'),
+    'Expected zh peer impact notice to require self-judgment against this dialog context',
+  );
+  assert(
+    !zhAgentParallelImpact.includes('当前对话私有状态'),
+    'Expected zh peer impact notice not to refer to impossible current-dialog-private pollution',
+  );
+  assert(
+    zhAgentParallelImpact.includes(
+      'migrate_reminder({ "reminder_id": "rem12abc", "scope": "dialog" })',
+    ),
+    'Expected zh peer impact notice to name migrate_reminder as the updater-side remedy',
+  );
+  const zhMigrationImpact = formatSharedReminderMigrationImpactNotice('zh', {
+    reminderId: 'rem12abc',
+    scope: 'agent',
+  });
+  assert(
+    zhMigrationImpact.includes('已迁回其它对话'),
+    'Expected zh migration impact notice to describe withdrawal from shared visibility',
+  );
+  assert(
+    zhMigrationImpact.includes('不再是你所在对话可见的共享参考'),
+    'Expected zh migration impact notice to say the migrated reminder is no longer visible here',
   );
 
   const enToolManaged = formatReminderItemGuide('en', 'rem03abc', 'Managed content\n', {

@@ -136,6 +136,7 @@
     "skills-tools": "tsx toolsets/skills-tools.ts",
     "reminder-format": "tsx reminders/reminder-format.ts",
     "reminder-scope": "tsx reminders/task-agent-reminder-scope.ts",
+    "reminder-migrate-scope": "tsx reminders/migrate-reminder-scope.ts",
     "reminder-owner-failure-loud": "tsx reminders/reminder-owner-failure-loud.ts",
     "reminder-app-render-mode-preserve": "tsx reminders/app-reminder-render-mode-preserve.ts",
     "reminder-context-health-continuation": "tsx reminders/context-health-continuation.ts",

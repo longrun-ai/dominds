@@ -112,7 +112,30 @@ updated_at: <update timestamp>
 
 - `REMINDER_NOT_FOUND`: Reminder id does not exist
 
-### 4. clear_mind
+### 4. migrate_reminder
+
+Move a visible shared reminder back into the current dialog scope.
+
+Use when:
+
+- You just updated a task/agent shared reminder and then realize the new content belongs only to this dialog
+- Dominds warned that the shared update affected same-agent parallel dialogs and you need to withdraw it from those dialogs
+
+**Parameters:**
+
+- `reminder_id` (required): Reminder id
+- `scope` (required): Must be `dialog`
+
+**Example:**
+
+```js
+migrate_reminder({
+  reminder_id: 'abc123de',
+  scope: 'dialog',
+});
+```
+
+### 5. clear_mind
 
 Start a new dialog course.
 

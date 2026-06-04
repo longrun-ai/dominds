@@ -12,6 +12,7 @@ import {
   clearMindTool,
   deleteReminderTool,
   doMindTool,
+  migrateReminderTool,
   mindMoreTool,
   neverMindTool,
   recallTaskdocTool,
@@ -194,6 +195,7 @@ registerTool(fetchResourceTool);
 registerTool(addReminderTool);
 registerTool(deleteReminderTool);
 registerTool(updateReminderTool);
+registerTool(migrateReminderTool);
 registerTool(clearMindTool);
 registerTool(doMindTool);
 registerTool(changeMindTool);
@@ -268,6 +270,7 @@ registerToolset('control', [
   addReminderTool,
   deleteReminderTool,
   updateReminderTool,
+  migrateReminderTool,
   clearMindTool,
   doMindTool,
   changeMindTool,

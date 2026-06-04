@@ -84,16 +84,17 @@
 
 ## 工具概览
 
-| 工具            | 功能                              |
-| --------------- | --------------------------------- |
-| add_reminder    | 添加提醒                          |
-| delete_reminder | 删除提醒                          |
-| update_reminder | 更新提醒内容                      |
-| do_mind         | 创建新差遣牒章节                  |
-| mind_more       | 向差遣牒追加条目（默认 progress） |
-| change_mind     | 整章替换已有差遣牒章节            |
-| never_mind      | 删除差遣牒章节文件                |
-| recall_taskdoc  | 读取差遣牒章节                    |
+| 工具             | 功能                              |
+| ---------------- | --------------------------------- |
+| add_reminder     | 添加提醒                          |
+| delete_reminder  | 删除提醒                          |
+| update_reminder  | 更新提醒内容                      |
+| migrate_reminder | 将误扩散的共享提醒迁回当前对话    |
+| do_mind          | 创建新差遣牒章节                  |
+| mind_more        | 向差遣牒追加条目（默认 progress） |
+| change_mind      | 整章替换已有差遣牒章节            |
+| never_mind       | 删除差遣牒章节文件                |
+| recall_taskdoc   | 读取差遣牒章节                    |
 
 ## 跨对话回复路由
 

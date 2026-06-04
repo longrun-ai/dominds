@@ -2,7 +2,10 @@ import type { LanguageCode } from '@longrun-ai/kernel/types/language';
 import { generateShortId } from '@longrun-ai/kernel/utils/id';
 import type { Dialog } from '../dialog';
 import { globalDialogRegistry } from '../dialog-global-registry';
-import { formatSharedReminderUpdateImpactNotice } from './driver-messages';
+import {
+  formatSharedReminderMigrationImpactNotice,
+  formatSharedReminderUpdateImpactNotice,
+} from './driver-messages';
 
 export type SharedReminderUpdateImpactScope = 'task' | 'agent' | 'runtime';
 
@@ -68,6 +71,28 @@ async function queueSharedReminderUpdateImpactPrompt(args: {
   });
 }
 
+async function queueSharedReminderMigrationImpactPrompt(args: {
+  targetDialog: Dialog;
+  reminderId: string;
+  scope: SharedReminderUpdateImpactScope;
+  language: LanguageCode;
+}): Promise<void> {
+  await args.targetDialog.queueRuntimeGuidePrompt({
+    prompt: formatSharedReminderMigrationImpactNotice(args.language, {
+      reminderId: args.reminderId,
+      scope: args.scope,
+    }),
+    msgId: generateShortId(),
+    grammar: 'markdown',
+    userLanguageCode: args.language,
+    skipTaskdoc: true,
+  });
+  globalDialogRegistry.queueRootDrive(args.targetDialog.id.rootId, {
+    source: 'shared_reminder_migration_impact',
+    reason: `migrated_reminder_id:${args.reminderId}`,
+  });
+}
+
 export async function dispatchSharedReminderUpdateImpact(args: {
   updater: Dialog;
   reminderId: string;
@@ -85,6 +110,38 @@ export async function dispatchSharedReminderUpdateImpact(args: {
   let dispatchedDialogCount = 0;
   for (const peerDialog of peerDialogs) {
     await queueSharedReminderUpdateImpactPrompt({
+      targetDialog: peerDialog,
+      reminderId: args.reminderId,
+      scope: args.scope,
+      language: args.language,
+    });
+    dispatchedDialogCount += 1;
+  }
+
+  return {
+    scope: args.scope,
+    peerDialogCount: peerDialogs.length,
+    dispatchedDialogCount,
+  };
+}
+
+export async function dispatchSharedReminderMigrationImpact(args: {
+  updater: Dialog;
+  reminderId: string;
+  scope: SharedReminderUpdateImpactScope;
+  language: LanguageCode;
+}): Promise<SharedReminderUpdateImpactDispatch | undefined> {
+  const peerDialogs = collectSharedReminderUpdatePeerDialogs({
+    updater: args.updater,
+    scope: args.scope,
+  });
+  if (peerDialogs.length === 0) {
+    return undefined;
+  }
+
+  let dispatchedDialogCount = 0;
+  for (const peerDialog of peerDialogs) {
+    await queueSharedReminderMigrationImpactPrompt({
       targetDialog: peerDialog,
       reminderId: args.reminderId,
       scope: args.scope,

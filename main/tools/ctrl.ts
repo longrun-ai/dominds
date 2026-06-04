@@ -12,6 +12,7 @@
  * - add_reminder: Add a reminder
  * - delete_reminder: Delete a reminder by id
  * - update_reminder: Update reminder content
+ * - migrate_reminder: Move a visible shared reminder back into the current dialog
  * - clear_mind: Start a new course, optionally add a reminder
  * - do_mind: Main Dialog only; create a new `.tsk/` Taskdoc section without starting a new course
  * - change_mind: Main Dialog only; update a `.tsk/` Taskdoc section without starting a new course
@@ -45,6 +46,7 @@ import {
   formatSharedReminderUpdateImpactNotice,
 } from '../runtime/driver-messages';
 import {
+  dispatchSharedReminderMigrationImpact,
   dispatchSharedReminderUpdateImpact,
   type SharedReminderUpdateImpactDispatch,
   type SharedReminderUpdateImpactScope,
@@ -84,6 +86,9 @@ type CtrlMessages = Readonly<{
   invalidFormatAdd: string;
   reminderContentEmpty: string;
   invalidFormatUpdate: string;
+  invalidFormatMigrate: string;
+  reminderAlreadyDialogScope: (reminderId: string) => string;
+  reminderMigrateManagedBlocked: (managerTool: string) => string;
   invalidFormatDoMind: string;
   invalidFormatChangeMind: string;
   tooManyArgsChangeMind: string;
@@ -407,6 +412,24 @@ function appendSharedReminderUpdateImpactToToolResult(
   };
 }
 
+function appendSharedReminderMigrationImpactToToolResult(
+  output: ToolCallOutput,
+  language: LanguageCode,
+  dispatch: SharedReminderUpdateImpactDispatch | undefined,
+): ToolCallOutput {
+  if (dispatch === undefined) {
+    return output;
+  }
+  const dispatchLine =
+    language === 'zh'
+      ? `已向 ${dispatch.dispatchedDialogCount}/${dispatch.peerDialogCount} 个受影响的并行对话派发撤下提醒。`
+      : `Dispatched withdrawal notices to ${dispatch.dispatchedDialogCount}/${dispatch.peerDialogCount} affected parallel dialog(s).`;
+  return {
+    ...output,
+    content: `${output.content}\n${dispatchLine}`,
+  };
+}
+
 async function formatUpdateReminderSuccessResult(args: {
   dlg: Dialog;
   target: VisibleReminderTarget;
@@ -428,6 +451,44 @@ async function formatUpdateReminderSuccessResult(args: {
     args.target.reminder.id,
     dispatch,
   );
+}
+
+async function migrateSharedReminderTargetToDialog(args: {
+  dlg: Dialog;
+  target: VisibleReminderTarget & { source: 'runtime' };
+}): Promise<boolean> {
+  const reminderId = args.target.reminder.id;
+  const existingDialogIndex = findReminderIndexById('dialog', args.dlg.reminders, reminderId);
+  if (existingDialogIndex !== null) {
+    throw new Error(`Duplicate visible reminder_id before migration: ${reminderId}`);
+  }
+
+  let migratedReminder: Reminder | undefined;
+  await mutateSharedReminders(args.target.target, (sharedReminders) => {
+    const index = findReminderIndexById('shared', sharedReminders, reminderId);
+    if (index === null) return;
+    migratedReminder = sharedReminders[index];
+    sharedReminders.splice(index, 1);
+  });
+  if (migratedReminder === undefined) {
+    return false;
+  }
+
+  args.dlg.reminders.push(
+    materializeReminder({
+      id: migratedReminder.id,
+      content: migratedReminder.content,
+      owner: migratedReminder.owner,
+      meta: migratedReminder.meta,
+      echoback: migratedReminder.echoback,
+      scope: 'dialog',
+      createdAt: migratedReminder.createdAt,
+      priority: migratedReminder.priority,
+      renderMode: migratedReminder.renderMode,
+    }),
+  );
+  args.dlg.touchReminders();
+  return true;
 }
 
 async function deleteResolvedReminderTarget(
@@ -491,6 +552,12 @@ function getCtrlMessages(language: LanguageCode): CtrlMessages {
       reminderContentEmpty: '提醒内容不能为空',
       invalidFormatUpdate:
         '参数格式不对。用法：update_reminder({ reminder_id: string, content: string })',
+      invalidFormatMigrate:
+        '参数格式不对。用法：migrate_reminder({ reminder_id: string, scope: "dialog" })',
+      reminderAlreadyDialogScope: (reminderId) =>
+        `reminder_id=${reminderId} 已经是当前对话范围提醒项，不需要迁移。`,
+      reminderMigrateManagedBlocked: (managerTool) =>
+        `错误：该提醒项由工具 ${managerTool} 管理，不能用 migrate_reminder 迁移；请使用 ${managerTool} 更新。`,
       invalidFormatDoMind:
         '参数格式不对。用法：do_mind({ selector: string, category?: string, content: string })',
       invalidFormatChangeMind:
@@ -563,6 +630,12 @@ function getCtrlMessages(language: LanguageCode): CtrlMessages {
     reminderContentEmpty: 'Error: Reminder content cannot be empty',
     invalidFormatUpdate:
       'Error: Invalid args. Use: update_reminder({ reminder_id: string, content: string })',
+    invalidFormatMigrate:
+      'Error: Invalid args. Use: migrate_reminder({ reminder_id: string, scope: "dialog" })',
+    reminderAlreadyDialogScope: (reminderId) =>
+      `reminder_id=${reminderId} is already dialog-scope in the current dialog; no migration is needed.`,
+    reminderMigrateManagedBlocked: (managerTool) =>
+      `Error: This reminder is managed by tool ${managerTool}. Do not migrate it via migrate_reminder; use ${managerTool} instead.`,
     invalidFormatDoMind:
       'Error: Invalid args. Use: do_mind({ selector: string, category?: string, content: string })',
     invalidFormatChangeMind:
@@ -862,6 +935,88 @@ export const updateReminderTool: FuncTool = {
       target: resolved.target,
       language,
     });
+  },
+};
+
+export const migrateReminderTool: FuncTool = {
+  type: 'func',
+  name: 'migrate_reminder',
+  description:
+    'Move a visible shared reminder back into the current dialog scope. Use this after a task/agent shared reminder update turns out to belong only to the updater dialog, so Dominds withdraws it from affected parallel dialogs.',
+  descriptionI18n: {
+    en: 'Move a visible shared reminder back into the current dialog scope. Use this after a task/agent shared reminder update turns out to belong only to the updater dialog, so Dominds withdraws it from affected parallel dialogs.',
+    zh: '把当前可见的共享提醒项迁回当前对话范围。用于 task/agent 共享提醒更新后发现内容只属于更新者对话时，将它从受影响并行对话中撤下。',
+  },
+  parameters: {
+    type: 'object',
+    additionalProperties: false,
+    required: ['reminder_id', 'scope'],
+    properties: {
+      reminder_id: { type: 'string', description: 'Stable reminder id.' },
+      scope: {
+        type: 'string',
+        enum: ['dialog'],
+        description: 'Target scope. Currently only dialog is supported.',
+      },
+    },
+  },
+  argsValidation: 'dominds',
+  async call(dlg: Dialog, _caller: Team.Member, args: ToolArguments): Promise<ToolCallOutput> {
+    const language = getWorkLanguage();
+    const t = getCtrlMessages(language);
+    if (args['scope'] !== 'dialog') {
+      return toolFailure(t.invalidFormatMigrate);
+    }
+
+    const resolved = await resolveReminderTarget(dlg, args['reminder_id']);
+    if (!resolved.ok) {
+      const reminderId = resolved.reminderId.trim();
+      if (reminderId === '') return toolFailure(t.invalidFormatMigrate);
+      return toolFailure(t.reminderDoesNotExist(reminderId));
+    }
+    const targetReminder = resolved.target.reminder;
+    if (resolved.target.source === 'dialog') {
+      return toolSuccess(t.reminderAlreadyDialogScope(targetReminder.id));
+    }
+
+    const deleteAltInstruction = getDeleteAltInstruction(targetReminder.meta);
+    if (deleteAltInstruction !== undefined) {
+      return toolFailure(formatManualDeleteBlockedError(language, deleteAltInstruction));
+    }
+    const managerTool = getManagerTool(targetReminder.meta);
+    if (managerTool !== undefined) {
+      return toolFailure(t.reminderMigrateManagedBlocked(managerTool));
+    }
+    if (targetReminder.owner?.updateReminder !== undefined) {
+      return toolFailure(
+        language === 'zh'
+          ? '错误：该提醒项由 reminder owner 自动维护，不能用 migrate_reminder 迁移。'
+          : 'Error: This reminder is automatically maintained by a reminder owner and cannot be migrated via migrate_reminder.',
+      );
+    }
+
+    const scope = resolveSharedReminderUpdateImpactScope(resolved.target);
+    const migrated = await migrateSharedReminderTargetToDialog({
+      dlg,
+      target: resolved.target,
+    });
+    if (!migrated) return toolFailure(t.reminderTargetChanged);
+
+    const baseOutput = toolSuccess(
+      language === 'zh'
+        ? `已迁移：reminder_id=${targetReminder.id} 已从共享范围撤下，并保留为当前对话范围提醒项。`
+        : `Migrated: reminder_id=${targetReminder.id} has been withdrawn from shared scope and kept as a current-dialog reminder.`,
+    );
+    const dispatch =
+      scope === undefined
+        ? undefined
+        : await dispatchSharedReminderMigrationImpact({
+            updater: dlg,
+            reminderId: targetReminder.id,
+            scope,
+            language,
+          });
+    return appendSharedReminderMigrationImpactToToolResult(baseOutput, language, dispatch);
   },
 };
 

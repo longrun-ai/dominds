@@ -730,13 +730,14 @@ export function formatSharedReminderUpdateImpactNotice(
         ? '当前进行时存在同一智能体在当前差遣牒任务内的其它并行对话'
         : '当前进行时存在同一智能体的其它并行对话';
     if (args.audience === 'updater') {
-      return `共享范围影响：你刚更新的 reminder_id=${reminderId} 是${scopeName}提醒项，不是当前对话私有；${impactedDialogs}，其它能看到这条提醒项的对话也会看到这次更新。如果新内容只应影响当前对话，请另建对话范围提醒项，让内容仅在本对话范围可见，并把共享项修正回共享语义。`;
+      return `共享范围影响：你刚更新的 reminder_id=${reminderId} 是${scopeName}提醒项，不是当前对话私有；${impactedDialogs}，其它能看到这条提醒项的对话也会看到这次更新。请考虑使用 migrate_reminder({ "reminder_id": "${reminderId}", "scope": "dialog" }) 确保提醒项的影响范围合理；若新内容只应影响当前对话，迁移后系统会从共享范围撤下，并保留为仅本对话可见的提醒项。`;
     }
     return [
       `${formatSystemNoticePrefix(language)} 共享范围提醒项已更新`,
       '',
       `reminder_id=${reminderId} 是${scopeName}提醒项，不是当前对话私有；${impactedDialogs}。同一智能体的某个并行对话刚更新了它，你所在对话也会看到这次更新。`,
-      '请把它作为最新共享参考；如果发现它混入了当前对话私有状态，应按当前任务需要修正为共享语义，或另建对话范围提醒项承载只属于本对话的内容。',
+      '这条共享提醒项这次实际上由另一对话维护；你应自行判断它与本对话当前上下文是否有关，只采纳确实相关的部分。',
+      `请把它作为最新共享参考。若这次更新看起来只适合更新者所在对话，不要在本对话替它修正共享内容；可提醒更新者在其对话中使用 migrate_reminder({ "reminder_id": "${reminderId}", "scope": "dialog" }) 迁回对话范围，从而从其它并行对话撤下。本对话若另有私有状态，请另建对话范围提醒项。`,
     ].join('\n');
   }
 
@@ -747,13 +748,44 @@ export function formatSharedReminderUpdateImpactNotice(
       ? 'The current in-flight work has other parallel dialogs for the same agent and Taskdoc'
       : 'The current in-flight work has other parallel dialogs for the same agent';
   if (args.audience === 'updater') {
-    return `Shared-scope impact: the reminder you just updated, reminder_id=${reminderId}, is ${scopeName}, not private to the current dialog. ${impactedDialogs}, so other dialogs that can see this reminder will see this update too. If the new content should affect only the current dialog, create a dialog-scope reminder instead so it is visible only inside this dialog, and correct the shared reminder back to shared meaning.`;
+    return `Shared-scope impact: the reminder you just updated, reminder_id=${reminderId}, is ${scopeName}, not private to the current dialog. ${impactedDialogs}, so other dialogs that can see this reminder will see this update too. Consider running migrate_reminder({ "reminder_id": "${reminderId}", "scope": "dialog" }) to make sure the reminder's impact scope is appropriate; if the new content should affect only the current dialog, Dominds will withdraw it from shared scope and keep it visible only in this dialog after migration.`;
   }
   return [
     `${formatSystemNoticePrefix(language)} Shared-scope reminder updated`,
     '',
     `reminder_id=${reminderId} is ${scopeName}, not private to the current dialog. ${impactedDialogs}. Another parallel dialog for the same agent just updated it, so this dialog will see the update too.`,
-    'Use it as the latest shared reference. If it appears to contain current-dialog-private state, correct it back to shared meaning as needed, or create a dialog-scope reminder for content that belongs only to this dialog.',
+    'This shared reminder was actually maintained by another dialog this time; decide for yourself whether it is relevant to this dialog context, and use only the parts that are truly relevant.',
+    `Use it as the latest shared reference. If this update appears to fit only the updater's dialog, do not correct the shared content from this dialog; you may ask the updater to run migrate_reminder({ "reminder_id": "${reminderId}", "scope": "dialog" }) in that dialog so Dominds withdraws it from other parallel dialogs. If this dialog has its own private state, create a separate dialog-scope reminder here.`,
+  ].join('\n');
+}
+
+export function formatSharedReminderMigrationImpactNotice(
+  language: LanguageCode,
+  args: {
+    reminderId: string;
+    scope: 'task' | 'agent' | 'runtime';
+  },
+): string {
+  const reminderId = args.reminderId;
+  const scope = args.scope;
+  if (language === 'zh') {
+    const scopeName =
+      scope === 'task' ? '任务范围' : scope === 'agent' ? '智能体范围' : '运行时范围';
+    return [
+      `${formatSystemNoticePrefix(language)} 共享范围提醒项已迁回其它对话`,
+      '',
+      `reminder_id=${reminderId} 原本是${scopeName}提醒项；更新者对话已将它迁回自己的对话范围，因此它不再是你所在对话可见的共享参考。`,
+      '若本对话仍需要类似内容，请按本对话当前状态另建对话范围或任务范围提醒项；不要假设迁走后的内容仍适用于这里。',
+    ].join('\n');
+  }
+
+  const scopeName =
+    scope === 'task' ? 'task-scope' : scope === 'agent' ? 'agent-scope' : 'runtime-scope';
+  return [
+    `${formatSystemNoticePrefix(language)} Shared-scope reminder migrated back to another dialog`,
+    '',
+    `reminder_id=${reminderId} was ${scopeName}. The updater dialog has moved it back into its own dialog scope, so it is no longer a shared reference visible to this dialog.`,
+    'If this dialog still needs similar content, create a dialog-scope or task-scope reminder that matches this dialog now; do not assume the migrated content still applies here.',
   ].join('\n');
 }
 
