@@ -1,5 +1,7 @@
 import assert from 'node:assert/strict';
 
+import type { ActiveCalleeDispatchRecord } from '@longrun-ai/kernel/types/storage';
+import { formatUnifiedTimestamp } from '@longrun-ai/kernel/utils/time';
 import { driveDialogStream } from '../../main/llm/kernel-driver';
 import { DialogPersistence } from '../../main/persistence';
 import {
@@ -27,6 +29,21 @@ async function main(): Promise<void> {
             name: 'answerHuman',
             arguments: {
               answerContent: 'This is the recorded answer for the human.',
+            },
+          },
+        ],
+      },
+      {
+        message: 'Please record that we are waiting for the active callee.',
+        role: 'user',
+        response: '',
+        omitDefaultThinking: true,
+        funcCalls: [
+          {
+            id: 'call-answer-human-active-callee-wait',
+            name: 'answerHuman',
+            arguments: {
+              answerContent: 'Waiting for the active callee reply.',
             },
           },
         ],
@@ -84,6 +101,82 @@ async function main(): Promise<void> {
     assert.ok(
       events.some((event) => event.type === 'func_result_record' && event.name === 'answerHuman'),
       'answerHuman should receive a paired function result',
+    );
+    const diligencePromptCountBeforeWait = events.filter(
+      (event) => event.type === 'prompting_msg_record' && event.origin === 'diligence_push',
+    ).length;
+
+    root.diligencePushRemainingBudget = 1;
+    await DialogPersistence.mutateDialogLatest(root.id, () => ({
+      kind: 'patch',
+      patch: {
+        diligencePushRemainingBudget: 1,
+      },
+    }));
+    const pendingActiveCallee: ActiveCalleeDispatchRecord = {
+      calleeDialogId: 'synthetic/active/callee',
+      createdAt: formatUnifiedTimestamp(new Date()),
+      batchId: 'synthetic-active-callee-batch',
+      callName: 'tellaskSessionless',
+      mentionList: ['@pangu'],
+      tellaskContent: 'Synthetic pending callee used to test wait-boundary behavior.',
+      targetAgentId: 'pangu',
+      callId: 'synthetic-active-callee-call',
+      callSiteCourse: 1,
+      callSiteGenseq: 1,
+      callType: 'C',
+    };
+    await DialogPersistence.appendActiveCalleeDispatch(root.id, pendingActiveCallee);
+
+    await driveDialogStream(
+      root,
+      makeUserPrompt(
+        'Please record that we are waiting for the active callee.',
+        'answer-human-active-callee-wait-msg',
+      ),
+      true,
+      makeDriveOptions(),
+    );
+    await waitForAllDialogsUnlocked(root, 3_000);
+
+    const answersAfterWait = await DialogPersistence.loadAnswersToHumanState(root.id, root.status);
+    assert.equal(
+      answersAfterWait.some((answer) => answer.content === 'Waiting for the active callee reply.'),
+      true,
+      'answerHuman should record active-callee wait status as A2H',
+    );
+    const eventsAfterWait = await DialogPersistence.loadCourseEvents(
+      root.id,
+      root.currentCourse,
+      root.status,
+    );
+    assert.equal(
+      eventsAfterWait.filter((event) => event.type === 'gen_start_record').length,
+      3,
+      'answerHuman while an active callee is pending must not start a post-tool or Diligence Push generation',
+    );
+    assert.equal(
+      root.diligencePushRemainingBudget,
+      1,
+      'answerHuman while an active callee is pending must not consume Diligence Push budget',
+    );
+    assert.equal(
+      eventsAfterWait.filter(
+        (event) => event.type === 'prompting_msg_record' && event.origin === 'diligence_push',
+      ).length,
+      diligencePromptCountBeforeWait,
+      'answerHuman while an active callee is pending must not add a Diligence Push prompt',
+    );
+    const activeCalleesAfterWait = await DialogPersistence.loadActiveCallees(root.id, root.status);
+    assert.equal(
+      activeCalleesAfterWait.batches.length,
+      1,
+      'answerHuman wait status must not clear the pending active callee batch',
+    );
+    assert.equal(
+      activeCalleesAfterWait.batches[0]?.callees[0]?.callId,
+      'synthetic-active-callee-call',
+      'answerHuman wait status must leave the pending callee call id intact',
     );
   });
 

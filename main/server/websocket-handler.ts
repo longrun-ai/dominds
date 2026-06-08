@@ -1810,13 +1810,13 @@ async function handleAckA2H(ws: WebSocket, packet: AckA2HRequest): Promise<void>
       ws.send(
         JSON.stringify({
           type: 'error',
-          message: `A2H answer ${answerId} not found in dialog ${dialogIdent.selfId}`,
+          message: `A2H item ${answerId} not found in dialog ${dialogIdent.selfId}`,
         }),
       );
       return;
     }
     if (removedStatus === null) {
-      throw new Error(`A2H Ack invariant violation: removed answer without status ${answerId}`);
+      throw new Error(`A2H Ack invariant violation: removed item without status ${answerId}`);
     }
 
     const event: A2HAcknowledgedDialogEvent = {
@@ -1831,7 +1831,7 @@ async function handleAckA2H(ws: WebSocket, packet: AckA2HRequest): Promise<void>
     ws.send(
       JSON.stringify({
         type: 'error',
-        message: `Failed to acknowledge A2H answer: ${error instanceof Error ? error.message : 'Unknown error'}`,
+        message: `Failed to acknowledge A2H item: ${error instanceof Error ? error.message : 'Unknown error'}`,
       }),
     );
   }

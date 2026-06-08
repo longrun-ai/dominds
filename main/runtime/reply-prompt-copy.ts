@@ -186,9 +186,10 @@ export function buildReplyToolReminderText(args: {
 }
 
 // Business scenario: the model produced structured `answering` (or called `answerHuman`) while a
-// Side Dialog still owes a formal reply to its requester. A2H is a human-attention record; it is
-// intentionally not the requester delivery channel. Keep this as a reply-tool reminder so a later
-// plain-text answer can use the same direct-fallback recovery semantics as ordinary reminders.
+// Side Dialog still owes a formal reply to its requester. A2H is a human-attention answer or status
+// record; it is intentionally not the requester delivery channel. Keep this as a reply-tool
+// reminder so a later plain-text answer can use the same direct-fallback recovery semantics as
+// ordinary reminders.
 export function buildAnsweringReplyReminderText(args: {
   language: LanguageCode;
   directive: TellaskReplyDirective;
@@ -208,14 +209,14 @@ export function buildAnsweringReplyReminderText(args: {
     ? [
         prefix,
         '',
-        '`answering` / `answerHuman` 只会记录给人类看的 A2H 答复，不会把正式回贴送达诉请者。',
+        '`answering` / `answerHuman` 只会记录给人类看的 A2H 答复或状态说明，不会把正式回贴送达诉请者。',
         '',
         `${replyTarget} 还在等你完成${kindLabel}的回贴。若最终内容已经准备好，请现在调用 \`${args.directive.expectedReplyCallName}({ replyContent })\` 发送；不要用 \`answering\` 或 \`answerHuman\` 代替诉请者回贴。`,
       ].join('\n')
     : [
         prefix,
         '',
-        '`answering` / `answerHuman` only records an A2H answer for the human. It does not deliver the formal reply to the requester.',
+        '`answering` / `answerHuman` only records an A2H answer or status for the human. It does not deliver the formal reply to the requester.',
         '',
         `${replyTarget} is still waiting for your ${kindLabel} reply. If the final content is ready, call \`${args.directive.expectedReplyCallName}({ replyContent })\` now; do not use \`answering\` or \`answerHuman\` as the requester reply path.`,
       ].join('\n');

@@ -2812,8 +2812,8 @@ async function executeReplyTellaskCall(args: {
 function formatAnswerHumanResultContent(args: { answerContent: string }): string {
   const language = getWorkLanguage();
   return language === 'zh'
-    ? `已记录给人类的答复。\n\n${args.answerContent}`
-    : `Recorded the answer for the human.\n\n${args.answerContent}`;
+    ? `已记录给人类的答复或状态说明。\n\n${args.answerContent}`
+    : `Recorded the answer or status for the human.\n\n${args.answerContent}`;
 }
 
 export type AnswerHumanStructuredOutput = Readonly<{

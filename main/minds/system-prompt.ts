@@ -357,7 +357,7 @@ function buildTellaskInteractionRules(language: LanguageCode): string {
       '- `tellask`：用于可恢复的长线诉请（必须提供 `targetAgentId` / `sessionSlug` / `tellaskContent`）。',
       '- `tellaskSessionless`：用于一次性诉请（必须提供 `targetAgentId` / `tellaskContent`）；它不能接着旧任务改要求，后续再次调用只是另一件独立任务，不会影响旧任务继续执行，也不会打扰同一队友正在执行的其它独立诉请。不要把智能体队友当成需要排队说话的真人同事。',
       '- `askHuman`：用于 Q4H（向人类请求必要澄清/决策/授权/缺失输入）。',
-      '- `answerHuman`：用于把当前要给人类看的答复记录为 A2H（answer to human）；不要用它向队友回贴。',
+      '- `answerHuman`：用于把当前要给人类看的答复或状态说明记录为 A2H（answer to human）；当本轮必须使用工具、但确实没有其它实质工具应调用时，用它完成当前工具轮次。特别是正在等待 active callees 或诉请回贴、唯一正确动作是说明情况并等待时，应调用 `answerHuman({ answerContent })` 收口；不要用它向队友回贴。',
       '- `freshBootsReasoning`：用于发起扪心自问（FBR）支线（`tellaskContent` 必填，`effort` 可选）。',
     ],
     en: [
@@ -365,7 +365,7 @@ function buildTellaskInteractionRules(language: LanguageCode): string {
       '- `tellask`: resumable tellask (requires `targetAgentId` / `sessionSlug` / `tellaskContent`).',
       '- `tellaskSessionless`: one-shot tellask (requires `targetAgentId` / `tellaskContent`); it cannot continue an earlier task or change its requirements. Later calls are separate tasks and do not affect earlier work for the same teammate. Do not treat agent teammates like human coworkers who need you to wait in line to talk.',
       '- `askHuman`: Q4H for necessary clarification/decision/authorization/missing input.',
-      '- `answerHuman`: record the current human-facing answer as A2H (answer to human); do not use it to reply to teammates.',
+      '- `answerHuman`: record the current human-facing answer or status as A2H (answer to human). When this round must use a tool but no other substantive tool should be called, use it to complete the current tool round. Especially while waiting for active callees or tellask replies, when the only correct action is to explain the situation and wait, call `answerHuman({ answerContent })` to close the round; do not use it to reply to teammates.',
       '- `freshBootsReasoning`: starts an FBR Side Dialog (requires `tellaskContent`, optional `effort`).',
     ],
   });
@@ -377,11 +377,13 @@ function buildFunctionToolRules(language: LanguageCode, funcToolRulesText: strin
     zh: [
       '- 回答必须基于可观测事实；为获取事实优先使用可用工具，缺乏观测事实时明确说明并请求/补充获取，不得臆测。',
       `- 你必须通过原生 function-calling 发起函数工具调用。请提供严格的 JSON 参数对象，并尽量匹配工具 schema。Dominds 会对 schema 做 best-effort 校验（例如 required / additionalProperties:false / 基础 type / primitive enum / primitive const）；其余复杂关键字（pattern/format/min/max/oneOf 等）与语义约束以工具报错为准。${funcToolRulesText}`,
+      '- 若本轮被要求调用工具，但当前确实没有应调用的事实获取/执行/诉请/回贴工具，且唯一合理动作是停止并等待（例如等待 active callees 或诉请回贴），调用 `answerHuman({ answerContent })` 说明当前等待状态并完成本工具轮次；不要为了满足工具要求而重复调用无意义的普通工具。',
       '- 若遇到权限/沙盒/工具不可用：按要求申请升级或发起 Q4H；禁止编造结果。',
     ],
     en: [
       '- Answers must be grounded in observed facts. Use available tools to obtain facts; if facts are missing, say so and request/obtain them—do not guess.',
       `- You must invoke function tools via native function-calling. Provide a valid JSON object for the tool's arguments and match the tool schema as closely as possible. Dominds performs best-effort schema validation (for example required / additionalProperties:false / basic types / primitive enum / primitive const); other complex keywords (pattern/format/min/max/oneOf etc.) and semantic constraints are enforced via tool errors.${funcToolRulesText}`,
+      '- If this round requires a tool call but there is truly no fact-gathering, action, tellask, or reply tool that should be called, and the only reasonable action is to stop and wait (for example waiting for active callees or tellask replies), call `answerHuman({ answerContent })` to explain the current wait state and complete this tool round; do not repeat meaningless ordinary tool calls just to satisfy the tool requirement.',
       '- If a tool is unavailable due to permissions/sandboxing, request escalation or ask Q4H; do not fabricate results.',
     ],
   });
@@ -502,7 +504,7 @@ export function buildSystemPrompt(input: BuildSystemPromptInput): string {
 - 回问诉请：支线对话用 \`tellaskBack\` 回问诉请者以澄清。
 - 扪心自问（FBR）：由 \`freshBootsReasoning\` 触发的“无工具”支线推理机制。
 - 向人请示（Q4H）：通过 \`askHuman\` 向人类请求必要的澄清/决策/授权/缺失输入。
-- 答复人类（A2H）：通过 \`answerHuman\` 记录当前要给人类看的答复。
+- 答复人类（A2H）：通过 \`answerHuman\` 记录当前要给人类看的答复或状态说明。
 - 长线诉请：使用 \`tellask\` + \`sessionSlug\` 的可恢复多轮协作。
 - 一次性诉请：一次性、不可恢复的诉请。
 - 主线对话：承载共享差遣牒并负责整体推进的对话。
@@ -604,7 +606,7 @@ System notices convey important state changes (e.g., context caution/critical, D
 - TellaskBack: a Side Dialog uses \`tellaskBack\` to ask the tellasker for clarification.
 - Fresh Boots Reasoning (FBR): a tool-less Side Dialog reasoning mechanism triggered by \`freshBootsReasoning\`.
 - Q4H (Question for Human): use \`askHuman\` to request necessary clarification/decision/authorization/missing input from a human.
-- A2H (Answer to Human): use \`answerHuman\` to record the current human-facing answer.
+- A2H (Answer to Human): use \`answerHuman\` to record the current human-facing answer or status.
 - Tellask Session: resumable multi-turn work using \`tellask\` with \`sessionSlug\`.
 - Fresh Tellask: a one-shot, non-resumable Tellask.
 - Main Dialog: the dialog that owns the shared Taskdoc and overall progress.

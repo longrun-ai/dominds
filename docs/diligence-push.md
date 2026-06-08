@@ -21,9 +21,12 @@ This document specifies two related runtime controls:
 - **Required tool-use control**: for ordinary main and side dialog rounds, the Diligence Push
   checkbox controls whether the provider request must end through a Dominds tool call. When checked,
   the model is expected to call a tool such as `askHuman`, `tellask*`, `replyTellask*`, or another
-  runtime-provided function instead of stopping with a plain-text question/final answer. FBR middle
-  rounds are the intentional exception: they may run with no callable tools; FBR closure requires one
-  of the conclusion tools.
+  runtime-provided function instead of stopping with a plain-text question/final answer. If no
+  substantive tool should be called, `answerHuman` is the expected completion path for that required
+  tool round. This is intentional for wait boundaries such as pending active callees: the model
+  should explain the wait state through `answerHuman` and then stop for the reply to arrive, rather
+  than continue spinning through ordinary tool calls. FBR middle rounds are the intentional
+  exception: they may run with no callable tools; FBR closure requires one of the conclusion tools.
 
 ## Goals
 

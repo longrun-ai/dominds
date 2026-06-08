@@ -713,7 +713,7 @@ function resolveToolUseRequirement(
   // For ordinary Dominds dialog rounds, the Diligence Push checkbox controls the provider-level
   // obligation directly. The numeric Diligence Push budget only limits automatic runtime prompts;
   // it must not downgrade the round into ordinary chat where the model can stop by asking/answering
-  // in plain text instead of calling askHuman/tellask/reply tools.
+  // in plain text instead of calling askHuman/answerHuman/tellask/reply tools.
   return dlg.disableDiligencePush ? 'auto' : 'required';
 }
 
@@ -1067,7 +1067,8 @@ const TELLASK_SPECIAL_VIRTUAL_TOOLS: readonly FuncTool[] = [
     type: 'func',
     name: 'answerHuman',
     followupMode: 'deferred',
-    description: 'Record the current human-facing answer for human attention.',
+    description:
+      'Record the current human-facing answer or status for human attention. Use this to finish the current required-tool round when no other substantive tool should be called, especially to explain that this dialog is waiting for pending active callees or tellask replies.',
     parameters: {
       type: 'object',
       properties: {

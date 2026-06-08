@@ -66,9 +66,10 @@ export interface LlmRequestContext {
   promptCacheKey?: string;
   // Dominds dialogs are protocol-driven, not open-ended chat completions. In ordinary dialog
   // rounds, enabled Diligence Push means the model must exit through a function/tool call such as
-  // askHuman, a tellask/reply tool, or another constrained runtime tool. Special runtime policies
-  // can narrow this: FBR middle rounds intentionally run with no callable tools, while FBR closure
-  // requires one of the conclusion tools.
+  // askHuman, answerHuman, a tellask/reply tool, or another constrained runtime tool. When no
+  // substantive tool should be called, answerHuman is the explicit tool-round completion path.
+  // Special runtime policies can narrow this: FBR middle rounds intentionally run with no callable
+  // tools, while FBR closure requires one of the conclusion tools.
   toolUseRequirement?: 'none' | 'auto' | 'required';
 }
 
