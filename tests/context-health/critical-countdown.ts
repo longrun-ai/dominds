@@ -219,8 +219,8 @@ async function main(): Promise<void> {
     'zh critical new-course prompt should explicitly mark the new course boundary',
   );
   assert.ok(
-    zhNewCoursePrompt.includes('上下文已经不再吃紧，告急状况已改观'),
-    'zh critical new-course prompt should say the context pressure has been relieved',
+    zhNewCoursePrompt.includes('如果见到上一程的上下文吃紧/告急状况记录，此时既已消除'),
+    'zh critical new-course prompt should say previous tight/critical records are now resolved',
   );
   assert.ok(
     zhNewCoursePrompt.includes('不是新的用户诉求'),
@@ -273,7 +273,13 @@ async function main(): Promise<void> {
   );
   assert.ok(
     enNewCoursePrompt.includes(
-      'first read the current-dialog scoped (scope=dialog) continuation-package reminders',
+      'if you see records that the previous course was context-tight or context-critical, that condition is now resolved',
+    ),
+    'en critical new-course prompt should say previous tight/critical records are now resolved',
+  );
+  assert.ok(
+    enNewCoursePrompt.includes(
+      'First read the current-dialog scoped (scope=dialog) continuation-package reminders',
     ),
     'en critical new-course prompt should require reading dialog-scoped reminders first',
   );

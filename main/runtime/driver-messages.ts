@@ -140,7 +140,7 @@ export function formatNewCourseStartPrompt(
     return (
       `${noticePrefix} ${prefix} ` +
       '这是 Dominds 的换程提示，不是新的用户诉求；不要把这条提示当成新的待办，也不要只回复“收到/好的/我会先整理提醒项”。' +
-      '现在已经进入新一程：上下文已经不再吃紧，告急状况已改观。第一步先读取当前对话范围（scope=dialog）的接续包提醒项，尤其是其中写明的当前对话任务目标，并按这个目标恢复当前这一路主线对话/支线对话，不要仅凭同一差遣牒里的其它主线或支线内容改道。' +
+      '现在已经进入新一程：如果见到上一程的上下文吃紧/告急状况记录，此时既已消除。第一步先读取当前对话范围（scope=dialog）的接续包提醒项，尤其是其中写明的当前对话任务目标，并按这个目标恢复当前这一路主线对话/支线对话，不要仅凭同一差遣牒里的其它主线或支线内容改道。' +
       '随后复核并在必要时整理接续包提醒项，以清醒头脑删除冗余、纠正偏激或失真的过桥思路、压缩成高质量提醒项；若提醒项已经足够清晰，就不要为了整理而整理。' +
       '完成这一步后，直接按照当前对话范围提醒项里的任务目标继续推进；除非任务自然需要对用户交付结果，否则不要为这条提示单独回复。'
     );
@@ -153,7 +153,7 @@ export function formatNewCourseStartPrompt(
   return (
     `${noticePrefix} ${prefix} ` +
     'This is a Dominds course-transition notice, not a new user request; do not treat it as a new to-do, and do not reply with a standalone "acknowledged/ok/I will reorganize the reminders first". ' +
-    'You are now in a new course: first read the current-dialog scoped (scope=dialog) continuation-package reminders, especially the current dialog task goal written there, and resume this specific Main Dialog or Side Dialog from that goal instead of drifting into other Main/Side Dialog work that shares the same Taskdoc. ' +
+    'You are now in a new course: if you see records that the previous course was context-tight or context-critical, that condition is now resolved. First read the current-dialog scoped (scope=dialog) continuation-package reminders, especially the current dialog task goal written there, and resume this specific Main Dialog or Side Dialog from that goal instead of drifting into other Main/Side Dialog work that shares the same Taskdoc. ' +
     'Then review and, if needed, rewrite any continuation-package reminders with a clear head, remove redundancy, correct biased or distorted bridge notes, and compress them into high-quality reminders; if the reminders are already clear enough, do not churn on them. ' +
     'After that, continue directly from the task goal in the current-dialog scoped reminders; unless the task naturally calls for a user-facing delivery, do not send a standalone reply just for this notice.'
   );
