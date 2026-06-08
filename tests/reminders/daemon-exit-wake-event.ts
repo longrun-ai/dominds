@@ -23,6 +23,8 @@ Shell: bash
 已运行: 5s
 启动时间: 2026-04-16 20:00:00`,
     owner: shellCmdReminderOwner,
+    scope: 'dialog',
+    renderMode: 'markdown',
     meta: {
       kind: 'daemon',
       pid: 999999,
@@ -68,6 +70,8 @@ Shell: bash
     id: reminder.id,
     content: first.updatedContent ?? reminder.content,
     owner: shellCmdReminderOwner,
+    scope: 'dialog',
+    renderMode: 'markdown',
     meta: first.updatedMeta,
   });
   const second = await shellCmdReminderOwner.waitForReminderWakeEvent?.(
@@ -81,6 +85,8 @@ Shell: bash
     id: 'daemon002',
     content: first.updatedContent ?? reminder.content,
     owner: shellCmdReminderOwner,
+    scope: 'dialog',
+    renderMode: 'markdown',
     meta: {
       kind: 'daemon',
       pid: 999998,

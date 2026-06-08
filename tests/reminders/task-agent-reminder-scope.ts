@@ -43,6 +43,8 @@ async function main(): Promise<void> {
             id: 'dialog001',
             content: 'Older dialog reminder',
             createdAt: '2026-03-30T00:00:00.000Z',
+            scope: 'dialog',
+            renderMode: 'markdown',
           }),
         ],
       });
@@ -303,6 +305,7 @@ async function main(): Promise<void> {
               owner: autoOwner,
               scope: 'task',
               createdAt: '2026-03-30T00:00:01.000Z',
+              renderMode: 'markdown',
             }),
           );
         },

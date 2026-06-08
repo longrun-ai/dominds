@@ -114,6 +114,8 @@ async function main(): Promise<void> {
         sticky: true,
       },
       echoback: false,
+      scope: 'dialog',
+      renderMode: 'markdown',
     });
     await DialogPersistence._saveReminderState(sourceId, [sourceReminder], 'running');
 

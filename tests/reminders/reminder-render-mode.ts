@@ -4,6 +4,7 @@ import * as fs from 'node:fs/promises';
 import { DialogStore, MainDialog } from '../../main/dialog';
 import { DialogPersistence } from '../../main/persistence';
 import type { Team } from '../../main/team';
+import { materializeReminder } from '../../main/tool';
 import { addReminderTool, updateReminderTool } from '../../main/tools/ctrl';
 import { withTempCwd } from './daemon-test-utils';
 
@@ -15,6 +16,34 @@ async function main(): Promise<void> {
   await withTempCwd('dominds-reminder-render-mode-', async () => {
     const dlg = createDialog('tester');
     const caller = {} as Team.Member;
+
+    assert.throws(
+      () =>
+        materializeReminder({
+          content: 'Missing scope should fail loudly',
+          renderMode: 'markdown',
+        } as unknown as Parameters<typeof materializeReminder>[0]),
+      /materializeReminder requires explicit scope/,
+    );
+    assert.throws(
+      () =>
+        materializeReminder({
+          content: 'Missing render mode should fail loudly',
+          scope: 'dialog',
+        } as unknown as Parameters<typeof materializeReminder>[0]),
+      /materializeReminder requires explicit renderMode/,
+    );
+    assert.throws(
+      () =>
+        dlg.addReminder(
+          'Missing explicit options should fail loudly',
+          undefined,
+          undefined,
+          undefined,
+          undefined as never,
+        ),
+      /Dialog\.addReminder requires explicit reminder options/,
+    );
 
     await addReminderTool.call(dlg, caller, {
       content: '**Keep** this as markdown',

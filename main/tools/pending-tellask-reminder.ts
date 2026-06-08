@@ -254,6 +254,7 @@ export async function syncPendingTellaskReminderState(dlg: Dialog): Promise<bool
         return false;
       }
       dlg.addReminder(content, pendingTellaskReminderOwner, nextMeta, 0, {
+        scope: 'dialog',
         renderMode: 'markdown',
       });
       return true;

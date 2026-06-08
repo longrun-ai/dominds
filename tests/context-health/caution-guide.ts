@@ -48,16 +48,24 @@ async function main(): Promise<void> {
     'zh guide should allow rough multi-reminder bridge when muddled',
   );
   assert.ok(
-    zhSoft.includes('尚未落实到文档、且下一程需要知会的讨论细节'),
-    'zh guide should require documenting unrecorded discussion details before bridge reminders',
+    zhSoft.includes('当前对话范围（scope=dialog）接续包提醒项'),
+    'zh guide should require current-dialog scoped continuation reminders',
+  );
+  assert.ok(
+    zhSoft.includes('本路任务目标'),
+    'zh guide should require preserving this dialog task goal',
+  );
+  assert.ok(
+    zhSoft.includes('确实需要同一差遣牒下其它对话/队友知会'),
+    'zh guide should only write Taskdoc facts that must be shared across dialogs/teammates',
   );
   assert.ok(
     !zhSoft.includes('头脑还清楚'),
     'zh guide should avoid subjective self-assessment wording',
   );
   assert.ok(
-    zhSoft.includes('优先新增过桥提醒项'),
-    'zh guide should prefer add_reminder as the first remediation move',
+    zhSoft.includes('add_reminder({ "content": "...", "scope": "dialog" })'),
+    'zh guide should explicitly add dialog-scoped reminders because add_reminder defaults to task',
   );
   assert.ok(
     !zhSoft.includes('reminder_no": 1'),
@@ -111,10 +119,16 @@ async function main(): Promise<void> {
     'en guide should allow rough multi-reminder bridge during remediation',
   );
   assert.ok(
-    enSoft.includes(
-      'discussion details that are not yet documented but the next course needs to know',
-    ),
-    'en guide should require documenting unrecorded discussion details before bridge reminders',
+    enSoft.includes('current-dialog scoped (scope=dialog) continuation-package reminder'),
+    'en guide should require current-dialog scoped continuation reminders',
+  );
+  assert.ok(
+    enSoft.includes('this specific Main Dialog task goal'),
+    'en guide should require preserving this dialog task goal',
+  );
+  assert.ok(
+    enSoft.includes('other dialogs/teammates sharing the same Taskdoc truly need to know'),
+    'en guide should only write Taskdoc facts that must be shared across dialogs/teammates',
   );
   assert.ok(
     !enSoft.includes('still clear-headed'),
@@ -129,8 +143,8 @@ async function main(): Promise<void> {
     'en guide should pin the mandatory review step to the Dominds-started new course',
   );
   assert.ok(
-    enSoft.includes('Prefer adding a bridge reminder first'),
-    'en guide should prefer add_reminder as the first remediation move',
+    enSoft.includes('add_reminder({ "content": "...", "scope": "dialog" })'),
+    'en guide should explicitly add dialog-scoped reminders because add_reminder defaults to task',
   );
   assert.ok(
     !enSoft.includes('reminder_no": 1'),
@@ -166,6 +180,10 @@ async function main(): Promise<void> {
     zhSide.includes('提醒项没有固定长度限制'),
     'zh side guide should permit detailed reminders without fixed length pressure',
   );
+  assert.ok(
+    zhSide.includes('scope=dialog 提醒项继续本路对话'),
+    'zh side guide should preserve current dialog goal through dialog-scoped reminders',
+  );
   assert.ok(!zhSide.includes('do_mind'), 'zh side guide should not mention do_mind');
   assert.ok(!zhSide.includes('mind_more'), 'zh side guide should not mention mind_more');
   assert.ok(!zhSide.includes('change_mind'), 'zh side guide should not mention change_mind');
@@ -188,6 +206,10 @@ async function main(): Promise<void> {
   assert.ok(
     enSide.includes('Reminders have no fixed length limit'),
     'en side guide should permit detailed reminders without fixed length pressure',
+  );
+  assert.ok(
+    enSide.includes('continue this dialog from scope=dialog reminders'),
+    'en side guide should preserve current dialog goal through dialog-scoped reminders',
   );
   assert.ok(!enSide.includes('do_mind'), 'en side guide should not mention do_mind');
   assert.ok(!enSide.includes('mind_more'), 'en side guide should not mention mind_more');

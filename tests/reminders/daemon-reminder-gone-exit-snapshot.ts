@@ -37,6 +37,8 @@ Shell: bash
       shell: 'bash',
       startTime: '2026-04-16T12:00:00.000Z',
     },
+    scope: 'dialog',
+    renderMode: 'markdown',
   });
 
   const result = await shellCmdReminderOwner.updateReminder(dialog, reminder);

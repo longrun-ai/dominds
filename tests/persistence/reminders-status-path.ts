@@ -76,7 +76,13 @@ async function main(): Promise<void> {
       metadata.agentId,
     );
     dialog.setPersistenceStatus('completed');
-    dialog.reminders.push(materializeReminder({ content: 'Completed dialog reminder' }));
+    dialog.reminders.push(
+      materializeReminder({
+        content: 'Completed dialog reminder',
+        scope: 'dialog',
+        renderMode: 'markdown',
+      }),
+    );
 
     await dialog.processReminderUpdates();
 

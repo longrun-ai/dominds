@@ -78,6 +78,8 @@ async function main(): Promise<void> {
       kind: 'continuation_package',
       createdBy: 'clear_mind',
     });
+    assert.equal(dlg.reminders[0]?.scope, 'dialog');
+    assert.equal(dlg.reminders[0]?.renderMode, 'markdown');
 
     const promptingContents = dlg.msgs
       .filter((msg) => msg.type === 'prompting_msg' && msg.role === 'user')

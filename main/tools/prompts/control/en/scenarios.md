@@ -15,7 +15,7 @@
 
 ### Scenario Description
 
-Use reminders for the current task's current work: next steps, blockers, and volatile details that are not meant to become the team's Taskdoc bulletin board.
+Use reminders for the current task's current work: next steps, blockers, and volatile details that are not meant to become the team's Taskdoc bulletin board. A continuation package prepared before `clear_mind` is resume state for the current dialog, so it must explicitly use `scope=dialog` and state this dialog task goal.
 
 ### Example
 
@@ -28,6 +28,13 @@ add_reminder({
 // Use dialog only when the note is truly local to the current dialog
 add_reminder({
   content: 'In this dialog, compare against line 12 of the last tool output',
+  scope: 'dialog',
+});
+
+// clear_mind continuation packages must explicitly use dialog and state this dialog task goal
+add_reminder({
+  content:
+    'Continuation goal: keep reviewing control-manual course-transition guidance; next check whether scenarios/index still imply task scope for continuation packages',
   scope: 'dialog',
 });
 
@@ -51,8 +58,8 @@ delete_reminder({
 
 ### Key Points
 
-- Default to `task` for next steps, temporary blockers, and volatile bridge details under the same Taskdoc
-- Use `dialog` only for notes that are truly local to the current dialog
+- Default to `task` for ordinary next steps, temporary blockers, and current-work details under the same Taskdoc
+- Use `dialog` only for notes that are truly local to the current dialog; continuation packages before `clear_mind` must explicitly use `scope=dialog` and state this dialog task goal
 - Use `agent` only for urgent, short-lived, globally visible cues
 - If the information should synchronize the whole team's current effective state, put it in Taskdoc `progress` instead
 - If the note is durable knowledge rather than an active current-work cue, move it to `personal_memory` instead

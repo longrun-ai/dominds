@@ -81,6 +81,7 @@ async function main(): Promise<void> {
         ...(process.platform === 'win32' ? {} : { processGroupId: pid }),
       },
       scope: 'runtime',
+      renderMode: 'markdown',
     });
 
     try {

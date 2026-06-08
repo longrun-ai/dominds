@@ -36,8 +36,12 @@ async function main(): Promise<void> {
     'zh guide should allow rough multi-reminder bridge when muddled',
   );
   assert.ok(
-    zh.includes('尚未落实到文档、且下一程需要知会的讨论细节'),
-    'zh guide should require documenting unrecorded discussion details before bridge reminders',
+    zh.includes('先新增或更新当前对话范围（scope=dialog）接续包提醒项'),
+    'zh guide should require a dialog-scoped task-goal reminder before shared Taskdoc updates',
+  );
+  assert.ok(
+    zh.includes('只把确实需要同一差遣牒下其它对话/队友知会的讨论事实落到差遣牒'),
+    'zh guide should limit Taskdoc updates to facts that need cross-dialog sharing',
   );
   assert.ok(zh.includes('do_mind'), 'zh guide should mention do_mind for Taskdoc creation');
   assert.ok(zh.includes('change_mind'), 'zh guide should mention change_mind for Taskdoc updates');
@@ -59,7 +63,10 @@ async function main(): Promise<void> {
     'zh guide should include reminder countdown number (4) in copy',
   );
   assert.ok(!zh.includes('轮次'), 'zh guide should avoid “轮次”');
-  assert.ok(zh.includes('优先新增过桥提醒项'), 'zh guide should prefer add_reminder first');
+  assert.ok(
+    zh.includes('优先新增当前对话 scope=dialog 过桥提醒项'),
+    'zh guide should prefer dialog-scoped add_reminder first',
+  );
   assert.ok(zh.includes('add_reminder'), 'zh guide should still mention add_reminder');
   assert.ok(zh.includes('带一定冗余'), 'zh guide should allow redundancy in bridge reminders');
   assert.ok(
@@ -96,8 +103,16 @@ async function main(): Promise<void> {
     'en guide should allow rough multi-reminder bridge when muddled',
   );
   assert.ok(
-    en.includes('discussion details that are not yet documented but the next course needs to know'),
-    'en guide should require documenting unrecorded discussion details before bridge reminders',
+    en.includes(
+      'first add or update a current-dialog scoped (scope=dialog) continuation-package reminder',
+    ),
+    'en guide should require a dialog-scoped task-goal reminder before shared Taskdoc updates',
+  );
+  assert.ok(
+    en.includes(
+      'record only discussion facts that other dialogs/teammates sharing the same Taskdoc truly need to know',
+    ),
+    'en guide should limit Taskdoc updates to facts that need cross-dialog sharing',
   );
   assert.ok(en.includes('do_mind'), 'en guide should mention do_mind for Taskdoc creation');
   assert.ok(en.includes('change_mind'), 'en guide should mention change_mind for Taskdoc updates');
@@ -122,8 +137,8 @@ async function main(): Promise<void> {
     'en guide should include reminder countdown number (0) in copy',
   );
   assert.ok(
-    en.includes('Prefer adding a bridge reminder first'),
-    'en guide should prefer add_reminder first',
+    en.includes('Prefer adding a current-dialog scope=dialog bridge reminder first'),
+    'en guide should prefer dialog-scoped add_reminder first',
   );
   assert.ok(en.includes('add_reminder'), 'en guide should still mention add_reminder');
   assert.ok(
@@ -216,8 +231,12 @@ async function main(): Promise<void> {
     'zh critical new-course prompt should forbid standalone acknowledgement replies',
   );
   assert.ok(
-    zhNewCoursePrompt.includes('第一步先复核'),
-    'zh critical new-course prompt should require reviewing reminders first',
+    zhNewCoursePrompt.includes('第一步先读取当前对话范围（scope=dialog）的接续包提醒项'),
+    'zh critical new-course prompt should require reading dialog-scoped reminders first',
+  );
+  assert.ok(
+    zhNewCoursePrompt.includes('按这个目标恢复当前这一路主线对话/支线对话'),
+    'zh critical new-course prompt should resume this dialog from the scoped task goal',
   );
   assert.ok(
     zhNewCoursePrompt.includes('在必要时整理接续包提醒项'),
@@ -228,8 +247,8 @@ async function main(): Promise<void> {
     'zh critical new-course prompt should require clear-headed cleanup wording',
   );
   assert.ok(
-    zhNewCoursePrompt.includes('直接继续推进原任务本身'),
-    'zh critical new-course prompt should tell the agent to continue the underlying task',
+    zhNewCoursePrompt.includes('直接按照当前对话范围提醒项里的任务目标继续推进'),
+    'zh critical new-course prompt should tell the agent to continue from the dialog-scoped task goal',
   );
 
   const enNewCoursePrompt = formatNewCourseStartPrompt('en', {
@@ -253,8 +272,14 @@ async function main(): Promise<void> {
     'en critical new-course prompt should forbid standalone acknowledgement replies',
   );
   assert.ok(
-    enNewCoursePrompt.includes('your first step is to review'),
-    'en critical new-course prompt should require reviewing reminders first',
+    enNewCoursePrompt.includes(
+      'first read the current-dialog scoped (scope=dialog) continuation-package reminders',
+    ),
+    'en critical new-course prompt should require reading dialog-scoped reminders first',
+  );
+  assert.ok(
+    enNewCoursePrompt.includes('resume this specific Main Dialog or Side Dialog from that goal'),
+    'en critical new-course prompt should resume this dialog from the scoped task goal',
   );
   assert.ok(
     enNewCoursePrompt.includes('if needed, rewrite any continuation-package reminders'),
@@ -265,8 +290,10 @@ async function main(): Promise<void> {
     'en critical new-course prompt should require clear-headed cleanup wording',
   );
   assert.ok(
-    enNewCoursePrompt.includes('continue the underlying task itself directly'),
-    'en critical new-course prompt should tell the agent to continue the underlying task',
+    enNewCoursePrompt.includes(
+      'continue directly from the task goal in the current-dialog scoped reminders',
+    ),
+    'en critical new-course prompt should tell the agent to continue from the dialog-scoped task goal',
   );
 
   const zhInterjection = formatAgentFacingCriticalUserInterjectionRemediationGuide('zh', {

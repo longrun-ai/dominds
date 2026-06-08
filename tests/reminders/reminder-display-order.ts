@@ -11,11 +11,15 @@ import { compareReminderDisplayOrder, materializeReminder } from '../../main/too
       kind: 'pending_tellask',
       updatedAt: '2026-04-16 10:07:00',
     },
+    scope: 'dialog',
+    renderMode: 'markdown',
   });
   const daemonReminder = materializeReminder({
     id: 'daemon001',
     content: 'daemon',
     createdAt: '2026-04-16 10:06:00',
+    scope: 'dialog',
+    renderMode: 'markdown',
   });
   assert.ok(
     compareReminderDisplayOrder(pendingReminder, daemonReminder) < 0,
@@ -31,11 +35,15 @@ import { compareReminderDisplayOrder, materializeReminder } from '../../main/too
     meta: {
       updatedAt: 'not-a-timestamp',
     },
+    scope: 'dialog',
+    renderMode: 'markdown',
   });
   const newerReminder = materializeReminder({
     id: 'newer001',
     content: 'newer',
     createdAt: '2026-04-16T10:01:00.000Z',
+    scope: 'dialog',
+    renderMode: 'markdown',
   });
   assert.ok(
     compareReminderDisplayOrder(malformedMetaReminder, newerReminder) > 0,
@@ -48,11 +56,15 @@ import { compareReminderDisplayOrder, materializeReminder } from '../../main/too
     id: 'iso001',
     content: 'iso',
     createdAt: '2026-04-16T10:01:00.000Z',
+    scope: 'dialog',
+    renderMode: 'markdown',
   });
   const unifiedReminder = materializeReminder({
     id: 'unified001',
     content: 'unified',
     createdAt: '2026-04-16 10:00:00',
+    scope: 'dialog',
+    renderMode: 'markdown',
   });
   assert.ok(
     compareReminderDisplayOrder(isoReminder, unifiedReminder) < 0,

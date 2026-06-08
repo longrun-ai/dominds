@@ -13,11 +13,17 @@ async function runCase(language: 'zh' | 'en', expectedSubstring: string): Promis
     undefined,
     'tester',
   );
-  dlg.addReminder('auto reminder', undefined, {
-    update: {
-      altInstruction: expectedSubstring,
+  dlg.addReminder(
+    'auto reminder',
+    undefined,
+    {
+      update: {
+        altInstruction: expectedSubstring,
+      },
     },
-  });
+    undefined,
+    { scope: 'dialog', renderMode: 'markdown' },
+  );
   const reminderId = dlg.reminders[0]?.id;
   assert.equal(typeof reminderId, 'string');
 

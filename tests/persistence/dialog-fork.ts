@@ -295,10 +295,20 @@ async function main(): Promise<void> {
     });
 
     await DialogPersistence._saveReminderState(rootId, [
-      materializeReminder({ id: 'beta-reminder', content: 'beta' }),
+      materializeReminder({
+        id: 'beta-reminder',
+        content: 'beta',
+        scope: 'dialog',
+        renderMode: 'markdown',
+      }),
     ]);
     await DialogPersistence._saveReminderState(subId, [
-      materializeReminder({ id: 'sub-reminder', content: 'sub reminder' }),
+      materializeReminder({
+        id: 'sub-reminder',
+        content: 'sub reminder',
+        scope: 'dialog',
+        renderMode: 'markdown',
+      }),
     ]);
 
     const forkBeforeSecond = await forkMainDialogTreeAtGeneration({

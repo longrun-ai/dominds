@@ -45,7 +45,7 @@ Add reminder.
 Use when:
 
 - Adding a new temporary current-work item
-- Before `clear_mind`, the Main Dialog first records undocumented discussion details the next course needs to know into Taskdoc, then creates continuation-package notes; a Side Dialog directly maintains sufficiently detailed continuation-package reminders. When Dominds has already warned that context is tight or critical, Side Dialog reminders have no fixed length limit and rough bridge notes are acceptable
+- Before `clear_mind`, first state this dialog task goal in a current-dialog scoped (`scope=dialog`) continuation-package reminder. A Main Dialog records only discussion facts that other dialogs/teammates sharing the same Taskdoc truly need to know into Taskdoc, then keeps resume-critical details for this dialog in `dialog` reminders; a Side Dialog directly maintains sufficiently detailed `dialog` continuation-package reminders. When Dominds has already warned that context is tight or critical, Side Dialog reminders have no fixed length limit and rough bridge notes are acceptable
 - Record only manually maintained current-work / continuation details; do not put environment state automatically maintained by Dominds, such as background process status, in-flight background asks, or session attachment state, into manual reminders
 
 **Parameters:**
@@ -382,8 +382,8 @@ message: <error message>
 ## Reminder Content Guidance
 
 - Normal reminders should stay concise, fresh, and directly actionable; often 1-3 items total
-- For a continuation package, use structured notes by default: next step, key pointers, run/verify, easy-to-lose volatile details
-- If Dominds has already warned that context is tight or critical: the Main Dialog first records undocumented discussion details the next course needs to know into the appropriate Taskdoc sections, then keeps necessary continuation-package reminders; a Side Dialog must not maintain Taskdoc or draft Taskdoc update proposals, and should directly maintain sufficiently detailed continuation-package reminders with no fixed length limit. Rough multi-reminder bridge notes are acceptable and should be reconciled as the first step only after Dominds actually starts the new course
-- Keep only details still not covered by Taskdoc; do not repeat team-shared status. If the team needs “where we are now / which decisions are in effect / what is next / which blockers still hold”, write it back to Taskdoc `progress`
+- For a continuation package, explicitly use `scope=dialog` and structure notes by default: current dialog task goal, next step, key pointers, run/verify, easy-to-lose volatile details
+- If Dominds has already warned that context is tight or critical: the Main Dialog first states this dialog goal in a `dialog` continuation-package reminder, then records only facts that other dialogs/teammates sharing the same Taskdoc truly need into the appropriate Taskdoc sections, and finally keeps necessary resume-critical details for this dialog in continuation-package reminders; a Side Dialog must not maintain Taskdoc or draft Taskdoc update proposals, and should directly maintain sufficiently detailed `dialog` continuation-package reminders with no fixed length limit. Rough multi-reminder bridge notes are acceptable; once the new course starts, continue this dialog from the task goal in `scope=dialog` reminders before reconciling
+- Keep only details still not covered by Taskdoc but easy to lose when resuming this dialog; do not repeat team-shared status. If the team needs “where we are now / which decisions are in effect / what is next / which blockers still hold”, write it back to Taskdoc `progress`
 - Do not manually record environment state automatically maintained by Dominds, such as whether background processes are still running, in-flight background asks/collaboration, or browser/session attachment state. Manual copies go stale easily and conflict with the Dominds-managed status, creating cognitive noise
 - Do not paste long logs, large tool outputs, or raw material into reminders

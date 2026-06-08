@@ -140,8 +140,9 @@ export function formatNewCourseStartPrompt(
     return (
       `${noticePrefix} ${prefix} ` +
       '这是 Dominds 的换程提示，不是新的用户诉求；不要把这条提示当成新的待办，也不要只回复“收到/好的/我会先整理提醒项”。' +
-      '现在已经进入新一程：上下文已经不再吃紧，告急状况已改观。第一步先复核并在必要时整理接续包提醒项，以清醒头脑删除冗余、纠正偏激或失真的过桥思路、压缩成高质量提醒项；若提醒项已经足够清晰，就不要为了整理而整理。' +
-      '完成这一步后，直接继续推进原任务本身；除非任务自然需要对用户交付结果，否则不要为这条提示单独回复。'
+      '现在已经进入新一程：上下文已经不再吃紧，告急状况已改观。第一步先读取当前对话范围（scope=dialog）的接续包提醒项，尤其是其中写明的当前对话任务目标，并按这个目标恢复当前这一路主线对话/支线对话，不要仅凭同一差遣牒里的其它主线或支线内容改道。' +
+      '随后复核并在必要时整理接续包提醒项，以清醒头脑删除冗余、纠正偏激或失真的过桥思路、压缩成高质量提醒项；若提醒项已经足够清晰，就不要为了整理而整理。' +
+      '完成这一步后，直接按照当前对话范围提醒项里的任务目标继续推进；除非任务自然需要对用户交付结果，否则不要为这条提示单独回复。'
     );
   }
 
@@ -152,8 +153,9 @@ export function formatNewCourseStartPrompt(
   return (
     `${noticePrefix} ${prefix} ` +
     'This is a Dominds course-transition notice, not a new user request; do not treat it as a new to-do, and do not reply with a standalone "acknowledged/ok/I will reorganize the reminders first". ' +
-    'You are now in a new course: your first step is to review and, if needed, rewrite any continuation-package reminders with a clear head, remove redundancy, correct biased or distorted bridge notes, and compress them into high-quality reminders; if the reminders are already clear enough, do not churn on them. ' +
-    'After that, continue the underlying task itself directly; unless the task naturally calls for a user-facing delivery, do not send a standalone reply just for this notice.'
+    'You are now in a new course: first read the current-dialog scoped (scope=dialog) continuation-package reminders, especially the current dialog task goal written there, and resume this specific Main Dialog or Side Dialog from that goal instead of drifting into other Main/Side Dialog work that shares the same Taskdoc. ' +
+    'Then review and, if needed, rewrite any continuation-package reminders with a clear head, remove redundancy, correct biased or distorted bridge notes, and compress them into high-quality reminders; if the reminders are already clear enough, do not churn on them. ' +
+    'After that, continue directly from the task goal in the current-dialog scoped reminders; unless the task naturally calls for a user-facing delivery, do not send a standalone reply just for this notice.'
   );
 }
 
@@ -1017,14 +1019,16 @@ export function formatAgentFacingContextHealthV3RemediationGuide(
           '',
           '影响：对话历史中的工具调用/结果信息很多已经过时，成为你的思考负担。',
           '',
-          '行动：你当前处于支线对话。本程不要维护差遣牒，也不要整理差遣牒更新提案；当前目标是维护足够详尽的接续包提醒项，然后主动 clear_mind 开启新一程继续工作。',
+          '行动：你当前处于支线对话。本程不要维护差遣牒，也不要整理差遣牒更新提案；当前目标是维护足够详尽的当前对话范围（scope=dialog）接续包提醒项，然后主动 clear_mind 开启新一程继续工作。',
           '',
-          '提醒项应覆盖：当前对话历史中下一程需要知道的讨论细节、下一步行动、关键定位信息、运行/验证信息、临时路径/ID/样例输入，以及任何恢复工作容易丢的判断依据。提醒项没有固定长度限制，宁可完整一些；允许写成多条粗略提醒项，不必在当前程强行压成单条。',
+          '重点提醒：接续包提醒项必须写明当前这一路支线对话的任务目标；同一差遣牒下可能还有同一智能体的其它主线/支线对话，下一程要靠 scope=dialog 提醒项继续本路对话，不能靠共享差遣牒猜目标。',
+          '',
+          '提醒项应覆盖：当前对话历史中下一程需要知道的任务目标、讨论细节、下一步行动、关键定位信息、运行/验证信息、临时路径/ID/样例输入，以及任何恢复工作容易丢的判断依据。提醒项没有固定长度限制，宁可完整一些；允许写成多条粗略提醒项，不必在当前程强行压成单条。',
           '',
           'Dominds 已提醒当前上下文吃紧：不要继续扩张上下文，也不要提前进入“按接续包做清醒复核”的模式；真正清理冗余、合并提醒项，放到 Dominds 开启新一程后再做。',
           '',
           '操作：',
-          '- 优先新增详尽接续包提醒项：add_reminder({ "content": "..." })',
+          '- 优先新增详尽接续包提醒项：add_reminder({ "content": "...", "scope": "dialog" })',
           '- 只有在确实能就地复用现有提醒项、且不会额外增加当前程认知负担时，才更新：update_reminder({ "reminder_id": "<现有 reminder_id>", "content": "..." })',
         ].join('\n');
       }
@@ -1036,14 +1040,15 @@ export function formatAgentFacingContextHealthV3RemediationGuide(
         '',
         '影响：对话历史中的工具调用/结果信息很多已经过时，成为你的思考负担。',
         '',
-        '行动：你当前处于主线对话。先把当前对话历史中尚未落实到文档、且下一程需要知会的讨论细节落到差遣牒合适章节。然后再把差遣牒仍未覆盖、但恢复工作会丢的信息记进新提醒项过桥（下一步行动 + 关键定位信息 + 运行/验证信息 + 容易丢的临时细节）；允许先带着一定冗余，也允许先写成多条粗略提醒项，不必在当前程强行压成单条。',
+        '行动：你当前处于主线对话。先新增或更新当前对话范围（scope=dialog）接续包提醒项，并把当前这一路主线对话的任务目标写清楚。然后只把确实需要同一差遣牒下其它对话/队友知会的讨论事实落到差遣牒合适章节；再把差遣牒仍未覆盖、但恢复本路对话会丢的信息记进 scope=dialog 新提醒项过桥（任务目标 + 下一步行动 + 关键定位信息 + 运行/验证信息 + 容易丢的临时细节）；允许先带着一定冗余，也允许先写成多条粗略提醒项，不必在当前程强行压成单条。',
         '',
-        'Dominds 已提醒当前上下文吃紧：不要继续扩张上下文，也不要提前进入“按接续包做清醒复核”的模式；那是 Dominds 真正开启新一程后的第一步。当前程的目标是先把未落文档的讨论细节补进差遣牒，再把差遣牒仍未覆盖、但恢复工作会丢的信息带过桥；真正清理冗余、合并提醒项，放到新一程再做。然后主动 clear_mind，开启新一程对话继续工作。',
+        'Dominds 已提醒当前上下文吃紧：不要继续扩张上下文，也不要提前进入“按接续包做清醒复核”的模式；那是 Dominds 真正开启新一程后的第一步。当前程的目标是先用 scope=dialog 提醒项保住本路对话目标，再把需要共享的事实补进差遣牒，最后把差遣牒仍未覆盖、但恢复本路对话会丢的信息带过桥；真正清理冗余、合并提醒项，放到新一程再做。然后主动 clear_mind，开启新一程对话继续工作。',
         '',
         '操作：',
+        '- 必须确保当前对话范围提醒项写明本路任务目标：add_reminder({ "content": "...", "scope": "dialog" }) 或 update_reminder({ "reminder_id": "<现有 reminder_id>", "content": "..." })',
         '- 优先新增差遣牒章节保存讨论细节：do_mind({ "category": "<category>", "selector": "<selector>", "content": "..." })',
         '- 只有在确实需要改写已有章节、且已对照当前差遣牒内容完成合并时，才先调用 recall_taskdoc({"selector":"<selector>"}) 取得 content_hash，再更新：change_mind({"selector":"<selector>","content":"...","previous_content_hash":"crc32:..."})',
-        '- 优先新增过桥提醒项：add_reminder({ "content": "..." })',
+        '- 优先新增当前对话 scope=dialog 过桥提醒项：add_reminder({ "content": "...", "scope": "dialog" })',
         '- 只有在确实能就地复用现有提醒项、且不会额外增加当前程认知负担时，才更新：update_reminder({ "reminder_id": "<现有 reminder_id>", "content": "..." })',
       ].join('\n');
     }
@@ -1056,12 +1061,14 @@ export function formatAgentFacingContextHealthV3RemediationGuide(
         '',
         `Dominds 最多再提醒你 ${args.promptsRemainingAfterThis} 次，之后将自动清理头脑开启新一程对话。`,
         '',
-        '行动：你当前处于支线对话。本程不要维护差遣牒，也不要整理差遣牒更新提案；当前目标是尽快维护足够详尽的接续包提醒项，然后 clear_mind。',
+        '行动：你当前处于支线对话。本程不要维护差遣牒，也不要整理差遣牒更新提案；当前目标是尽快维护足够详尽的当前对话范围（scope=dialog）接续包提醒项，然后 clear_mind。',
         '',
-        '提醒项应覆盖：当前对话历史中下一程需要知道的讨论细节、下一步行动、关键定位信息、运行/验证信息、临时路径/ID/样例输入，以及任何恢复工作容易丢的判断依据。提醒项没有固定长度限制，宁可完整一些；允许写成多条粗略提醒项，甚至带一定冗余也可以，不必在当前程强行整理干净。',
+        '重点提醒：接续包提醒项必须写明当前这一路支线对话的任务目标；同一差遣牒下可能还有同一智能体的其它主线/支线对话，下一程要靠 scope=dialog 提醒项继续本路对话，不能靠共享差遣牒猜目标。',
+        '',
+        '提醒项应覆盖：当前对话历史中下一程需要知道的任务目标、讨论细节、下一步行动、关键定位信息、运行/验证信息、临时路径/ID/样例输入，以及任何恢复工作容易丢的判断依据。提醒项没有固定长度限制，宁可完整一些；允许写成多条粗略提醒项，甚至带一定冗余也可以，不必在当前程强行整理干净。',
         '',
         '操作：',
-        '- 优先新增详尽接续包提醒项：add_reminder({ "content": "..." })',
+        '- 优先新增详尽接续包提醒项：add_reminder({ "content": "...", "scope": "dialog" })',
         '- 只有在确实能就地复用现有提醒项、且不会额外增加当前程认知负担时，才更新：update_reminder({ "reminder_id": "<现有 reminder_id>", "content": "..." })',
         '- clear_mind({})',
         '',
@@ -1076,16 +1083,17 @@ export function formatAgentFacingContextHealthV3RemediationGuide(
       '',
       `Dominds 最多再提醒你 ${args.promptsRemainingAfterThis} 次，之后将自动清理头脑开启新一程对话。`,
       '',
-      '行动：你当前处于主线对话。尽快保住易丢信息，然后 clear_mind。Dominds 已提醒当前上下文告急：先把当前对话历史中尚未落实到文档、且下一程需要知会的讨论细节落到差遣牒合适章节。然后再把差遣牒仍未覆盖、但恢复工作会丢的信息新增提醒项带过桥；允许先保留多条粗略提醒项，甚至带一定冗余也可以，不必在当前程强行整理干净。',
+      '行动：你当前处于主线对话。尽快保住易丢信息，然后 clear_mind。Dominds 已提醒当前上下文告急：先新增或更新当前对话范围（scope=dialog）接续包提醒项，并把当前这一路主线对话的任务目标写清楚。然后只把确实需要同一差遣牒下其它对话/队友知会的讨论事实落到差遣牒合适章节；再把差遣牒仍未覆盖、但恢复本路对话会丢的信息新增 scope=dialog 提醒项带过桥；允许先保留多条粗略提醒项，甚至带一定冗余也可以，不必在当前程强行整理干净。',
       '',
       '操作：',
+      '- 必须确保当前对话范围提醒项写明本路任务目标：add_reminder({ "content": "...", "scope": "dialog" }) 或 update_reminder({ "reminder_id": "<现有 reminder_id>", "content": "..." })',
       '- 优先新增差遣牒章节保存讨论细节：do_mind({ "category": "<category>", "selector": "<selector>", "content": "..." })',
       '- 只有在确实需要改写已有章节、且已对照当前差遣牒内容完成合并时，才先调用 recall_taskdoc({"selector":"<selector>"}) 取得 content_hash，再更新：change_mind({"selector":"<selector>","content":"...","previous_content_hash":"crc32:..."})',
-      '- 优先新增过桥提醒项：add_reminder({ "content": "..." })',
+      '- 优先新增当前对话 scope=dialog 过桥提醒项：add_reminder({ "content": "...", "scope": "dialog" })',
       '- 只有在确实能就地复用现有提醒项、且不会额外增加当前程认知负担时，才更新：update_reminder({ "reminder_id": "<现有 reminder_id>", "content": "..." })',
       '- clear_mind({})',
       '',
-      '接续包要点：下一步行动 + 关键定位信息 + 运行验证方式 + 容易丢的临时细节；不要重复差遣牒已有内容，本程刚落入差遣牒的讨论细节只需提示下一程先查差遣牒。Dominds 已提醒当前上下文告急：不要提前做“新一程清醒复核”；Dominds 真正开启新一程后，第一步才是重新审视并整理：删除冗余、纠正偏激/失真思路、合并并压缩成高质量提醒项。',
+      '接续包要点：当前对话任务目标 + 下一步行动 + 关键定位信息 + 运行验证方式 + 容易丢的临时细节；不要重复差遣牒已有内容，本程刚落入差遣牒的讨论细节只需提示下一程先查差遣牒。Dominds 已提醒当前上下文告急：不要提前做“新一程清醒复核”；Dominds 真正开启新一程后，第一步才是按当前对话范围提醒项里的任务目标继续本路对话，并重新审视整理：删除冗余、纠正偏激/失真思路、合并并压缩成高质量提醒项。',
     ].join('\n');
   }
 
@@ -1098,14 +1106,16 @@ export function formatAgentFacingContextHealthV3RemediationGuide(
         '',
         'Impact: stale call/results in dialog history are creating cognitive noise.',
         '',
-        'Action: you are in a Side Dialog. Do not maintain Taskdoc in this course, and do not draft Taskdoc update proposals. The current goal is to maintain sufficiently detailed continuation-package reminders, then proactively clear_mind to start a new dialog course.',
+        'Action: you are in a Side Dialog. Do not maintain Taskdoc in this course, and do not draft Taskdoc update proposals. The current goal is to maintain sufficiently detailed current-dialog scoped (scope=dialog) continuation-package reminders, then proactively clear_mind to start a new dialog course.',
         '',
-        'Reminders should cover: discussion details from current dialog history that the next course needs to know, next actions, key pointers, run/verify info, volatile paths/IDs/sample inputs, and any reasoning needed to resume safely. Reminders have no fixed length limit, so prefer being complete; rough multi-reminder carry-over is acceptable, and you do not need to force everything into one clean reminder in the current course.',
+        'Priority reminder: the continuation-package reminder must state this specific Side Dialog task goal. The same Taskdoc may have other Main/Side Dialogs for the same agent, so the next course must continue this dialog from scope=dialog reminders instead of guessing the goal from the shared Taskdoc.',
+        '',
+        'Reminders should cover: the task goal, discussion details from current dialog history that the next course needs to know, next actions, key pointers, run/verify info, volatile paths/IDs/sample inputs, and any reasoning needed to resume safely. Reminders have no fixed length limit, so prefer being complete; rough multi-reminder carry-over is acceptable, and you do not need to force everything into one clean reminder in the current course.',
         '',
         'Dominds has already warned that context is tight for the current course, so do not keep expanding context and do not switch early into “clear-headed continuation-package review” mode; reminder cleanup and dedup belong to the new course.',
         '',
         'Operations:',
-        '- Prefer adding a detailed continuation-package reminder first: add_reminder({ "content": "..." })',
+        '- Prefer adding a detailed continuation-package reminder first: add_reminder({ "content": "...", "scope": "dialog" })',
         '- Only if an existing reminder is clearly the right place, and updating it would not add extra cognitive load in the current course: update_reminder({ "reminder_id": "<existing reminder_id>", "content": "..." })',
       ].join('\n');
     }
@@ -1117,14 +1127,15 @@ export function formatAgentFacingContextHealthV3RemediationGuide(
       '',
       'Impact: stale call/results in dialog history are creating cognitive noise.',
       '',
-      'Action: you are in the Main Dialog. First record current-dialog discussion details that are not yet documented but the next course needs to know into the appropriate Taskdoc sections. Then write information still not covered by Taskdoc but easy to lose into new bridge reminders (next step + key pointers + run/verify info + easy-to-lose volatile details). Some redundancy is acceptable, and rough multi-reminder carry-over is acceptable too; do not force everything into one clean reminder in the current course.',
+      'Action: you are in the Main Dialog. First add or update a current-dialog scoped (scope=dialog) continuation-package reminder and state this specific Main Dialog task goal clearly. Then record only discussion facts that other dialogs/teammates sharing the same Taskdoc truly need to know into the appropriate Taskdoc sections. After that, write information still not covered by Taskdoc but easy to lose for resuming this dialog into scope=dialog bridge reminders (task goal + next step + key pointers + run/verify info + easy-to-lose volatile details). Some redundancy is acceptable, and rough multi-reminder carry-over is acceptable too; do not force everything into one clean reminder in the current course.',
       '',
-      'Dominds has already warned that context is tight for the current course, so do not keep expanding context and do not switch early into “clear-headed continuation-package review” mode; that is the first step only after Dominds actually starts the new course. In the current course, the goal is to first fill Taskdoc with undocumented discussion details, then carry forward details still not covered by Taskdoc; reminder cleanup and dedup belong to the new course. Then proactively clear_mind to start a new dialog course.',
+      'Dominds has already warned that context is tight for the current course, so do not keep expanding context and do not switch early into “clear-headed continuation-package review” mode; that is the first step only after Dominds actually starts the new course. In the current course, the goal is to first preserve this dialog goal in a scope=dialog reminder, then fill Taskdoc only with facts that need to be shared, and finally carry forward details still not covered by Taskdoc but needed to resume this dialog; reminder cleanup and dedup belong to the new course. Then proactively clear_mind to start a new dialog course.',
       '',
       'Operations:',
+      '- Ensure a current-dialog scoped reminder states this dialog task goal: add_reminder({ "content": "...", "scope": "dialog" }) or update_reminder({ "reminder_id": "<existing reminder_id>", "content": "..." })',
       '- Prefer creating a new Taskdoc section for discussion details: do_mind({ "category": "<category>", "selector": "<selector>", "content": "..." })',
       '- Only update when an existing section truly needs rewriting and you have merged against the current Taskdoc content: first call recall_taskdoc({"selector":"<selector>"}) for content_hash, then change_mind({"selector":"<selector>","content":"...","previous_content_hash":"crc32:..."})',
-      '- Prefer adding a bridge reminder first: add_reminder({ "content": "..." })',
+      '- Prefer adding a current-dialog scope=dialog bridge reminder first: add_reminder({ "content": "...", "scope": "dialog" })',
       '- Only if an existing reminder is clearly the right place, and updating it would not add extra cognitive load in the current course: update_reminder({ "reminder_id": "<existing reminder_id>", "content": "..." })',
     ].join('\n');
   }
@@ -1137,12 +1148,14 @@ export function formatAgentFacingContextHealthV3RemediationGuide(
       '',
       `Dominds will remind you ${args.promptsRemainingAfterThis} more time(s), then automatically clear mind.`,
       '',
-      'Action: you are in a Side Dialog. Do not maintain Taskdoc in this course, and do not draft Taskdoc update proposals. The current goal is to maintain sufficiently detailed continuation-package reminders as soon as possible, then clear_mind.',
+      'Action: you are in a Side Dialog. Do not maintain Taskdoc in this course, and do not draft Taskdoc update proposals. The current goal is to maintain sufficiently detailed current-dialog scoped (scope=dialog) continuation-package reminders as soon as possible, then clear_mind.',
       '',
-      'Reminders should cover: discussion details from current dialog history that the next course needs to know, next actions, key pointers, run/verify info, volatile paths/IDs/sample inputs, and any reasoning needed to resume safely. Reminders have no fixed length limit, so prefer being complete; multiple rough reminders, including some redundancy, are acceptable as a bridge.',
+      'Priority reminder: the continuation-package reminder must state this specific Side Dialog task goal. The same Taskdoc may have other Main/Side Dialogs for the same agent, so the next course must continue this dialog from scope=dialog reminders instead of guessing the goal from the shared Taskdoc.',
+      '',
+      'Reminders should cover: the task goal, discussion details from current dialog history that the next course needs to know, next actions, key pointers, run/verify info, volatile paths/IDs/sample inputs, and any reasoning needed to resume safely. Reminders have no fixed length limit, so prefer being complete; multiple rough reminders, including some redundancy, are acceptable as a bridge.',
       '',
       'Operations:',
-      '- Prefer adding a detailed continuation-package reminder first: add_reminder({ "content": "..." })',
+      '- Prefer adding a detailed continuation-package reminder first: add_reminder({ "content": "...", "scope": "dialog" })',
       '- Only if an existing reminder is clearly the right place, and updating it would not add extra cognitive load in the current course: update_reminder({ "reminder_id": "<existing reminder_id>", "content": "..." })',
       '- clear_mind({})',
       '',
@@ -1157,16 +1170,17 @@ export function formatAgentFacingContextHealthV3RemediationGuide(
     '',
     `Dominds will remind you ${args.promptsRemainingAfterThis} more time(s), then automatically clear mind.`,
     '',
-    'Action: you are in the Main Dialog. Preserve easy-to-lose information, then clear_mind. Because Dominds has warned that context is critical, first record current-dialog discussion details that are not yet documented but the next course needs to know into the appropriate Taskdoc sections. Then add bridge reminders for information still not covered by Taskdoc but easy to lose. Multiple rough reminders, including some redundancy, are acceptable as a bridge; do not spend the current course forcing them into a clean final package.',
+    'Action: you are in the Main Dialog. Preserve easy-to-lose information, then clear_mind. Because Dominds has warned that context is critical, first add or update a current-dialog scoped (scope=dialog) continuation-package reminder and state this specific Main Dialog task goal clearly. Then record only discussion facts that other dialogs/teammates sharing the same Taskdoc truly need to know into the appropriate Taskdoc sections. After that, add scope=dialog bridge reminders for information still not covered by Taskdoc but easy to lose when resuming this dialog. Multiple rough reminders, including some redundancy, are acceptable as a bridge; do not spend the current course forcing them into a clean final package.',
     '',
     'Operations:',
+    '- Ensure a current-dialog scoped reminder states this dialog task goal: add_reminder({ "content": "...", "scope": "dialog" }) or update_reminder({ "reminder_id": "<existing reminder_id>", "content": "..." })',
     '- Prefer creating a new Taskdoc section for discussion details: do_mind({ "category": "<category>", "selector": "<selector>", "content": "..." })',
     '- Only update when an existing section truly needs rewriting and you have merged against the current Taskdoc content: first call recall_taskdoc({"selector":"<selector>"}) for content_hash, then change_mind({"selector":"<selector>","content":"...","previous_content_hash":"crc32:..."})',
-    '- Prefer adding a bridge reminder first: add_reminder({ "content": "..." })',
+    '- Prefer adding a current-dialog scope=dialog bridge reminder first: add_reminder({ "content": "...", "scope": "dialog" })',
     '- Only if an existing reminder is clearly the right place, and updating it would not add extra cognitive load in the current course: update_reminder({ "reminder_id": "<existing reminder_id>", "content": "..." })',
     '- clear_mind({})',
     '',
-    'Continuation package: next step + key pointers + run/verify info + easy-to-lose volatile details. Do not duplicate Taskdoc content; for discussion details just written into Taskdoc in this course, only remind the next course to review Taskdoc first. Because Dominds has warned that context is critical in the current course, do not start the new-course cleanup early; once Dominds actually starts the new course, the first step is to reconcile rough bridge reminders by removing redundancy, correcting biased or distorted bridge notes, and merging/compressing them into high-quality reminders.',
+    'Continuation package: current dialog task goal + next step + key pointers + run/verify info + easy-to-lose volatile details. Do not duplicate Taskdoc content; for discussion details just written into Taskdoc in this course, only remind the next course to review Taskdoc first. Because Dominds has warned that context is critical in the current course, do not start the new-course cleanup early; once Dominds actually starts the new course, the first step is to continue this dialog from the task goal in current-dialog scoped reminders and reconcile rough bridge reminders by removing redundancy, correcting biased or distorted bridge notes, and merging/compressing them into high-quality reminders.',
   ].join('\n');
 }
 

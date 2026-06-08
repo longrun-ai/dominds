@@ -22,7 +22,10 @@ async function main(): Promise<void> {
     undefined,
     'tester',
   );
-  dlg.addReminder('继续按窄补强推进实现');
+  dlg.addReminder('继续按窄补强推进实现', undefined, undefined, undefined, {
+    scope: 'dialog',
+    renderMode: 'markdown',
+  });
 
   const renderedReminderItems: ChatMessage[] = [];
   const maintenanceReferenceItems: Array<{ id: string; meta?: unknown }> = [];

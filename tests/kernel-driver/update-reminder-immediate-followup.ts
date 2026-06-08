@@ -19,6 +19,7 @@ async function main(): Promise<void> {
     const dlg = await createMainDialog('tester');
     const reminder = dlg.addReminder('Initial bridge note.', undefined, undefined, undefined, {
       scope: 'dialog',
+      renderMode: 'markdown',
     });
     const reminderId = reminder.id;
 

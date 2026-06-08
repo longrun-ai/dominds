@@ -123,7 +123,12 @@ const FUNC_TOOL_ARG_ALIASES: Readonly<Record<string, Readonly<Record<string, str
 
 export interface ReminderOptions {
   readonly echoback?: boolean;
-  readonly scope?: ReminderScope;
+  readonly scope: ReminderScope;
+  readonly renderMode: ReminderRenderMode;
+}
+
+export interface ReminderUpdateOptions {
+  readonly echoback?: boolean;
   readonly renderMode?: ReminderRenderMode;
 }
 
@@ -145,7 +150,6 @@ export interface Reminder extends ReminderOptions {
   readonly meta?: JsonValue;
   readonly createdAt?: string;
   readonly priority?: ReminderPriority;
-  readonly renderMode?: ReminderRenderMode;
 }
 
 export function reminderEchoBackEnabled(reminder: Reminder): boolean {
@@ -180,22 +184,28 @@ export function materializeReminder(
     owner?: ReminderOwner;
     meta?: JsonValue;
     echoback?: boolean;
-    scope?: ReminderScope;
+    scope: ReminderScope;
     createdAt?: string;
     priority?: ReminderPriority;
-    renderMode?: ReminderRenderMode;
+    renderMode: ReminderRenderMode;
   }>,
 ): Reminder {
+  if (input.scope === undefined) {
+    throw new Error('materializeReminder requires explicit scope');
+  }
+  if (input.renderMode === undefined) {
+    throw new Error('materializeReminder requires explicit renderMode');
+  }
   return {
     id: ensureReminderId(input.id),
     content: input.content,
     owner: input.owner,
     meta: input.meta,
     echoback: input.echoback,
-    scope: input.scope ?? 'dialog',
+    scope: input.scope,
     createdAt: input.createdAt,
     priority: input.priority,
-    renderMode: input.renderMode ?? 'markdown',
+    renderMode: input.renderMode,
   };
 }
 
@@ -219,8 +229,8 @@ export function computeReminderRenderRevision(reminder: Reminder): string {
     content: reminder.content,
     meta: reminder.meta ?? null,
     echoback: reminder.echoback ?? true,
-    scope: reminder.scope ?? 'dialog',
-    renderMode: reminder.renderMode ?? 'markdown',
+    scope: reminder.scope,
+    renderMode: reminder.renderMode,
   });
   return `sha256:${createHash('sha256').update(payload, 'utf8').digest('hex')}`;
 }

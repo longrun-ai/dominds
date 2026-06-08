@@ -108,6 +108,7 @@ async function main(): Promise<void> {
           manager: { tool: ownerRef },
           foo: 'bar',
         },
+        scope: 'dialog',
         renderMode: 'plain',
       }),
     );

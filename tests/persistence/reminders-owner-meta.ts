@@ -66,11 +66,18 @@ async function main(): Promise<void> {
     // production reminder persistence must not recreate missing dialog directories on demand.
     await fs.mkdir(DialogPersistence.getDialogEventsPath(dialogId), { recursive: true });
     await DialogPersistence._saveReminderState(dialogId, [
-      materializeReminder({ content: 'MCP lease reminder', owner: mcpLeaseOwner }),
+      materializeReminder({
+        content: 'MCP lease reminder',
+        owner: mcpLeaseOwner,
+        scope: 'dialog',
+        renderMode: 'markdown',
+      }),
       materializeReminder({
         content: 'Daemon reminder',
         owner: shellCmdOwner,
         meta: { kind: 'daemon', pid: 123, command: 'sleep 10' },
+        scope: 'dialog',
+        renderMode: 'markdown',
       }),
       materializeReminder({
         content: 'App tool reminder',
@@ -87,6 +94,7 @@ async function main(): Promise<void> {
           },
           workflow: 'playwright_interactive_manual',
         },
+        scope: 'dialog',
         renderMode: 'plain',
       }),
     ]);

@@ -13,11 +13,17 @@ async function runCase(language: 'zh' | 'en', expectedSubstring: string): Promis
     undefined,
     'tester',
   );
-  dlg.addReminder('daemon reminder', undefined, {
-    delete: {
-      altInstruction: 'stop_daemon({ "pid": 123 })',
+  dlg.addReminder(
+    'daemon reminder',
+    undefined,
+    {
+      delete: {
+        altInstruction: 'stop_daemon({ "pid": 123 })',
+      },
     },
-  });
+    undefined,
+    { scope: 'dialog', renderMode: 'markdown' },
+  );
   const reminderId = dlg.reminders[0]?.id;
   assert.equal(typeof reminderId, 'string');
 

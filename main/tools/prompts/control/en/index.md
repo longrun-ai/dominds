@@ -26,7 +26,7 @@
 
 control is Dominds' **dialog control toolset** for managing dialog state, reminders, taskdocs, and inter-dialog reply closure semantics:
 
-- **Reminder management**: Three reminder scopes: `dialog` / `task` / `agent`. Default to `task` for current work under the same Taskdoc; use `dialog` only for truly dialog-local notes; use `agent` only for urgent, short-lived, globally visible cues
+- **Reminder management**: Three reminder scopes: `dialog` / `task` / `agent`. Default to `task` for ordinary current work under the same Taskdoc; use `dialog` for truly dialog-local notes, and continuation packages before `clear_mind` must explicitly use `scope=dialog` and state this dialog task goal; use `agent` only for urgent, short-lived, globally visible cues
 - **Taskdoc operations**: Append to, replace, or delete task contract sections (goals/constraints/progress); within Taskdoc, `progress` is the team-shared, quasi-real-time, scannable task bulletin board
 - **Context maintenance**: Reduce cognitive load without losing key resume state
 - **Reply routing**: Separate asking the tellasker back, sending the final reply, and ordinary plain text in Side Dialog / ask-back flows
@@ -56,13 +56,13 @@ Reminders are temporary current-work information for:
 - Marking pending tasks
 - Tracking current next steps / blockers
 - Recording blocking issues
-- Holding continuation-package bridge notes before `clear_mind`
+- Holding current-dialog scoped continuation-package bridge notes before `clear_mind`
 
 Reminders are not for manually copying environment state automatically maintained by Dominds, such as background process status, in-flight background asks/collaboration, or browser/session attachment state. Dominds-managed reminders, panels, and tool outputs are the authoritative place for that state; manual notes go stale easily and create cognitive noise.
 
 Scope rule:
 
-- `dialog`: current-dialog current work
+- `dialog`: current-dialog current work; continuation packages before `clear_mind` must explicitly use this scope and state this dialog task goal
 - `task`: current work under the current Taskdoc, and the default scope
 - `agent`: urgent, short-lived, globally visible cues you should keep seeing across later dialogs you lead
 

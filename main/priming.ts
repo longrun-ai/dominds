@@ -335,7 +335,7 @@ function reminderToSnapshot(reminder: Reminder): PrimingReminderSnapshot {
     meta: reminder.meta,
     echoback: reminder.echoback,
     scope: reminder.scope,
-    renderMode: reminder.renderMode ?? 'markdown',
+    renderMode: reminder.renderMode,
     createdAt: reminder.createdAt,
     priority: reminder.priority,
   };
@@ -2498,8 +2498,7 @@ async function applyPrimingRemindersToDialog(args: {
   const taskReminders: Reminder[] = [];
   const agentReminders: Reminder[] = [];
   for (const reminder of args.reminders) {
-    const scope = reminder.scope ?? 'task';
-    switch (scope) {
+    switch (reminder.scope) {
       case 'dialog':
         dialogReminders.push(reminder);
         break;

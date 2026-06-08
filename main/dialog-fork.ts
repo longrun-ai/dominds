@@ -707,9 +707,10 @@ async function appendForkBaselineState(
       ownerName: reminder.owner?.name,
       meta: reminder.meta,
       echoback: reminder.echoback,
-      scope: reminder.scope ?? 'dialog',
+      scope: reminder.scope,
       createdAt: reminder.createdAt ?? baselineTs,
       priority: reminder.priority ?? 'medium',
+      renderMode: reminder.renderMode,
     })),
   };
   const q4hRecord: Questions4HumanReconciledRecord = {

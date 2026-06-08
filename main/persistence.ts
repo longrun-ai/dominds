@@ -998,8 +998,8 @@ function serializeReminderSnapshot(reminder: Reminder): ReminderSnapshotItem {
     ownerName: reminder.owner?.name,
     meta: reminder.meta,
     echoback: reminder.echoback,
-    scope: reminder.scope ?? 'dialog',
-    renderMode: reminder.renderMode ?? 'markdown',
+    scope: reminder.scope,
+    renderMode: reminder.renderMode,
     createdAt: reminder.createdAt ?? formatUnifiedTimestamp(new Date()),
     priority: reminder.priority ?? 'medium',
   };

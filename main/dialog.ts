@@ -86,6 +86,7 @@ import {
   reminderEchoBackEnabled,
   ReminderOptions,
   ReminderOwner,
+  ReminderUpdateOptions,
 } from './tool';
 import { generateDialogID } from './utils/id';
 
@@ -757,18 +758,21 @@ export abstract class Dialog {
   // Reminder management methods
   public addReminder(
     content: string,
-    owner?: ReminderOwner,
-    meta?: JsonValue,
-    position?: number,
-    options?: ReminderOptions,
+    owner: ReminderOwner | undefined,
+    meta: JsonValue | undefined,
+    position: number | undefined,
+    options: ReminderOptions,
   ): Reminder {
+    if (options === undefined) {
+      throw new Error('Dialog.addReminder requires explicit reminder options');
+    }
     const reminder = materializeReminder({
       content,
       owner,
       meta,
-      echoback: options?.echoback,
-      scope: options?.scope ?? 'dialog',
-      renderMode: options?.renderMode,
+      echoback: options.echoback,
+      scope: options.scope,
+      renderMode: options.renderMode,
     });
     const insertIndex = position !== undefined ? position : this.reminders.length;
     if (insertIndex < 0 || insertIndex > this.reminders.length) {
@@ -795,7 +799,7 @@ export abstract class Dialog {
     index: number,
     content: string,
     meta?: JsonValue,
-    options?: ReminderOptions,
+    options?: ReminderUpdateOptions,
   ): Reminder {
     if (index < 0 || index >= this.reminders.length) {
       throw new InvalidReminderIndexError(index, this.reminders.length);
@@ -964,7 +968,7 @@ export abstract class Dialog {
       renderRevision: computeReminderRenderRevision(r),
       echoback: reminderEchoBackEnabled(r),
       scope: r.scope,
-      renderMode: r.renderMode ?? 'markdown',
+      renderMode: r.renderMode,
     }));
   }
 

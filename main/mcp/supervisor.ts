@@ -134,7 +134,10 @@ function ensureLeaseReminder(dlg: Dialog, serverId: string): void {
           '',
           `This MCP server is treated as non-stateless; the current dialog holds an underlying process/connection with explicit lifecycle management.`,
         ].join('\n');
-  dlg.addReminder(content, owner, makeLeaseReminderMeta(serverId));
+  dlg.addReminder(content, owner, makeLeaseReminderMeta(serverId), undefined, {
+    scope: 'dialog',
+    renderMode: 'markdown',
+  });
 }
 
 class McpServerDispatch {

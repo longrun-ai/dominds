@@ -34,6 +34,8 @@ async function main(): Promise<void> {
       id: 'ownerfail001',
       content: 'Owner-managed stale reminder',
       owner: failingOwner,
+      scope: 'dialog',
+      renderMode: 'markdown',
     }),
   );
 
@@ -71,6 +73,8 @@ async function main(): Promise<void> {
       content: 'Stable owner-managed reminder',
       owner: stableOwner,
       meta: { state: 'same' },
+      scope: 'dialog',
+      renderMode: 'markdown',
     }),
   );
   const beforeUpdatedAt = stableDialog.updatedAt;

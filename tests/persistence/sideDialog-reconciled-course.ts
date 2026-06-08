@@ -59,7 +59,10 @@ async function main(): Promise<void> {
         (event) => event.type === 'reminders_reconciled_record',
       ).length;
 
-      sideDialog.addReminder('persist on sideDialog course two');
+      sideDialog.addReminder('persist on sideDialog course two', undefined, undefined, undefined, {
+        scope: 'dialog',
+        renderMode: 'markdown',
+      });
       await sideDialog.processReminderUpdates();
 
       const latest = await DialogPersistence.loadDialogLatest(sideDialog.id, 'running');

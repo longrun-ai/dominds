@@ -106,6 +106,8 @@ async function main(): Promise<void> {
         content: 'stale pending tellask reminder',
         owner: pendingTellaskReminderOwner,
         createdAt: pendingReminderCreatedAt,
+        scope: 'dialog',
+        renderMode: 'markdown',
         meta: {
           kind: 'pending_tellask',
           pendingCount: 2,
@@ -121,6 +123,8 @@ async function main(): Promise<void> {
         id: 'daemon001',
         content: 'daemon reminder',
         createdAt: daemonCreatedAt,
+        scope: 'dialog',
+        renderMode: 'markdown',
       }),
     );
 

@@ -43,6 +43,7 @@ async function main(): Promise<void> {
       undefined,
       {
         scope: 'dialog',
+        renderMode: 'markdown',
       },
     );
 

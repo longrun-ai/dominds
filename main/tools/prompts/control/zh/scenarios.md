@@ -15,7 +15,7 @@
 
 ### 场景描述
 
-使用 reminders 承接当前任务的手头工作：下一步、临时阻塞、易丢的 bridge 细节，而不是把它写成面向全队同步的 Taskdoc 公告牌。
+使用 reminders 承接当前任务的手头工作：下一步、临时阻塞、易丢细节，而不是把它写成面向全队同步的 Taskdoc 公告牌。准备 `clear_mind` 的接续包是当前对话恢复线索，必须显式 `scope=dialog` 并写明本路对话任务目标。
 
 ### 示例
 
@@ -28,6 +28,13 @@ add_reminder({
 // 只有真正只对当前对话局部有效，才显式写成 dialog
 add_reminder({
   content: '本对话里临时对照一下刚才那段 tool output 的第 12 行',
+  scope: 'dialog',
+});
+
+// clear_mind 接续包必须显式 dialog，并写明当前这一路对话的任务目标
+add_reminder({
+  content:
+    '接续目标：继续复核 control 手册换程引导；下一步先检查 scenarios/index 是否还把接续包暗示成 task',
   scope: 'dialog',
 });
 
@@ -51,8 +58,8 @@ delete_reminder({
 
 ### 关键点
 
-- 同一差遣牒任务内的下一步、临时阻塞、bridge 细节默认都用 `task`
-- 真正只对当前对话有效的提醒才用 `dialog`
+- 同一差遣牒任务内的普通下一步、临时阻塞、手头细节默认用 `task`
+- 真正只对当前对话有效的提醒才用 `dialog`；准备 `clear_mind` 的接续包必须显式 `scope=dialog`，并写明本路对话任务目标
 - 只有紧急、短期、全局刺眼提醒才用 `agent`
 - 如果信息需要向全队同步当前有效状态、关键决策、下一步或仍成立阻塞，应写入 Taskdoc `progress`
 - 如果内容本质上是长期知识而不是当前手头工作提示，应改存到 `personal_memory`

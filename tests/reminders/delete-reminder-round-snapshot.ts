@@ -12,6 +12,13 @@ function numberedContents(dlg: MainDialog): string[] {
     .map((reminder) => reminder.content);
 }
 
+function addDialogReminder(dlg: MainDialog, content: string): void {
+  dlg.addReminder(content, undefined, undefined, undefined, {
+    scope: 'dialog',
+    renderMode: 'markdown',
+  });
+}
+
 async function main(): Promise<void> {
   setWorkLanguage('en');
 
@@ -21,9 +28,9 @@ async function main(): Promise<void> {
     undefined,
     'tester',
   );
-  dlg.addReminder('A');
-  dlg.addReminder('B');
-  dlg.addReminder('C');
+  addDialogReminder(dlg, 'A');
+  addDialogReminder(dlg, 'B');
+  addDialogReminder(dlg, 'C');
   const reminderAId = dlg.reminders[0]?.id;
   const reminderCId = dlg.reminders[2]?.id;
   assert.equal(typeof reminderAId, 'string');

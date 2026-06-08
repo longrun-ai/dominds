@@ -1053,7 +1053,10 @@ export const clearMindTool: FuncTool = {
         createdBy: 'clear_mind',
         contextHealthLevel,
       });
-      dlg.addReminder(reminderContent, undefined, continuationMeta);
+      dlg.addReminder(reminderContent, undefined, continuationMeta, undefined, {
+        scope: 'dialog',
+        renderMode: 'markdown',
+      });
     }
     await dlg.startNewCourse(t.clearedCoursePrompt(dlg.currentCourse + 1));
 

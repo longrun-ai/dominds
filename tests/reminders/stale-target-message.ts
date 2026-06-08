@@ -19,6 +19,13 @@ function createDialog(): MainDialog {
   );
 }
 
+function addDialogReminder(dlg: MainDialog, content: string): Reminder {
+  return dlg.addReminder(content, undefined, undefined, undefined, {
+    scope: 'dialog',
+    renderMode: 'markdown',
+  });
+}
+
 function forceDialogTargetIndex(dlg: MainDialog, reminder: Reminder, index: number): void {
   const staleTarget: VisibleReminderTarget = {
     source: 'dialog',
@@ -46,7 +53,7 @@ function assertFriendlyStaleTargetMessage(output: string, expectedSubstring: str
 async function runDeleteCase(testCase: StaleTargetCase): Promise<void> {
   setWorkLanguage(testCase.language);
   const dlg = createDialog();
-  const reminder = dlg.addReminder('stale delete target');
+  const reminder = addDialogReminder(dlg, 'stale delete target');
   forceDialogTargetIndex(dlg, reminder, 4);
   dlg.deleteReminder(0);
 
@@ -63,7 +70,7 @@ async function runDeleteCase(testCase: StaleTargetCase): Promise<void> {
 async function runUpdateCase(testCase: StaleTargetCase): Promise<void> {
   setWorkLanguage(testCase.language);
   const dlg = createDialog();
-  const reminder = dlg.addReminder('stale update target');
+  const reminder = addDialogReminder(dlg, 'stale update target');
   forceDialogTargetIndex(dlg, reminder, 4);
   dlg.deleteReminder(0);
 
@@ -81,7 +88,7 @@ async function runUpdateCase(testCase: StaleTargetCase): Promise<void> {
 async function runStaleIndexStillResolvesByIdCase(): Promise<void> {
   setWorkLanguage('en');
   const deleteDialog = createDialog();
-  const deleteReminder = deleteDialog.addReminder('delete by id despite stale index');
+  const deleteReminder = addDialogReminder(deleteDialog, 'delete by id despite stale index');
   forceDialogTargetIndex(deleteDialog, deleteReminder, 4);
   const deleteResult = await deleteReminderTool.call(deleteDialog, {} as Team.Member, {
     reminder_id: deleteReminder.id,
@@ -90,7 +97,7 @@ async function runStaleIndexStillResolvesByIdCase(): Promise<void> {
   assert.equal(deleteDialog.reminders.length, 0);
 
   const updateDialog = createDialog();
-  const updateReminder = updateDialog.addReminder('update by id despite stale index');
+  const updateReminder = addDialogReminder(updateDialog, 'update by id despite stale index');
   forceDialogTargetIndex(updateDialog, updateReminder, 4);
   const updateResult = await updateReminderTool.call(updateDialog, {} as Team.Member, {
     reminder_id: updateReminder.id,
@@ -107,12 +114,16 @@ async function runDuplicateDialogReminderIdCase(): Promise<void> {
   const firstReminder = materializeReminder({
     id: duplicateId,
     content: 'first duplicate reminder',
+    scope: 'dialog',
+    renderMode: 'markdown',
   });
   dlg.reminders.push(
     firstReminder,
     materializeReminder({
       id: duplicateId,
       content: 'second duplicate reminder',
+      scope: 'dialog',
+      renderMode: 'markdown',
     }),
   );
   forceDialogTargetIndex(dlg, firstReminder, 0);
