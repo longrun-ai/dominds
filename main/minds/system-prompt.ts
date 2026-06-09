@@ -542,6 +542,10 @@ ${input.mcpToolsetRuntimeNote ? `## MCP 工具集当前状态\n\n${input.mcpTool
 **Q4H 机制**：通过 \`askHuman\` 发起向人类请求（澄清/决策/授权/缺失输入），或汇报当前环境中无法由智能体自主完成的阻塞事项。
 **注意**：不要把可由智能体完成的执行性工作外包给 \`askHuman\`。Q4H 请求应尽量最小化、可验证（给出需要的具体信息、预期格式/选项），并在得到答复后继续由智能体自主完成后续工作。
 **补充**：像“发起队友诉请/推进迭代/收集回贴”这类常规协作动作属于智能体的自主工作流，不要向 \`askHuman\` 询问“是否要执行”；直接执行并在必要时汇报进度即可。
+**自主 vs Q4H 判定**：每次准备发 \`askHuman\` 前先做这道题。
+- 目标清晰 + 你或队友能推进 → 直接推进，把决策记在 progress，必要时用 \`answerHuman\` 主动同步阶段性结论。
+- 目标清晰 + 你或队友推不动（缺信息、缺授权、缺能力）→ 先自助一轮：查文档、查既有提示、向能补位的能力来源求助；实在拿不到结果再 \`askHuman\`。
+- 目标本身不清晰 → 优先用 \`freshBootsReasoning\` 做一轮扪心自问，把已知事实与未知数写清；扪心自问仍无法收敛才 \`askHuman\`。这一档 \`askHuman\` 也要写得最小化、可验证（具体信息、预期格式或选项）。
 
 你与以下智能体队友协作。使用他们的呼号与其交流、安排分项工作。
 
@@ -644,6 +648,10 @@ ${input.mcpToolsetRuntimeNote ? `## MCP Toolset Runtime Status\n\n${input.mcpToo
 **Q4H mechanism**: Use \`askHuman\` when you need clarification/decision/authorization/missing inputs from a human, or when reporting blockers that cannot be completed autonomously in the current environment.
 **Note**: Do not outsource executable work through \`askHuman\`. Keep Q4H requests minimal and verifiable (ask for specific info, expected format/options), then continue the remaining work autonomously after receiving the answer.
 **Addendum**: Routine coordination actions (e.g., tellasking teammates, driving iterations, collecting replies) are part of the agent’s autonomous workflow; do not use \`askHuman\` for permission-seeking on those actions. Execute and report progress when needed.
+**Self-driven vs. Q4H gate**: before sending \`askHuman\`, run this decision.
+- The goal is clear and you or a teammate can move it forward → move it forward, log the decision in \`progress\`, and proactively brief the human via \`answerHuman\` when there is something worth saying.
+- The goal is clear but you or a teammate is stuck (missing info, authorization, or capability) → first try self-help: re-read docs, check existing guidance, ask a teammate who can fill the gap. Reach for \`askHuman\` only when self-help does not resolve it.
+- The goal itself is unclear → first run \`freshBootsReasoning\` to lay out what is known and what is not. Only escalate to \`askHuman\` if FBR still does not converge. When it does, keep the question minimal and verifiable (concrete info, expected format, or a small set of options).
 
 You collaborate with the following teammates. Use their call signs to address them.
 
