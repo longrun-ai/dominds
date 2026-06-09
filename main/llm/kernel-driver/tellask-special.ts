@@ -3033,10 +3033,12 @@ async function executeValidTellaskCalls(args: {
 }): Promise<{
   toolOutputs: ChatMessage[];
   successfulReplyCallIds: string[];
+  failedReplyCallIds: string[];
   answerHumanOutputs: AnswerHumanStructuredOutput[];
 }> {
   const results: ChatMessage[][] = [];
   const successfulReplyCallIds: string[] = [];
+  const failedReplyCallIds: string[] = [];
   const answerHumanOutputs: AnswerHumanStructuredOutput[] = [];
   const deferredScheduleCalls: Array<
     Readonly<{ dialog: Dialog; options: KernelDriverDriveCallOptions }>
@@ -3101,6 +3103,8 @@ async function executeValidTellaskCalls(args: {
         });
         if (replyResult.delivered) {
           successfulReplyCallIds.push(call.callId);
+        } else {
+          failedReplyCallIds.push(call.callId);
         }
         results.push(replyResult.messages);
         continue;
@@ -3180,6 +3184,7 @@ async function executeValidTellaskCalls(args: {
   return {
     toolOutputs: results.flatMap((result) => result),
     successfulReplyCallIds,
+    failedReplyCallIds,
     answerHumanOutputs,
   };
 }
@@ -3192,10 +3197,16 @@ export async function executeTellaskCalls(args: {
 }): Promise<{
   toolOutputs: ChatMessage[];
   successfulReplyCallIds: string[];
+  failedReplyCallIds: string[];
   answerHumanOutputs: AnswerHumanStructuredOutput[];
 }> {
   if (args.calls.length === 0) {
-    return { toolOutputs: [], successfulReplyCallIds: [], answerHumanOutputs: [] };
+    return {
+      toolOutputs: [],
+      successfulReplyCallIds: [],
+      failedReplyCallIds: [],
+      answerHumanOutputs: [],
+    };
   }
 
   return await executeValidTellaskCalls({
@@ -3434,6 +3445,7 @@ export async function processTellaskFunctionRound(args: {
   const tellaskFuncResultByCallId = new Map<string, FuncResultMsg>();
   const tellaskToolOutputs: ChatMessage[] = [];
   const immediateTellaskOutputCallIds: string[] = [];
+  const failedReplyCallIds = new Set(tellaskExecution.failedReplyCallIds);
   let hasImmediateTellaskOutputs = false;
   let shouldStopAfterPendingTellaskWait = false;
   for (const output of tellaskExecution.toolOutputs) {
@@ -3446,6 +3458,10 @@ export async function processTellaskFunctionRound(args: {
         originatingCall !== undefined &&
         usesFuncRequestedSpecialLifecycle(originatingCall.callName)
       ) {
+        if (isReplyTellaskCallName(originatingCall.callName) && failedReplyCallIds.has(result.id)) {
+          hasImmediateTellaskOutputs = true;
+          immediateTellaskOutputCallIds.push(result.id);
+        }
         continue;
       }
       hasImmediateTellaskOutputs = true;

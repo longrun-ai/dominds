@@ -202,6 +202,72 @@ async function main(): Promise<void> {
       [],
       'successful replyTellaskSessionless delivery must not record immediate output call ids',
     );
+
+    const staleAskBackRoot = await createMainDialog('tester');
+    const staleAskBackCallId = 'stale-askback-call';
+    await staleAskBackRoot.receiveTellaskResponse(
+      'pangu',
+      'tellaskBack',
+      undefined,
+      'Please clarify the stale ask-back.',
+      'completed',
+      undefined,
+      {
+        response: 'Already resolved.',
+        agentId: 'pangu',
+        callId: staleAskBackCallId,
+        originMemberId: 'tester',
+      },
+    );
+    const staleReplyCallId = 'stale-askback-reply-call';
+    const staleReplyRound = await processTellaskFunctionRound({
+      dlg: staleAskBackRoot,
+      funcCalls: [
+        {
+          type: 'func_call_msg',
+          role: 'assistant',
+          genseq: 1,
+          id: staleReplyCallId,
+          name: 'replyTellaskBack',
+          arguments: JSON.stringify({ replyContent: 'Late reply.' }),
+        },
+      ],
+      allowedSpecials: new Set<TellaskCallFunctionName>(['replyTellaskBack']),
+      callbacks: {
+        scheduleDrive: () => {},
+        driveDialog: async () => {},
+      },
+      activePromptReplyDirective: {
+        expectedReplyCallName: 'replyTellaskBack',
+        targetDialogId: staleAskBackRoot.id.selfId,
+        targetCallId: staleAskBackCallId,
+        tellaskContent: 'Please clarify the stale ask-back.',
+      },
+    });
+    assert.equal(
+      staleReplyRound.shouldStopAfterReplyTool,
+      false,
+      'failed replyTellaskBack delivery must not stop the dialog drive',
+    );
+    assert.equal(
+      staleReplyRound.hasImmediateTellaskOutputs,
+      true,
+      'failed replyTellaskBack delivery should request same-drive follow-up',
+    );
+    assert.deepEqual(
+      staleReplyRound.immediateTellaskOutputCallIds,
+      [staleReplyCallId],
+      'failed replyTellaskBack delivery should expose its result to immediate follow-up',
+    );
+    const staleReplyResult = staleReplyRound.tellaskResults.find(
+      (result) => result.id === staleReplyCallId,
+    );
+    assert.ok(staleReplyResult, 'expected stale replyTellaskBack to produce a tool result');
+    assert.ok(
+      staleReplyResult.content.includes('不会送达') ||
+        staleReplyResult.content.includes('will not deliver'),
+      'expected stale replyTellaskBack result to explain that no delivery happened',
+    );
   });
 
   console.log('kernel-driver sideDialog-reply-delivery-marked-delivered: PASS');
