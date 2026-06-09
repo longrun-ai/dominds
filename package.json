@@ -1,7 +1,8 @@
 {
   "name": "dominds",
-  "version": "1.27.4",
+  "version": "1.27.5",
   "description": "Dominds CLI and aggregation shell for the LongRun AI kernel/runtime packages.",
+  "packageManager": "pnpm@11.5.2",
   "type": "commonjs",
   "publishConfig": {
     "access": "public"
@@ -62,7 +63,6 @@
     "url": "https://github.com/longrun-ai/dominds/issues"
   },
   "homepage": "https://github.com/longrun-ai/dominds#readme",
-  "packageManager": "pnpm@11.5.0",
   "engines": {
     "node": ">=24.5 <25",
     "npm": ">=11.16.0",

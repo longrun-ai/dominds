@@ -1,13 +1,12 @@
 {
   "name": "@longrun-ai/shell",
-  "version": "1.17.3",
+  "version": "1.17.5",
   "description": "Dominds shell-facing contract package.",
   "type": "commonjs",
   "private": false,
   "publishConfig": {
     "access": "public"
   },
-  "packageManager": "pnpm@11.5.0",
   "main": "dist/index.js",
   "types": "src/index.ts",
   "exports": {

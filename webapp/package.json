@@ -4,7 +4,6 @@
   "private": true,
   "license": "LGPL-3.0-or-later",
   "description": "dominds webui/frontend",
-  "packageManager": "pnpm@11.5.0",
   "engines": {
     "node": ">=24 <25",
     "npm": ">=11.16.0",
