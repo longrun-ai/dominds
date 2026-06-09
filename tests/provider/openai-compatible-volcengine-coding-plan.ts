@@ -5,6 +5,7 @@ import path from 'path';
 
 import {
   MINIMAX_REASONING_DETAILS_API_QUIRK,
+  MINIMAX_THINKING_TYPE_API_QUIRK,
   VOLCENGINE_INVALID_PARAMETER_AGGRESSIVE_RETRY_API_QUIRK,
 } from '../../main/llm/api-quirks';
 import type { ChatMessage } from '../../main/llm/client';
@@ -22,6 +23,10 @@ import { Team } from '../../main/team';
 
 function assert(condition: boolean, message: string): void {
   if (!condition) throw new Error(message);
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
 
 type ChunkDeltaExtra = {
@@ -771,6 +776,65 @@ function testOpenAiCompatibleExtraParams(): void {
   assert(
     minimaxQuirkParams.reasoning_split === true,
     'expected MiniMax reasoning_details quirk to enable reasoning_split by default',
+  );
+
+  // Shared MiniMax fixture: both MiniMax quirks enabled, used by the three regressions below.
+  const minimaxProviderConfig: ProviderConfig = {
+    name: 'MiniMax Test',
+    apiType: 'openai-compatible',
+    apiQuirks: [MINIMAX_REASONING_DETAILS_API_QUIRK, MINIMAX_THINKING_TYPE_API_QUIRK],
+    baseUrl: 'https://api.minimax.io/v1',
+    apiKeyEnvVar: 'MINIMAX_API_KEY',
+    models: { 'MiniMax-M2.7': { name: 'MiniMax M2.7' } },
+  };
+  const minimaxAgent = new Team.Member({
+    id: 'tester',
+    name: 'Tester',
+    model: 'MiniMax-M2.7',
+  });
+
+  // Regression: MiniMax rejects `thinking.type: 'enabled'`; boolean true must serialize as
+  // `adaptive` when the `minimax-thinking-type` quirk is enabled.
+  const minimaxThinkingBoolParams = buildOpenAiCompatibleExtraParamsForTest({
+    providerConfig: minimaxProviderConfig,
+    agent: minimaxAgent,
+    openAiParams: { thinking: true },
+  });
+  assert(
+    minimaxThinkingBoolParams.thinking?.type === 'adaptive',
+    `expected MiniMax thinking=true to serialize as type=adaptive, got ${JSON.stringify(
+      minimaxThinkingBoolParams.thinking,
+    )}`,
+  );
+
+  // Regression: object form `{ type: 'enabled' }` must also be normalized to `adaptive`,
+  // and other fields (e.g. `budget_tokens`) must be preserved.
+  const minimaxThinkingObjectParams = buildOpenAiCompatibleExtraParamsForTest({
+    providerConfig: minimaxProviderConfig,
+    agent: minimaxAgent,
+    openAiParams: { thinking: { type: 'enabled', budget_tokens: 2048 } },
+  });
+  const minimaxThinkingObj = minimaxThinkingObjectParams.thinking;
+  assert(
+    isRecord(minimaxThinkingObj) && minimaxThinkingObj['type'] === 'adaptive',
+    `expected MiniMax thinking object to be normalized to type=adaptive, got ${JSON.stringify(
+      minimaxThinkingObj,
+    )}`,
+  );
+  assert(
+    isRecord(minimaxThinkingObj) && minimaxThinkingObj['budget_tokens'] === 2048,
+    'expected normalization to preserve other thinking fields (e.g. budget_tokens)',
+  );
+
+  // Regression: boolean false must still map to `disabled` for MiniMax.
+  const minimaxThinkingFalseParams = buildOpenAiCompatibleExtraParamsForTest({
+    providerConfig: minimaxProviderConfig,
+    agent: minimaxAgent,
+    openAiParams: { thinking: false },
+  });
+  assert(
+    minimaxThinkingFalseParams.thinking?.type === 'disabled',
+    'expected MiniMax thinking=false to serialize as type=disabled',
   );
 
   let disabledObjectConflict = false;

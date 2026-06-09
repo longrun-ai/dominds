@@ -44,6 +44,7 @@ import type { FuncTool } from '../../tool';
 import {
   KIMI_CODE_API_QUIRK,
   MINIMAX_REASONING_DETAILS_API_QUIRK,
+  MINIMAX_THINKING_TYPE_API_QUIRK,
   normalizeProviderApiQuirks,
 } from '../api-quirks';
 import type { ChatMessage, FuncResultMsg, ModelInfo, ProviderConfig } from '../client';
@@ -827,6 +828,11 @@ function isMiniMaxReasoningDetailsProvider(providerConfig: ProviderConfig | unde
   return normalizeProviderApiQuirks(providerConfig).has(MINIMAX_REASONING_DETAILS_API_QUIRK);
 }
 
+function isMiniMaxThinkingTypeProvider(providerConfig: ProviderConfig | undefined): boolean {
+  if (providerConfig === undefined) return false;
+  return normalizeProviderApiQuirks(providerConfig).has(MINIMAX_THINKING_TYPE_API_QUIRK);
+}
+
 function isKimiCodeReasoningEffort(
   value: NonNullable<Team.ModelParams['openai-compatible']>['reasoning_effort'],
 ): value is 'low' | 'medium' | 'high' {
@@ -1050,8 +1056,16 @@ function buildOpenAiCompatibleExtraParams(args: {
   if (thinking === undefined && reasoningEffort === undefined && reasoningSplit === undefined) {
     return {};
   }
-  const thinkingPayload =
-    typeof thinking === 'boolean' ? { type: thinking ? 'enabled' : 'disabled' } : thinking;
+  // `thinking` is narrowed to `boolean | Record<string, unknown> | undefined` because the
+  // `string` branch threw above. MiniMax rejects `type: 'enabled'`; rewrite both the
+  // boolean true form and the explicit object form to `adaptive`.
+  const isMiniMaxThinkingType = isMiniMaxThinkingTypeProvider(args.providerConfig);
+  const thinkingPayload: Record<string, unknown> | undefined =
+    typeof thinking === 'boolean'
+      ? { type: thinking ? (isMiniMaxThinkingType ? 'adaptive' : 'enabled') : 'disabled' }
+      : thinking !== undefined && isMiniMaxThinkingType && thinking.type === 'enabled'
+        ? { ...thinking, type: 'adaptive' }
+        : thinking;
   return {
     ...(thinkingPayload !== undefined ? { thinking: thinkingPayload } : {}),
     ...(reasoningEffort !== undefined ? { reasoning_effort: reasoningEffort } : {}),

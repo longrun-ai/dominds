@@ -177,6 +177,7 @@ providers:
     apiType: openai-compatible
     apiQuirks:
       - minimax-reasoning-details
+      - minimax-thinking-type
     baseUrl: https://api.minimaxi.com/v1
     apiKeyEnvVar: MINIMAX_CN_TP_API_KEY
     tech_spec_url: https://platform.minimaxi.com/docs/api-reference/text-openai-api
@@ -186,7 +187,7 @@ providers:
         thinking:
           prominent: true
           type: boolean|object
-          description: OpenAI-compatible MiniMax thinking control. Set true to send thinking.type=enabled, false to send thinking.type=disabled, or provide the provider-specific thinking object documented by MiniMax. Leave unset to use the provider/model default.
+          description: OpenAI-compatible MiniMax thinking control. Set true to send thinking.type=adaptive, false to send thinking.type=disabled, or provide the provider-specific thinking object documented by MiniMax. Leave unset to use the provider/model default.
         reasoning_split:
           prominent: true
           type: boolean
@@ -245,6 +246,7 @@ providers:
     apiType: openai-compatible
     apiQuirks:
       - minimax-reasoning-details
+      - minimax-thinking-type
     baseUrl: https://api.minimaxi.com/v1
     apiKeyEnvVar: MINIMAX_CN_API_KEY
     tech_spec_url: https://platform.minimaxi.com/docs/api-reference/text-openai-api
@@ -254,7 +256,7 @@ providers:
         thinking:
           prominent: true
           type: boolean|object
-          description: OpenAI-compatible MiniMax thinking control. Set true to send thinking.type=enabled, false to send thinking.type=disabled, or provide the provider-specific thinking object documented by MiniMax. Leave unset to use the provider/model default.
+          description: OpenAI-compatible MiniMax thinking control. Set true to send thinking.type=adaptive, false to send thinking.type=disabled, or provide the provider-specific thinking object documented by MiniMax. Leave unset to use the provider/model default.
         reasoning_split:
           prominent: true
           type: boolean
@@ -313,6 +315,7 @@ providers:
     apiType: openai-compatible
     apiQuirks:
       - minimax-reasoning-details
+      - minimax-thinking-type
     baseUrl: https://api.minimax.io/v1
     apiKeyEnvVar: MINIMAX_TP_API_KEY
     tech_spec_url: https://platform.minimax.io/docs/api-reference/text-openai-api
@@ -322,7 +325,7 @@ providers:
         thinking:
           prominent: true
           type: boolean|object
-          description: OpenAI-compatible MiniMax thinking control. Set true to send thinking.type=enabled, false to send thinking.type=disabled, or provide the provider-specific thinking object documented by MiniMax. Leave unset to use the provider/model default.
+          description: OpenAI-compatible MiniMax thinking control. Set true to send thinking.type=adaptive, false to send thinking.type=disabled, or provide the provider-specific thinking object documented by MiniMax. Leave unset to use the provider/model default.
         reasoning_split:
           prominent: true
           type: boolean
@@ -381,6 +384,7 @@ providers:
     apiType: openai-compatible
     apiQuirks:
       - minimax-reasoning-details
+      - minimax-thinking-type
     baseUrl: https://api.minimax.io/v1
     apiKeyEnvVar: MINIMAX_API_KEY
     tech_spec_url: https://platform.minimax.io/docs/api-reference/text-openai-api
@@ -390,7 +394,7 @@ providers:
         thinking:
           prominent: true
           type: boolean|object
-          description: OpenAI-compatible MiniMax thinking control. Set true to send thinking.type=enabled, false to send thinking.type=disabled, or provide the provider-specific thinking object documented by MiniMax. Leave unset to use the provider/model default.
+          description: OpenAI-compatible MiniMax thinking control. Set true to send thinking.type=adaptive, false to send thinking.type=disabled, or provide the provider-specific thinking object documented by MiniMax. Leave unset to use the provider/model default.
         reasoning_split:
           prominent: true
           type: boolean
