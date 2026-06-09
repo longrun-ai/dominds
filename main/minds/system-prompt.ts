@@ -353,19 +353,23 @@ function buildFbrGuidelines(
 function buildTellaskInteractionRules(language: LanguageCode): string {
   const lines = pickLocalized(language, {
     zh: [
+      '- **通道隔离**：所有队友都是智能体，不是人。对人类用户说话走 `askHuman` / `answerHuman` 这条人类通道；对队友说话走 `tellask` / `tellaskSessionless` / `tellaskBack` / `replyTellask*` / `freshBootsReasoning` 这条智能体通道。两条通道互不相通——尤其不要用 `answerHuman` 给队友写东西，队友看不到。',
+      '- **向人类发内容时的三段式判定**：（1）用户这一轮有插话、追问、提问、评论，你要 react 回去 → `answerHuman`（A2H）。（2）目标清晰、你能或队友能推进 → 直接推进，把决策记在 progress 里，必要时用 `answerHuman` 主动同步阶段性结论。（3）只有当你和所有队友都拿不到结果（缺信息、缺授权、目标本身不清晰）时，才用 `askHuman`（Q4H）请示。Q4H 是最后手段，不是默认动作。',
       '- `tellaskBack`：仅用于支线回问诉请者。',
       '- `tellask`：用于可恢复的长线诉请（必须提供 `targetAgentId` / `sessionSlug` / `tellaskContent`）。',
       '- `tellaskSessionless`：用于一次性诉请（必须提供 `targetAgentId` / `tellaskContent`）；它不能接着旧任务改要求，后续再次调用只是另一件独立任务，不会影响旧任务继续执行，也不会打扰同一队友正在执行的其它独立诉请。不要把智能体队友当成需要排队说话的真人同事。',
-      '- `askHuman`：用于 Q4H（向人类请求必要澄清/决策/授权/缺失输入）。',
-      '- `answerHuman`：用于把当前要给人类看的答复或状态说明记录为 A2H（answer to human）；当本轮必须使用工具、但确实没有其它实质工具应调用时，用它完成当前工具轮次。特别是正在等待 active callees 或诉请回贴、唯一正确动作是说明情况并等待时，应调用 `answerHuman({ answerContent })` 收口；不要用它向队友回贴。',
+      '- `askHuman`（Q4H，最后手段）：向人类请求必要澄清/决策/授权/缺失输入。适合 Q4H 的典型场景：你和所有队友都查不到的凭据或外部信息、多个合理方向都需要人类拍板长期方向、涉及外部不可逆操作的授权。**不要**把诊断报告、进度更新、已做完的总结、日常 A/B 选择塞进 `askHuman`——自己能挑的就自己挑，记在 progress 里，让人类 review，必要时回滚。',
+      '- `answerHuman`（A2H）：**主用途**是 react to 人类用户的插话、追问、提问、评论；**次用途**是在合适时机主动给人类一份 free-form 说明（阶段性诊断、变更总结、阻塞说明等），它仍然走人类通道；**末位用途**是本轮必须出工具调用、但确实没有其它实质工具应调用、唯一正确动作是说明情况并等待（典型场景：等 active callees 或诉请回贴），用 `answerHuman({ answerContent })` 收口。对象只能是人类——回队友走 `replyTellask*`，不要在 A2H 里夹带对队友的指令或反馈。',
       '- `freshBootsReasoning`：用于发起扪心自问（FBR）支线（`tellaskContent` 必填，`effort` 可选）。',
     ],
     en: [
-      '- `tellaskBack`: ask back to tellasker from a Side Dialog only.',
+      '- **Channels are isolated**: every teammate is an agent, not a person. To talk to the human user, use the human channel (`askHuman` / `answerHuman`). To talk to a teammate, use the agent channel (`tellask` / `tellaskSessionless` / `tellaskBack` / `replyTellask*` / `freshBootsReasoning`). The two channels do not overlap; in particular, never write to a teammate via `answerHuman`—teammates will not see it.',
+      '- **Three-way rule for anything you want to say to the human**: (1) The user spoke this round—an interjection, a follow-up, a question, a comment—and you are reacting to it → use `answerHuman` (A2H). (2) The goal is clear and you or a teammate can move it forward → move it forward, record the decision in `progress`, and proactively brief the human via `answerHuman` when there is something worth saying. (3) Only when neither you nor any teammate can make progress—missing info, missing authorization, or the goal itself is unclear—reach for `askHuman` (Q4H). Q4H is the last resort, not the default.',
+      '- `tellaskBack`: ask back to the tellasker from a Side Dialog only.',
       '- `tellask`: resumable tellask (requires `targetAgentId` / `sessionSlug` / `tellaskContent`).',
-      '- `tellaskSessionless`: one-shot tellask (requires `targetAgentId` / `tellaskContent`); it cannot continue an earlier task or change its requirements. Later calls are separate tasks and do not affect earlier work for the same teammate. Do not treat agent teammates like human coworkers who need you to wait in line to talk.',
-      '- `askHuman`: Q4H for necessary clarification/decision/authorization/missing input.',
-      '- `answerHuman`: record the current human-facing answer or status as A2H (answer to human). When this round must use a tool but no other substantive tool should be called, use it to complete the current tool round. Especially while waiting for active callees or tellask replies, when the only correct action is to explain the situation and wait, call `answerHuman({ answerContent })` to close the round; do not use it to reply to teammates.',
+      '- `tellaskSessionless`: one-shot tellask (requires `targetAgentId` / `tellaskContent`); it cannot continue an earlier task or change its requirements. Subsequent calls are independent tasks and neither interfere with earlier work for the same teammate nor disrupt that teammate’s other concurrent tellasks. Do not treat agent teammates like human coworkers who expect you to wait your turn to speak.',
+      '- `askHuman` (Q4H, last resort): request necessary clarification, decision, authorization, or missing input from the human. Q4H fits when neither you nor any teammate can resolve it on your own—a credential you cannot find, a long-term direction with multiple defensible options that needs a human call, authorization for an external irreversible action. Do not stuff a diagnosis report, a status update, a wrap-up summary, or a routine A/B choice into `askHuman`—pick the more defensible option yourself, record the rationale in `progress`, and let the human review or roll back if needed.',
+      '- `answerHuman` (A2H): the **primary** use is to react to the human user’s interjection, follow-up, question, or comment; the **secondary** use is a proactive free-form note to the human at a natural checkpoint (a stage diagnosis, a change summary, a blocker note)—still on the human channel, just not reactive; the **fallback** use is when the round must emit a tool call but no substantive tool applies and the only correct action is to state the situation and wait (typical case: waiting for active callees or tellask replies), in which case call `answerHuman({ answerContent })` to close the round. The target is always the human. To reply to a teammate, use `replyTellask*`. Do not embed instructions or feedback for a teammate inside an A2H.',
       '- `freshBootsReasoning`: starts an FBR Side Dialog (requires `tellaskContent`, optional `effort`).',
     ],
   });
