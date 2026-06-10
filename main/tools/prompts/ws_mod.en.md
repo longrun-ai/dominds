@@ -12,9 +12,9 @@ You have read/write access to the rtws (runtime workspace). Single-block edits w
 - Parallelism constraint: multiple function tool calls in one generation step may run in parallel. Same-file write tools are serialized internally, but avoid making multiple direct edits that semantically depend on unread results from each other.
 - Output is usually YAML-first. Direct write tools default to no body echo; pad-sourced writes are redacted by default to avoid echoing large pad bodies.
 - Normalization: all writes follow “each line ends with `\n` (including the last line)”; missing EOF newline will be added and shown in `normalized.*`.
-- Exception: `overwrite_entire_file` overwrites an existing file (writes immediately; does not use prepare/apply). It requires `known_old_total_lines/known_old_total_bytes` guardrails (read `total_lines/size_bytes` from the YAML header of `read_file`). Provide body text with `content`, or use `pad_id/pad_range` as the source. `content_format` accepts any non-empty text label (for example `yaml`), but diff/patch-like content is still rejected by default unless `content_format=diff|patch`. Use it only for “small content (<100 lines)” or “intentional reset/generated output”; for large bodies, prepare a pad first and overwrite via `pad_id/pad_range`.
-- Exception: `create_new_file` only creates a new file (empty content allowed). It does not do incremental edits and does not use prepare/apply; use `content` for small bodies and `pad_id/pad_range` for large bodies. It refuses to overwrite existing files.
-- Binary image tools: use `read_picture({ path })` to inspect PNG/JPEG/WebP/GIF images as real image context; use `write_picture({ path, data_base64, mime_type, overwrite })` to write a base64 image. These are binary image operations and do not use prepare/apply.
+- Exception: `overwrite_entire_file` overwrites an existing file and writes immediately. It requires `known_old_total_lines/known_old_total_bytes` guardrails (read `total_lines/size_bytes` from the YAML header of `read_file`). Provide body text with `content`, or use `pad_id/pad_range` as the source. `content_format` accepts any non-empty text label (for example `yaml`), but diff/patch-like content is still rejected by default unless `content_format=diff|patch`. Use it only for “small content (<100 lines)” or “intentional reset/generated output”; for large bodies, prepare a pad first and overwrite via `pad_id/pad_range`.
+- Exception: `create_new_file` only creates a new file (empty content allowed). Use `content` for small bodies and `pad_id/pad_range` for large bodies. It refuses to overwrite existing files.
+- Binary image tools: use `read_picture({ path })` to inspect PNG/JPEG/WebP/GIF images as real image context; use `write_picture({ path, data_base64, mime_type, overwrite })` to write a base64 image. These are binary image operations.
 
 ## Scratch Pad (large-text temporary buffer)
 
@@ -77,7 +77,7 @@ Call the function tool `file_insert_after` with:
 
 ```text
 Call the function tool `file_append` with:
-{ "path": "notes/prompt.md", "content": "## Tools\\n- Use file_range_edit for precise ranges; prepare/apply for uncertain targets.\\n" }
+{ "path": "notes/prompt.md", "content": "## Tools\\n- Use file_range_edit for precise ranges; use file_block_replace for anchor-delimited blocks.\\n" }
 ```
 
 - Line range replacement (`content` can be empty to delete the range):

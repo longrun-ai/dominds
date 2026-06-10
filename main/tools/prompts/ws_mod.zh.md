@@ -12,10 +12,10 @@
 - 并行约束：同一轮对话中的多个工具调用可能并行执行。同一文件的写入工具会在工具侧串行化，但语义上仍应避免让多个直接编辑依赖彼此未读到的结果。
 - 输出以 YAML 为主：直接写入工具默认不回显正文；pad-sourced 写入默认 redacted，避免回显大块正文。
 - 规范化：所有写入遵循"每行以 `\n` 结尾（含最后一行）"；EOF 换行会被补齐并通过 `normalized.*` 字段呈现。
-- 例外：`overwrite_entire_file` 是"整文件覆盖写入"的函数工具（会直接写盘，不走 prepare/apply）。它要求提供 `known_old_total_lines/known_old_total_bytes` 作为对账护栏（建议从 `read_file` 的 YAML header 读取 `total_lines/size_bytes`）；可用 `content` 直供正文，也可用 `pad_id/pad_range` 作为来源。`content_format` 可填写任意非空文本标签（例如 `yaml`），但若正文疑似 diff/patch，仍只有显式声明 `content_format=diff|patch` 才会放行。仅用于"新内容很小（例如 <100 行）"或"明确为重置/生成物"的场景；大块正文优先先写入 pad，再用 `pad_id/pad_range` 覆盖。
+- 例外：`overwrite_entire_file` 是"整文件覆盖写入"的函数工具，会直接写盘。它要求提供 `known_old_total_lines/known_old_total_bytes` 作为对账护栏（建议从 `read_file` 的 YAML header 读取 `total_lines/size_bytes`）；可用 `content` 直供正文，也可用 `pad_id/pad_range` 作为来源。`content_format` 可填写任意非空文本标签（例如 `yaml`），但若正文疑似 diff/patch，仍只有显式声明 `content_format=diff|patch` 才会放行。仅用于"新内容很小（例如 <100 行）"或"明确为重置/生成物"的场景；大块正文优先先写入 pad，再用 `pad_id/pad_range` 覆盖。
   - 复制参数建议：对账参数请直接用 `read_file` 的 `total_lines/size_bytes`。
-- 例外：`create_new_file` 只负责"创建新文件"（允许空内容），不做增量编辑、不走 prepare/apply；小正文用 `content`，大正文优先用 `pad_id/pad_range`，若文件已存在会拒绝（避免误用覆盖写入语义）。
-- 二进制图片工具：用 `read_picture({ path })` 把 PNG/JPEG/WebP/GIF 图片作为真实图片上下文读入；用 `write_picture({ path, data_base64, mime_type, overwrite })` 从 base64 写图片。它们是二进制图片操作，不走 prepare/apply。
+- 例外：`create_new_file` 只负责"创建新文件"（允许空内容）；小正文用 `content`，大正文优先用 `pad_id/pad_range`，若文件已存在会拒绝（避免误用覆盖写入语义）。
+- 二进制图片工具：用 `read_picture({ path })` 把 PNG/JPEG/WebP/GIF 图片作为真实图片上下文读入；用 `write_picture({ path, data_base64, mime_type, overwrite })` 从 base64 写图片。它们是二进制图片操作。
 
 ## Scratch Pad（大文本临时缓冲）
 
@@ -78,7 +78,7 @@ Scratch Pad 是 ws_mod 专用的大文本编辑缓冲区，用来减少同一大
 
 ```text
 按以下参数调用函数工具 `file_append`：
-{ "path": "notes/prompt.md", "content": "## Tools\\n- Use file_range_edit for precise ranges; prepare/apply for uncertain targets.\\n" }
+{ "path": "notes/prompt.md", "content": "## Tools\\n- Use file_range_edit for precise ranges; use file_block_replace for anchor-delimited blocks.\\n" }
 ```
 
 - 行号范围替换（`content` 可为空字符串表示删除）：

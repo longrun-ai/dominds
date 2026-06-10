@@ -27,7 +27,7 @@
 
 ### 2.1 create_new_file
 
-Create a new file (no prepare/apply), allows empty content.
+Create a new file, allows empty content.
 
 - **Design intent**: Solve "creating empty/new files should not force incremental editing"; also avoid misusing `overwrite_entire_file` (its semantics is to overwrite existing files)
 - **Behavior**: If target already exists, reject (`FILE_EXISTS`/`NOT_A_FILE`); if not exists, create parent directories and write content
@@ -36,14 +36,14 @@ Create a new file (no prepare/apply), allows empty content.
 
 ### 2.2 overwrite_entire_file
 
-Full file overwrite (**no prepare/apply**).
+Full file overwrite (writes immediately).
 
 - **Usage suggestion**: First use `read_file` to get `total_lines/size_bytes` as input for `known_old_total_lines/known_old_total_bytes`
 - **Design intent**: For "new content is small (e.g., <100 lines)" or "clearly a reset/generated artifact" scenarios; for large bodies, prepare a pad first and pass `pad_id/pad_range`
 - **Source**: pass small bodies directly with `content`; pass large bodies with `pad_id/pad_range`
 - **Guardrail (required)**: Must provide `known_old_total_lines/known_old_total_bytes` (old file snapshot) to execute; reject if reconciliation doesn't match
 - `content_format`: Optional text hint; any non-empty label is accepted (for example `yaml`, `toml`, `json`, `markdown`)
-- **Guardrail (default reject)**: If content looks like diff/patch and `content_format=diff|patch` is not explicitly declared, default reject and guide to use prepare/apply (avoid mistakenly writing patch text into file)
+- **Guardrail (default reject)**: If content looks like diff/patch and `content_format=diff|patch` is not explicitly declared, default reject; use direct edit tools for actual edits, or declare diff/patch only when writing patch text literally
 - **Limitation**: Does not create files; for creating empty/new files use `create_new_file`
 
 ### 2.3 create_symlink / rm_symlink

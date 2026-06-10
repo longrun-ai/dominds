@@ -7,8 +7,8 @@
 - 增量编辑：单块编辑直接写入；行号范围用 `team_mgmt_file_range_edit`，末尾追加用 `team_mgmt_file_append`，锚点插入用 `team_mgmt_file_insert_after` / `team_mgmt_file_insert_before`，锚点块替换用 `team_mgmt_file_block_replace`。
 - 若你承担团队管理职责，执行具体团队管理操作前，先查看 `man({ "toolsetId": "team_mgmt" })` 的相关章节，并按手册标准做法维护 `.minds/**` 团队心智资产。
 - 并行约束：同一轮生成中的多个工具调用可能并行执行；同一文件写入会在工具侧串行化，但不要让同轮多个编辑依赖彼此未读到的结果。
-- 例外（创建）：`team_mgmt_create_new_file` 只负责创建新文件（允许空内容），不做增量编辑、不走 prepare/apply；若文件已存在会拒绝（避免误用覆盖写入语义）。
-- 例外（整文件覆盖）：`team_mgmt_overwrite_entire_file` 会直接写盘（不走 prepare/apply），必须提供 `known_old_total_lines/known_old_total_bytes` 作为对账护栏；建议先用 `team_mgmt_read_file` 从 YAML header 读取 `total_lines/size_bytes` 再填写。
+- 例外（创建）：`team_mgmt_create_new_file` 只负责创建新文件（允许空内容）；若文件已存在会拒绝（避免误用覆盖写入语义）。
+- 例外（整文件覆盖）：`team_mgmt_overwrite_entire_file` 会直接写盘，必须提供 `known_old_total_lines/known_old_total_bytes` 作为对账护栏；建议先用 `team_mgmt_read_file` 从 YAML header 读取 `total_lines/size_bytes` 再填写。
 - 规范化：写入遵循“每行以 `\\n` 结尾（含最后一行）”；必要时会补齐并通过输出字段呈现（例如 `normalized_trailing_newline_added` / `normalized.*`）。
 
 ## read_file 输出字段（重要）

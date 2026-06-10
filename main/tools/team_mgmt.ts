@@ -1802,10 +1802,10 @@ export const teamMgmtReadFileTool: FuncTool = {
 export const teamMgmtCreateNewFileTool: FuncTool = {
   type: 'func',
   name: 'team_mgmt_create_new_file',
-  description: `Create a new file under ${MINDS_DIR}/ (no prepare/apply). Refuses to overwrite existing files.`,
+  description: `Create a new file under ${MINDS_DIR}/. Refuses to overwrite existing files.`,
   descriptionI18n: {
-    en: `Create a new file under ${MINDS_DIR}/ (no prepare/apply). Refuses to overwrite existing files.`,
-    zh: `在 ${MINDS_DIR}/ 下创建一个新文件（不走 prepare/apply）。若文件已存在则拒绝覆写。`,
+    en: `Create a new file under ${MINDS_DIR}/. Refuses to overwrite existing files.`,
+    zh: `在 ${MINDS_DIR}/ 下创建一个新文件。若文件已存在则拒绝覆写。`,
   },
   parameters: {
     type: 'object',

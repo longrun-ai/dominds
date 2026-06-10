@@ -31,7 +31,7 @@
 
 ```text
 Call the function tool `file_append` with:
-{ "path": "notes/prompt.md", "content": "## Tools\n- Use file_range_edit for precise ranges; prepare/apply for uncertain targets.\n" }
+{ "path": "notes/prompt.md", "content": "## Tools\n- Use file_range_edit for precise ranges; use file_block_replace for anchor-delimited blocks.\n" }
 ```
 
 ### 行号范围替换

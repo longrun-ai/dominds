@@ -2,7 +2,7 @@
  * Module: tools/txt
  *
  * Text file tooling for reading and modifying rtws (runtime workspace) files.
- * Provides `read_file`, direct range edits, overwrite, prepare/apply, and scratch pads.
+ * Provides `read_file`, direct edits, whole-file writes, and scratch pads.
  */
 import type { LanguageCode } from '@longrun-ai/kernel/types/language';
 import crypto from 'crypto';
@@ -1721,7 +1721,7 @@ const overwriteEntireFileSchema = {
     content_format: {
       type: 'string',
       description:
-        "Optional content format hint. Any non-empty string is accepted (for example: yaml, toml, json, markdown). If omitted (or empty string), Dominds refuses to overwrite when content looks like a diff/patch (use prepare/apply instead). Use 'diff' or 'patch' to explicitly allow writing diff/patch text literally.",
+        "Optional content format hint. Any non-empty string is accepted (for example: yaml, toml, json, markdown). If omitted (or empty string), Dominds refuses to overwrite when content looks like a diff/patch. Use a direct edit tool for actual edits, or use 'diff'/'patch' to explicitly write diff/patch text literally.",
     },
   },
   required: ['path', 'known_old_total_lines', 'known_old_total_bytes'],
@@ -1799,10 +1799,10 @@ export const createNewFileTool: FuncTool = {
   type: 'func',
   name: 'create_new_file',
   description:
-    'Create a new file from inline content or ws_mod pad content (no prepare/apply). Refuses to overwrite existing files.',
+    'Create a new file from inline content or ws_mod pad content. Refuses to overwrite existing files.',
   descriptionI18n: {
-    en: 'Create a new file from inline content or ws_mod pad content (no prepare/apply). Refuses to overwrite existing files.',
-    zh: '用内联 content 或 ws_mod pad 内容创建一个新文件（不走 prepare/apply）。若文件已存在则拒绝覆写。',
+    en: 'Create a new file from inline content or ws_mod pad content. Refuses to overwrite existing files.',
+    zh: '用内联 content 或 ws_mod pad 内容创建一个新文件。若文件已存在则拒绝覆写。',
   },
   parameters: {
     type: 'object',

@@ -7,8 +7,8 @@ You have read/write access to `.minds/**`, but this toolset **only operates with
 - Incremental edits: single-block edits write directly. Use `team_mgmt_file_range_edit` for line ranges, `team_mgmt_file_append` for EOF appends, `team_mgmt_file_insert_after` / `team_mgmt_file_insert_before` for anchor insertions, and `team_mgmt_file_block_replace` for anchor-delimited blocks.
 - If you carry team-management responsibility, read the relevant `man({ "toolsetId": "team_mgmt" })` chapters before performing concrete team-management actions, and maintain `.minds/**` team mind assets by the handbook-standard workflow.
 - Parallelism constraint: multiple function tool calls in one generation step may run in parallel. Same-file writes are serialized internally, but avoid making same-turn edits depend on unread results from each other.
-- Exception (create): `team_mgmt_create_new_file` only creates a new file (empty content allowed). It does not do incremental edits and does not use prepare/apply; it refuses to overwrite existing files.
-- Exception (overwrite): `team_mgmt_overwrite_entire_file` writes immediately (no prepare/apply). It requires `known_old_total_lines/known_old_total_bytes` guardrails; use `team_mgmt_read_file` to read `total_lines/size_bytes` from the YAML header.
+- Exception (create): `team_mgmt_create_new_file` only creates a new file (empty content allowed); it refuses to overwrite existing files.
+- Exception (overwrite): `team_mgmt_overwrite_entire_file` writes immediately. It requires `known_old_total_lines/known_old_total_bytes` guardrails; use `team_mgmt_read_file` to read `total_lines/size_bytes` from the YAML header.
 - Normalization: each line ends with `\\n` (including the last line); the tool may add a trailing newline and report it in `normalized.*`.
 
 ## read_file output fields (important)

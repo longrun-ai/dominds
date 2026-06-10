@@ -27,7 +27,7 @@
 
 ### 2.1 create_new_file
 
-创建新文件（不走 prepare/apply），允许空内容。
+创建新文件，允许空内容。
 
 - **设计定位**：解决"创建空文件/新文件"不应被迫走增量编辑；同时避免误用 `overwrite_entire_file`（它的语义是覆盖既有文件）
 - **行为**：若目标已存在则拒绝（`FILE_EXISTS`/`NOT_A_FILE`）；不存在则创建父目录并写入内容
@@ -36,14 +36,14 @@
 
 ### 2.2 overwrite_entire_file
 
-整文件覆盖写入（**不走 prepare/apply**）。
+整文件覆盖写入（直接写盘）。
 
 - **使用建议**：先用 `read_file` 获取 `total_lines/size_bytes` 作为 `known_old_total_lines/known_old_total_bytes` 的对账输入
 - **设计定位**：用于"新内容很小（例如 <100 行）"或"明确为重置/生成物"的场景；大正文优先先进入 pad，再传 `pad_id/pad_range`
 - **来源**：小正文可直接传 `content`；大正文优先传 `pad_id/pad_range`
 - **护栏（强制）**：必须提供 `known_old_total_lines/known_old_total_bytes`（旧文件快照）才允许执行；若对账不匹配则拒绝覆盖
 - `content_format`：可选文本提示，任意非空标签都可接受（例如 `yaml`、`toml`、`json`、`markdown`）
-- **护栏（默认拒绝）**：若正文疑似 diff/patch，且未显式声明 `content_format=diff|patch`，则默认拒绝并引导改用 prepare/apply（避免把 patch 文本误写进文件）
+- **护栏（默认拒绝）**：若正文疑似 diff/patch，且未显式声明 `content_format=diff|patch`，则默认拒绝；实际编辑应使用 direct edit 工具，只有要把 patch 文本按字面量写入时才声明 diff/patch
 - **限制**：不负责创建文件；创建空文件/新文件请用 `create_new_file`
 
 ### 2.3 create_symlink / rm_symlink
