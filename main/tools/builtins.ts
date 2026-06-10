@@ -81,9 +81,14 @@ import {
   createNewFileTool,
   fsReadFileTool,
   overwriteEntireFileTool,
+  padCopyTool,
+  padDeleteRangeTool,
   padDeleteTool,
   padEditTool,
+  padInsertTool,
   padLoadFileRangeTool,
+  padMoveTool,
+  padPrepareFileRangeEditTool,
   padWriteTool,
   prepareFileAppendTool,
   prepareFileBlockReplaceTool,
@@ -139,7 +144,12 @@ registerTool(overwriteEntireFileTool);
 registerTool(padWriteTool);
 registerTool(padLoadFileRangeTool);
 registerTool(padEditTool);
+registerTool(padInsertTool);
+registerTool(padDeleteRangeTool);
+registerTool(padCopyTool);
+registerTool(padMoveTool);
 registerTool(padDeleteTool);
+registerTool(padPrepareFileRangeEditTool);
 registerTool(prepareFileRangeEditTool);
 registerTool(applyFileModificationTool);
 registerTool(prepareFileAppendTool);
@@ -390,7 +400,12 @@ registerToolset('ws_mod', [
   padWriteTool,
   padLoadFileRangeTool,
   padEditTool,
+  padInsertTool,
+  padDeleteRangeTool,
+  padCopyTool,
+  padMoveTool,
   padDeleteTool,
+  padPrepareFileRangeEditTool,
   prepareFileAppendTool,
   prepareFileInsertAfterTool,
   prepareFileInsertBeforeTool,

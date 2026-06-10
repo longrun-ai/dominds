@@ -405,6 +405,34 @@ function applyTextLineRangeEdit(
   return joinLinesForTextWrite(nextLines);
 }
 
+function insertTextAtLinePosition(baseText: string, line: number, insertedText: string): string {
+  const baseLines = splitTextToLinesForEditing(baseText);
+  if (!Number.isInteger(line) || line <= 0 || line > baseLines.length + 1) {
+    throw new Error(`Insert line must be between 1 and ${baseLines.length + 1}`);
+  }
+  const insertedLines = splitPlannedBodyLines(insertedText);
+  const insertIndex0 = line - 1;
+  return joinLinesForTextWrite([
+    ...baseLines.slice(0, insertIndex0),
+    ...insertedLines,
+    ...baseLines.slice(insertIndex0),
+  ]);
+}
+
+function requireDialogPadById(dlg: Dialog, padId: string): PadLookupResult {
+  const existing = findDialogPadById(dlg, padId);
+  if (existing === undefined) {
+    throw new Error(`pad_id=${padId} does not exist`);
+  }
+  return existing;
+}
+
+function parseOptionalPadRange(args: ToolArguments, key: string): string {
+  const value = optionalStringArg(args, key);
+  if (value === undefined || value.trim() === '') return '~';
+  return value;
+}
+
 export const wsModPadReminderOwner: ReminderOwner = {
   name: 'wsModPad',
 
@@ -622,6 +650,7 @@ type PlannedRangeModification = {
   readonly unifiedDiff: string;
   // Used to detect drift between plan and apply.
   readonly plannedFileDigestSha256?: string;
+  readonly redactApplyOutput?: boolean;
 };
 
 type AnchorMatchMode = 'contains' | 'equals';
@@ -712,6 +741,18 @@ type PlannedBlockReplace = {
 const PLANNED_MOD_TTL_MS = 60 * 60 * 1000; // ~1 hour
 const plannedModsById = new Map<string, PlannedFileModification>();
 const plannedBlockReplacesById = new Map<string, PlannedBlockReplace>();
+
+type PrepareRangeEditOutputOptions = Readonly<{
+  modeName: 'prepare_file_range_edit' | 'pad_prepare_file_range_edit';
+  includeDiff: boolean;
+  redactApplyOutput: boolean;
+  extraYamlLines: readonly string[];
+  reviseHint: (hunkId: string) => string;
+}>;
+
+function shouldRedactApplyOutput(mod: PlannedFileModification): boolean {
+  return mod.kind === 'range' && mod.redactApplyOutput === true;
+}
 
 type LockQueueItem = {
   readonly priority: number;
@@ -2231,6 +2272,313 @@ export const padEditTool: FuncTool = {
   },
 };
 
+export const padInsertTool: FuncTool = {
+  type: 'func',
+  name: 'pad_insert',
+  description:
+    'Insert text before a 1-based line position inside an existing ws_mod scratch pad. The result never echoes pad body text.',
+  descriptionI18n: {
+    en: 'Insert text before a 1-based line position inside an existing ws_mod scratch pad. The result never echoes pad body text.',
+    zh: '在已有 ws_mod scratch pad 的 1-based 行位置之前插入文本。工具结果不会回显 pad 正文。',
+  },
+  parameters: {
+    type: 'object',
+    additionalProperties: false,
+    required: ['pad_id', 'line', 'content'],
+    properties: {
+      pad_id: {
+        type: 'string',
+        description: 'Agent-chosen scratch pad slug: /^[A-Za-z0-9_-]{1,64}$/.',
+      },
+      line: {
+        type: 'integer',
+        description:
+          '1-based insertion position. 1 inserts at the beginning; total_lines + 1 appends.',
+      },
+      content: {
+        type: 'string',
+        description: 'Inserted text. Empty string is a no-op.',
+      },
+    },
+  },
+  argsValidation: 'dominds',
+  call: async (dlg, _caller, args): Promise<ToolCallOutput> => {
+    try {
+      const padId = normalizePadId(requireNonEmptyStringArg(args, 'pad_id'));
+      const line = optionalIntegerArg(args, 'line');
+      if (line === undefined) {
+        throw new Error('Invalid arguments: `line` must be an integer');
+      }
+      const content = optionalStringArg(args, 'content') ?? '';
+      const existing = requireDialogPadById(dlg, padId);
+      const nextText = insertTextAtLinePosition(existing.meta.text, line, content);
+      upsertDialogPad(dlg, padId, nextText);
+      return okYaml(
+        formatPadResultYaml(
+          'pad_insert',
+          padId,
+          nextText,
+          `inserted text before line ${line} in pad_id=${padId}`,
+        ),
+      );
+    } catch (error: unknown) {
+      return failYaml(
+        [
+          `status: error`,
+          `mode: pad_insert`,
+          `error: INVALID_ARGS`,
+          `summary: ${yamlQuote(error instanceof Error ? error.message : String(error))}`,
+        ].join('\n'),
+      );
+    }
+  },
+};
+
+export const padDeleteRangeTool: FuncTool = {
+  type: 'func',
+  name: 'pad_delete_range',
+  description:
+    'Delete a line range inside an existing ws_mod scratch pad. The result never echoes pad body text.',
+  descriptionI18n: {
+    en: 'Delete a line range inside an existing ws_mod scratch pad. The result never echoes pad body text.',
+    zh: '删除已有 ws_mod scratch pad 内的行范围。工具结果不会回显 pad 正文。',
+  },
+  parameters: {
+    type: 'object',
+    additionalProperties: false,
+    required: ['pad_id', 'range'],
+    properties: {
+      pad_id: {
+        type: 'string',
+        description: 'Agent-chosen scratch pad slug: /^[A-Za-z0-9_-]{1,64}$/.',
+      },
+      range: { type: 'string', description: "Line range: '10~50' | '300~' | '~20' | '~'." },
+    },
+  },
+  argsValidation: 'dominds',
+  call: async (dlg, _caller, args): Promise<ToolCallOutput> => {
+    try {
+      const padId = normalizePadId(requireNonEmptyStringArg(args, 'pad_id'));
+      const range = requireNonEmptyStringArg(args, 'range');
+      const existing = requireDialogPadById(dlg, padId);
+      const nextText = applyTextLineRangeEdit(existing.meta.text, range, '');
+      upsertDialogPad(dlg, padId, nextText);
+      return okYaml(
+        formatPadResultYaml(
+          'pad_delete_range',
+          padId,
+          nextText,
+          `deleted range in pad_id=${padId}`,
+        ),
+      );
+    } catch (error: unknown) {
+      return failYaml(
+        [
+          `status: error`,
+          `mode: pad_delete_range`,
+          `error: INVALID_ARGS`,
+          `summary: ${yamlQuote(error instanceof Error ? error.message : String(error))}`,
+        ].join('\n'),
+      );
+    }
+  },
+};
+
+export const padCopyTool: FuncTool = {
+  type: 'func',
+  name: 'pad_copy',
+  description:
+    'Copy a line range from one ws_mod scratch pad into another pad or another range of the same pad. The result never echoes copied body text.',
+  descriptionI18n: {
+    en: 'Copy a line range from one ws_mod scratch pad into another pad or another range of the same pad. The result never echoes copied body text.',
+    zh: '把一个 ws_mod scratch pad 的行范围复制到另一个 pad，或同一 pad 的另一个范围。工具结果不会回显复制正文。',
+  },
+  parameters: {
+    type: 'object',
+    additionalProperties: false,
+    required: ['from_pad_id', 'to_pad_id'],
+    properties: {
+      from_pad_id: {
+        type: 'string',
+        description: 'Source scratch pad slug: /^[A-Za-z0-9_-]{1,64}$/.',
+      },
+      from_range: {
+        type: 'string',
+        description: "Source line range. Defaults to '~' (entire pad).",
+      },
+      to_pad_id: {
+        type: 'string',
+        description: 'Target scratch pad slug: /^[A-Za-z0-9_-]{1,64}$/.',
+      },
+      to_range: {
+        type: 'string',
+        description:
+          "Target line range to replace, or append position like 'N~'. Defaults to '~'. If target pad does not exist, '~' creates it.",
+      },
+    },
+  },
+  argsValidation: 'dominds',
+  call: async (dlg, _caller, args): Promise<ToolCallOutput> => {
+    try {
+      const fromPadId = normalizePadId(requireNonEmptyStringArg(args, 'from_pad_id'));
+      const toPadId = normalizePadId(requireNonEmptyStringArg(args, 'to_pad_id'));
+      const fromRange = parseOptionalPadRange(args, 'from_range');
+      const toRange = parseOptionalPadRange(args, 'to_range');
+      const source = requireDialogPadById(dlg, fromPadId);
+      const copiedText = selectTextByLineRange(source.meta.text, fromRange);
+      const target = findDialogPadById(dlg, toPadId);
+      if (target === undefined) {
+        if (toRange !== '~') {
+          return failYaml(
+            [
+              `status: error`,
+              `mode: pad_copy`,
+              `from_pad_id: ${yamlQuote(fromPadId)}`,
+              `to_pad_id: ${yamlQuote(toPadId)}`,
+              `error: PAD_NOT_FOUND`,
+              `summary: ${yamlQuote('Target pad does not exist; omit to_range or use "~" to create it from the copied text.')}`,
+            ].join('\n'),
+          );
+        }
+        upsertDialogPad(dlg, toPadId, copiedText);
+      } else {
+        const nextText = applyTextLineRangeEdit(target.meta.text, toRange, copiedText);
+        upsertDialogPad(dlg, toPadId, nextText);
+      }
+      const updatedTarget = requireDialogPadById(dlg, toPadId);
+      return okYaml(
+        [
+          `status: ok`,
+          `mode: pad_copy`,
+          `from_pad_id: ${yamlQuote(fromPadId)}`,
+          `from_range: ${yamlQuote(fromRange)}`,
+          `to_pad_id: ${yamlQuote(toPadId)}`,
+          `to_range: ${yamlQuote(toRange)}`,
+          `target_lines: ${countPadLines(updatedTarget.meta.text)}`,
+          `target_bytes: ${Buffer.byteLength(updatedTarget.meta.text, 'utf8')}`,
+          `target_hash: ${yamlQuote(hashPadText(updatedTarget.meta.text))}`,
+          `summary: ${yamlQuote(`copied ${fromPadId}:${fromRange} to ${toPadId}:${toRange}`)}`,
+        ].join('\n'),
+      );
+    } catch (error: unknown) {
+      return failYaml(
+        [
+          `status: error`,
+          `mode: pad_copy`,
+          `error: INVALID_ARGS`,
+          `summary: ${yamlQuote(error instanceof Error ? error.message : String(error))}`,
+        ].join('\n'),
+      );
+    }
+  },
+};
+
+export const padMoveTool: FuncTool = {
+  type: 'func',
+  name: 'pad_move',
+  description:
+    'Move a line range from one ws_mod scratch pad into another pad. Same-pad moves are rejected to avoid ambiguous shifting ranges.',
+  descriptionI18n: {
+    en: 'Move a line range from one ws_mod scratch pad into another pad. Same-pad moves are rejected to avoid ambiguous shifting ranges.',
+    zh: '把一个 ws_mod scratch pad 的行范围移动到另一个 pad。为避免范围位移歧义，拒绝同 pad move。',
+  },
+  parameters: {
+    type: 'object',
+    additionalProperties: false,
+    required: ['from_pad_id', 'to_pad_id'],
+    properties: {
+      from_pad_id: {
+        type: 'string',
+        description: 'Source scratch pad slug: /^[A-Za-z0-9_-]{1,64}$/.',
+      },
+      from_range: {
+        type: 'string',
+        description: "Source line range. Defaults to '~' (entire pad).",
+      },
+      to_pad_id: {
+        type: 'string',
+        description: 'Target scratch pad slug: /^[A-Za-z0-9_-]{1,64}$/.',
+      },
+      to_range: {
+        type: 'string',
+        description:
+          "Target line range to replace, or append position like 'N~'. Defaults to '~'. If target pad does not exist, '~' creates it.",
+      },
+    },
+  },
+  argsValidation: 'dominds',
+  call: async (dlg, _caller, args): Promise<ToolCallOutput> => {
+    try {
+      const fromPadId = normalizePadId(requireNonEmptyStringArg(args, 'from_pad_id'));
+      const toPadId = normalizePadId(requireNonEmptyStringArg(args, 'to_pad_id'));
+      if (fromPadId === toPadId) {
+        return failYaml(
+          [
+            `status: error`,
+            `mode: pad_move`,
+            `pad_id: ${yamlQuote(fromPadId)}`,
+            `error: SAME_PAD_MOVE_UNSUPPORTED`,
+            `summary: ${yamlQuote('Use pad_copy plus pad_delete_range, or pad_edit, for same-pad rearrangement.')}`,
+          ].join('\n'),
+        );
+      }
+      const fromRange = parseOptionalPadRange(args, 'from_range');
+      const toRange = parseOptionalPadRange(args, 'to_range');
+      const source = requireDialogPadById(dlg, fromPadId);
+      const movedText = selectTextByLineRange(source.meta.text, fromRange);
+      const target = findDialogPadById(dlg, toPadId);
+      if (target === undefined) {
+        if (toRange !== '~') {
+          return failYaml(
+            [
+              `status: error`,
+              `mode: pad_move`,
+              `from_pad_id: ${yamlQuote(fromPadId)}`,
+              `to_pad_id: ${yamlQuote(toPadId)}`,
+              `error: PAD_NOT_FOUND`,
+              `summary: ${yamlQuote('Target pad does not exist; omit to_range or use "~" to create it from the moved text.')}`,
+            ].join('\n'),
+          );
+        }
+        upsertDialogPad(dlg, toPadId, movedText);
+      } else {
+        const nextTargetText = applyTextLineRangeEdit(target.meta.text, toRange, movedText);
+        upsertDialogPad(dlg, toPadId, nextTargetText);
+      }
+      const nextSourceText = applyTextLineRangeEdit(source.meta.text, fromRange, '');
+      upsertDialogPad(dlg, fromPadId, nextSourceText);
+      const updatedSource = requireDialogPadById(dlg, fromPadId);
+      const updatedTarget = requireDialogPadById(dlg, toPadId);
+      return okYaml(
+        [
+          `status: ok`,
+          `mode: pad_move`,
+          `from_pad_id: ${yamlQuote(fromPadId)}`,
+          `from_range: ${yamlQuote(fromRange)}`,
+          `to_pad_id: ${yamlQuote(toPadId)}`,
+          `to_range: ${yamlQuote(toRange)}`,
+          `source_lines: ${countPadLines(updatedSource.meta.text)}`,
+          `source_bytes: ${Buffer.byteLength(updatedSource.meta.text, 'utf8')}`,
+          `source_hash: ${yamlQuote(hashPadText(updatedSource.meta.text))}`,
+          `target_lines: ${countPadLines(updatedTarget.meta.text)}`,
+          `target_bytes: ${Buffer.byteLength(updatedTarget.meta.text, 'utf8')}`,
+          `target_hash: ${yamlQuote(hashPadText(updatedTarget.meta.text))}`,
+          `summary: ${yamlQuote(`moved ${fromPadId}:${fromRange} to ${toPadId}:${toRange}`)}`,
+        ].join('\n'),
+      );
+    } catch (error: unknown) {
+      return failYaml(
+        [
+          `status: error`,
+          `mode: pad_move`,
+          `error: INVALID_ARGS`,
+          `summary: ${yamlQuote(error instanceof Error ? error.message : String(error))}`,
+        ].join('\n'),
+      );
+    }
+  },
+};
+
 export const padDeleteTool: FuncTool = {
   type: 'func',
   name: 'pad_delete',
@@ -2524,6 +2872,7 @@ async function runPrepareFileRangeEdit(
   rangeSpec: string,
   requestedId: string | undefined,
   inputBody: string,
+  outputOptions?: PrepareRangeEditOutputOptions,
 ): Promise<TxtToolCallResult> {
   const language = getWorkLanguage();
   const labels =
@@ -2666,16 +3015,23 @@ async function runPrepareFileRangeEdit(
       newLines,
       unifiedDiff,
       plannedFileDigestSha256: sha256HexUtf8(currentContent),
+      redactApplyOutput: outputOptions === undefined ? false : outputOptions.redactApplyOutput,
     };
     plannedModsById.set(hunkId, planned);
 
     const rangeLabel =
       range.kind === 'append' ? `${range.startLine}~` : `${range.startLine}~${range.endLine}`;
 
-    const reviseHint =
+    const defaultReviseHint =
       language === 'zh'
         ? `（可选：用同一工具重新规划并覆写该 hunk：\`prepare_file_range_edit({ \"path\": \"${filePath}\", \"range\": \"${rangeSpec}\", \"existing_hunk_id\": \"${hunkId}\", \"content\": \"...\" })\`。）`
         : `Optional: revise by re-running the same tool to overwrite this hunk: \`prepare_file_range_edit({ \"path\": \"${filePath}\", \"range\": \"${rangeSpec}\", \"existing_hunk_id\": \"${hunkId}\", \"content\": \"...\" })\`.`;
+    const reviseHint =
+      outputOptions === undefined ? defaultReviseHint : outputOptions.reviseHint(hunkId);
+    const modeName =
+      outputOptions === undefined ? 'prepare_file_range_edit' : outputOptions.modeName;
+    const includeDiff = outputOptions === undefined ? true : outputOptions.includeDiff;
+    const extraYamlLines = outputOptions === undefined ? [] : outputOptions.extraYamlLines;
 
     const resolvedStart = range.kind === 'append' ? range.startLine : range.startLine;
     const resolvedEnd =
@@ -2701,9 +3057,10 @@ async function runPrepareFileRangeEdit(
 
     const yaml = [
       `status: ok`,
-      `mode: prepare_file_range_edit`,
+      `mode: ${modeName}`,
       `path: ${yamlQuote(filePath)}`,
       `hunk_id: ${yamlQuote(hunkId)}`,
+      ...extraYamlLines,
       `expires_at_ms: ${planned.expiresAtMs}`,
       `action: ${action}`,
       `range:`,
@@ -2732,7 +3089,7 @@ async function runPrepareFileRangeEdit(
     const content =
       `${labels.planned(hunkId, filePath)}\n\n` +
       `${formatYamlCodeBlock(yaml)}\n\n` +
-      `\`\`\`diff\n${unifiedDiff}\`\`\`\n\n` +
+      (includeDiff ? `\`\`\`diff\n${unifiedDiff}\`\`\`\n\n` : '') +
       `${labels.next(hunkId)}\n` +
       `${reviseHint}\n` +
       (language === 'zh'
@@ -2779,6 +3136,89 @@ export const prepareFileRangeEditTool: FuncTool = {
 
     const res = await runPrepareFileRangeEdit(caller, filePath, range, requestedId, content);
     return unwrapTxtToolResult(res);
+  },
+};
+
+export const padPrepareFileRangeEditTool: FuncTool = {
+  type: 'func',
+  name: 'pad_prepare_file_range_edit',
+  description:
+    'Prepare a single-file line-range edit using text from a ws_mod scratch pad. The tool result does not echo the pad body or diff.',
+  descriptionI18n: {
+    en: 'Prepare a single-file line-range edit using text from a ws_mod scratch pad. The tool result does not echo the pad body or diff.',
+    zh: '使用 ws_mod scratch pad 的文本规划单文件行范围编辑。工具结果不回显 pad 正文或 diff。',
+  },
+  parameters: {
+    type: 'object',
+    additionalProperties: false,
+    required: ['pad_id', 'path', 'range'],
+    properties: {
+      pad_id: {
+        type: 'string',
+        description: 'Source scratch pad slug: /^[A-Za-z0-9_-]{1,64}$/.',
+      },
+      pad_range: {
+        type: 'string',
+        description: "Source pad line range. Defaults to '~' (entire pad).",
+      },
+      path: { type: 'string', description: 'rtws-relative file path.' },
+      range: {
+        type: 'string',
+        description: "Target file line range: '10~50' | '300~' | '~20' | '~'.",
+      },
+      existing_hunk_id: {
+        type: 'string',
+        description:
+          'Optional existing range hunk id to overwrite. Empty string means generate a new hunk.',
+      },
+    },
+  },
+  argsValidation: 'dominds',
+  call: async (dlg, caller, args): Promise<ToolCallOutput> => {
+    try {
+      const padId = normalizePadId(requireNonEmptyStringArg(args, 'pad_id'));
+      const padRange = parseOptionalPadRange(args, 'pad_range');
+      const filePath = requireNonEmptyStringArg(args, 'path');
+      const range = requireNonEmptyStringArg(args, 'range');
+      const existingHunkId = normalizeExistingHunkId(
+        optionalNonEmptyStringArg(args, 'existing_hunk_id'),
+      );
+      if (existingHunkId !== undefined && !isValidHunkId(existingHunkId)) {
+        throw new Error(
+          "Invalid arguments: `existing_hunk_id` must be a hunk id like 'a1b2c3d4' (letters/digits/_/-)",
+        );
+      }
+
+      const pad = requireDialogPadById(dlg, padId);
+      const padText = selectTextByLineRange(pad.meta.text, padRange);
+      const res = await runPrepareFileRangeEdit(caller, filePath, range, existingHunkId, padText, {
+        modeName: 'pad_prepare_file_range_edit',
+        includeDiff: false,
+        redactApplyOutput: true,
+        extraYamlLines: [
+          `pad_id: ${yamlQuote(padId)}`,
+          `pad_range: ${yamlQuote(padRange)}`,
+          `pad_hash: ${yamlQuote(hashPadText(pad.meta.text))}`,
+          `pad_selected_lines: ${countPadLines(padText)}`,
+          `pad_selected_bytes: ${Buffer.byteLength(padText, 'utf8')}`,
+          `pad_selected_hash: ${yamlQuote(hashPadText(padText))}`,
+        ],
+        reviseHint: (hunkId) =>
+          getWorkLanguage() === 'zh'
+            ? `（可选：先用 pad_* 工具调整 pad，再用同一工具重新规划并覆写该 hunk：\`pad_prepare_file_range_edit({ \"pad_id\": \"${padId}\", \"pad_range\": \"${padRange}\", \"path\": \"${filePath}\", \"range\": \"${range}\", \"existing_hunk_id\": \"${hunkId}\" })\`。）`
+            : `Optional: adjust the pad with pad_* tools, then re-run this tool to overwrite the hunk: \`pad_prepare_file_range_edit({ \"pad_id\": \"${padId}\", \"pad_range\": \"${padRange}\", \"path\": \"${filePath}\", \"range\": \"${range}\", \"existing_hunk_id\": \"${hunkId}\" })\`.`,
+      });
+      return unwrapTxtToolResult(res);
+    } catch (error: unknown) {
+      return failYaml(
+        [
+          `status: error`,
+          `mode: pad_prepare_file_range_edit`,
+          `error: INVALID_ARGS`,
+          `summary: ${yamlQuote(error instanceof Error ? error.message : String(error))}`,
+        ].join('\n'),
+      );
+    }
   },
 };
 
@@ -3796,6 +4236,7 @@ async function runApplyFileModification(
                 const appendedLineCount = p.newLines.length;
                 const appendStartLine = fileLineCountBefore + 1;
                 const appendEndLine = appendStartLine + Math.max(0, appendedLineCount - 1);
+                const redactApplyOutput = shouldRedactApplyOutput(p);
 
                 const evidenceBeforeTail = baseLines.slice(Math.max(0, baseLines.length - 2));
                 const evidenceAppendPreview =
@@ -3829,19 +4270,26 @@ async function runApplyFileModification(
                     `current_file_digest_sha256: ${yamlQuote(currentDigest)}`,
                   );
                 }
-                yamlLines.push(
-                  `apply_evidence:`,
-                  `  before_tail: ${yamlBlockScalarLines(evidenceBeforeTail, '    ')}`,
-                  `  appended_preview: ${yamlBlockScalarLines(evidenceAppendPreview, '    ')}`,
-                  `  after_tail: ${yamlBlockScalarLines(evidenceAfterTail, '    ')}`,
-                  `summary: ${yamlQuote(summary)}`,
-                );
+                if (redactApplyOutput) {
+                  yamlLines.push(
+                    `apply_evidence: ${yamlQuote('redacted because this hunk was sourced from a ws_mod pad')}`,
+                    `summary: ${yamlQuote(summary)}`,
+                  );
+                } else {
+                  yamlLines.push(
+                    `apply_evidence:`,
+                    `  before_tail: ${yamlBlockScalarLines(evidenceBeforeTail, '    ')}`,
+                    `  appended_preview: ${yamlBlockScalarLines(evidenceAppendPreview, '    ')}`,
+                    `  after_tail: ${yamlBlockScalarLines(evidenceAfterTail, '    ')}`,
+                    `summary: ${yamlQuote(summary)}`,
+                  );
+                }
                 const yaml = yamlLines.join('\n');
 
                 const content =
                   `${labels.applied(p.relPath, id)}\n\n` +
-                  `${formatYamlCodeBlock(yaml)}\n\n` +
-                  `\`\`\`diff\n${unifiedDiff}\`\`\``;
+                  `${formatYamlCodeBlock(yaml)}` +
+                  (redactApplyOutput ? '' : `\n\n\`\`\`diff\n${unifiedDiff}\`\`\``);
                 resolve(ok(content, [{ type: 'environment_msg', role: 'user', content }]));
                 return;
               }
@@ -4150,6 +4598,7 @@ async function runApplyFileModification(
 
               const contextMatch = startIndex0 === p.startIndex0 ? 'exact' : 'fuzz';
               const action = p.action;
+              const redactApplyOutput = shouldRedactApplyOutput(p);
 
               const startLine = startIndex0 + 1;
               const endLine =
@@ -4198,19 +4647,26 @@ async function runApplyFileModification(
                   `current_file_digest_sha256: ${yamlQuote(currentDigest)}`,
                 );
               }
-              yamlLines.push(
-                `apply_evidence:`,
-                `  before: ${yamlBlockScalarLines(evidenceBefore, '    ')}`,
-                `  range: ${yamlBlockScalarLines(evidenceRange, '    ')}`,
-                `  after: ${yamlBlockScalarLines(evidenceAfter, '    ')}`,
-                `summary: ${yamlQuote(summary)}`,
-              );
+              if (redactApplyOutput) {
+                yamlLines.push(
+                  `apply_evidence: ${yamlQuote('redacted because this hunk was sourced from a ws_mod pad')}`,
+                  `summary: ${yamlQuote(summary)}`,
+                );
+              } else {
+                yamlLines.push(
+                  `apply_evidence:`,
+                  `  before: ${yamlBlockScalarLines(evidenceBefore, '    ')}`,
+                  `  range: ${yamlBlockScalarLines(evidenceRange, '    ')}`,
+                  `  after: ${yamlBlockScalarLines(evidenceAfter, '    ')}`,
+                  `summary: ${yamlQuote(summary)}`,
+                );
+              }
               const yaml = yamlLines.join('\n');
 
               const content =
                 `${labels.applied(p.relPath, id)}\n\n` +
-                `${formatYamlCodeBlock(yaml)}\n\n` +
-                `\`\`\`diff\n${unifiedDiff}\`\`\``;
+                `${formatYamlCodeBlock(yaml)}` +
+                (redactApplyOutput ? '' : `\n\n\`\`\`diff\n${unifiedDiff}\`\`\``);
               resolve(ok(content, [{ type: 'environment_msg', role: 'user', content }]));
             } catch (error: unknown) {
               const content = labels.applyFailed(

@@ -9,7 +9,7 @@
 - 旧工具已移除（无兼容层）：`append_file` / `insert_after` / `insert_before` / `replace_block` / `apply_block_replace`。
 - 约束：`*.tsk/` 下的路径属于封装差遣牒，文件工具不可访问。
 - 并行约束：同一轮对话中的多个工具调用可能并行执行；**prepare → apply 必须分两轮**（除非未来有顺序编排器）。
-- 输出以 YAML + unified diff 为主：低注意力可复核（`summary` + `evidence`/`apply_evidence`）。
+- 输出以 YAML + unified diff 为主：低注意力可复核（`summary` + `evidence`/`apply_evidence`）。pad-sourced hunk 为避免回显大块正文，使用 redacted 输出例外。
 - 规范化：所有写入遵循"每行以 `\n` 结尾（含最后一行）"；EOF 换行会被补齐并通过 `normalized.*` 字段呈现。
 - 例外：`overwrite_entire_file` 是"整文件覆盖写入"的函数工具（会直接写盘，不走 prepare/apply）。它要求提供 `known_old_total_lines/known_old_total_bytes` 作为对账护栏（建议从 `read_file` 的 YAML header 读取 `total_lines/size_bytes`）；`content_format` 可填写任意非空文本标签（例如 `yaml`），但若正文疑似 diff/patch，仍只有显式声明 `content_format=diff|patch` 才会放行。仅用于"新内容很小（例如 <100 行）"或"明确为重置/生成物"的场景；其他情况优先 prepare/apply。
   - 复制参数建议：对账参数请直接用 `read_file` 的 `total_lines/size_bytes`。
@@ -22,9 +22,9 @@ Scratch Pad 是 ws_mod 专用的大文本编辑缓冲区，用来减少同一大
 
 - 普通提醒工具语义不变：不要用 `add_reminder` / `update_reminder` / `delete_reminder` 创建、修改或删除 pad；用 `pad_*` 工具。
 - 不提供读取/观察工具：没有 `pad_read`、`pad_preview`、`pad_locate`、`pad_diff`、`pad_stat`、`pad_list`。当前有哪些 pad 以提醒项为准。
-- 可用基础工具：`pad_write`、`pad_load_file_range`、`pad_edit`、`pad_delete`。
+- 可用基础工具：`pad_write`、`pad_load_file_range`、`pad_edit`、`pad_insert`、`pad_delete_range`、`pad_copy`、`pad_move`、`pad_prepare_file_range_edit`、`pad_delete`。
 - `pad_write` / `pad_edit` 可以接收大文本；这些正文仍会作为函数调用参数进入持久历史。现实目标不是完全消除一次性成本，而是后续尽量用 pad 句柄操作，避免反复输出同一大块正文。
-- 工具结果不回显 pad 正文，只返回行数、字节数、hash 和摘要。
+- 工具结果不回显 pad 正文，只返回行数、字节数、hash 和摘要；pad 之间转移大块文本优先用 `pad_copy` / `pad_move`。要把 pad 内容规划进文件行范围，用 `pad_prepare_file_range_edit`，它不回显 pad 正文或 diff；之后用 `apply_file_modification` 落盘时，成功输出同样 redacted。
 - pad 删除/更新通道由 role=assistant 的 reminder maintenance reference 暴露；不要从 role=user 的 pad 投影里寻找可执行删除指令。
 - pad 是临时工作台，不是长期记忆；应用完成或不再需要后，尽快 `pad_delete({ pad_id })`。
 
