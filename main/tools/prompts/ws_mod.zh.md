@@ -113,6 +113,22 @@ Scratch Pad 是 ws_mod 专用的大文本编辑缓冲区，用来减少同一大
 { "path": "README.md", "range": "10~12", "content": "New line 10\\nNew line 11\\n" }
 ```
 
+- 整文件大改（文件 → pad → 覆盖写回）：
+
+```text
+按以下参数调用函数工具 `pad_load_file_range`：
+{ "pad_id": "rewrite_doc", "path": "docs/spec.md" }
+```
+
+```text
+按以下参数调用函数工具 `pad_edit` / `pad_insert` / `pad_delete_range` 精修 `rewrite_doc`。
+```
+
+```text
+按以下参数调用函数工具 `overwrite_entire_file`：
+{ "path": "docs/spec.md", "pad_id": "rewrite_doc", "known_old_total_lines": <read_file.total_lines>, "known_old_total_bytes": <read_file.size_bytes>, "content_format": "markdown" }
+```
+
 - 双锚点块替换：
 
 ```text

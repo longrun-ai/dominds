@@ -112,6 +112,22 @@ Call the function tool `file_range_edit` with:
 { "path": "README.md", "range": "10~12", "content": "New line 10\\nNew line 11\\n" }
 ```
 
+- Large whole-file rewrite (file → pad → overwrite):
+
+```text
+Call the function tool `pad_load_file_range` with:
+{ "pad_id": "rewrite_doc", "path": "docs/spec.md" }
+```
+
+```text
+Use `pad_edit` / `pad_insert` / `pad_delete_range` to refine `rewrite_doc`.
+```
+
+```text
+Call the function tool `overwrite_entire_file` with:
+{ "path": "docs/spec.md", "pad_id": "rewrite_doc", "known_old_total_lines": <read_file.total_lines>, "known_old_total_bytes": <read_file.size_bytes>, "content_format": "markdown" }
+```
+
 - Block replace:
 
 ```text
