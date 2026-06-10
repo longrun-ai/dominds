@@ -59,6 +59,7 @@
 
 - `file_range_edit`：按精确行号范围直接 replace/delete/append（append 通过 `N~` 且 `N=(last_line+1)`）
 - `create_new_file` / `overwrite_entire_file` / `file_range_edit` 都支持 `content` 与 `pad_id/pad_range` 两类来源；小正文直供 `content`，大正文优先使用 pad 来源
+- `pad_load_file_range({ pad_id, path })` 可省略 `range`，默认把整个文件装入 pad；指定 `range` 时只装入文件片段
 - `prepare_file_append`：预览追加到 EOF（可选 `create=true|false`）
 - `prepare_file_insert_after` / `prepare_file_insert_before`：按锚点行预览插入（prepare 阶段严格处理歧义；锚点多次出现必须指定 `occurrence`）
 - `prepare_file_block_replace`：按 start/end 锚点预览块替换（可配置 `include_anchors` / `require_unique` / `strict` / `occurrence` 等）

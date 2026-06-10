@@ -59,6 +59,7 @@ Create or remove a symlink path.
 
 - `file_range_edit`: Directly replace/delete/append by precise line range (append via `N~` where `N=(last_line+1)`)
 - `create_new_file` / `overwrite_entire_file` / `file_range_edit` all support `content` and `pad_id/pad_range` sources; use direct `content` for small bodies and pad sources for large bodies
+- `pad_load_file_range({ pad_id, path })` can omit `range`, which defaults to the whole file; pass `range` to load only a file slice
 - `prepare_file_append`: Preview append to EOF (optional `create=true|false`)
 - `prepare_file_insert_after` / `prepare_file_insert_before`: Preview insertion by anchor line (prepare phase strictly handles ambiguity; if anchor appears multiple times, must specify `occurrence`)
 - `prepare_file_block_replace`: Preview block replacement by start/end anchors (configurable `include_anchors` / `require_unique` / `strict` / `occurrence`, etc.)

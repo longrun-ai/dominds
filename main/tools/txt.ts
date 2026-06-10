@@ -2212,22 +2212,25 @@ export const padLoadFileRangeTool: FuncTool = {
   type: 'func',
   name: 'pad_load_file_range',
   description:
-    'Load a rtws file line range into a ws_mod scratch pad without echoing the selected text.',
+    'Load a rtws file or file line range into a ws_mod scratch pad without echoing the selected text.',
   descriptionI18n: {
-    en: 'Load a rtws file line range into a ws_mod scratch pad without echoing the selected text.',
-    zh: '把 rtws 文件行范围装入 ws_mod scratch pad，且不回显选中文本。',
+    en: 'Load a rtws file or file line range into a ws_mod scratch pad without echoing the selected text.',
+    zh: '把 rtws 文件或文件行范围装入 ws_mod scratch pad，且不回显选中文本。',
   },
   parameters: {
     type: 'object',
     additionalProperties: false,
-    required: ['pad_id', 'path', 'range'],
+    required: ['pad_id', 'path'],
     properties: {
       pad_id: {
         type: 'string',
         description: 'Agent-chosen scratch pad slug: /^[A-Za-z0-9_-]{1,64}$/.',
       },
       path: { type: 'string', description: 'rtws-relative file path.' },
-      range: { type: 'string', description: "Line range: '10~50' | '300~' | '~20' | '~'." },
+      range: {
+        type: 'string',
+        description: "Optional line range: '10~50' | '300~' | '~20' | '~'. Defaults to '~'.",
+      },
       mode: {
         type: 'string',
         enum: ['', 'create', 'replace', 'append', 'upsert'],
@@ -2240,7 +2243,7 @@ export const padLoadFileRangeTool: FuncTool = {
     try {
       const padId = normalizePadId(requireNonEmptyStringArg(args, 'pad_id'));
       const filePath = requireNonEmptyStringArg(args, 'path');
-      const range = requireNonEmptyStringArg(args, 'range');
+      const range = optionalNonEmptyStringArg(args, 'range') ?? '~';
       const mode = parsePadWriteMode(args['mode']);
       if (!hasReadAccess(caller, filePath)) {
         return toolFailure(getAccessDeniedMessage('read', filePath, getWorkLanguage()));

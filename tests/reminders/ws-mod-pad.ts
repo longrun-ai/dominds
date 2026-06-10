@@ -81,6 +81,15 @@ async function main(): Promise<void> {
       true,
       'pad_load_file_range should accept empty-string default mode',
     );
+    const fullFileLoadArgs = validateArgs(padLoadFileRangeTool.parameters, {
+      pad_id: 'whole_file',
+      path: 'whole.txt',
+    });
+    assert.equal(
+      fullFileLoadArgs.ok,
+      true,
+      'pad_load_file_range should allow omitted range for full-file load',
+    );
 
     const writeOutput = (
       await padWriteTool.call(dlg, caller, {
@@ -193,6 +202,23 @@ async function main(): Promise<void> {
       'pad_delete_range result must not echo remaining body',
     );
     assert.equal(getPadText(dlg.reminders[1]), 'changed\n');
+
+    const fullFileToken = 'FULL_FILE_LOAD_TOKEN';
+    await fs.writeFile(path.join(tmpRoot, 'whole.txt'), `alpha\n${fullFileToken}\nomega\n`, 'utf8');
+    const fullFileLoadOutput = (
+      await padLoadFileRangeTool.call(dlg, caller, {
+        pad_id: 'whole_file',
+        path: 'whole.txt',
+        mode: 'create',
+      })
+    ).content;
+    assert.ok(fullFileLoadOutput.includes('status: ok'));
+    assert.ok(
+      !fullFileLoadOutput.includes(fullFileToken),
+      'pad_load_file_range full-file result must not echo file body',
+    );
+    assert.equal(getPadText(dlg.reminders[2]), `alpha\n${fullFileToken}\nomega\n`);
+    await padDeleteTool.call(dlg, caller, { pad_id: 'whole_file' });
 
     await fs.writeFile(path.join(tmpRoot, 'target.txt'), 'old1\nold2\n', 'utf8');
     const padPrepareOutput = (

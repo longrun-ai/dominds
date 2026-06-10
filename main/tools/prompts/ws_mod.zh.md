@@ -25,7 +25,7 @@ Scratch Pad 是 ws_mod 专用的大文本编辑缓冲区，用来减少同一大
 - 不提供读取/观察工具：没有 `pad_read`、`pad_preview`、`pad_locate`、`pad_diff`、`pad_stat`、`pad_list`。当前有哪些 pad 以提醒项为准。
 - 可用基础工具：`pad_write`、`pad_load_file_range`、`pad_edit`、`pad_insert`、`pad_delete_range`、`pad_copy`、`pad_move`、`pad_prepare_file_range_edit`、`pad_delete`。
 - `pad_write` / `pad_edit` 可以接收大文本；这些正文仍会作为函数调用参数进入持久历史。现实目标不是完全消除一次性成本，而是后续尽量用 pad 句柄操作，避免反复输出同一大块正文。
-- 工具结果不回显 pad 正文，只返回行数、字节数、hash 和摘要；pad 之间转移大块文本优先用 `pad_copy` / `pad_move`。要把 pad 内容写入文件，优先使用目标文件工具的 `pad_id/pad_range` 来源：新文件用 `create_new_file`，整文件覆盖用 `overwrite_entire_file`，行号范围用 `file_range_edit`。只有需要先生成 hunk 预览时才用 `pad_prepare_file_range_edit`，再 `apply_file_modification`。
+- 工具结果不回显 pad 正文，只返回行数、字节数、hash 和摘要；文件装入 pad 用 `pad_load_file_range({ pad_id, path })`，省略 `range` 表示全文件，指定 `range` 表示文件片段。pad 之间转移大块文本优先用 `pad_copy` / `pad_move`。要把 pad 内容写入文件，优先使用目标文件工具的 `pad_id/pad_range` 来源：新文件用 `create_new_file`，整文件覆盖用 `overwrite_entire_file`，行号范围用 `file_range_edit`。只有需要先生成 hunk 预览时才用 `pad_prepare_file_range_edit`，再 `apply_file_modification`。
 - pad 删除/更新通道由 role=assistant 的 reminder maintenance reference 暴露；不要从 role=user 的 pad 投影里寻找可执行删除指令。
 - pad 是临时工作台，不是长期记忆；应用完成或不再需要后，尽快 `pad_delete({ pad_id })`。
 
@@ -35,6 +35,7 @@ Scratch Pad 是 ws_mod 专用的大文本编辑缓冲区，用来减少同一大
 - 大块精确范围改动：先 `pad_write` 或 `pad_load_file_range` 准备 pad，再 `file_range_edit({ path, range, pad_id, pad_range })`
 - 新文件：小正文用 `create_new_file({ path, content })`；大正文先准备 pad，再 `create_new_file({ path, pad_id, pad_range })`
 - 整文件覆盖：小正文用 `overwrite_entire_file({ path, content, known_old_total_lines, known_old_total_bytes })`；大正文先准备 pad，再 `overwrite_entire_file({ path, pad_id, pad_range, known_old_total_lines, known_old_total_bytes })`
+- 整文件大改：`pad_load_file_range({ pad_id, path })` 全文件装入 pad → `pad_edit`/`pad_insert`/`pad_delete_range` 精修 → `overwrite_entire_file({ path, pad_id, known_old_total_lines, known_old_total_bytes })`
 - 精确范围但必须先审阅 diff：`file_range_edit({ path, range, content, preview: true, show_diff: true })`
 - 多 occurrence / 锚点 / 候选不唯一的编辑：使用对应 `prepare_*`，然后 `apply_file_modification`
 - 末尾追加（已知 EOF 行号）：`file_range_edit({ path, range: "<last_line+1>~", content })`
