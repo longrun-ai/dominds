@@ -93,7 +93,7 @@
 | `team_mgmt_read_file`                  | `txt` | 读取 `.minds/` 下的文本文件                                 | `.minds/**`      |
 | `team_mgmt_create_new_file`            | `txt` | 在 `.minds/` 下创建新文件（允许空内容；拒绝覆写）           | `.minds/**`      |
 | `team_mgmt_overwrite_entire_file`      | `txt` | 覆写 `.minds/` 下的现有文件（受保护的异常路径）             | `.minds/**`      |
-| `team_mgmt_prepare_file_range_edit`    | `txt` | 准备在 `.minds/` 下进行单文件行范围编辑（返回差异 hunk id） | `.minds/**`      |
+| `team_mgmt_file_range_edit`            | `txt` | 直接按行号范围写入 `.minds/` 下的单文件内容                 | `.minds/**`      |
 | `team_mgmt_prepare_file_append`        | `txt` | 准备在 `.minds/` 下进行追加到 EOF 编辑（返回差异 hunk id）  | `.minds/**`      |
 | `team_mgmt_prepare_file_insert_after`  | `txt` | 准备在 `.minds/` 下的锚点后插入（返回差异 hunk id）         | `.minds/**`      |
 | `team_mgmt_prepare_file_insert_before` | `txt` | 准备在 `.minds/` 下的锚点前插入（返回差异 hunk id）         | `.minds/**`      |

@@ -23,7 +23,7 @@
 
 - <该工具集特有术语>
 
-## 1. 背景：为什么要 "prepare-first + 单 apply"
+## 1. 背景：为什么是 direct range edit + prepare/apply
 
 历史上文本编辑工具存在"直接写入 vs 先 plan 再 apply"等多套心智并存，导致：
 
@@ -31,10 +31,10 @@
 - prepare→apply 之间存在竞态：同一条消息中工具并行执行，可能出现"prepare 基于旧文件，但另一工具已写入"的时序问题
 - apply 入口分裂，学习成本高、回归成本高
 
-因此统一为：
+第一版 prepare-first + single apply 改善了审阅性，但也让确定行号范围的大文本编辑变得拖沓。因此当前统一为：
 
-- **prepare-first**：所有增量编辑先规划（输出可审阅 diff + evidence + hunk_id）
-- **single apply**：所有计划类编辑仅通过 `apply_file_modification({ "hunk_id": "<hunk_id>" })` 落盘
+- **direct range edit**：精确行号范围用 `file_range_edit` 直接写入；默认 YAML-only/redacted，不回显正文
+- **prepare/apply**：锚点、多 occurrence、候选不唯一或必须先审阅 hunk 的编辑，使用 `prepare_*` → `apply_file_modification`
 - **LLM 落盘语义**：prepare 结果在 apply 前只保存在内存中，不会改动文件；此时再次 `read_file` 看到的仍是旧内容。若只是修订同一个未落盘预览，可用同一 prepare 工具加 `existing_hunk_id` 覆写；若想继续下一笔修改，必须先 apply 当前 hunk，再重新 read/prepare
 - **移除旧工具**：`append_file` / `insert_after` / `insert_before` / `replace_block` / `apply_block_replace` 已彻底删除（无 alias、无兼容层）
 
@@ -42,9 +42,10 @@
 
 ### 2.1 目标
 
-- 把增量编辑统一为：`prepare_*` → `apply_file_modification`
-- 提供可复核输出：YAML summary + evidence（plan）/apply_evidence（apply） + unified diff
-- 明确并发/时序约束：避免在同一条消息中把 prepare 与 apply 混在一起
+- 把确定行号范围编辑统一为：`file_range_edit`
+- 把不确定目标编辑统一为：`prepare_*` → `apply_file_modification`
+- 提供可复核输出：direct range edit 默认 YAML-only；prepare/apply 输出 YAML summary + evidence（plan）/apply_evidence（apply） + unified diff
+- 明确并发/时序约束：避免在同一条消息中把 prepare 与 apply 混在一起；同一文件写入在进程内串行化
 - 给出稳定的失败模式与下一步建议（尤其是锚点歧义与 apply rejected）
 
 ### 2.2 非目标
@@ -60,11 +61,13 @@
 同一条消息中的多个工具调用会并行执行，互相不可见输出/写入。因此：
 
 - **prepare → apply 必须分两条消息**（否则 apply 可能"看不到"本轮刚生成的 hunk）
+- 精确行号范围且不需要 hunk 预览时，直接用 `file_range_edit`
 
-### 3.2 apply 的并发安全（当前实现）
+### 3.2 写入并发安全（当前实现）
 
 - 同一文件的多个 `apply_file_modification` 会在进程内按队列串行化（按 `createdAtMs`、再以 `hunkId` 作为 tie-breaker）
-- 不同文件的 apply 可并行，不共享锁
+- 同一文件的多个 `file_range_edit` 也会在进程内串行化
+- 不同文件的写入可并行，不共享锁
 
 ## 4. hunk registry 与生命周期
 
@@ -81,7 +84,6 @@
 
 支持"带 `existing_hunk_id` 重新 plan 覆写"的工具与规则：
 
-- `prepare_file_range_edit`：支持 `existing_hunk_id`，但该 id 必须已存在、归属当前成员、且模式匹配（不能拿别的 prepare 模式的 id 来覆写）
 - `prepare_file_append` / `prepare_file_insert_after` / `prepare_file_insert_before`：同样支持 `existing_hunk_id` 覆写同模式预览
 - `prepare_file_block_replace`：支持 `existing_hunk_id` 覆写同模式预览（同 owner / 同 kind；跨模式拒绝）
 - 所有 plan 工具都**不允许自定义新 id**：只能通过"省略/清空 `existing_hunk_id`"来生成新规划；只有当你想覆写既有规划时才传入 `existing_hunk_id`

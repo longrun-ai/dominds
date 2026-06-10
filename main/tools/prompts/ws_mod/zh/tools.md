@@ -54,15 +54,15 @@
 - **删除**：`rm_symlink` 删除链接路径本身，不触碰目标，也可删除 broken symlink
 - **输出**：成功/失败均为 YAML，包含 `mode: create_symlink` / `mode: rm_symlink`
 
-## 3. 增量编辑（prepare-first）
+## 3. 增量编辑（direct range edit + prepare/apply）
 
-- `prepare_file_range_edit`：按行号范围预览 replace/delete/append（append 通过 `N~` 且 `N=(last_line+1)`）
+- `file_range_edit`：按精确行号范围直接 replace/delete/append（append 通过 `N~` 且 `N=(last_line+1)`）
 - `prepare_file_append`：预览追加到 EOF（可选 `create=true|false`）
 - `prepare_file_insert_after` / `prepare_file_insert_before`：按锚点行预览插入（prepare 阶段严格处理歧义；锚点多次出现必须指定 `occurrence`）
 - `prepare_file_block_replace`：按 start/end 锚点预览块替换（可配置 `include_anchors` / `require_unique` / `strict` / `occurrence` 等）
   - `include_anchors=true`（默认）：保留 start/end anchor 行，仅替换两者之间的内容
   - `include_anchors=false`：替换范围包含 start/end anchor 行（会删除 anchor 行并以新内容替换）
-- `apply_file_modification`：唯一 apply，能应用来自上述任意 `prepare_*` 的 hunk（range/append/insert/block_replace）
+- `apply_file_modification`：唯一 apply，能应用来自上述任意 `prepare_*` 或 `pad_prepare_file_range_edit` 的 hunk
 
 ## 4. YAML 输出契约
 
@@ -71,7 +71,7 @@
 ### 4.1 Plan（共同字段）
 
 - `status: ok|error`
-- `mode: prepare_file_range_edit|prepare_file_append|prepare_file_insert_after|prepare_file_insert_before|prepare_file_block_replace`
+- `mode: prepare_file_append|prepare_file_insert_after|prepare_file_insert_before|prepare_file_block_replace|pad_prepare_file_range_edit`
 - `path`
 - `hunk_id`、`expires_at_ms`
 - `action: replace|delete|append|insert|block_replace`
@@ -81,10 +81,6 @@
 
 ### 4.2 Plan（按工具/动作的关键字段）
 
-- `prepare_file_range_edit`：
-  - `range.input` / `range.resolved.start|end`
-  - `lines.old|new|delta`
-  - `evidence.before|range|after`
 - `prepare_file_append`：
   - `file_line_count_before|after`、`appended_line_count`
   - `blankline_style.file_trailing_blank_line_count` / `content_leading_blank_line_count`
@@ -127,4 +123,4 @@
 ## 5. 与 .minds/ 的关系
 
 `.minds/` 属于团队配置与 rtws（运行时工作区）记忆的核心，通常应通过 `team_mgmt` toolset 的镜像工具操作（例如 `team_mgmt_prepare_file_insert_after` 等）。  
-本工具集的"prepare-first + 单 apply"心智模型保持一致，但路径与权限语义由 team_mgmt 工具包装层决定（详见 team_mgmt 文档/工具说明）
+本工具集的 direct range edit + prepare/apply 心智模型保持一致，但路径与权限语义由 team_mgmt 工具包装层决定（详见 team_mgmt 文档/工具说明）

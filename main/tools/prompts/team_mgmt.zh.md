@@ -27,7 +27,7 @@
 
 - 读取定位：`team_mgmt_read_file` / `team_mgmt_list_dir` / `team_mgmt_ripgrep_*`
 - 创建新文件（允许空内容）：`team_mgmt_create_new_file({ path, content })`
-- 小改动（行号范围）：`team_mgmt_prepare_file_range_edit({ path, range, content, existing_hunk_id })`
+- 小改动（行号范围）：`team_mgmt_file_range_edit({ path, range, content })`
 - 末尾追加：`team_mgmt_prepare_file_append({ path, content, create, existing_hunk_id })`
 - 锚点插入：`team_mgmt_prepare_file_insert_after|team_mgmt_prepare_file_insert_before({ path, anchor, content, occurrence, match, existing_hunk_id })`
 - 双锚点块替换：`team_mgmt_prepare_file_block_replace({ path, start_anchor, end_anchor, content, existing_hunk_id, occurrence, include_anchors, match, require_unique, strict })`
@@ -48,20 +48,11 @@
 - `fuzz`：文件有漂移但仍能安全应用；此时输出会给出 `file_changed_since_preview` 与（planned/current）digest 便于复核。
 - `rejected`：无法唯一定位/不安全，必须重新 prepare。
 
-## 两步模板（复制即用）
-
-1. Prepare：
+## 直接行号范围编辑模板（复制即用）
 
 ```text
-按以下参数调用函数工具 `team_mgmt_prepare_file_range_edit`：
+按以下参数调用函数工具 `team_mgmt_file_range_edit`：
 { "path": "team.yaml", "range": "10~12", "content": "..." }
-```
-
-2. Apply（必须单独一轮）：
-
-```text
-按以下参数调用函数工具 `team_mgmt_apply_file_modification`：
-{ "hunk_id": "<hunk_id>" }
 ```
 
 ## 创建空文件示例

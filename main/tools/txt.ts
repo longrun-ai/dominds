@@ -2,7 +2,7 @@
  * Module: tools/txt
  *
  * Text file tooling for reading and modifying rtws (runtime workspace) files.
- * Provides `read_file`, `overwrite_entire_file`, `prepare_*`, and `apply_file_modification`.
+ * Provides `read_file`, direct range edits, overwrite, prepare/apply, and scratch pads.
  */
 import type { LanguageCode } from '@longrun-ai/kernel/types/language';
 import crypto from 'crypto';
@@ -118,6 +118,10 @@ function optionalNonEmptyStringArg(args: ToolArguments, key: string): string | u
   if (value === undefined) return undefined;
   if (value.trim() === '') return undefined;
   return value;
+}
+
+function hasOwnArg(args: ToolArguments, key: string): boolean {
+  return Object.prototype.hasOwnProperty.call(args, key);
 }
 
 function normalizeExistingHunkId(raw: string | undefined): string | undefined {
@@ -743,7 +747,7 @@ const plannedModsById = new Map<string, PlannedFileModification>();
 const plannedBlockReplacesById = new Map<string, PlannedBlockReplace>();
 
 type PrepareRangeEditOutputOptions = Readonly<{
-  modeName: 'prepare_file_range_edit' | 'pad_prepare_file_range_edit';
+  modeName: 'pad_prepare_file_range_edit';
   includeDiff: boolean;
   redactApplyOutput: boolean;
   extraYamlLines: readonly string[];
@@ -2650,6 +2654,301 @@ export const padDeleteTool: FuncTool = {
   },
 };
 
+type FileRangeEditSource =
+  | Readonly<{
+      kind: 'content';
+      text: string;
+      redacted: false;
+    }>
+  | Readonly<{
+      kind: 'pad';
+      padId: string;
+      padRange: string;
+      padHash: string;
+      selectedText: string;
+      selectedHash: string;
+      redacted: true;
+    }>;
+
+function resolveFileRangeEditSource(dlg: Dialog, args: ToolArguments): FileRangeEditSource {
+  const rawPadId = optionalNonEmptyStringArg(args, 'pad_id');
+  const hasPadSource = rawPadId !== undefined;
+  const contentValue = optionalStringArg(args, 'content');
+  const hasContentSource =
+    contentValue !== undefined && !(hasPadSource && contentValue.trim() === '');
+
+  if (hasPadSource && hasContentSource) {
+    throw new Error('Provide either `content` or `pad_id`, not both');
+  }
+  if (!hasPadSource && contentValue === undefined) {
+    throw new Error('Provide `content`, or provide `pad_id` with optional `pad_range`');
+  }
+  if (!hasPadSource && hasOwnArg(args, 'pad_range')) {
+    const padRange = optionalStringArg(args, 'pad_range');
+    if (padRange !== undefined && padRange.trim() !== '') {
+      throw new Error('`pad_range` requires `pad_id`');
+    }
+  }
+
+  if (!hasPadSource) {
+    return { kind: 'content', text: contentValue ?? '', redacted: false };
+  }
+
+  const padId = normalizePadId(rawPadId);
+  const padRange = parseOptionalPadRange(args, 'pad_range');
+  const pad = requireDialogPadById(dlg, padId);
+  const selectedText = selectTextByLineRange(pad.meta.text, padRange);
+  return {
+    kind: 'pad',
+    padId,
+    padRange,
+    padHash: hashPadText(pad.meta.text),
+    selectedText,
+    selectedHash: hashPadText(selectedText),
+    redacted: true,
+  };
+}
+
+export const fileRangeEditTool: FuncTool = {
+  type: 'func',
+  name: 'file_range_edit',
+  description:
+    'Directly write a precise rtws file line range using inline content or ws_mod pad content. Defaults to redacted YAML output; set preview/show_diff explicitly for review-only diff output.',
+  descriptionI18n: {
+    en: 'Directly write a precise rtws file line range using inline content or ws_mod pad content. Defaults to redacted YAML output; set preview/show_diff explicitly for review-only diff output.',
+    zh: '用内联 content 或 ws_mod pad 内容直接写入明确的 rtws 文件行范围。默认只输出 redacted YAML；显式 preview/show_diff 才做预览或 diff 输出。',
+  },
+  parameters: {
+    type: 'object',
+    additionalProperties: false,
+    required: ['path', 'range'],
+    properties: {
+      path: { type: 'string', description: 'rtws-relative file path.' },
+      range: {
+        type: 'string',
+        description: "Target file line range: '10~50' | '300~' | '~20' | '~'.",
+      },
+      content: {
+        type: 'string',
+        description:
+          'Replacement text. Empty string deletes the selected range. Omit when using pad_id.',
+      },
+      pad_id: {
+        type: 'string',
+        description: 'Optional source scratch pad slug: /^[A-Za-z0-9_-]{1,64}$/.',
+      },
+      pad_range: {
+        type: 'string',
+        description: "Optional source pad line range. Defaults to '~' (entire pad).",
+      },
+      preview: {
+        type: 'boolean',
+        description: 'If true, do not write; return the same metadata for the proposed edit.',
+      },
+      show_diff: {
+        type: 'boolean',
+        description:
+          'If true, include a unified diff in the tool result. This may echo new content, including pad content.',
+      },
+    },
+  },
+  argsValidation: 'dominds',
+  call: async (dlg, caller, args): Promise<ToolCallOutput> => {
+    const language = getWorkLanguage();
+    try {
+      const filePath = requireNonEmptyStringArg(args, 'path');
+      const rangeSpec = requireNonEmptyStringArg(args, 'range');
+      const preview = optionalBooleanArg(args, 'preview') ?? false;
+      const showDiff = optionalBooleanArg(args, 'show_diff') ?? false;
+      const source = resolveFileRangeEditSource(dlg, args);
+      const replacementText = source.kind === 'content' ? source.text : source.selectedText;
+
+      if (!hasWriteAccess(caller, filePath)) {
+        return toolFailure(getAccessDeniedMessage('write', filePath, language));
+      }
+
+      const absPath = ensureInsideWorkspace(filePath);
+      const absKey = path.resolve(absPath);
+      const runEdit = async (): Promise<ToolCallOutput> => {
+        let stat: fsSync.Stats;
+        try {
+          stat = fsSync.statSync(absPath);
+        } catch (error: unknown) {
+          if (
+            typeof error === 'object' &&
+            error !== null &&
+            'code' in error &&
+            (error as { code?: unknown }).code === 'ENOENT'
+          ) {
+            return failYaml(
+              [
+                `status: error`,
+                `mode: file_range_edit`,
+                `path: ${yamlQuote(filePath)}`,
+                `error: FILE_NOT_FOUND`,
+                `summary: ${yamlQuote(language === 'zh' ? '文件不存在。' : 'File not found.')}`,
+              ].join('\n'),
+            );
+          }
+          throw error;
+        }
+        if (!stat.isFile()) {
+          return failYaml(
+            [
+              `status: error`,
+              `mode: file_range_edit`,
+              `path: ${yamlQuote(filePath)}`,
+              `error: NOT_A_FILE`,
+              `summary: ${yamlQuote(language === 'zh' ? '路径不是文件。' : 'Path is not a file.')}`,
+            ].join('\n'),
+          );
+        }
+
+        const currentContent = fsSync.readFileSync(absPath, 'utf8');
+        const currentLines = splitFileTextToLines(currentContent);
+        const parsed = parseLineRangeSpec(rangeSpec, rangeTotalLines(currentLines));
+        if (!parsed.ok) {
+          return failYaml(
+            [
+              `status: error`,
+              `mode: file_range_edit`,
+              `path: ${yamlQuote(filePath)}`,
+              `range: ${yamlQuote(rangeSpec)}`,
+              `error: INVALID_RANGE`,
+              `summary: ${yamlQuote(parsed.error)}`,
+            ].join('\n'),
+          );
+        }
+
+        const range = parsed.range;
+        const startIndex0 =
+          range.kind === 'append' ? rangeTotalLines(currentLines) : range.startLine - 1;
+        const deleteCount = range.kind === 'append' ? 0 : range.endLine - range.startLine + 1;
+        const replacementLines = splitPlannedBodyLines(replacementText);
+        const nextLines = [...currentLines];
+        nextLines.splice(startIndex0, deleteCount, ...replacementLines);
+        const nextText = joinLinesForWrite(nextLines);
+        const oldTotalLines = fileLineCount(currentLines);
+        const newTotalLines = fileLineCount(nextLines);
+        const oldTotalBytes = Buffer.byteLength(currentContent, 'utf8');
+        const newTotalBytes = Buffer.byteLength(nextText, 'utf8');
+        const oldFileHash = `sha256:${sha256HexUtf8(currentContent)}`;
+        const newFileHash = `sha256:${sha256HexUtf8(nextText)}`;
+        const action =
+          range.kind === 'append' ? 'append' : replacementLines.length === 0 ? 'delete' : 'replace';
+        const resolvedStart = range.kind === 'append' ? oldTotalLines + 1 : range.startLine;
+        const resolvedEnd =
+          range.kind === 'append'
+            ? resolvedStart + Math.max(0, replacementLines.length - 1)
+            : action === 'delete'
+              ? range.endLine
+              : range.startLine + Math.max(0, replacementLines.length - 1);
+        const normalizedContentEofNewlineAdded =
+          replacementText !== '' && !replacementText.endsWith('\n');
+        const normalizedFileEofNewlineAdded =
+          currentContent !== '' && !currentContent.endsWith('\n');
+
+        if (!preview) {
+          fsSync.writeFileSync(absPath, nextText, 'utf8');
+        }
+
+        const yamlLines = [
+          `status: ok`,
+          `mode: file_range_edit`,
+          `preview: ${preview}`,
+          `path: ${yamlQuote(filePath)}`,
+          `source: ${source.kind}`,
+          `redacted: ${source.redacted && !showDiff}`,
+        ];
+        if (source.kind === 'pad') {
+          yamlLines.push(
+            `pad_id: ${yamlQuote(source.padId)}`,
+            `pad_range: ${yamlQuote(source.padRange)}`,
+            `pad_hash: ${yamlQuote(source.padHash)}`,
+            `pad_selected_lines: ${countPadLines(source.selectedText)}`,
+            `pad_selected_bytes: ${Buffer.byteLength(source.selectedText, 'utf8')}`,
+            `pad_selected_hash: ${yamlQuote(source.selectedHash)}`,
+          );
+        }
+        yamlLines.push(
+          `action: ${action}`,
+          `range:`,
+          `  input: ${yamlQuote(rangeSpec)}`,
+          `  applied:`,
+          `    start: ${resolvedStart}`,
+          `    end: ${resolvedEnd}`,
+          `lines:`,
+          `  old: ${deleteCount}`,
+          `  new: ${replacementLines.length}`,
+          `  delta: ${replacementLines.length - deleteCount}`,
+          `file:`,
+          `  old_total_lines: ${oldTotalLines}`,
+          `  old_total_bytes: ${oldTotalBytes}`,
+          `  old_hash: ${yamlQuote(oldFileHash)}`,
+          `  new_total_lines: ${newTotalLines}`,
+          `  new_total_bytes: ${newTotalBytes}`,
+          `  new_hash: ${yamlQuote(newFileHash)}`,
+          `normalized:`,
+          `  file_eof_has_newline: ${currentContent === '' || currentContent.endsWith('\n')}`,
+          `  content_eof_has_newline: ${replacementText === '' || replacementText.endsWith('\n')}`,
+          `  normalized_file_eof_newline_added: ${normalizedFileEofNewlineAdded}`,
+          `  normalized_content_eof_newline_added: ${normalizedContentEofNewlineAdded}`,
+          `summary: ${yamlQuote(
+            language === 'zh'
+              ? `${preview ? '预览' : '已写入'}：${action} ${filePath}:${rangeSpec}；old=${deleteCount}, new=${replacementLines.length}.`
+              : `${preview ? 'Previewed' : 'Wrote'}: ${action} ${filePath}:${rangeSpec}; old=${deleteCount}, new=${replacementLines.length}.`,
+          )}`,
+        );
+        const yaml = yamlLines.join('\n');
+        if (!showDiff) {
+          return okYaml(yaml);
+        }
+        const unifiedDiff = buildUnifiedSingleHunkDiff(
+          filePath,
+          currentLines,
+          startIndex0,
+          deleteCount,
+          replacementLines,
+        );
+        return toolSuccess(`${formatYamlCodeBlock(yaml)}\n\n\`\`\`diff\n${unifiedDiff}\`\`\``);
+      };
+
+      return await new Promise<ToolCallOutput>((resolve) => {
+        enqueueFileApply(absKey, {
+          priority: Date.now(),
+          tieBreaker: generateHunkId(),
+          run: async () => {
+            try {
+              resolve(await runEdit());
+            } catch (error: unknown) {
+              resolve(
+                failYaml(
+                  [
+                    `status: error`,
+                    `mode: file_range_edit`,
+                    `error: WRITE_FAILED`,
+                    `summary: ${yamlQuote(error instanceof Error ? error.message : String(error))}`,
+                  ].join('\n'),
+                ),
+              );
+            }
+          },
+        });
+        void drainFileApplyQueue(absKey);
+      });
+    } catch (error: unknown) {
+      return failYaml(
+        [
+          `status: error`,
+          `mode: file_range_edit`,
+          `error: INVALID_ARGS`,
+          `summary: ${yamlQuote(error instanceof Error ? error.message : String(error))}`,
+        ].join('\n'),
+      );
+    }
+  },
+};
+
 export const overwriteEntireFileTool: FuncTool = {
   type: 'func',
   name: 'overwrite_entire_file',
@@ -2872,14 +3171,12 @@ async function runPrepareFileRangeEdit(
   rangeSpec: string,
   requestedId: string | undefined,
   inputBody: string,
-  outputOptions?: PrepareRangeEditOutputOptions,
+  outputOptions: PrepareRangeEditOutputOptions,
 ): Promise<TxtToolCallResult> {
   const language = getWorkLanguage();
   const labels =
     language === 'zh'
       ? {
-          invalidFormat:
-            '错误：参数不正确。\n\n期望：调用函数工具 `prepare_file_range_edit({ path, range, existing_hunk_id, content })`。\n（可选字段可省略；若显式传入“未指定/默认”，`existing_hunk_id: ""` 表示生成新 hunk；`content: ""` 可用于删除范围内内容。）',
           filePathRequired: '错误：需要提供文件路径。',
           rangeRequired: '错误：需要提供行号范围（例如 10~20 或 ~）。',
           fileDoesNotExist: (p: string) => `错误：文件 \`${p}\` 不存在。`,
@@ -2892,8 +3189,6 @@ async function runPrepareFileRangeEdit(
           planFailed: (msg: string) => `错误：生成修改规划失败：${msg}`,
         }
       : {
-          invalidFormat:
-            'Error: Invalid args.\n\nExpected: call the function tool `prepare_file_range_edit({ path, range, existing_hunk_id, content })`.\n(Optional fields can be omitted; for explicit unset/default values: `existing_hunk_id: ""` means generate a new hunk, and `content: ""` can delete the range.)',
           filePathRequired: 'Error: File path is required.',
           rangeRequired: 'Error: Line range is required (e.g. 10~20 or ~).',
           fileDoesNotExist: (p: string) => `Error: File \`${p}\` does not exist.`,
@@ -2942,8 +3237,8 @@ async function runPrepareFileRangeEdit(
       if (existing.kind !== 'range') {
         const content =
           language === 'zh'
-            ? `错误：hunk id \`${requestedId}\` 不是由 prepare_file_range_edit 生成的，不能用该工具覆写。`
-            : `Error: hunk id \`${requestedId}\` was not generated by prepare_file_range_edit; cannot overwrite with this tool.`;
+            ? `错误：hunk id \`${requestedId}\` 不是行号范围 hunk，不能用该工具覆写。`
+            : `Error: hunk id \`${requestedId}\` is not a line-range hunk; cannot overwrite with this tool.`;
         return failed(content, [{ type: 'environment_msg', role: 'user', content }]);
       }
     }
@@ -3015,23 +3310,17 @@ async function runPrepareFileRangeEdit(
       newLines,
       unifiedDiff,
       plannedFileDigestSha256: sha256HexUtf8(currentContent),
-      redactApplyOutput: outputOptions === undefined ? false : outputOptions.redactApplyOutput,
+      redactApplyOutput: outputOptions.redactApplyOutput,
     };
     plannedModsById.set(hunkId, planned);
 
     const rangeLabel =
       range.kind === 'append' ? `${range.startLine}~` : `${range.startLine}~${range.endLine}`;
 
-    const defaultReviseHint =
-      language === 'zh'
-        ? `（可选：用同一工具重新规划并覆写该 hunk：\`prepare_file_range_edit({ \"path\": \"${filePath}\", \"range\": \"${rangeSpec}\", \"existing_hunk_id\": \"${hunkId}\", \"content\": \"...\" })\`。）`
-        : `Optional: revise by re-running the same tool to overwrite this hunk: \`prepare_file_range_edit({ \"path\": \"${filePath}\", \"range\": \"${rangeSpec}\", \"existing_hunk_id\": \"${hunkId}\", \"content\": \"...\" })\`.`;
-    const reviseHint =
-      outputOptions === undefined ? defaultReviseHint : outputOptions.reviseHint(hunkId);
-    const modeName =
-      outputOptions === undefined ? 'prepare_file_range_edit' : outputOptions.modeName;
-    const includeDiff = outputOptions === undefined ? true : outputOptions.includeDiff;
-    const extraYamlLines = outputOptions === undefined ? [] : outputOptions.extraYamlLines;
+    const reviseHint = outputOptions.reviseHint(hunkId);
+    const modeName = outputOptions.modeName;
+    const includeDiff = outputOptions.includeDiff;
+    const extraYamlLines = outputOptions.extraYamlLines;
 
     const resolvedStart = range.kind === 'append' ? range.startLine : range.startLine;
     const resolvedEnd =
@@ -3102,42 +3391,6 @@ async function runPrepareFileRangeEdit(
     return failed(content, [{ type: 'environment_msg', role: 'user', content }]);
   }
 }
-
-export const prepareFileRangeEditTool: FuncTool = {
-  type: 'func',
-  name: 'prepare_file_range_edit',
-  description: 'Prepare a single-file edit by line range (does not write).',
-  parameters: {
-    type: 'object',
-    additionalProperties: false,
-    properties: {
-      path: { type: 'string' },
-      range: { type: 'string' },
-      existing_hunk_id: { type: 'string' },
-      content: { type: 'string' },
-    },
-    required: ['path', 'range'],
-  },
-  argsValidation: 'dominds',
-  call: async (_dlg, caller, args): Promise<ToolCallOutput> => {
-    const filePath = requireNonEmptyStringArg(args, 'path');
-    const range = requireNonEmptyStringArg(args, 'range');
-    const existingHunkId = normalizeExistingHunkId(
-      optionalNonEmptyStringArg(args, 'existing_hunk_id'),
-    );
-    const content = optionalStringArg(args, 'content') ?? '';
-
-    const requestedId = existingHunkId;
-    if (requestedId !== undefined && !isValidHunkId(requestedId)) {
-      throw new Error(
-        "Invalid arguments: `existing_hunk_id` must be a hunk id like 'a1b2c3d4' (letters/digits/_/-)",
-      );
-    }
-
-    const res = await runPrepareFileRangeEdit(caller, filePath, range, requestedId, content);
-    return unwrapTxtToolResult(res);
-  },
-};
 
 export const padPrepareFileRangeEditTool: FuncTool = {
   type: 'func',
@@ -3656,8 +3909,8 @@ async function planInsertionCommon(
           `error: ANCHOR_AMBIGUOUS`,
           `summary: ${yamlQuote(
             language === 'zh'
-              ? '锚点出现多次且未指定 occurrence；拒绝规划。请指定 occurrence 或改用 prepare_file_range_edit。'
-              : 'Anchor appears multiple times and occurrence is not specified; refusing to plan. Specify occurrence or use prepare_file_range_edit.',
+              ? '锚点出现多次且未指定 occurrence；拒绝规划。请指定 occurrence 或改用 file_range_edit。'
+              : 'Anchor appears multiple times and occurrence is not specified; refusing to plan. Specify occurrence or use file_range_edit.',
           )}`,
         ].join('\n'),
       );
@@ -3674,8 +3927,8 @@ async function planInsertionCommon(
           `error: ANCHOR_NOT_FOUND`,
           `summary: ${yamlQuote(
             language === 'zh'
-              ? '锚点未找到；请改用 prepare_file_range_edit 或选择更可靠的 anchor。'
-              : 'Anchor not found; use prepare_file_range_edit or choose a different anchor.',
+              ? '锚点未找到；请改用 file_range_edit 或选择更可靠的 anchor。'
+              : 'Anchor not found; use file_range_edit or choose a different anchor.',
           )}`,
         ].join('\n'),
       );
@@ -5287,8 +5540,8 @@ async function runPrepareBlockReplace(
           `error: ANCHOR_NOT_FOUND`,
           `summary: ${yamlQuote(
             language === 'zh'
-              ? '锚点未找到或无法配对。请改用 prepare_file_range_edit（行号范围精确编辑）。'
-              : 'Anchors not found or not paired. Use prepare_file_range_edit (line-range precise edits).',
+              ? '锚点未找到或无法配对。请改用 file_range_edit（行号范围精确编辑）。'
+              : 'Anchors not found or not paired. Use file_range_edit (line-range precise edits).',
           )}`,
         ].join('\n'),
       );
@@ -5307,8 +5560,8 @@ async function runPrepareBlockReplace(
           `error: ANCHOR_AMBIGUOUS`,
           `summary: ${yamlQuote(
             language === 'zh'
-              ? `锚点歧义：存在 ${candidatesCount} 个候选块。请指定 occurrence=<n|last>，或改用 prepare_file_range_edit（行号范围）。`
-              : `Ambiguous anchors: ${candidatesCount} candidate block(s). Specify occurrence=<n|last>, or use prepare_file_range_edit (line range).`,
+              ? `锚点歧义：存在 ${candidatesCount} 个候选块。请指定 occurrence=<n|last>，或改用 file_range_edit（行号范围）。`
+              : `Ambiguous anchors: ${candidatesCount} candidate block(s). Specify occurrence=<n|last>, or use file_range_edit (line range).`,
           )}`,
         ].join('\n'),
       );
@@ -5354,8 +5607,8 @@ async function runPrepareBlockReplace(
           `error: ANCHOR_AMBIGUOUS`,
           `summary: ${yamlQuote(
             language === 'zh'
-              ? '检测到嵌套/歧义锚点，拒绝规划。请先规范 anchors，或改用 prepare_file_range_edit（行号范围）。'
-              : 'Nested/ambiguous anchors detected. Refusing to prepare; normalize anchors or use prepare_file_range_edit (line range).',
+              ? '检测到嵌套/歧义锚点，拒绝规划。请先规范 anchors，或改用 file_range_edit（行号范围）。'
+              : 'Nested/ambiguous anchors detected. Refusing to prepare; normalize anchors or use file_range_edit (line range).',
           )}`,
         ].join('\n'),
       );

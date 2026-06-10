@@ -79,6 +79,7 @@ import { teamMgmtTools } from './team_mgmt';
 import {
   applyFileModificationTool,
   createNewFileTool,
+  fileRangeEditTool,
   fsReadFileTool,
   overwriteEntireFileTool,
   padCopyTool,
@@ -94,7 +95,6 @@ import {
   prepareFileBlockReplaceTool,
   prepareFileInsertAfterTool,
   prepareFileInsertBeforeTool,
-  prepareFileRangeEditTool,
   readFileTool,
   wsModPadReminderOwner,
 } from './txt';
@@ -141,6 +141,7 @@ registerTool(fsReadPictureTool);
 registerTool(writePictureTool);
 registerTool(createNewFileTool);
 registerTool(overwriteEntireFileTool);
+registerTool(fileRangeEditTool);
 registerTool(padWriteTool);
 registerTool(padLoadFileRangeTool);
 registerTool(padEditTool);
@@ -150,7 +151,6 @@ registerTool(padCopyTool);
 registerTool(padMoveTool);
 registerTool(padDeleteTool);
 registerTool(padPrepareFileRangeEditTool);
-registerTool(prepareFileRangeEditTool);
 registerTool(applyFileModificationTool);
 registerTool(prepareFileAppendTool);
 registerTool(prepareFileInsertAfterTool);
@@ -397,6 +397,7 @@ registerToolset('ws_mod', [
   writePictureTool,
   createNewFileTool,
   overwriteEntireFileTool,
+  fileRangeEditTool,
   padWriteTool,
   padLoadFileRangeTool,
   padEditTool,
@@ -410,7 +411,6 @@ registerToolset('ws_mod', [
   prepareFileInsertAfterTool,
   prepareFileInsertBeforeTool,
   prepareFileBlockReplaceTool,
-  prepareFileRangeEditTool,
   applyFileModificationTool,
   ripgrepFilesTool,
   ripgrepSnippetsTool,

@@ -65,12 +65,12 @@ import {
 } from './team_mgmt-mcp-manual';
 import {
   applyFileModificationTool,
+  fileRangeEditTool,
   overwriteEntireFileTool,
   prepareFileAppendTool,
   prepareFileBlockReplaceTool,
   prepareFileInsertAfterTool,
   prepareFileInsertBeforeTool,
-  prepareFileRangeEditTool,
   readFileTool,
 } from './txt';
 
@@ -2405,23 +2405,24 @@ export const teamMgmtPrepareBlockReplaceTool: FuncTool = {
   },
 };
 
-export const teamMgmtPrepareFileRangeEditTool: FuncTool = {
+export const teamMgmtFileRangeEditTool: FuncTool = {
   type: 'func',
-  name: 'team_mgmt_prepare_file_range_edit',
-  description: `Prepare a single-file modification under ${MINDS_DIR}/ (does not write yet).`,
+  name: 'team_mgmt_file_range_edit',
+  description: `Directly write a precise line range under ${MINDS_DIR}/.`,
   descriptionI18n: {
-    en: `Prepare a single-file modification under ${MINDS_DIR}/ (does not write yet).`,
-    zh: `按行号范围规划 ${MINDS_DIR}/ 下的单文件修改（不会立刻写入）。`,
+    en: `Directly write a precise line range under ${MINDS_DIR}/.`,
+    zh: `按精确行号范围直接写入 ${MINDS_DIR}/ 下的文件。`,
   },
   parameters: {
     type: 'object',
     additionalProperties: false,
-    required: ['path', 'range'],
+    required: ['path', 'range', 'content'],
     properties: {
       path: { type: 'string' },
       range: { type: 'string' },
-      existing_hunk_id: { type: 'string' },
       content: { type: 'string' },
+      preview: { type: 'boolean' },
+      show_diff: { type: 'boolean' },
     },
   },
   argsValidation: 'dominds',
@@ -2441,24 +2442,28 @@ export const teamMgmtPrepareFileRangeEditTool: FuncTool = {
       if (!filePath) throw new Error('Path required');
       if (!rangeSpec) throw new Error('Range required (e.g. 10~20 or ~)');
 
-      const existingHunkIdValue = args['existing_hunk_id'];
-      if (existingHunkIdValue !== undefined && typeof existingHunkIdValue !== 'string') {
-        throw new Error('Invalid existing_hunk_id (expected string)');
-      }
-
       const contentValue = args['content'];
-      if (contentValue !== undefined && typeof contentValue !== 'string') {
+      if (typeof contentValue !== 'string') {
         throw new Error('Invalid content (expected string)');
+      }
+      const previewValue = args['preview'];
+      if (previewValue !== undefined && typeof previewValue !== 'boolean') {
+        throw new Error('Invalid preview (expected boolean)');
+      }
+      const showDiffValue = args['show_diff'];
+      if (showDiffValue !== undefined && typeof showDiffValue !== 'boolean') {
+        throw new Error('Invalid show_diff (expected boolean)');
       }
 
       const rel = toMindsRelativePath(filePath);
       ensureMindsScopedPath(rel);
       const proxyCaller = makeMindsOnlyAccessMember(caller);
-      const output = await prepareFileRangeEditTool.call(dlg, proxyCaller, {
+      const output = await fileRangeEditTool.call(dlg, proxyCaller, {
         path: rel,
         range: rangeSpec,
-        ...(existingHunkIdValue ? { existing_hunk_id: existingHunkIdValue } : {}),
-        ...(typeof contentValue === 'string' ? { content: contentValue } : {}),
+        content: contentValue,
+        ...(previewValue !== undefined ? { preview: previewValue } : {}),
+        ...(showDiffValue !== undefined ? { show_diff: showDiffValue } : {}),
       });
       const content = toolCallOutputToString(output);
       return output;
@@ -3887,7 +3892,7 @@ export function renderTeamManual(language: LanguageCode): string {
         '想快速查看有哪些 provider / models / model_param_options：用 `team_mgmt_list_providers({})` 和 `team_mgmt_list_models({ provider_pattern: \"*\", model_pattern: \"*\" })`。',
         '不要把内置成员（例如 `fuxi` / `pangu`）的定义写入 `.minds/team.yaml`（这里只定义 rtws（运行时工作区）自己的成员）：内置成员通常带有特殊权限/目录访问边界；重复定义可能引入冲突、权限误配或行为不一致。',
         '`hidden: true` 表示影子/隐藏成员：不会出现在系统提示的团队目录里，但仍然可以通过 tellask-special 函数诉请。',
-        '修改文件推荐流程：先 `team_mgmt_read_file({ path: \"team.yaml\", range: \"<start~end>\", max_lines: 0, show_linenos: true })` 定位行号；小改动用 `team_mgmt_prepare_file_range_edit({ path: \"team.yaml\", range: \"<line~range>\", existing_hunk_id: \"\", content: \"<new content>\" })` 生成 diff（工具会返回 hunk_id），再用 `team_mgmt_apply_file_modification({ hunk_id: \"<hunk_id>\" })` 显式确认写入。注意：prepare 只生成内存中的预览，apply 之前不会落盘；此时再次读取文件仍只能读到旧内容。若只是修订同一个尚未落盘的预览，可再次调用 `team_mgmt_prepare_file_range_edit({ path: \"team.yaml\", range: \"<line~range>\", existing_hunk_id: \"<hunk_id>\", content: \"<new content>\" })` 覆写；若想基于这次改动继续追加下一笔修改，必须先 apply 当前 hunk，再重新 read/prepare 新的改动。如确实需要整文件覆盖：先 `team_mgmt_read_file({ path: \"team.yaml\", range: \"\", max_lines: 0, show_linenos: true })` 从 YAML header 获取 total_lines/size_bytes，再用 `team_mgmt_overwrite_entire_file({ path: \"team.yaml\", known_old_total_lines: <n>, known_old_total_bytes: <n>, content_format: \"\", content: \"...\" })`。',
+        '修改文件推荐流程：先 `team_mgmt_read_file({ path: \"team.yaml\", range: \"<start~end>\", max_lines: 0, show_linenos: true })` 定位行号；精确行号范围改动直接用 `team_mgmt_file_range_edit({ path: \"team.yaml\", range: \"<line~range>\", content: \"<new content>\" })` 写入。若需要先审阅差异，可加 `preview: true, show_diff: true` 做只读预览，确认后再去掉 `preview` 写入。如确实需要整文件覆盖：先 `team_mgmt_read_file({ path: \"team.yaml\", range: \"\", max_lines: 0, show_linenos: true })` 从 YAML header 获取 total_lines/size_bytes，再用 `team_mgmt_overwrite_entire_file({ path: \"team.yaml\", known_old_total_lines: <n>, known_old_total_bytes: <n>, content_format: \"\", content: \"...\" })`。',
         '部署/组织建议（可选）：如果你不希望出现显在“团队管理者”，可由一个影子/隐藏成员持有 `team_mgmt` 负责维护 `.minds/**`（尤其 `team.yaml`），由人类在需要时触发其执行（例如初始化/调整权限/更新模型）。Dominds 不强制这种组织方式；你也可以让显在成员拥有 `team_mgmt` 或由人类直接维护文件。',
       ]) +
       fmtSubHeader('Schema Snapshot（自动生成，来自当前解析器白名单）') +
@@ -3954,7 +3959,7 @@ export function renderTeamManual(language: LanguageCode): string {
         'Deployment/org suggestion (optional): if you do not want a visible team manager, keep `team_mgmt` only on a hidden/shadow member and have a human trigger it when needed; Dominds does not require this organizational setup.',
         'If a member is assigned team-management responsibility (especially by granting `team_mgmt`), that member’s `persona.*.md` must explicitly require reading the relevant `man({ "toolsetId": "team_mgmt" })` chapters before any team-management action, and maintaining `.minds/**` team mind assets by handbook-standard workflow rather than improvising ad hoc edits.',
         'Role ownership is not write permission: even if `.minds/team/<id>/*` belongs to a member role, editing it still depends on whether the current actor holds `team_mgmt` or equivalent team-asset maintenance authority. “This is your own persona/knowhow/pitfalls” does not mean “you may rewrite it yourself”.',
-        'Recommended editing workflow: use `team_mgmt_read_file({ path: \"team.yaml\", range: \"<start~end>\", max_lines: 0, show_linenos: true })` to find line numbers; for small edits, run `team_mgmt_prepare_file_range_edit({ path: \"team.yaml\", range: \"<line~range>\", existing_hunk_id: \"\", content: \"<new content>\" })` to get a diff (the tool returns hunk_id), then confirm with `team_mgmt_apply_file_modification({ hunk_id: \"<hunk_id>\" })`. Important: prepare only creates an in-memory preview and does not persist anything before apply, so re-reading the file at this point still returns the old content. If you only want to revise the same not-yet-persisted preview, call `team_mgmt_prepare_file_range_edit({ path: \"team.yaml\", range: \"<line~range>\", existing_hunk_id: \"<hunk_id>\", content: \"<new content>\" })` again; if you want a further edit based on this change, you must apply the current hunk first, then read/prepare the next change. If you truly need a full overwrite: first `team_mgmt_read_file({ path: \"team.yaml\", range: \"\", max_lines: 0, show_linenos: true })` and read total_lines/size_bytes from the YAML header, then use `team_mgmt_overwrite_entire_file({ path: \"team.yaml\", known_old_total_lines: <n>, known_old_total_bytes: <n>, content_format: \"\", content: \"...\" })`.',
+        'Recommended editing workflow: use `team_mgmt_read_file({ path: \"team.yaml\", range: \"<start~end>\", max_lines: 0, show_linenos: true })` to find line numbers; for precise line-range edits, run `team_mgmt_file_range_edit({ path: \"team.yaml\", range: \"<line~range>\", content: \"<new content>\" })` directly. If you need to review the diff first, pass `preview: true, show_diff: true`, then remove `preview` to write. If you truly need a full overwrite: first `team_mgmt_read_file({ path: \"team.yaml\", range: \"\", max_lines: 0, show_linenos: true })` and read total_lines/size_bytes from the YAML header, then use `team_mgmt_overwrite_entire_file({ path: \"team.yaml\", known_old_total_lines: <n>, known_old_total_bytes: <n>, content_format: \"\", content: \"...\" })`.',
       ]),
     ) +
     fmtSubHeader('Schema Snapshot (generated from parser allow-list)') +
@@ -5541,7 +5546,7 @@ export const teamMgmtTools: ReadonlyArray<FuncTool> = [
   teamMgmtPrepareInsertAfterTool,
   teamMgmtPrepareInsertBeforeTool,
   teamMgmtPrepareBlockReplaceTool,
-  teamMgmtPrepareFileRangeEditTool,
+  teamMgmtFileRangeEditTool,
   teamMgmtApplyFileModificationTool,
   teamMgmtMkDirTool,
   teamMgmtMoveFileTool,

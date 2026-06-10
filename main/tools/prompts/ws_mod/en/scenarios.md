@@ -19,7 +19,7 @@
 | I want to search and locate     | `ripgrep_snippets`                                       | Locate anchors by keywords                  |
 | I want to create a new file     | `create_new_file`                                        | Allows empty content                        |
 | I want to overwrite entire file | `overwrite_entire_file`                                  | Requires providing old file snapshot        |
-| I want to make small changes    | `prepare_file_range_edit` + `apply_file_modification`    | By line number range                        |
+| I want to make small changes    | `file_range_edit`                                        | Direct precise line range edit              |
 | I want to append to end         | `prepare_file_append` + `apply_file_modification`        | Append to EOF                               |
 | I want to insert after a line   | `prepare_file_insert_after` + `apply_file_modification`  | Insert by anchor                            |
 | I want to insert before a line  | `prepare_file_insert_before` + `apply_file_modification` | Insert by anchor                            |
@@ -31,7 +31,7 @@
 
 ```text
 Call the function tool `prepare_file_append` with:
-{ "path": "notes/prompt.md", "content": "## Tools\n- Use prepare_* + apply_file_modification for incremental edits.\n" }
+{ "path": "notes/prompt.md", "content": "## Tools\n- Use file_range_edit for precise ranges; prepare/apply for uncertain targets.\n" }
 ```
 
 Then in the next round:
@@ -46,7 +46,7 @@ Call the function tool `apply_file_modification` with:
 `content` can be empty string to indicate deletion:
 
 ```text
-Call the function tool `prepare_file_range_edit` with:
+Call the function tool `file_range_edit` with:
 { "path": "README.md", "range": "10~12", "content": "New line 10\nNew line 11\n" }
 ```
 
@@ -103,7 +103,7 @@ Call the function tool `overwrite_entire_file` with:
    - No → Continue
 
 3. **Do you know the specific line numbers?**
-   - Yes → `prepare_file_range_edit` → `apply_file_modification`
+   - Yes → `file_range_edit`
    - No → Continue
 
 4. **Can you locate by anchor?**

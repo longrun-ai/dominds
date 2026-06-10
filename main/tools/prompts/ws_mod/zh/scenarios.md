@@ -19,7 +19,7 @@
 | 我想搜索定位       | `ripgrep_snippets`                                       | 按关键词定位锚点     |
 | 我想创建新文件     | `create_new_file`                                        | 允许空内容           |
 | 我想覆盖整个文件   | `overwrite_entire_file`                                  | 需要提供旧文件快照   |
-| 我想小改几行       | `prepare_file_range_edit` + `apply_file_modification`    | 按行号范围           |
+| 我想小改几行       | `file_range_edit`                                        | 按精确行号范围直接写 |
 | 我想在文件末尾追加 | `prepare_file_append` + `apply_file_modification`        | 追加到 EOF           |
 | 我想在某行后插入   | `prepare_file_insert_after` + `apply_file_modification`  | 按锚点插入           |
 | 我想在某行前插入   | `prepare_file_insert_before` + `apply_file_modification` | 按锚点插入           |
@@ -31,7 +31,7 @@
 
 ```text
 Call the function tool `prepare_file_append` with:
-{ "path": "notes/prompt.md", "content": "## Tools\n- Use prepare_* + apply_file_modification for incremental edits.\n" }
+{ "path": "notes/prompt.md", "content": "## Tools\n- Use file_range_edit for precise ranges; prepare/apply for uncertain targets.\n" }
 ```
 
 然后在下一轮调用：
@@ -46,7 +46,7 @@ Call the function tool `apply_file_modification` with:
 `content` 可为空字符串表示删除：
 
 ```text
-Call the function tool `prepare_file_range_edit` with:
+Call the function tool `file_range_edit` with:
 { "path": "README.md", "range": "10~12", "content": "New line 10\nNew line 11\n" }
 ```
 
@@ -103,7 +103,7 @@ Call the function tool `overwrite_entire_file` with:
    - 否 → 继续
 
 3. **是否知道具体行号？**
-   - 是 → `prepare_file_range_edit` → `apply_file_modification`
+   - 是 → `file_range_edit`
    - 否 → 继续
 
 4. **是否可以用锚点定位？**

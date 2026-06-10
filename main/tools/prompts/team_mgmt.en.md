@@ -27,7 +27,7 @@ The YAML header from `team_mgmt_read_file` includes:
 
 - Read/locate: `team_mgmt_read_file` / `team_mgmt_list_dir` / `team_mgmt_ripgrep_*`
 - Create a new file (empty allowed): `team_mgmt_create_new_file({ path, content })`
-- Small edits (line range): `team_mgmt_prepare_file_range_edit({ path, range, content, existing_hunk_id })`
+- Small edits (line range): `team_mgmt_file_range_edit({ path, range, content })`
 - Append to EOF: `team_mgmt_prepare_file_append({ path, content, create, existing_hunk_id })`
 - Anchor insertion: `team_mgmt_prepare_file_insert_after|team_mgmt_prepare_file_insert_before({ path, anchor, content, occurrence, match, existing_hunk_id })`
 - Block replace between anchors: `team_mgmt_prepare_file_block_replace({ path, start_anchor, end_anchor, content, existing_hunk_id, occurrence, include_anchors, match, require_unique, strict })`
@@ -48,20 +48,11 @@ The YAML header from `team_mgmt_read_file` includes:
 - `fuzz`: file drifted but still safe to apply; the output includes `file_changed_since_preview` and digests for review.
 - `rejected`: cannot locate uniquely or unsafe; re-prepare.
 
-## Two-step template
-
-1. Prepare:
+## Direct line-range edit template
 
 ```text
-Call the function tool `team_mgmt_prepare_file_range_edit` with:
+Call the function tool `team_mgmt_file_range_edit` with:
 { "path": "team.yaml", "range": "10~12", "content": "..." }
-```
-
-2. Apply (must be a separate step):
-
-```text
-Call the function tool `team_mgmt_apply_file_modification` with:
-{ "hunk_id": "<hunk_id>" }
 ```
 
 ## Create an empty file example

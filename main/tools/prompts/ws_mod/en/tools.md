@@ -54,15 +54,15 @@ Create or remove a symlink path.
 - **Removal**: `rm_symlink` removes the link path itself without touching the target, and can remove broken symlinks
 - **Output**: Success and failure outputs are YAML with `mode: create_symlink` / `mode: rm_symlink`
 
-## 3. Incremental Edits (prepare-first)
+## 3. Incremental Edits (direct range edit + prepare/apply)
 
-- `prepare_file_range_edit`: Preview replace/delete/append by line range (append via `N~` where `N=(last_line+1)`)
+- `file_range_edit`: Directly replace/delete/append by precise line range (append via `N~` where `N=(last_line+1)`)
 - `prepare_file_append`: Preview append to EOF (optional `create=true|false`)
 - `prepare_file_insert_after` / `prepare_file_insert_before`: Preview insertion by anchor line (prepare phase strictly handles ambiguity; if anchor appears multiple times, must specify `occurrence`)
 - `prepare_file_block_replace`: Preview block replacement by start/end anchors (configurable `include_anchors` / `require_unique` / `strict` / `occurrence`, etc.)
   - `include_anchors=true` (default): Keep start/end anchor lines, only replace content between them
   - `include_anchors=false`: Replacement range includes start/end anchor lines (will delete anchor lines and replace with new content)
-- `apply_file_modification`: The sole apply, can apply hunks from any `prepare_*` above (range/append/insert/block_replace)
+- `apply_file_modification`: The sole apply, can apply hunks from any `prepare_*` above or `pad_prepare_file_range_edit`
 
 ## 4. YAML Output Contract
 
@@ -71,7 +71,7 @@ Create or remove a symlink path.
 ### 4.1 Plan (Common Fields)
 
 - `status: ok|error`
-- `mode: prepare_file_range_edit|prepare_file_append|prepare_file_insert_after|prepare_file_insert_before|prepare_file_block_replace`
+- `mode: prepare_file_append|prepare_file_insert_after|prepare_file_insert_before|prepare_file_block_replace|pad_prepare_file_range_edit`
 - `path`
 - `hunk_id`, `expires_at_ms`
 - `action: replace|delete|append|insert|block_replace`
@@ -81,10 +81,6 @@ Create or remove a symlink path.
 
 ### 4.2 Plan (Key Fields by Tool/Action)
 
-- `prepare_file_range_edit`:
-  - `range.input` / `range.resolved.start|end`
-  - `lines.old|new|delta`
-  - `evidence.before|range|after`
 - `prepare_file_append`:
   - `file_line_count_before|after`, `appended_line_count`
   - `blankline_style.file_trailing_blank_line_count` / `content_leading_blank_line_count`
@@ -127,4 +123,4 @@ Create or remove a symlink path.
 ## 5. Relationship with .minds/
 
 `.minds/` is the core of team configuration and rtws (runtime workspace) memory, and should usually be operated through the `team_mgmt` toolset's mirrored tools (e.g., `team_mgmt_prepare_file_insert_after`, etc.).
-This toolset's "prepare-first + single apply" mental model remains consistent, but path and permission semantics are determined by the team_mgmt tool wrapper layer (see team_mgmt documentation).
+This toolset's direct range edit + prepare/apply mental model remains consistent, but path and permission semantics are determined by the team_mgmt tool wrapper layer (see team_mgmt documentation).
