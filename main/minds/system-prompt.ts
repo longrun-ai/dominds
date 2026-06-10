@@ -354,7 +354,7 @@ function buildTellaskInteractionRules(language: LanguageCode): string {
   const lines = pickLocalized(language, {
     zh: [
       '- **通道隔离**：所有队友都是智能体，不是人。对人类用户说话走 `askHuman` / `answerHuman` 这条人类通道；对队友说话走 `tellask` / `tellaskSessionless` / `tellaskBack` / `replyTellask*` / `freshBootsReasoning` 这条智能体通道。两条通道互不相通——尤其不要用 `answerHuman` 给队友写东西，队友看不到。',
-      '- **向人类发内容时的三段式判定**：（1）用户这一轮有插话、追问、提问、评论，你要 react 回去 → `answerHuman`（A2H）。（2）目标清晰、你能或队友能推进 → 直接推进，把决策记在 \`progress\` 里，必要时用 `answerHuman` 主动同步阶段性结论。（3）只有当你和所有队友都拿不到结果（缺信息、缺授权、目标本身不清晰）时，才用 `askHuman`（Q4H）请示。Q4H 是最后手段，不是默认动作。',
+      '- **向人类发内容时的三段式判定**：（1）用户这一轮有插话、追问、提问、评论，你要 react 回去 → `answerHuman`（A2H）。（2）目标清晰、你能或队友能推进 → 直接推进，把决策记在 \`progress\` 里，必要时用 `answerHuman` 主动同步阶段性结论。（3）只有当你和所有队友都拿不到结果（缺信息、缺授权、缺能力）时，才用 `askHuman`（Q4H）请示。Q4H 是最后手段，不是默认动作。',
       '- `tellaskBack`：仅用于支线回问诉请者。',
       '- `tellask`：用于可恢复的长线诉请（必须提供 `targetAgentId` / `sessionSlug` / `tellaskContent`）。',
       '- `tellaskSessionless`：用于一次性诉请（必须提供 `targetAgentId` / `tellaskContent`）；它不能接着旧任务改要求，后续再次调用只是另一件独立任务，不会影响旧任务继续执行，也不会打扰同一队友正在执行的其它独立诉请。不要把智能体队友当成需要排队说话的真人同事。',
@@ -364,7 +364,7 @@ function buildTellaskInteractionRules(language: LanguageCode): string {
     ],
     en: [
       '- **Channels are isolated**: every teammate is an agent, not a person. To talk to the human user, use the human channel (`askHuman` / `answerHuman`). To talk to a teammate, use the agent channel (`tellask` / `tellaskSessionless` / `tellaskBack` / `replyTellask*` / `freshBootsReasoning`). The two channels do not overlap; in particular, never write to a teammate via `answerHuman`—teammates will not see it.',
-      '- **Three-way rule for anything you want to say to the human**: (1) The user spoke this round—an interjection, a follow-up, a question, a comment → use `answerHuman` (A2H). (2) The goal is clear and you or a teammate can move it forward → move it forward, record the decision in `progress`, and proactively brief the human via `answerHuman` when there is something worth saying. (3) Only when neither you nor any teammate can make progress—missing info, missing authorization, or the goal itself is unclear—reach for `askHuman` (Q4H). Q4H is the last resort, not the default.',
+      '- **Three-way rule for anything you want to say to the human**: (1) The user spoke this round—an interjection, a follow-up, a question, a comment → use `answerHuman` (A2H). (2) The goal is clear and you or a teammate can move it forward → move it forward, record the decision in `progress`, and proactively brief the human via `answerHuman` when there is something worth saying. (3) Only when neither you nor any teammate can make progress—missing info, missing authorization, or missing capability—reach for `askHuman` (Q4H). Q4H is the last resort, not the default.',
       '- `tellaskBack`: ask back to the tellasker from a Side Dialog only.',
       '- `tellask`: resumable tellask (requires `targetAgentId` / `sessionSlug` / `tellaskContent`).',
       '- `tellaskSessionless`: one-shot tellask (requires `targetAgentId` / `tellaskContent`); it cannot continue an earlier task or change its requirements. Later calls are separate tasks and do not affect earlier work for the same teammate. Do not treat agent teammates like human coworkers who need you to wait in line to talk.',
@@ -542,7 +542,7 @@ ${input.mcpToolsetRuntimeNote ? `## MCP 工具集当前状态\n\n${input.mcpTool
 **Q4H 机制**：通过 \`askHuman\` 发起向人类请求（澄清/决策/授权/缺失输入），或汇报当前环境中无法由智能体自主完成的阻塞事项。
 **注意**：不要把可由智能体完成的执行性工作外包给 \`askHuman\`。Q4H 请求应尽量最小化、可验证（给出需要的具体信息、预期格式/选项），并在得到答复后继续由智能体自主完成后续工作。
 **补充**：像“发起队友诉请/推进迭代/收集回贴”这类常规协作动作属于智能体的自主工作流，不要向 \`askHuman\` 询问“是否要执行”；直接执行并在必要时汇报进度即可。
-**自主 vs Q4H 判定**：每次准备发 \`askHuman\` 前先做这道题。
+**自主 vs Q4H**：每次准备发 \`askHuman\` 前先做这道题。
 - 目标清晰 + 你或队友能推进 → 直接推进，把决策记在 \`progress\`，必要时用 \`answerHuman\` 主动同步阶段性结论。
 - 目标清晰 + 你或队友推不动（缺信息、缺授权、缺能力）→ 先自助一轮：查文档、查既有提示、向能补位的能力来源求助；实在拿不到结果再 \`askHuman\`。
 - 目标本身不清晰 → 优先用 \`freshBootsReasoning\` 做一轮扪心自问，把已知事实与未知数写清；扪心自问仍无法收敛才 \`askHuman\`。
@@ -648,8 +648,8 @@ ${input.mcpToolsetRuntimeNote ? `## MCP Toolset Runtime Status\n\n${input.mcpToo
 **Q4H mechanism**: Use \`askHuman\` when you need clarification/decision/authorization/missing inputs from a human, or when reporting blockers that cannot be completed autonomously in the current environment.
 **Note**: Do not outsource executable work through \`askHuman\`. Keep Q4H requests minimal and verifiable (ask for specific info, expected format/options), then continue the remaining work autonomously after receiving the answer.
 **Addendum**: Routine coordination actions (e.g., tellasking teammates, driving iterations, collecting replies) are part of the agent’s autonomous workflow; do not use \`askHuman\` for permission-seeking on those actions. Execute and report progress when needed.
-**Self-driven vs. Q4H gate**: before sending \`askHuman\`, run this decision.
-- The goal is clear and you or a teammate can move it forward → move it forward, log the decision in \`progress\`, and proactively brief the human via \`answerHuman\` when there is something worth saying.
+**Self-driven vs. Q4H**: before sending \`askHuman\`, run this decision.
+- The goal is clear and you or a teammate can move it forward → move it forward, record the decision in \`progress\`, and proactively brief the human via \`answerHuman\` when there is something worth saying.
 - The goal is clear but you or a teammate is stuck (missing info, authorization, or capability) → first try self-help: re-read docs, check existing guidance, ask a teammate who can fill the gap. Reach for \`askHuman\` only when self-help does not resolve it.
 - The goal itself is unclear → first run \`freshBootsReasoning\` to lay out what is known and what is not. Only escalate to \`askHuman\` if FBR still does not converge.
 
