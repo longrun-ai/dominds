@@ -13,32 +13,25 @@
 
 ## 场景分类
 
-| 场景               | 推荐工具                                                 | 说明                 |
-| ------------------ | -------------------------------------------------------- | -------------------- |
-| 我想查看文件内容   | `read_file`                                              | 带行号装饰，可选范围 |
-| 我想搜索定位       | `ripgrep_snippets`                                       | 按关键词定位锚点     |
-| 我想创建新文件     | `create_new_file`                                        | 允许空内容           |
-| 我想覆盖整个文件   | `overwrite_entire_file`                                  | 需要提供旧文件快照   |
-| 我想小改几行       | `file_range_edit`                                        | 按精确行号范围直接写 |
-| 我想在文件末尾追加 | `prepare_file_append` + `apply_file_modification`        | 追加到 EOF           |
-| 我想在某行后插入   | `prepare_file_insert_after` + `apply_file_modification`  | 按锚点插入           |
-| 我想在某行前插入   | `prepare_file_insert_before` + `apply_file_modification` | 按锚点插入           |
-| 我想替换整块内容   | `prepare_file_block_replace` + `apply_file_modification` | 双锚点块替换         |
+| 场景               | 推荐工具                | 说明                 |
+| ------------------ | ----------------------- | -------------------- |
+| 我想查看文件内容   | `read_file`             | 带行号装饰，可选范围 |
+| 我想搜索定位       | `ripgrep_snippets`      | 按关键词定位锚点     |
+| 我想创建新文件     | `create_new_file`       | 允许空内容           |
+| 我想覆盖整个文件   | `overwrite_entire_file` | 需要提供旧文件快照   |
+| 我想小改几行       | `file_range_edit`       | 按精确行号范围直接写 |
+| 我想在文件末尾追加 | `file_append`           | 追加到 EOF           |
+| 我想在某行后插入   | `file_insert_after`     | 按锚点插入           |
+| 我想在某行前插入   | `file_insert_before`    | 按锚点插入           |
+| 我想替换整块内容   | `file_block_replace`    | 双锚点块替换         |
 
 ## 复制即用示例
 
 ### 末尾追加
 
 ```text
-Call the function tool `prepare_file_append` with:
+Call the function tool `file_append` with:
 { "path": "notes/prompt.md", "content": "## Tools\n- Use file_range_edit for precise ranges; prepare/apply for uncertain targets.\n" }
-```
-
-然后在下一轮调用：
-
-```text
-Call the function tool `apply_file_modification` with:
-{ "hunk_id": "<hunk_id>" }
 ```
 
 ### 行号范围替换
@@ -53,21 +46,21 @@ Call the function tool `file_range_edit` with:
 ### 锚点后插入
 
 ```text
-Call the function tool `prepare_file_insert_after` with:
+Call the function tool `file_insert_after` with:
 { "path": "config.yaml", "anchor": "database:", "content": "  host: localhost\n  port: 5432\n" }
 ```
 
 ### 锚点前插入
 
 ```text
-Call the function tool `prepare_file_insert_before` with:
+Call the function tool `file_insert_before` with:
 { "path": "config.yaml", "anchor": "---", "content": "# Configuration\n" }
 ```
 
 ### 双锚点块替换
 
 ```text
-Call the function tool `prepare_file_block_replace` with:
+Call the function tool `file_block_replace` with:
 { "path": "docs/spec.md", "start_anchor": "## Start", "end_anchor": "## End", "content": "NEW BLOCK LINE 1\nNEW BLOCK LINE 2\n" }
 ```
 
@@ -107,5 +100,5 @@ Call the function tool `overwrite_entire_file` with:
    - 否 → 继续
 
 4. **是否可以用锚点定位？**
-   - 是 → 根据场景选择 `prepare_file_insert_after/before` 或 `prepare_file_block_replace`
+   - 是 → 根据场景选择 `file_insert_after/before` 或 `file_block_replace`
    - 否 → 考虑用 `ripgrep_snippets` 先定位锚点

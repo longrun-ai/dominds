@@ -34,8 +34,8 @@
 第一版 prepare-first + single apply 改善了审阅性，但也让确定行号范围的大文本编辑变得拖沓。因此当前统一为：
 
 - **direct range edit**：精确行号范围用 `file_range_edit` 直接写入；默认 YAML-only/redacted，不回显正文
-- **prepare/apply**：锚点、多 occurrence、候选不唯一或必须先审阅 hunk 的编辑，使用 `prepare_*` → `apply_file_modification`
-- **LLM 落盘语义**：prepare 结果在 apply 前只保存在内存中，不会改动文件；此时再次 `read_file` 看到的仍是旧内容。若只是修订同一个未落盘预览，可用同一 prepare 工具加 `existing_hunk_id` 覆写；若想继续下一笔修改，必须先 apply 当前 hunk，再重新 read/prepare
+- **direct single-block edit**：末尾追加、锚点插入、锚点块替换分别使用 `file_append`、`file_insert_after` / `file_insert_before`、`file_block_replace` 直接写入
+- **预览是显示选项**：需要审阅时显式 `preview/show_diff`；否则 direct 工具直接写入
 - **移除旧工具**：`append_file` / `insert_after` / `insert_before` / `replace_block` / `apply_block_replace` 已彻底删除（无 alias、无兼容层）
 
 ## 2. 目标与非目标
@@ -43,15 +43,14 @@
 ### 2.1 目标
 
 - 把确定行号范围编辑统一为：`file_range_edit`
-- 把不确定目标编辑统一为：`prepare_*` → `apply_file_modification`
-- 提供可复核输出：direct range edit 默认 YAML-only；prepare/apply 输出 YAML summary + evidence（plan）/apply_evidence（apply） + unified diff
-- 明确并发/时序约束：避免在同一条消息中把 prepare 与 apply 混在一起；同一文件写入在进程内串行化
-- 给出稳定的失败模式与下一步建议（尤其是锚点歧义与 apply rejected）
+- 把单块追加/插入/块替换统一为 direct `file_*` 工具
+- 提供可复核输出：direct 工具默认 YAML-only；显式 `preview/show_diff` 才输出 diff
+- 明确并发/时序约束：同一文件写入在进程内串行化
+- 给出稳定的失败模式与下一步建议（尤其是锚点歧义）
 
 ### 2.2 非目标
 
 - 不做复杂 patch DSL（仍以 unified diff 为主）
-- 不保证跨进程/重启的 hunk 持久化（当前 hunk registry 为进程内内存 + TTL=1h）
 - 不承诺"自动格式化/自动空行风格对齐"；只做可观测（style_warning）与最小必要规范化（EOF 换行）
 
 ## 3. 关键并发约束与顺序建议
@@ -60,33 +59,13 @@
 
 同一条消息中的多个工具调用会并行执行，互相不可见输出/写入。因此：
 
-- **prepare → apply 必须分两条消息**（否则 apply 可能"看不到"本轮刚生成的 hunk）
-- 精确行号范围且不需要 hunk 预览时，直接用 `file_range_edit`
+- 精确行号范围用 `file_range_edit`；追加/锚点插入/块替换用对应 direct `file_*` 工具
+- 需要审阅时显式 `preview/show_diff`
 
 ### 3.2 写入并发安全（当前实现）
 
-- 同一文件的多个 `apply_file_modification` 会在进程内按队列串行化（按 `createdAtMs`、再以 `hunkId` 作为 tie-breaker）
-- 同一文件的多个 `file_range_edit` 也会在进程内串行化
+- 同一文件的多个 direct 写入会在进程内串行化
 - 不同文件的写入可并行，不共享锁
-
-## 4. hunk registry 与生命周期
-
-### 4.1 生命周期与所有权
-
-- 每个 plan hunk 带 TTL（输出 `expires_at_ms`）
-- hunk 存储于进程内内存；进程重启后丢失
-- `apply_file_modification` 会检查：
-  - hunk 是否存在且未过期
-  - hunk 是否由当前成员规划（`WRONG_OWNER` 拒绝）
-  - 当前成员是否有写权限（`hasWriteAccess`）
-
-### 4.2 "覆写同一规划"的规则（重要）
-
-支持"带 `existing_hunk_id` 重新 plan 覆写"的工具与规则：
-
-- `prepare_file_append` / `prepare_file_insert_after` / `prepare_file_insert_before`：同样支持 `existing_hunk_id` 覆写同模式预览
-- `prepare_file_block_replace`：支持 `existing_hunk_id` 覆写同模式预览（同 owner / 同 kind；跨模式拒绝）
-- 所有 plan 工具都**不允许自定义新 id**：只能通过"省略/清空 `existing_hunk_id`"来生成新规划；只有当你想覆写既有规划时才传入 `existing_hunk_id`
 
 > 可选字段默认可省略。  
 > 若你想显式表达"未指定/使用默认"，可用以下哨兵值：

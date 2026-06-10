@@ -85,8 +85,8 @@
 
 - 原因：使用 `overwrite_entire_file` 时，正文疑似 diff/patch 格式但未声明
 - 解决：
-  - 方案 1：改用 `prepare_*` + `apply_file_modification`
-  - 方案 2：显式声明 `content_format: "diff"` 或 `content_format: "patch"`
+  - 方案 1：若确实要保存 diff/patch 字面量，显式声明 `content_format: "diff"` 或 `content_format: "patch"`
+  - 方案 2：若只是想审阅改动，请在 direct 工具上使用 `preview: true, show_diff: true`
 
 **STATS_MISMATCH**
 

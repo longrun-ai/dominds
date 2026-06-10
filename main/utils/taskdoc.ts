@@ -419,7 +419,7 @@ ${effectiveDoc}
 
 ${footerLine}
 
-	指令：不要对 \`*.tsk/\` 下的任何路径调用通用文件工具（\`read_file\`, \`overwrite_entire_file\`, \`file_range_edit\`, \`apply_file_modification\`, \`list_dir\`, \`rm_file\`, \`rm_dir\`）。差遣牒状态只能通过显式的差遣牒操作进行管理。
+	指令：不要对 \`*.tsk/\` 下的任何路径调用通用文件工具（\`read_file\`, \`overwrite_entire_file\`, \`file_range_edit\`, \`file_append\`, \`file_insert_after\`, \`file_insert_before\`, \`file_block_replace\`, \`list_dir\`, \`rm_file\`, \`rm_dir\`）。差遣牒状态只能通过显式的差遣牒操作进行管理。
 
 提示：以上“封装/禁用通用文件工具”的规则由系统强制执行，通常无需在差遣牒的 \`constraints\` 里重复书写（除非你要强调给人类读者）。`,
       };
@@ -443,7 +443,7 @@ ${effectiveDoc}
 
 ${footerLine}
 
-	Directive: Do not invoke any general file tools (\`read_file\`, \`overwrite_entire_file\`, \`file_range_edit\`, \`apply_file_modification\`, \`list_dir\`, \`rm_file\`, \`rm_dir\`) on any path under \`*.tsk/\`. Task package state is managed only through explicit Taskdoc actions.
+	Directive: Do not invoke any general file tools (\`read_file\`, \`overwrite_entire_file\`, \`file_range_edit\`, \`file_append\`, \`file_insert_after\`, \`file_insert_before\`, \`file_block_replace\`, \`list_dir\`, \`rm_file\`, \`rm_dir\`) on any path under \`*.tsk/\`. Task package state is managed only through explicit Taskdoc actions.
 
 Note: This encapsulation rule is system-enforced and usually does not need to be duplicated in Taskdoc \`constraints\` (unless you want to emphasize it for human readers).`,
     };

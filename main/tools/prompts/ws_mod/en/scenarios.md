@@ -13,32 +13,25 @@
 
 ## Scenario Quick Reference
 
-| Scenario                        | Recommended Tools                                        | Description                                 |
-| ------------------------------- | -------------------------------------------------------- | ------------------------------------------- |
-| I want to view file content     | `read_file`                                              | With line number decoration, optional range |
-| I want to search and locate     | `ripgrep_snippets`                                       | Locate anchors by keywords                  |
-| I want to create a new file     | `create_new_file`                                        | Allows empty content                        |
-| I want to overwrite entire file | `overwrite_entire_file`                                  | Requires providing old file snapshot        |
-| I want to make small changes    | `file_range_edit`                                        | Direct precise line range edit              |
-| I want to append to end         | `prepare_file_append` + `apply_file_modification`        | Append to EOF                               |
-| I want to insert after a line   | `prepare_file_insert_after` + `apply_file_modification`  | Insert by anchor                            |
-| I want to insert before a line  | `prepare_file_insert_before` + `apply_file_modification` | Insert by anchor                            |
-| I want to replace a block       | `prepare_file_block_replace` + `apply_file_modification` | Double-anchor block replacement             |
+| Scenario                        | Recommended Tools       | Description                                 |
+| ------------------------------- | ----------------------- | ------------------------------------------- |
+| I want to view file content     | `read_file`             | With line number decoration, optional range |
+| I want to search and locate     | `ripgrep_snippets`      | Locate anchors by keywords                  |
+| I want to create a new file     | `create_new_file`       | Allows empty content                        |
+| I want to overwrite entire file | `overwrite_entire_file` | Requires providing old file snapshot        |
+| I want to make small changes    | `file_range_edit`       | Direct precise line range edit              |
+| I want to append to end         | `file_append`           | Append to EOF                               |
+| I want to insert after a line   | `file_insert_after`     | Insert by anchor                            |
+| I want to insert before a line  | `file_insert_before`    | Insert by anchor                            |
+| I want to replace a block       | `file_block_replace`    | Double-anchor block replacement             |
 
 ## Copy-Paste Ready Examples
 
 ### Append to End
 
 ```text
-Call the function tool `prepare_file_append` with:
+Call the function tool `file_append` with:
 { "path": "notes/prompt.md", "content": "## Tools\n- Use file_range_edit for precise ranges; prepare/apply for uncertain targets.\n" }
-```
-
-Then in the next round:
-
-```text
-Call the function tool `apply_file_modification` with:
-{ "hunk_id": "<hunk_id>" }
 ```
 
 ### Line Range Replace
@@ -53,21 +46,21 @@ Call the function tool `file_range_edit` with:
 ### Insert After Anchor
 
 ```text
-Call the function tool `prepare_file_insert_after` with:
+Call the function tool `file_insert_after` with:
 { "path": "config.yaml", "anchor": "database:", "content": "  host: localhost\n  port: 5432\n" }
 ```
 
 ### Insert Before Anchor
 
 ```text
-Call the function tool `prepare_file_insert_before` with:
+Call the function tool `file_insert_before` with:
 { "path": "config.yaml", "anchor": "---", "content": "# Configuration\n" }
 ```
 
 ### Double-Anchor Block Replace
 
 ```text
-Call the function tool `prepare_file_block_replace` with:
+Call the function tool `file_block_replace` with:
 { "path": "docs/spec.md", "start_anchor": "## Start", "end_anchor": "## End", "content": "NEW BLOCK LINE 1\nNEW BLOCK LINE 2\n" }
 ```
 
@@ -107,5 +100,5 @@ Call the function tool `overwrite_entire_file` with:
    - No → Continue
 
 4. **Can you locate by anchor?**
-   - Yes → Choose `prepare_file_insert_after/before` or `prepare_file_block_replace` based on scenario
+   - Yes → Choose `file_insert_after/before` or `file_block_replace` based on scenario
    - No → Consider using `ripgrep_snippets` to locate anchors first

@@ -298,7 +298,7 @@ async function main(): Promise<void> {
       provider: 'openai',
       model: 'gpt-4',
       toolsets: ['ws_read', 'personal_memory'],
-      tools: ['apply_file_modification', 'list_dir'], // list_dir should be duplicate from ws_read toolset
+      tools: ['file_append', 'list_dir'], // list_dir should be duplicate from ws_read toolset
     });
 
     const memberTools = testMember.listTools();

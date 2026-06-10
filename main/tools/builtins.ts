@@ -77,8 +77,11 @@ import {
 } from './skills';
 import { teamMgmtTools } from './team_mgmt';
 import {
-  applyFileModificationTool,
   createNewFileTool,
+  fileAppendTool,
+  fileBlockReplaceTool,
+  fileInsertAfterTool,
+  fileInsertBeforeTool,
   fileRangeEditTool,
   fsReadFileTool,
   overwriteEntireFileTool,
@@ -89,12 +92,7 @@ import {
   padInsertTool,
   padLoadFileRangeTool,
   padMoveTool,
-  padPrepareFileRangeEditTool,
   padWriteTool,
-  prepareFileAppendTool,
-  prepareFileBlockReplaceTool,
-  prepareFileInsertAfterTool,
-  prepareFileInsertBeforeTool,
   readFileTool,
   wsModPadReminderOwner,
 } from './txt';
@@ -150,12 +148,10 @@ registerTool(padDeleteRangeTool);
 registerTool(padCopyTool);
 registerTool(padMoveTool);
 registerTool(padDeleteTool);
-registerTool(padPrepareFileRangeEditTool);
-registerTool(applyFileModificationTool);
-registerTool(prepareFileAppendTool);
-registerTool(prepareFileInsertAfterTool);
-registerTool(prepareFileInsertBeforeTool);
-registerTool(prepareFileBlockReplaceTool);
+registerTool(fileAppendTool);
+registerTool(fileInsertAfterTool);
+registerTool(fileInsertBeforeTool);
+registerTool(fileBlockReplaceTool);
 
 // Ripgrep tools
 registerTool(ripgrepFilesTool);
@@ -406,12 +402,10 @@ registerToolset('ws_mod', [
   padCopyTool,
   padMoveTool,
   padDeleteTool,
-  padPrepareFileRangeEditTool,
-  prepareFileAppendTool,
-  prepareFileInsertAfterTool,
-  prepareFileInsertBeforeTool,
-  prepareFileBlockReplaceTool,
-  applyFileModificationTool,
+  fileAppendTool,
+  fileInsertAfterTool,
+  fileInsertBeforeTool,
+  fileBlockReplaceTool,
   ripgrepFilesTool,
   ripgrepSnippetsTool,
   ripgrepCountTool,

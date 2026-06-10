@@ -15,7 +15,7 @@ import {
 } from '../../main/tool';
 import { deleteReminderTool } from '../../main/tools/ctrl';
 import {
-  applyFileModificationTool,
+  fileRangeEditTool,
   padCopyTool,
   padDeleteRangeTool,
   padDeleteTool,
@@ -23,7 +23,6 @@ import {
   padInsertTool,
   padLoadFileRangeTool,
   padMoveTool,
-  padPrepareFileRangeEditTool,
   padWriteTool,
   wsModPadReminderOwner,
 } from '../../main/tools/txt';
@@ -221,59 +220,39 @@ async function main(): Promise<void> {
     await padDeleteTool.call(dlg, caller, { pad_id: 'whole_file' });
 
     await fs.writeFile(path.join(tmpRoot, 'target.txt'), 'old1\nold2\n', 'utf8');
-    const padPrepareOutput = (
-      await padPrepareFileRangeEditTool.call(dlg, caller, {
+    const padRangeEditOutput = (
+      await fileRangeEditTool.call(dlg, caller, {
         pad_id: 'draft2',
         pad_range: '1~1',
         path: 'target.txt',
         range: '2~2',
       })
     ).content;
-    assert.ok(padPrepareOutput.includes('mode: pad_prepare_file_range_edit'));
+    assert.ok(padRangeEditOutput.includes('mode: file_range_edit'));
+    assert.ok(padRangeEditOutput.includes('source: pad'));
     assert.ok(
-      !padPrepareOutput.includes('changed'),
-      'pad_prepare_file_range_edit result must not echo selected pad body',
+      !padRangeEditOutput.includes('changed'),
+      'pad-sourced file_range_edit result must not echo selected pad body',
     );
     assert.ok(
-      !padPrepareOutput.includes('```diff'),
-      'pad_prepare_file_range_edit result must not echo a diff containing pad body',
+      !padRangeEditOutput.includes('```diff'),
+      'pad-sourced file_range_edit result must not echo a diff containing pad body',
     );
-    const hunkIdMatch = padPrepareOutput.match(/hunk_id: '([^']+)'/);
-    const hunkId = hunkIdMatch === null ? undefined : hunkIdMatch[1];
-    assert.equal(typeof hunkId, 'string', 'pad_prepare_file_range_edit should return hunk_id');
-    const applyOutput = (await applyFileModificationTool.call(dlg, caller, { hunk_id: hunkId }))
-      .content;
-    assert.ok(applyOutput.includes('status: ok'));
-    assert.ok(!applyOutput.includes('changed'), 'apply_file_modification should not echo pad body');
     assert.equal(await fs.readFile(path.join(tmpRoot, 'target.txt'), 'utf8'), 'old1\nchanged\n');
 
     await fs.writeFile(path.join(tmpRoot, 'target-append.txt'), 'head1\nhead2\n', 'utf8');
-    const appendPrepareOutput = (
-      await padPrepareFileRangeEditTool.call(dlg, caller, {
+    const appendRangeEditOutput = (
+      await fileRangeEditTool.call(dlg, caller, {
         pad_id: 'draft2',
         pad_range: '1~1',
         path: 'target-append.txt',
         range: '3~',
       })
     ).content;
+    assert.ok(appendRangeEditOutput.includes('mode: file_range_edit'));
     assert.ok(
-      !appendPrepareOutput.includes('changed'),
-      'pad_prepare_file_range_edit append result must not echo selected pad body',
-    );
-    const appendHunkIdMatch = appendPrepareOutput.match(/hunk_id: '([^']+)'/);
-    const appendHunkId = appendHunkIdMatch === null ? undefined : appendHunkIdMatch[1];
-    assert.equal(
-      typeof appendHunkId,
-      'string',
-      'pad_prepare_file_range_edit append should return hunk_id',
-    );
-    const appendApplyOutput = (
-      await applyFileModificationTool.call(dlg, caller, { hunk_id: appendHunkId })
-    ).content;
-    assert.ok(appendApplyOutput.includes('status: ok'));
-    assert.ok(
-      !appendApplyOutput.includes('changed'),
-      'apply_file_modification append should not echo pad body',
+      !appendRangeEditOutput.includes('changed'),
+      'pad-sourced file_range_edit append result must not echo selected pad body',
     );
     assert.equal(
       await fs.readFile(path.join(tmpRoot, 'target-append.txt'), 'utf8'),

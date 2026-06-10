@@ -85,8 +85,8 @@
 
 - Cause: Using `overwrite_entire_file`, body looks like diff/patch format but not declared
 - Solution:
-  - Option 1: Use `prepare_*` + `apply_file_modification`
-  - Option 2: Explicitly declare `content_format: "diff"` or `content_format: "patch"`
+  - Option 1: If you really want to store diff/patch text literally, declare `content_format: "diff"` or `content_format: "patch"`
+  - Option 2: If you only want to review an edit, use `preview: true, show_diff: true` on the direct tool
 
 **STATS_MISMATCH**
 

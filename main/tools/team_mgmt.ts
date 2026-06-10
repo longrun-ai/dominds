@@ -64,13 +64,12 @@ import {
   renderMcpToolsetSetupGuideSection,
 } from './team_mgmt-mcp-manual';
 import {
-  applyFileModificationTool,
+  fileAppendTool,
+  fileBlockReplaceTool,
+  fileInsertAfterTool,
+  fileInsertBeforeTool,
   fileRangeEditTool,
   overwriteEntireFileTool,
-  prepareFileAppendTool,
-  prepareFileBlockReplaceTool,
-  prepareFileInsertAfterTool,
-  prepareFileInsertBeforeTool,
   readFileTool,
 } from './txt';
 
@@ -2052,23 +2051,26 @@ export const teamMgmtOverwriteEntireFileTool: FuncTool = {
   },
 };
 
-export const teamMgmtPrepareFileAppendTool: FuncTool = {
+export const teamMgmtFileAppendTool: FuncTool = {
   type: 'func',
-  name: 'team_mgmt_prepare_file_append',
-  description: `Prepare an append-to-EOF modification under ${MINDS_DIR}/ (does not write yet).`,
+  name: 'team_mgmt_file_append',
+  description: `Append to a file under ${MINDS_DIR}/ directly.`,
   descriptionI18n: {
-    en: `Prepare an append-to-EOF modification under ${MINDS_DIR}/ (does not write yet).`,
-    zh: `规划 ${MINDS_DIR}/ 下“末尾追加”修改（不会立刻写入）。`,
+    en: `Append to a file under ${MINDS_DIR}/ directly.`,
+    zh: `直接向 ${MINDS_DIR}/ 下文件末尾追加内容。`,
   },
   parameters: {
     type: 'object',
     additionalProperties: false,
-    required: ['path', 'content'],
+    required: ['path'],
     properties: {
       path: { type: 'string' },
       create: { type: 'boolean' },
-      existing_hunk_id: { type: 'string' },
       content: { type: 'string' },
+      pad_id: { type: 'string' },
+      pad_range: { type: 'string' },
+      preview: { type: 'boolean' },
+      show_diff: { type: 'boolean' },
     },
   },
   argsValidation: 'dominds',
@@ -2094,26 +2096,43 @@ export const teamMgmtPrepareFileAppendTool: FuncTool = {
       if (createValue !== undefined && typeof createValue !== 'boolean') {
         throw new Error('Invalid create (expected boolean)');
       }
-      const existingHunkIdValue = args['existing_hunk_id'];
-      const existingHunkId =
-        existingHunkIdValue === undefined
-          ? undefined
-          : typeof existingHunkIdValue === 'string'
-            ? existingHunkIdValue
-            : undefined;
-      if (existingHunkIdValue !== undefined && typeof existingHunkIdValue !== 'string') {
-        throw new Error('Invalid existing_hunk_id (expected string)');
-      }
       const contentValue = args['content'];
-      if (typeof contentValue !== 'string') throw new Error('Invalid content (expected string)');
+      if (contentValue !== undefined && typeof contentValue !== 'string') {
+        throw new Error('Invalid content (expected string)');
+      }
+      const padIdValue = args['pad_id'];
+      if (padIdValue !== undefined && typeof padIdValue !== 'string') {
+        throw new Error('Invalid pad_id (expected string)');
+      }
+      const padRangeValue = args['pad_range'];
+      if (padRangeValue !== undefined && typeof padRangeValue !== 'string') {
+        throw new Error('Invalid pad_range (expected string)');
+      }
+      const previewValue = args['preview'];
+      if (previewValue !== undefined && typeof previewValue !== 'boolean') {
+        throw new Error('Invalid preview (expected boolean)');
+      }
+      const showDiffValue = args['show_diff'];
+      if (showDiffValue !== undefined && typeof showDiffValue !== 'boolean') {
+        throw new Error('Invalid show_diff (expected boolean)');
+      }
 
-      const output = await prepareFileAppendTool.call(dlg, proxyCaller, {
+      const output = await fileAppendTool.call(dlg, proxyCaller, {
         path: rel,
         ...(create !== undefined ? { create } : {}),
-        ...(existingHunkId ? { existing_hunk_id: existingHunkId } : {}),
-        content: contentValue,
+        ...(contentValue !== undefined ? { content: contentValue } : {}),
+        ...(padIdValue !== undefined ? { pad_id: padIdValue } : {}),
+        ...(padRangeValue !== undefined ? { pad_range: padRangeValue } : {}),
+        ...(previewValue !== undefined ? { preview: previewValue } : {}),
+        ...(showDiffValue !== undefined ? { show_diff: showDiffValue } : {}),
       });
       const content = toolCallOutputToString(output);
+      if (isSuccessfulYamlToolResult(content, 'file_append')) {
+        await refreshDerivedStateAfterTeamMgmtWrite({
+          relPaths: [rel],
+          trigger: 'team_mgmt_file_append',
+        });
+      }
       return output;
     } catch (err: unknown) {
       const msg =
@@ -2125,25 +2144,28 @@ export const teamMgmtPrepareFileAppendTool: FuncTool = {
   },
 };
 
-export const teamMgmtPrepareInsertAfterTool: FuncTool = {
+export const teamMgmtFileInsertAfterTool: FuncTool = {
   type: 'func',
-  name: 'team_mgmt_prepare_file_insert_after',
-  description: `Prepare an insertion after an anchor under ${MINDS_DIR}/ (does not write yet).`,
+  name: 'team_mgmt_file_insert_after',
+  description: `Insert after an anchor under ${MINDS_DIR}/ directly.`,
   descriptionI18n: {
-    en: `Prepare an insertion after an anchor under ${MINDS_DIR}/ (does not write yet).`,
-    zh: `按锚点规划 ${MINDS_DIR}/ 下“在其后插入”修改（不会立刻写入）。`,
+    en: `Insert after an anchor under ${MINDS_DIR}/ directly.`,
+    zh: `按锚点直接在 ${MINDS_DIR}/ 下文件中后插内容。`,
   },
   parameters: {
     type: 'object',
     additionalProperties: false,
-    required: ['path', 'anchor', 'content'],
+    required: ['path', 'anchor'],
     properties: {
       path: { type: 'string' },
       anchor: { type: 'string' },
       occurrence: { type: ['integer', 'string'] },
       match: { type: 'string' },
-      existing_hunk_id: { type: 'string' },
       content: { type: 'string' },
+      pad_id: { type: 'string' },
+      pad_range: { type: 'string' },
+      preview: { type: 'boolean' },
+      show_diff: { type: 'boolean' },
     },
   },
   argsValidation: 'dominds',
@@ -2184,23 +2206,45 @@ export const teamMgmtPrepareInsertAfterTool: FuncTool = {
         throw new Error("Invalid match (expected 'contains'|'equals')");
       }
 
-      const existingHunkIdValue = args['existing_hunk_id'];
-      if (existingHunkIdValue !== undefined && typeof existingHunkIdValue !== 'string') {
-        throw new Error('Invalid existing_hunk_id (expected string)');
+      const contentValue = args['content'];
+      if (contentValue !== undefined && typeof contentValue !== 'string') {
+        throw new Error('Invalid content (expected string)');
+      }
+      const padIdValue = args['pad_id'];
+      if (padIdValue !== undefined && typeof padIdValue !== 'string') {
+        throw new Error('Invalid pad_id (expected string)');
+      }
+      const padRangeValue = args['pad_range'];
+      if (padRangeValue !== undefined && typeof padRangeValue !== 'string') {
+        throw new Error('Invalid pad_range (expected string)');
+      }
+      const previewValue = args['preview'];
+      if (previewValue !== undefined && typeof previewValue !== 'boolean') {
+        throw new Error('Invalid preview (expected boolean)');
+      }
+      const showDiffValue = args['show_diff'];
+      if (showDiffValue !== undefined && typeof showDiffValue !== 'boolean') {
+        throw new Error('Invalid show_diff (expected boolean)');
       }
 
-      const contentValue = args['content'];
-      if (typeof contentValue !== 'string') throw new Error('Invalid content (expected string)');
-
-      const output = await prepareFileInsertAfterTool.call(dlg, proxyCaller, {
+      const output = await fileInsertAfterTool.call(dlg, proxyCaller, {
         path: rel,
         anchor,
         ...(occurrenceValue !== undefined ? { occurrence: occurrenceValue } : {}),
         ...(matchValue !== undefined ? { match: matchValue } : {}),
-        ...(existingHunkIdValue ? { existing_hunk_id: existingHunkIdValue } : {}),
-        content: contentValue,
+        ...(contentValue !== undefined ? { content: contentValue } : {}),
+        ...(padIdValue !== undefined ? { pad_id: padIdValue } : {}),
+        ...(padRangeValue !== undefined ? { pad_range: padRangeValue } : {}),
+        ...(previewValue !== undefined ? { preview: previewValue } : {}),
+        ...(showDiffValue !== undefined ? { show_diff: showDiffValue } : {}),
       });
       const content = toolCallOutputToString(output);
+      if (isSuccessfulYamlToolResult(content, 'file_insert_after')) {
+        await refreshDerivedStateAfterTeamMgmtWrite({
+          relPaths: [rel],
+          trigger: 'team_mgmt_file_insert_after',
+        });
+      }
       return output;
     } catch (err: unknown) {
       const msg =
@@ -2212,25 +2256,28 @@ export const teamMgmtPrepareInsertAfterTool: FuncTool = {
   },
 };
 
-export const teamMgmtPrepareInsertBeforeTool: FuncTool = {
+export const teamMgmtFileInsertBeforeTool: FuncTool = {
   type: 'func',
-  name: 'team_mgmt_prepare_file_insert_before',
-  description: `Prepare an insertion before an anchor under ${MINDS_DIR}/ (does not write yet).`,
+  name: 'team_mgmt_file_insert_before',
+  description: `Insert before an anchor under ${MINDS_DIR}/ directly.`,
   descriptionI18n: {
-    en: `Prepare an insertion before an anchor under ${MINDS_DIR}/ (does not write yet).`,
-    zh: `按锚点规划 ${MINDS_DIR}/ 下“在其前插入”修改（不会立刻写入）。`,
+    en: `Insert before an anchor under ${MINDS_DIR}/ directly.`,
+    zh: `按锚点直接在 ${MINDS_DIR}/ 下文件中前插内容。`,
   },
   parameters: {
     type: 'object',
     additionalProperties: false,
-    required: ['path', 'anchor', 'content'],
+    required: ['path', 'anchor'],
     properties: {
       path: { type: 'string' },
       anchor: { type: 'string' },
       occurrence: { type: ['integer', 'string'] },
       match: { type: 'string' },
-      existing_hunk_id: { type: 'string' },
       content: { type: 'string' },
+      pad_id: { type: 'string' },
+      pad_range: { type: 'string' },
+      preview: { type: 'boolean' },
+      show_diff: { type: 'boolean' },
     },
   },
   argsValidation: 'dominds',
@@ -2271,23 +2318,45 @@ export const teamMgmtPrepareInsertBeforeTool: FuncTool = {
         throw new Error("Invalid match (expected 'contains'|'equals')");
       }
 
-      const existingHunkIdValue = args['existing_hunk_id'];
-      if (existingHunkIdValue !== undefined && typeof existingHunkIdValue !== 'string') {
-        throw new Error('Invalid existing_hunk_id (expected string)');
+      const contentValue = args['content'];
+      if (contentValue !== undefined && typeof contentValue !== 'string') {
+        throw new Error('Invalid content (expected string)');
+      }
+      const padIdValue = args['pad_id'];
+      if (padIdValue !== undefined && typeof padIdValue !== 'string') {
+        throw new Error('Invalid pad_id (expected string)');
+      }
+      const padRangeValue = args['pad_range'];
+      if (padRangeValue !== undefined && typeof padRangeValue !== 'string') {
+        throw new Error('Invalid pad_range (expected string)');
+      }
+      const previewValue = args['preview'];
+      if (previewValue !== undefined && typeof previewValue !== 'boolean') {
+        throw new Error('Invalid preview (expected boolean)');
+      }
+      const showDiffValue = args['show_diff'];
+      if (showDiffValue !== undefined && typeof showDiffValue !== 'boolean') {
+        throw new Error('Invalid show_diff (expected boolean)');
       }
 
-      const contentValue = args['content'];
-      if (typeof contentValue !== 'string') throw new Error('Invalid content (expected string)');
-
-      const output = await prepareFileInsertBeforeTool.call(dlg, proxyCaller, {
+      const output = await fileInsertBeforeTool.call(dlg, proxyCaller, {
         path: rel,
         anchor,
         ...(occurrenceValue !== undefined ? { occurrence: occurrenceValue } : {}),
         ...(matchValue !== undefined ? { match: matchValue } : {}),
-        ...(existingHunkIdValue ? { existing_hunk_id: existingHunkIdValue } : {}),
-        content: contentValue,
+        ...(contentValue !== undefined ? { content: contentValue } : {}),
+        ...(padIdValue !== undefined ? { pad_id: padIdValue } : {}),
+        ...(padRangeValue !== undefined ? { pad_range: padRangeValue } : {}),
+        ...(previewValue !== undefined ? { preview: previewValue } : {}),
+        ...(showDiffValue !== undefined ? { show_diff: showDiffValue } : {}),
       });
       const content = toolCallOutputToString(output);
+      if (isSuccessfulYamlToolResult(content, 'file_insert_before')) {
+        await refreshDerivedStateAfterTeamMgmtWrite({
+          relPaths: [rel],
+          trigger: 'team_mgmt_file_insert_before',
+        });
+      }
       return output;
     } catch (err: unknown) {
       const msg =
@@ -2299,18 +2368,18 @@ export const teamMgmtPrepareInsertBeforeTool: FuncTool = {
   },
 };
 
-export const teamMgmtPrepareBlockReplaceTool: FuncTool = {
+export const teamMgmtFileBlockReplaceTool: FuncTool = {
   type: 'func',
-  name: 'team_mgmt_prepare_file_block_replace',
-  description: `Prepare a block replacement between anchors in a file under ${MINDS_DIR}/ (does not write yet).`,
+  name: 'team_mgmt_file_block_replace',
+  description: `Replace an anchor-delimited block under ${MINDS_DIR}/ directly.`,
   descriptionI18n: {
-    en: `Prepare a block replacement between anchors in a file under ${MINDS_DIR}/ (does not write yet).`,
-    zh: `按锚点规划 ${MINDS_DIR}/ 下文件的块替换（不会立刻写入）。`,
+    en: `Replace an anchor-delimited block under ${MINDS_DIR}/ directly.`,
+    zh: `按锚点直接替换 ${MINDS_DIR}/ 下文件中的块内容。`,
   },
   parameters: {
     type: 'object',
     additionalProperties: false,
-    required: ['path', 'start_anchor', 'end_anchor', 'content'],
+    required: ['path', 'start_anchor', 'end_anchor'],
     properties: {
       path: { type: 'string' },
       start_anchor: { type: 'string' },
@@ -2320,8 +2389,11 @@ export const teamMgmtPrepareBlockReplaceTool: FuncTool = {
       match: { type: 'string' },
       require_unique: { type: 'boolean' },
       strict: { type: 'boolean' },
-      existing_hunk_id: { type: 'string' },
       content: { type: 'string' },
+      pad_id: { type: 'string' },
+      pad_range: { type: 'string' },
+      preview: { type: 'boolean' },
+      show_diff: { type: 'boolean' },
     },
   },
   argsValidation: 'dominds',
@@ -2374,14 +2446,28 @@ export const teamMgmtPrepareBlockReplaceTool: FuncTool = {
       if (strictValue !== undefined && typeof strictValue !== 'boolean') {
         throw new Error('Invalid strict (expected boolean)');
       }
-      const existingHunkIdValue = args['existing_hunk_id'];
-      if (existingHunkIdValue !== undefined && typeof existingHunkIdValue !== 'string') {
-        throw new Error('Invalid existing_hunk_id (expected string)');
-      }
       const contentValue = args['content'];
-      if (typeof contentValue !== 'string') throw new Error('Invalid content (expected string)');
+      if (contentValue !== undefined && typeof contentValue !== 'string') {
+        throw new Error('Invalid content (expected string)');
+      }
+      const padIdValue = args['pad_id'];
+      if (padIdValue !== undefined && typeof padIdValue !== 'string') {
+        throw new Error('Invalid pad_id (expected string)');
+      }
+      const padRangeValue = args['pad_range'];
+      if (padRangeValue !== undefined && typeof padRangeValue !== 'string') {
+        throw new Error('Invalid pad_range (expected string)');
+      }
+      const previewValue = args['preview'];
+      if (previewValue !== undefined && typeof previewValue !== 'boolean') {
+        throw new Error('Invalid preview (expected boolean)');
+      }
+      const showDiffValue = args['show_diff'];
+      if (showDiffValue !== undefined && typeof showDiffValue !== 'boolean') {
+        throw new Error('Invalid show_diff (expected boolean)');
+      }
 
-      const output = await prepareFileBlockReplaceTool.call(dlg, proxyCaller, {
+      const output = await fileBlockReplaceTool.call(dlg, proxyCaller, {
         path: rel,
         start_anchor: startAnchor,
         end_anchor: endAnchor,
@@ -2390,10 +2476,19 @@ export const teamMgmtPrepareBlockReplaceTool: FuncTool = {
         ...(matchValue !== undefined ? { match: matchValue } : {}),
         ...(requireUniqueValue !== undefined ? { require_unique: requireUniqueValue } : {}),
         ...(strictValue !== undefined ? { strict: strictValue } : {}),
-        ...(existingHunkIdValue ? { existing_hunk_id: existingHunkIdValue } : {}),
-        content: contentValue,
+        ...(contentValue !== undefined ? { content: contentValue } : {}),
+        ...(padIdValue !== undefined ? { pad_id: padIdValue } : {}),
+        ...(padRangeValue !== undefined ? { pad_range: padRangeValue } : {}),
+        ...(previewValue !== undefined ? { preview: previewValue } : {}),
+        ...(showDiffValue !== undefined ? { show_diff: showDiffValue } : {}),
       });
       const content = toolCallOutputToString(output);
+      if (isSuccessfulYamlToolResult(content, 'file_block_replace')) {
+        await refreshDerivedStateAfterTeamMgmtWrite({
+          relPaths: [rel],
+          trigger: 'team_mgmt_file_block_replace',
+        });
+      }
       return output;
     } catch (err: unknown) {
       const msg =
@@ -2466,56 +2561,6 @@ export const teamMgmtFileRangeEditTool: FuncTool = {
         ...(showDiffValue !== undefined ? { show_diff: showDiffValue } : {}),
       });
       const content = toolCallOutputToString(output);
-      return output;
-    } catch (err: unknown) {
-      const msg =
-        language === 'zh'
-          ? `错误：${err instanceof Error ? err.message : String(err)}`
-          : `Error: ${err instanceof Error ? err.message : String(err)}`;
-      return fail(msg, [{ type: 'environment_msg', role: 'user', content: msg }]);
-    }
-  },
-};
-
-export const teamMgmtApplyFileModificationTool: FuncTool = {
-  type: 'func',
-  name: 'team_mgmt_apply_file_modification',
-  description: `Apply a previously planned file modification under ${MINDS_DIR}/ by hunk id.`,
-  descriptionI18n: {
-    en: `Apply a previously planned file modification under ${MINDS_DIR}/ by hunk id.`,
-    zh: `按 hunk id 应用之前规划的 ${MINDS_DIR}/ 下的单文件修改。`,
-  },
-  parameters: {
-    type: 'object',
-    additionalProperties: false,
-    required: ['hunk_id'],
-    properties: { hunk_id: { type: 'string' } },
-  },
-  argsValidation: 'dominds',
-  async call(dlg, caller, args: ToolArguments): Promise<ToolCallOutput> {
-    const language = getUserLang(dlg);
-    try {
-      const mindsState = await getMindsDirState();
-      if (mindsState.kind === 'not_directory') {
-        throw new Error(`${MINDS_DIR} exists but is not a directory: ${mindsState.abs}`);
-      }
-      await ensureMindsRootDirExists();
-
-      const hunkIdValue = args['hunk_id'];
-      const id = typeof hunkIdValue === 'string' ? hunkIdValue.trim() : '';
-      if (!id) throw new Error('Hunk id required (e.g. a1b2c3d4)');
-      const proxyCaller = makeMindsOnlyAccessMember(caller);
-      const output = await applyFileModificationTool.call(dlg, proxyCaller, { hunk_id: id });
-      const content = toolCallOutputToString(output);
-      if (isSuccessfulYamlToolResult(content, 'apply_file_modification')) {
-        const relPath = extractPathFromYamlToolOutput(content);
-        if (relPath) {
-          await refreshDerivedStateAfterTeamMgmtWrite({
-            relPaths: [relPath],
-            trigger: 'team_mgmt_apply_file_modification',
-          });
-        }
-      }
       return output;
     } catch (err: unknown) {
       const msg =
@@ -5542,12 +5587,11 @@ export const teamMgmtTools: ReadonlyArray<FuncTool> = [
   teamMgmtReadFileTool,
   teamMgmtCreateNewFileTool,
   teamMgmtOverwriteEntireFileTool,
-  teamMgmtPrepareFileAppendTool,
-  teamMgmtPrepareInsertAfterTool,
-  teamMgmtPrepareInsertBeforeTool,
-  teamMgmtPrepareBlockReplaceTool,
+  teamMgmtFileAppendTool,
+  teamMgmtFileInsertAfterTool,
+  teamMgmtFileInsertBeforeTool,
+  teamMgmtFileBlockReplaceTool,
   teamMgmtFileRangeEditTool,
-  teamMgmtApplyFileModificationTool,
   teamMgmtMkDirTool,
   teamMgmtMoveFileTool,
   teamMgmtMoveDirTool,

@@ -34,8 +34,8 @@ Historically, text editing tools had multiple mental models ("direct write" vs "
 The first prepare-first + single apply version improved reviewability, but made precise line-range and large-text edits too slow. The current model is:
 
 - **direct range edit**: precise line ranges use `file_range_edit` directly; it defaults to YAML-only/redacted output
-- **prepare/apply**: anchor-based, multi-occurrence, ambiguous, or preview-first edits use `prepare_*` → `apply_file_modification`
-- **LLM persistence semantics**: before apply, a prepared hunk exists only in memory and does not modify the file; a `read_file` at that point still returns the old content. If you only want to revise the same pending preview, overwrite it with the same prepare tool plus `existing_hunk_id`; if you want the next edit based on this change, apply the current hunk first, then read/prepare again
+- **direct single-block edit**: EOF appends, anchor insertions, and anchor-delimited block replacements use `file_append`, `file_insert_after` / `file_insert_before`, and `file_block_replace`
+- **preview as display option**: set `preview/show_diff` when review output is needed; otherwise direct tools write immediately
 - **Legacy tools removed**: `append_file` / `insert_after` / `insert_before` / `replace_block` / `apply_block_replace` are completely removed (no aliases, no compat layer)
 
 ## 2. Goals & Non-Goals
@@ -43,15 +43,14 @@ The first prepare-first + single apply version improved reviewability, but made 
 ### 2.1 Goals
 
 - Unify precise line-range edits to: `file_range_edit`
-- Unify ambiguous target edits to: `prepare_*` → `apply_file_modification`
-- Provide reviewable output: direct range edits default to YAML-only; prepare/apply outputs YAML summary + evidence (plan)/apply_evidence (apply) + unified diff
-- Clarify concurrency/ordering constraints: avoid mixing prepare & apply in the same message; same-file writes are serialized in-process
-- Provide stable failure modes and next-step suggestions (especially anchor ambiguity and apply rejection)
+- Unify single-block append/insert/block replacement to direct `file_*` tools
+- Provide reviewable output: direct tools default to YAML-only; explicit `preview/show_diff` emits diff
+- Clarify concurrency/ordering constraints: same-file writes are serialized in-process
+- Provide stable failure modes and next-step suggestions (especially anchor ambiguity)
 
 ### 2.2 Non-Goals
 
 - No complex patch DSL (still based on unified diff)
-- No cross-process/restart hunk persistence (current hunk registry is in-memory + TTL=1h)
 - No "auto-formatting/auto-blank-line alignment"; only observable (style_warning) and minimal necessary normalization (EOF newline)
 
 ## 3. Key Concurrency Constraints & Ordering
@@ -60,38 +59,17 @@ The first prepare-first + single apply version improved reviewability, but made 
 
 Multiple function tool calls in one message execute in parallel, unable to see each other's outputs/writes. Therefore:
 
-- **prepare → apply must be two messages** (otherwise apply may not "see" the hunk generated in this round)
-- If the target is a precise line range and no hunk preview is needed, use `file_range_edit` directly.
+- Use `file_range_edit` for precise line ranges; use the matching direct `file_*` tool for appends, anchor insertions, and block replacements.
+- Set `preview/show_diff` when review output is needed.
 
 ### 3.2 Write Concurrency Safety (current implementation)
 
-- Multiple `apply_file_modification` calls on the same file are serialized in-process (queue by `createdAtMs`, then `hunkId` as tie-breaker)
-- Multiple `file_range_edit` calls on the same file are also serialized in-process
+- Multiple direct writes on the same file are serialized in-process
 - Writes on different files can run in parallel, no shared lock
-
-## 4. Hunk Registry & Lifecycle
-
-### 4.1 Lifecycle & Ownership
-
-- Each plan hunk has TTL (outputs `expires_at_ms`)
-- Hunk is stored in-process in memory; lost after process restart
-- `apply_file_modification` checks:
-  - Whether hunk exists and hasn't expired
-  - Whether hunk was planned by current member (`WRONG_OWNER` rejection)
-  - Whether current member has write permission (`hasWriteAccess`)
-
-### 4.2 "Overwrite Same Plan" Rules (important)
-
-Tools supporting "re-plan with `existing_hunk_id` to overwrite" and their rules:
-
-- `prepare_file_append` / `prepare_file_insert_after` / `prepare_file_insert_before`: same support for `existing_hunk_id` to overwrite same-mode preview
-- `prepare_file_block_replace`: supports `existing_hunk_id` to overwrite same-mode preview (same owner / same kind; cross-mode rejected)
-- All plan tools **do not allow custom new ids**: can only generate new plan by "omitting/clearing `existing_hunk_id`"; only pass `existing_hunk_id` when you want to overwrite an existing plan
 
 > Optional fields can be omitted naturally.
 > If you want to express explicit "unspecified/use default", use these sentinel forms:
 >
-> - `existing_hunk_id: ""`: do not overwrite old plan (generate new hunk)
 > - `occurrence: ""` or `0`: do not specify occurrence
 > - `match: ""`: use default `contains` (note: `match` is match mode, not the text/regex to match)
 > - `read_file({ range: "", max_lines: 0 })`: respectively "do not specify range / use default 500 lines"

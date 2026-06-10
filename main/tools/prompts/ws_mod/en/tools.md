@@ -55,67 +55,49 @@ Create or remove a symlink path.
 - **Removal**: `rm_symlink` removes the link path itself without touching the target, and can remove broken symlinks
 - **Output**: Success and failure outputs are YAML with `mode: create_symlink` / `mode: rm_symlink`
 
-## 3. Incremental Edits (direct range edit + prepare/apply)
+## 3. Incremental Edits (direct edit)
 
 - `file_range_edit`: Directly replace/delete/append by precise line range (append via `N~` where `N=(last_line+1)`)
-- `create_new_file` / `overwrite_entire_file` / `file_range_edit` all support `content` and `pad_id/pad_range` sources; use direct `content` for small bodies and pad sources for large bodies
-- `pad_load_file_range({ pad_id, path })` can omit `range`, which defaults to the whole file; pass `range` to load only a file slice
-- `prepare_file_append`: Preview append to EOF (optional `create=true|false`)
-- `prepare_file_insert_after` / `prepare_file_insert_before`: Preview insertion by anchor line (prepare phase strictly handles ambiguity; if anchor appears multiple times, must specify `occurrence`)
-- `prepare_file_block_replace`: Preview block replacement by start/end anchors (configurable `include_anchors` / `require_unique` / `strict` / `occurrence`, etc.)
+- `file_append`: Directly append to EOF, optionally with `create=true|false`
+- `file_insert_after` / `file_insert_before`: Direct insertion by anchor line; if the anchor appears multiple times, specify `occurrence`
+- `file_block_replace`: Direct block replacement by start/end anchors (configurable `include_anchors` / `require_unique` / `strict` / `occurrence`, etc.)
   - `include_anchors=true` (default): Keep start/end anchor lines, only replace content between them
-  - `include_anchors=false`: Replacement range includes start/end anchor lines (will delete anchor lines and replace with new content)
-- `apply_file_modification`: The sole apply, can apply hunks from any `prepare_*` above or `pad_prepare_file_range_edit`
+  - `include_anchors=false`: Replacement range includes start/end anchor lines
+- `create_new_file` / `overwrite_entire_file` / `file_range_edit` / `file_append` / `file_insert_*` / `file_block_replace` all support `content` and `pad_id/pad_range` sources; use direct `content` for small bodies and pad sources for large bodies
+- `pad_load_file_range({ pad_id, path })` can omit `range`, which defaults to the whole file; pass `range` to load only a file slice
+- For review output, pass `preview: true, show_diff: true` to the direct tool; otherwise it writes immediately and does not echo body text
 
 ## 4. YAML Output Contract
 
 > Goal: Scannable under low attention; stable fields for tooling and regression
 
-### 4.1 Plan (Common Fields)
+### 4.1 Direct Write (Common Fields)
 
 - `status: ok|error`
-- `mode: prepare_file_append|prepare_file_insert_after|prepare_file_insert_before|prepare_file_block_replace|pad_prepare_file_range_edit`
+- `mode: file_range_edit|file_append|file_insert_after|file_insert_before|file_block_replace`
 - `path`
-- `hunk_id`, `expires_at_ms`
 - `action: replace|delete|append|insert|block_replace`
 - `normalized.*` (EOF newline analysis)
 - `summary` (1-2 sentences, scannable)
-- Followed by YAML, a ` ```diff ` unified diff (for review)
+- Followed by a unified diff only when `show_diff=true`
 
-### 4.2 Plan (Key Fields by Tool/Action)
+### 4.2 Direct Write (Key Fields by Tool/Action)
 
-- `prepare_file_append`:
+- `file_append`:
   - `file_line_count_before|after`, `appended_line_count`
   - `blankline_style.file_trailing_blank_line_count` / `content_leading_blank_line_count`
   - `evidence_preview.before_tail|append_preview|after_tail`
-- `prepare_file_insert_*`:
+- `file_insert_*`:
   - `position`, `anchor`, `match`
   - `candidates_count`, `occurrence_resolved`
   - `inserted_at_line`, `inserted_line_count`, `lines.old|new|delta`
   - `blankline_style.*`, `evidence_preview.*`
-- `prepare_file_block_replace`:
+- `file_block_replace`:
   - `start_anchor` / `end_anchor` / `match`
   - `include_anchors` / `require_unique` / `strict`
   - `candidates_count` / `occurrence_resolved`
   - `block_range`, `replace_slice`, `lines.old|new|delta`
   - `evidence_preview.before_preview|old_preview|new_preview|after_preview`
-
-### 4.3 Apply (Common Fields)
-
-- `status`
-- `mode: apply_file_modification`
-- `path`, `hunk_id`
-- `action`
-- `context_match: exact|fuzz|rejected`
-- `apply_evidence` (required)
-- `summary` - Followed by YAML, unified diff (recalculated based on "current file + parsed target position" at apply time; if `context_match=exact`, matches plan diff)
-
-### 4.4 Apply (Key Fields by Action)
-
-- `append`: `append_range.start|end` + tail previews
-- `insert`: `position` / `anchor` / `inserted_at_line` / `inserted_line_count`
-- `replace|delete` (range): `applied_range.start|end` + `lines.*`
-- `block_replace`: `block_range` / `replace_slice` / `lines.*`
 
 ### 4.5 read_file / overwrite_entire_file (Structured Header)
 
@@ -125,5 +107,5 @@ Create or remove a symlink path.
 
 ## 5. Relationship with .minds/
 
-`.minds/` is the core of team configuration and rtws (runtime workspace) memory, and should usually be operated through the `team_mgmt` toolset's mirrored tools (e.g., `team_mgmt_prepare_file_insert_after`, etc.).
-This toolset's direct range edit + prepare/apply mental model remains consistent, but path and permission semantics are determined by the team_mgmt tool wrapper layer (see team_mgmt documentation).
+`.minds/` is the core of team configuration and rtws (runtime workspace) memory, and should usually be operated through the `team_mgmt` toolset's mirrored tools (e.g., `team_mgmt_file_insert_after`, etc.).
+This toolset's direct edit mental model remains consistent, but path and permission semantics are determined by the team_mgmt tool wrapper layer (see team_mgmt documentation).

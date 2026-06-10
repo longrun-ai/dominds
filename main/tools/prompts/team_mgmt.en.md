@@ -1,12 +1,12 @@
-# team_mgmt: manage `.minds/` (prepare-first + single apply)
+# team_mgmt: manage `.minds/` (direct edit)
 
 You have read/write access to `.minds/**`, but this toolset **only operates within the `.minds/` subtree** (it should not touch other rtws (runtime workspace) files).
 
 ## Principles
 
-- Incremental edits (preferred): use `team_mgmt_prepare_*` to generate reviewable YAML + diff + `hunk_id`, then write via `team_mgmt_apply_file_modification({ "hunk_id": "<hunk_id>" })`.
+- Incremental edits: single-block edits write directly. Use `team_mgmt_file_range_edit` for line ranges, `team_mgmt_file_append` for EOF appends, `team_mgmt_file_insert_after` / `team_mgmt_file_insert_before` for anchor insertions, and `team_mgmt_file_block_replace` for anchor-delimited blocks.
 - If you carry team-management responsibility, read the relevant `man({ "toolsetId": "team_mgmt" })` chapters before performing concrete team-management actions, and maintain `.minds/**` team mind assets by the handbook-standard workflow.
-- Parallelism constraint: multiple function tool calls in one generation step may run in parallel; **prepare → apply must be two steps**.
+- Parallelism constraint: multiple function tool calls in one generation step may run in parallel. Same-file writes are serialized internally, but avoid making same-turn edits depend on unread results from each other.
 - Exception (create): `team_mgmt_create_new_file` only creates a new file (empty content allowed). It does not do incremental edits and does not use prepare/apply; it refuses to overwrite existing files.
 - Exception (overwrite): `team_mgmt_overwrite_entire_file` writes immediately (no prepare/apply). It requires `known_old_total_lines/known_old_total_bytes` guardrails; use `team_mgmt_read_file` to read `total_lines/size_bytes` from the YAML header.
 - Normalization: each line ends with `\\n` (including the last line); the tool may add a trailing newline and report it in `normalized.*`.
@@ -28,25 +28,17 @@ The YAML header from `team_mgmt_read_file` includes:
 - Read/locate: `team_mgmt_read_file` / `team_mgmt_list_dir` / `team_mgmt_ripgrep_*`
 - Create a new file (empty allowed): `team_mgmt_create_new_file({ path, content })`
 - Small edits (line range): `team_mgmt_file_range_edit({ path, range, content })`
-- Append to EOF: `team_mgmt_prepare_file_append({ path, content, create, existing_hunk_id })`
-- Anchor insertion: `team_mgmt_prepare_file_insert_after|team_mgmt_prepare_file_insert_before({ path, anchor, content, occurrence, match, existing_hunk_id })`
-- Block replace between anchors: `team_mgmt_prepare_file_block_replace({ path, start_anchor, end_anchor, content, existing_hunk_id, occurrence, include_anchors, match, require_unique, strict })`
-- Apply: `team_mgmt_apply_file_modification({ hunk_id })`
+- Append to EOF: `team_mgmt_file_append({ path, content, create })`
+- Anchor insertion: `team_mgmt_file_insert_after|team_mgmt_file_insert_before({ path, anchor, content, occurrence, match })`
+- Block replace between anchors: `team_mgmt_file_block_replace({ path, start_anchor, end_anchor, content, occurrence, include_anchors, match, require_unique, strict })`
 - After editing `.minds/team.yaml`: always run `team_mgmt_validate_team_cfg({})`; if the output shows "Resolved But Not Yet Cleared", finish with `team_mgmt_clear_problems({ source: "team", path: "team.yaml" })`.
 - After editing `.minds/mcp.yaml`: always run `team_mgmt_validate_mcp_cfg({})`; if the output shows "Resolved But Not Yet Cleared", finish with `team_mgmt_clear_problems({ source: "mcp", path: "mcp.yaml" })`.
 
 > Optional fields can be omitted.
 > If you want to pass explicit “unset / default” values, the following sentinel forms are supported:
 >
-> - `existing_hunk_id: ""` means generate a new hunk.
 > - `occurrence: ""` or `0` means occurrence is not specified.
 > - `match: ""` means default `contains` (note: `match` is the match mode).
-
-## Apply semantics (context_match)
-
-- `exact`: file matches the prepare context exactly.
-- `fuzz`: file drifted but still safe to apply; the output includes `file_changed_since_preview` and digests for review.
-- `rejected`: cannot locate uniquely or unsafe; re-prepare.
 
 ## Direct line-range edit template
 

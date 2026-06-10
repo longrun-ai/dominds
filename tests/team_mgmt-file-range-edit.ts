@@ -5,7 +5,11 @@ import path from 'node:path';
 import type { Dialog } from '../main/dialog';
 import { setWorkLanguage } from '../main/runtime/work-language';
 import { Team } from '../main/team';
-import { teamMgmtFileRangeEditTool, teamMgmtTools } from '../main/tools/team_mgmt';
+import {
+  teamMgmtFileAppendTool,
+  teamMgmtFileRangeEditTool,
+  teamMgmtTools,
+} from '../main/tools/team_mgmt';
 
 async function main(): Promise<void> {
   const oldCwd = process.cwd();
@@ -27,7 +31,15 @@ async function main(): Promise<void> {
 
     const toolNames = new Set(teamMgmtTools.map((tool) => tool.name));
     assert.ok(toolNames.has('team_mgmt_file_range_edit'));
+    assert.ok(toolNames.has('team_mgmt_file_append'));
+    assert.ok(toolNames.has('team_mgmt_file_insert_after'));
+    assert.ok(toolNames.has('team_mgmt_file_insert_before'));
+    assert.ok(toolNames.has('team_mgmt_file_block_replace'));
     assert.ok(!toolNames.has('team_mgmt_prepare_file_range_edit'));
+    assert.ok(!toolNames.has('team_mgmt_prepare_file_append'));
+    assert.ok(!toolNames.has('team_mgmt_prepare_file_insert_after'));
+    assert.ok(!toolNames.has('team_mgmt_prepare_file_insert_before'));
+    assert.ok(!toolNames.has('team_mgmt_prepare_file_block_replace'));
 
     const token = 'TEAM_MGMT_RANGE_TOKEN';
     const output = (
@@ -60,6 +72,20 @@ async function main(): Promise<void> {
       await fs.readFile(path.join(tmpRoot, '.minds', 'team.yaml'), 'utf8'),
       `one\n${token}\nthree\n`,
       'preview must not write the file',
+    );
+
+    const appendToken = 'TEAM_MGMT_APPEND_TOKEN';
+    const appendOutput = (
+      await teamMgmtFileAppendTool.call(dlg, alice, {
+        path: 'team.yaml',
+        content: `${appendToken}\n`,
+      })
+    ).content;
+    assert.ok(appendOutput.includes('mode: file_append'));
+    assert.ok(!appendOutput.includes(appendToken), 'team_mgmt_file_append should not echo body');
+    assert.equal(
+      await fs.readFile(path.join(tmpRoot, '.minds', 'team.yaml'), 'utf8'),
+      `one\n${token}\nthree\n${appendToken}\n`,
     );
 
     console.log('✅ team_mgmt-file-range-edit tests passed');
