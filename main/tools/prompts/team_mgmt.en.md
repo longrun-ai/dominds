@@ -4,7 +4,7 @@ You have read/write access to `.minds/**`, but this toolset **only operates with
 
 ## Principles
 
-- Incremental edits: single-block edits write directly. Use `team_mgmt_file_range_edit` for line ranges, `team_mgmt_file_append` for EOF appends, `team_mgmt_file_insert_after` / `team_mgmt_file_insert_before` for anchor insertions, and `team_mgmt_file_block_replace` for anchor-delimited blocks.
+- Incremental edits: single-block edits write directly. Use `team_mgmt_file_range_edit` for line ranges, `team_mgmt_file_append` for EOF appends, `team_mgmt_file_insert_after` / `team_mgmt_file_insert_before` for anchor insertions, and `team_mgmt_file_block_replace` for anchor-delimited blocks. These edit tools accept inline `content` or a ws_mod `pad_id/pad_range` source.
 - If you carry team-management responsibility, read the relevant `man({ "toolsetId": "team_mgmt" })` chapters before performing concrete team-management actions, and maintain `.minds/**` team mind assets by the handbook-standard workflow.
 - Parallelism constraint: multiple function tool calls in one generation step may run in parallel. Same-file writes are serialized internally, but avoid making same-turn edits depend on unread results from each other.
 - Exception (create): `team_mgmt_create_new_file` only creates a new file (empty content allowed); it refuses to overwrite existing files.
@@ -27,7 +27,7 @@ The YAML header from `team_mgmt_read_file` includes:
 
 - Read/locate: `team_mgmt_read_file` / `team_mgmt_list_dir` / `team_mgmt_ripgrep_*`
 - Create a new file (empty allowed): `team_mgmt_create_new_file({ path, content })`
-- Small edits (line range): `team_mgmt_file_range_edit({ path, range, content })`
+- Small edits (line range): `team_mgmt_file_range_edit({ path, range, content })` or `team_mgmt_file_range_edit({ path, range, pad_id, pad_range })`
 - Append to EOF: `team_mgmt_file_append({ path, content, create })`
 - Anchor insertion: `team_mgmt_file_insert_after|team_mgmt_file_insert_before({ path, anchor, content, occurrence, match })`
 - Block replace between anchors: `team_mgmt_file_block_replace({ path, start_anchor, end_anchor, content, occurrence, include_anchors, match, require_unique, strict })`

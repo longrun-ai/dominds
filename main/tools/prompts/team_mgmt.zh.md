@@ -4,7 +4,7 @@
 
 ## 总原则
 
-- 增量编辑：单块编辑直接写入；行号范围用 `team_mgmt_file_range_edit`，末尾追加用 `team_mgmt_file_append`，锚点插入用 `team_mgmt_file_insert_after` / `team_mgmt_file_insert_before`，锚点块替换用 `team_mgmt_file_block_replace`。
+- 增量编辑：单块编辑直接写入；行号范围用 `team_mgmt_file_range_edit`，末尾追加用 `team_mgmt_file_append`，锚点插入用 `team_mgmt_file_insert_after` / `team_mgmt_file_insert_before`，锚点块替换用 `team_mgmt_file_block_replace`。这些编辑工具均支持内联 `content` 或 ws_mod `pad_id/pad_range` 来源。
 - 若你承担团队管理职责，执行具体团队管理操作前，先查看 `man({ "toolsetId": "team_mgmt" })` 的相关章节，并按手册标准做法维护 `.minds/**` 团队心智资产。
 - 并行约束：同一轮生成中的多个工具调用可能并行执行；同一文件写入会在工具侧串行化，但不要让同轮多个编辑依赖彼此未读到的结果。
 - 例外（创建）：`team_mgmt_create_new_file` 只负责创建新文件（允许空内容）；若文件已存在会拒绝（避免误用覆盖写入语义）。
@@ -27,7 +27,7 @@
 
 - 读取定位：`team_mgmt_read_file` / `team_mgmt_list_dir` / `team_mgmt_ripgrep_*`
 - 创建新文件（允许空内容）：`team_mgmt_create_new_file({ path, content })`
-- 小改动（行号范围）：`team_mgmt_file_range_edit({ path, range, content })`
+- 小改动（行号范围）：`team_mgmt_file_range_edit({ path, range, content })` 或 `team_mgmt_file_range_edit({ path, range, pad_id, pad_range })`
 - 末尾追加：`team_mgmt_file_append({ path, content, create })`
 - 锚点插入：`team_mgmt_file_insert_after|team_mgmt_file_insert_before({ path, anchor, content, occurrence, match })`
 - 双锚点块替换：`team_mgmt_file_block_replace({ path, start_anchor, end_anchor, content, occurrence, include_anchors, match, require_unique, strict })`

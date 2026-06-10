@@ -2,7 +2,8 @@ import assert from 'node:assert/strict';
 import * as fs from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
-import type { Dialog } from '../main/dialog';
+import type { DialogStore } from '../main/dialog';
+import { MainDialog } from '../main/dialog';
 import { setWorkLanguage } from '../main/runtime/work-language';
 import { Team } from '../main/team';
 import {
@@ -10,6 +11,7 @@ import {
   teamMgmtFileRangeEditTool,
   teamMgmtTools,
 } from '../main/tools/team_mgmt';
+import { padWriteTool } from '../main/tools/txt';
 
 async function main(): Promise<void> {
   const oldCwd = process.cwd();
@@ -21,7 +23,12 @@ async function main(): Promise<void> {
     await fs.mkdir(path.join(tmpRoot, '.minds'), { recursive: true });
     await fs.writeFile(path.join(tmpRoot, '.minds', 'team.yaml'), 'one\ntwo\nthree\n', 'utf8');
 
-    const dlg = {} as unknown as Dialog;
+    const dlg = new MainDialog(
+      {} as unknown as DialogStore,
+      'team-mgmt-range.tsk',
+      undefined,
+      'tester',
+    );
     const alice = new Team.Member({
       id: 'alice',
       name: 'Alice',
@@ -57,6 +64,28 @@ async function main(): Promise<void> {
       `one\n${token}\nthree\n`,
     );
 
+    const padToken = 'TEAM_MGMT_PAD_RANGE_TOKEN';
+    const padWriteOutput = (
+      await padWriteTool.call(dlg, alice, {
+        pad_id: 'team_range_src',
+        content: `${padToken}\n`,
+      })
+    ).content;
+    assert.ok(!padWriteOutput.includes(padToken), 'pad_write should not echo pad body');
+    const padRangeOutput = (
+      await teamMgmtFileRangeEditTool.call(dlg, alice, {
+        path: 'team.yaml',
+        range: '3~3',
+        pad_id: 'team_range_src',
+      })
+    ).content;
+    assert.ok(padRangeOutput.includes('source: pad'));
+    assert.ok(!padRangeOutput.includes(padToken), 'team_mgmt pad range edit should not echo body');
+    assert.equal(
+      await fs.readFile(path.join(tmpRoot, '.minds', 'team.yaml'), 'utf8'),
+      `one\n${token}\n${padToken}\n`,
+    );
+
     const previewOutput = (
       await teamMgmtFileRangeEditTool.call(dlg, alice, {
         path: 'team.yaml',
@@ -70,7 +99,7 @@ async function main(): Promise<void> {
     assert.ok(previewOutput.includes('```diff'));
     assert.equal(
       await fs.readFile(path.join(tmpRoot, '.minds', 'team.yaml'), 'utf8'),
-      `one\n${token}\nthree\n`,
+      `one\n${token}\n${padToken}\n`,
       'preview must not write the file',
     );
 
@@ -85,7 +114,7 @@ async function main(): Promise<void> {
     assert.ok(!appendOutput.includes(appendToken), 'team_mgmt_file_append should not echo body');
     assert.equal(
       await fs.readFile(path.join(tmpRoot, '.minds', 'team.yaml'), 'utf8'),
-      `one\n${token}\nthree\n${appendToken}\n`,
+      `one\n${token}\n${padToken}\n${appendToken}\n`,
     );
 
     console.log('✅ team_mgmt-file-range-edit tests passed');

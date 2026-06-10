@@ -115,7 +115,7 @@ Recommended tools (names are suggestions; use `snake_case` to match existing too
 | `team_mgmt_read_file`                | `txt`    | Read a text file under `.minds/`                                             | `.minds/**`             |
 | `team_mgmt_create_new_file`          | `txt`    | Create a new file under `.minds/` (empty content allowed; refuses overwrite) | `.minds/**`             |
 | `team_mgmt_overwrite_entire_file`    | `txt`    | Overwrite an existing file under `.minds/` (guarded exception path)          | `.minds/**`             |
-| `team_mgmt_file_range_edit`          | `txt`    | Directly write a single-file line range under `.minds/`                      | `.minds/**`             |
+| `team_mgmt_file_range_edit`          | `txt`    | Directly write a single-file line range under `.minds/` from content or pad  | `.minds/**`             |
 | `team_mgmt_file_append`              | `txt`    | Append to a file under `.minds/` directly                                    | `.minds/**`             |
 | `team_mgmt_file_insert_after`        | `txt`    | Insert after an anchor under `.minds/` directly                              | `.minds/**`             |
 | `team_mgmt_file_insert_before`       | `txt`    | Insert before an anchor under `.minds/` directly                             | `.minds/**`             |

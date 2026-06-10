@@ -2503,19 +2503,21 @@ export const teamMgmtFileBlockReplaceTool: FuncTool = {
 export const teamMgmtFileRangeEditTool: FuncTool = {
   type: 'func',
   name: 'team_mgmt_file_range_edit',
-  description: `Directly write a precise line range under ${MINDS_DIR}/.`,
+  description: `Directly write a precise line range under ${MINDS_DIR}/ from inline content or a ws_mod pad source.`,
   descriptionI18n: {
-    en: `Directly write a precise line range under ${MINDS_DIR}/.`,
-    zh: `按精确行号范围直接写入 ${MINDS_DIR}/ 下的文件。`,
+    en: `Directly write a precise line range under ${MINDS_DIR}/ from inline content or a ws_mod pad source.`,
+    zh: `用内联 content 或 ws_mod pad 来源按精确行号范围直接写入 ${MINDS_DIR}/ 下的文件。`,
   },
   parameters: {
     type: 'object',
     additionalProperties: false,
-    required: ['path', 'range', 'content'],
+    required: ['path', 'range'],
     properties: {
       path: { type: 'string' },
       range: { type: 'string' },
       content: { type: 'string' },
+      pad_id: { type: 'string' },
+      pad_range: { type: 'string' },
       preview: { type: 'boolean' },
       show_diff: { type: 'boolean' },
     },
@@ -2538,8 +2540,16 @@ export const teamMgmtFileRangeEditTool: FuncTool = {
       if (!rangeSpec) throw new Error('Range required (e.g. 10~20 or ~)');
 
       const contentValue = args['content'];
-      if (typeof contentValue !== 'string') {
+      if (contentValue !== undefined && typeof contentValue !== 'string') {
         throw new Error('Invalid content (expected string)');
+      }
+      const padIdValue = args['pad_id'];
+      if (padIdValue !== undefined && typeof padIdValue !== 'string') {
+        throw new Error('Invalid pad_id (expected string)');
+      }
+      const padRangeValue = args['pad_range'];
+      if (padRangeValue !== undefined && typeof padRangeValue !== 'string') {
+        throw new Error('Invalid pad_range (expected string)');
       }
       const previewValue = args['preview'];
       if (previewValue !== undefined && typeof previewValue !== 'boolean') {
@@ -2556,11 +2566,19 @@ export const teamMgmtFileRangeEditTool: FuncTool = {
       const output = await fileRangeEditTool.call(dlg, proxyCaller, {
         path: rel,
         range: rangeSpec,
-        content: contentValue,
+        ...(contentValue !== undefined ? { content: contentValue } : {}),
+        ...(padIdValue !== undefined ? { pad_id: padIdValue } : {}),
+        ...(padRangeValue !== undefined ? { pad_range: padRangeValue } : {}),
         ...(previewValue !== undefined ? { preview: previewValue } : {}),
         ...(showDiffValue !== undefined ? { show_diff: showDiffValue } : {}),
       });
       const content = toolCallOutputToString(output);
+      if (isSuccessfulYamlToolResult(content, 'file_range_edit')) {
+        await refreshDerivedStateAfterTeamMgmtWrite({
+          relPaths: [rel],
+          trigger: 'team_mgmt_file_range_edit',
+        });
+      }
       return output;
     } catch (err: unknown) {
       const msg =

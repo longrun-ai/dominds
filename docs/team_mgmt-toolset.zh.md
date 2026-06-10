@@ -87,25 +87,25 @@
 
 推荐工具（名称是建议；使用 `snake_case` 以匹配现有工具）：
 
-| 工具名称                             | 基于  | 用途                                              | 默认白名单作用域 |
-| ------------------------------------ | ----- | ------------------------------------------------- | ---------------- |
-| `team_mgmt_list_dir`                 | `fs`  | 列出 `.minds/` 下的目录/文件                      | `.minds/**`      |
-| `team_mgmt_read_file`                | `txt` | 读取 `.minds/` 下的文本文件                       | `.minds/**`      |
-| `team_mgmt_create_new_file`          | `txt` | 在 `.minds/` 下创建新文件（允许空内容；拒绝覆写） | `.minds/**`      |
-| `team_mgmt_overwrite_entire_file`    | `txt` | 覆写 `.minds/` 下的现有文件（受保护的异常路径）   | `.minds/**`      |
-| `team_mgmt_file_range_edit`          | `txt` | 直接按行号范围写入 `.minds/` 下的单文件内容       | `.minds/**`      |
-| `team_mgmt_file_append`              | `txt` | 直接在 `.minds/` 下文件末尾追加内容               | `.minds/**`      |
-| `team_mgmt_file_insert_after`        | `txt` | 直接在 `.minds/` 下锚点后插入内容                 | `.minds/**`      |
-| `team_mgmt_file_insert_before`       | `txt` | 直接在 `.minds/` 下锚点前插入内容                 | `.minds/**`      |
-| `team_mgmt_file_block_replace`       | `txt` | 直接替换 `.minds/` 下锚点限定的块内容             | `.minds/**`      |
-| `team_mgmt_mk_dir`                   | `fs`  | 在 `.minds/` 下创建目录                           | `.minds/**`      |
-| `team_mgmt_move_file`                | `fs`  | 移动/重命名 `.minds/` 下的文件                    | `.minds/**`      |
-| `team_mgmt_move_dir`                 | `fs`  | 移动/重命名 `.minds/` 下的目录                    | `.minds/**`      |
-| `team_mgmt_rm_file`                  | `fs`  | 删除 `.minds/` 下的文件                           | `.minds/**`      |
-| `team_mgmt_rm_dir`                   | `fs`  | 删除 `.minds/` 下的目录                           | `.minds/**`      |
-| `team_mgmt_validate_priming_scripts` | 新建  | 校验 `.minds/priming/**.md` 的路径约束与脚本格式  | `.minds/**`      |
-| `team_mgmt_validate_team_cfg`        | 新建  | 验证 `.minds/team.yaml` 并将问题发布到问题面板    | `.minds/**`      |
-| `man({ "toolsetId": "team_mgmt" })`  | 内置  | `team_mgmt` 工具集的手册入口（见下文）            | N/A              |
+| 工具名称                             | 基于  | 用途                                                | 默认白名单作用域 |
+| ------------------------------------ | ----- | --------------------------------------------------- | ---------------- |
+| `team_mgmt_list_dir`                 | `fs`  | 列出 `.minds/` 下的目录/文件                        | `.minds/**`      |
+| `team_mgmt_read_file`                | `txt` | 读取 `.minds/` 下的文本文件                         | `.minds/**`      |
+| `team_mgmt_create_new_file`          | `txt` | 在 `.minds/` 下创建新文件（允许空内容；拒绝覆写）   | `.minds/**`      |
+| `team_mgmt_overwrite_entire_file`    | `txt` | 覆写 `.minds/` 下的现有文件（受保护的异常路径）     | `.minds/**`      |
+| `team_mgmt_file_range_edit`          | `txt` | 用 content 或 pad 直接按行号范围写入 `.minds/` 文件 | `.minds/**`      |
+| `team_mgmt_file_append`              | `txt` | 直接在 `.minds/` 下文件末尾追加内容                 | `.minds/**`      |
+| `team_mgmt_file_insert_after`        | `txt` | 直接在 `.minds/` 下锚点后插入内容                   | `.minds/**`      |
+| `team_mgmt_file_insert_before`       | `txt` | 直接在 `.minds/` 下锚点前插入内容                   | `.minds/**`      |
+| `team_mgmt_file_block_replace`       | `txt` | 直接替换 `.minds/` 下锚点限定的块内容               | `.minds/**`      |
+| `team_mgmt_mk_dir`                   | `fs`  | 在 `.minds/` 下创建目录                             | `.minds/**`      |
+| `team_mgmt_move_file`                | `fs`  | 移动/重命名 `.minds/` 下的文件                      | `.minds/**`      |
+| `team_mgmt_move_dir`                 | `fs`  | 移动/重命名 `.minds/` 下的目录                      | `.minds/**`      |
+| `team_mgmt_rm_file`                  | `fs`  | 删除 `.minds/` 下的文件                             | `.minds/**`      |
+| `team_mgmt_rm_dir`                   | `fs`  | 删除 `.minds/` 下的目录                             | `.minds/**`      |
+| `team_mgmt_validate_priming_scripts` | 新建  | 校验 `.minds/priming/**.md` 的路径约束与脚本格式    | `.minds/**`      |
+| `team_mgmt_validate_team_cfg`        | 新建  | 验证 `.minds/team.yaml` 并将问题发布到问题面板      | `.minds/**`      |
+| `man({ "toolsetId": "team_mgmt" })`  | 内置  | `team_mgmt` 工具集的手册入口（见下文）              | N/A              |
 
 注意：
 
