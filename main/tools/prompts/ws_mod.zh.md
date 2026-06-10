@@ -16,6 +16,18 @@
 - 例外：`create_new_file` 只负责"创建新文件"（允许空内容），不做增量编辑、不走 prepare/apply；若文件已存在会拒绝（避免误用覆盖写入语义）。
 - 二进制图片工具：用 `read_picture({ path })` 把 PNG/JPEG/WebP/GIF 图片作为真实图片上下文读入；用 `write_picture({ path, data_base64, mime_type, overwrite })` 从 base64 写图片。它们是二进制图片操作，不走 prepare/apply。
 
+## Scratch Pad（大文本临时缓冲）
+
+Scratch Pad 是 ws_mod 专用的大文本编辑缓冲区，用来减少同一大块文本在多轮编辑中反复进入对话历史。pad 会以扎眼的特殊提醒项出现在上下文末尾，但 role=user 的投影只显示 `pad_id`、行数/字节数/hash，不显示正文，也不放可执行工具调用文本。
+
+- 普通提醒工具语义不变：不要用 `add_reminder` / `update_reminder` / `delete_reminder` 创建、修改或删除 pad；用 `pad_*` 工具。
+- 不提供读取/观察工具：没有 `pad_read`、`pad_preview`、`pad_locate`、`pad_diff`、`pad_stat`、`pad_list`。当前有哪些 pad 以提醒项为准。
+- 可用基础工具：`pad_write`、`pad_load_file_range`、`pad_edit`、`pad_delete`。
+- `pad_write` / `pad_edit` 可以接收大文本；这些正文仍会作为函数调用参数进入持久历史。现实目标不是完全消除一次性成本，而是后续尽量用 pad 句柄操作，避免反复输出同一大块正文。
+- 工具结果不回显 pad 正文，只返回行数、字节数、hash 和摘要。
+- pad 删除/更新通道由 role=assistant 的 reminder maintenance reference 暴露；不要从 role=user 的 pad 投影里寻找可执行删除指令。
+- pad 是临时工作台，不是长期记忆；应用完成或不再需要后，尽快 `pad_delete({ pad_id })`。
+
 ## 该用哪个 `prepare_*`
 
 - 精确范围改动（行号范围）：`prepare_file_range_edit({ path, range, content, existing_hunk_id })`

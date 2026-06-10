@@ -15,6 +15,18 @@ You have read/write access to the rtws (runtime workspace), but **all incrementa
 - Exception: `create_new_file` only creates a new file (empty content allowed). It does not do incremental edits and does not use prepare/apply; it refuses to overwrite existing files.
 - Binary image tools: use `read_picture({ path })` to inspect PNG/JPEG/WebP/GIF images as real image context; use `write_picture({ path, data_base64, mime_type, overwrite })` to write a base64 image. These are binary image operations and do not use prepare/apply.
 
+## Scratch Pad (large-text temporary buffer)
+
+Scratch Pad is a ws_mod-specific large-text editing buffer for reducing repeated re-emission of the same large text across multiple editing turns. Pads appear as prominent special reminders near the end of context, but the role=user projection only shows `pad_id`, line/byte counts, and hash. It does not show body text or executable tool-call text.
+
+- Ordinary reminder semantics stay unchanged: do not use `add_reminder` / `update_reminder` / `delete_reminder` to create, edit, or delete pads; use `pad_*` tools.
+- No read/observation tools are provided: there is no `pad_read`, `pad_preview`, `pad_locate`, `pad_diff`, `pad_stat`, or `pad_list`. The current pads are the ones projected as reminders.
+- Basic tools available: `pad_write`, `pad_load_file_range`, `pad_edit`, `pad_delete`.
+- `pad_write` / `pad_edit` can accept large text; that body still enters persistent history as function-call arguments. The goal is not to eliminate this one-time cost perfectly, but to use pad handles afterward instead of repeatedly emitting the same large text.
+- Tool results do not echo pad body text; they return line count, byte count, hash, and a summary.
+- Pad delete/update channels are exposed by the role=assistant reminder maintenance reference; do not look for executable deletion instructions in the role=user pad projection.
+- Pads are temporary workbench state, not long-term memory. After applying or abandoning a pad, delete it promptly with `pad_delete({ pad_id })`.
+
 ## Which `prepare_*` to use
 
 - Precise range edits: `prepare_file_range_edit({ path, range, content, existing_hunk_id })`

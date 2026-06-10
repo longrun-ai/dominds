@@ -10,11 +10,21 @@ import fsSync from 'fs';
 import fs from 'fs/promises';
 import path from 'path';
 import { getAccessDeniedMessage, hasReadAccess, hasWriteAccess } from '../access-control';
+import type { Dialog } from '../dialog';
 import type { ChatMessage } from '../llm/client';
 import { domindsRtwsRootAbs } from '../rtws';
+import { formatSystemNoticePrefix } from '../runtime/driver-messages';
 import { getWorkLanguage } from '../runtime/work-language';
-import type { FuncTool, ToolArguments, ToolCallOutput } from '../tool';
-import { toolFailure, toolSuccess } from '../tool';
+import type {
+  FuncTool,
+  JsonValue,
+  Reminder,
+  ReminderOwner,
+  ReminderUpdateResult,
+  ToolArguments,
+  ToolCallOutput,
+} from '../tool';
+import { materializeReminder, reminderOwnedBy, toolFailure, toolSuccess } from '../tool';
 
 type FuncToolCallContext = Parameters<FuncTool['call']>[1];
 
@@ -159,6 +169,297 @@ function yamlBlockScalarLines(valueLines: ReadonlyArray<string>, indent: string)
 function formatYamlCodeBlock(yaml: string): string {
   return `\`\`\`yaml\n${yaml}\n\`\`\``;
 }
+
+type PadWriteMode = 'create' | 'replace' | 'append' | 'upsert';
+
+type WsModPadMeta = Readonly<{
+  kind: 'ws_mod_pad';
+  padId: string;
+  text: string;
+  manager: Readonly<{ tool: 'pad_*' }>;
+  update: Readonly<{ altInstruction: string }>;
+  delete: Readonly<{ altInstruction: string }>;
+}>;
+
+type PadLookupResult = Readonly<{
+  index: number;
+  reminder: Reminder;
+  meta: WsModPadMeta;
+}>;
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
+function isWsModPadMeta(value: unknown): value is WsModPadMeta {
+  if (!isRecord(value)) return false;
+  if (value['kind'] !== 'ws_mod_pad') return false;
+  if (typeof value['padId'] !== 'string') return false;
+  if (typeof value['text'] !== 'string') return false;
+  const manager = value['manager'];
+  const update = value['update'];
+  const del = value['delete'];
+  return (
+    isRecord(manager) &&
+    manager['tool'] === 'pad_*' &&
+    isRecord(update) &&
+    typeof update['altInstruction'] === 'string' &&
+    isRecord(del) &&
+    typeof del['altInstruction'] === 'string'
+  );
+}
+
+function normalizePadId(raw: string): string {
+  const padId = raw.trim();
+  if (!/^[A-Za-z0-9_-]{1,64}$/.test(padId)) {
+    throw new Error('`pad_id` must match /^[A-Za-z0-9_-]{1,64}$/');
+  }
+  return padId;
+}
+
+function padReminderId(padId: string): string {
+  return `pad_${padId}`;
+}
+
+function padDeleteInstruction(padId: string): string {
+  return `pad_delete({ "pad_id": "${padId}" })`;
+}
+
+function padUpdateInstruction(padId: string): string {
+  return `Use pad_write/pad_edit/pad_load_file_range with pad_id="${padId}".`;
+}
+
+function countPadLines(text: string): number {
+  return splitTextToLinesForEditing(text).length;
+}
+
+function hashPadText(text: string): string {
+  return `sha256:${sha256HexUtf8(text)}`;
+}
+
+function buildPadSummaryContent(language: LanguageCode, meta: WsModPadMeta): string {
+  const bytes = Buffer.byteLength(meta.text, 'utf8');
+  const lines = countPadLines(meta.text);
+  if (language === 'zh') {
+    return [
+      `[ws_mod pad] pad_id=${meta.padId}`,
+      `size=${lines} 行, ${bytes} bytes`,
+      `hash=${hashPadText(meta.text)}`,
+      'ws_mod 临时大文本缓冲区。应用完成或不再需要后请主动删除。',
+    ].join('\n');
+  }
+  return [
+    `[ws_mod pad] pad_id=${meta.padId}`,
+    `size=${lines} lines, ${bytes} bytes`,
+    `hash=${hashPadText(meta.text)}`,
+    'Temporary scratch text for ws_mod editing. Apply it or delete it when done.',
+  ].join('\n');
+}
+
+function buildPadMeta(padId: string, text: string): WsModPadMeta {
+  return {
+    kind: 'ws_mod_pad',
+    padId,
+    text,
+    manager: { tool: 'pad_*' },
+    update: { altInstruction: padUpdateInstruction(padId) },
+    delete: { altInstruction: padDeleteInstruction(padId) },
+  };
+}
+
+function padMetaAsJson(meta: WsModPadMeta): JsonValue {
+  return meta;
+}
+
+function findDialogPadById(dlg: Dialog, padId: string): PadLookupResult | undefined {
+  let found: PadLookupResult | undefined;
+  for (let index = 0; index < dlg.reminders.length; index += 1) {
+    const reminder = dlg.reminders[index];
+    if (reminder === undefined) continue;
+    if (!reminderOwnedBy(reminder, wsModPadReminderOwner)) continue;
+    if (!isWsModPadMeta(reminder.meta)) continue;
+    if (reminder.meta.padId !== padId) continue;
+    if (found !== undefined) {
+      throw new Error(`Duplicate ws_mod pad reminder detected for pad_id=${padId}`);
+    }
+    found = { index, reminder, meta: reminder.meta };
+  }
+  return found;
+}
+
+function findDialogPadReminderIndexByReminderId(dlg: Dialog, padId: string): number | undefined {
+  const reminderId = padReminderId(padId);
+  let found: number | undefined;
+  for (let index = 0; index < dlg.reminders.length; index += 1) {
+    const reminder = dlg.reminders[index];
+    if (reminder === undefined) continue;
+    if (!reminderOwnedBy(reminder, wsModPadReminderOwner)) continue;
+    if (reminder.id !== reminderId) continue;
+    if (found !== undefined) {
+      throw new Error(`Duplicate ws_mod pad reminder_id detected: ${reminderId}`);
+    }
+    found = index;
+  }
+  return found;
+}
+
+function assertPadReminderIdAvailable(
+  dlg: Dialog,
+  padId: string,
+  existing: PadLookupResult | undefined,
+): void {
+  const expectedReminderId = padReminderId(padId);
+  if (existing !== undefined) {
+    if (existing.reminder.id !== expectedReminderId) {
+      throw new Error(
+        `ws_mod pad invariant violation: pad_id=${padId} has reminder_id=${existing.reminder.id}, expected ${expectedReminderId}`,
+      );
+    }
+    return;
+  }
+  for (const reminder of dlg.reminders) {
+    if (reminder.id === expectedReminderId) {
+      throw new Error(
+        `Cannot create ws_mod pad ${padId}: reminder_id ${expectedReminderId} already exists`,
+      );
+    }
+  }
+}
+
+function upsertDialogPad(dlg: Dialog, padId: string, text: string): Reminder {
+  const meta = buildPadMeta(padId, text);
+  const content = buildPadSummaryContent(getWorkLanguage(), meta);
+  const existing = findDialogPadById(dlg, padId);
+  assertPadReminderIdAvailable(dlg, padId, existing);
+  if (existing === undefined) {
+    const reminder = materializeReminder({
+      id: padReminderId(padId),
+      content,
+      owner: wsModPadReminderOwner,
+      meta: padMetaAsJson(meta),
+      scope: 'dialog',
+      renderMode: 'markdown',
+    });
+    dlg.reminders.push(reminder);
+    dlg.touchReminders();
+    return reminder;
+  }
+  dlg.updateReminder(existing.index, content, padMetaAsJson(meta), { renderMode: 'markdown' });
+  const updated = dlg.reminders[existing.index];
+  if (updated === undefined) {
+    throw new Error(`Updated ws_mod pad disappeared for pad_id=${padId}`);
+  }
+  return updated;
+}
+
+function formatPadResultYaml(mode: string, padId: string, text: string, summary: string): string {
+  return [
+    `status: ok`,
+    `mode: ${mode}`,
+    `pad_id: ${yamlQuote(padId)}`,
+    `lines: ${countPadLines(text)}`,
+    `bytes: ${Buffer.byteLength(text, 'utf8')}`,
+    `hash: ${yamlQuote(hashPadText(text))}`,
+    `summary: ${yamlQuote(summary)}`,
+  ].join('\n');
+}
+
+function parsePadWriteMode(value: unknown): PadWriteMode {
+  if (value === undefined) return 'upsert';
+  if (value === '') return 'upsert';
+  if (value === 'create' || value === 'replace' || value === 'append' || value === 'upsert') {
+    return value;
+  }
+  throw new Error('`mode` must be create, replace, append, or upsert');
+}
+
+function selectTextByLineRange(text: string, rangeSpec: string): string {
+  const lines = splitTextToLinesForEditing(text);
+  if (lines.length === 0 && rangeSpec.trim() === '~') return '';
+  const parsed = parseLineRangeSpec(rangeSpec, rangeTotalLines(lines));
+  if (!parsed.ok) throw new Error(parsed.error);
+  if (parsed.range.kind === 'append') {
+    throw new Error('Range selects an append position, not existing text');
+  }
+  const selected = lines.slice(parsed.range.startLine - 1, parsed.range.endLine);
+  return joinLinesForTextWrite(selected);
+}
+
+function applyTextLineRangeEdit(
+  baseText: string,
+  rangeSpec: string,
+  replacementText: string,
+): string {
+  const baseLines = splitTextToLinesForEditing(baseText);
+  const replacementLines = splitPlannedBodyLines(replacementText);
+  const parsed = parseLineRangeSpec(rangeSpec, rangeTotalLines(baseLines));
+  if (!parsed.ok) throw new Error(parsed.error);
+  if (parsed.range.kind === 'append') {
+    return joinLinesForTextWrite([...baseLines, ...replacementLines]);
+  }
+  const nextLines = [
+    ...baseLines.slice(0, parsed.range.startLine - 1),
+    ...replacementLines,
+    ...baseLines.slice(parsed.range.endLine),
+  ];
+  return joinLinesForTextWrite(nextLines);
+}
+
+export const wsModPadReminderOwner: ReminderOwner = {
+  name: 'wsModPad',
+
+  async updateReminder(_dlg: Dialog, reminder: Reminder): Promise<ReminderUpdateResult> {
+    if (!reminderOwnedBy(reminder, wsModPadReminderOwner)) {
+      return { treatment: 'keep' };
+    }
+    if (!isWsModPadMeta(reminder.meta)) {
+      return { treatment: 'keep' };
+    }
+    const updatedContent = buildPadSummaryContent(getWorkLanguage(), reminder.meta);
+    if (reminder.content === updatedContent) {
+      return { treatment: 'keep' };
+    }
+    return { treatment: 'update', updatedContent };
+  },
+
+  async renderReminder(_dlg: Dialog, reminder: Reminder): Promise<ChatMessage> {
+    const language = getWorkLanguage();
+    const prefix = formatSystemNoticePrefix(language);
+    if (!isWsModPadMeta(reminder.meta)) {
+      return {
+        type: 'environment_msg',
+        role: 'user',
+        content:
+          language === 'zh'
+            ? `${prefix} ws_mod scratch pad [${reminder.id}]\n该 pad metadata 无法识别。此 role=user 投影不提供可执行清理指令；请参考 role=assistant 的 reminder maintenance reference 或检查持久化记录。`
+            : `${prefix} ws_mod scratch pad [${reminder.id}]\nThis pad metadata is not recognized. This role=user projection does not provide executable cleanup instructions; use the role=assistant reminder maintenance reference or inspect persistence.`,
+      };
+    }
+    const meta = reminder.meta;
+    return {
+      type: 'environment_msg',
+      role: 'user',
+      content:
+        language === 'zh'
+          ? [
+              `${prefix} ws_mod scratch pad [${meta.padId}]`,
+              '',
+              '这是 ws_mod 管理的大文本临时缓冲区，不是普通提醒项，也不是聊天正文。',
+              '正文不会投影到上下文；只显示元信息。若已经应用或不再需要，请尽快删除。',
+              '',
+              buildPadSummaryContent(language, meta),
+            ].join('\n')
+          : [
+              `${prefix} ws_mod scratch pad [${meta.padId}]`,
+              '',
+              'This is a ws_mod-managed temporary large-text buffer, not an ordinary reminder and not chat transcript text.',
+              'The body is not projected into context; only metadata is shown. Delete it as soon as it has been applied or is no longer needed.',
+              '',
+              buildPadSummaryContent(language, meta),
+            ].join('\n'),
+    };
+  },
+};
 
 function okYaml(yaml: string): ToolCallOutput {
   return toolSuccess(formatYamlCodeBlock(yaml));
@@ -1696,6 +1997,308 @@ export const createNewFileTool: FuncTool = {
         `summary: ${yamlQuote(okSummary)}`,
       ].join('\n'),
     );
+  },
+};
+
+export const padWriteTool: FuncTool = {
+  type: 'func',
+  name: 'pad_write',
+  description:
+    'Create, replace, append to, or upsert a ws_mod scratch pad. The tool result never echoes pad body text.',
+  descriptionI18n: {
+    en: 'Create, replace, append to, or upsert a ws_mod scratch pad. The tool result never echoes pad body text.',
+    zh: '创建、替换、追加或 upsert 一个 ws_mod scratch pad。工具结果不会回显 pad 正文。',
+  },
+  parameters: {
+    type: 'object',
+    additionalProperties: false,
+    required: ['pad_id', 'content'],
+    properties: {
+      pad_id: {
+        type: 'string',
+        description: 'Agent-chosen scratch pad slug: /^[A-Za-z0-9_-]{1,64}$/.',
+      },
+      content: {
+        type: 'string',
+        description:
+          'Pad body text. Large content is allowed, but it will still be persisted as tool-call arguments.',
+      },
+      mode: {
+        type: 'string',
+        enum: ['', 'create', 'replace', 'append', 'upsert'],
+        description: 'Write mode. Defaults to upsert.',
+      },
+    },
+  },
+  argsValidation: 'dominds',
+  call: async (dlg, _caller, args): Promise<ToolCallOutput> => {
+    try {
+      const padId = normalizePadId(requireNonEmptyStringArg(args, 'pad_id'));
+      const content = optionalStringArg(args, 'content') ?? '';
+      const mode = parsePadWriteMode(args['mode']);
+      const existing = findDialogPadById(dlg, padId);
+      if (mode === 'create' && existing !== undefined) {
+        return failYaml(
+          [
+            `status: error`,
+            `mode: pad_write`,
+            `pad_id: ${yamlQuote(padId)}`,
+            `error: PAD_ALREADY_EXISTS`,
+            `summary: ${yamlQuote(`pad_id=${padId} already exists`)}`,
+          ].join('\n'),
+        );
+      }
+      if ((mode === 'replace' || mode === 'append') && existing === undefined) {
+        return failYaml(
+          [
+            `status: error`,
+            `mode: pad_write`,
+            `pad_id: ${yamlQuote(padId)}`,
+            `error: PAD_NOT_FOUND`,
+            `summary: ${yamlQuote(`pad_id=${padId} does not exist`)}`,
+          ].join('\n'),
+        );
+      }
+      const nextText =
+        mode === 'append' && existing !== undefined ? `${existing.meta.text}${content}` : content;
+      upsertDialogPad(dlg, padId, nextText);
+      return okYaml(
+        formatPadResultYaml(
+          'pad_write',
+          padId,
+          nextText,
+          `pad_id=${padId} ${mode === 'append' ? 'appended' : 'written'}`,
+        ),
+      );
+    } catch (error: unknown) {
+      return failYaml(
+        [
+          `status: error`,
+          `mode: pad_write`,
+          `error: INVALID_ARGS`,
+          `summary: ${yamlQuote(error instanceof Error ? error.message : String(error))}`,
+        ].join('\n'),
+      );
+    }
+  },
+};
+
+export const padLoadFileRangeTool: FuncTool = {
+  type: 'func',
+  name: 'pad_load_file_range',
+  description:
+    'Load a rtws file line range into a ws_mod scratch pad without echoing the selected text.',
+  descriptionI18n: {
+    en: 'Load a rtws file line range into a ws_mod scratch pad without echoing the selected text.',
+    zh: '把 rtws 文件行范围装入 ws_mod scratch pad，且不回显选中文本。',
+  },
+  parameters: {
+    type: 'object',
+    additionalProperties: false,
+    required: ['pad_id', 'path', 'range'],
+    properties: {
+      pad_id: {
+        type: 'string',
+        description: 'Agent-chosen scratch pad slug: /^[A-Za-z0-9_-]{1,64}$/.',
+      },
+      path: { type: 'string', description: 'rtws-relative file path.' },
+      range: { type: 'string', description: "Line range: '10~50' | '300~' | '~20' | '~'." },
+      mode: {
+        type: 'string',
+        enum: ['', 'create', 'replace', 'append', 'upsert'],
+        description: 'Write mode. Defaults to upsert.',
+      },
+    },
+  },
+  argsValidation: 'dominds',
+  call: async (dlg, caller, args): Promise<ToolCallOutput> => {
+    try {
+      const padId = normalizePadId(requireNonEmptyStringArg(args, 'pad_id'));
+      const filePath = requireNonEmptyStringArg(args, 'path');
+      const range = requireNonEmptyStringArg(args, 'range');
+      const mode = parsePadWriteMode(args['mode']);
+      if (!hasReadAccess(caller, filePath)) {
+        return toolFailure(getAccessDeniedMessage('read', filePath, getWorkLanguage()));
+      }
+      const existing = findDialogPadById(dlg, padId);
+      if (mode === 'create' && existing !== undefined) {
+        return failYaml(
+          [
+            `status: error`,
+            `mode: pad_load_file_range`,
+            `pad_id: ${yamlQuote(padId)}`,
+            `error: PAD_ALREADY_EXISTS`,
+            `summary: ${yamlQuote(`pad_id=${padId} already exists`)}`,
+          ].join('\n'),
+        );
+      }
+      if ((mode === 'replace' || mode === 'append') && existing === undefined) {
+        return failYaml(
+          [
+            `status: error`,
+            `mode: pad_load_file_range`,
+            `pad_id: ${yamlQuote(padId)}`,
+            `error: PAD_NOT_FOUND`,
+            `summary: ${yamlQuote(`pad_id=${padId} does not exist`)}`,
+          ].join('\n'),
+        );
+      }
+      const absPath = ensureInsideWorkspace(filePath);
+      const raw = await fs.readFile(absPath, 'utf8');
+      const selectedText = selectTextByLineRange(raw, range);
+      const nextText =
+        mode === 'append' && existing !== undefined
+          ? `${existing.meta.text}${selectedText}`
+          : selectedText;
+      upsertDialogPad(dlg, padId, nextText);
+      return okYaml(
+        formatPadResultYaml(
+          'pad_load_file_range',
+          padId,
+          nextText,
+          `loaded ${filePath}:${range} into pad_id=${padId}`,
+        ),
+      );
+    } catch (error: unknown) {
+      return failYaml(
+        [
+          `status: error`,
+          `mode: pad_load_file_range`,
+          `error: INVALID_ARGS`,
+          `summary: ${yamlQuote(error instanceof Error ? error.message : String(error))}`,
+        ].join('\n'),
+      );
+    }
+  },
+};
+
+export const padEditTool: FuncTool = {
+  type: 'func',
+  name: 'pad_edit',
+  description:
+    'Replace, delete, or append by line range inside an existing ws_mod scratch pad. The result never echoes pad body text.',
+  descriptionI18n: {
+    en: 'Replace, delete, or append by line range inside an existing ws_mod scratch pad. The result never echoes pad body text.',
+    zh: '在已有 ws_mod scratch pad 内按行范围替换、删除或追加。工具结果不会回显 pad 正文。',
+  },
+  parameters: {
+    type: 'object',
+    additionalProperties: false,
+    required: ['pad_id', 'range'],
+    properties: {
+      pad_id: {
+        type: 'string',
+        description: 'Agent-chosen scratch pad slug: /^[A-Za-z0-9_-]{1,64}$/.',
+      },
+      range: { type: 'string', description: "Line range: '10~50' | '300~' | '~20' | '~'." },
+      content: {
+        type: 'string',
+        description: 'Replacement text. Empty string deletes the selected range.',
+      },
+    },
+  },
+  argsValidation: 'dominds',
+  call: async (dlg, _caller, args): Promise<ToolCallOutput> => {
+    try {
+      const padId = normalizePadId(requireNonEmptyStringArg(args, 'pad_id'));
+      const range = requireNonEmptyStringArg(args, 'range');
+      const content = optionalStringArg(args, 'content') ?? '';
+      const existing = findDialogPadById(dlg, padId);
+      if (existing === undefined) {
+        return failYaml(
+          [
+            `status: error`,
+            `mode: pad_edit`,
+            `pad_id: ${yamlQuote(padId)}`,
+            `error: PAD_NOT_FOUND`,
+            `summary: ${yamlQuote(`pad_id=${padId} does not exist`)}`,
+          ].join('\n'),
+        );
+      }
+      const nextText = applyTextLineRangeEdit(existing.meta.text, range, content);
+      upsertDialogPad(dlg, padId, nextText);
+      return okYaml(formatPadResultYaml('pad_edit', padId, nextText, `edited pad_id=${padId}`));
+    } catch (error: unknown) {
+      return failYaml(
+        [
+          `status: error`,
+          `mode: pad_edit`,
+          `error: INVALID_ARGS`,
+          `summary: ${yamlQuote(error instanceof Error ? error.message : String(error))}`,
+        ].join('\n'),
+      );
+    }
+  },
+};
+
+export const padDeleteTool: FuncTool = {
+  type: 'func',
+  name: 'pad_delete',
+  description: 'Delete a ws_mod scratch pad by pad_id.',
+  descriptionI18n: {
+    en: 'Delete a ws_mod scratch pad by pad_id.',
+    zh: '按 pad_id 删除 ws_mod scratch pad。',
+  },
+  parameters: {
+    type: 'object',
+    additionalProperties: false,
+    required: ['pad_id'],
+    properties: {
+      pad_id: {
+        type: 'string',
+        description: 'Agent-chosen scratch pad slug: /^[A-Za-z0-9_-]{1,64}$/.',
+      },
+    },
+  },
+  argsValidation: 'dominds',
+  call: async (dlg, _caller, args): Promise<ToolCallOutput> => {
+    try {
+      const padId = normalizePadId(requireNonEmptyStringArg(args, 'pad_id'));
+      const existing = findDialogPadById(dlg, padId);
+      if (existing === undefined) {
+        const fallbackIndex = findDialogPadReminderIndexByReminderId(dlg, padId);
+        if (fallbackIndex === undefined) {
+          return failYaml(
+            [
+              `status: error`,
+              `mode: pad_delete`,
+              `pad_id: ${yamlQuote(padId)}`,
+              `error: PAD_NOT_FOUND`,
+              `summary: ${yamlQuote(`pad_id=${padId} does not exist`)}`,
+            ].join('\n'),
+          );
+        }
+        dlg.deleteReminder(fallbackIndex);
+        return okYaml(
+          [
+            `status: ok`,
+            `mode: pad_delete`,
+            `pad_id: ${yamlQuote(padId)}`,
+            `summary: ${yamlQuote(
+              `deleted pad_id=${padId} by reminder_id fallback because metadata was not readable`,
+            )}`,
+          ].join('\n'),
+        );
+      }
+      dlg.deleteReminder(existing.index);
+      return okYaml(
+        [
+          `status: ok`,
+          `mode: pad_delete`,
+          `pad_id: ${yamlQuote(padId)}`,
+          `summary: ${yamlQuote(`deleted pad_id=${padId}`)}`,
+        ].join('\n'),
+      );
+    } catch (error: unknown) {
+      return failYaml(
+        [
+          `status: error`,
+          `mode: pad_delete`,
+          `error: INVALID_ARGS`,
+          `summary: ${yamlQuote(error instanceof Error ? error.message : String(error))}`,
+        ].join('\n'),
+      );
+    }
   },
 };
 

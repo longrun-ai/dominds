@@ -81,12 +81,17 @@ import {
   createNewFileTool,
   fsReadFileTool,
   overwriteEntireFileTool,
+  padDeleteTool,
+  padEditTool,
+  padLoadFileRangeTool,
+  padWriteTool,
   prepareFileAppendTool,
   prepareFileBlockReplaceTool,
   prepareFileInsertAfterTool,
   prepareFileInsertBeforeTool,
   prepareFileRangeEditTool,
   readFileTool,
+  wsModPadReminderOwner,
 } from './txt';
 
 function promptFilesFor(toolsetId: string): { en: string; zh: string } {
@@ -131,6 +136,10 @@ registerTool(fsReadPictureTool);
 registerTool(writePictureTool);
 registerTool(createNewFileTool);
 registerTool(overwriteEntireFileTool);
+registerTool(padWriteTool);
+registerTool(padLoadFileRangeTool);
+registerTool(padEditTool);
+registerTool(padDeleteTool);
 registerTool(prepareFileRangeEditTool);
 registerTool(applyFileModificationTool);
 registerTool(prepareFileAppendTool);
@@ -378,6 +387,10 @@ registerToolset('ws_mod', [
   writePictureTool,
   createNewFileTool,
   overwriteEntireFileTool,
+  padWriteTool,
+  padLoadFileRangeTool,
+  padEditTool,
+  padDeleteTool,
   prepareFileAppendTool,
   prepareFileInsertAfterTool,
   prepareFileInsertBeforeTool,
@@ -428,3 +441,4 @@ setToolsetMeta('team_mgmt', {
 registerReminderOwner(shellCmdReminderOwner);
 registerReminderOwner(mcpLeaseReminderOwner);
 registerReminderOwner(pendingTellaskReminderOwner);
+registerReminderOwner(wsModPadReminderOwner);

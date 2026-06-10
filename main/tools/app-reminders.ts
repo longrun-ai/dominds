@@ -21,6 +21,7 @@ import {
   compareReminderDisplayOrder,
   computeReminderRenderRevision,
   reminderEchoBackEnabled,
+  serializeReminderContentMeta,
   type JsonValue,
   type Reminder,
   type ReminderOwner,
@@ -267,7 +268,7 @@ async function persistAndPublishReminders(dlg: Dialog): Promise<void> {
   visibleReminders.sort(compareReminderDisplayOrder);
   const reminders: ReminderContent[] = visibleReminders.map((reminder) => ({
     content: reminder.content,
-    meta: isRecord(reminder.meta) ? reminder.meta : undefined,
+    meta: serializeReminderContentMeta(reminder),
     reminder_id: reminder.id,
     renderRevision: computeReminderRenderRevision(reminder),
     echoback: reminderEchoBackEnabled(reminder),

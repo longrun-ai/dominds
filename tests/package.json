@@ -145,6 +145,7 @@
     "reminder-delete-empty-state": "tsx reminders/delete-reminder-empty-state.ts",
     "reminder-delete-meta-guard": "tsx reminders/delete-reminder-meta-guard.ts",
     "reminder-update-meta-guard": "tsx reminders/update-reminder-meta-guard.ts",
+    "reminder-ws-mod-pad": "tsx reminders/ws-mod-pad.ts",
     "reminder-delete-round-snapshot": "tsx reminders/delete-reminder-round-snapshot.ts",
     "reminder-stale-target-message": "tsx reminders/stale-target-message.ts",
     "reminder-daemon-exit-wake-event": "tsx reminders/daemon-exit-wake-event.ts",

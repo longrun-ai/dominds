@@ -87,6 +87,7 @@ import {
   ReminderOptions,
   ReminderOwner,
   ReminderUpdateOptions,
+  serializeReminderContentMeta,
 } from './tool';
 import { generateDialogID } from './utils/id';
 
@@ -963,7 +964,7 @@ export abstract class Dialog {
     visibleReminders.sort(compareReminderDisplayOrder);
     return visibleReminders.map((r: Reminder) => ({
       content: r.content,
-      meta: r.meta as Record<string, unknown> | undefined,
+      meta: serializeReminderContentMeta(r),
       reminder_id: r.id,
       renderRevision: computeReminderRenderRevision(r),
       echoback: reminderEchoBackEnabled(r),

@@ -223,6 +223,72 @@ export function cloneReminder(reminder: Reminder): Reminder {
   });
 }
 
+export function serializeReminderContentMeta(
+  reminder: Reminder,
+): Record<string, unknown> | undefined {
+  // ws_mod pads keep their large body in owner-private metadata. Reminder snapshots are
+  // frontend display events, so they must carry only the rendered summary content.
+  if (reminder.owner !== undefined && reminder.owner.name === 'wsModPad') {
+    return undefined;
+  }
+  const meta = reminder.meta;
+  if (typeof meta !== 'object' || meta === null || Array.isArray(meta)) {
+    return undefined;
+  }
+  return meta;
+}
+
+export function serializeReminderMaintenanceMeta(reminder: Reminder): unknown {
+  if (reminder.owner === undefined || reminder.owner.name !== 'wsModPad') {
+    return reminder.meta;
+  }
+
+  const meta = reminder.meta;
+  if (typeof meta !== 'object' || meta === null || Array.isArray(meta)) {
+    return undefined;
+  }
+
+  const result: Record<string, unknown> = {};
+  if (typeof meta['kind'] === 'string') {
+    result['kind'] = meta['kind'];
+  }
+  if (typeof meta['padId'] === 'string') {
+    result['padId'] = meta['padId'];
+  }
+
+  const manager = meta['manager'];
+  if (
+    typeof manager === 'object' &&
+    manager !== null &&
+    !Array.isArray(manager) &&
+    manager['tool'] === 'pad_*'
+  ) {
+    result['manager'] = { tool: 'pad_*' };
+  }
+
+  const update = meta['update'];
+  if (
+    typeof update === 'object' &&
+    update !== null &&
+    !Array.isArray(update) &&
+    typeof update['altInstruction'] === 'string'
+  ) {
+    result['update'] = { altInstruction: update['altInstruction'] };
+  }
+
+  const deleteValue = meta['delete'];
+  if (
+    typeof deleteValue === 'object' &&
+    deleteValue !== null &&
+    !Array.isArray(deleteValue) &&
+    typeof deleteValue['altInstruction'] === 'string'
+  ) {
+    result['delete'] = { altInstruction: deleteValue['altInstruction'] };
+  }
+
+  return result;
+}
+
 export function computeReminderRenderRevision(reminder: Reminder): string {
   const payload = JSON.stringify({
     id: reminder.id,

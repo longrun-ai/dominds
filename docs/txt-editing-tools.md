@@ -1,7 +1,7 @@
 ---
 title: Text Editing Tools (ws_mod) — Design Doc
 status: implemented
-updated: 2026-01-24
+updated: 2026-06-10
 ---
 
 # 文本编辑工具（ws_mod）设计文档（以当前实现为准）
@@ -216,27 +216,58 @@ Chinese version: [中文版](./txt-editing-tools.zh.md)
   - `total_lines`（用于对账护栏：空文件为 0，可直接用于 `overwrite_entire_file.known_old_total_lines`）
 - `overwrite_entire_file` 的成功/失败输出均使用 YAML（便于程序化处理与重试）。
 
-为提升可脚本化与回归稳定性：
+## 9. Scratch Pad 决策记录与阶段实现
 
-- `read_file` 输出开头包含 YAML header（随后是代码块正文），其中会给出：
-  - `total_lines`（用于对账护栏：空文件为 0，可直接用于 `overwrite_entire_file.known_old_total_lines`）
-- `overwrite_entire_file` 的成功/失败输出均使用 YAML（便于程序化处理与重试）。
+Scratch Pad 是 ws_mod 的大文本编辑缓冲区，目标是减少 LLM 在多轮编辑中反复输出同一大块文本，也减少 prepare/apply 因小错反复重做的成本。它不是普通 reminder 的新用法，而是隶属于 ws_mod 的专用工具能力；底层可以复用 reminder 的可见性、持久化与生命周期提示。
 
-## 9. 错误与拒绝（稳定方向）
+### 9.1 边界
 
-### 9.1 prepare 阶段（常见）
+- `add_reminder` / `update_reminder` / `delete_reminder` 保持现有语义和功能，不承接 pad 创建、修改或删除。
+- pad 作为 `ws_mod` 专用对象，由 `pad_*` 工具管理；普通 reminder 工具不应修改 pad。
+- pad 使用智能体自主分配的 `pad_id` slug 作为稳定句柄。实现时应限制为安全、可持久化的短标识（例如 `^[A-Za-z0-9_-]+$`），避免与普通 reminder id 混淆。
+- pad 本体只保存 `pad_id + content`；不保存 `source` / `target` / `role` / `updatedAt`。
+- 不提供 `role`，不提供自动过期；pad 用完必须由智能体主动删除。
+- 默认作用域应偏当前对话。只有当文件编辑业务明确需要同一任务内协作复用时，才考虑更宽作用域。
+
+### 9.2 上下文投影
+
+- pad 以扎眼的特殊提醒项形式投影到 LLM generation context 的末尾、真实用户消息之前，让智能体总能看到有哪些临时缓冲区仍未清理。
+- role=user 的 pad 投影只包含 `pad_id`、行数/字节数/hash 等元信息，不投影正文，也不放 `pad_delete(...)` 这类可执行工具调用文本，避免被误判成当前立即指令。
+- pad 提醒项应由专用 owner/manager 管理，并通过 metadata 阻止普通 `update_reminder` / `delete_reminder` 误改；可执行维护通道通过现有 role=assistant 的 reminder maintenance reference 暴露，错误提示也应指向对应的 `pad_*` 工具。
+- pad 投影的产品目的不是长期记忆，而是当前编辑工作台与清理压力：内容应用完成或不再需要后，智能体应尽快 `pad_delete`。
+
+### 9.3 工具形态
+
+当前阶段先落基础编辑工具，后续再扩展搬运和落盘工具；任何阶段都不提供观察工具：
+
+- 当前已实现：`pad_write`、`pad_load_file_range`、`pad_edit`、`pad_delete`。
+- 后续目标形态：`pad_insert`、`pad_delete_range`、`pad_copy`、`pad_move`、`pad_prepare_file_range_edit`。
+- 不提供：`pad_read`、`pad_preview`、`pad_locate`、`pad_diff`、`pad_stat`、`pad_list` 等会把 pad 内容或额外观察路径带回对话历史的工具。
+- 文件编辑工具应能直接把 pad 当作源或目标：文件范围可装入 pad，pad 范围可作为文件 range edit 的新内容，pad 之间可复制/剪切/移动文本。
+- 工具结果默认只返回操作是否成功、受影响行数/字节数/hash 与下一步提示，不回显大块正文。
+
+### 9.4 大文本入参的现实取舍
+
+- 不能禁止 LLM 写出大块新内容；很多业务场景需要直接生成文案、代码或配置。
+- `pad_write` / `pad_edit` / `pad_insert` 接收大文本时，这些正文仍会以函数调用参数形式进入持久历史；当前没有完美办法完全消除这类一次性成本。
+- 设计目标不是让大文本从不进入持久上下文，而是避免同一大文本在后续编辑、搬运、应用阶段反复进入历史。
+- 因此推荐路径是：必要时一次性写入 pad，之后尽量用 pad/file/pad 之间的句柄式搬运和 range edit 完成后续操作，最后主动删除 pad。
+
+## 10. 错误与拒绝（稳定方向）
+
+### 10.1 prepare 阶段（常见）
 
 - `FILE_NOT_FOUND`：文件不存在（某些工具如 append 可用 `create=true` 处理）。
 - `CONTENT_REQUIRED`：正文为空但该工具需要正文（insert/append/block_replace）。
 - `ANCHOR_NOT_FOUND` / `ANCHOR_AMBIGUOUS`：锚点缺失或歧义（提示指定 occurrence 或换用更精确方法）。
 - `OCCURRENCE_OUT_OF_RANGE`：occurrence 超范围。
 
-### 9.2 apply 阶段（常见）
+### 10.2 apply 阶段（常见）
 
 - `HUNK_NOT_FOUND`：hunk 过期/已应用/不存在。
 - `WRONG_OWNER`：hunk 非当前成员规划。
 
-## 10. 示例（copy/paste 可用）
+## 11. 示例（copy/paste 可用）
 
 - 末尾追加：
 
@@ -264,7 +295,7 @@ Call the function tool `apply_file_modification` with:
 { "hunk_id": "<hunk_id>" }
 ```
 
-## 11. 与 `.minds/` 的关系（team_mgmt 版本）
+## 12. 与 `.minds/` 的关系（team_mgmt 版本）
 
 `.minds/` 属于团队配置与 rtws（运行时工作区）记忆的核心，通常应通过 `team_mgmt` toolset 的镜像工具操作（例如 `team_mgmt_prepare_file_insert_after` 等）。  
 本设计文档的“prepare-first + 单 apply”心智模型保持一致，但路径与权限语义由 team_mgmt 工具包装层决定（详见 team_mgmt 文档/工具说明）。
@@ -284,3 +315,4 @@ This is the design doc for `ws_mod` text editing as implemented.
 - `create_new_file` creates a new file (empty content allowed) and refuses to overwrite existing files (YAML-only output).
 - `overwrite_entire_file` is the exception full-file overwrite tool, guarded by `known_old_total_lines/known_old_total_bytes`, and it refuses diff/patch-like content by default unless `content_format='diff'|'patch'`.
 - Some providers (e.g. Codex) may require “all fields present” in function calls; for those providers only, use sentinels like empty strings / 0 to express “unset/default”. For most providers, omit optional fields naturally.
+- Scratch Pad is a staged `ws_mod` buffer system for large text editing. The current foundation includes `pad_write`, `pad_load_file_range`, `pad_edit`, and `pad_delete`; it keeps `add_reminder` / `update_reminder` / `delete_reminder` semantics unchanged, exposes pad state as prominent managed reminder metadata, and intentionally avoids pad observation tools such as `pad_read` / `pad_preview` / `pad_diff`. Large generated content may still enter persistent tool-call history when first written, but subsequent file/pad operations should move text by handle instead of re-emitting it.

@@ -71,6 +71,7 @@ import type { Team } from '../../team';
 import {
   reminderEchoBackEnabled,
   resolveFuncToolInvocationArguments,
+  serializeReminderMaintenanceMeta,
   toolFailure,
   type FuncTool,
   type FuncToolFollowupMode,
@@ -1382,7 +1383,7 @@ async function renderRemindersForContext(dlg: Dialog): Promise<ChatMessage[]> {
     }
     maintenanceReferenceItems.push({
       id: reminder.id,
-      meta: reminder.meta,
+      meta: serializeReminderMaintenanceMeta(reminder),
     });
     if (reminder.owner) {
       renderedItems.push(await reminder.owner.renderReminder(dlg, reminder));
