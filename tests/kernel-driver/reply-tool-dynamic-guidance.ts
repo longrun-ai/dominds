@@ -134,6 +134,11 @@ async function main(): Promise<void> {
       [],
       'wrong reply tool must not count as delivered',
     );
+    assert.deepEqual(
+      wrongReply.failedReplyCallIds,
+      ['wrong-reply-call'],
+      'wrong reply tool must be tracked as a failed reply delivery',
+    );
     assert.equal(wrongReply.toolOutputs.length, 1, 'expected one tool result for wrong reply tool');
     assert.equal(wrongReply.toolOutputs[0]?.type, 'func_result_msg');
     const wrongReplyToolOutput = wrongReply.toolOutputs[0];
@@ -167,6 +172,11 @@ async function main(): Promise<void> {
       staleReply.successfulReplyCallIds,
       [],
       'resolved reply obligation must not accept another reply delivery',
+    );
+    assert.deepEqual(
+      staleReply.failedReplyCallIds,
+      ['stale-reply-call'],
+      'resolved reply obligation must track the stale reply as a failed delivery',
     );
     assert.equal(staleReply.toolOutputs.length, 1, 'expected one tool result for stale reply call');
     assert.equal(staleReply.toolOutputs[0]?.type, 'func_result_msg');
@@ -219,6 +229,11 @@ async function main(): Promise<void> {
       duplicateAskBackReply.successfulReplyCallIds,
       [],
       'already resolved replyTellaskBack target must not count as delivered',
+    );
+    assert.deepEqual(
+      duplicateAskBackReply.failedReplyCallIds,
+      ['duplicate-askback-reply-tool-call'],
+      'already resolved replyTellaskBack target must track the duplicate reply as failed',
     );
     assert.equal(
       duplicateAskBackReply.toolOutputs.length,

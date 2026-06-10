@@ -2388,6 +2388,7 @@ export abstract class Dialog {
     options?: {
       deliveryMode?: 'tellask_call_start' | 'func_call_requested';
       replyDirective?: TellaskReplyDirective;
+      recordReplyDelivery?: boolean;
     },
   ): Promise<void> {
     return await this.dlgStore.persistTellaskCall(
@@ -3130,6 +3131,7 @@ export abstract class DialogStore {
     _options?: {
       deliveryMode?: 'tellask_call_start' | 'func_call_requested';
       replyDirective?: TellaskReplyDirective;
+      recordReplyDelivery?: boolean;
     },
   ): Promise<void> {}
 

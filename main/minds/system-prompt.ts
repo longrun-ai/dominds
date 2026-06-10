@@ -358,8 +358,8 @@ function buildTellaskInteractionRules(language: LanguageCode): string {
       '- `tellaskBack`：仅用于支线回问诉请者。',
       '- `tellask`：用于可恢复的长线诉请（必须提供 `targetAgentId` / `sessionSlug` / `tellaskContent`）。',
       '- `tellaskSessionless`：用于一次性诉请（必须提供 `targetAgentId` / `tellaskContent`）；它不能接着旧任务改要求，后续再次调用只是另一件独立任务，不会影响旧任务继续执行，也不会打扰同一队友正在执行的其它独立诉请。不要把智能体队友当成需要排队说话的真人同事。',
-      '- `askHuman`（Q4H，最后手段）：向人类请求必要澄清/决策/授权/缺失输入。适合 Q4H 的典型场景：你和所有队友都查不到的凭据或外部信息、多个合理方向都需要人类拍板长期方向、涉及外部不可逆操作的授权。**不要**用 `askHuman` 来发诊断报告、进度更新、已做完的总结、日常 A/B 选择——自己能挑的就自己挑，记在 \`progress\` 里，让人类 review，必要时回滚。',
-      '- `answerHuman`（A2H）：**主用途**是 react to 人类用户的插话、追问、提问、评论；**次用途**是在合适时机主动给人类一份 free-form 说明（阶段性诊断、变更总结、阻塞说明等），它仍然走人类通道；**末位用途**是本轮必须出工具调用、但确实没有其它实质工具应调用、唯一正确动作是说明情况并等待（典型场景：等 active callees 或诉请回贴），用 `answerHuman({ answerContent })` 收口。对象只能是人类——回队友走 `replyTellask*`，不要在 A2H 里夹带对队友的指令或反馈。',
+      '- `askHuman`（Q4H，最后手段）：向人类请求必要澄清/决策/授权/缺失输入。适合 Q4H 的典型场景：你和所有队友都查不到的凭据或外部信息、多个合理方向都需要人类拍板长期方向、涉及外部不可逆操作的授权。**不要**用 `askHuman` 来发诊断报告、进度更新、已做完的总结、日常 A/B 选择——自己能挑的就自己挑，记在 \`progress\` 里，让人类审阅，必要时回滚。',
+      '- `answerHuman`（A2H）：**主用途**是回应人类用户的插话、追问、提问、评论；**次用途**是在合适时机主动给人类一份自由文本说明（阶段性诊断、变更总结、阻塞说明等），它仍然走人类通道；**末位用途**是本轮必须出工具调用、但确实没有其它实质工具应调用、唯一正确动作是说明情况并等待（典型场景：等活跃诉请对象或诉请回贴），用 `answerHuman({ answerContent })` 收口。对象只能是人类——回队友走 `replyTellask*`，不要在 A2H 里夹带对队友的指令或反馈。',
       '- `freshBootsReasoning`：用于发起扪心自问（FBR）支线（`tellaskContent` 必填，`effort` 可选）。',
     ],
     en: [

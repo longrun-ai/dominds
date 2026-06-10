@@ -95,6 +95,7 @@ async function main(): Promise<void> {
       },
     });
     assert.deepEqual(result.successfulReplyCallIds, [replyCallId]);
+    assert.deepEqual(result.failedReplyCallIds, []);
 
     const latest = await DialogPersistence.loadDialogLatest(sideDialog.id, sideDialog.status);
     assert.equal(
@@ -267,6 +268,84 @@ async function main(): Promise<void> {
       staleReplyResult.content.includes('不会送达') ||
         staleReplyResult.content.includes('will not deliver'),
       'expected stale replyTellaskBack result to explain that no delivery happened',
+    );
+
+    const noActiveReplyRoot = await createMainDialog('tester');
+    const noActiveReplyCallId = 'no-active-reply-call';
+    const noActiveReplyRound = await processTellaskFunctionRound({
+      dlg: noActiveReplyRoot,
+      funcCalls: [
+        {
+          type: 'func_call_msg',
+          role: 'assistant',
+          genseq: 1,
+          id: noActiveReplyCallId,
+          name: 'replyTellaskBack',
+          arguments: JSON.stringify({ replyContent: 'No one is waiting.' }),
+        },
+      ],
+      allowedSpecials: new Set<TellaskCallFunctionName>(['replyTellaskBack']),
+      callbacks: {
+        scheduleDrive: () => {},
+        driveDialog: async () => {},
+      },
+    });
+    assert.equal(
+      noActiveReplyRound.shouldStopAfterReplyTool,
+      false,
+      'replyTellask* without an active obligation must not stop the dialog drive',
+    );
+    assert.equal(
+      noActiveReplyRound.hasImmediateTellaskOutputs,
+      true,
+      'replyTellask* without an active obligation should request same-drive follow-up',
+    );
+    assert.deepEqual(
+      noActiveReplyRound.immediateTellaskOutputCallIds,
+      [noActiveReplyCallId],
+      'replyTellask* without an active obligation should expose its result to immediate follow-up',
+    );
+
+    const wrongToolRoot = await createMainDialog('tester');
+    const wrongToolReplyCallId = 'wrong-tool-reply-call';
+    const wrongToolRound = await processTellaskFunctionRound({
+      dlg: wrongToolRoot,
+      funcCalls: [
+        {
+          type: 'func_call_msg',
+          role: 'assistant',
+          genseq: 1,
+          id: wrongToolReplyCallId,
+          name: 'replyTellaskBack',
+          arguments: JSON.stringify({ replyContent: 'Wrong channel.' }),
+        },
+      ],
+      allowedSpecials: new Set<TellaskCallFunctionName>(['replyTellaskBack']),
+      callbacks: {
+        scheduleDrive: () => {},
+        driveDialog: async () => {},
+      },
+      activePromptReplyDirective: {
+        expectedReplyCallName: 'replyTellask',
+        targetDialogId: wrongToolRoot.id.selfId,
+        targetCallId: 'wrong-tool-target-call',
+        tellaskContent: 'Please finish through replyTellask.',
+      },
+    });
+    assert.equal(
+      wrongToolRound.shouldStopAfterReplyTool,
+      false,
+      'wrong replyTellask* tool must not stop the dialog drive',
+    );
+    assert.equal(
+      wrongToolRound.hasImmediateTellaskOutputs,
+      true,
+      'wrong replyTellask* tool should request same-drive follow-up',
+    );
+    assert.deepEqual(
+      wrongToolRound.immediateTellaskOutputCallIds,
+      [wrongToolReplyCallId],
+      'wrong replyTellask* tool should expose its result to immediate follow-up',
     );
   });
 

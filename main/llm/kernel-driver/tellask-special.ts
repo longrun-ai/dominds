@@ -3364,7 +3364,10 @@ export async function processTellaskFunctionRound(args: {
       disposition.callName,
       issue.rawArgumentsText,
       issue.originalCall.genseq,
-      { deliveryMode: 'func_call_requested' },
+      {
+        deliveryMode: 'func_call_requested',
+        ...(isReplyTellaskCallName(disposition.callName) ? { recordReplyDelivery: false } : {}),
+      },
     );
     const result = formatTellaskInvalidCallResult({
       call: issue.originalCall,

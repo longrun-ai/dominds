@@ -536,6 +536,16 @@ async function main(): Promise<void> {
       false,
       'multi replyTellask* failure must not deliver a tellask result to the requester',
     );
+    assert.equal(
+      (
+        await DialogPersistence.loadDialogLatest(
+          multiReplySideDialog.id,
+          multiReplySideDialog.status,
+        )
+      )?.replyDelivery,
+      undefined,
+      'multi replyTellask* failure must not leave a pending reply delivery on the side dialog',
+    );
 
     const mixedReplyRound = await processTellaskFunctionRound({
       dlg: multiReplySideDialog,
@@ -603,6 +613,16 @@ async function main(): Promise<void> {
       ),
       false,
       'mixed replyTellask* failure must not deliver a tellask result to the requester',
+    );
+    assert.equal(
+      (
+        await DialogPersistence.loadDialogLatest(
+          multiReplySideDialog.id,
+          multiReplySideDialog.status,
+        )
+      )?.replyDelivery,
+      undefined,
+      'mixed replyTellask* failure must not leave a pending reply delivery on the side dialog',
     );
   });
 

@@ -4327,6 +4327,7 @@ export class DiskFileDialogStore extends DialogStore {
     options?: {
       deliveryMode?: 'tellask_call_start' | 'func_call_requested';
       replyDirective?: TellaskReplyDirective;
+      recordReplyDelivery?: boolean;
     },
   ): Promise<void> {
     const course = dialog.activeGenCourseOrUndefined ?? dialog.currentCourse;
@@ -4388,7 +4389,7 @@ export class DiskFileDialogStore extends DialogStore {
     }
     await this.appendEvent(dialog, course, tellaskCallEvent);
 
-    if (isReplyTellaskCallRecordName(name)) {
+    if (isReplyTellaskCallRecordName(name) && options?.recordReplyDelivery !== false) {
       const activeReplyObligation =
         options?.replyDirective ??
         (await DialogPersistence.loadActiveTellaskReplyObligation(dialog.id, dialog.status));
