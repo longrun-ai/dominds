@@ -23,7 +23,7 @@
 
 - <Toolset-specific terms>
 
-## 1. Background: Why direct range edit + prepare/apply
+## 1. Background: Why direct edit + pad source
 
 Historically, text editing tools had multiple mental models ("direct write" vs "plan first then apply"), causing:
 
@@ -84,8 +84,8 @@ Writing follows "each line ends with `\n` (including last line)":
 
 - If file has no trailing newline, one is added before writing (`normalized_file_eof_newline_added`)
 - If content has no trailing newline, one is added before writing (`normalized_content_eof_newline_added`)
-- Both plan and apply outputs include `normalized.*` fields for review
+- Write and preview outputs include `normalized.*` fields for review
 
 ### 5.2 Blank Line Style (observable only)
 
-For append/insert, prepare phase outputs `blankline_style` and `style_warning` to alert about "potential double blank lines / stuck-together" risks; currently does not actively modify content blank line style
+For append/insert, direct tool output includes `blankline_style` and `style_warning` to alert about "potential double blank lines / stuck-together" risks; currently does not actively modify content blank line style

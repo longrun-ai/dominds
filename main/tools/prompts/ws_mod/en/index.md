@@ -33,12 +33,12 @@ ws_mod is Dominds' text editing toolset, using **direct edit + pad source** arch
 
 ## Quick Navigation
 
-| Topic                         | Description                                                      |
-| ----------------------------- | ---------------------------------------------------------------- |
-| [principles](./principles.md) | Core concepts, workflow, concurrency constraints, hunk lifecycle |
-| [tools](./tools.md)           | Usage guidance, editing boundaries, and workflow notes           |
-| [scenarios](./scenarios.md)   | Common usage scenarios (copy-paste ready)                        |
-| [errors](./errors.md)         | Error codes and solutions                                        |
+| Topic                         | Description                                                        |
+| ----------------------------- | ------------------------------------------------------------------ |
+| [principles](./principles.md) | Core concepts, workflow, concurrency constraints, preview behavior |
+| [tools](./tools.md)           | Usage guidance, editing boundaries, and workflow notes             |
+| [scenarios](./scenarios.md)   | Common usage scenarios (copy-paste ready)                          |
+| [errors](./errors.md)         | Error codes and solutions                                          |
 
 ## Status
 

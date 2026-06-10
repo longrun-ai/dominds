@@ -23,7 +23,7 @@
 
 - <该工具集特有术语>
 
-## 1. 背景：为什么是 direct range edit + prepare/apply
+## 1. 背景：为什么是 direct edit + pad source
 
 历史上文本编辑工具存在"直接写入 vs 先 plan 再 apply"等多套心智并存，导致：
 
@@ -70,7 +70,6 @@
 > 可选字段默认可省略。  
 > 若你想显式表达"未指定/使用默认"，可用以下哨兵值：
 >
-> - `existing_hunk_id: ""`：不覆写旧规划（生成新 hunk）
 > - `occurrence: ""` 或 `0`：不指定 occurrence
 > - `match: ""`：使用默认 `contains`（注意：`match` 是 match mode，不是要匹配的文本/正则）
 > - `read_file({ range: "", max_lines: 0 })`：分别表示"不指定范围 / 使用默认 500 行"
@@ -85,8 +84,8 @@
 
 - 若文件末尾无换行，写入前会补齐 `\n`（`normalized_file_eof_newline_added`）
 - 若正文末尾无换行，写入前会补齐 `\n`（`normalized_content_eof_newline_added`）
-- 计划输出与应用输出都会带 `normalized.*` 字段以便复核
+- 写入与预览输出都会带 `normalized.*` 字段以便复核
 
 ### 5.2 空行风格（仅可观测）
 
-对 append/insert，prepare 阶段会输出 `blankline_style` 与 `style_warning`，用于提示"可能产生双空行/粘行"等风险；当前不主动改变正文空行风格
+对 append/insert，direct 工具输出会包含 `blankline_style` 与 `style_warning`，用于提示"可能产生双空行/粘行"等风险；当前不主动改变正文空行风格

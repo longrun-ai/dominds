@@ -6,7 +6,7 @@ You have read/write access to the rtws (runtime workspace). Single-block edits w
 
 - Precise line ranges: use `file_range_edit({ path, range, content })` or `file_range_edit({ path, range, pad_id, pad_range })` to write directly. It defaults to redacted YAML output and does not echo body text. Set `preview: true` or `show_diff: true` only when review output is needed.
 - EOF appends / anchor insertions / single block replacements: use `file_append`, `file_insert_after` / `file_insert_before`, and `file_block_replace`; each accepts either `content` or `pad_id/pad_range`.
-- When review is needed, set `preview: true, show_diff: true`; otherwise the tool writes immediately. Single-block `prepare_*` / `apply_file_modification` paths are not exposed.
+- When review is needed, set `preview: true, show_diff: true`; otherwise the tool writes immediately.
 - Legacy tools are removed (no compatibility layer): `append_file` / `insert_after` / `insert_before` / `replace_block` / `apply_block_replace`.
 - Constraint: paths under `*.tsk/` are encapsulated Taskdocs; file tools cannot access them.
 - Parallelism constraint: multiple function tool calls in one generation step may run in parallel. Same-file write tools are serialized internally, but avoid making multiple direct edits that semantically depend on unread results from each other.

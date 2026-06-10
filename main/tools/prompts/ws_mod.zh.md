@@ -6,7 +6,7 @@
 
 - 精确行号范围：用 `file_range_edit({ path, range, content })` 或 `file_range_edit({ path, range, pad_id, pad_range })` 直接写入；默认只返回 redacted YAML，不回显正文。需要审阅时显式 `preview: true` 或 `show_diff: true`。
 - 末尾追加/锚点插入/单块替换：用 `file_append`、`file_insert_after` / `file_insert_before`、`file_block_replace` 直接写入；均支持 `content` 或 `pad_id/pad_range`。
-- 需要审阅时显式 `preview: true, show_diff: true`；否则直接写入。当前不公开单块 `prepare_*` / `apply_file_modification` 路径。
+- 需要审阅时显式 `preview: true, show_diff: true`；否则直接写入。
 - 旧工具已移除（无兼容层）：`append_file` / `insert_after` / `insert_before` / `replace_block` / `apply_block_replace`。
 - 约束：`*.tsk/` 下的路径属于封装差遣牒，文件工具不可访问。
 - 并行约束：同一轮对话中的多个工具调用可能并行执行。同一文件的写入工具会在工具侧串行化，但语义上仍应避免让多个直接编辑依赖彼此未读到的结果。
