@@ -3,10 +3,11 @@ import * as fs from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 
-import type { Dialog } from '../main/dialog';
+import type { DialogStore } from '../main/dialog';
+import { MainDialog } from '../main/dialog';
 import { setWorkLanguage } from '../main/runtime/work-language';
 import { Team } from '../main/team';
-import { overwriteEntireFileTool } from '../main/tools/txt';
+import { overwriteEntireFileTool, padWriteTool } from '../main/tools/txt';
 
 async function main(): Promise<void> {
   const oldCwd = process.cwd();
@@ -15,7 +16,12 @@ async function main(): Promise<void> {
     process.chdir(tmpRoot);
     setWorkLanguage('en');
 
-    const dlg = {} as unknown as Dialog;
+    const dlg = new MainDialog(
+      {} as unknown as DialogStore,
+      'overwrite-entire-file.tsk',
+      undefined,
+      'alice',
+    );
     const alice = new Team.Member({
       id: 'alice',
       name: 'Alice',
@@ -53,6 +59,34 @@ async function main(): Promise<void> {
     ).content;
     assert.ok(diffLiteralResult.includes('status: error'));
     assert.ok(diffLiteralResult.includes('error: SUSPICIOUS_DIFF'));
+
+    const padToken = 'OVERWRITE_FROM_PAD_TOKEN';
+    const padWriteOutput = (
+      await padWriteTool.call(dlg, alice, {
+        pad_id: 'overwrite_src',
+        content: `${padToken}\n`,
+      })
+    ).content;
+    assert.ok(!padWriteOutput.includes(padToken), 'pad_write should not echo pad body');
+
+    const statsBeforePadOverwrite = await fs.stat(filePath);
+    const padOverwriteResult = (
+      await overwriteEntireFileTool.call(dlg, alice, {
+        path: 'sample.yaml',
+        known_old_total_lines: 3,
+        known_old_total_bytes: statsBeforePadOverwrite.size,
+        content_format: 'text',
+        pad_id: 'overwrite_src',
+      })
+    ).content;
+    assert.ok(padOverwriteResult.includes('status: ok'));
+    assert.ok(padOverwriteResult.includes('source: pad'));
+    assert.ok(padOverwriteResult.includes('redacted: true'));
+    assert.ok(
+      !padOverwriteResult.includes(padToken),
+      'overwrite_entire_file should not echo pad body',
+    );
+    assert.equal(await fs.readFile(filePath, 'utf-8'), `${padToken}\n`);
 
     console.log('✅ overwrite-entire-file tests passed');
   } finally {

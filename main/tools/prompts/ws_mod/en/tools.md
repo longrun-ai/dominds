@@ -39,11 +39,12 @@ Create a new file (no prepare/apply), allows empty content.
 Full file overwrite (**no prepare/apply**).
 
 - **Usage suggestion**: First use `read_file` to get `total_lines/size_bytes` as input for `known_old_total_lines/known_old_total_bytes`
-- **Design intent**: For "new content is small (e.g., <100 lines)" or "clearly a reset/generated artifact" scenarios; prefer prepare/apply for other cases
+- **Design intent**: For "new content is small (e.g., <100 lines)" or "clearly a reset/generated artifact" scenarios; for large bodies, prepare a pad first and pass `pad_id/pad_range`
+- **Source**: pass small bodies directly with `content`; pass large bodies with `pad_id/pad_range`
 - **Guardrail (required)**: Must provide `known_old_total_lines/known_old_total_bytes` (old file snapshot) to execute; reject if reconciliation doesn't match
 - `content_format`: Optional text hint; any non-empty label is accepted (for example `yaml`, `toml`, `json`, `markdown`)
 - **Guardrail (default reject)**: If content looks like diff/patch and `content_format=diff|patch` is not explicitly declared, default reject and guide to use prepare/apply (avoid mistakenly writing patch text into file)
-- **Limitation**: Does not create files; for creating empty/new files use `create_new_file`; for creating new file with non-empty initial content use `prepare_file_append create=true` → `apply_file_modification`
+- **Limitation**: Does not create files; for creating empty/new files use `create_new_file`
 
 ### 2.3 create_symlink / rm_symlink
 
@@ -57,6 +58,7 @@ Create or remove a symlink path.
 ## 3. Incremental Edits (direct range edit + prepare/apply)
 
 - `file_range_edit`: Directly replace/delete/append by precise line range (append via `N~` where `N=(last_line+1)`)
+- `create_new_file` / `overwrite_entire_file` / `file_range_edit` all support `content` and `pad_id/pad_range` sources; use direct `content` for small bodies and pad sources for large bodies
 - `prepare_file_append`: Preview append to EOF (optional `create=true|false`)
 - `prepare_file_insert_after` / `prepare_file_insert_before`: Preview insertion by anchor line (prepare phase strictly handles ambiguity; if anchor appears multiple times, must specify `occurrence`)
 - `prepare_file_block_replace`: Preview block replacement by start/end anchors (configurable `include_anchors` / `require_unique` / `strict` / `occurrence`, etc.)

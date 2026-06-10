@@ -10,11 +10,11 @@
 - 旧工具已移除（无兼容层）：`append_file` / `insert_after` / `insert_before` / `replace_block` / `apply_block_replace`。
 - 约束：`*.tsk/` 下的路径属于封装差遣牒，文件工具不可访问。
 - 并行约束：同一轮对话中的多个工具调用可能并行执行；**prepare → apply 必须分两轮**（除非未来有顺序编排器）。同一文件的写入工具会在工具侧串行化，但语义上仍应避免让多个直接编辑依赖彼此未读到的结果。
-- 输出以 YAML 为主：直接 range edit 默认不回显正文；prepare/apply 输出低注意力可复核的 `summary` + `evidence`/`apply_evidence` + unified diff。pad-sourced 写入默认 redacted，避免回显大块正文。
+- 输出以 YAML 为主：直接写入工具默认不回显正文；prepare/apply 输出低注意力可复核的 `summary` + `evidence`/`apply_evidence` + unified diff。pad-sourced 写入默认 redacted，避免回显大块正文。
 - 规范化：所有写入遵循"每行以 `\n` 结尾（含最后一行）"；EOF 换行会被补齐并通过 `normalized.*` 字段呈现。
-- 例外：`overwrite_entire_file` 是"整文件覆盖写入"的函数工具（会直接写盘，不走 prepare/apply）。它要求提供 `known_old_total_lines/known_old_total_bytes` 作为对账护栏（建议从 `read_file` 的 YAML header 读取 `total_lines/size_bytes`）；`content_format` 可填写任意非空文本标签（例如 `yaml`），但若正文疑似 diff/patch，仍只有显式声明 `content_format=diff|patch` 才会放行。仅用于"新内容很小（例如 <100 行）"或"明确为重置/生成物"的场景；大块精确范围改动优先用 pad + `file_range_edit`。
+- 例外：`overwrite_entire_file` 是"整文件覆盖写入"的函数工具（会直接写盘，不走 prepare/apply）。它要求提供 `known_old_total_lines/known_old_total_bytes` 作为对账护栏（建议从 `read_file` 的 YAML header 读取 `total_lines/size_bytes`）；可用 `content` 直供正文，也可用 `pad_id/pad_range` 作为来源。`content_format` 可填写任意非空文本标签（例如 `yaml`），但若正文疑似 diff/patch，仍只有显式声明 `content_format=diff|patch` 才会放行。仅用于"新内容很小（例如 <100 行）"或"明确为重置/生成物"的场景；大块正文优先先写入 pad，再用 `pad_id/pad_range` 覆盖。
   - 复制参数建议：对账参数请直接用 `read_file` 的 `total_lines/size_bytes`。
-- 例外：`create_new_file` 只负责"创建新文件"（允许空内容），不做增量编辑、不走 prepare/apply；若文件已存在会拒绝（避免误用覆盖写入语义）。
+- 例外：`create_new_file` 只负责"创建新文件"（允许空内容），不做增量编辑、不走 prepare/apply；小正文用 `content`，大正文优先用 `pad_id/pad_range`，若文件已存在会拒绝（避免误用覆盖写入语义）。
 - 二进制图片工具：用 `read_picture({ path })` 把 PNG/JPEG/WebP/GIF 图片作为真实图片上下文读入；用 `write_picture({ path, data_base64, mime_type, overwrite })` 从 base64 写图片。它们是二进制图片操作，不走 prepare/apply。
 
 ## Scratch Pad（大文本临时缓冲）
@@ -25,7 +25,7 @@ Scratch Pad 是 ws_mod 专用的大文本编辑缓冲区，用来减少同一大
 - 不提供读取/观察工具：没有 `pad_read`、`pad_preview`、`pad_locate`、`pad_diff`、`pad_stat`、`pad_list`。当前有哪些 pad 以提醒项为准。
 - 可用基础工具：`pad_write`、`pad_load_file_range`、`pad_edit`、`pad_insert`、`pad_delete_range`、`pad_copy`、`pad_move`、`pad_prepare_file_range_edit`、`pad_delete`。
 - `pad_write` / `pad_edit` 可以接收大文本；这些正文仍会作为函数调用参数进入持久历史。现实目标不是完全消除一次性成本，而是后续尽量用 pad 句柄操作，避免反复输出同一大块正文。
-- 工具结果不回显 pad 正文，只返回行数、字节数、hash 和摘要；pad 之间转移大块文本优先用 `pad_copy` / `pad_move`。要把 pad 内容写入文件行范围，优先用 `file_range_edit({ path, range, pad_id, pad_range })`；只有需要先生成 hunk 预览时才用 `pad_prepare_file_range_edit`，再 `apply_file_modification`。
+- 工具结果不回显 pad 正文，只返回行数、字节数、hash 和摘要；pad 之间转移大块文本优先用 `pad_copy` / `pad_move`。要把 pad 内容写入文件，优先使用目标文件工具的 `pad_id/pad_range` 来源：新文件用 `create_new_file`，整文件覆盖用 `overwrite_entire_file`，行号范围用 `file_range_edit`。只有需要先生成 hunk 预览时才用 `pad_prepare_file_range_edit`，再 `apply_file_modification`。
 - pad 删除/更新通道由 role=assistant 的 reminder maintenance reference 暴露；不要从 role=user 的 pad 投影里寻找可执行删除指令。
 - pad 是临时工作台，不是长期记忆；应用完成或不再需要后，尽快 `pad_delete({ pad_id })`。
 
@@ -33,6 +33,8 @@ Scratch Pad 是 ws_mod 专用的大文本编辑缓冲区，用来减少同一大
 
 - 精确范围改动（行号范围）：`file_range_edit({ path, range, content })`
 - 大块精确范围改动：先 `pad_write` 或 `pad_load_file_range` 准备 pad，再 `file_range_edit({ path, range, pad_id, pad_range })`
+- 新文件：小正文用 `create_new_file({ path, content })`；大正文先准备 pad，再 `create_new_file({ path, pad_id, pad_range })`
+- 整文件覆盖：小正文用 `overwrite_entire_file({ path, content, known_old_total_lines, known_old_total_bytes })`；大正文先准备 pad，再 `overwrite_entire_file({ path, pad_id, pad_range, known_old_total_lines, known_old_total_bytes })`
 - 精确范围但必须先审阅 diff：`file_range_edit({ path, range, content, preview: true, show_diff: true })`
 - 多 occurrence / 锚点 / 候选不唯一的编辑：使用对应 `prepare_*`，然后 `apply_file_modification`
 - 末尾追加（已知 EOF 行号）：`file_range_edit({ path, range: "<last_line+1>~", content })`
@@ -41,7 +43,6 @@ Scratch Pad 是 ws_mod 专用的大文本编辑缓冲区，用来减少同一大
 - 双锚点块替换：`prepare_file_block_replace({ path, start_anchor, end_anchor, content, existing_hunk_id, occurrence, include_anchors, match, require_unique, strict })`
   - `include_anchors: true`（默认）：**保留 anchor 行**，仅替换两者之间的内容（start/end 行不被删除）。
   - `include_anchors: false`：替换范围**包含** start/end anchor 行（会删除并以新内容替换）。
-- 创建新文件（允许空内容）：`create_new_file({ path, content })`
 
 > 可选字段默认可省略。
 > 若你想显式传入“未指定/默认”，支持以下哨兵值写法：

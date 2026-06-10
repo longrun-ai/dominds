@@ -1770,6 +1770,82 @@ export const fsReadFileTool = {
 
 type OverwriteContentFormat = string;
 
+type FileBodySource =
+  | Readonly<{
+      kind: 'content';
+      text: string;
+      redacted: false;
+    }>
+  | Readonly<{
+      kind: 'pad';
+      padId: string;
+      padRange: string;
+      padHash: string;
+      selectedText: string;
+      selectedHash: string;
+      redacted: true;
+    }>;
+
+function resolveFileBodySource(
+  dlg: Dialog,
+  args: ToolArguments,
+  options: Readonly<{ allowMissingContent: boolean }>,
+): FileBodySource {
+  const rawPadId = optionalNonEmptyStringArg(args, 'pad_id');
+  const hasPadSource = rawPadId !== undefined;
+  const contentValue = optionalStringArg(args, 'content');
+  const hasContentSource =
+    contentValue !== undefined && !(hasPadSource && contentValue.trim() === '');
+
+  if (hasPadSource && hasContentSource) {
+    throw new Error('Provide either `content` or `pad_id`, not both');
+  }
+  if (!hasPadSource && hasOwnArg(args, 'pad_range')) {
+    const padRange = optionalStringArg(args, 'pad_range');
+    if (padRange !== undefined && padRange.trim() !== '') {
+      throw new Error('`pad_range` requires `pad_id`');
+    }
+  }
+  if (!hasPadSource && contentValue === undefined && !options.allowMissingContent) {
+    throw new Error('Provide `content`, or provide `pad_id` with optional `pad_range`');
+  }
+  if (!hasPadSource) {
+    return { kind: 'content', text: contentValue ?? '', redacted: false };
+  }
+
+  const padId = normalizePadId(rawPadId);
+  const padRange = parseOptionalPadRange(args, 'pad_range');
+  const pad = requireDialogPadById(dlg, padId);
+  const selectedText = selectTextByLineRange(pad.meta.text, padRange);
+  return {
+    kind: 'pad',
+    padId,
+    padRange,
+    padHash: hashPadText(pad.meta.text),
+    selectedText,
+    selectedHash: hashPadText(selectedText),
+    redacted: true,
+  };
+}
+
+function fileBodySourceText(source: FileBodySource): string {
+  return source.kind === 'content' ? source.text : source.selectedText;
+}
+
+function pushFileBodySourceYaml(lines: string[], source: FileBodySource, showBody: boolean): void {
+  lines.push(`source: ${source.kind}`, `redacted: ${source.redacted && !showBody}`);
+  if (source.kind === 'pad') {
+    lines.push(
+      `pad_id: ${yamlQuote(source.padId)}`,
+      `pad_range: ${yamlQuote(source.padRange)}`,
+      `pad_hash: ${yamlQuote(source.padHash)}`,
+      `pad_selected_lines: ${countPadLines(source.selectedText)}`,
+      `pad_selected_bytes: ${Buffer.byteLength(source.selectedText, 'utf8')}`,
+      `pad_selected_hash: ${yamlQuote(source.selectedHash)}`,
+    );
+  }
+}
+
 const overwriteEntireFileSchema = {
   type: 'object',
   additionalProperties: false,
@@ -1791,7 +1867,15 @@ const overwriteEntireFileSchema = {
     content: {
       type: 'string',
       description:
-        'The new full file content. If non-empty and missing a trailing newline, Dominds will append one.',
+        'The new full file content. If non-empty and missing a trailing newline, Dominds will append one. Omit when using pad_id.',
+    },
+    pad_id: {
+      type: 'string',
+      description: 'Optional source scratch pad slug: /^[A-Za-z0-9_-]{1,64}$/.',
+    },
+    pad_range: {
+      type: 'string',
+      description: "Optional source pad line range. Defaults to '~' (entire pad).",
     },
     content_format: {
       type: 'string',
@@ -1799,23 +1883,15 @@ const overwriteEntireFileSchema = {
         "Optional content format hint. Any non-empty string is accepted (for example: yaml, toml, json, markdown). If omitted (or empty string), Dominds refuses to overwrite when content looks like a diff/patch (use prepare/apply instead). Use 'diff' or 'patch' to explicitly allow writing diff/patch text literally.",
     },
   },
-  required: ['path', 'known_old_total_lines', 'known_old_total_bytes', 'content'],
+  required: ['path', 'known_old_total_lines', 'known_old_total_bytes'],
 } as const;
 
-function parseCreateNewFileArgs(args: ToolArguments): { path: string; content: string } {
+function parseCreateNewFilePath(args: ToolArguments): string {
   const pathValue = args['path'];
   if (typeof pathValue !== 'string' || pathValue.trim() === '') {
     throw new Error('Invalid `path` (expected non-empty string)');
   }
-
-  const contentValue = args['content'];
-  if (contentValue === undefined) {
-    return { path: pathValue, content: '' };
-  }
-  if (typeof contentValue !== 'string') {
-    throw new Error('Invalid `content` (expected string)');
-  }
-  return { path: pathValue, content: contentValue };
+  return pathValue;
 }
 
 function parseOverwriteContentFormat(value: unknown): OverwriteContentFormat | undefined {
@@ -1830,7 +1906,6 @@ function parseOverwriteEntireFileArgs(args: ToolArguments): {
   path: string;
   knownOldTotalLines: number;
   knownOldTotalBytes: number;
-  content: string;
   contentFormat: OverwriteContentFormat | undefined;
 } {
   const pathValue = args['path'];
@@ -1854,11 +1929,6 @@ function parseOverwriteEntireFileArgs(args: ToolArguments): {
     throw new Error('Invalid `known_old_total_bytes` (must be >= 0)');
   }
 
-  const contentValue = args['content'];
-  if (typeof contentValue !== 'string') {
-    throw new Error('Invalid `content` (expected string)');
-  }
-
   const rawContentFormat = args['content_format'];
   let contentFormat: OverwriteContentFormat | undefined;
   if (rawContentFormat === undefined) {
@@ -1880,7 +1950,6 @@ function parseOverwriteEntireFileArgs(args: ToolArguments): {
     // - `size_bytes`  → known_old_total_bytes
     knownOldTotalLines: knownOldTotalLinesValue,
     knownOldTotalBytes: knownOldTotalBytesValue,
-    content: contentValue,
     contentFormat,
   };
 }
@@ -1888,10 +1957,11 @@ function parseOverwriteEntireFileArgs(args: ToolArguments): {
 export const createNewFileTool: FuncTool = {
   type: 'func',
   name: 'create_new_file',
-  description: 'Create a new file (no prepare/apply). Refuses to overwrite existing files.',
+  description:
+    'Create a new file from inline content or ws_mod pad content (no prepare/apply). Refuses to overwrite existing files.',
   descriptionI18n: {
-    en: 'Create a new file (no prepare/apply). Refuses to overwrite existing files.',
-    zh: '创建一个新文件（不走 prepare/apply）。若文件已存在则拒绝覆写。',
+    en: 'Create a new file from inline content or ws_mod pad content (no prepare/apply). Refuses to overwrite existing files.',
+    zh: '用内联 content 或 ws_mod pad 内容创建一个新文件（不走 prepare/apply）。若文件已存在则拒绝覆写。',
   },
   parameters: {
     type: 'object',
@@ -1901,13 +1971,21 @@ export const createNewFileTool: FuncTool = {
       content: {
         type: 'string',
         description:
-          'Optional initial content. Empty string is allowed. If non-empty and missing a trailing newline, Dominds will append one.',
+          'Optional initial content. Empty string is allowed. If non-empty and missing a trailing newline, Dominds will append one. Omit when using pad_id.',
+      },
+      pad_id: {
+        type: 'string',
+        description: 'Optional source scratch pad slug: /^[A-Za-z0-9_-]{1,64}$/.',
+      },
+      pad_range: {
+        type: 'string',
+        description: "Optional source pad line range. Defaults to '~' (entire pad).",
       },
     },
     required: ['path'],
   },
   argsValidation: 'dominds',
-  call: async (_dlg, caller, args: ToolArguments): Promise<ToolCallOutput> => {
+  call: async (dlg, caller, args: ToolArguments): Promise<ToolCallOutput> => {
     const language = getWorkLanguage();
     const t =
       language === 'zh'
@@ -1930,22 +2008,28 @@ export const createNewFileTool: FuncTool = {
 
     const parsed = (() => {
       try {
-        return parseCreateNewFileArgs(args);
+        return {
+          path: parseCreateNewFilePath(args),
+          source: resolveFileBodySource(dlg, args, { allowMissingContent: true }),
+        };
       } catch (err: unknown) {
         const msg = err instanceof Error ? err.message : String(err);
         return { __error: msg } as const;
       }
     })();
     if ('__error' in parsed) {
+      const errorSummary = typeof parsed.__error === 'string' ? parsed.__error : 'Unknown error';
       return failYaml(
         [
           `status: error`,
           `mode: create_new_file`,
           `error: INVALID_ARGS`,
-          `summary: ${yamlQuote(t.invalidArgs(parsed.__error))}`,
+          `summary: ${yamlQuote(t.invalidArgs(errorSummary))}`,
         ].join('\n'),
       );
     }
+
+    const content = fileBodySourceText(parsed.source);
 
     if (!hasWriteAccess(caller, parsed.path)) {
       return toolFailure(getAccessDeniedMessage('write', parsed.path, language));
@@ -2006,9 +2090,7 @@ export const createNewFileTool: FuncTool = {
       );
     }
 
-    const { normalizedBody, addedTrailingNewlineToContent } = normalizeFileWriteBody(
-      parsed.content,
-    );
+    const { normalizedBody, addedTrailingNewlineToContent } = normalizeFileWriteBody(content);
     try {
       fsSync.mkdirSync(path.dirname(absPath), { recursive: true });
       fsSync.writeFileSync(absPath, normalizedBody, 'utf8');
@@ -2031,17 +2113,15 @@ export const createNewFileTool: FuncTool = {
       language === 'zh'
         ? `${t.ok} path=${parsed.path}; new_total_lines=${newTotalLines}; new_total_bytes=${newTotalBytes}.`
         : `${t.ok} path=${parsed.path}; new_total_lines=${newTotalLines}; new_total_bytes=${newTotalBytes}.`;
-    return okYaml(
-      [
-        `status: ok`,
-        `mode: create_new_file`,
-        `path: ${yamlQuote(parsed.path)}`,
-        `new_total_lines: ${newTotalLines}`,
-        `new_total_bytes: ${newTotalBytes}`,
-        `normalized_trailing_newline_added: ${normalizedNewlineAdded}`,
-        `summary: ${yamlQuote(okSummary)}`,
-      ].join('\n'),
+    const yamlLines = [`status: ok`, `mode: create_new_file`, `path: ${yamlQuote(parsed.path)}`];
+    pushFileBodySourceYaml(yamlLines, parsed.source, false);
+    yamlLines.push(
+      `new_total_lines: ${newTotalLines}`,
+      `new_total_bytes: ${newTotalBytes}`,
+      `normalized_trailing_newline_added: ${normalizedNewlineAdded}`,
+      `summary: ${yamlQuote(okSummary)}`,
     );
+    return okYaml(yamlLines.join('\n'));
   },
 };
 
@@ -2953,14 +3033,14 @@ export const overwriteEntireFileTool: FuncTool = {
   type: 'func',
   name: 'overwrite_entire_file',
   description:
-    'Overwrite an existing file with new full content (guarded by known_old_total_lines/bytes; refuses diff/patch-like content unless content_format is diff|patch).',
+    'Overwrite an existing file with inline content or ws_mod pad content (guarded by known_old_total_lines/bytes; refuses diff/patch-like content unless content_format is diff|patch).',
   descriptionI18n: {
-    en: 'Overwrite an existing file with new full content (guarded by known_old_total_lines/bytes; refuses diff/patch-like content unless content_format is diff|patch).',
-    zh: '整体覆盖写入一个已存在的文件（需要 known_old_total_lines/bytes 对账；若正文疑似 diff/patch 且未显式声明 content_format=diff|patch，则默认拒绝）。',
+    en: 'Overwrite an existing file with inline content or ws_mod pad content (guarded by known_old_total_lines/bytes; refuses diff/patch-like content unless content_format is diff|patch).',
+    zh: '用内联 content 或 ws_mod pad 内容整体覆盖写入一个已存在的文件（需要 known_old_total_lines/bytes 对账；若正文疑似 diff/patch 且未显式声明 content_format=diff|patch，则默认拒绝）。',
   },
   parameters: overwriteEntireFileSchema,
   argsValidation: 'dominds',
-  call: async (_dlg, caller, args: ToolArguments): Promise<ToolCallOutput> => {
+  call: async (dlg, caller, args: ToolArguments): Promise<ToolCallOutput> => {
     const language = getWorkLanguage();
     const t =
       language === 'zh'
@@ -2993,22 +3073,28 @@ export const overwriteEntireFileTool: FuncTool = {
 
     const parsed = (() => {
       try {
-        return parseOverwriteEntireFileArgs(args);
+        return {
+          ...parseOverwriteEntireFileArgs(args),
+          source: resolveFileBodySource(dlg, args, { allowMissingContent: false }),
+        };
       } catch (err: unknown) {
         const msg = err instanceof Error ? err.message : String(err);
         return { __error: msg } as const;
       }
     })();
     if ('__error' in parsed) {
+      const errorSummary = typeof parsed.__error === 'string' ? parsed.__error : 'Unknown error';
       return failYaml(
         [
           `status: error`,
           `mode: overwrite_entire_file`,
           `error: INVALID_ARGS`,
-          `summary: ${yamlQuote(t.invalidArgs(parsed.__error))}`,
+          `summary: ${yamlQuote(t.invalidArgs(errorSummary))}`,
         ].join('\n'),
       );
     }
+
+    const content = fileBodySourceText(parsed.source);
 
     if (!hasWriteAccess(caller, parsed.path)) {
       return toolFailure(getAccessDeniedMessage('write', parsed.path, language));
@@ -3109,7 +3195,7 @@ export const overwriteEntireFileTool: FuncTool = {
 
     if (parsed.contentFormat !== 'diff' && parsed.contentFormat !== 'patch') {
       // Only refuse when content_format is omitted (or a non-diff format), and content is strongly diff-like.
-      if (detectStrongDiffOrPatchMarkers(parsed.content)) {
+      if (detectStrongDiffOrPatchMarkers(content)) {
         return failYaml(
           [
             `status: error`,
@@ -3124,9 +3210,7 @@ export const overwriteEntireFileTool: FuncTool = {
       }
     }
 
-    const { normalizedBody, addedTrailingNewlineToContent } = normalizeFileWriteBody(
-      parsed.content,
-    );
+    const { normalizedBody, addedTrailingNewlineToContent } = normalizeFileWriteBody(content);
     try {
       await fs.writeFile(absPath, normalizedBody, 'utf8');
     } catch (err: unknown) {
@@ -3148,20 +3232,22 @@ export const overwriteEntireFileTool: FuncTool = {
       language === 'zh'
         ? `${t.ok} path=${parsed.path}; new_total_lines=${newTotalLines}; new_total_bytes=${newTotalBytes}.`
         : `${t.ok} path=${parsed.path}; new_total_lines=${newTotalLines}; new_total_bytes=${newTotalBytes}.`;
-    return okYaml(
-      [
-        `status: ok`,
-        `mode: overwrite_entire_file`,
-        `path: ${yamlQuote(parsed.path)}`,
-        `known_old_total_lines: ${parsed.knownOldTotalLines}`,
-        `known_old_total_bytes: ${parsed.knownOldTotalBytes}`,
-        `new_total_lines: ${newTotalLines}`,
-        `new_total_bytes: ${newTotalBytes}`,
-        `normalized_trailing_newline_added: ${normalizedNewlineAdded}`,
-        `content_format: ${yamlQuote(parsed.contentFormat ?? '')}`,
-        `summary: ${yamlQuote(okSummary)}`,
-      ].join('\n'),
+    const yamlLines = [
+      `status: ok`,
+      `mode: overwrite_entire_file`,
+      `path: ${yamlQuote(parsed.path)}`,
+    ];
+    pushFileBodySourceYaml(yamlLines, parsed.source, false);
+    yamlLines.push(
+      `known_old_total_lines: ${parsed.knownOldTotalLines}`,
+      `known_old_total_bytes: ${parsed.knownOldTotalBytes}`,
+      `new_total_lines: ${newTotalLines}`,
+      `new_total_bytes: ${newTotalBytes}`,
+      `normalized_trailing_newline_added: ${normalizedNewlineAdded}`,
+      `content_format: ${yamlQuote(parsed.contentFormat ?? '')}`,
+      `summary: ${yamlQuote(okSummary)}`,
     );
+    return okYaml(yamlLines.join('\n'));
   },
 };
 

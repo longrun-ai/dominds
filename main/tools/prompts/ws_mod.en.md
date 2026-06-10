@@ -10,10 +10,10 @@ You have read/write access to the rtws (runtime workspace). Prefer direct one-st
 - Legacy tools are removed (no compatibility layer): `append_file` / `insert_after` / `insert_before` / `replace_block` / `apply_block_replace`.
 - Constraint: paths under `*.tsk/` are encapsulated Taskdocs; file tools cannot access them.
 - Parallelism constraint: multiple function tool calls in one generation step may run in parallel; **prepare → apply must be two steps**. Same-file write tools are serialized internally, but avoid making multiple direct edits that semantically depend on unread results from each other.
-- Output is usually YAML-first. Direct range edits default to no body echo; prepare/apply output is scan-friendly with `summary` + `evidence`/`apply_evidence` + unified diff. Pad-sourced writes are redacted by default to avoid echoing large pad bodies.
+- Output is usually YAML-first. Direct write tools default to no body echo; prepare/apply output is scan-friendly with `summary` + `evidence`/`apply_evidence` + unified diff. Pad-sourced writes are redacted by default to avoid echoing large pad bodies.
 - Normalization: all writes follow “each line ends with `\n` (including the last line)”; missing EOF newline will be added and shown in `normalized.*`.
-- Exception: `overwrite_entire_file` overwrites an existing file (writes immediately; does not use prepare/apply). It requires `known_old_total_lines/known_old_total_bytes` guardrails (read `total_lines/size_bytes` from the YAML header of `read_file`). `content_format` accepts any non-empty text label (for example `yaml`), but diff/patch-like content is still rejected by default unless `content_format=diff|patch`. Use it only for “small content (<100 lines)” or “intentional reset/generated output”; for large precise range edits, prefer pad + `file_range_edit`.
-- Exception: `create_new_file` only creates a new file (empty content allowed). It does not do incremental edits and does not use prepare/apply; it refuses to overwrite existing files.
+- Exception: `overwrite_entire_file` overwrites an existing file (writes immediately; does not use prepare/apply). It requires `known_old_total_lines/known_old_total_bytes` guardrails (read `total_lines/size_bytes` from the YAML header of `read_file`). Provide body text with `content`, or use `pad_id/pad_range` as the source. `content_format` accepts any non-empty text label (for example `yaml`), but diff/patch-like content is still rejected by default unless `content_format=diff|patch`. Use it only for “small content (<100 lines)” or “intentional reset/generated output”; for large bodies, prepare a pad first and overwrite via `pad_id/pad_range`.
+- Exception: `create_new_file` only creates a new file (empty content allowed). It does not do incremental edits and does not use prepare/apply; use `content` for small bodies and `pad_id/pad_range` for large bodies. It refuses to overwrite existing files.
 - Binary image tools: use `read_picture({ path })` to inspect PNG/JPEG/WebP/GIF images as real image context; use `write_picture({ path, data_base64, mime_type, overwrite })` to write a base64 image. These are binary image operations and do not use prepare/apply.
 
 ## Scratch Pad (large-text temporary buffer)
@@ -24,7 +24,7 @@ Scratch Pad is a ws_mod-specific large-text editing buffer for reducing repeated
 - No read/observation tools are provided: there is no `pad_read`, `pad_preview`, `pad_locate`, `pad_diff`, `pad_stat`, or `pad_list`. The current pads are the ones projected as reminders.
 - Basic tools available: `pad_write`, `pad_load_file_range`, `pad_edit`, `pad_insert`, `pad_delete_range`, `pad_copy`, `pad_move`, `pad_prepare_file_range_edit`, `pad_delete`.
 - `pad_write` / `pad_edit` can accept large text; that body still enters persistent history as function-call arguments. The goal is not to eliminate this one-time cost perfectly, but to use pad handles afterward instead of repeatedly emitting the same large text.
-- Tool results do not echo pad body text; they return line count, byte count, hash, and a summary. Prefer `pad_copy` / `pad_move` when transferring large text between pads. To write pad content into a file line range, prefer `file_range_edit({ path, range, pad_id, pad_range })`; use `pad_prepare_file_range_edit` only when you explicitly need a hunk preview first, then `apply_file_modification`.
+- Tool results do not echo pad body text; they return line count, byte count, hash, and a summary. Prefer `pad_copy` / `pad_move` when transferring large text between pads. To write pad content into files, prefer the target file tool's `pad_id/pad_range` source: `create_new_file` for new files, `overwrite_entire_file` for full overwrites, and `file_range_edit` for line ranges. Use `pad_prepare_file_range_edit` only when you explicitly need a hunk preview first, then `apply_file_modification`.
 - Pad delete/update channels are exposed by the role=assistant reminder maintenance reference; do not look for executable deletion instructions in the role=user pad projection.
 - Pads are temporary workbench state, not long-term memory. After applying or abandoning a pad, delete it promptly with `pad_delete({ pad_id })`.
 
@@ -32,6 +32,8 @@ Scratch Pad is a ws_mod-specific large-text editing buffer for reducing repeated
 
 - Precise range edits: `file_range_edit({ path, range, content })`
 - Large precise range edits: prepare a pad with `pad_write` or `pad_load_file_range`, then call `file_range_edit({ path, range, pad_id, pad_range })`
+- New files: use `create_new_file({ path, content })` for small bodies; prepare a pad first and call `create_new_file({ path, pad_id, pad_range })` for large bodies
+- Full-file overwrites: use `overwrite_entire_file({ path, content, known_old_total_lines, known_old_total_bytes })` for small bodies; prepare a pad first and call `overwrite_entire_file({ path, pad_id, pad_range, known_old_total_lines, known_old_total_bytes })` for large bodies
 - Precise range edits that must be reviewed first: `file_range_edit({ path, range, content, preview: true, show_diff: true })`
 - Multi-occurrence / anchor-based / ambiguous edits: use the matching `prepare_*`, then `apply_file_modification`
 - Append to known EOF: `file_range_edit({ path, range: "<last_line+1>~", content })`
@@ -40,7 +42,6 @@ Scratch Pad is a ws_mod-specific large-text editing buffer for reducing repeated
 - Block replace between anchors: `prepare_file_block_replace({ path, start_anchor, end_anchor, content, existing_hunk_id, occurrence, include_anchors, match, require_unique, strict })`
   - `include_anchors: true` (default): keep the anchor lines; replace only the content between them (start/end lines are preserved).
   - `include_anchors: false`: replacement range includes the anchor lines (start/end lines are deleted and replaced).
-- Create a new file (empty allowed): `create_new_file({ path, content })`
 
 > Optional fields can be omitted.
 > If you want to pass explicit “unset / default” values, the following sentinel forms are supported:
