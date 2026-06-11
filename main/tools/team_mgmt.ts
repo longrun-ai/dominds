@@ -64,12 +64,15 @@ import {
   renderMcpToolsetSetupGuideSection,
 } from './team_mgmt-mcp-manual';
 import {
+  applyOccurrenceReplaceTool,
+  createNewFileTool,
   fileAppendTool,
   fileBlockReplaceTool,
   fileInsertAfterTool,
   fileInsertBeforeTool,
   fileRangeEditTool,
   overwriteEntireFileTool,
+  prepareOccurrenceReplaceTool,
   readFileTool,
 } from './txt';
 
@@ -131,16 +134,6 @@ function yamlQuote(value: string): string {
 
 function formatYamlCodeBlock(yaml: string): string {
   return `\`\`\`yaml\n${yaml}\n\`\`\``;
-}
-
-function normalizeFileWriteBody(inputBody: string): {
-  normalizedBody: string;
-  addedTrailingNewlineToContent: boolean;
-} {
-  if (inputBody === '' || inputBody.endsWith('\n')) {
-    return { normalizedBody: inputBody, addedTrailingNewlineToContent: false };
-  }
-  return { normalizedBody: `${inputBody}\n`, addedTrailingNewlineToContent: true };
 }
 
 function isEmptyLine(line: string): boolean {
@@ -248,15 +241,6 @@ async function lintTeamYamlStyleProblems(): Promise<void> {
       detail: { filePath: TEAM_YAML_REL, errorText: warnings.join('\n') },
     },
   ]);
-}
-
-function countLogicalLines(text: string): number {
-  if (text === '') return 0;
-  const parts = text.split('\n');
-  if (parts.length > 0 && parts[parts.length - 1] === '') {
-    parts.pop();
-  }
-  return parts.length;
 }
 
 function normalizePathToken(raw: string): string {
@@ -1802,10 +1786,10 @@ export const teamMgmtReadFileTool: FuncTool = {
 export const teamMgmtCreateNewFileTool: FuncTool = {
   type: 'func',
   name: 'team_mgmt_create_new_file',
-  description: `Create a new file under ${MINDS_DIR}/. Refuses to overwrite existing files.`,
+  description: `Create a new file under ${MINDS_DIR}/ from inline content or a ws_mod pad source. Refuses to overwrite existing files.`,
   descriptionI18n: {
-    en: `Create a new file under ${MINDS_DIR}/. Refuses to overwrite existing files.`,
-    zh: `在 ${MINDS_DIR}/ 下创建一个新文件。若文件已存在则拒绝覆写。`,
+    en: `Create a new file under ${MINDS_DIR}/ from inline content or a ws_mod pad source. Refuses to overwrite existing files.`,
+    zh: `用内联 content 或 ws_mod pad 来源在 ${MINDS_DIR}/ 下创建一个新文件。若文件已存在则拒绝覆写。`,
   },
   parameters: {
     type: 'object',
@@ -1814,30 +1798,13 @@ export const teamMgmtCreateNewFileTool: FuncTool = {
     properties: {
       path: { type: 'string' },
       content: { type: 'string' },
+      pad_id: { type: 'string' },
+      pad_range: { type: 'string' },
     },
   },
   argsValidation: 'dominds',
-  async call(dlg, _caller, args: ToolArguments): Promise<ToolCallOutput> {
+  async call(dlg, caller, args: ToolArguments): Promise<ToolCallOutput> {
     const language = getUserLang(dlg);
-    const t =
-      language === 'zh'
-        ? {
-            invalidArgs: (msg: string) => `参数不正确：${msg}`,
-            fileExists: '文件已存在，拒绝创建。',
-            notAFile: '路径已存在但不是文件（可能是目录），拒绝创建。',
-            nextOverwrite:
-              '下一步：先用 team_mgmt_read_file 获取 total_lines/size_bytes，然后再调用 team_mgmt_overwrite_entire_file 覆盖写入。',
-            ok: '已创建新文件。',
-          }
-        : {
-            invalidArgs: (msg: string) => `Invalid args: ${msg}`,
-            fileExists: 'File already exists; refusing to create.',
-            notAFile: 'Path exists but is not a file (e.g. a directory); refusing to create.',
-            nextOverwrite:
-              'Next: call team_mgmt_read_file to get total_lines/size_bytes, then use team_mgmt_overwrite_entire_file to overwrite.',
-            ok: 'Created new file.',
-          };
-
     try {
       const mindsState = await getMindsDirState();
       if (mindsState.kind === 'not_directory') {
@@ -1847,111 +1814,44 @@ export const teamMgmtCreateNewFileTool: FuncTool = {
 
       const pathValue = args['path'];
       const rawPath = typeof pathValue === 'string' ? pathValue.trim() : '';
-      if (!rawPath) {
-        const content = formatYamlCodeBlock(
-          [
-            `status: error`,
-            `mode: create_new_file`,
-            `error: INVALID_ARGS`,
-            `summary: ${yamlQuote(t.invalidArgs('Path required'))}`,
-          ].join('\n'),
-        );
-        return fail(content, [{ type: 'environment_msg', role: 'user', content }]);
-      }
-
-      const rel = toMindsRelativePath(rawPath);
-      const { abs } = ensureMindsScopedPath(rel);
-      if (rel === MINDS_DIR) {
-        const content = formatYamlCodeBlock(
-          [
-            `status: error`,
-            `mode: create_new_file`,
-            `path: ${yamlQuote(rel)}`,
-            `error: NOT_A_FILE`,
-            `summary: ${yamlQuote(t.notAFile)}`,
-          ].join('\n'),
-        );
-        return fail(content, [{ type: 'environment_msg', role: 'user', content }]);
-      }
+      if (!rawPath) throw new Error('Path required');
 
       const contentValue = args['content'];
       if (contentValue !== undefined && typeof contentValue !== 'string') {
         throw new Error('Invalid content (expected string)');
       }
-      const initialContent = typeof contentValue === 'string' ? contentValue : '';
-
-      try {
-        const st = await fs.stat(abs);
-        if (!st.isFile()) {
-          const out = formatYamlCodeBlock(
-            [
-              `status: error`,
-              `mode: create_new_file`,
-              `path: ${yamlQuote(rel)}`,
-              `error: NOT_A_FILE`,
-              `summary: ${yamlQuote(t.notAFile)}`,
-            ].join('\n'),
-          );
-          return fail(out, [{ type: 'environment_msg', role: 'user', content: out }]);
-        }
-
-        const out = formatYamlCodeBlock(
-          [
-            `status: error`,
-            `mode: create_new_file`,
-            `path: ${yamlQuote(rel)}`,
-            `error: FILE_EXISTS`,
-            `summary: ${yamlQuote(t.fileExists)}`,
-            `next: ${yamlQuote(t.nextOverwrite)}`,
-          ].join('\n'),
-        );
-        return fail(out, [{ type: 'environment_msg', role: 'user', content: out }]);
-      } catch (err: unknown) {
-        if (!isFsErrWithCode(err) || err.code !== 'ENOENT') throw err;
+      const padIdValue = args['pad_id'];
+      if (padIdValue !== undefined && typeof padIdValue !== 'string') {
+        throw new Error('Invalid pad_id (expected string)');
+      }
+      const padRangeValue = args['pad_range'];
+      if (padRangeValue !== undefined && typeof padRangeValue !== 'string') {
+        throw new Error('Invalid pad_range (expected string)');
       }
 
-      const { normalizedBody, addedTrailingNewlineToContent } =
-        normalizeFileWriteBody(initialContent);
-      await fs.mkdir(path.dirname(abs), { recursive: true });
-      await fs.writeFile(abs, normalizedBody, 'utf8');
-
-      const newTotalBytes = Buffer.byteLength(normalizedBody, 'utf8');
-      const newTotalLines = countLogicalLines(normalizedBody);
-      const normalizedNewlineAdded = addedTrailingNewlineToContent && normalizedBody !== '';
-      const summary =
-        language === 'zh'
-          ? `${t.ok} path=${rel}; new_total_lines=${newTotalLines}; new_total_bytes=${newTotalBytes}.`
-          : `${t.ok} path=${rel}; new_total_lines=${newTotalLines}; new_total_bytes=${newTotalBytes}.`;
-      const out = formatYamlCodeBlock(
-        [
-          `status: ok`,
-          `mode: create_new_file`,
-          `path: ${yamlQuote(rel)}`,
-          `new_total_lines: ${newTotalLines}`,
-          `new_total_bytes: ${newTotalBytes}`,
-          `normalized_trailing_newline_added: ${normalizedNewlineAdded}`,
-          `summary: ${yamlQuote(summary)}`,
-        ].join('\n'),
-      );
-      await refreshDerivedStateAfterTeamMgmtWrite({
-        relPaths: [rel],
-        trigger: 'create_new_file',
+      const rel = toMindsRelativePath(rawPath);
+      ensureMindsScopedPath(rel);
+      const proxyCaller = makeMindsOnlyAccessMember(caller);
+      const output = await createNewFileTool.call(dlg, proxyCaller, {
+        path: rel,
+        ...(contentValue !== undefined ? { content: contentValue } : {}),
+        ...(padIdValue !== undefined ? { pad_id: padIdValue } : {}),
+        ...(padRangeValue !== undefined ? { pad_range: padRangeValue } : {}),
       });
-      return ok(out, [{ type: 'environment_msg', role: 'user', content: out }]);
+      const content = toolCallOutputToString(output);
+      if (isSuccessfulYamlToolResult(content, 'create_new_file')) {
+        await refreshDerivedStateAfterTeamMgmtWrite({
+          relPaths: [rel],
+          trigger: 'create_new_file',
+        });
+      }
+      return output;
     } catch (err: unknown) {
       const msg =
         language === 'zh'
           ? `错误：${err instanceof Error ? err.message : String(err)}`
           : `Error: ${err instanceof Error ? err.message : String(err)}`;
-      const out = formatYamlCodeBlock(
-        [
-          `status: error`,
-          `mode: create_new_file`,
-          `error: FAILED`,
-          `summary: ${yamlQuote(msg)}`,
-        ].join('\n'),
-      );
-      return fail(out, [{ type: 'environment_msg', role: 'user', content: out }]);
+      return fail(msg, [{ type: 'environment_msg', role: 'user', content: msg }]);
     }
   },
 };
@@ -1959,21 +1859,23 @@ export const teamMgmtCreateNewFileTool: FuncTool = {
 export const teamMgmtOverwriteEntireFileTool: FuncTool = {
   type: 'func',
   name: 'team_mgmt_overwrite_entire_file',
-  description: `Overwrite an existing file under ${MINDS_DIR}/ (writes immediately; guarded).`,
+  description: `Overwrite an existing file under ${MINDS_DIR}/ from inline content or a ws_mod pad source (writes immediately; guarded).`,
   descriptionI18n: {
-    en: `Overwrite an existing file under ${MINDS_DIR}/ (writes immediately; guarded).`,
-    zh: `整体覆盖写入 ${MINDS_DIR}/ 下的已存在文件（直接写盘，带护栏）。`,
+    en: `Overwrite an existing file under ${MINDS_DIR}/ from inline content or a ws_mod pad source (writes immediately; guarded).`,
+    zh: `用内联 content 或 ws_mod pad 来源整体覆盖写入 ${MINDS_DIR}/ 下的已存在文件（直接写盘，带护栏）。`,
   },
   parameters: {
     type: 'object',
     additionalProperties: false,
-    required: ['path', 'known_old_total_lines', 'known_old_total_bytes', 'content'],
+    required: ['path', 'known_old_total_lines', 'known_old_total_bytes'],
     properties: {
       path: { type: 'string' },
       known_old_total_lines: { type: 'integer' },
       known_old_total_bytes: { type: 'integer' },
       content_format: { type: 'string' },
       content: { type: 'string' },
+      pad_id: { type: 'string' },
+      pad_range: { type: 'string' },
     },
   },
   argsValidation: 'dominds',
@@ -2007,8 +1909,16 @@ export const teamMgmtOverwriteEntireFileTool: FuncTool = {
         );
       }
       const contentValue = args['content'];
-      if (typeof contentValue !== 'string') {
+      if (contentValue !== undefined && typeof contentValue !== 'string') {
         throw new Error(language === 'zh' ? 'content 需要为字符串。' : 'content must be a string.');
+      }
+      const padIdValue = args['pad_id'];
+      if (padIdValue !== undefined && typeof padIdValue !== 'string') {
+        throw new Error('Invalid pad_id (expected string)');
+      }
+      const padRangeValue = args['pad_range'];
+      if (padRangeValue !== undefined && typeof padRangeValue !== 'string') {
+        throw new Error('Invalid pad_range (expected string)');
       }
       const contentFormatValue = args['content_format'];
       const contentFormat =
@@ -2030,7 +1940,9 @@ export const teamMgmtOverwriteEntireFileTool: FuncTool = {
         path: rel,
         known_old_total_lines: knownLinesValue,
         known_old_total_bytes: knownBytesValue,
-        content: contentValue,
+        ...(contentValue !== undefined ? { content: contentValue } : {}),
+        ...(padIdValue !== undefined ? { pad_id: padIdValue } : {}),
+        ...(padRangeValue !== undefined ? { pad_range: padRangeValue } : {}),
         ...(contentFormat ? { content_format: contentFormat } : {}),
       });
       const result = toolCallOutputToString(output);
@@ -2577,6 +2489,165 @@ export const teamMgmtFileRangeEditTool: FuncTool = {
         await refreshDerivedStateAfterTeamMgmtWrite({
           relPaths: [rel],
           trigger: 'team_mgmt_file_range_edit',
+        });
+      }
+      return output;
+    } catch (err: unknown) {
+      const msg =
+        language === 'zh'
+          ? `错误：${err instanceof Error ? err.message : String(err)}`
+          : `Error: ${err instanceof Error ? err.message : String(err)}`;
+      return fail(msg, [{ type: 'environment_msg', role: 'user', content: msg }]);
+    }
+  },
+};
+
+export const teamMgmtPrepareOccurrenceReplaceTool: FuncTool = {
+  type: 'func',
+  name: 'team_mgmt_prepare_occurrence_replace',
+  description: `Prepare a multi-occurrence literal replacement under ${MINDS_DIR}/. Only for two or more selected occurrences.`,
+  descriptionI18n: {
+    en: `Prepare a multi-occurrence literal replacement under ${MINDS_DIR}/. Only for two or more selected occurrences.`,
+    zh: `规划 ${MINDS_DIR}/ 下文件内的多 occurrence 字面量替换。仅用于两个及以上 occurrence。`,
+  },
+  parameters: {
+    type: 'object',
+    additionalProperties: false,
+    required: ['path', 'find'],
+    properties: {
+      path: { type: 'string' },
+      find: { type: 'string' },
+      content: { type: 'string' },
+      pad_id: { type: 'string' },
+      pad_range: { type: 'string' },
+      occurrence_indexes: { type: 'array', items: { type: 'integer' } },
+      show_diff: { type: 'boolean' },
+    },
+  },
+  argsValidation: 'dominds',
+  async call(dlg, caller, args: ToolArguments): Promise<ToolCallOutput> {
+    const language = getUserLang(dlg);
+    try {
+      const mindsState = await getMindsDirState();
+      if (mindsState.kind === 'not_directory') {
+        throw new Error(`${MINDS_DIR} exists but is not a directory: ${mindsState.abs}`);
+      }
+      await ensureMindsRootDirExists();
+
+      const pathValue = args['path'];
+      const findValue = args['find'];
+      const rawPath = typeof pathValue === 'string' ? pathValue.trim() : '';
+      const findText = typeof findValue === 'string' ? findValue : '';
+      if (!rawPath) throw new Error('Path required');
+      if (!findText) throw new Error('find is required');
+
+      const contentValue = args['content'];
+      if (contentValue !== undefined && typeof contentValue !== 'string') {
+        throw new Error('Invalid content (expected string)');
+      }
+      const padIdValue = args['pad_id'];
+      if (padIdValue !== undefined && typeof padIdValue !== 'string') {
+        throw new Error('Invalid pad_id (expected string)');
+      }
+      const padRangeValue = args['pad_range'];
+      if (padRangeValue !== undefined && typeof padRangeValue !== 'string') {
+        throw new Error('Invalid pad_range (expected string)');
+      }
+      const occurrenceIndexesValue = args['occurrence_indexes'];
+      if (occurrenceIndexesValue !== undefined) {
+        if (!Array.isArray(occurrenceIndexesValue)) {
+          throw new Error('Invalid occurrence_indexes (expected array of positive integers)');
+        }
+        const occurrenceIndexItems: readonly unknown[] = occurrenceIndexesValue;
+        for (const item of occurrenceIndexItems) {
+          if (typeof item !== 'number' || !Number.isInteger(item) || item <= 0) {
+            throw new Error('Invalid occurrence_indexes (expected array of positive integers)');
+          }
+        }
+      }
+      const showDiffValue = args['show_diff'];
+      if (showDiffValue !== undefined && typeof showDiffValue !== 'boolean') {
+        throw new Error('Invalid show_diff (expected boolean)');
+      }
+
+      const rel = toMindsRelativePath(rawPath);
+      ensureMindsScopedPath(rel);
+      const proxyCaller = makeMindsOnlyAccessMember(caller);
+      return await prepareOccurrenceReplaceTool.call(dlg, proxyCaller, {
+        path: rel,
+        find: findText,
+        ...(contentValue !== undefined ? { content: contentValue } : {}),
+        ...(padIdValue !== undefined ? { pad_id: padIdValue } : {}),
+        ...(padRangeValue !== undefined ? { pad_range: padRangeValue } : {}),
+        ...(occurrenceIndexesValue !== undefined
+          ? { occurrence_indexes: occurrenceIndexesValue }
+          : {}),
+        ...(showDiffValue !== undefined ? { show_diff: showDiffValue } : {}),
+      });
+    } catch (err: unknown) {
+      const msg =
+        language === 'zh'
+          ? `错误：${err instanceof Error ? err.message : String(err)}`
+          : `Error: ${err instanceof Error ? err.message : String(err)}`;
+      return fail(msg, [{ type: 'environment_msg', role: 'user', content: msg }]);
+    }
+  },
+};
+
+export const teamMgmtApplyOccurrenceReplaceTool: FuncTool = {
+  type: 'func',
+  name: 'team_mgmt_apply_occurrence_replace',
+  description: `Apply a prepared multi-occurrence literal replacement plan under ${MINDS_DIR}/.`,
+  descriptionI18n: {
+    en: `Apply a prepared multi-occurrence literal replacement plan under ${MINDS_DIR}/.`,
+    zh: `应用 ${MINDS_DIR}/ 下文件的多 occurrence 字面量替换 plan。`,
+  },
+  parameters: {
+    type: 'object',
+    additionalProperties: false,
+    required: ['plan_id'],
+    properties: {
+      plan_id: { type: 'string' },
+      show_diff: { type: 'boolean' },
+    },
+  },
+  argsValidation: 'dominds',
+  async call(dlg, caller, args: ToolArguments): Promise<ToolCallOutput> {
+    const language = getUserLang(dlg);
+    try {
+      const mindsState = await getMindsDirState();
+      if (mindsState.kind === 'not_directory') {
+        throw new Error(`${MINDS_DIR} exists but is not a directory: ${mindsState.abs}`);
+      }
+      await ensureMindsRootDirExists();
+
+      const planIdValue = args['plan_id'];
+      const planId = typeof planIdValue === 'string' ? planIdValue.trim() : '';
+      if (!planId) throw new Error('plan_id required');
+
+      const showDiffValue = args['show_diff'];
+      if (showDiffValue !== undefined && typeof showDiffValue !== 'boolean') {
+        throw new Error('Invalid show_diff (expected boolean)');
+      }
+
+      const proxyCaller = makeMindsOnlyAccessMember(caller);
+      const output = await applyOccurrenceReplaceTool.call(dlg, proxyCaller, {
+        plan_id: planId,
+        ...(showDiffValue !== undefined ? { show_diff: showDiffValue } : {}),
+      });
+      const content = toolCallOutputToString(output);
+      if (isSuccessfulYamlToolResult(content, 'apply_occurrence_replace')) {
+        const outputRel = extractPathFromYamlToolOutput(content);
+        if (outputRel === null) {
+          log.warn('Missing path in successful team_mgmt occurrence replace output', {
+            trigger: 'team_mgmt_apply_occurrence_replace',
+            planId,
+          });
+        }
+        const rel = outputRel ?? MINDS_DIR;
+        await refreshDerivedStateAfterTeamMgmtWrite({
+          relPaths: [rel],
+          trigger: 'team_mgmt_apply_occurrence_replace',
         });
       }
       return output;
@@ -3955,7 +4026,7 @@ export function renderTeamManual(language: LanguageCode): string {
         '想快速查看有哪些 provider / models / model_param_options：用 `team_mgmt_list_providers({})` 和 `team_mgmt_list_models({ provider_pattern: \"*\", model_pattern: \"*\" })`。',
         '不要把内置成员（例如 `fuxi` / `pangu`）的定义写入 `.minds/team.yaml`（这里只定义 rtws（运行时工作区）自己的成员）：内置成员通常带有特殊权限/目录访问边界；重复定义可能引入冲突、权限误配或行为不一致。',
         '`hidden: true` 表示影子/隐藏成员：不会出现在系统提示的团队目录里，但仍然可以通过 tellask-special 函数诉请。',
-        '修改文件推荐流程：先 `team_mgmt_read_file({ path: \"team.yaml\", range: \"<start~end>\", max_lines: 0, show_linenos: true })` 定位行号；精确行号范围改动直接用 `team_mgmt_file_range_edit({ path: \"team.yaml\", range: \"<line~range>\", content: \"<new content>\" })` 写入。若需要先审阅差异，可加 `preview: true, show_diff: true` 做只读预览，确认后再去掉 `preview` 写入。如确实需要整文件覆盖：先 `team_mgmt_read_file({ path: \"team.yaml\", range: \"\", max_lines: 0, show_linenos: true })` 从 YAML header 获取 total_lines/size_bytes，再用 `team_mgmt_overwrite_entire_file({ path: \"team.yaml\", known_old_total_lines: <n>, known_old_total_bytes: <n>, content_format: \"\", content: \"...\" })`。',
+        '修改文件推荐流程：先 `team_mgmt_read_file({ path: \"team.yaml\", range: \"<start~end>\", max_lines: 0, show_linenos: true })` 定位行号；精确行号范围改动直接用 `team_mgmt_file_range_edit({ path: \"team.yaml\", range: \"<line~range>\", content: \"<new content>\" })` 写入。若是同一字面量的两个及以上 occurrence 批量替换，使用 `team_mgmt_prepare_occurrence_replace({ path: \"team.yaml\", find: \"<old>\", content: \"<new>\" })` 后接 `team_mgmt_apply_occurrence_replace({ plan_id: \"<plan_id>\" })`。若需要先审阅差异，可加 `preview: true, show_diff: true` 做只读预览，确认后再去掉 `preview` 写入。如确实需要整文件覆盖：先 `team_mgmt_read_file({ path: \"team.yaml\", range: \"\", max_lines: 0, show_linenos: true })` 从 YAML header 获取 total_lines/size_bytes，再用 `team_mgmt_overwrite_entire_file({ path: \"team.yaml\", known_old_total_lines: <n>, known_old_total_bytes: <n>, content_format: \"\", content: \"...\" })`；大正文优先把内容准备到 pad，再传 `pad_id/pad_range`。',
         '部署/组织建议（可选）：如果你不希望出现显在“团队管理者”，可由一个影子/隐藏成员持有 `team_mgmt` 负责维护 `.minds/**`（尤其 `team.yaml`），由人类在需要时触发其执行（例如初始化/调整权限/更新模型）。Dominds 不强制这种组织方式；你也可以让显在成员拥有 `team_mgmt` 或由人类直接维护文件。',
       ]) +
       fmtSubHeader('Schema Snapshot（自动生成，来自当前解析器白名单）') +
@@ -4022,7 +4093,7 @@ export function renderTeamManual(language: LanguageCode): string {
         'Deployment/org suggestion (optional): if you do not want a visible team manager, keep `team_mgmt` only on a hidden/shadow member and have a human trigger it when needed; Dominds does not require this organizational setup.',
         'If a member is assigned team-management responsibility (especially by granting `team_mgmt`), that member’s `persona.*.md` must explicitly require reading the relevant `man({ "toolsetId": "team_mgmt" })` chapters before any team-management action, and maintaining `.minds/**` team mind assets by handbook-standard workflow rather than improvising ad hoc edits.',
         'Role ownership is not write permission: even if `.minds/team/<id>/*` belongs to a member role, editing it still depends on whether the current actor holds `team_mgmt` or equivalent team-asset maintenance authority. “This is your own persona/knowhow/pitfalls” does not mean “you may rewrite it yourself”.',
-        'Recommended editing workflow: use `team_mgmt_read_file({ path: \"team.yaml\", range: \"<start~end>\", max_lines: 0, show_linenos: true })` to find line numbers; for precise line-range edits, run `team_mgmt_file_range_edit({ path: \"team.yaml\", range: \"<line~range>\", content: \"<new content>\" })` directly. If you need to review the diff first, pass `preview: true, show_diff: true`, then remove `preview` to write. If you truly need a full overwrite: first `team_mgmt_read_file({ path: \"team.yaml\", range: \"\", max_lines: 0, show_linenos: true })` and read total_lines/size_bytes from the YAML header, then use `team_mgmt_overwrite_entire_file({ path: \"team.yaml\", known_old_total_lines: <n>, known_old_total_bytes: <n>, content_format: \"\", content: \"...\" })`.',
+        'Recommended editing workflow: use `team_mgmt_read_file({ path: \"team.yaml\", range: \"<start~end>\", max_lines: 0, show_linenos: true })` to find line numbers; for precise line-range edits, run `team_mgmt_file_range_edit({ path: \"team.yaml\", range: \"<line~range>\", content: \"<new content>\" })` directly. For batch replacement of two or more occurrences of the same literal, use `team_mgmt_prepare_occurrence_replace({ path: \"team.yaml\", find: \"<old>\", content: \"<new>\" })` followed by `team_mgmt_apply_occurrence_replace({ plan_id: \"<plan_id>\" })`. If you need to review the diff first, pass `preview: true, show_diff: true`, then remove `preview` to write. If you truly need a full overwrite: first `team_mgmt_read_file({ path: \"team.yaml\", range: \"\", max_lines: 0, show_linenos: true })` and read total_lines/size_bytes from the YAML header, then use `team_mgmt_overwrite_entire_file({ path: \"team.yaml\", known_old_total_lines: <n>, known_old_total_bytes: <n>, content_format: \"\", content: \"...\" })`; for large bodies, prepare a pad first and pass `pad_id/pad_range`.',
       ]),
     ) +
     fmtSubHeader('Schema Snapshot (generated from parser allow-list)') +
@@ -5610,6 +5681,8 @@ export const teamMgmtTools: ReadonlyArray<FuncTool> = [
   teamMgmtFileInsertBeforeTool,
   teamMgmtFileBlockReplaceTool,
   teamMgmtFileRangeEditTool,
+  teamMgmtPrepareOccurrenceReplaceTool,
+  teamMgmtApplyOccurrenceReplaceTool,
   teamMgmtMkDirTool,
   teamMgmtMoveFileTool,
   teamMgmtMoveDirTool,

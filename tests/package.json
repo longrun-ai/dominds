@@ -111,6 +111,7 @@
     "file-range-edit": "tsx file-range-edit.ts",
     "file-block-tools": "tsx file-block-tools.ts",
     "occurrence-replace": "tsx occurrence-replace.ts",
+    "team_mgmt-occurrence-replace": "tsx team_mgmt-occurrence-replace.ts",
     "overwrite-entire-file": "tsx overwrite-entire-file.ts",
     "list-dir-symlink": "tsx list-dir-symlink.ts",
     "fs-symlink-follow": "tsx fs-symlink-follow.ts",

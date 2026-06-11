@@ -4,11 +4,11 @@ You have read/write access to `.minds/**`, but this toolset **only operates with
 
 ## Principles
 
-- Incremental edits: single-block edits write directly. Use `team_mgmt_file_range_edit` for line ranges, `team_mgmt_file_append` for EOF appends, `team_mgmt_file_insert_after` / `team_mgmt_file_insert_before` for anchor insertions, and `team_mgmt_file_block_replace` for anchor-delimited blocks. These edit tools accept inline `content` or a ws_mod `pad_id/pad_range` source.
+- Incremental edits: single-block edits write directly. Use `team_mgmt_file_range_edit` for line ranges, `team_mgmt_file_append` for EOF appends, `team_mgmt_file_insert_after` / `team_mgmt_file_insert_before` for anchor insertions, and `team_mgmt_file_block_replace` for anchor-delimited blocks. Batch literal replacement across two or more selected occurrences uses `team_mgmt_prepare_occurrence_replace` followed by `team_mgmt_apply_occurrence_replace`. These edit tools accept inline `content` or a ws_mod `pad_id/pad_range` source.
 - If you carry team-management responsibility, read the relevant `man({ "toolsetId": "team_mgmt" })` chapters before performing concrete team-management actions, and maintain `.minds/**` team mind assets by the handbook-standard workflow.
 - Parallelism constraint: multiple function tool calls in one generation step may run in parallel. Same-file writes are serialized internally, but avoid making same-turn edits depend on unread results from each other.
-- Exception (create): `team_mgmt_create_new_file` only creates a new file (empty content allowed); it refuses to overwrite existing files.
-- Exception (overwrite): `team_mgmt_overwrite_entire_file` writes immediately. It requires `known_old_total_lines/known_old_total_bytes` guardrails; use `team_mgmt_read_file` to read `total_lines/size_bytes` from the YAML header.
+- Exception (create): `team_mgmt_create_new_file` only creates a new file from `content` or `pad_id/pad_range` (empty content allowed); it refuses to overwrite existing files.
+- Exception (overwrite): `team_mgmt_overwrite_entire_file` writes `content` or `pad_id/pad_range` immediately. It requires `known_old_total_lines/known_old_total_bytes` guardrails; use `team_mgmt_read_file` to read `total_lines/size_bytes` from the YAML header.
 - Normalization: each line ends with `\\n` (including the last line); the tool may add a trailing newline and report it in `normalized.*`.
 
 ## read_file output fields (important)
@@ -26,11 +26,12 @@ The YAML header from `team_mgmt_read_file` includes:
 ## Which tool to use
 
 - Read/locate: `team_mgmt_read_file` / `team_mgmt_list_dir` / `team_mgmt_ripgrep_*`
-- Create a new file (empty allowed): `team_mgmt_create_new_file({ path, content })`
+- Create a new file (empty allowed): `team_mgmt_create_new_file({ path, content })` or `team_mgmt_create_new_file({ path, pad_id, pad_range })`
 - Small edits (line range): `team_mgmt_file_range_edit({ path, range, content })` or `team_mgmt_file_range_edit({ path, range, pad_id, pad_range })`
 - Append to EOF: `team_mgmt_file_append({ path, content, create })`
 - Anchor insertion: `team_mgmt_file_insert_after|team_mgmt_file_insert_before({ path, anchor, content, occurrence, match })`
 - Block replace between anchors: `team_mgmt_file_block_replace({ path, start_anchor, end_anchor, content, occurrence, include_anchors, match, require_unique, strict })`
+- Batch literal occurrence replacement: `team_mgmt_prepare_occurrence_replace({ path, find, content|pad_id, occurrence_indexes? })` then `team_mgmt_apply_occurrence_replace({ plan_id })`; at least two selected occurrences are required.
 - After editing `.minds/team.yaml`: always run `team_mgmt_validate_team_cfg({})`; if the output shows "Resolved But Not Yet Cleared", finish with `team_mgmt_clear_problems({ source: "team", path: "team.yaml" })`.
 - After editing `.minds/mcp.yaml`: always run `team_mgmt_validate_mcp_cfg({})`; if the output shows "Resolved But Not Yet Cleared", finish with `team_mgmt_clear_problems({ source: "mcp", path: "mcp.yaml" })`.
 
