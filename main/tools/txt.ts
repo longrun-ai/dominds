@@ -189,6 +189,13 @@ type PadMetadataPatch = Readonly<{
   deleteWhenDone?: boolean;
 }>;
 
+type PadSourceSummary = Readonly<{
+  intent?: string;
+  completion?: string;
+  sourceNote?: string;
+  deleteWhenDone: boolean;
+}>;
+
 type PadLookupResult = Readonly<{
   index: number;
   reminder: Reminder;
@@ -281,6 +288,62 @@ function readPadMetadataPatch(
     ...(sourceNote !== undefined ? { sourceNote } : {}),
     ...(deleteWhenDone !== undefined ? { deleteWhenDone } : {}),
   };
+}
+
+function buildPadSourceSummary(meta: WsModPadMeta): PadSourceSummary {
+  return {
+    ...(meta.intent !== undefined ? { intent: meta.intent } : {}),
+    ...(meta.completion !== undefined ? { completion: meta.completion } : {}),
+    ...(meta.sourceNote !== undefined ? { sourceNote: meta.sourceNote } : {}),
+    deleteWhenDone: meta.deleteWhenDone ?? true,
+  };
+}
+
+function padSourceCleanupSuggestion(
+  summary: PadSourceSummary,
+  preview: boolean,
+  language: LanguageCode,
+): string {
+  if (preview) {
+    return language === 'zh'
+      ? '当前只是预览；请在实际写入完成或放弃后再删除此 pad。'
+      : 'Preview only; keep this pad until the change is applied or discarded.';
+  }
+  if (!summary.deleteWhenDone) {
+    return language === 'zh'
+      ? '此 pad 标记为 keep-while-needed；当前任务不再需要时再删除。'
+      : 'This pad is marked keep-while-needed; delete it when the current task no longer needs it.';
+  }
+  const completion = summary.completion?.trim();
+  if (completion !== undefined && completion !== '') {
+    return language === 'zh'
+      ? `完成条件："${completion}"；如果该条件已经满足，请用 pad_delete 删除此 pad。`
+      : `Completion says: "${completion}". If this condition is now met, delete this pad with pad_delete.`;
+  }
+  return language === 'zh'
+    ? '如果此 pad 已完成当前用途，请用 pad_delete 删除。'
+    : 'If this pad has served its purpose, delete it with pad_delete.';
+}
+
+function pushPadSourceMetadataYaml(
+  lines: string[],
+  summary: PadSourceSummary,
+  preview: boolean,
+): void {
+  const language = getWorkLanguage();
+  if (summary.intent !== undefined) {
+    lines.push(`pad_intent: ${yamlQuote(summary.intent)}`);
+  }
+  if (summary.completion !== undefined) {
+    lines.push(`pad_completion: ${yamlQuote(summary.completion)}`);
+  }
+  if (summary.sourceNote !== undefined) {
+    lines.push(`pad_source_note: ${yamlQuote(summary.sourceNote)}`);
+  }
+  lines.push(
+    `pad_delete_when_done: ${summary.deleteWhenDone}`,
+    `pad_cleanup_suggestion: ${yamlQuote(padSourceCleanupSuggestion(summary, preview, language))}`,
+  );
 }
 
 function countPadLines(text: string): number {
@@ -1917,6 +1980,7 @@ type FileBodySource =
       padId: string;
       padRange: string;
       padHash: string;
+      padSource: PadSourceSummary;
       selectedText: string;
       selectedHash: string;
       redacted: true;
@@ -1958,6 +2022,7 @@ function resolveFileBodySource(
     padId,
     padRange,
     padHash: hashPadText(pad.meta.text),
+    padSource: buildPadSourceSummary(pad.meta),
     selectedText,
     selectedHash: hashPadText(selectedText),
     redacted: true,
@@ -1979,6 +2044,7 @@ function pushFileBodySourceYaml(lines: string[], source: FileBodySource, showBod
       `pad_selected_bytes: ${Buffer.byteLength(source.selectedText, 'utf8')}`,
       `pad_selected_hash: ${yamlQuote(source.selectedHash)}`,
     );
+    pushPadSourceMetadataYaml(lines, source.padSource, false);
   }
 }
 
@@ -2880,6 +2946,7 @@ type FileRangeEditSource =
       padId: string;
       padRange: string;
       padHash: string;
+      padSource: PadSourceSummary;
       selectedText: string;
       selectedHash: string;
       redacted: true;
@@ -2893,6 +2960,7 @@ function pushFileRangeEditSourceYaml(
   lines: string[],
   source: FileRangeEditSource,
   showDiff: boolean,
+  preview: boolean,
 ): void {
   lines.push(`source: ${source.kind}`, `redacted: ${source.redacted && !showDiff}`);
   if (source.kind === 'pad') {
@@ -2904,6 +2972,7 @@ function pushFileRangeEditSourceYaml(
       `pad_selected_bytes: ${Buffer.byteLength(source.selectedText, 'utf8')}`,
       `pad_selected_hash: ${yamlQuote(source.selectedHash)}`,
     );
+    pushPadSourceMetadataYaml(lines, source.padSource, preview);
   }
 }
 
@@ -2940,6 +3009,7 @@ function resolveFileRangeEditSource(dlg: Dialog, args: ToolArguments): FileRange
     padId,
     padRange,
     padHash: hashPadText(pad.meta.text),
+    padSource: buildPadSourceSummary(pad.meta),
     selectedText,
     selectedHash: hashPadText(selectedText),
     redacted: true,
@@ -3095,7 +3165,7 @@ export const fileRangeEditTool: FuncTool = {
           `preview: ${preview}`,
           `path: ${yamlQuote(filePath)}`,
         ];
-        pushFileRangeEditSourceYaml(yamlLines, source, showDiff);
+        pushFileRangeEditSourceYaml(yamlLines, source, showDiff, preview);
         yamlLines.push(
           `action: ${action}`,
           `range:`,
@@ -4025,7 +4095,7 @@ async function runFileAppend(
               `preview: ${preview}`,
               `path: ${yamlQuote(filePath)}`,
             ];
-            pushFileRangeEditSourceYaml(yamlLines, source, showDiff);
+            pushFileRangeEditSourceYaml(yamlLines, source, showDiff, preview);
             yamlLines.push(
               `action: append`,
               `create: ${create}`,
@@ -4333,7 +4403,7 @@ async function runFileInsertionCommon(
               `preview: ${preview}`,
               `path: ${yamlQuote(filePath)}`,
             ];
-            pushFileRangeEditSourceYaml(yamlLines, options.source, showDiff);
+            pushFileRangeEditSourceYaml(yamlLines, options.source, showDiff, preview);
             yamlLines.push(
               `action: insert`,
               `position: ${yamlQuote(position)}`,
@@ -4841,7 +4911,7 @@ async function runFileBlockReplace(
               `preview: ${preview}`,
               `path: ${yamlQuote(filePath)}`,
             ];
-            pushFileRangeEditSourceYaml(yamlLines, options.source, showDiff);
+            pushFileRangeEditSourceYaml(yamlLines, options.source, showDiff, preview);
             yamlLines.push(
               `action: block_replace`,
               `start_anchor: ${yamlQuote(startAnchor)}`,

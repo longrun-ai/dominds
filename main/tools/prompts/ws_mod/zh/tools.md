@@ -77,6 +77,7 @@
 - `pad_delete`：删除不再需要的 pad。pad 是临时工作台，任务完成后应主动清理。
 
 pad 工具成功结果不回显正文，也不把行数/hash 统计当作主要展示；真实可见正文以提醒项投影为准。
+文件工具使用 pad source 成功时，会在来源审计字段后追加 `pad_intent`、`pad_completion`、`pad_source_note`、`pad_delete_when_done`、`pad_cleanup_suggestion`；`preview: true` 时提示保留 pad，实际写入后按完成条件判断是否 `pad_delete`。
 
 ## 5. YAML 输出契约
 

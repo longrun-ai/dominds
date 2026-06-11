@@ -77,6 +77,7 @@ Create or remove a symlink path.
 - `pad_delete`: Delete a pad once it is no longer needed. Pads are temporary workbench state and should be cleaned up after the task.
 
 Successful pad tool results do not echo body text and do not use line/hash stats as the main display; the reminder projection is the authoritative visible body.
+When a file tool succeeds with a pad source, it appends `pad_intent`, `pad_completion`, `pad_source_note`, `pad_delete_when_done`, and `pad_cleanup_suggestion` after the source audit fields; `preview: true` tells the agent to keep the pad, while actual writes should trigger deletion once the completion condition is met.
 
 ## 5. YAML Output Contract
 

@@ -15,6 +15,7 @@ import {
 } from '../../main/tool';
 import { deleteReminderTool } from '../../main/tools/ctrl';
 import {
+  createNewFileTool,
   fileRangeEditTool,
   padCopyTool,
   padDeleteRangeTool,
@@ -291,6 +292,28 @@ async function main(): Promise<void> {
     assert.ok(padRangeEditOutput.includes('mode: file_range_edit'));
     assert.ok(padRangeEditOutput.includes('source: pad'));
     assert.ok(
+      padRangeEditOutput.includes('pad_intent:') &&
+        padRangeEditOutput.includes('Test pad display with line-numbered body'),
+      'pad-sourced file_range_edit should include pad intent metadata',
+    );
+    assert.ok(
+      padRangeEditOutput.includes('pad_completion:') &&
+        padRangeEditOutput.includes('Delete after ws_mod pad reminder'),
+      'pad-sourced file_range_edit should include pad completion metadata',
+    );
+    assert.ok(
+      padRangeEditOutput.includes('pad_delete_when_done: true'),
+      'pad-sourced file_range_edit should include delete_when_done metadata',
+    );
+    assert.ok(
+      padRangeEditOutput.includes('pad_cleanup_suggestion:'),
+      'pad-sourced file_range_edit should include a cleanup suggestion',
+    );
+    assert.ok(
+      padRangeEditOutput.includes('如果该条件已经满足，请用 pad_delete 删除此 pad'),
+      'actual pad-sourced file_range_edit should suggest cleanup when completion is met',
+    );
+    assert.ok(
       !padRangeEditOutput.includes('changed'),
       'pad-sourced file_range_edit result must not echo selected pad body',
     );
@@ -299,6 +322,40 @@ async function main(): Promise<void> {
       'pad-sourced file_range_edit result must not echo a diff containing pad body',
     );
     assert.equal(await fs.readFile(path.join(tmpRoot, 'target.txt'), 'utf8'), 'old1\nchanged\n');
+
+    const previewRangeEditOutput = (
+      await fileRangeEditTool.call(dlg, caller, {
+        pad_id: 'draft2',
+        pad_range: '1~1',
+        path: 'target.txt',
+        range: '2~2',
+        preview: true,
+      })
+    ).content;
+    assert.ok(previewRangeEditOutput.includes('preview: true'));
+    assert.ok(
+      previewRangeEditOutput.includes('当前只是预览；请在实际写入完成或放弃后再删除此 pad'),
+      'preview pad-sourced file_range_edit should tell the agent to keep the pad',
+    );
+
+    const createFromPadOutput = (
+      await createNewFileTool.call(dlg, caller, {
+        pad_id: 'draft2',
+        pad_range: '1~1',
+        path: 'created-from-pad.txt',
+      })
+    ).content;
+    assert.ok(createFromPadOutput.includes('mode: create_new_file'));
+    assert.ok(createFromPadOutput.includes('source: pad'));
+    assert.ok(
+      createFromPadOutput.includes('pad_intent:') &&
+        createFromPadOutput.includes('Test pad display with line-numbered body'),
+      'pad-sourced create_new_file should include pad intent metadata',
+    );
+    assert.ok(
+      createFromPadOutput.includes('pad_cleanup_suggestion:'),
+      'pad-sourced create_new_file should include a cleanup suggestion',
+    );
 
     await fs.writeFile(path.join(tmpRoot, 'target-append.txt'), 'head1\nhead2\n', 'utf8');
     const appendRangeEditOutput = (
