@@ -61,6 +61,11 @@
 - 含义：`prepare_occurrence_replace` 只选中了单个 occurrence；工具仍会成功生成 plan
 - 建议：单点编辑通常使用 `file_range_edit` 或 `file_block_replace`；多点同字面量替换使用 `prepare_occurrence_replace`
 
+**PAD_INTENT_MISSING**
+
+- 含义：pad 工具已经成功，但当前 pad 没有 `intent` 元信息
+- 建议：用 `pad_write` / `pad_load_file_range` / `pad_copy` / `pad_move` 补充 `intent`，并尽量补充 `completion` / `source_note`，让后续模型轮次和人类 UI 都能看懂此 pad 的用途与删除条件
+
 ### 2. direct edit 漂移错误
 
 direct edit 默认立即写入，除非显式 `preview: true`。如果 direct edit 因锚点或行号范围与意图不再匹配而失败，请重新读取当前文件，收紧范围/锚点；需要审阅时用 `preview: true, show_diff: true` 重试。

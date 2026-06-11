@@ -13,17 +13,18 @@
 
 ## Scenario Quick Reference
 
-| Scenario                        | Recommended Tools       | Description                                 |
-| ------------------------------- | ----------------------- | ------------------------------------------- |
-| I want to view file content     | `read_file`             | With line number decoration, optional range |
-| I want to search and locate     | `ripgrep_snippets`      | Locate anchors by keywords                  |
-| I want to create a new file     | `create_new_file`       | Allows empty content                        |
-| I want to overwrite entire file | `overwrite_entire_file` | Requires providing old file snapshot        |
-| I want to make small changes    | `file_range_edit`       | Direct precise line range edit              |
-| I want to append to end         | `file_append`           | Append to EOF                               |
-| I want to insert after a line   | `file_insert_after`     | Insert by anchor                            |
-| I want to insert before a line  | `file_insert_before`    | Insert by anchor                            |
-| I want to replace a block       | `file_block_replace`    | Double-anchor block replacement             |
+| Scenario                        | Recommended Tools       | Description                                      |
+| ------------------------------- | ----------------------- | ------------------------------------------------ |
+| I want to view file content     | `read_file`             | With line number decoration, optional range      |
+| I want to search and locate     | `ripgrep_snippets`      | Locate anchors by keywords                       |
+| I want to create a new file     | `create_new_file`       | Allows empty content                             |
+| I want to overwrite entire file | `overwrite_entire_file` | Requires providing old file snapshot             |
+| I want to make small changes    | `file_range_edit`       | Direct precise line range edit                   |
+| I want to append to end         | `file_append`           | Append to EOF                                    |
+| I want to insert after a line   | `file_insert_after`     | Insert by anchor                                 |
+| I want to insert before a line  | `file_insert_before`    | Insert by anchor                                 |
+| I want to replace a block       | `file_block_replace`    | Double-anchor block replacement                  |
+| I want to edit/move large text  | `pad_*` + file tools    | Prepare a pad, then write via `pad_id/pad_range` |
 
 ## Copy-Paste Ready Examples
 
@@ -85,6 +86,20 @@ Call the function tool `overwrite_entire_file` with:
 { "path": "README.md", "content": "# New Content\n...", "known_old_total_lines": 42, "known_old_total_bytes": 1234 }
 ```
 
+### Large Body via Pad, Then File Write
+
+```text
+Call the function tool `pad_load_file_range` with:
+{ "pad_id": "rewrite_doc", "path": "docs/spec.md", "intent": "Rewrite docs/spec.md structure and wording", "completion": "Delete after writing back and verifying", "source_note": "Loaded from docs/spec.md full file" }
+```
+
+Then refine against the line-numbered reminder body with `pad_edit` / `pad_insert` / `pad_delete_range`, and finally:
+
+```text
+Call the function tool `overwrite_entire_file` with:
+{ "path": "docs/spec.md", "pad_id": "rewrite_doc", "known_old_total_lines": 42, "known_old_total_bytes": 1234, "content_format": "markdown" }
+```
+
 ## Tool Selection Decision Tree
 
 1. **Do you want to create a new file?**
@@ -92,13 +107,18 @@ Call the function tool `overwrite_entire_file` with:
    - No → Continue
 
 2. **Do you want to completely overwrite old content?**
-   - Yes → `read_file` to get snapshot → `overwrite_entire_file`
+   - Yes, and body is large → `read_file` to get snapshot → prepare a pad with `pad_write` or `pad_load_file_range` → `overwrite_entire_file({ pad_id })`
+   - Yes, and body is small → `read_file` to get snapshot → `overwrite_entire_file({ content })`
    - No → Continue
 
-3. **Do you know the specific line numbers?**
+3. **Are you handling a large body or a body that needs multiple refinement steps?**
+   - Yes → prepare a pad with `pad_write` or `pad_load_file_range`, fill `intent/completion/source_note`, then use the target file tool's `pad_id/pad_range`
+   - No → Continue
+
+4. **Do you know the specific line numbers?**
    - Yes → `file_range_edit`
    - No → Continue
 
-4. **Can you locate by anchor?**
+5. **Can you locate by anchor?**
    - Yes → Choose `file_insert_after/before` or `file_block_replace` based on scenario
    - No → Consider using `ripgrep_snippets` to locate anchors first

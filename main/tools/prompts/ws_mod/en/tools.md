@@ -68,11 +68,21 @@ Create or remove a symlink path.
 - `pad_load_file_range({ pad_id, path })` can omit `range`, which defaults to the whole file; pass `range` to load only a file slice
 - For review output, pass `preview: true, show_diff: true` to the direct tool; otherwise it writes immediately and does not echo body text
 
-## 4. YAML Output Contract
+## 4. Scratch Pad Tools
+
+- `pad_write`: Create/replace/append/upsert pad body text; supports `intent`, `completion`, `source_note`, and `delete_when_done` metadata. Large bodies can enter a pad, but the first function-call argument still enters history.
+- `pad_load_file_range`: Load a whole file or line range into a pad; omitting `range` means the whole file. Pass `intent` / `completion` / `source_note` explicitly when useful; when `source_note` is omitted, the tool records the file source automatically.
+- `pad_edit` / `pad_insert` / `pad_delete_range`: Modify pad text directly by pad line numbers; the line-numbered reminder body is the editing reference.
+- `pad_copy` / `pad_move`: Copy/move line ranges between pads; when creating a target pad, source metadata is inherited and can be overridden by parameters.
+- `pad_delete`: Delete a pad once it is no longer needed. Pads are temporary workbench state and should be cleaned up after the task.
+
+Successful pad tool results do not echo body text and do not use line/hash stats as the main display; the reminder projection is the authoritative visible body.
+
+## 5. YAML Output Contract
 
 > Goal: Scannable under low attention; stable fields for tooling and regression
 
-### 4.1 Direct Write (Common Fields)
+### 5.1 Direct Write (Common Fields)
 
 - `status: ok|error`
 - `mode: file_range_edit|file_append|file_insert_after|file_insert_before|file_block_replace`
@@ -82,7 +92,7 @@ Create or remove a symlink path.
 - `summary` (1-2 sentences, scannable)
 - Followed by a unified diff only when `show_diff=true`
 
-### 4.2 Direct Write (Key Fields by Tool/Action)
+### 5.2 Direct Write (Key Fields by Tool/Action)
 
 - `file_append`:
   - `file_line_count_before|after`, `appended_line_count`
@@ -104,13 +114,13 @@ Create or remove a symlink path.
   - `file.old_hash|new_hash`, `file.old_total_lines|new_total_lines`
   - `match_preview` on prepare; `FILE_CHANGED_SINCE_PREPARE` on apply if the file drifted
 
-### 4.5 read_file / overwrite_entire_file (Structured Header)
+### 5.5 read_file / overwrite_entire_file (Structured Header)
 
 - `read_file` output starts with YAML header (followed by code block content), which includes:
   - `total_lines` (for reconciliation guardrail: empty file is 0, can be directly used for `overwrite_entire_file.known_old_total_lines`)
 - `overwrite_entire_file` success/failure outputs are both YAML (for programmatic handling and retry)
 
-## 5. Relationship with .minds/
+## 6. Relationship with .minds/
 
 `.minds/` is the core of team configuration and rtws (runtime workspace) memory, and should usually be operated through the `team_mgmt` toolset's mirrored tools (e.g., `team_mgmt_file_insert_after`, etc.).
 This toolset's direct edit mental model remains consistent, but path and permission semantics are determined by the team_mgmt tool wrapper layer (see team_mgmt documentation).

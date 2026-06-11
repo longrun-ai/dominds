@@ -61,6 +61,11 @@
 - Meaning: `prepare_occurrence_replace` selected only one occurrence; the tool still creates a valid plan
 - Recommendation: use `file_range_edit` or `file_block_replace` for one-off edits; use `prepare_occurrence_replace` for multi-point same-literal replacement
 
+**PAD_INTENT_MISSING**
+
+- Meaning: the pad tool succeeded, but the current pad has no `intent` metadata
+- Recommendation: add `intent` with `pad_write` / `pad_load_file_range` / `pad_copy` / `pad_move`, and preferably add `completion` / `source_note` so later model turns and the human UI understand why the pad exists and when to delete it
+
 ### 2. Direct Edit Drift Errors
 
 Direct edits write immediately unless `preview: true` is set. If a direct edit fails because anchors or line ranges no longer match your intent, re-read the current file, tighten the range/anchors, and retry with `preview: true, show_diff: true` if review is needed.

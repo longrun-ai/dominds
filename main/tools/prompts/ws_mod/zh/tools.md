@@ -68,11 +68,21 @@
 - `pad_load_file_range({ pad_id, path })` 可省略 `range`，默认把整个文件装入 pad；指定 `range` 时只装入文件片段
 - 需要审阅时对 direct 工具显式传 `preview: true, show_diff: true`；默认直接写入且不回显正文
 
-## 4. YAML 输出契约
+## 4. Scratch Pad 工具
+
+- `pad_write`：创建/替换/追加/upsert pad 正文；支持 `intent`、`completion`、`source_note`、`delete_when_done` 元信息。大正文可进入 pad，但首次函数调用参数仍会进入历史。
+- `pad_load_file_range`：把文件全量或行号范围装入 pad；省略 `range` 表示全文件。可显式传 `intent` / `completion` / `source_note`，未传 `source_note` 时会自动记录文件来源。
+- `pad_edit` / `pad_insert` / `pad_delete_range`：按 pad 行号直接修改 pad 正文；提醒项中的带行号正文是编辑依据。
+- `pad_copy` / `pad_move`：在 pad 之间复制/移动行号范围；创建目标 pad 时会继承来源元信息，也可用参数覆盖。
+- `pad_delete`：删除不再需要的 pad。pad 是临时工作台，任务完成后应主动清理。
+
+pad 工具成功结果不回显正文，也不把行数/hash 统计当作主要展示；真实可见正文以提醒项投影为准。
+
+## 5. YAML 输出契约
 
 > 目标：低注意力可扫读；稳定字段便于工具链/回归
 
-### 4.1 Direct 写入（共同字段）
+### 5.1 Direct 写入（共同字段）
 
 - `status: ok|error`
 - `mode: file_range_edit|file_append|file_insert_after|file_insert_before|file_block_replace`
@@ -82,7 +92,7 @@
 - `summary`（1–2 句可扫读）
 - 只有 `show_diff=true` 时才追加 unified diff
 
-### 4.2 Direct 写入（按工具/动作的关键字段）
+### 5.2 Direct 写入（按工具/动作的关键字段）
 
 - `file_append`：
   - `file_line_count_before|after`、`appended_line_count`
@@ -104,13 +114,13 @@
   - `file.old_hash|new_hash`、`file.old_total_lines|new_total_lines`
   - prepare 输出 `match_preview`；若 apply 时文件漂移，则返回 `FILE_CHANGED_SINCE_PREPARE`
 
-### 4.5 read_file / overwrite_entire_file（结构化头部）
+### 5.5 read_file / overwrite_entire_file（结构化头部）
 
 - `read_file` 输出开头包含 YAML header（随后是代码块正文），其中会给出：
   - `total_lines`（用于对账护栏：空文件为 0，可直接用于 `overwrite_entire_file.known_old_total_lines`）
 - `overwrite_entire_file` 的成功/失败输出均使用 YAML（便于程序化处理与重试）
 
-## 5. 与 .minds/ 的关系
+## 6. 与 .minds/ 的关系
 
 `.minds/` 属于团队配置与 rtws（运行时工作区）记忆的核心，通常应通过 `team_mgmt` toolset 的镜像工具操作（例如 `team_mgmt_file_insert_after` 等）。
 本工具集的 direct edit 心智模型保持一致，但路径与权限语义由 team_mgmt 工具包装层决定（详见 team_mgmt 文档/工具说明）
