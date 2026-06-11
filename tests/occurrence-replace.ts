@@ -79,7 +79,7 @@ async function main(): Promise<void> {
       `${replacement} one\n${replacement} two\n${replacement} three\n`,
     );
 
-    const singleSelection = (
+    const singleSelectionPrepare = (
       await prepareOccurrenceReplaceTool.call(dlg, caller, {
         path: 'target.txt',
         find: replacement,
@@ -87,7 +87,19 @@ async function main(): Promise<void> {
         occurrence_indexes: [2],
       })
     ).content;
-    assert.ok(singleSelection.includes('error: NOT_MULTI_OCCURRENCE'));
+    assert.ok(singleSelectionPrepare.includes('status: ok'));
+    assert.ok(singleSelectionPrepare.includes('selected_count: 1'));
+    assert.ok(singleSelectionPrepare.includes('notice: NOT_MULTI_OCCURRENCE'));
+    const singleSelectionApply = (
+      await applyOccurrenceReplaceTool.call(dlg, caller, {
+        plan_id: extractPlanId(singleSelectionPrepare),
+      })
+    ).content;
+    assert.ok(singleSelectionApply.includes('mode: apply_occurrence_replace'));
+    assert.equal(
+      await fs.readFile(path.join(tmpRoot, 'target.txt'), 'utf8'),
+      `${replacement} one\nsingle two\n${replacement} three\n`,
+    );
 
     await fs.writeFile(path.join(tmpRoot, 'pad-target.txt'), 'red\nred\nred\n', 'utf8');
     const padReplacement = 'BLUE_PAD_TOKEN';

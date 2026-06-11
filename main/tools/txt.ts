@@ -3045,10 +3045,10 @@ export const prepareOccurrenceReplaceTool: FuncTool = {
   type: 'func',
   name: 'prepare_occurrence_replace',
   description:
-    'Prepare a multi-occurrence literal replacement in one rtws file. This is only for batch replacement of two or more occurrences; single-block edits should use direct file tools.',
+    'Prepare a literal occurrence replacement plan in one rtws file. This is designed for batch same-literal replacement; direct file tools are usually clearer for single-block edits.',
   descriptionI18n: {
-    en: 'Prepare a multi-occurrence literal replacement in one rtws file. This is only for batch replacement of two or more occurrences; single-block edits should use direct file tools.',
-    zh: '规划单个 rtws 文件内的多 occurrence 字面量替换。仅用于两个及以上 occurrence 的批量替换；单块编辑应使用 direct file 工具。',
+    en: 'Prepare a literal occurrence replacement plan in one rtws file. This is designed for batch same-literal replacement; direct file tools are usually clearer for single-block edits.',
+    zh: '规划单个 rtws 文件内的字面量 occurrence 替换。这主要面向同一字面量的批量替换；单块编辑通常使用 direct file 工具更清晰。',
   },
   parameters: {
     type: 'object',
@@ -3074,7 +3074,7 @@ export const prepareOccurrenceReplaceTool: FuncTool = {
         type: 'array',
         items: { type: 'integer' },
         description:
-          'Optional 1-based occurrence indexes to replace. Omit to replace all occurrences. At least two selected occurrences are required.',
+          'Optional 1-based occurrence indexes to replace. Omit to replace all occurrences.',
       },
       show_diff: {
         type: 'boolean',
@@ -3171,24 +3171,6 @@ export const prepareOccurrenceReplaceTool: FuncTool = {
           ].join('\n'),
         );
       }
-      if (selectedOccurrences.length < 2) {
-        return failYaml(
-          [
-            `status: error`,
-            `mode: ${mode}`,
-            `path: ${yamlQuote(filePath)}`,
-            `error: NOT_MULTI_OCCURRENCE`,
-            `occurrences_found: ${totalOccurrences}`,
-            `selected_occurrences: ${yamlFlowNumberArray(selectedOccurrences)}`,
-            `summary: ${yamlQuote(
-              language === 'zh'
-                ? 'prepare_occurrence_replace 只用于两个及以上 occurrence 的批量替换；单点编辑请使用 direct file 工具。'
-                : 'prepare_occurrence_replace is only for batch replacement of two or more occurrences; use direct file tools for single edits.',
-            )}`,
-          ].join('\n'),
-        );
-      }
-
       const nextContent = replaceSelectedLiteralOccurrences(
         currentContent,
         occurrenceOffsets,
@@ -3257,10 +3239,20 @@ export const prepareOccurrenceReplaceTool: FuncTool = {
         `next: ${yamlQuote(`apply_occurrence_replace({ "plan_id": "${planId}" })`)}`,
         `summary: ${yamlQuote(
           language === 'zh'
-            ? `已规划 ${selectedOccurrences.length}/${totalOccurrences} 个 occurrence 的批量替换；plan_id=${planId}.`
-            : `Planned batch replacement for ${selectedOccurrences.length}/${totalOccurrences} occurrence(s); plan_id=${planId}.`,
+            ? `已规划 ${selectedOccurrences.length}/${totalOccurrences} 个 occurrence 的替换；plan_id=${planId}.`
+            : `Planned replacement for ${selectedOccurrences.length}/${totalOccurrences} occurrence(s); plan_id=${planId}.`,
         )}`,
       );
+      if (selectedOccurrences.length < 2) {
+        yamlLines.push(
+          `notice: NOT_MULTI_OCCURRENCE`,
+          `guidance: ${yamlQuote(
+            language === 'zh'
+              ? '本次单点 occurrence 替换已生成 plan；单点编辑通常用 file_range_edit 或 file_block_replace，多点同字面量替换用 prepare_occurrence_replace。'
+              : 'This single-occurrence replacement plan is valid; for a one-off edit, file_range_edit or file_block_replace is usually clearer, while prepare_occurrence_replace is designed for multi-point same-literal replacement.',
+          )}`,
+        );
+      }
       const yaml = yamlLines.join('\n');
       if (!showDiff) return okYaml(yaml);
       const diff = buildUnifiedSingleHunkDiff(
@@ -3288,10 +3280,10 @@ export const applyOccurrenceReplaceTool: FuncTool = {
   type: 'func',
   name: 'apply_occurrence_replace',
   description:
-    'Apply a prepared multi-occurrence literal replacement plan. Rejects if the target file changed since prepare.',
+    'Apply a prepared literal occurrence replacement plan. Rejects if the target file changed since prepare.',
   descriptionI18n: {
-    en: 'Apply a prepared multi-occurrence literal replacement plan. Rejects if the target file changed since prepare.',
-    zh: '应用已规划的多 occurrence 字面量替换；若目标文件在 prepare 后变化则拒绝。',
+    en: 'Apply a prepared literal occurrence replacement plan. Rejects if the target file changed since prepare.',
+    zh: '应用已规划的字面量 occurrence 替换；若目标文件在 prepare 后变化则拒绝。',
   },
   parameters: {
     type: 'object',
@@ -3473,8 +3465,8 @@ export const applyOccurrenceReplaceTool: FuncTool = {
                 `  new_hash: ${yamlQuote(currentPlan.newFileHash)}`,
                 `summary: ${yamlQuote(
                   language === 'zh'
-                    ? `已应用 ${currentPlan.selectedOccurrences.length} 个 occurrence 的批量替换。`
-                    : `Applied batch replacement for ${currentPlan.selectedOccurrences.length} occurrence(s).`,
+                    ? `已应用 ${currentPlan.selectedOccurrences.length} 个 occurrence 的替换。`
+                    : `Applied replacement for ${currentPlan.selectedOccurrences.length} occurrence(s).`,
                 )}`,
               );
               const yaml = yamlLines.join('\n');

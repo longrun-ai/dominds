@@ -24,7 +24,6 @@
 | direct | `ANCHOR_AMBIGUOUS`           | Anchor has multiple matches              | Specify `occurrence` parameter to identify which match             |
 | direct | `OCCURRENCE_OUT_OF_RANGE`    | occurrence out of range                  | Check if occurrence value is within `1~candidates_count` range     |
 | direct | `OCCURRENCE_NOT_FOUND`       | Literal text has no matches              | Re-check `find` with `ripgrep_fixed` or inspect the file           |
-| direct | `NOT_MULTI_OCCURRENCE`       | Fewer than two selected occurrences      | Use direct file tools for a single edit                            |
 | apply  | `FILE_CHANGED_SINCE_PREPARE` | Occurrence plan target file drifted      | Re-read and re-run `prepare_occurrence_replace`                    |
 | apply  | `PLAN_NOT_FOUND`             | Occurrence plan expired/applied/missing  | Re-run `prepare_occurrence_replace`                                |
 | write  | `ACCESS_DENIED`              | Reserved rtws path is hard-denied        | Use the dedicated tool/path listed in the error message            |
@@ -55,10 +54,12 @@
 - Cause: Specified occurrence greater than actual match count
 - Solution: Change occurrence value to a valid range number
 
+### Successful Notices
+
 **NOT_MULTI_OCCURRENCE**
 
-- Cause: `prepare_occurrence_replace` selected fewer than two occurrences
-- Solution: Use direct file tools for one-off edits, or select at least two occurrence indexes
+- Meaning: `prepare_occurrence_replace` selected only one occurrence; the tool still creates a valid plan
+- Recommendation: use `file_range_edit` or `file_block_replace` for one-off edits; use `prepare_occurrence_replace` for multi-point same-literal replacement
 
 ### 2. Direct Edit Drift Errors
 

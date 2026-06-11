@@ -2505,10 +2505,10 @@ export const teamMgmtFileRangeEditTool: FuncTool = {
 export const teamMgmtPrepareOccurrenceReplaceTool: FuncTool = {
   type: 'func',
   name: 'team_mgmt_prepare_occurrence_replace',
-  description: `Prepare a multi-occurrence literal replacement under ${MINDS_DIR}/. Only for two or more selected occurrences.`,
+  description: `Prepare a literal occurrence replacement plan under ${MINDS_DIR}/. Designed for batch same-literal replacement; direct file tools are usually clearer for single-block edits.`,
   descriptionI18n: {
-    en: `Prepare a multi-occurrence literal replacement under ${MINDS_DIR}/. Only for two or more selected occurrences.`,
-    zh: `规划 ${MINDS_DIR}/ 下文件内的多 occurrence 字面量替换。仅用于两个及以上 occurrence。`,
+    en: `Prepare a literal occurrence replacement plan under ${MINDS_DIR}/. Designed for batch same-literal replacement; direct file tools are usually clearer for single-block edits.`,
+    zh: `规划 ${MINDS_DIR}/ 下文件内的字面量 occurrence 替换。主要面向同一字面量的批量替换；单块编辑通常使用 direct file 工具更清晰。`,
   },
   parameters: {
     type: 'object',
@@ -2597,10 +2597,10 @@ export const teamMgmtPrepareOccurrenceReplaceTool: FuncTool = {
 export const teamMgmtApplyOccurrenceReplaceTool: FuncTool = {
   type: 'func',
   name: 'team_mgmt_apply_occurrence_replace',
-  description: `Apply a prepared multi-occurrence literal replacement plan under ${MINDS_DIR}/.`,
+  description: `Apply a prepared literal occurrence replacement plan under ${MINDS_DIR}/.`,
   descriptionI18n: {
-    en: `Apply a prepared multi-occurrence literal replacement plan under ${MINDS_DIR}/.`,
-    zh: `应用 ${MINDS_DIR}/ 下文件的多 occurrence 字面量替换 plan。`,
+    en: `Apply a prepared literal occurrence replacement plan under ${MINDS_DIR}/.`,
+    zh: `应用 ${MINDS_DIR}/ 下文件的字面量 occurrence 替换 plan。`,
   },
   parameters: {
     type: 'object',
@@ -4026,7 +4026,7 @@ export function renderTeamManual(language: LanguageCode): string {
         '想快速查看有哪些 provider / models / model_param_options：用 `team_mgmt_list_providers({})` 和 `team_mgmt_list_models({ provider_pattern: \"*\", model_pattern: \"*\" })`。',
         '不要把内置成员（例如 `fuxi` / `pangu`）的定义写入 `.minds/team.yaml`（这里只定义 rtws（运行时工作区）自己的成员）：内置成员通常带有特殊权限/目录访问边界；重复定义可能引入冲突、权限误配或行为不一致。',
         '`hidden: true` 表示影子/隐藏成员：不会出现在系统提示的团队目录里，但仍然可以通过 tellask-special 函数诉请。',
-        '修改文件推荐流程：先 `team_mgmt_read_file({ path: \"team.yaml\", range: \"<start~end>\", max_lines: 0, show_linenos: true })` 定位行号；精确行号范围改动直接用 `team_mgmt_file_range_edit({ path: \"team.yaml\", range: \"<line~range>\", content: \"<new content>\" })` 写入。若是同一字面量的两个及以上 occurrence 批量替换，使用 `team_mgmt_prepare_occurrence_replace({ path: \"team.yaml\", find: \"<old>\", content: \"<new>\" })` 后接 `team_mgmt_apply_occurrence_replace({ plan_id: \"<plan_id>\" })`。若需要先审阅差异，可加 `preview: true, show_diff: true` 做只读预览，确认后再去掉 `preview` 写入。如确实需要整文件覆盖：先 `team_mgmt_read_file({ path: \"team.yaml\", range: \"\", max_lines: 0, show_linenos: true })` 从 YAML header 获取 total_lines/size_bytes，再用 `team_mgmt_overwrite_entire_file({ path: \"team.yaml\", known_old_total_lines: <n>, known_old_total_bytes: <n>, content_format: \"\", content: \"...\" })`；大正文优先把内容准备到 pad，再传 `pad_id/pad_range`。',
+        '修改文件推荐流程：先 `team_mgmt_read_file({ path: \"team.yaml\", range: \"<start~end>\", max_lines: 0, show_linenos: true })` 定位行号；精确行号范围改动直接用 `team_mgmt_file_range_edit({ path: \"team.yaml\", range: \"<line~range>\", content: \"<new content>\" })` 写入。同一字面量多点批量替换推荐使用 `team_mgmt_prepare_occurrence_replace({ path: \"team.yaml\", find: \"<old>\", content: \"<new>\" })` 后接 `team_mgmt_apply_occurrence_replace({ plan_id: \"<plan_id>\" })`；若只选中单个 occurrence，工具会成功生成 plan 但返回 `notice: NOT_MULTI_OCCURRENCE`，此时通常改用 `team_mgmt_file_range_edit` 或 `team_mgmt_file_block_replace` 更清晰。若需要先审阅差异，可加 `preview: true, show_diff: true` 做只读预览，确认后再去掉 `preview` 写入。如确实需要整文件覆盖：先 `team_mgmt_read_file({ path: \"team.yaml\", range: \"\", max_lines: 0, show_linenos: true })` 从 YAML header 获取 total_lines/size_bytes，再用 `team_mgmt_overwrite_entire_file({ path: \"team.yaml\", known_old_total_lines: <n>, known_old_total_bytes: <n>, content_format: \"\", content: \"...\" })`；大正文优先把内容准备到 pad，再传 `pad_id/pad_range`。',
         '部署/组织建议（可选）：如果你不希望出现显在“团队管理者”，可由一个影子/隐藏成员持有 `team_mgmt` 负责维护 `.minds/**`（尤其 `team.yaml`），由人类在需要时触发其执行（例如初始化/调整权限/更新模型）。Dominds 不强制这种组织方式；你也可以让显在成员拥有 `team_mgmt` 或由人类直接维护文件。',
       ]) +
       fmtSubHeader('Schema Snapshot（自动生成，来自当前解析器白名单）') +
@@ -4093,7 +4093,7 @@ export function renderTeamManual(language: LanguageCode): string {
         'Deployment/org suggestion (optional): if you do not want a visible team manager, keep `team_mgmt` only on a hidden/shadow member and have a human trigger it when needed; Dominds does not require this organizational setup.',
         'If a member is assigned team-management responsibility (especially by granting `team_mgmt`), that member’s `persona.*.md` must explicitly require reading the relevant `man({ "toolsetId": "team_mgmt" })` chapters before any team-management action, and maintaining `.minds/**` team mind assets by handbook-standard workflow rather than improvising ad hoc edits.',
         'Role ownership is not write permission: even if `.minds/team/<id>/*` belongs to a member role, editing it still depends on whether the current actor holds `team_mgmt` or equivalent team-asset maintenance authority. “This is your own persona/knowhow/pitfalls” does not mean “you may rewrite it yourself”.',
-        'Recommended editing workflow: use `team_mgmt_read_file({ path: \"team.yaml\", range: \"<start~end>\", max_lines: 0, show_linenos: true })` to find line numbers; for precise line-range edits, run `team_mgmt_file_range_edit({ path: \"team.yaml\", range: \"<line~range>\", content: \"<new content>\" })` directly. For batch replacement of two or more occurrences of the same literal, use `team_mgmt_prepare_occurrence_replace({ path: \"team.yaml\", find: \"<old>\", content: \"<new>\" })` followed by `team_mgmt_apply_occurrence_replace({ plan_id: \"<plan_id>\" })`. If you need to review the diff first, pass `preview: true, show_diff: true`, then remove `preview` to write. If you truly need a full overwrite: first `team_mgmt_read_file({ path: \"team.yaml\", range: \"\", max_lines: 0, show_linenos: true })` and read total_lines/size_bytes from the YAML header, then use `team_mgmt_overwrite_entire_file({ path: \"team.yaml\", known_old_total_lines: <n>, known_old_total_bytes: <n>, content_format: \"\", content: \"...\" })`; for large bodies, prepare a pad first and pass `pad_id/pad_range`.',
+        'Recommended editing workflow: use `team_mgmt_read_file({ path: \"team.yaml\", range: \"<start~end>\", max_lines: 0, show_linenos: true })` to find line numbers; for precise line-range edits, run `team_mgmt_file_range_edit({ path: \"team.yaml\", range: \"<line~range>\", content: \"<new content>\" })` directly. For multi-point replacement of the same literal, prefer `team_mgmt_prepare_occurrence_replace({ path: \"team.yaml\", find: \"<old>\", content: \"<new>\" })` followed by `team_mgmt_apply_occurrence_replace({ plan_id: \"<plan_id>\" })`; if only one occurrence is selected, the tool still creates a plan but returns `notice: NOT_MULTI_OCCURRENCE`, and `team_mgmt_file_range_edit` or `team_mgmt_file_block_replace` is usually clearer. If you need to review the diff first, pass `preview: true, show_diff: true`, then remove `preview` to write. If you truly need a full overwrite: first `team_mgmt_read_file({ path: \"team.yaml\", range: \"\", max_lines: 0, show_linenos: true })` and read total_lines/size_bytes from the YAML header, then use `team_mgmt_overwrite_entire_file({ path: \"team.yaml\", known_old_total_lines: <n>, known_old_total_bytes: <n>, content_format: \"\", content: \"...\" })`; for large bodies, prepare a pad first and pass `pad_id/pad_range`.',
       ]),
     ) +
     fmtSubHeader('Schema Snapshot (generated from parser allow-list)') +

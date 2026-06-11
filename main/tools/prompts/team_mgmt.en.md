@@ -4,7 +4,7 @@ You have read/write access to `.minds/**`, but this toolset **only operates with
 
 ## Principles
 
-- Incremental edits: single-block edits write directly. Use `team_mgmt_file_range_edit` for line ranges, `team_mgmt_file_append` for EOF appends, `team_mgmt_file_insert_after` / `team_mgmt_file_insert_before` for anchor insertions, and `team_mgmt_file_block_replace` for anchor-delimited blocks. Batch literal replacement across two or more selected occurrences uses `team_mgmt_prepare_occurrence_replace` followed by `team_mgmt_apply_occurrence_replace`. These edit tools accept inline `content` or a ws_mod `pad_id/pad_range` source.
+- Incremental edits: single-block edits write directly. Use `team_mgmt_file_range_edit` for line ranges, `team_mgmt_file_append` for EOF appends, `team_mgmt_file_insert_after` / `team_mgmt_file_insert_before` for anchor insertions, and `team_mgmt_file_block_replace` for anchor-delimited blocks. For multi-point same-literal replacement, prefer `team_mgmt_prepare_occurrence_replace` followed by `team_mgmt_apply_occurrence_replace`; if only one occurrence is selected, prepare succeeds but returns `notice: NOT_MULTI_OCCURRENCE`. These edit tools accept inline `content` or a ws_mod `pad_id/pad_range` source.
 - If you carry team-management responsibility, read the relevant `man({ "toolsetId": "team_mgmt" })` chapters before performing concrete team-management actions, and maintain `.minds/**` team mind assets by the handbook-standard workflow.
 - Parallelism constraint: multiple function tool calls in one generation step may run in parallel. Same-file writes are serialized internally, but avoid making same-turn edits depend on unread results from each other.
 - Exception (create): `team_mgmt_create_new_file` only creates a new file from `content` or `pad_id/pad_range` (empty content allowed); it refuses to overwrite existing files.
@@ -31,7 +31,7 @@ The YAML header from `team_mgmt_read_file` includes:
 - Append to EOF: `team_mgmt_file_append({ path, content, create })`
 - Anchor insertion: `team_mgmt_file_insert_after|team_mgmt_file_insert_before({ path, anchor, content, occurrence, match })`
 - Block replace between anchors: `team_mgmt_file_block_replace({ path, start_anchor, end_anchor, content, occurrence, include_anchors, match, require_unique, strict })`
-- Batch literal occurrence replacement: `team_mgmt_prepare_occurrence_replace({ path, find, content|pad_id, occurrence_indexes? })` then `team_mgmt_apply_occurrence_replace({ plan_id })`; at least two selected occurrences are required.
+- Batch literal occurrence replacement: `team_mgmt_prepare_occurrence_replace({ path, find, content|pad_id, occurrence_indexes? })` then `team_mgmt_apply_occurrence_replace({ plan_id })`; it is designed for multi-point same-literal replacement, and single-occurrence plans succeed but return `notice: NOT_MULTI_OCCURRENCE`.
 - After editing `.minds/team.yaml`: always run `team_mgmt_validate_team_cfg({})`; if the output shows "Resolved But Not Yet Cleared", finish with `team_mgmt_clear_problems({ source: "team", path: "team.yaml" })`.
 - After editing `.minds/mcp.yaml`: always run `team_mgmt_validate_mcp_cfg({})`; if the output shows "Resolved But Not Yet Cleared", finish with `team_mgmt_clear_problems({ source: "mcp", path: "mcp.yaml" })`.
 

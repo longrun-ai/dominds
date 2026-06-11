@@ -6,7 +6,7 @@ You have read/write access to the rtws (runtime workspace). Single-block edits w
 
 - Precise line ranges: use `file_range_edit({ path, range, content })` or `file_range_edit({ path, range, pad_id, pad_range })` to write directly. It defaults to redacted YAML output and does not echo body text. Set `preview: true` or `show_diff: true` only when review output is needed.
 - EOF appends / anchor insertions / single block replacements: use `file_append`, `file_insert_after` / `file_insert_before`, and `file_block_replace`; each accepts either `content` or `pad_id/pad_range`.
-- Batch literal occurrence replacement: only when replacing two or more occurrences of the same literal text, use `prepare_occurrence_replace` followed by `apply_occurrence_replace`. Do not use this path for single-block edits.
+- Batch literal occurrence replacement: for multi-point same-literal replacement, prefer `prepare_occurrence_replace` followed by `apply_occurrence_replace`; for one-off/single-block edits, `file_range_edit` or `file_block_replace` is usually clearer. If only one occurrence is selected, prepare succeeds but returns `notice: NOT_MULTI_OCCURRENCE` as usage guidance.
 - When review is needed, set `preview: true, show_diff: true`; otherwise the tool writes immediately.
 - Legacy tools are removed (no compatibility layer): `append_file` / `insert_after` / `insert_before` / `replace_block` / `apply_block_replace`.
 - Constraint: paths under `*.tsk/` are encapsulated Taskdocs; file tools cannot access them.
@@ -37,7 +37,7 @@ Scratch Pad is a ws_mod-specific large-text editing buffer for reducing repeated
 - Full-file overwrites: use `overwrite_entire_file({ path, content, known_old_total_lines, known_old_total_bytes })` for small bodies; prepare a pad first and call `overwrite_entire_file({ path, pad_id, pad_range, known_old_total_lines, known_old_total_bytes })` for large bodies
 - Large whole-file rewrites: `pad_load_file_range({ pad_id, path })` loads the whole file into a pad → refine with `pad_edit`/`pad_insert`/`pad_delete_range` → write back with `overwrite_entire_file({ path, pad_id, known_old_total_lines, known_old_total_bytes })`
 - Precise range edits that must be reviewed first: `file_range_edit({ path, range, content, preview: true, show_diff: true })`
-- Batch literal occurrence replacement: `prepare_occurrence_replace({ path, find, content|pad_id, occurrence_indexes? })` then `apply_occurrence_replace({ plan_id })`. At least two selected occurrences are required.
+- Batch literal occurrence replacement: `prepare_occurrence_replace({ path, find, content|pad_id, occurrence_indexes? })` then `apply_occurrence_replace({ plan_id })`. It is designed for multi-point same-literal replacement; single-occurrence plans succeed but return `notice: NOT_MULTI_OCCURRENCE`.
 - Ambiguous anchor candidates: specify `occurrence` for direct anchor tools, or use `file_range_edit`
 - Append to known EOF: `file_range_edit({ path, range: "<last_line+1>~", content })`
 - Append with create: `file_append({ path, content, create })` or `file_append({ path, pad_id, pad_range, create })`
@@ -116,5 +116,5 @@ Call the function tool `file_block_replace` with:
 
 - `ANCHOR_AMBIGUOUS`: anchor appears multiple times and occurrence was not specified; set `occurrence` or use a range (`file_range_edit`).
 - `ANCHOR_NOT_FOUND`: anchor not found; locate via `read_file` / `ripgrep_snippets`; if you can confirm line numbers, use `file_range_edit`.
-- `NOT_MULTI_OCCURRENCE`: `prepare_occurrence_replace` selected fewer than two occurrences; use direct file tools for a single edit.
+- `NOT_MULTI_OCCURRENCE`: usage guidance in a successful result, not an error; it means only one occurrence was selected. For one-off edits, prefer `file_range_edit` or `file_block_replace`; for multi-point same-literal replacement, use `prepare_occurrence_replace`.
 - `FILE_CHANGED_SINCE_PREPARE`: occurrence replacement plan was prepared against an older file; re-read and re-run `prepare_occurrence_replace`.

@@ -63,7 +63,7 @@ Create or remove a symlink path.
 - `file_block_replace`: Direct block replacement by start/end anchors (configurable `include_anchors` / `require_unique` / `strict` / `occurrence`, etc.)
   - `include_anchors=true` (default): Keep start/end anchor lines, only replace content between them
   - `include_anchors=false`: Replacement range includes start/end anchor lines
-- `prepare_occurrence_replace` / `apply_occurrence_replace`: Two-step batch literal replacement for two or more selected occurrences in one file. This is the only prepare/apply path in ws_mod; use direct file tools for single-block edits.
+- `prepare_occurrence_replace` / `apply_occurrence_replace`: Two-step literal occurrence replacement in one file, designed for multi-point same-literal replacement. This is the only prepare/apply path in ws_mod; direct file tools are usually clearer for one-off/single-block edits. If only one occurrence is selected, prepare succeeds but returns `notice: NOT_MULTI_OCCURRENCE`.
 - `create_new_file` / `overwrite_entire_file` / `file_range_edit` / `file_append` / `file_insert_*` / `file_block_replace` all support `content` and `pad_id/pad_range` sources; use direct `content` for small bodies and pad sources for large bodies
 - `pad_load_file_range({ pad_id, path })` can omit `range`, which defaults to the whole file; pass `range` to load only a file slice
 - For review output, pass `preview: true, show_diff: true` to the direct tool; otherwise it writes immediately and does not echo body text

@@ -24,7 +24,6 @@
 | direct | `ANCHOR_AMBIGUOUS`           | 锚点有多个匹配                     | 指定 `occurrence` 参数来明确是第几个匹配             |
 | direct | `OCCURRENCE_OUT_OF_RANGE`    | occurrence 超范围                  | 检查 occurrence 值是否在 `1~candidates_count` 范围内 |
 | direct | `OCCURRENCE_NOT_FOUND`       | 字面量没有匹配                     | 用 `ripgrep_fixed` 复核 `find`，或重新查看文件       |
-| direct | `NOT_MULTI_OCCURRENCE`       | 选中的 occurrence 少于两个         | 单点编辑使用 direct file 工具                        |
 | apply  | `FILE_CHANGED_SINCE_PREPARE` | occurrence plan 目标文件已漂移     | 重新读取并重新 `prepare_occurrence_replace`          |
 | apply  | `PLAN_NOT_FOUND`             | occurrence plan 过期/已应用/不存在 | 重新 `prepare_occurrence_replace`                    |
 | write  | `ACCESS_DENIED`              | rtws 保留路径被硬拒绝              | 使用错误信息中列出的专用工具/路径                    |
@@ -55,10 +54,12 @@
 - 原因：指定的 occurrence 大于实际匹配数
 - 解决：将 occurrence 值改为有效范围内的数字
 
+### 成功 notice
+
 **NOT_MULTI_OCCURRENCE**
 
-- 原因：`prepare_occurrence_replace` 选中的 occurrence 少于两个
-- 解决：单点编辑使用 direct file 工具；或者选择至少两个 occurrence index
+- 含义：`prepare_occurrence_replace` 只选中了单个 occurrence；工具仍会成功生成 plan
+- 建议：单点编辑通常使用 `file_range_edit` 或 `file_block_replace`；多点同字面量替换使用 `prepare_occurrence_replace`
 
 ### 2. direct edit 漂移错误
 

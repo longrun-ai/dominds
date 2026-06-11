@@ -109,27 +109,27 @@ The `team_mgmt` toolset mirrors a minimal subset of `fs`/`txt`, but **hard-scope
 
 Recommended tools (names are suggestions; use `snake_case` to match existing tools):
 
-| Tool name                              | Based on | Purpose                                                                     | Default allowlist scope |
-| -------------------------------------- | -------- | --------------------------------------------------------------------------- | ----------------------- |
-| `team_mgmt_list_dir`                   | `fs`     | List directories/files under `.minds/`                                      | `.minds/**`             |
-| `team_mgmt_read_file`                  | `txt`    | Read a text file under `.minds/`                                            | `.minds/**`             |
-| `team_mgmt_create_new_file`            | `txt`    | Create a new file under `.minds/` from content or pad (refuses overwrite)   | `.minds/**`             |
-| `team_mgmt_overwrite_entire_file`      | `txt`    | Overwrite an existing file under `.minds/` from content or pad (guarded)    | `.minds/**`             |
-| `team_mgmt_file_range_edit`            | `txt`    | Directly write a single-file line range under `.minds/` from content or pad | `.minds/**`             |
-| `team_mgmt_file_append`                | `txt`    | Append to a file under `.minds/` directly                                   | `.minds/**`             |
-| `team_mgmt_file_insert_after`          | `txt`    | Insert after an anchor under `.minds/` directly                             | `.minds/**`             |
-| `team_mgmt_file_insert_before`         | `txt`    | Insert before an anchor under `.minds/` directly                            | `.minds/**`             |
-| `team_mgmt_file_block_replace`         | `txt`    | Replace an anchor-delimited block under `.minds/` directly                  | `.minds/**`             |
-| `team_mgmt_prepare_occurrence_replace` | `txt`    | Prepare a multi-occurrence literal replacement under `.minds/`              | `.minds/**`             |
-| `team_mgmt_apply_occurrence_replace`   | `txt`    | Apply a prepared multi-occurrence literal replacement under `.minds/`       | `.minds/**`             |
-| `team_mgmt_mk_dir`                     | `fs`     | Create directories under `.minds/`                                          | `.minds/**`             |
-| `team_mgmt_move_file`                  | `fs`     | Move/rename files under `.minds/`                                           | `.minds/**`             |
-| `team_mgmt_move_dir`                   | `fs`     | Move/rename directories under `.minds/`                                     | `.minds/**`             |
-| `team_mgmt_rm_file`                    | `fs`     | Delete files under `.minds/`                                                | `.minds/**`             |
-| `team_mgmt_rm_dir`                     | `fs`     | Delete directories under `.minds/`                                          | `.minds/**`             |
-| `team_mgmt_validate_priming_scripts`   | new      | Validate path constraints and script format under `.minds/priming/**.md`    | `.minds/**`             |
-| `team_mgmt_validate_team_cfg`          | new      | Validate `.minds/team.yaml` and publish issues to the Problems panel        | `.minds/**`             |
-| `man({ "toolsetId": "team_mgmt" })`    | builtin  | Handbook entrypoint for the `team_mgmt` toolset (see below)                 | N/A                     |
+| Tool name                              | Based on | Purpose                                                                      | Default allowlist scope |
+| -------------------------------------- | -------- | ---------------------------------------------------------------------------- | ----------------------- |
+| `team_mgmt_list_dir`                   | `fs`     | List directories/files under `.minds/`                                       | `.minds/**`             |
+| `team_mgmt_read_file`                  | `txt`    | Read a text file under `.minds/`                                             | `.minds/**`             |
+| `team_mgmt_create_new_file`            | `txt`    | Create a new file under `.minds/` from content or pad (refuses overwrite)    | `.minds/**`             |
+| `team_mgmt_overwrite_entire_file`      | `txt`    | Overwrite an existing file under `.minds/` from content or pad (guarded)     | `.minds/**`             |
+| `team_mgmt_file_range_edit`            | `txt`    | Directly write a single-file line range under `.minds/` from content or pad  | `.minds/**`             |
+| `team_mgmt_file_append`                | `txt`    | Append to a file under `.minds/` directly                                    | `.minds/**`             |
+| `team_mgmt_file_insert_after`          | `txt`    | Insert after an anchor under `.minds/` directly                              | `.minds/**`             |
+| `team_mgmt_file_insert_before`         | `txt`    | Insert before an anchor under `.minds/` directly                             | `.minds/**`             |
+| `team_mgmt_file_block_replace`         | `txt`    | Replace an anchor-delimited block under `.minds/` directly                   | `.minds/**`             |
+| `team_mgmt_prepare_occurrence_replace` | `txt`    | Prepare a literal occurrence replacement under `.minds/`, aimed at batch use | `.minds/**`             |
+| `team_mgmt_apply_occurrence_replace`   | `txt`    | Apply a prepared literal occurrence replacement plan under `.minds/`         | `.minds/**`             |
+| `team_mgmt_mk_dir`                     | `fs`     | Create directories under `.minds/`                                           | `.minds/**`             |
+| `team_mgmt_move_file`                  | `fs`     | Move/rename files under `.minds/`                                            | `.minds/**`             |
+| `team_mgmt_move_dir`                   | `fs`     | Move/rename directories under `.minds/`                                      | `.minds/**`             |
+| `team_mgmt_rm_file`                    | `fs`     | Delete files under `.minds/`                                                 | `.minds/**`             |
+| `team_mgmt_rm_dir`                     | `fs`     | Delete directories under `.minds/`                                           | `.minds/**`             |
+| `team_mgmt_validate_priming_scripts`   | new      | Validate path constraints and script format under `.minds/priming/**.md`     | `.minds/**`             |
+| `team_mgmt_validate_team_cfg`          | new      | Validate `.minds/team.yaml` and publish issues to the Problems panel         | `.minds/**`             |
+| `man({ "toolsetId": "team_mgmt" })`    | builtin  | Handbook entrypoint for the `team_mgmt` toolset (see below)                  | N/A                     |
 
 Notes:
 
