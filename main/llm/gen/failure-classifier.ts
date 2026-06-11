@@ -160,17 +160,36 @@ function parseDelayFieldMs(value: unknown, unit: 'milliseconds' | 'seconds'): nu
   return Math.max(0, Math.floor(ms));
 }
 
-export function readProviderSuggestedRetryAfterMs(error: unknown): number | undefined {
-  for (const headers of readErrorHeaderRoots(error)) {
-    const retryAfter = parseRetryAfterHeaderMs(readHeaderValue(headers, 'retry-after'));
-    if (retryAfter !== undefined) return retryAfter;
-    const resetAfter =
-      parseDelayFieldMs(readHeaderValue(headers, 'x-ratelimit-reset-after'), 'seconds') ??
-      parseDelayFieldMs(readHeaderValue(headers, 'ratelimit-reset-after'), 'seconds');
-    if (resetAfter !== undefined) return resetAfter;
-  }
+function parseUnixSecondsAtFieldMs(value: unknown): number | undefined {
+  const seconds = (() => {
+    if (typeof value === 'number' && Number.isFinite(value)) {
+      return value;
+    }
+    if (typeof value !== 'string') return undefined;
+    const numeric = Number(value.trim());
+    return Number.isFinite(numeric) ? numeric : undefined;
+  })();
+  if (seconds === undefined) return undefined;
+  return Math.max(0, Math.floor(seconds * 1000 - Date.now()));
+}
 
-  for (const root of readErrorRoots(error)) {
+function parseJsonObjectFromMessage(message: string): Record<string, unknown> | undefined {
+  const start = message.indexOf('{');
+  const end = message.lastIndexOf('}');
+  if (start < 0 || end <= start) return undefined;
+  const candidate = message.slice(start, end + 1);
+  try {
+    const parsed: unknown = JSON.parse(candidate);
+    return isPlainObject(parsed) ? parsed : undefined;
+  } catch (_err: unknown) {
+    return undefined;
+  }
+}
+
+function readProviderSuggestedRetryAfterMsFromRoots(
+  roots: readonly Record<string, unknown>[],
+): number | undefined {
+  for (const root of roots) {
     const retryAfterMs =
       parseDelayFieldMs(root.retryAfterMs, 'milliseconds') ??
       parseDelayFieldMs(root.retry_after_ms, 'milliseconds') ??
@@ -182,8 +201,40 @@ export function readProviderSuggestedRetryAfterMs(error: unknown): number | unde
       parseDelayFieldMs(root.retryAfter, 'seconds') ??
       parseDelayFieldMs(root.retry_after, 'seconds') ??
       parseDelayFieldMs(root.resetAfter, 'seconds') ??
-      parseDelayFieldMs(root.reset_after, 'seconds');
+      parseDelayFieldMs(root.reset_after, 'seconds') ??
+      parseDelayFieldMs(root.resetsInSeconds, 'seconds') ??
+      parseDelayFieldMs(root.resets_in_seconds, 'seconds');
     if (retryAfterSeconds !== undefined) return retryAfterSeconds;
+
+    const resetAtMs =
+      parseUnixSecondsAtFieldMs(root.resetsAt) ??
+      parseUnixSecondsAtFieldMs(root.resets_at) ??
+      parseUnixSecondsAtFieldMs(root.resetAt) ??
+      parseUnixSecondsAtFieldMs(root.reset_at);
+    if (resetAtMs !== undefined) return resetAtMs;
+  }
+  return undefined;
+}
+
+export function readProviderSuggestedRetryAfterMs(error: unknown): number | undefined {
+  for (const headers of readErrorHeaderRoots(error)) {
+    const retryAfter = parseRetryAfterHeaderMs(readHeaderValue(headers, 'retry-after'));
+    if (retryAfter !== undefined) return retryAfter;
+    const resetAfter =
+      parseDelayFieldMs(readHeaderValue(headers, 'x-ratelimit-reset-after'), 'seconds') ??
+      parseDelayFieldMs(readHeaderValue(headers, 'ratelimit-reset-after'), 'seconds');
+    if (resetAfter !== undefined) return resetAfter;
+  }
+
+  const structuredRetryAfterMs = readProviderSuggestedRetryAfterMsFromRoots(readErrorRoots(error));
+  if (structuredRetryAfterMs !== undefined) return structuredRetryAfterMs;
+
+  const message = readErrorMessage(error);
+  if (message !== undefined) {
+    const parsedMessageJson = parseJsonObjectFromMessage(message);
+    if (parsedMessageJson !== undefined) {
+      return readProviderSuggestedRetryAfterMsFromRoots(readErrorRoots(parsedMessageJson));
+    }
   }
 
   return undefined;

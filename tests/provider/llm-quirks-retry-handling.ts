@@ -1440,6 +1440,18 @@ function verifySmartRateClassification(): void {
   assert.equal(failure?.retryAfterMs, 2000);
 }
 
+function verifyChatGptUsageLimitMessageJsonRetryDelay(): void {
+  const failure = classifyOpenAiLikeFailure({
+    status: 429,
+    message:
+      'ChatGPT responses request failed (429): {"error":{"type":"usage_limit_reached","message":"The usage limit has been reached","plan_type":"plus","resets_at":1781189458,"eligible_promo":null,"resets_in_seconds":2606}}',
+  });
+  assert.ok(failure, 'Expected ChatGPT usage-limit 429 to classify as retriable');
+  assert.equal(failure?.kind, 'retriable');
+  assert.equal(failure?.retryStrategy, 'smart_rate');
+  assert.equal(failure?.retryAfterMs, 2606000);
+}
+
 function verifyPlainOpenAi403StaysRejected(): void {
   const failure = classifyOpenAiLikeFailure({
     status: 403,
@@ -2096,6 +2108,7 @@ async function main(): Promise<void> {
   await verifyPolicyRetryLifecycleDisplay();
   await verifyAggressiveRetriesDowngradeToConservative();
   verifySmartRateClassification();
+  verifyChatGptUsageLimitMessageJsonRetryDelay();
   verifySmartRateClassificationFromConcurrencyLimitMessage();
   verifyOpenAiProcessingFailureDefaultsToConservative();
   verifyOpenAiContextWindowExceededIsRejected();
