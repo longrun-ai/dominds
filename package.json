@@ -2,7 +2,7 @@
   "name": "dominds",
   "version": "1.27.6",
   "description": "Dominds CLI and aggregation shell for the LongRun AI kernel/runtime packages.",
-  "packageManager": "pnpm@11.5.2",
+  "packageManager": "pnpm@11.5.3",
   "type": "commonjs",
   "publishConfig": {
     "access": "public"
@@ -75,17 +75,17 @@
     "@longrun-ai/shell": "workspace:*",
     "@modelcontextprotocol/sdk": "^1.29.0",
     "async-mutex": "^0.5.0",
-    "openai": "^6.39.1",
+    "openai": "^6.42.0",
     "selfsigned": "^5.5.0",
     "ws": "^8.21.0",
     "yaml": "^2.9.0",
     "zod": "^4.4.3"
   },
   "devDependencies": {
-    "@types/node": "^25.9.1",
+    "@types/node": "^25.9.3",
     "@types/ws": "^8.18.1",
     "esbuild": "^0.28.0",
-    "prettier": "^3.8.3",
+    "prettier": "^3.8.4",
     "prettier-plugin-organize-imports": "^4.3.0",
     "tsx": "^4.22.4",
     "typescript": "^6.0.3"
