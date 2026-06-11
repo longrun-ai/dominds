@@ -28,6 +28,7 @@ import {
 } from '../services/auth';
 import type { ConnectionState } from '../services/store';
 import { getWebSocketManager } from '../services/websocket';
+import { normalizeSetupEnvValueInput } from '../utils/setupEnvInput';
 import { copyTextOrShowManualCopy } from './dominds-clipboard';
 import './dominds-code-block';
 import { ICON_MASK_BASE_CSS, ICON_MASK_URLS } from './icon-masks';
@@ -664,6 +665,14 @@ export class DomindsSetup extends HTMLElement {
         if (typeof envVar !== 'string') return;
         this.envInputs[envVar] = input.value;
       };
+      input.onpaste = (event) => {
+        const rawText = event.clipboardData?.getData('text/plain');
+        if (typeof rawText !== 'string' || rawText === '') return;
+        const normalized = normalizeSetupEnvValueInput(rawText);
+        if (normalized === rawText) return;
+        event.preventDefault();
+        this.replaceSelectedInputText(input, normalized);
+      };
     });
 
     const rtwsTextarea = this.shadowRoot.querySelector('#rtws-llm-textarea');
@@ -726,6 +735,16 @@ export class DomindsSetup extends HTMLElement {
     }
 
     await this.loadStatus();
+  }
+
+  private replaceSelectedInputText(input: HTMLInputElement, value: string): void {
+    const start = input.selectionStart ?? input.value.length;
+    const end = input.selectionEnd ?? input.value.length;
+    input.setRangeText(value, start, end, 'end');
+    const envVar = input.getAttribute('data-env-input');
+    if (typeof envVar === 'string') {
+      this.envInputs[envVar] = input.value;
+    }
   }
 
   private renderFileModalCodeBlock(): void {

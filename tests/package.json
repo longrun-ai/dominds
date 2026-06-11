@@ -10,6 +10,8 @@
     "auth": "tsx auth.ts",
     "certificates": "tsx certificates.ts",
     "webui-port-selection": "tsx webui-port-selection.ts",
+    "setup-env-input": "tsx setup-env-input.ts",
+    "setup-shell-env": "tsx setup-shell-env.ts",
     "websocket-user-msg-generation-boundary": "tsx websocket-user-msg-generation-boundary.ts",
     "provider-tool-result-image-size-fallback": "tsx provider/tool-result-image-size-fallback.ts",
     "provider-user-image-model-support": "tsx provider/user-image-model-support.ts",
