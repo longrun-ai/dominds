@@ -63,6 +63,7 @@ Create or remove a symlink path.
 - `file_block_replace`: Direct block replacement by start/end anchors (configurable `include_anchors` / `require_unique` / `strict` / `occurrence`, etc.)
   - `include_anchors=true` (default): Keep start/end anchor lines, only replace content between them
   - `include_anchors=false`: Replacement range includes start/end anchor lines
+- `prepare_occurrence_replace` / `apply_occurrence_replace`: Two-step batch literal replacement for two or more selected occurrences in one file. This is the only prepare/apply path in ws_mod; use direct file tools for single-block edits.
 - `create_new_file` / `overwrite_entire_file` / `file_range_edit` / `file_append` / `file_insert_*` / `file_block_replace` all support `content` and `pad_id/pad_range` sources; use direct `content` for small bodies and pad sources for large bodies
 - `pad_load_file_range({ pad_id, path })` can omit `range`, which defaults to the whole file; pass `range` to load only a file slice
 - For review output, pass `preview: true, show_diff: true` to the direct tool; otherwise it writes immediately and does not echo body text
@@ -98,6 +99,10 @@ Create or remove a symlink path.
   - `candidates_count` / `occurrence_resolved`
   - `block_range`, `replace_slice`, `lines.old|new|delta`
   - `evidence_preview.before_preview|old_preview|new_preview|after_preview`
+- `prepare_occurrence_replace` / `apply_occurrence_replace`:
+  - `plan_id`, `find`, `occurrences_found`, `selected_occurrences`, `selected_count`
+  - `file.old_hash|new_hash`, `file.old_total_lines|new_total_lines`
+  - `match_preview` on prepare; `FILE_CHANGED_SINCE_PREPARE` on apply if the file drifted
 
 ### 4.5 read_file / overwrite_entire_file (Structured Header)
 

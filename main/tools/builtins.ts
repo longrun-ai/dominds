@@ -77,6 +77,7 @@ import {
 } from './skills';
 import { teamMgmtTools } from './team_mgmt';
 import {
+  applyOccurrenceReplaceTool,
   createNewFileTool,
   fileAppendTool,
   fileBlockReplaceTool,
@@ -93,6 +94,7 @@ import {
   padLoadFileRangeTool,
   padMoveTool,
   padWriteTool,
+  prepareOccurrenceReplaceTool,
   readFileTool,
   wsModPadReminderOwner,
 } from './txt';
@@ -152,6 +154,8 @@ registerTool(fileAppendTool);
 registerTool(fileInsertAfterTool);
 registerTool(fileInsertBeforeTool);
 registerTool(fileBlockReplaceTool);
+registerTool(prepareOccurrenceReplaceTool);
+registerTool(applyOccurrenceReplaceTool);
 
 // Ripgrep tools
 registerTool(ripgrepFilesTool);
@@ -406,6 +410,8 @@ registerToolset('ws_mod', [
   fileInsertAfterTool,
   fileInsertBeforeTool,
   fileBlockReplaceTool,
+  prepareOccurrenceReplaceTool,
+  applyOccurrenceReplaceTool,
   ripgrepFilesTool,
   ripgrepSnippetsTool,
   ripgrepCountTool,

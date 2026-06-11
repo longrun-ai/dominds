@@ -12,23 +12,27 @@
 
 ## 错误分类
 
-| 阶段   | 错误码                    | 说明                          | 解决方案                                             |
-| ------ | ------------------------- | ----------------------------- | ---------------------------------------------------- |
-| direct | `PATH_REQUIRED`           | 缺少文件路径                  | 提供非空的 rtws 内相对路径                           |
-| direct | `INVALID_ARGS`            | 工具参数非法                  | 按错误信息修正参数结构                               |
-| direct | `INVALID_PATH`            | 路径越界或不合法              | 使用 rtws 内的规范化相对路径                         |
-| direct | `INVALID_FORMAT`          | 修改格式非法                  | 使用所选工具要求的格式                               |
-| direct | `FILE_NOT_FOUND`          | 文件不存在                    | append 可用 `create=true`；其它情况先创建或读取文件  |
-| direct | `CONTENT_REQUIRED`        | 正文为空但该工具需要正文      | 为编辑提供 `content` 或 `pad_id/pad_range`           |
-| direct | `ANCHOR_NOT_FOUND`        | 锚点行未找到                  | 检查锚点文本是否正确，或使用 `ripgrep_snippets` 定位 |
-| direct | `ANCHOR_AMBIGUOUS`        | 锚点有多个匹配                | 指定 `occurrence` 参数来明确是第几个匹配             |
-| direct | `OCCURRENCE_OUT_OF_RANGE` | occurrence 超范围             | 检查 occurrence 值是否在 `1~candidates_count` 范围内 |
-| write  | `ACCESS_DENIED`           | rtws 保留路径被硬拒绝         | 使用错误信息中列出的专用工具/路径                    |
-| write  | `FILE_EXISTS`             | 文件已存在（create_new_file） | 使用其他路径或先删除现有文件                         |
-| write  | `NOT_A_FILE`              | 目标路径存在但不是普通文件    | 使用其他路径或先移除该非文件条目                     |
-| write  | `STATS_MISMATCH`          | 整文件覆盖快照不匹配          | 重新读取文件，用最新快照重试                         |
-| write  | `SUSPICIOUS_DIFF`         | 疑似 diff/patch 正文未声明    | 声明 `content_format`，或改用 direct edit 工具       |
-| write  | `FAILED`                  | 文件系统或运行时失败          | 查看错误正文并修复底层条件                           |
+| 阶段   | 错误码                       | 说明                               | 解决方案                                             |
+| ------ | ---------------------------- | ---------------------------------- | ---------------------------------------------------- |
+| direct | `PATH_REQUIRED`              | 缺少文件路径                       | 提供非空的 rtws 内相对路径                           |
+| direct | `INVALID_ARGS`               | 工具参数非法                       | 按错误信息修正参数结构                               |
+| direct | `INVALID_PATH`               | 路径越界或不合法                   | 使用 rtws 内的规范化相对路径                         |
+| direct | `INVALID_FORMAT`             | 修改格式非法                       | 使用所选工具要求的格式                               |
+| direct | `FILE_NOT_FOUND`             | 文件不存在                         | append 可用 `create=true`；其它情况先创建或读取文件  |
+| direct | `CONTENT_REQUIRED`           | 正文为空但该工具需要正文           | 为编辑提供 `content` 或 `pad_id/pad_range`           |
+| direct | `ANCHOR_NOT_FOUND`           | 锚点行未找到                       | 检查锚点文本是否正确，或使用 `ripgrep_snippets` 定位 |
+| direct | `ANCHOR_AMBIGUOUS`           | 锚点有多个匹配                     | 指定 `occurrence` 参数来明确是第几个匹配             |
+| direct | `OCCURRENCE_OUT_OF_RANGE`    | occurrence 超范围                  | 检查 occurrence 值是否在 `1~candidates_count` 范围内 |
+| direct | `OCCURRENCE_NOT_FOUND`       | 字面量没有匹配                     | 用 `ripgrep_fixed` 复核 `find`，或重新查看文件       |
+| direct | `NOT_MULTI_OCCURRENCE`       | 选中的 occurrence 少于两个         | 单点编辑使用 direct file 工具                        |
+| apply  | `FILE_CHANGED_SINCE_PREPARE` | occurrence plan 目标文件已漂移     | 重新读取并重新 `prepare_occurrence_replace`          |
+| apply  | `PLAN_NOT_FOUND`             | occurrence plan 过期/已应用/不存在 | 重新 `prepare_occurrence_replace`                    |
+| write  | `ACCESS_DENIED`              | rtws 保留路径被硬拒绝              | 使用错误信息中列出的专用工具/路径                    |
+| write  | `FILE_EXISTS`                | 文件已存在（create_new_file）      | 使用其他路径或先删除现有文件                         |
+| write  | `NOT_A_FILE`                 | 目标路径存在但不是普通文件         | 使用其他路径或先移除该非文件条目                     |
+| write  | `STATS_MISMATCH`             | 整文件覆盖快照不匹配               | 重新读取文件，用最新快照重试                         |
+| write  | `SUSPICIOUS_DIFF`            | 疑似 diff/patch 正文未声明         | 声明 `content_format`，或改用 direct edit 工具       |
+| write  | `FAILED`                     | 文件系统或运行时失败               | 查看错误正文并修复底层条件                           |
 
 ## 常见错误场景与排查
 
@@ -51,9 +55,26 @@
 - 原因：指定的 occurrence 大于实际匹配数
 - 解决：将 occurrence 值改为有效范围内的数字
 
+**NOT_MULTI_OCCURRENCE**
+
+- 原因：`prepare_occurrence_replace` 选中的 occurrence 少于两个
+- 解决：单点编辑使用 direct file 工具；或者选择至少两个 occurrence index
+
 ### 2. direct edit 漂移错误
 
 direct edit 默认立即写入，除非显式 `preview: true`。如果 direct edit 因锚点或行号范围与意图不再匹配而失败，请重新读取当前文件，收紧范围/锚点；需要审阅时用 `preview: true, show_diff: true` 重试。
+
+### 2.1 occurrence plan 漂移错误
+
+**FILE_CHANGED_SINCE_PREPARE**
+
+- 原因：目标文件在 `prepare_occurrence_replace` 后发生变化
+- 解决：重新读取文件，重新 `prepare_occurrence_replace`，再应用新的 plan
+
+**PLAN_NOT_FOUND**
+
+- 原因：plan 已过期、已应用，或进程重启后丢失
+- 解决：重新 `prepare_occurrence_replace`
 
 ### 3. 内容格式错误
 

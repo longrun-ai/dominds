@@ -12,23 +12,27 @@
 
 ## Error Classification
 
-| Stage  | Error Code                | Description                              | Solution                                                           |
-| ------ | ------------------------- | ---------------------------------------- | ------------------------------------------------------------------ |
-| direct | `PATH_REQUIRED`           | File path is missing                     | Provide a non-empty relative file path                             |
-| direct | `INVALID_ARGS`            | Tool arguments are invalid               | Fix the argument shape shown in the error message                  |
-| direct | `INVALID_PATH`            | Path is outside rtws or otherwise bad    | Use a normalized relative path inside rtws                         |
-| direct | `INVALID_FORMAT`          | Modification format is invalid           | Use the documented format for the selected tool                    |
-| direct | `FILE_NOT_FOUND`          | File does not exist                      | Use `create=true` for append, or create/read the file first        |
-| direct | `CONTENT_REQUIRED`        | Content empty but tool requires content  | Provide `content` or `pad_id/pad_range` for the edit               |
-| direct | `ANCHOR_NOT_FOUND`        | Anchor line not found                    | Check anchor text correctness, or use `ripgrep_snippets` to locate |
-| direct | `ANCHOR_AMBIGUOUS`        | Anchor has multiple matches              | Specify `occurrence` parameter to identify which match             |
-| direct | `OCCURRENCE_OUT_OF_RANGE` | occurrence out of range                  | Check if occurrence value is within `1~candidates_count` range     |
-| write  | `ACCESS_DENIED`           | Reserved rtws path is hard-denied        | Use the dedicated tool/path listed in the error message            |
-| write  | `FILE_EXISTS`             | File already exists (create_new_file)    | Use different path or delete existing file first                   |
-| write  | `NOT_A_FILE`              | Target path exists but is not a file     | Choose a different path or remove the non-file entry first         |
-| write  | `STATS_MISMATCH`          | Whole-file overwrite snapshot mismatches | Re-read the file and retry with the latest snapshot                |
-| write  | `SUSPICIOUS_DIFF`         | Diff/patch-looking content is undeclared | Declare `content_format`, or use a direct edit tool                |
-| write  | `FAILED`                  | Filesystem or runtime failure            | Inspect the error text and fix the underlying condition            |
+| Stage  | Error Code                   | Description                              | Solution                                                           |
+| ------ | ---------------------------- | ---------------------------------------- | ------------------------------------------------------------------ |
+| direct | `PATH_REQUIRED`              | File path is missing                     | Provide a non-empty relative file path                             |
+| direct | `INVALID_ARGS`               | Tool arguments are invalid               | Fix the argument shape shown in the error message                  |
+| direct | `INVALID_PATH`               | Path is outside rtws or otherwise bad    | Use a normalized relative path inside rtws                         |
+| direct | `INVALID_FORMAT`             | Modification format is invalid           | Use the documented format for the selected tool                    |
+| direct | `FILE_NOT_FOUND`             | File does not exist                      | Use `create=true` for append, or create/read the file first        |
+| direct | `CONTENT_REQUIRED`           | Content empty but tool requires content  | Provide `content` or `pad_id/pad_range` for the edit               |
+| direct | `ANCHOR_NOT_FOUND`           | Anchor line not found                    | Check anchor text correctness, or use `ripgrep_snippets` to locate |
+| direct | `ANCHOR_AMBIGUOUS`           | Anchor has multiple matches              | Specify `occurrence` parameter to identify which match             |
+| direct | `OCCURRENCE_OUT_OF_RANGE`    | occurrence out of range                  | Check if occurrence value is within `1~candidates_count` range     |
+| direct | `OCCURRENCE_NOT_FOUND`       | Literal text has no matches              | Re-check `find` with `ripgrep_fixed` or inspect the file           |
+| direct | `NOT_MULTI_OCCURRENCE`       | Fewer than two selected occurrences      | Use direct file tools for a single edit                            |
+| apply  | `FILE_CHANGED_SINCE_PREPARE` | Occurrence plan target file drifted      | Re-read and re-run `prepare_occurrence_replace`                    |
+| apply  | `PLAN_NOT_FOUND`             | Occurrence plan expired/applied/missing  | Re-run `prepare_occurrence_replace`                                |
+| write  | `ACCESS_DENIED`              | Reserved rtws path is hard-denied        | Use the dedicated tool/path listed in the error message            |
+| write  | `FILE_EXISTS`                | File already exists (create_new_file)    | Use different path or delete existing file first                   |
+| write  | `NOT_A_FILE`                 | Target path exists but is not a file     | Choose a different path or remove the non-file entry first         |
+| write  | `STATS_MISMATCH`             | Whole-file overwrite snapshot mismatches | Re-read the file and retry with the latest snapshot                |
+| write  | `SUSPICIOUS_DIFF`            | Diff/patch-looking content is undeclared | Declare `content_format`, or use a direct edit tool                |
+| write  | `FAILED`                     | Filesystem or runtime failure            | Inspect the error text and fix the underlying condition            |
 
 ## Common Error Scenarios & Troubleshooting
 
@@ -51,9 +55,26 @@
 - Cause: Specified occurrence greater than actual match count
 - Solution: Change occurrence value to a valid range number
 
+**NOT_MULTI_OCCURRENCE**
+
+- Cause: `prepare_occurrence_replace` selected fewer than two occurrences
+- Solution: Use direct file tools for one-off edits, or select at least two occurrence indexes
+
 ### 2. Direct Edit Drift Errors
 
 Direct edits write immediately unless `preview: true` is set. If a direct edit fails because anchors or line ranges no longer match your intent, re-read the current file, tighten the range/anchors, and retry with `preview: true, show_diff: true` if review is needed.
+
+### 2.1 Occurrence Plan Drift Errors
+
+**FILE_CHANGED_SINCE_PREPARE**
+
+- Cause: `apply_occurrence_replace` was called after the target file changed
+- Solution: Re-read the file, re-run `prepare_occurrence_replace`, then apply the fresh plan
+
+**PLAN_NOT_FOUND**
+
+- Cause: Plan expired, was already applied, or the process restarted
+- Solution: Re-run `prepare_occurrence_replace`
 
 ### 3. Content Format Errors
 

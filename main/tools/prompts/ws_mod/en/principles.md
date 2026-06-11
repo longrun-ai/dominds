@@ -35,6 +35,7 @@ The first prepare-first + single apply version improved reviewability, but made 
 
 - **direct range edit**: precise line ranges use `file_range_edit` directly; it defaults to YAML-only/redacted output
 - **direct single-block edit**: EOF appends, anchor insertions, and anchor-delimited block replacements use `file_append`, `file_insert_after` / `file_insert_before`, and `file_block_replace`
+- **batch occurrence replace**: only same-literal replacements across two or more selected occurrences use `prepare_occurrence_replace` followed by `apply_occurrence_replace`
 - **preview as display option**: set `preview/show_diff` when review output is needed; otherwise direct tools write immediately
 - **Legacy tools removed**: `append_file` / `insert_after` / `insert_before` / `replace_block` / `apply_block_replace` are completely removed (no aliases, no compat layer)
 
@@ -44,6 +45,7 @@ The first prepare-first + single apply version improved reviewability, but made 
 
 - Unify precise line-range edits to: `file_range_edit`
 - Unify single-block append/insert/block replacement to direct `file_*` tools
+- Keep prepare/apply only for multi-occurrence literal batch replacement
 - Provide reviewable output: direct tools default to YAML-only; explicit `preview/show_diff` emits diff
 - Clarify concurrency/ordering constraints: same-file writes are serialized in-process
 - Provide stable failure modes and next-step suggestions (especially anchor ambiguity)
@@ -60,6 +62,7 @@ The first prepare-first + single apply version improved reviewability, but made 
 Multiple function tool calls in one message execute in parallel, unable to see each other's outputs/writes. Therefore:
 
 - Use `file_range_edit` for precise line ranges; use the matching direct `file_*` tool for appends, anchor insertions, and block replacements.
+- Use `prepare_occurrence_replace` only when replacing at least two occurrences of the same literal in one file; apply the returned plan in a later call.
 - Set `preview/show_diff` when review output is needed.
 
 ### 3.2 Write Concurrency Safety (current implementation)

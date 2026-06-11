@@ -6,6 +6,7 @@
 
 - 精确行号范围：用 `file_range_edit({ path, range, content })` 或 `file_range_edit({ path, range, pad_id, pad_range })` 直接写入；默认只返回 redacted YAML，不回显正文。需要审阅时显式 `preview: true` 或 `show_diff: true`。
 - 末尾追加/锚点插入/单块替换：用 `file_append`、`file_insert_after` / `file_insert_before`、`file_block_replace` 直接写入；均支持 `content` 或 `pad_id/pad_range`。
+- 批量字面量 occurrence 替换：只有在替换同一字面量的两个及以上 occurrence 时，才使用 `prepare_occurrence_replace` 后接 `apply_occurrence_replace`；不要把它用于单块编辑。
 - 需要审阅时显式 `preview: true, show_diff: true`；否则直接写入。
 - 旧工具已移除（无兼容层）：`append_file` / `insert_after` / `insert_before` / `replace_block` / `apply_block_replace`。
 - 约束：`*.tsk/` 下的路径属于封装差遣牒，文件工具不可访问。
@@ -37,6 +38,7 @@ Scratch Pad 是 ws_mod 专用的大文本编辑缓冲区，用来减少同一大
 - 整文件覆盖：小正文用 `overwrite_entire_file({ path, content, known_old_total_lines, known_old_total_bytes })`；大正文先准备 pad，再 `overwrite_entire_file({ path, pad_id, pad_range, known_old_total_lines, known_old_total_bytes })`
 - 整文件大改：`pad_load_file_range({ pad_id, path })` 全文件装入 pad → `pad_edit`/`pad_insert`/`pad_delete_range` 精修 → `overwrite_entire_file({ path, pad_id, known_old_total_lines, known_old_total_bytes })`
 - 精确范围但必须先审阅 diff：`file_range_edit({ path, range, content, preview: true, show_diff: true })`
+- 批量字面量 occurrence 替换：`prepare_occurrence_replace({ path, find, content|pad_id, occurrence_indexes? })` 后接 `apply_occurrence_replace({ plan_id })`；至少需要两个被选中的 occurrence。
 - 锚点候选不唯一：为 direct 锚点工具指定 `occurrence`，或改用 `file_range_edit`
 - 末尾追加（已知 EOF 行号）：`file_range_edit({ path, range: "<last_line+1>~", content })`
 - 末尾追加（可创建）：`file_append({ path, content, create })` 或 `file_append({ path, pad_id, pad_range, create })`
@@ -115,3 +117,5 @@ Scratch Pad 是 ws_mod 专用的大文本编辑缓冲区，用来减少同一大
 
 - `ANCHOR_AMBIGUOUS`：锚点多次出现且未指定 occurrence；请指定 occurrence 或改用行号范围（`file_range_edit`）。
 - `ANCHOR_NOT_FOUND`：锚点未找到；必要时先 `read_file` 或用 `ripgrep_snippets` 定位；若能确认行号范围，改用 `file_range_edit`。
+- `NOT_MULTI_OCCURRENCE`：`prepare_occurrence_replace` 选中的 occurrence 少于两个；单点编辑请使用 direct file 工具。
+- `FILE_CHANGED_SINCE_PREPARE`：occurrence replacement plan 基于旧文件生成；请重新读取并重新 `prepare_occurrence_replace`。

@@ -25,6 +25,7 @@ import type {
   ToolCallOutput,
 } from '../tool';
 import { materializeReminder, reminderOwnedBy, toolFailure, toolSuccess } from '../tool';
+import { truncateInlineText } from './output-limit';
 
 type FuncToolCallContext = Parameters<FuncTool['call']>[1];
 
@@ -624,6 +625,39 @@ type LockQueueItem = {
 const fileApplyQueues = new Map<string, LockQueueItem[]>();
 const fileApplyRunning = new Set<string>();
 
+type OccurrenceReplaceSourceMeta =
+  | Readonly<{ kind: 'content'; redacted: false }>
+  | Readonly<{
+      kind: 'pad';
+      padId: string;
+      padRange: string;
+      padHash: string;
+      selectedHash: string;
+      redacted: true;
+    }>;
+
+type OccurrenceReplacePlan = Readonly<{
+  planId: string;
+  plannedBy: string;
+  createdAtMs: number;
+  expiresAtMs: number;
+  relPath: string;
+  absPath: string;
+  findText: string;
+  replacementText: string;
+  source: OccurrenceReplaceSourceMeta;
+  selectedOccurrences: readonly number[];
+  oldFileHash: string;
+  oldTotalLines: number;
+  oldTotalBytes: number;
+  newFileHash: string;
+  newTotalLines: number;
+  newTotalBytes: number;
+}>;
+
+const OCCURRENCE_REPLACE_PLAN_TTL_MS = 60 * 60 * 1000;
+const occurrenceReplacePlansById = new Map<string, OccurrenceReplacePlan>();
+
 function enqueueFileApply(relPath: string, item: LockQueueItem): void {
   const q = fileApplyQueues.get(relPath) ?? [];
   q.push(item);
@@ -654,6 +688,129 @@ async function drainFileApplyQueue(relPath: string): Promise<void> {
 function generateHunkId(): string {
   // Short, URL-safe, command-friendly id
   return crypto.randomBytes(4).toString('hex');
+}
+
+function isValidPlanId(id: string): boolean {
+  return /^[a-z0-9_-]{2,32}$/i.test(id);
+}
+
+function pruneExpiredOccurrenceReplacePlans(nowMs: number): void {
+  for (const [id, plan] of occurrenceReplacePlansById.entries()) {
+    if (plan.expiresAtMs <= nowMs) occurrenceReplacePlansById.delete(id);
+  }
+}
+
+function fileRangeEditSourceMeta(source: FileRangeEditSource): OccurrenceReplaceSourceMeta {
+  if (source.kind === 'content') return { kind: 'content', redacted: false };
+  return {
+    kind: 'pad',
+    padId: source.padId,
+    padRange: source.padRange,
+    padHash: source.padHash,
+    selectedHash: source.selectedHash,
+    redacted: true,
+  };
+}
+
+function pushOccurrenceReplaceSourceYaml(
+  lines: string[],
+  source: OccurrenceReplaceSourceMeta,
+  showDiff: boolean,
+): void {
+  lines.push(`source: ${source.kind}`, `redacted: ${source.redacted && !showDiff}`);
+  if (source.kind === 'pad') {
+    lines.push(
+      `pad_id: ${yamlQuote(source.padId)}`,
+      `pad_range: ${yamlQuote(source.padRange)}`,
+      `pad_hash: ${yamlQuote(source.padHash)}`,
+      `pad_selected_hash: ${yamlQuote(source.selectedHash)}`,
+    );
+  }
+}
+
+function yamlFlowNumberArray(values: ReadonlyArray<number>): string {
+  if (values.length === 0) return '[]';
+  return `[${values.join(', ')}]`;
+}
+
+function findLiteralOccurrenceIndexes(text: string, needle: string): number[] {
+  const matches: number[] = [];
+  let fromIndex = 0;
+  while (fromIndex <= text.length) {
+    const index = text.indexOf(needle, fromIndex);
+    if (index < 0) break;
+    matches.push(index);
+    fromIndex = index + needle.length;
+  }
+  return matches;
+}
+
+function lineColAtOffset(text: string, offset: number): { line: number; column: number } {
+  let line = 1;
+  let lineStartOffset = 0;
+  for (let i = 0; i < offset; i += 1) {
+    if (text[i] === '\n') {
+      line += 1;
+      lineStartOffset = i + 1;
+    }
+  }
+  return { line, column: offset - lineStartOffset + 1 };
+}
+
+function lineTextAtOffset(text: string, offset: number): string {
+  const start = text.lastIndexOf('\n', Math.max(0, offset - 1)) + 1;
+  const end = text.indexOf('\n', offset);
+  return truncateInlineText(text.slice(start, end < 0 ? text.length : end), 240);
+}
+
+function parseOccurrenceIndexList(
+  value: JsonValue | undefined,
+): { ok: true; indexes: readonly number[] | undefined } | { ok: false; error: string } {
+  if (value === undefined) return { ok: true, indexes: undefined };
+  if (!Array.isArray(value)) {
+    return { ok: false, error: '`occurrence_indexes` must be an array of positive integers' };
+  }
+  const seen = new Set<number>();
+  const indexes: number[] = [];
+  const items = value as readonly JsonValue[];
+  for (const item of items) {
+    if (typeof item !== 'number' || !Number.isInteger(item) || item <= 0) {
+      return { ok: false, error: '`occurrence_indexes` must contain positive integers only' };
+    }
+    if (seen.has(item)) {
+      return { ok: false, error: '`occurrence_indexes` must not contain duplicates' };
+    }
+    seen.add(item);
+    indexes.push(item);
+  }
+  if (indexes.length === 0) {
+    return { ok: false, error: '`occurrence_indexes` must not be empty when provided' };
+  }
+  indexes.sort((a, b) => a - b);
+  return { ok: true, indexes };
+}
+
+function replaceSelectedLiteralOccurrences(
+  text: string,
+  occurrenceOffsets: ReadonlyArray<number>,
+  selectedOccurrences: ReadonlyArray<number>,
+  findText: string,
+  replacementText: string,
+): string {
+  const selected = new Set(selectedOccurrences);
+  let cursor = 0;
+  let out = '';
+  for (let i = 0; i < occurrenceOffsets.length; i += 1) {
+    const occurrence = i + 1;
+    const offset = occurrenceOffsets[i];
+    if (offset === undefined) continue;
+    if (!selected.has(occurrence)) continue;
+    out += text.slice(cursor, offset);
+    out += replacementText;
+    cursor = offset + findText.length;
+  }
+  out += text.slice(cursor);
+  return out;
 }
 
 function parseLineRangeSpec(
@@ -2876,6 +3033,488 @@ export const fileRangeEditTool: FuncTool = {
         [
           `status: error`,
           `mode: file_range_edit`,
+          `error: INVALID_ARGS`,
+          `summary: ${yamlQuote(error instanceof Error ? error.message : String(error))}`,
+        ].join('\n'),
+      );
+    }
+  },
+};
+
+export const prepareOccurrenceReplaceTool: FuncTool = {
+  type: 'func',
+  name: 'prepare_occurrence_replace',
+  description:
+    'Prepare a multi-occurrence literal replacement in one rtws file. This is only for batch replacement of two or more occurrences; single-block edits should use direct file tools.',
+  descriptionI18n: {
+    en: 'Prepare a multi-occurrence literal replacement in one rtws file. This is only for batch replacement of two or more occurrences; single-block edits should use direct file tools.',
+    zh: '规划单个 rtws 文件内的多 occurrence 字面量替换。仅用于两个及以上 occurrence 的批量替换；单块编辑应使用 direct file 工具。',
+  },
+  parameters: {
+    type: 'object',
+    additionalProperties: false,
+    required: ['path', 'find'],
+    properties: {
+      path: { type: 'string', description: 'rtws-relative file path.' },
+      find: { type: 'string', description: 'Non-empty literal text to find.' },
+      content: {
+        type: 'string',
+        description:
+          'Replacement text. Empty string deletes each selected occurrence. Omit when using pad_id.',
+      },
+      pad_id: {
+        type: 'string',
+        description: 'Optional source scratch pad slug: /^[A-Za-z0-9_-]{1,64}$/.',
+      },
+      pad_range: {
+        type: 'string',
+        description: "Optional source pad line range. Defaults to '~' (entire pad).",
+      },
+      occurrence_indexes: {
+        type: 'array',
+        items: { type: 'integer' },
+        description:
+          'Optional 1-based occurrence indexes to replace. Omit to replace all occurrences. At least two selected occurrences are required.',
+      },
+      show_diff: {
+        type: 'boolean',
+        description:
+          'If true, include a unified whole-file diff. This may echo replacement content, including pad content.',
+      },
+    },
+  },
+  argsValidation: 'dominds',
+  call: async (dlg, caller, args): Promise<ToolCallOutput> => {
+    const language = getWorkLanguage();
+    const mode = 'prepare_occurrence_replace';
+    try {
+      const filePath = requireNonEmptyStringArg(args, 'path');
+      const findText = requireNonEmptyStringArg(args, 'find');
+      const showDiff = optionalBooleanArg(args, 'show_diff') ?? false;
+      const selectedParsed = parseOccurrenceIndexList(args['occurrence_indexes']);
+      if (!selectedParsed.ok) {
+        return failYaml(
+          [
+            `status: error`,
+            `mode: ${mode}`,
+            `path: ${yamlQuote(filePath)}`,
+            `error: INVALID_OCCURRENCE_INDEXES`,
+            `summary: ${yamlQuote(selectedParsed.error)}`,
+          ].join('\n'),
+        );
+      }
+      const source = resolveFileRangeEditSource(dlg, args);
+      const replacementText = fileRangeEditSourceText(source);
+
+      if (!hasWriteAccess(caller, filePath)) {
+        return toolFailure(getAccessDeniedMessage('write', filePath, language));
+      }
+      const absPath = ensureInsideWorkspace(filePath);
+      if (!fsSync.existsSync(absPath)) {
+        return failYaml(
+          [
+            `status: error`,
+            `mode: ${mode}`,
+            `path: ${yamlQuote(filePath)}`,
+            `error: FILE_NOT_FOUND`,
+            `summary: ${yamlQuote(language === 'zh' ? '文件不存在。' : 'File not found.')}`,
+          ].join('\n'),
+        );
+      }
+      if (!fsSync.statSync(absPath).isFile()) {
+        return failYaml(
+          [
+            `status: error`,
+            `mode: ${mode}`,
+            `path: ${yamlQuote(filePath)}`,
+            `error: NOT_A_FILE`,
+            `summary: ${yamlQuote(language === 'zh' ? '路径不是文件。' : 'Path is not a file.')}`,
+          ].join('\n'),
+        );
+      }
+
+      const currentContent = fsSync.readFileSync(absPath, 'utf8');
+      const occurrenceOffsets = findLiteralOccurrenceIndexes(currentContent, findText);
+      const totalOccurrences = occurrenceOffsets.length;
+      if (totalOccurrences === 0) {
+        return failYaml(
+          [
+            `status: error`,
+            `mode: ${mode}`,
+            `path: ${yamlQuote(filePath)}`,
+            `error: OCCURRENCE_NOT_FOUND`,
+            `summary: ${yamlQuote(
+              language === 'zh'
+                ? '没有找到要替换的 occurrence。'
+                : 'No occurrence was found for the requested literal text.',
+            )}`,
+          ].join('\n'),
+        );
+      }
+
+      const selectedOccurrences =
+        selectedParsed.indexes ?? occurrenceOffsets.map((_offset, index0) => index0 + 1);
+      const outOfRange = selectedOccurrences.find((index1) => index1 > totalOccurrences);
+      if (outOfRange !== undefined) {
+        return failYaml(
+          [
+            `status: error`,
+            `mode: ${mode}`,
+            `path: ${yamlQuote(filePath)}`,
+            `error: OCCURRENCE_OUT_OF_RANGE`,
+            `occurrences_found: ${totalOccurrences}`,
+            `summary: ${yamlQuote(
+              language === 'zh'
+                ? `occurrence_indexes 包含超范围值：${outOfRange}。`
+                : `occurrence_indexes contains an out-of-range value: ${outOfRange}.`,
+            )}`,
+          ].join('\n'),
+        );
+      }
+      if (selectedOccurrences.length < 2) {
+        return failYaml(
+          [
+            `status: error`,
+            `mode: ${mode}`,
+            `path: ${yamlQuote(filePath)}`,
+            `error: NOT_MULTI_OCCURRENCE`,
+            `occurrences_found: ${totalOccurrences}`,
+            `selected_occurrences: ${yamlFlowNumberArray(selectedOccurrences)}`,
+            `summary: ${yamlQuote(
+              language === 'zh'
+                ? 'prepare_occurrence_replace 只用于两个及以上 occurrence 的批量替换；单点编辑请使用 direct file 工具。'
+                : 'prepare_occurrence_replace is only for batch replacement of two or more occurrences; use direct file tools for single edits.',
+            )}`,
+          ].join('\n'),
+        );
+      }
+
+      const nextContent = replaceSelectedLiteralOccurrences(
+        currentContent,
+        occurrenceOffsets,
+        selectedOccurrences,
+        findText,
+        replacementText,
+      );
+      const currentLines = splitTextToLinesForEditing(currentContent);
+      const nextLines = splitTextToLinesForEditing(nextContent);
+      const planId = (() => {
+        pruneExpiredOccurrenceReplacePlans(Date.now());
+        for (let i = 0; i < 10; i += 1) {
+          const id = generateHunkId();
+          if (!occurrenceReplacePlansById.has(id)) return id;
+        }
+        throw new Error('Failed to generate a unique occurrence replacement plan id');
+      })();
+      const nowMs = Date.now();
+      const plan: OccurrenceReplacePlan = {
+        planId,
+        plannedBy: caller.id,
+        createdAtMs: nowMs,
+        expiresAtMs: nowMs + OCCURRENCE_REPLACE_PLAN_TTL_MS,
+        relPath: filePath,
+        absPath,
+        findText,
+        replacementText,
+        source: fileRangeEditSourceMeta(source),
+        selectedOccurrences,
+        oldFileHash: `sha256:${sha256HexUtf8(currentContent)}`,
+        oldTotalLines: countLogicalLines(currentContent),
+        oldTotalBytes: Buffer.byteLength(currentContent, 'utf8'),
+        newFileHash: `sha256:${sha256HexUtf8(nextContent)}`,
+        newTotalLines: countLogicalLines(nextContent),
+        newTotalBytes: Buffer.byteLength(nextContent, 'utf8'),
+      };
+      occurrenceReplacePlansById.set(planId, plan);
+
+      const previewRows = selectedOccurrences.slice(0, 12).map((occurrence) => {
+        const offset = occurrenceOffsets[occurrence - 1] ?? 0;
+        const loc = lineColAtOffset(currentContent, offset);
+        const lineText = lineTextAtOffset(currentContent, offset);
+        return `#${occurrence} line ${loc.line}, col ${loc.column}: ${lineText}`;
+      });
+      const yamlLines = [
+        `status: ok`,
+        `mode: ${mode}`,
+        `path: ${yamlQuote(filePath)}`,
+        `plan_id: ${yamlQuote(planId)}`,
+      ];
+      pushOccurrenceReplaceSourceYaml(yamlLines, plan.source, showDiff);
+      yamlLines.push(
+        `expires_at_ms: ${plan.expiresAtMs}`,
+        `find: ${yamlQuote(findText)}`,
+        `occurrences_found: ${totalOccurrences}`,
+        `selected_occurrences: ${yamlFlowNumberArray(selectedOccurrences)}`,
+        `selected_count: ${selectedOccurrences.length}`,
+        `file:`,
+        `  old_total_lines: ${plan.oldTotalLines}`,
+        `  old_total_bytes: ${plan.oldTotalBytes}`,
+        `  old_hash: ${yamlQuote(plan.oldFileHash)}`,
+        `  new_total_lines: ${plan.newTotalLines}`,
+        `  new_total_bytes: ${plan.newTotalBytes}`,
+        `  new_hash: ${yamlQuote(plan.newFileHash)}`,
+        `match_preview: ${yamlBlockScalarLines(previewRows, '  ')}`,
+        `next: ${yamlQuote(`apply_occurrence_replace({ "plan_id": "${planId}" })`)}`,
+        `summary: ${yamlQuote(
+          language === 'zh'
+            ? `已规划 ${selectedOccurrences.length}/${totalOccurrences} 个 occurrence 的批量替换；plan_id=${planId}.`
+            : `Planned batch replacement for ${selectedOccurrences.length}/${totalOccurrences} occurrence(s); plan_id=${planId}.`,
+        )}`,
+      );
+      const yaml = yamlLines.join('\n');
+      if (!showDiff) return okYaml(yaml);
+      const diff = buildUnifiedSingleHunkDiff(
+        filePath,
+        currentLines,
+        0,
+        currentLines.length,
+        nextLines,
+      );
+      return toolSuccess(`${formatYamlCodeBlock(yaml)}\n\n\`\`\`diff\n${diff}\`\`\``);
+    } catch (error: unknown) {
+      return failYaml(
+        [
+          `status: error`,
+          `mode: ${mode}`,
+          `error: INVALID_ARGS`,
+          `summary: ${yamlQuote(error instanceof Error ? error.message : String(error))}`,
+        ].join('\n'),
+      );
+    }
+  },
+};
+
+export const applyOccurrenceReplaceTool: FuncTool = {
+  type: 'func',
+  name: 'apply_occurrence_replace',
+  description:
+    'Apply a prepared multi-occurrence literal replacement plan. Rejects if the target file changed since prepare.',
+  descriptionI18n: {
+    en: 'Apply a prepared multi-occurrence literal replacement plan. Rejects if the target file changed since prepare.',
+    zh: '应用已规划的多 occurrence 字面量替换；若目标文件在 prepare 后变化则拒绝。',
+  },
+  parameters: {
+    type: 'object',
+    additionalProperties: false,
+    required: ['plan_id'],
+    properties: {
+      plan_id: { type: 'string', description: 'Plan id returned by prepare_occurrence_replace.' },
+      show_diff: {
+        type: 'boolean',
+        description:
+          'If true, include a unified whole-file diff. This may echo replacement content, including pad content.',
+      },
+    },
+  },
+  argsValidation: 'dominds',
+  call: async (_dlg, caller, args): Promise<ToolCallOutput> => {
+    const language = getWorkLanguage();
+    const mode = 'apply_occurrence_replace';
+    try {
+      const planId = requireNonEmptyStringArg(args, 'plan_id');
+      const showDiff = optionalBooleanArg(args, 'show_diff') ?? false;
+      if (!isValidPlanId(planId)) {
+        return failYaml(
+          [
+            `status: error`,
+            `mode: ${mode}`,
+            `plan_id: ${yamlQuote(planId)}`,
+            `error: INVALID_PLAN_ID`,
+            `summary: ${yamlQuote('Invalid plan_id format.')}`,
+          ].join('\n'),
+        );
+      }
+      pruneExpiredOccurrenceReplacePlans(Date.now());
+      const plan = occurrenceReplacePlansById.get(planId);
+      if (!plan) {
+        return failYaml(
+          [
+            `status: error`,
+            `mode: ${mode}`,
+            `plan_id: ${yamlQuote(planId)}`,
+            `error: PLAN_NOT_FOUND`,
+            `summary: ${yamlQuote(
+              language === 'zh'
+                ? 'plan_id 不存在，可能已过期、已应用或进程已重启。请重新 prepare。'
+                : 'plan_id was not found; it may have expired, been applied, or been lost after restart. Re-run prepare.',
+            )}`,
+          ].join('\n'),
+        );
+      }
+      if (plan.plannedBy !== caller.id) {
+        return failYaml(
+          [
+            `status: error`,
+            `mode: ${mode}`,
+            `plan_id: ${yamlQuote(planId)}`,
+            `error: WRONG_OWNER`,
+            `summary: ${yamlQuote(
+              language === 'zh'
+                ? '该 plan 不是由当前成员创建，不能应用。'
+                : 'This plan was created by a different member and cannot be applied by this caller.',
+            )}`,
+          ].join('\n'),
+        );
+      }
+      if (!hasWriteAccess(caller, plan.relPath)) {
+        return toolFailure(getAccessDeniedMessage('write', plan.relPath, language));
+      }
+
+      const res = await new Promise<ToolCallOutput>((resolve) => {
+        enqueueFileApply(plan.absPath, {
+          priority: plan.createdAtMs,
+          tieBreaker: plan.planId,
+          run: async () => {
+            try {
+              pruneExpiredOccurrenceReplacePlans(Date.now());
+              const currentPlan = occurrenceReplacePlansById.get(planId);
+              if (!currentPlan) {
+                resolve(
+                  failYaml(
+                    [
+                      `status: error`,
+                      `mode: ${mode}`,
+                      `plan_id: ${yamlQuote(planId)}`,
+                      `error: PLAN_NOT_FOUND`,
+                      `summary: ${yamlQuote(
+                        language === 'zh'
+                          ? 'plan_id 不存在，可能已过期或已应用。请重新 prepare。'
+                          : 'plan_id was not found; it may have expired or been applied. Re-run prepare.',
+                      )}`,
+                    ].join('\n'),
+                  ),
+                );
+                return;
+              }
+              if (!fsSync.existsSync(currentPlan.absPath)) {
+                resolve(
+                  failYaml(
+                    [
+                      `status: error`,
+                      `mode: ${mode}`,
+                      `path: ${yamlQuote(currentPlan.relPath)}`,
+                      `plan_id: ${yamlQuote(planId)}`,
+                      `error: FILE_NOT_FOUND`,
+                      `summary: ${yamlQuote(language === 'zh' ? '文件不存在。' : 'File not found.')}`,
+                    ].join('\n'),
+                  ),
+                );
+                return;
+              }
+              if (!fsSync.statSync(currentPlan.absPath).isFile()) {
+                resolve(
+                  failYaml(
+                    [
+                      `status: error`,
+                      `mode: ${mode}`,
+                      `path: ${yamlQuote(currentPlan.relPath)}`,
+                      `plan_id: ${yamlQuote(planId)}`,
+                      `error: NOT_A_FILE`,
+                      `summary: ${yamlQuote(language === 'zh' ? '路径不是文件。' : 'Path is not a file.')}`,
+                    ].join('\n'),
+                  ),
+                );
+                return;
+              }
+              const currentContent = fsSync.readFileSync(currentPlan.absPath, 'utf8');
+              const currentHash = `sha256:${sha256HexUtf8(currentContent)}`;
+              if (currentHash !== currentPlan.oldFileHash) {
+                resolve(
+                  failYaml(
+                    [
+                      `status: error`,
+                      `mode: ${mode}`,
+                      `path: ${yamlQuote(currentPlan.relPath)}`,
+                      `plan_id: ${yamlQuote(planId)}`,
+                      `error: FILE_CHANGED_SINCE_PREPARE`,
+                      `planned_old_hash: ${yamlQuote(currentPlan.oldFileHash)}`,
+                      `current_hash: ${yamlQuote(currentHash)}`,
+                      `summary: ${yamlQuote(
+                        language === 'zh'
+                          ? '文件在 prepare 后发生变化，拒绝应用；请重新 prepare。'
+                          : 'File changed since prepare; refusing to apply. Re-run prepare.',
+                      )}`,
+                    ].join('\n'),
+                  ),
+                );
+                return;
+              }
+              const occurrenceOffsets = findLiteralOccurrenceIndexes(
+                currentContent,
+                currentPlan.findText,
+              );
+              const nextContent = replaceSelectedLiteralOccurrences(
+                currentContent,
+                occurrenceOffsets,
+                currentPlan.selectedOccurrences,
+                currentPlan.findText,
+                currentPlan.replacementText,
+              );
+              fsSync.writeFileSync(currentPlan.absPath, nextContent, 'utf8');
+              occurrenceReplacePlansById.delete(planId);
+
+              const yamlLines = [
+                `status: ok`,
+                `mode: ${mode}`,
+                `path: ${yamlQuote(currentPlan.relPath)}`,
+                `plan_id: ${yamlQuote(planId)}`,
+              ];
+              pushOccurrenceReplaceSourceYaml(yamlLines, currentPlan.source, showDiff);
+              yamlLines.push(
+                `find: ${yamlQuote(currentPlan.findText)}`,
+                `selected_occurrences: ${yamlFlowNumberArray(currentPlan.selectedOccurrences)}`,
+                `selected_count: ${currentPlan.selectedOccurrences.length}`,
+                `file:`,
+                `  old_total_lines: ${currentPlan.oldTotalLines}`,
+                `  old_total_bytes: ${currentPlan.oldTotalBytes}`,
+                `  old_hash: ${yamlQuote(currentPlan.oldFileHash)}`,
+                `  new_total_lines: ${currentPlan.newTotalLines}`,
+                `  new_total_bytes: ${currentPlan.newTotalBytes}`,
+                `  new_hash: ${yamlQuote(currentPlan.newFileHash)}`,
+                `summary: ${yamlQuote(
+                  language === 'zh'
+                    ? `已应用 ${currentPlan.selectedOccurrences.length} 个 occurrence 的批量替换。`
+                    : `Applied batch replacement for ${currentPlan.selectedOccurrences.length} occurrence(s).`,
+                )}`,
+              );
+              const yaml = yamlLines.join('\n');
+              if (!showDiff) {
+                resolve(okYaml(yaml));
+                return;
+              }
+              const oldLines = splitTextToLinesForEditing(currentContent);
+              const newLines = splitTextToLinesForEditing(nextContent);
+              const diff = buildUnifiedSingleHunkDiff(
+                currentPlan.relPath,
+                oldLines,
+                0,
+                oldLines.length,
+                newLines,
+              );
+              resolve(toolSuccess(`${formatYamlCodeBlock(yaml)}\n\n\`\`\`diff\n${diff}\`\`\``));
+            } catch (error: unknown) {
+              resolve(
+                failYaml(
+                  [
+                    `status: error`,
+                    `mode: ${mode}`,
+                    `plan_id: ${yamlQuote(planId)}`,
+                    `error: FAILED`,
+                    `summary: ${yamlQuote(error instanceof Error ? error.message : String(error))}`,
+                  ].join('\n'),
+                ),
+              );
+            }
+          },
+        });
+        void drainFileApplyQueue(plan.absPath);
+      });
+      return res;
+    } catch (error: unknown) {
+      return failYaml(
+        [
+          `status: error`,
+          `mode: ${mode}`,
           `error: INVALID_ARGS`,
           `summary: ${yamlQuote(error instanceof Error ? error.message : String(error))}`,
         ].join('\n'),

@@ -35,6 +35,7 @@
 
 - **direct range edit**：精确行号范围用 `file_range_edit` 直接写入；默认 YAML-only/redacted，不回显正文
 - **direct single-block edit**：末尾追加、锚点插入、锚点块替换分别使用 `file_append`、`file_insert_after` / `file_insert_before`、`file_block_replace` 直接写入
+- **batch occurrence replace**：只有同一字面量的两个及以上 occurrence 批量替换使用 `prepare_occurrence_replace` 后接 `apply_occurrence_replace`
 - **预览是显示选项**：需要审阅时显式 `preview/show_diff`；否则 direct 工具直接写入
 - **移除旧工具**：`append_file` / `insert_after` / `insert_before` / `replace_block` / `apply_block_replace` 已彻底删除（无 alias、无兼容层）
 
@@ -44,6 +45,7 @@
 
 - 把确定行号范围编辑统一为：`file_range_edit`
 - 把单块追加/插入/块替换统一为 direct `file_*` 工具
+- 只为多 occurrence 字面量批量替换保留 prepare/apply
 - 提供可复核输出：direct 工具默认 YAML-only；显式 `preview/show_diff` 才输出 diff
 - 明确并发/时序约束：同一文件写入在进程内串行化
 - 给出稳定的失败模式与下一步建议（尤其是锚点歧义）
@@ -60,6 +62,7 @@
 同一条消息中的多个工具调用会并行执行，互相不可见输出/写入。因此：
 
 - 精确行号范围用 `file_range_edit`；追加/锚点插入/块替换用对应 direct `file_*` 工具
+- 只有替换单文件中同一字面量的两个及以上 occurrence 时，才使用 `prepare_occurrence_replace`；随后用返回的 plan apply
 - 需要审阅时显式 `preview/show_diff`
 
 ### 3.2 写入并发安全（当前实现）

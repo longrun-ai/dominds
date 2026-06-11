@@ -63,6 +63,7 @@
 - `file_block_replace`：按 start/end 锚点直接块替换（可配置 `include_anchors` / `require_unique` / `strict` / `occurrence` 等）
   - `include_anchors=true`（默认）：保留 start/end anchor 行，仅替换两者之间的内容
   - `include_anchors=false`：替换范围包含 start/end anchor 行（会删除 anchor 行并以新内容替换）
+- `prepare_occurrence_replace` / `apply_occurrence_replace`：单文件内两个及以上 occurrence 的两步批量字面量替换。这是 ws_mod 唯一的 prepare/apply 路径；单块编辑使用 direct file 工具。
 - `create_new_file` / `overwrite_entire_file` / `file_range_edit` / `file_append` / `file_insert_*` / `file_block_replace` 都支持 `content` 与 `pad_id/pad_range` 两类来源；小正文直供 `content`，大正文优先使用 pad 来源
 - `pad_load_file_range({ pad_id, path })` 可省略 `range`，默认把整个文件装入 pad；指定 `range` 时只装入文件片段
 - 需要审阅时对 direct 工具显式传 `preview: true, show_diff: true`；默认直接写入且不回显正文
@@ -98,6 +99,10 @@
   - `candidates_count` / `occurrence_resolved`
   - `block_range`、`replace_slice`、`lines.old|new|delta`
   - `evidence_preview.before_preview|old_preview|new_preview|after_preview`
+- `prepare_occurrence_replace` / `apply_occurrence_replace`：
+  - `plan_id`、`find`、`occurrences_found`、`selected_occurrences`、`selected_count`
+  - `file.old_hash|new_hash`、`file.old_total_lines|new_total_lines`
+  - prepare 输出 `match_preview`；若 apply 时文件漂移，则返回 `FILE_CHANGED_SINCE_PREPARE`
 
 ### 4.5 read_file / overwrite_entire_file（结构化头部）
 
