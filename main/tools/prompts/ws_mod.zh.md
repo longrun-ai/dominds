@@ -20,13 +20,13 @@
 
 ## Scratch Pad（大文本临时缓冲）
 
-Scratch Pad 是 ws_mod 专用的大文本编辑缓冲区，用来减少同一大块文本在多轮编辑中反复进入对话历史。pad 会以扎眼的特殊提醒项出现在上下文末尾，但 role=user 的投影只显示 `pad_id`、行数/字节数/hash，不显示正文，也不放可执行工具调用文本。
+Scratch Pad 是 ws_mod 专用的大文本编辑缓冲区，用来减少同一大块文本在多轮编辑中反复进入对话历史。pad 会以扎眼的特殊提醒项出现在上下文末尾，并以带行号的形式全量展示正文；给人类的提醒 UI 与给智能体的 LLM ctx 展示原则上一致。role=user 的 pad 投影不放可执行工具调用文本。
 
 - 普通提醒工具语义不变：不要用 `add_reminder` / `update_reminder` / `delete_reminder` 创建、修改或删除 pad；用 `pad_*` 工具。
 - 不提供读取/观察工具：没有 `pad_read`、`pad_preview`、`pad_locate`、`pad_diff`、`pad_stat`、`pad_list`。当前有哪些 pad 以提醒项为准。
 - 可用基础工具：`pad_write`、`pad_load_file_range`、`pad_edit`、`pad_insert`、`pad_delete_range`、`pad_copy`、`pad_move`、`pad_delete`。
 - `pad_write` / `pad_edit` 可以接收大文本；这些正文仍会作为函数调用参数进入持久历史。现实目标不是完全消除一次性成本，而是后续尽量用 pad 句柄操作，避免反复输出同一大块正文。
-- 工具结果不回显 pad 正文，只返回行数、字节数、hash 和摘要；文件装入 pad 用 `pad_load_file_range({ pad_id, path })`，省略 `range` 表示全文件，指定 `range` 表示文件片段。pad 之间转移大块文本优先用 `pad_copy` / `pad_move`。要把 pad 内容写入文件，优先使用目标文件工具的 `pad_id/pad_range` 来源：新文件用 `create_new_file`，整文件覆盖用 `overwrite_entire_file`，行号范围用 `file_range_edit`，末尾追加用 `file_append`，锚点插入/块替换用 `file_insert_*` / `file_block_replace`。
+- pad 工具结果不回显 pad 正文，也不把统计信息当作主要展示；pad 正文以提醒项为准，不需要额外 `pad_read`。文件装入 pad 用 `pad_load_file_range({ pad_id, path })`，省略 `range` 表示全文件，指定 `range` 表示文件片段。pad 之间转移大块文本优先用 `pad_copy` / `pad_move`。要把 pad 内容写入文件，优先使用目标文件工具的 `pad_id/pad_range` 来源：新文件用 `create_new_file`，整文件覆盖用 `overwrite_entire_file`，行号范围用 `file_range_edit`，末尾追加用 `file_append`，锚点插入/块替换用 `file_insert_*` / `file_block_replace`。
 - pad 删除/更新通道由 role=assistant 的 reminder maintenance reference 暴露；不要从 role=user 的 pad 投影里寻找可执行删除指令。
 - pad 是临时工作台，不是长期记忆；应用完成或不再需要后，尽快 `pad_delete({ pad_id })`。
 

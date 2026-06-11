@@ -234,22 +234,48 @@ function hashPadText(text: string): string {
   return `sha256:${sha256HexUtf8(text)}`;
 }
 
-function buildPadSummaryContent(language: LanguageCode, meta: WsModPadMeta): string {
-  const bytes = Buffer.byteLength(meta.text, 'utf8');
-  const lines = countPadLines(meta.text);
+function markdownFenceForText(text: string): string {
+  let maxRun = 0;
+  let currentRun = 0;
+  for (const ch of text) {
+    if (ch === '`') {
+      currentRun += 1;
+      maxRun = Math.max(maxRun, currentRun);
+    } else {
+      currentRun = 0;
+    }
+  }
+  return '`'.repeat(Math.max(3, maxRun + 1));
+}
+
+function formatLineNumberedPadText(text: string): string {
+  return splitTextToLinesForEditing(text)
+    .map((line, index0) => `${(index0 + 1).toString().padStart(4, ' ')}| ${line}`)
+    .join('\n');
+}
+
+function buildPadDisplayContent(language: LanguageCode, meta: WsModPadMeta): string {
+  const numberedText = formatLineNumberedPadText(meta.text);
+  const fence = markdownFenceForText(numberedText);
   if (language === 'zh') {
     return [
-      `[ws_mod pad] pad_id=${meta.padId}`,
-      `size=${lines} 行, ${bytes} bytes`,
-      `hash=${hashPadText(meta.text)}`,
-      'ws_mod 临时大文本缓冲区。应用完成或不再需要后请主动删除。',
+      `### ws_mod scratch pad: ${meta.padId}`,
+      '',
+      '这是 ws_mod 管理的大文本临时缓冲区。下面是带行号的 pad 全量正文；后续 pad 编辑应基于这些行号操作。',
+      '',
+      `${fence}text`,
+      numberedText,
+      fence,
     ].join('\n');
   }
   return [
-    `[ws_mod pad] pad_id=${meta.padId}`,
-    `size=${lines} lines, ${bytes} bytes`,
-    `hash=${hashPadText(meta.text)}`,
-    'Temporary scratch text for ws_mod editing. Apply it or delete it when done.',
+    `### ws_mod scratch pad: ${meta.padId}`,
+    '',
+    'This is a ws_mod-managed temporary large-text buffer. The complete pad body is shown below with line numbers; use those line numbers for subsequent pad edits.',
+    '',
+    `${fence}text`,
+    numberedText,
+    fence,
   ].join('\n');
 }
 
@@ -325,7 +351,7 @@ function assertPadReminderIdAvailable(
 
 function upsertDialogPad(dlg: Dialog, padId: string, text: string): Reminder {
   const meta = buildPadMeta(padId, text);
-  const content = buildPadSummaryContent(getWorkLanguage(), meta);
+  const content = buildPadDisplayContent(getWorkLanguage(), meta);
   const existing = findDialogPadById(dlg, padId);
   assertPadReminderIdAvailable(dlg, padId, existing);
   if (existing === undefined) {
@@ -349,14 +375,11 @@ function upsertDialogPad(dlg: Dialog, padId: string, text: string): Reminder {
   return updated;
 }
 
-function formatPadResultYaml(mode: string, padId: string, text: string, summary: string): string {
+function formatPadResultYaml(mode: string, padId: string, summary: string): string {
   return [
     `status: ok`,
     `mode: ${mode}`,
     `pad_id: ${yamlQuote(padId)}`,
-    `lines: ${countPadLines(text)}`,
-    `bytes: ${Buffer.byteLength(text, 'utf8')}`,
-    `hash: ${yamlQuote(hashPadText(text))}`,
     `summary: ${yamlQuote(summary)}`,
   ].join('\n');
 }
@@ -440,7 +463,7 @@ export const wsModPadReminderOwner: ReminderOwner = {
     if (!isWsModPadMeta(reminder.meta)) {
       return { treatment: 'keep' };
     }
-    const updatedContent = buildPadSummaryContent(getWorkLanguage(), reminder.meta);
+    const updatedContent = buildPadDisplayContent(getWorkLanguage(), reminder.meta);
     if (reminder.content === updatedContent) {
       return { treatment: 'keep' };
     }
@@ -461,27 +484,11 @@ export const wsModPadReminderOwner: ReminderOwner = {
       };
     }
     const meta = reminder.meta;
+    const displayContent = buildPadDisplayContent(language, meta);
     return {
       type: 'environment_msg',
       role: 'user',
-      content:
-        language === 'zh'
-          ? [
-              `${prefix} ws_mod scratch pad [${meta.padId}]`,
-              '',
-              '这是 ws_mod 管理的大文本临时缓冲区，不是普通提醒项，也不是聊天正文。',
-              '正文不会投影到上下文；只显示元信息。若已经应用或不再需要，请尽快删除。',
-              '',
-              buildPadSummaryContent(language, meta),
-            ].join('\n')
-          : [
-              `${prefix} ws_mod scratch pad [${meta.padId}]`,
-              '',
-              'This is a ws_mod-managed temporary large-text buffer, not an ordinary reminder and not chat transcript text.',
-              'The body is not projected into context; only metadata is shown. Delete it as soon as it has been applied or is no longer needed.',
-              '',
-              buildPadSummaryContent(language, meta),
-            ].join('\n'),
+      content: [`${prefix} ws_mod scratch pad [${meta.padId}]`, '', displayContent].join('\n'),
     };
   },
 };
@@ -2189,7 +2196,6 @@ export const padWriteTool: FuncTool = {
         formatPadResultYaml(
           'pad_write',
           padId,
-          nextText,
           `pad_id=${padId} ${mode === 'append' ? 'appended' : 'written'}`,
         ),
       );
@@ -2281,7 +2287,6 @@ export const padLoadFileRangeTool: FuncTool = {
         formatPadResultYaml(
           'pad_load_file_range',
           padId,
-          nextText,
           `loaded ${filePath}:${range} into pad_id=${padId}`,
         ),
       );
@@ -2343,7 +2348,7 @@ export const padEditTool: FuncTool = {
       }
       const nextText = applyTextLineRangeEdit(existing.meta.text, range, content);
       upsertDialogPad(dlg, padId, nextText);
-      return okYaml(formatPadResultYaml('pad_edit', padId, nextText, `edited pad_id=${padId}`));
+      return okYaml(formatPadResultYaml('pad_edit', padId, `edited pad_id=${padId}`));
     } catch (error: unknown) {
       return failYaml(
         [
@@ -2402,7 +2407,6 @@ export const padInsertTool: FuncTool = {
         formatPadResultYaml(
           'pad_insert',
           padId,
-          nextText,
           `inserted text before line ${line} in pad_id=${padId}`,
         ),
       );
@@ -2449,12 +2453,7 @@ export const padDeleteRangeTool: FuncTool = {
       const nextText = applyTextLineRangeEdit(existing.meta.text, range, '');
       upsertDialogPad(dlg, padId, nextText);
       return okYaml(
-        formatPadResultYaml(
-          'pad_delete_range',
-          padId,
-          nextText,
-          `deleted range in pad_id=${padId}`,
-        ),
+        formatPadResultYaml('pad_delete_range', padId, `deleted range in pad_id=${padId}`),
       );
     } catch (error: unknown) {
       return failYaml(
@@ -2539,9 +2538,6 @@ export const padCopyTool: FuncTool = {
           `from_range: ${yamlQuote(fromRange)}`,
           `to_pad_id: ${yamlQuote(toPadId)}`,
           `to_range: ${yamlQuote(toRange)}`,
-          `target_lines: ${countPadLines(updatedTarget.meta.text)}`,
-          `target_bytes: ${Buffer.byteLength(updatedTarget.meta.text, 'utf8')}`,
-          `target_hash: ${yamlQuote(hashPadText(updatedTarget.meta.text))}`,
           `summary: ${yamlQuote(`copied ${fromPadId}:${fromRange} to ${toPadId}:${toRange}`)}`,
         ].join('\n'),
       );
@@ -2642,12 +2638,6 @@ export const padMoveTool: FuncTool = {
           `from_range: ${yamlQuote(fromRange)}`,
           `to_pad_id: ${yamlQuote(toPadId)}`,
           `to_range: ${yamlQuote(toRange)}`,
-          `source_lines: ${countPadLines(updatedSource.meta.text)}`,
-          `source_bytes: ${Buffer.byteLength(updatedSource.meta.text, 'utf8')}`,
-          `source_hash: ${yamlQuote(hashPadText(updatedSource.meta.text))}`,
-          `target_lines: ${countPadLines(updatedTarget.meta.text)}`,
-          `target_bytes: ${Buffer.byteLength(updatedTarget.meta.text, 'utf8')}`,
-          `target_hash: ${yamlQuote(hashPadText(updatedTarget.meta.text))}`,
           `summary: ${yamlQuote(`moved ${fromPadId}:${fromRange} to ${toPadId}:${toRange}`)}`,
         ].join('\n'),
       );

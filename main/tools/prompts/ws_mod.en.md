@@ -19,13 +19,13 @@ You have read/write access to the rtws (runtime workspace). Single-block edits w
 
 ## Scratch Pad (large-text temporary buffer)
 
-Scratch Pad is a ws_mod-specific large-text editing buffer for reducing repeated re-emission of the same large text across multiple editing turns. Pads appear as prominent special reminders near the end of context, but the role=user projection only shows `pad_id`, line/byte counts, and hash. It does not show body text or executable tool-call text.
+Scratch Pad is a ws_mod-specific large-text editing buffer for reducing repeated re-emission of the same large text across multiple editing turns. Pads appear as prominent special reminders near the end of context and show the full pad body with line numbers; the human reminder UI and the agent LLM context should stay consistent in principle. The role=user pad projection does not include executable tool-call text.
 
 - Ordinary reminder semantics stay unchanged: do not use `add_reminder` / `update_reminder` / `delete_reminder` to create, edit, or delete pads; use `pad_*` tools.
 - No read/observation tools are provided: there is no `pad_read`, `pad_preview`, `pad_locate`, `pad_diff`, `pad_stat`, or `pad_list`. The current pads are the ones projected as reminders.
 - Basic tools available: `pad_write`, `pad_load_file_range`, `pad_edit`, `pad_insert`, `pad_delete_range`, `pad_copy`, `pad_move`, `pad_delete`.
 - `pad_write` / `pad_edit` can accept large text; that body still enters persistent history as function-call arguments. The goal is not to eliminate this one-time cost perfectly, but to use pad handles afterward instead of repeatedly emitting the same large text.
-- Tool results do not echo pad body text; they return line count, byte count, hash, and a summary. Load files into pads with `pad_load_file_range({ pad_id, path })`; omitting `range` means the whole file, while specifying `range` means a file slice. Prefer `pad_copy` / `pad_move` when transferring large text between pads. To write pad content into files, use the target file tool's `pad_id/pad_range` source: `create_new_file`, `overwrite_entire_file`, `file_range_edit`, `file_append`, `file_insert_*`, or `file_block_replace`.
+- Pad tool results do not echo pad body text and do not use statistics as the main display. The reminder projection is the authoritative pad body view, so no separate `pad_read` is needed. Load files into pads with `pad_load_file_range({ pad_id, path })`; omitting `range` means the whole file, while specifying `range` means a file slice. Prefer `pad_copy` / `pad_move` when transferring large text between pads. To write pad content into files, use the target file tool's `pad_id/pad_range` source: `create_new_file`, `overwrite_entire_file`, `file_range_edit`, `file_append`, `file_insert_*`, or `file_block_replace`.
 - Pad delete/update channels are exposed by the role=assistant reminder maintenance reference; do not look for executable deletion instructions in the role=user pad projection.
 - Pads are temporary workbench state, not long-term memory. After applying or abandoning a pad, delete it promptly with `pad_delete({ pad_id })`.
 

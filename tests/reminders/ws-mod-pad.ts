@@ -99,6 +99,9 @@ async function main(): Promise<void> {
     ).content;
     assert.ok(writeOutput.includes('status: ok'));
     assert.ok(!writeOutput.includes(secret), 'pad_write result must not echo pad body');
+    assert.ok(!writeOutput.includes('lines:'), 'pad_write result should not display line stats');
+    assert.ok(!writeOutput.includes('bytes:'), 'pad_write result should not display byte stats');
+    assert.ok(!writeOutput.includes('hash:'), 'pad_write result should not display hash stats');
 
     const reminder = dlg.reminders[0];
     assert.ok(reminder, 'pad_write should create a reminder-backed pad');
@@ -107,9 +110,23 @@ async function main(): Promise<void> {
       undefined,
       'frontend reminder snapshots must not include pad private metadata',
     );
+    assert.ok(reminder.content.includes(secret), 'frontend pad display must include pad body');
+    assert.ok(reminder.content.includes('   1|'), 'frontend pad display must include line numbers');
+    assert.ok(
+      !reminder.content.includes('hash='),
+      'frontend pad display should not show hash stats',
+    );
 
     const rendered = await wsModPadReminderOwner.renderReminder(dlg, reminder);
-    assert.ok(!rendered.content.includes(secret), 'role=user pad projection must not include body');
+    assert.ok(rendered.content.includes(secret), 'role=user pad projection must include pad body');
+    assert.ok(
+      rendered.content.includes('   1|'),
+      'role=user pad projection must include line numbers',
+    );
+    assert.ok(
+      !rendered.content.includes('hash='),
+      'role=user pad projection should not show hash stats',
+    );
     assert.ok(
       !rendered.content.includes('pad_delete('),
       'role=user pad projection must not include executable delete text',
@@ -150,6 +167,7 @@ async function main(): Promise<void> {
     assert.ok(editOutput.includes('status: ok'));
     assert.ok(!editOutput.includes('changed'), 'pad_edit result must not echo edited body');
     assert.equal(getPadText(dlg.reminders[0]), `${secret}\nchanged\n`);
+    assert.ok(dlg.reminders[0].content.includes('   2| changed'));
 
     const insertOutput = (
       await padInsertTool.call(dlg, caller, {
@@ -164,6 +182,7 @@ async function main(): Promise<void> {
       'pad_insert result must not echo inserted body',
     );
     assert.equal(getPadText(dlg.reminders[0]), `${secret}\nINSERTED_BODY_TOKEN\nchanged\n`);
+    assert.ok(dlg.reminders[0].content.includes('   2| INSERTED_BODY_TOKEN'));
 
     const copyOutput = (
       await padCopyTool.call(dlg, caller, {
