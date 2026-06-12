@@ -110,6 +110,7 @@
     "create-new-file": "tsx create-new-file.ts",
     "file-range-edit": "tsx file-range-edit.ts",
     "file-block-tools": "tsx file-block-tools.ts",
+    "edit-output-truncation": "tsx edit-output-truncation.ts",
     "occurrence-replace": "tsx occurrence-replace.ts",
     "team_mgmt-occurrence-replace": "tsx team_mgmt-occurrence-replace.ts",
     "overwrite-entire-file": "tsx overwrite-entire-file.ts",

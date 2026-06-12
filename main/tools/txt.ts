@@ -25,7 +25,7 @@ import type {
   ToolCallOutput,
 } from '../tool';
 import { materializeReminder, reminderOwnedBy, toolFailure, toolSuccess } from '../tool';
-import { truncateInlineText } from './output-limit';
+import { truncateInlineText, truncateToolOutputText } from './output-limit';
 
 type FuncToolCallContext = Parameters<FuncTool['call']>[1];
 
@@ -35,12 +35,48 @@ type TxtToolCallResult = {
   messages?: ChatMessage[];
 };
 
-function ok(result: string, messages?: ChatMessage[]): TxtToolCallResult {
-  return { status: 'completed', result: toolSuccess(result), messages };
+function limitTxtToolOutputContent(content: string, toolName: string): string {
+  return truncateToolOutputText(content, { toolName }).text;
 }
 
-function failed(result: string, messages?: ChatMessage[]): TxtToolCallResult {
-  return { status: 'failed', result: toolFailure(result), messages };
+function limitTxtToolMessages(
+  messages: ChatMessage[] | undefined,
+  originalContent: string,
+  limitedContent: string,
+): ChatMessage[] | undefined {
+  if (messages === undefined || originalContent === limitedContent) return messages;
+  return messages.map((message) => {
+    if ('content' in message && message.content === originalContent) {
+      return { ...message, content: limitedContent };
+    }
+    return message;
+  });
+}
+
+function limitedToolSuccess(content: string, toolName: string): ToolCallOutput {
+  return toolSuccess(limitTxtToolOutputContent(content, toolName));
+}
+
+function limitedToolFailure(content: string, toolName: string): ToolCallOutput {
+  return toolFailure(limitTxtToolOutputContent(content, toolName));
+}
+
+function ok(result: string, messages?: ChatMessage[], toolName = 'ws_mod'): TxtToolCallResult {
+  const limitedResult = limitTxtToolOutputContent(result, toolName);
+  return {
+    status: 'completed',
+    result: toolSuccess(limitedResult),
+    messages: limitTxtToolMessages(messages, result, limitedResult),
+  };
+}
+
+function failed(result: string, messages?: ChatMessage[], toolName = 'ws_mod'): TxtToolCallResult {
+  const limitedResult = limitTxtToolOutputContent(result, toolName);
+  return {
+    status: 'failed',
+    result: toolFailure(limitedResult),
+    messages: limitTxtToolMessages(messages, result, limitedResult),
+  };
 }
 
 function ensureInsideWorkspace(rel: string): string {
@@ -687,12 +723,12 @@ export const wsModPadReminderOwner: ReminderOwner = {
   },
 };
 
-function okYaml(yaml: string): ToolCallOutput {
-  return toolSuccess(formatYamlCodeBlock(yaml));
+function okYaml(yaml: string, toolName = 'ws_mod'): ToolCallOutput {
+  return limitedToolSuccess(formatYamlCodeBlock(yaml), toolName);
 }
 
-function failYaml(yaml: string): ToolCallOutput {
-  return toolFailure(formatYamlCodeBlock(yaml));
+function failYaml(yaml: string, toolName = 'ws_mod'): ToolCallOutput {
+  return limitedToolFailure(formatYamlCodeBlock(yaml), toolName);
 }
 
 function splitFileTextToLines(fileText: string): string[] {
@@ -932,6 +968,27 @@ function pushOccurrenceReplaceSourceYaml(
 function yamlFlowNumberArray(values: ReadonlyArray<number>): string {
   if (values.length === 0) return '[]';
   return `[${values.join(', ')}]`;
+}
+
+const OCCURRENCE_INDEX_PREVIEW_LIMIT = 200;
+
+function pushOccurrenceIndexListYaml(
+  lines: string[],
+  key: string,
+  values: ReadonlyArray<number>,
+): void {
+  const shown = values.slice(0, OCCURRENCE_INDEX_PREVIEW_LIMIT);
+  lines.push(`${key}: ${yamlFlowNumberArray(shown)}`);
+  if (shown.length < values.length) {
+    lines.push(
+      `${key}_truncated: true`,
+      `${key}_shown_count: ${shown.length}`,
+      `${key}_omitted_count: ${values.length - shown.length}`,
+      `${key}_last: ${values[values.length - 1] ?? 0}`,
+    );
+  } else {
+    lines.push(`${key}_truncated: false`);
+  }
 }
 
 function findLiteralOccurrenceIndexes(text: string, needle: string): number[] {
@@ -3062,6 +3119,7 @@ export const fileRangeEditTool: FuncTool = {
   argsValidation: 'dominds',
   call: async (dlg, caller, args): Promise<ToolCallOutput> => {
     const language = getWorkLanguage();
+    const mode = 'file_range_edit';
     try {
       const filePath = requireNonEmptyStringArg(args, 'path');
       const rangeSpec = requireNonEmptyStringArg(args, 'range');
@@ -3071,7 +3129,7 @@ export const fileRangeEditTool: FuncTool = {
       const replacementText = fileRangeEditSourceText(source);
 
       if (!hasWriteAccess(caller, filePath)) {
-        return toolFailure(getAccessDeniedMessage('write', filePath, language));
+        return limitedToolFailure(getAccessDeniedMessage('write', filePath, language), mode);
       }
 
       const absPath = ensureInsideWorkspace(filePath);
@@ -3095,6 +3153,7 @@ export const fileRangeEditTool: FuncTool = {
                 `error: FILE_NOT_FOUND`,
                 `summary: ${yamlQuote(language === 'zh' ? '文件不存在。' : 'File not found.')}`,
               ].join('\n'),
+              mode,
             );
           }
           throw error;
@@ -3108,6 +3167,7 @@ export const fileRangeEditTool: FuncTool = {
               `error: NOT_A_FILE`,
               `summary: ${yamlQuote(language === 'zh' ? '路径不是文件。' : 'Path is not a file.')}`,
             ].join('\n'),
+            mode,
           );
         }
 
@@ -3124,6 +3184,7 @@ export const fileRangeEditTool: FuncTool = {
               `error: INVALID_RANGE`,
               `summary: ${yamlQuote(parsed.error)}`,
             ].join('\n'),
+            mode,
           );
         }
 
@@ -3197,7 +3258,7 @@ export const fileRangeEditTool: FuncTool = {
         );
         const yaml = yamlLines.join('\n');
         if (!showDiff) {
-          return okYaml(yaml);
+          return okYaml(yaml, mode);
         }
         const unifiedDiff = buildUnifiedSingleHunkDiff(
           filePath,
@@ -3206,7 +3267,10 @@ export const fileRangeEditTool: FuncTool = {
           deleteCount,
           replacementLines,
         );
-        return toolSuccess(`${formatYamlCodeBlock(yaml)}\n\n\`\`\`diff\n${unifiedDiff}\`\`\``);
+        return limitedToolSuccess(
+          `${formatYamlCodeBlock(yaml)}\n\n\`\`\`diff\n${unifiedDiff}\`\`\``,
+          mode,
+        );
       };
 
       return await new Promise<ToolCallOutput>((resolve) => {
@@ -3225,6 +3289,7 @@ export const fileRangeEditTool: FuncTool = {
                     `error: WRITE_FAILED`,
                     `summary: ${yamlQuote(error instanceof Error ? error.message : String(error))}`,
                   ].join('\n'),
+                  mode,
                 ),
               );
             }
@@ -3240,6 +3305,7 @@ export const fileRangeEditTool: FuncTool = {
           `error: INVALID_ARGS`,
           `summary: ${yamlQuote(error instanceof Error ? error.message : String(error))}`,
         ].join('\n'),
+        mode,
       );
     }
   },
@@ -3305,13 +3371,14 @@ export const prepareOccurrenceReplaceTool: FuncTool = {
             `error: INVALID_OCCURRENCE_INDEXES`,
             `summary: ${yamlQuote(selectedParsed.error)}`,
           ].join('\n'),
+          mode,
         );
       }
       const source = resolveFileRangeEditSource(dlg, args);
       const replacementText = fileRangeEditSourceText(source);
 
       if (!hasWriteAccess(caller, filePath)) {
-        return toolFailure(getAccessDeniedMessage('write', filePath, language));
+        return limitedToolFailure(getAccessDeniedMessage('write', filePath, language), mode);
       }
       const absPath = ensureInsideWorkspace(filePath);
       if (!fsSync.existsSync(absPath)) {
@@ -3323,6 +3390,7 @@ export const prepareOccurrenceReplaceTool: FuncTool = {
             `error: FILE_NOT_FOUND`,
             `summary: ${yamlQuote(language === 'zh' ? '文件不存在。' : 'File not found.')}`,
           ].join('\n'),
+          mode,
         );
       }
       if (!fsSync.statSync(absPath).isFile()) {
@@ -3334,6 +3402,7 @@ export const prepareOccurrenceReplaceTool: FuncTool = {
             `error: NOT_A_FILE`,
             `summary: ${yamlQuote(language === 'zh' ? '路径不是文件。' : 'Path is not a file.')}`,
           ].join('\n'),
+          mode,
         );
       }
 
@@ -3353,6 +3422,7 @@ export const prepareOccurrenceReplaceTool: FuncTool = {
                 : 'No occurrence was found for the requested literal text.',
             )}`,
           ].join('\n'),
+          mode,
         );
       }
 
@@ -3373,6 +3443,7 @@ export const prepareOccurrenceReplaceTool: FuncTool = {
                 : `occurrence_indexes contains an out-of-range value: ${outOfRange}.`,
             )}`,
           ].join('\n'),
+          mode,
         );
       }
       const nextContent = replaceSelectedLiteralOccurrences(
@@ -3430,7 +3501,9 @@ export const prepareOccurrenceReplaceTool: FuncTool = {
         `expires_at_ms: ${plan.expiresAtMs}`,
         `find: ${yamlQuote(findText)}`,
         `occurrences_found: ${totalOccurrences}`,
-        `selected_occurrences: ${yamlFlowNumberArray(selectedOccurrences)}`,
+      );
+      pushOccurrenceIndexListYaml(yamlLines, 'selected_occurrences', selectedOccurrences);
+      yamlLines.push(
         `selected_count: ${selectedOccurrences.length}`,
         `file:`,
         `  old_total_lines: ${plan.oldTotalLines}`,
@@ -3458,7 +3531,7 @@ export const prepareOccurrenceReplaceTool: FuncTool = {
         );
       }
       const yaml = yamlLines.join('\n');
-      if (!showDiff) return okYaml(yaml);
+      if (!showDiff) return okYaml(yaml, mode);
       const diff = buildUnifiedSingleHunkDiff(
         filePath,
         currentLines,
@@ -3466,7 +3539,7 @@ export const prepareOccurrenceReplaceTool: FuncTool = {
         currentLines.length,
         nextLines,
       );
-      return toolSuccess(`${formatYamlCodeBlock(yaml)}\n\n\`\`\`diff\n${diff}\`\`\``);
+      return limitedToolSuccess(`${formatYamlCodeBlock(yaml)}\n\n\`\`\`diff\n${diff}\`\`\``, mode);
     } catch (error: unknown) {
       return failYaml(
         [
@@ -3475,6 +3548,7 @@ export const prepareOccurrenceReplaceTool: FuncTool = {
           `error: INVALID_ARGS`,
           `summary: ${yamlQuote(error instanceof Error ? error.message : String(error))}`,
         ].join('\n'),
+        mode,
       );
     }
   },
@@ -3518,6 +3592,7 @@ export const applyOccurrenceReplaceTool: FuncTool = {
             `error: INVALID_PLAN_ID`,
             `summary: ${yamlQuote('Invalid plan_id format.')}`,
           ].join('\n'),
+          mode,
         );
       }
       pruneExpiredOccurrenceReplacePlans(Date.now());
@@ -3535,6 +3610,7 @@ export const applyOccurrenceReplaceTool: FuncTool = {
                 : 'plan_id was not found; it may have expired, been applied, or been lost after restart. Re-run prepare.',
             )}`,
           ].join('\n'),
+          mode,
         );
       }
       if (plan.plannedBy !== caller.id) {
@@ -3550,10 +3626,11 @@ export const applyOccurrenceReplaceTool: FuncTool = {
                 : 'This plan was created by a different member and cannot be applied by this caller.',
             )}`,
           ].join('\n'),
+          mode,
         );
       }
       if (!hasWriteAccess(caller, plan.relPath)) {
-        return toolFailure(getAccessDeniedMessage('write', plan.relPath, language));
+        return limitedToolFailure(getAccessDeniedMessage('write', plan.relPath, language), mode);
       }
 
       const res = await new Promise<ToolCallOutput>((resolve) => {
@@ -3578,6 +3655,7 @@ export const applyOccurrenceReplaceTool: FuncTool = {
                           : 'plan_id was not found; it may have expired or been applied. Re-run prepare.',
                       )}`,
                     ].join('\n'),
+                    mode,
                   ),
                 );
                 return;
@@ -3593,6 +3671,7 @@ export const applyOccurrenceReplaceTool: FuncTool = {
                       `error: FILE_NOT_FOUND`,
                       `summary: ${yamlQuote(language === 'zh' ? '文件不存在。' : 'File not found.')}`,
                     ].join('\n'),
+                    mode,
                   ),
                 );
                 return;
@@ -3608,6 +3687,7 @@ export const applyOccurrenceReplaceTool: FuncTool = {
                       `error: NOT_A_FILE`,
                       `summary: ${yamlQuote(language === 'zh' ? '路径不是文件。' : 'Path is not a file.')}`,
                     ].join('\n'),
+                    mode,
                   ),
                 );
                 return;
@@ -3631,6 +3711,7 @@ export const applyOccurrenceReplaceTool: FuncTool = {
                           : 'File changed since prepare; refusing to apply. Re-run prepare.',
                       )}`,
                     ].join('\n'),
+                    mode,
                   ),
                 );
                 return;
@@ -3656,9 +3737,13 @@ export const applyOccurrenceReplaceTool: FuncTool = {
                 `plan_id: ${yamlQuote(planId)}`,
               ];
               pushOccurrenceReplaceSourceYaml(yamlLines, currentPlan.source, showDiff);
+              yamlLines.push(`find: ${yamlQuote(currentPlan.findText)}`);
+              pushOccurrenceIndexListYaml(
+                yamlLines,
+                'selected_occurrences',
+                currentPlan.selectedOccurrences,
+              );
               yamlLines.push(
-                `find: ${yamlQuote(currentPlan.findText)}`,
-                `selected_occurrences: ${yamlFlowNumberArray(currentPlan.selectedOccurrences)}`,
                 `selected_count: ${currentPlan.selectedOccurrences.length}`,
                 `file:`,
                 `  old_total_lines: ${currentPlan.oldTotalLines}`,
@@ -3675,7 +3760,7 @@ export const applyOccurrenceReplaceTool: FuncTool = {
               );
               const yaml = yamlLines.join('\n');
               if (!showDiff) {
-                resolve(okYaml(yaml));
+                resolve(okYaml(yaml, mode));
                 return;
               }
               const oldLines = splitTextToLinesForEditing(currentContent);
@@ -3687,7 +3772,12 @@ export const applyOccurrenceReplaceTool: FuncTool = {
                 oldLines.length,
                 newLines,
               );
-              resolve(toolSuccess(`${formatYamlCodeBlock(yaml)}\n\n\`\`\`diff\n${diff}\`\`\``));
+              resolve(
+                limitedToolSuccess(
+                  `${formatYamlCodeBlock(yaml)}\n\n\`\`\`diff\n${diff}\`\`\``,
+                  mode,
+                ),
+              );
             } catch (error: unknown) {
               resolve(
                 failYaml(
@@ -3698,6 +3788,7 @@ export const applyOccurrenceReplaceTool: FuncTool = {
                     `error: FAILED`,
                     `summary: ${yamlQuote(error instanceof Error ? error.message : String(error))}`,
                   ].join('\n'),
+                  mode,
                 ),
               );
             }
@@ -3714,6 +3805,7 @@ export const applyOccurrenceReplaceTool: FuncTool = {
           `error: INVALID_ARGS`,
           `summary: ${yamlQuote(error instanceof Error ? error.message : String(error))}`,
         ].join('\n'),
+        mode,
       );
     }
   },
@@ -3959,11 +4051,11 @@ async function runFileAppend(
         `summary: ${yamlQuote(language === 'zh' ? '需要提供文件路径。' : 'File path is required.')}`,
       ].join('\n'),
     );
-    return failed(content, [{ type: 'environment_msg', role: 'user', content }]);
+    return failed(content, [{ type: 'environment_msg', role: 'user', content }], mode);
   }
   if (!hasWriteAccess(caller, filePath)) {
     const content = getAccessDeniedMessage('write', filePath, language);
-    return failed(content, [{ type: 'environment_msg', role: 'user', content }]);
+    return failed(content, [{ type: 'environment_msg', role: 'user', content }], mode);
   }
   if (inputBody === '') {
     const content = formatYamlCodeBlock(
@@ -3977,7 +4069,7 @@ async function runFileAppend(
         )}`,
       ].join('\n'),
     );
-    return failed(content, [{ type: 'environment_msg', role: 'user', content }]);
+    return failed(content, [{ type: 'environment_msg', role: 'user', content }], mode);
   }
 
   const create = options.create;
@@ -4008,7 +4100,7 @@ async function runFileAppend(
                   )}`,
                 ].join('\n'),
               );
-              resolve(failed(content, [{ type: 'environment_msg', role: 'user', content }]));
+              resolve(failed(content, [{ type: 'environment_msg', role: 'user', content }], mode));
               return;
             }
             if (fileExists && !fsSync.statSync(fullPath).isFile()) {
@@ -4021,7 +4113,7 @@ async function runFileAppend(
                   `summary: ${yamlQuote(language === 'zh' ? '路径不是文件。' : 'Path is not a file.')}`,
                 ].join('\n'),
               );
-              resolve(failed(content, [{ type: 'environment_msg', role: 'user', content }]));
+              resolve(failed(content, [{ type: 'environment_msg', role: 'user', content }], mode));
               return;
             }
 
@@ -4121,7 +4213,7 @@ async function runFileAppend(
             const content = showDiff
               ? `${formatYamlCodeBlock(yaml)}\n\n\`\`\`diff\n${unifiedDiff}\`\`\``
               : formatYamlCodeBlock(yaml);
-            resolve(ok(content, [{ type: 'environment_msg', role: 'user', content }]));
+            resolve(ok(content, [{ type: 'environment_msg', role: 'user', content }], mode));
           } catch (error: unknown) {
             const content = formatYamlCodeBlock(
               [
@@ -4132,7 +4224,7 @@ async function runFileAppend(
                 `summary: ${yamlQuote(error instanceof Error ? error.message : String(error))}`,
               ].join('\n'),
             );
-            resolve(failed(content, [{ type: 'environment_msg', role: 'user', content }]));
+            resolve(failed(content, [{ type: 'environment_msg', role: 'user', content }], mode));
           }
         },
       });
@@ -4149,7 +4241,7 @@ async function runFileAppend(
         `summary: ${yamlQuote(error instanceof Error ? error.message : String(error))}`,
       ].join('\n'),
     );
-    return failed(content, [{ type: 'environment_msg', role: 'user', content }]);
+    return failed(content, [{ type: 'environment_msg', role: 'user', content }], mode);
   }
 }
 
@@ -4192,12 +4284,12 @@ async function runFileInsertionCommon(
         )}`,
       ].join('\n'),
     );
-    return failed(content, [{ type: 'environment_msg', role: 'user', content }]);
+    return failed(content, [{ type: 'environment_msg', role: 'user', content }], mode);
   }
 
   if (!hasWriteAccess(caller, filePath)) {
     const content = getAccessDeniedMessage('write', filePath, language);
-    return failed(content, [{ type: 'environment_msg', role: 'user', content }]);
+    return failed(content, [{ type: 'environment_msg', role: 'user', content }], mode);
   }
 
   if (inputBody === '') {
@@ -4214,7 +4306,7 @@ async function runFileInsertionCommon(
         )}`,
       ].join('\n'),
     );
-    return failed(content, [{ type: 'environment_msg', role: 'user', content }]);
+    return failed(content, [{ type: 'environment_msg', role: 'user', content }], mode);
   }
 
   try {
@@ -4238,7 +4330,7 @@ async function runFileInsertionCommon(
                   )}`,
                 ].join('\n'),
               );
-              resolve(failed(content, [{ type: 'environment_msg', role: 'user', content }]));
+              resolve(failed(content, [{ type: 'environment_msg', role: 'user', content }], mode));
               return;
             }
             if (!fsSync.statSync(fullPath).isFile()) {
@@ -4251,7 +4343,7 @@ async function runFileInsertionCommon(
                   `summary: ${yamlQuote(language === 'zh' ? '路径不是文件。' : 'Path is not a file.')}`,
                 ].join('\n'),
               );
-              resolve(failed(content, [{ type: 'environment_msg', role: 'user', content }]));
+              resolve(failed(content, [{ type: 'environment_msg', role: 'user', content }], mode));
               return;
             }
 
@@ -4282,7 +4374,7 @@ async function runFileInsertionCommon(
                   )}`,
                 ].join('\n'),
               );
-              resolve(failed(content, [{ type: 'environment_msg', role: 'user', content }]));
+              resolve(failed(content, [{ type: 'environment_msg', role: 'user', content }], mode));
               return;
             }
 
@@ -4301,7 +4393,7 @@ async function runFileInsertionCommon(
                   )}`,
                 ].join('\n'),
               );
-              resolve(failed(content, [{ type: 'environment_msg', role: 'user', content }]));
+              resolve(failed(content, [{ type: 'environment_msg', role: 'user', content }], mode));
               return;
             }
 
@@ -4323,7 +4415,7 @@ async function runFileInsertionCommon(
                   )}`,
                 ].join('\n'),
               );
-              resolve(failed(content, [{ type: 'environment_msg', role: 'user', content }]));
+              resolve(failed(content, [{ type: 'environment_msg', role: 'user', content }], mode));
               return;
             }
 
@@ -4438,7 +4530,7 @@ async function runFileInsertionCommon(
             const content = showDiff
               ? `${formatYamlCodeBlock(yaml)}\n\n\`\`\`diff\n${unifiedDiff}\`\`\``
               : formatYamlCodeBlock(yaml);
-            resolve(ok(content, [{ type: 'environment_msg', role: 'user', content }]));
+            resolve(ok(content, [{ type: 'environment_msg', role: 'user', content }], mode));
           } catch (error: unknown) {
             const content = formatYamlCodeBlock(
               [
@@ -4449,7 +4541,7 @@ async function runFileInsertionCommon(
                 `summary: ${yamlQuote(error instanceof Error ? error.message : String(error))}`,
               ].join('\n'),
             );
-            resolve(failed(content, [{ type: 'environment_msg', role: 'user', content }]));
+            resolve(failed(content, [{ type: 'environment_msg', role: 'user', content }], mode));
           }
         },
       });
@@ -4466,7 +4558,7 @@ async function runFileInsertionCommon(
         `summary: ${yamlQuote(error instanceof Error ? error.message : String(error))}`,
       ].join('\n'),
     );
-    return failed(content, [{ type: 'environment_msg', role: 'user', content }]);
+    return failed(content, [{ type: 'environment_msg', role: 'user', content }], mode);
   }
 }
 
@@ -4699,11 +4791,11 @@ async function runFileBlockReplace(
         )}`,
       ].join('\n'),
     );
-    return failed(content, [{ type: 'environment_msg', role: 'user', content }]);
+    return failed(content, [{ type: 'environment_msg', role: 'user', content }], mode);
   }
   if (!hasWriteAccess(caller, filePath)) {
     const content = getAccessDeniedMessage('write', filePath, language);
-    return failed(content, [{ type: 'environment_msg', role: 'user', content }]);
+    return failed(content, [{ type: 'environment_msg', role: 'user', content }], mode);
   }
   if (inputBody === '') {
     const content = formatYamlCodeBlock(
@@ -4719,7 +4811,7 @@ async function runFileBlockReplace(
         )}`,
       ].join('\n'),
     );
-    return failed(content, [{ type: 'environment_msg', role: 'user', content }]);
+    return failed(content, [{ type: 'environment_msg', role: 'user', content }], mode);
   }
 
   try {
@@ -4741,7 +4833,7 @@ async function runFileBlockReplace(
                   `summary: ${yamlQuote(language === 'zh' ? '文件不存在。' : 'File does not exist.')}`,
                 ].join('\n'),
               );
-              resolve(failed(content, [{ type: 'environment_msg', role: 'user', content }]));
+              resolve(failed(content, [{ type: 'environment_msg', role: 'user', content }], mode));
               return;
             }
             if (!fsSync.statSync(fullPath).isFile()) {
@@ -4754,7 +4846,7 @@ async function runFileBlockReplace(
                   `summary: ${yamlQuote(language === 'zh' ? '路径不是文件。' : 'Path is not a file.')}`,
                 ].join('\n'),
               );
-              resolve(failed(content, [{ type: 'environment_msg', role: 'user', content }]));
+              resolve(failed(content, [{ type: 'environment_msg', role: 'user', content }], mode));
               return;
             }
 
@@ -4795,7 +4887,7 @@ async function runFileBlockReplace(
                   )}`,
                 ].join('\n'),
               );
-              resolve(failed(content, [{ type: 'environment_msg', role: 'user', content }]));
+              resolve(failed(content, [{ type: 'environment_msg', role: 'user', content }], mode));
               return;
             }
             if (!occurrenceSpecified && requireUnique && candidatesCount !== 1 && strict) {
@@ -4815,7 +4907,7 @@ async function runFileBlockReplace(
                   )}`,
                 ].join('\n'),
               );
-              resolve(failed(content, [{ type: 'environment_msg', role: 'user', content }]));
+              resolve(failed(content, [{ type: 'environment_msg', role: 'user', content }], mode));
               return;
             }
             const selected = (() => {
@@ -4838,7 +4930,7 @@ async function runFileBlockReplace(
                   )}`,
                 ].join('\n'),
               );
-              resolve(failed(content, [{ type: 'environment_msg', role: 'user', content }]));
+              resolve(failed(content, [{ type: 'environment_msg', role: 'user', content }], mode));
               return;
             }
             const nestedStart = startMatches.some((s) => s > selected.start0 && s < selected.end0);
@@ -4860,7 +4952,7 @@ async function runFileBlockReplace(
                   )}`,
                 ].join('\n'),
               );
-              resolve(failed(content, [{ type: 'environment_msg', role: 'user', content }]));
+              resolve(failed(content, [{ type: 'environment_msg', role: 'user', content }], mode));
               return;
             }
             const occurrenceResolved =
@@ -4948,7 +5040,7 @@ async function runFileBlockReplace(
             const content = showDiff
               ? `${formatYamlCodeBlock(yaml)}\n\n\`\`\`diff\n${unifiedDiff}\`\`\``
               : formatYamlCodeBlock(yaml);
-            resolve(ok(content, [{ type: 'environment_msg', role: 'user', content }]));
+            resolve(ok(content, [{ type: 'environment_msg', role: 'user', content }], mode));
           } catch (error: unknown) {
             const content = formatYamlCodeBlock(
               [
@@ -4959,7 +5051,7 @@ async function runFileBlockReplace(
                 `summary: ${yamlQuote(error instanceof Error ? error.message : String(error))}`,
               ].join('\n'),
             );
-            resolve(failed(content, [{ type: 'environment_msg', role: 'user', content }]));
+            resolve(failed(content, [{ type: 'environment_msg', role: 'user', content }], mode));
           }
         },
       });
@@ -4976,7 +5068,7 @@ async function runFileBlockReplace(
         `summary: ${yamlQuote(error instanceof Error ? error.message : String(error))}`,
       ].join('\n'),
     );
-    return failed(content, [{ type: 'environment_msg', role: 'user', content }]);
+    return failed(content, [{ type: 'environment_msg', role: 'user', content }], mode);
   }
 }
 

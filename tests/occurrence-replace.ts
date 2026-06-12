@@ -60,6 +60,7 @@ async function main(): Promise<void> {
     ).content;
     assert.ok(prepareAll.includes('mode: prepare_occurrence_replace'));
     assert.ok(prepareAll.includes('selected_count: 3'));
+    assert.ok(prepareAll.includes('selected_occurrences_truncated: false'));
     assert.ok(!prepareAll.includes(replacement), 'prepare should not echo replacement by default');
     assert.equal(
       await fs.readFile(path.join(tmpRoot, 'target.txt'), 'utf8'),
@@ -120,6 +121,7 @@ async function main(): Promise<void> {
     ).content;
     assert.ok(preparePad.includes('source: pad'));
     assert.ok(preparePad.includes('selected_occurrences: [1, 3]'));
+    assert.ok(preparePad.includes('selected_occurrences_truncated: false'));
     assert.ok(!preparePad.includes(padReplacement), 'pad prepare must not echo pad body');
     const applyPad = (
       await applyOccurrenceReplaceTool.call(dlg, caller, {
