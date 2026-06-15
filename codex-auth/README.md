@@ -21,12 +21,14 @@ import {
 } from '@longrun-ai/codex-auth';
 
 const manager = new AuthManager();
-const auth = await manager.auth();
+let auth = await manager.auth();
 
 if (!auth) {
   const server = await runLoginServer({ openBrowser: true });
   console.log(`Open this URL if your browser did not open: ${server.authUrl}`);
   await server.waitForCompletion();
+  manager.reload();
+  auth = await manager.auth();
 }
 
 const client = await createChatGptClientFromManager(manager);
@@ -183,7 +185,20 @@ npx @longrun-ai/codex-auth --codex-home /path/to/.codex
 ## Notes
 
 - Default `CODEX_HOME` is `~/.codex` unless overridden.
-- The CLI uses the same file schema as Codex Rust.
+- The library reads the current Codex Rust auth modes: `apikey`, `chatgpt`,
+  `chatgptAuthTokens`, `agentIdentity`, `personalAccessToken`, and `bedrockApiKey`.
+- `CODEX_API_KEY` is honored before other auth when environment API key auth is enabled.
+- `CODEX_ACCESS_TOKEN` is honored before persistent storage. Tokens beginning with
+  `at-` are treated as personal access tokens; other values are treated as agent identity JWTs.
+- ChatGPT request helpers use managed ChatGPT OAuth file auth. Externally supplied
+  ChatGPT tokens are accepted only while an external refresh provider is active; if
+  they contain a refresh token, they are promoted to managed file auth automatically.
+  Personal access token, agent identity, and Bedrock API key auth are detected loudly
+  but are not used for ChatGPT request helpers because they cannot be converted into
+  automatically refreshable ChatGPT OAuth file auth here.
+- The CLI uses the same file schema as Codex Rust and reports `CODEX_API_KEY` /
+  `CODEX_ACCESS_TOKEN` presence, but its LLM probes require reusable ChatGPT
+  bearer credentials.
 - `auth-doctor` accepts either explicit instructions text or `--builtin-instructions`
   when you want the bundled Codex prompt as-is.
 - Library callers should load bundled prompts explicitly via `loadCodexPrompt*` /

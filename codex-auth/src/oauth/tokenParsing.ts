@@ -1,4 +1,4 @@
-import { IdTokenInfo } from '../auth/schema.js';
+import { IdTokenInfo, normalizeAccountPlanType } from '../auth/schema.js';
 import { getBooleanClaim, getStringClaim, parseJwtPayload } from '../utils/jwt.js';
 
 export function parseIdToken(idToken: string): IdTokenInfo {
@@ -18,7 +18,7 @@ export function parseIdToken(idToken: string): IdTokenInfo {
       : {};
 
   const email = getStringClaim(payload.email) ?? getStringClaim(profile.email);
-  const chatgptPlan = getStringClaim(auth.chatgpt_plan_type);
+  const chatgptPlan = normalizeAccountPlanType(getStringClaim(auth.chatgpt_plan_type));
   const chatgptUserId = getStringClaim(auth.chatgpt_user_id) ?? getStringClaim(auth.user_id);
   const chatgptAccountId = getStringClaim(auth.chatgpt_account_id);
   const chatgptAccountIsFedramp = getBooleanClaim(auth.chatgpt_account_is_fedramp) ?? false;
@@ -35,4 +35,17 @@ export function parseIdToken(idToken: string): IdTokenInfo {
 
 export function extractAccountId(idToken: string): string | undefined {
   return parseIdToken(idToken).chatgpt_account_id;
+}
+
+export function parseJwtExpiration(jwt: string): Date | undefined {
+  const payload = parseJwtPayload(jwt);
+  const exp = payload.exp;
+  if (typeof exp !== 'number' || !Number.isFinite(exp)) {
+    return undefined;
+  }
+  const parsed = new Date(exp * 1000);
+  if (Number.isNaN(parsed.getTime())) {
+    return undefined;
+  }
+  return parsed;
 }

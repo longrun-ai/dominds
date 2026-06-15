@@ -1,5 +1,20 @@
 # Usage
 
+## Auth loading
+
+`AuthManager` follows the current Codex Rust auth precedence: optional
+`CODEX_API_KEY` when `enableCodexApiKeyEnv` is set, ephemeral external auth,
+`CODEX_ACCESS_TOKEN`, then configured persistent storage.
+
+`CODEX_ACCESS_TOKEN` values beginning with `at-` are treated as personal access
+tokens; other values are treated as agent identity JWTs. `createChatGptClientFromManager`
+requires automatically refreshable ChatGPT credentials: managed ChatGPT OAuth file
+auth, or externally supplied ChatGPT tokens with an active external refresh provider.
+If externally supplied ChatGPT tokens include a refresh token, they are promoted to
+managed file auth automatically. Personal access token, agent identity, and Bedrock
+API key modes are recognized, but this package refuses to use them for ChatGPT
+requests because they cannot be converted into refreshable ChatGPT OAuth file auth.
+
 ## Responses request types
 
 `ChatGptResponsesRequest` and related unions mirror the Codex Rust responses

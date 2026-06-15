@@ -6,6 +6,7 @@ import { parseIdToken } from '../oauth/tokenParsing.js';
 import { AuthCredentialsStoreMode, AuthDotJson, TokenDataFile } from './schema.js';
 
 const AUTH_FILE_NAME = 'auth.json';
+const EPHEMERAL_AUTH_STORE = new Map<string, AuthDotJson>();
 
 export function resolveCodexHome(explicit?: string): string {
   if (explicit) {
@@ -29,8 +30,17 @@ export function authFilePath(codexHome: string): string {
 
 export function readAuthFile(
   codexHome: string,
-  _storeMode: AuthCredentialsStoreMode = 'file',
+  storeMode: AuthCredentialsStoreMode = 'file',
 ): AuthDotJson | null {
+  if (storeMode === 'ephemeral') {
+    return EPHEMERAL_AUTH_STORE.get(storeKey(codexHome)) ?? null;
+  }
+  if (storeMode === 'keyring') {
+    throw new Error(
+      'keyring auth storage is not readable by @longrun-ai/codex-auth; use file or auto storage.',
+    );
+  }
+
   const filePath = authFilePath(codexHome);
   if (!fs.existsSync(filePath)) {
     return null;
@@ -43,8 +53,18 @@ export function readAuthFile(
 export function writeAuthFile(
   codexHome: string,
   auth: AuthDotJson,
-  _storeMode: AuthCredentialsStoreMode = 'file',
+  storeMode: AuthCredentialsStoreMode = 'file',
 ): void {
+  if (storeMode === 'ephemeral') {
+    EPHEMERAL_AUTH_STORE.set(storeKey(codexHome), cloneAuth(auth));
+    return;
+  }
+  if (storeMode === 'keyring') {
+    throw new Error(
+      'keyring auth storage is not writable by @longrun-ai/codex-auth; use file or auto storage.',
+    );
+  }
+
   fs.mkdirSync(codexHome, { recursive: true });
   const filePath = authFilePath(codexHome);
   const tmpPath = `${filePath}.tmp`;
@@ -56,8 +76,17 @@ export function writeAuthFile(
 
 export function deleteAuthFile(
   codexHome: string,
-  _storeMode: AuthCredentialsStoreMode = 'file',
+  storeMode: AuthCredentialsStoreMode = 'file',
 ): boolean {
+  if (storeMode === 'ephemeral') {
+    return EPHEMERAL_AUTH_STORE.delete(storeKey(codexHome));
+  }
+  if (storeMode === 'keyring') {
+    throw new Error(
+      'keyring auth storage is not deletable by @longrun-ai/codex-auth; use file or auto storage.',
+    );
+  }
+
   const filePath = authFilePath(codexHome);
   if (!fs.existsSync(filePath)) {
     return false;
@@ -132,4 +161,24 @@ export function updateStoredTokens(
   };
   writeAuthFile(codexHome, next, storeMode);
   return next;
+}
+
+export function logoutAllStores(
+  codexHome: string,
+  storeMode: AuthCredentialsStoreMode = 'file',
+): boolean {
+  const removedEphemeral = deleteAuthFile(codexHome, 'ephemeral');
+  if (storeMode === 'ephemeral') {
+    return removedEphemeral;
+  }
+  const removedConfigured = deleteAuthFile(codexHome, storeMode);
+  return removedEphemeral || removedConfigured;
+}
+
+function storeKey(codexHome: string): string {
+  return path.resolve(codexHome);
+}
+
+function cloneAuth(auth: AuthDotJson): AuthDotJson {
+  return JSON.parse(JSON.stringify(auth)) as AuthDotJson;
 }

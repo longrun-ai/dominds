@@ -5,8 +5,11 @@ import { readFileSync } from 'node:fs';
 import path from 'node:path';
 import {
   AuthDotJson,
+  CODEX_ACCESS_TOKEN_ENV_VAR,
+  CODEX_API_KEY_ENV_VAR,
   DEFAULT_CHATGPT_BASE_URL,
   TOKEN_REFRESH_INTERVAL_DAYS,
+  normalizeAccountPlanType,
   resolveAuthDotJsonMode,
 } from '../auth/schema.js';
 import {
@@ -37,6 +40,7 @@ import {
 import { tryRefreshToken } from '../oauth/refresh.js';
 import { parseIdToken } from '../oauth/tokenParsing.js';
 import { requireCodexPromptSync } from '../prompts.js';
+import { getBooleanClaim, getStringClaim, parseJwtPayload } from '../utils/jwt.js';
 
 interface DoctorOptions {
   codexHome?: string;
@@ -307,10 +311,19 @@ interface StreamCollectionResult {
 }
 
 function buildReport(codexHome: string, auth: AuthDotJson | null) {
+  const codexApiKey = process.env[CODEX_API_KEY_ENV_VAR]?.trim();
+  const codexAccessToken = process.env[CODEX_ACCESS_TOKEN_ENV_VAR]?.trim();
   const report: Record<string, unknown> = {
     codex_home: codexHome,
     auth_file: authFilePath(codexHome),
     auth_present: Boolean(auth),
+    codex_api_key_env_present: Boolean(codexApiKey),
+    codex_access_token_env_present: Boolean(codexAccessToken),
+    codex_access_token_env_kind: codexAccessToken
+      ? codexAccessToken.startsWith('at-')
+        ? 'personalAccessToken'
+        : 'agentIdentity'
+      : undefined,
     proxy: proxyReport(),
   };
 
@@ -324,6 +337,9 @@ function buildReport(codexHome: string, auth: AuthDotJson | null) {
     report.auth_mode_error = error instanceof Error ? error.message : String(error);
   }
   report.has_api_key = Boolean(auth.OPENAI_API_KEY);
+  report.has_agent_identity = Boolean(auth.agent_identity);
+  report.has_personal_access_token = Boolean(auth.personal_access_token);
+  report.has_bedrock_api_key = Boolean(auth.bedrock_api_key);
 
   if (auth.tokens) {
     report.has_tokens = true;
@@ -343,6 +359,23 @@ function buildReport(codexHome: string, auth: AuthDotJson | null) {
     }
   } else {
     report.has_tokens = false;
+  }
+
+  if (auth.agent_identity) {
+    try {
+      const agentIdentity = parseAgentIdentityJwtClaims(auth.agent_identity);
+      report.agent_identity_account_id = agentIdentity.accountId;
+      report.agent_identity_email = agentIdentity.email;
+      report.agent_identity_user_id = agentIdentity.chatgptUserId;
+      report.agent_identity_plan = agentIdentity.planType;
+      report.agent_identity_account_is_fedramp = agentIdentity.accountIsFedramp;
+    } catch (error) {
+      report.agent_identity_error = error instanceof Error ? error.message : String(error);
+    }
+  }
+
+  if (auth.bedrock_api_key) {
+    report.bedrock_region = auth.bedrock_api_key.region;
   }
 
   const lastRefresh = parseDate(auth.last_refresh);
@@ -1683,7 +1716,39 @@ function getAccountId(auth: AuthDotJson): string | undefined {
       return undefined;
     }
   }
+  if (auth.agent_identity) {
+    try {
+      return parseAgentIdentityJwtClaims(auth.agent_identity).accountId;
+    } catch {
+      return undefined;
+    }
+  }
   return undefined;
+}
+
+function parseAgentIdentityJwtClaims(jwt: string): {
+  accountId: string;
+  chatgptUserId: string;
+  email: string;
+  planType: string;
+  accountIsFedramp: boolean;
+} {
+  const payload = parseJwtPayload(jwt);
+  const accountId = getStringClaim(payload.account_id);
+  const chatgptUserId = getStringClaim(payload.chatgpt_user_id);
+  const email = getStringClaim(payload.email);
+  const planType = normalizeAccountPlanType(getStringClaim(payload.plan_type));
+  const accountIsFedramp = getBooleanClaim(payload.chatgpt_account_is_fedramp);
+  if (!accountId || !chatgptUserId || !email || !planType || accountIsFedramp === undefined) {
+    throw new Error('agent identity JWT is missing required claims.');
+  }
+  return {
+    accountId,
+    chatgptUserId,
+    email,
+    planType,
+    accountIsFedramp,
+  };
 }
 
 async function main(): Promise<void> {
@@ -1755,6 +1820,13 @@ async function main(): Promise<void> {
   console.log(`- CODEX_HOME: ${report.codex_home}`);
   console.log(`- auth.json: ${report.auth_file}`);
   console.log(`- auth present: ${report.auth_present ? 'yes' : 'no'}`);
+  console.log(`- CODEX_API_KEY env present: ${report.codex_api_key_env_present ? 'yes' : 'no'}`);
+  console.log(
+    `- CODEX_ACCESS_TOKEN env present: ${report.codex_access_token_env_present ? 'yes' : 'no'}`,
+  );
+  if (report.codex_access_token_env_kind) {
+    console.log(`- CODEX_ACCESS_TOKEN kind: ${report.codex_access_token_env_kind}`);
+  }
   const proxy = report.proxy as ProxyReport | undefined;
   if (proxy) {
     const httpProxy = proxy.http_proxy ?? 'unset';
@@ -1778,6 +1850,11 @@ async function main(): Promise<void> {
     console.log(`- auth mode: ${report.auth_mode}`);
   }
   console.log(`- api key present: ${report.has_api_key ? 'yes' : 'no'}`);
+  console.log(`- agent identity present: ${report.has_agent_identity ? 'yes' : 'no'}`);
+  console.log(
+    `- personal access token present: ${report.has_personal_access_token ? 'yes' : 'no'}`,
+  );
+  console.log(`- Bedrock API key present: ${report.has_bedrock_api_key ? 'yes' : 'no'}`);
 
   if (report.has_tokens) {
     console.log(`- access token present: ${report.has_access_token ? 'yes' : 'no'}`);
@@ -1795,6 +1872,23 @@ async function main(): Promise<void> {
         console.log(`- id_token account id: ${report.id_token_account_id}`);
       }
     }
+  }
+
+  if (report.agent_identity_error) {
+    console.log(`- agent identity parse error: ${report.agent_identity_error}`);
+  } else {
+    if (report.agent_identity_email) {
+      console.log(`- agent identity email: ${report.agent_identity_email}`);
+    }
+    if (report.agent_identity_plan) {
+      console.log(`- agent identity plan: ${report.agent_identity_plan}`);
+    }
+    if (report.agent_identity_account_id) {
+      console.log(`- agent identity account id: ${report.agent_identity_account_id}`);
+    }
+  }
+  if (report.bedrock_region) {
+    console.log(`- Bedrock region: ${report.bedrock_region}`);
   }
 
   if (report.last_refresh) {

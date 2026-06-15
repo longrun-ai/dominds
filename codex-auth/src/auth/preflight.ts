@@ -3,7 +3,7 @@ import path from 'node:path';
 
 import { parseIdToken } from '../oauth/tokenParsing.js';
 import { AuthDotJson, CodexStoredAuthMode, resolveAuthDotJsonMode } from './schema.js';
-import { readAuthFile, resolveCodexHome } from './storage.js';
+import { readAuthFile, resolveCodexHome, writeAuthFile } from './storage.js';
 
 export type CodexCliAuthStoreMode = 'file' | 'keyring' | 'auto' | 'ephemeral';
 
@@ -168,6 +168,41 @@ export function prepareCodexFileAuth(
     });
   }
 
+  if (mode === 'chatgptAuthTokens') {
+    const promoted = promoteChatgptAuthTokensToFileAuth(auth);
+    if (promoted) {
+      const promotedIssue = validateChatgptAuth('chatgpt', promoted);
+      if (promotedIssue !== undefined) {
+        const { reason, message } = promotedIssue;
+        return actionRequired({
+          codexHome,
+          configPath,
+          reason,
+          changedConfigToFile,
+          previousStoreMode,
+          message: `${providerName} cannot use the current Codex auth: ${message}`,
+          steps: loginSteps(codexHome, options.codexHomeEnvVar),
+        });
+      }
+      try {
+        writeAuthFile(codexHome, promoted, 'file');
+      } catch (err: unknown) {
+        const details = err instanceof Error ? err.message : String(err);
+        return actionRequired({
+          codexHome,
+          configPath,
+          reason: 'config_write_failed',
+          changedConfigToFile,
+          previousStoreMode,
+          message: `${providerName} can convert the current Codex auth to managed file auth, but could not update ${path.join(codexHome, 'auth.json')}: ${details}`,
+          steps: loginSteps(codexHome, options.codexHomeEnvVar),
+        });
+      }
+      auth = promoted;
+      mode = 'chatgpt';
+    }
+  }
+
   const chatgptIssue = validateChatgptAuth(mode, auth);
   if (chatgptIssue !== undefined) {
     const { reason, message } = chatgptIssue;
@@ -225,11 +260,18 @@ function validateChatgptAuth(
         'auth.json uses agentIdentity auth. Agent identity auth is not equivalent to reusable ChatGPT OAuth file auth.',
     };
   }
-  if (mode === 'chatgptAuthTokens') {
+  if (mode === 'personalAccessToken') {
     return {
       reason: 'unsupported_auth_mode',
       message:
-        'auth.json uses externally managed chatgptAuthTokens. Those tokens are host-managed and cannot be converted into managed file auth safely.',
+        'auth.json uses personalAccessToken auth. This preflight requires managed ChatGPT OAuth file auth.',
+    };
+  }
+  if (mode === 'bedrockApiKey') {
+    return {
+      reason: 'api_key_auth',
+      message:
+        'auth.json uses Bedrock API key auth. Dominds uses the ChatGPT Codex backend and needs ChatGPT OAuth tokens.',
     };
   }
 
@@ -266,6 +308,24 @@ function validateChatgptAuth(
     };
   }
   return undefined;
+}
+
+function promoteChatgptAuthTokensToFileAuth(auth: AuthDotJson): AuthDotJson | undefined {
+  const tokens = auth.tokens;
+  if (
+    !tokens ||
+    !isNonEmptyString(tokens.id_token) ||
+    !isNonEmptyString(tokens.access_token) ||
+    !isNonEmptyString(tokens.refresh_token)
+  ) {
+    return undefined;
+  }
+  return {
+    ...auth,
+    auth_mode: 'chatgpt',
+    tokens: { ...tokens },
+    last_refresh: auth.last_refresh ?? new Date().toISOString(),
+  };
 }
 
 function actionRequired(
