@@ -1083,6 +1083,7 @@ export const teamMgmtCheckProviderTool: FuncTool = {
               'openai-compatible': { temperature: 0 },
               anthropic: { max_tokens: 16, temperature: 0 },
               'anthropic-compatible': { max_tokens: 16, temperature: 0 },
+              google: { temperature: 0 },
             },
           });
 
@@ -1593,6 +1594,7 @@ export const teamMgmtListModelsTool: FuncTool = {
             else if (providerCfg.apiType === 'anthropic') specific = mpo.anthropic;
             else if (providerCfg.apiType === 'anthropic-compatible')
               specific = mpo['anthropic-compatible'];
+            else if (providerCfg.apiType === 'google') specific = mpo.google;
             else specific = undefined;
           }
 

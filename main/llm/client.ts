@@ -99,15 +99,17 @@ export type ProviderModelParamOptions = {
   'openai-compatible'?: Record<string, ModelParamOption>;
   anthropic?: Record<string, ModelParamOption>;
   'anthropic-compatible'?: Record<string, ModelParamOption>;
+  google?: Record<string, ModelParamOption>;
 };
 
 export type ProviderApiType =
-  | 'codex'
+  | 'mock'
   | 'anthropic'
   | 'anthropic-compatible'
-  | 'mock'
   | 'openai'
-  | 'openai-compatible';
+  | 'openai-compatible'
+  | 'codex'
+  | 'google';
 
 export type ProviderConfig = {
   name: string;

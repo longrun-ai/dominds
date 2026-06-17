@@ -53,7 +53,8 @@ export type SetupProminentModelParamNamespace =
   | 'openai'
   | 'openai-compatible'
   | 'anthropic'
-  | 'anthropic-compatible';
+  | 'anthropic-compatible'
+  | 'google';
 
 export type SetupProminentModelParam =
   | {
@@ -78,7 +79,7 @@ export type SetupModelParamScalar = string | boolean;
 export type SetupProviderSummary = {
   providerKey: string;
   name: string;
-  apiType: 'codex' | 'anthropic' | 'anthropic-compatible' | 'mock' | 'openai' | 'openai-compatible';
+  apiType: 'mock' | 'anthropic' | 'anthropic-compatible' | 'openai' | 'openai-compatible' | 'codex' | 'google';
   baseUrl: string;
   apiKeyEnvVar: string;
   techSpecUrl?: string;

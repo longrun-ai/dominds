@@ -70,6 +70,7 @@
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.100.1",
+    "@google/genai": "^2.8.0",
     "@longrun-ai/codex-auth": "workspace:*",
     "@longrun-ai/kernel": "workspace:*",
     "@longrun-ai/shell": "workspace:*",

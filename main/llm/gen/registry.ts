@@ -6,6 +6,7 @@
 import { LlmGenerator } from '../gen';
 import { AnthropicGen } from './anthropic';
 import { CodexGen } from './codex';
+import { GoogleGen } from './google';
 import { MockGen } from './mock';
 import { OpenAiGen } from './openai';
 import { OpenAiCompatibleGen } from './openai-compatible';
@@ -25,10 +26,11 @@ export function getLlmGenerator(apiType: string): LlmGenerator | undefined {
 }
 
 (function initializeBuiltins() {
+  registerLlmGenerator(new MockGen());
   registerLlmGenerator(new AnthropicGen());
   registerLlmGenerator(new AnthropicGen('anthropic-compatible'));
-  registerLlmGenerator(new CodexGen());
-  registerLlmGenerator(new MockGen());
   registerLlmGenerator(new OpenAiGen());
   registerLlmGenerator(new OpenAiCompatibleGen());
+  registerLlmGenerator(new CodexGen());
+  registerLlmGenerator(new GoogleGen());
 })();

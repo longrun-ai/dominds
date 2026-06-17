@@ -26,6 +26,7 @@ export const OPENAI_TOOL_RESULT_IMAGE_BUDGET_BYTES = 50 * 1024 * 1024;
 export const OPENAI_COMPATIBLE_TOOL_RESULT_IMAGE_BUDGET_BYTES = 50 * 1024 * 1024;
 export const CODEX_TOOL_RESULT_IMAGE_BUDGET_BYTES = 50 * 1024 * 1024;
 export const ANTHROPIC_TOOL_RESULT_IMAGE_BUDGET_BYTES = 32 * 1024 * 1024;
+export const GEMINI_TOOL_RESULT_IMAGE_BUDGET_BYTES = 20 * 1024 * 1024;
 
 export function resolveModelImageInputSupport(
   modelInfo: ModelInfo | undefined,

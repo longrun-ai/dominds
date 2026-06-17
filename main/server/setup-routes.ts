@@ -435,6 +435,7 @@ function extractProminentModelParams(
   addSection('openai-compatible', modelParamOptions['openai-compatible']);
   addSection('anthropic', modelParamOptions.anthropic);
   addSection('anthropic-compatible', modelParamOptions['anthropic-compatible']);
+  addSection('google', modelParamOptions.google);
 
   for (const [namespace, section] of sections) {
     for (const [key, optUnknown] of Object.entries(section)) {
@@ -785,7 +786,8 @@ function parseOptionalTeamModelParams(
       namespace !== 'openai' &&
       namespace !== 'openai-compatible' &&
       namespace !== 'anthropic' &&
-      namespace !== 'anthropic-compatible'
+      namespace !== 'anthropic-compatible' &&
+      namespace !== 'google'
     )
       return null;
     if (!isRecord(nsUnknown)) return null;

@@ -414,6 +414,14 @@ export namespace Team {
     thinking?: boolean; // true sends thinking.type=enabled; false sends thinking.type=disabled.
   };
 
+  export type GoogleModelParams = {
+    thinking?: boolean;
+    thinking_budget?: number;
+    temperature?: number;
+    top_p?: number;
+    google_search_tool?: boolean;
+  };
+
   export interface ModelParams {
     json_response?: boolean; // Force JSON response mode (provider-agnostic, provider-specific overrides when set).
 
@@ -434,6 +442,9 @@ export namespace Team {
 
     // Anthropic-compatible gateway parameters.
     'anthropic-compatible'?: AnthropicCompatibleModelParams;
+
+    // Google Gemini parameters
+    google?: GoogleModelParams;
   }
 
   /**
@@ -1653,6 +1664,14 @@ export namespace Team {
     'openai-compatible',
     'anthropic',
     'anthropic-compatible',
+    'google',
+  ] as const;
+  export const TEAM_YAML_MODEL_PARAMS_GOOGLE_KEYS = [
+    'thinking',
+    'thinking_budget',
+    'temperature',
+    'top_p',
+    'google_search_tool',
   ] as const;
   export const TEAM_YAML_MODEL_PARAMS_OPENAI_KEYS = [
     'temperature',
@@ -1877,6 +1896,18 @@ export namespace Team {
               unknownAtAnthropicCompatible,
               {},
             ),
+          );
+        }
+      }
+
+      const rawGoogle = rawModelParams.google;
+      if (rawGoogle !== undefined && isRecordValue(rawGoogle)) {
+        const unknownAtGoogle = listUnknownKeys(rawGoogle, TEAM_YAML_MODEL_PARAMS_GOOGLE_KEYS);
+        if (unknownAtGoogle.length > 0) {
+          pushIssue(
+            `${idPrefix}/${issuePrefix}/google/unknown_fields`,
+            `Invalid .minds/team.yaml: ${modelParamsAt}.google contains unknown fields.`,
+            buildUnknownFieldErrorText(`${modelParamsAt}.google`, unknownAtGoogle, {}),
           );
         }
       }
@@ -3236,6 +3267,7 @@ export namespace Team {
       obj['anthropic-compatible'] === undefined
         ? undefined
         : asRecord(obj['anthropic-compatible'], `${at}.anthropic-compatible`);
+    const google = obj.google === undefined ? undefined : asRecord(obj.google, `${at}.google`);
 
     if (codex) validateCodexParams(codex, `${at}.codex`);
     if (openai) validateOpenAiParams(openai, `${at}.openai`);
@@ -3271,6 +3303,13 @@ export namespace Team {
         anthropicCompatible.json_response,
         `${at}.anthropic-compatible.json_response`,
       );
+    }
+    if (google) {
+      asOptionalBoolean(google.thinking, `${at}.google.thinking`);
+      asOptionalNumber(google.thinking_budget, `${at}.google.thinking_budget`);
+      asOptionalNumber(google.temperature, `${at}.google.temperature`);
+      asOptionalNumber(google.top_p, `${at}.google.top_p`);
+      asOptionalBoolean(google.google_search_tool, `${at}.google.google_search_tool`);
     }
 
     asOptionalBoolean(obj.json_response, `${at}.json_response`);
@@ -3308,6 +3347,12 @@ export namespace Team {
       if (Object.keys(knownAnthropicCompatible).length > 0) {
         out['anthropic-compatible'] =
           knownAnthropicCompatible as ModelParams['anthropic-compatible'];
+      }
+    }
+    if (google) {
+      const knownGoogle = pickKnownModelParams(google, TEAM_YAML_MODEL_PARAMS_GOOGLE_KEYS);
+      if (Object.keys(knownGoogle).length > 0) {
+        out.google = knownGoogle as GoogleModelParams;
       }
     }
     return Object.keys(out).length > 0 ? out : undefined;

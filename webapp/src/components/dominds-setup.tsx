@@ -1145,6 +1145,8 @@ export class DomindsSetup extends HTMLElement {
         return 'Anthropic';
       case 'anthropic-compatible':
         return 'Anthropic-compatible';
+      case 'google':
+        return 'Google';
       default: {
         const _exhaustive: never = namespace;
         return String(_exhaustive);
@@ -1167,6 +1169,7 @@ export class DomindsSetup extends HTMLElement {
       'openai-compatible': [],
       anthropic: [],
       'anthropic-compatible': [],
+      google: [],
     };
     for (const p of prominent) {
       groups[p.namespace].push(p);
@@ -1178,6 +1181,7 @@ export class DomindsSetup extends HTMLElement {
       'openai-compatible',
       'anthropic',
       'anthropic-compatible',
+      'google',
     ];
 
     const sections = groupOrder
