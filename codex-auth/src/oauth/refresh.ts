@@ -57,8 +57,8 @@ export async function tryRefreshToken(refreshToken: string): Promise<RefreshResp
   }
 
   const text = await response.text();
-  if (response.status === 401) {
-    const failed = classifyRefreshTokenFailure(text);
+  const failed = classifyRefreshTokenFailure(text);
+  if (response.status === 401 || failed.reason !== 'other') {
     throw new RefreshTokenError('permanent', failed.message, failed.reason);
   }
 

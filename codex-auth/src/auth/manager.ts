@@ -23,6 +23,7 @@ import {
   readAuthFile,
   resolveCodexHome,
   updateStoredTokens,
+  withAuthRefreshFileLock,
   writeAuthFile,
 } from './storage.js';
 
@@ -62,6 +63,7 @@ type AuthLoadSource = 'ephemeral' | 'persistent';
 
 const REFRESH_TOKEN_ACCOUNT_MISMATCH_MESSAGE =
   'Your access token could not be refreshed because you have since logged out or signed in to another account. Please sign in again.';
+const IN_PROCESS_REFRESHES = new Map<string, Promise<void>>();
 
 export class AuthManager {
   private readonly codexHome: string;
@@ -309,19 +311,23 @@ export class AuthManager {
       throw unsupportedRefreshError;
     }
 
-    const expectedAccountId = this.getAccountId();
-    const reloadOutcome = this.reloadIfAccountIdMatchesWithOutcome(expectedAccountId);
-    if (reloadOutcome === 'reloaded_changed') {
-      return;
-    }
-    if (reloadOutcome === 'skipped') {
-      throw new RefreshTokenError('permanent', REFRESH_TOKEN_ACCOUNT_MISMATCH_MESSAGE, 'other');
-    }
-
-    await this.refreshTokenFromAuthority();
+    await this.refreshManagedChatGptToken(this.getAccountId());
   }
 
   async refreshTokenFromAuthority(): Promise<void> {
+    if (this.cached?.mode === 'chatgpt') {
+      await this.refreshManagedChatGptToken(this.getAccountId());
+      return;
+    }
+
+    await this.withInProcessRefresh(async () => {
+      await this.withManagedAuthRefreshLock(async () => {
+        await this.refreshTokenFromAuthorityUnlocked();
+      });
+    });
+  }
+
+  private async refreshTokenFromAuthorityUnlocked(): Promise<void> {
     if (!this.cached) {
       return;
     }
@@ -359,7 +365,17 @@ export class AuthManager {
       if (accessTokenExpiration.getTime() > cutoff) {
         return false;
       }
-      await this.refreshToken();
+      try {
+        await this.refreshToken();
+      } catch (error: unknown) {
+        if (accessTokenExpiration.getTime() > Date.now() && isTransientRefreshError(error)) {
+          console.warn(
+            `Failed to refresh token; using unexpired access token: ${errorMessage(error)}`,
+          );
+          return false;
+        }
+        throw error;
+      }
       return true;
     }
 
@@ -574,6 +590,53 @@ export class AuthManager {
     );
   }
 
+  private async refreshManagedChatGptToken(expectedAccountId?: string): Promise<void> {
+    await this.withInProcessRefresh(async () => {
+      await this.withManagedAuthRefreshLock(async () => {
+        const reloadOutcome = this.reloadIfAccountIdMatchesWithOutcome(expectedAccountId);
+        if (reloadOutcome === 'reloaded_changed') {
+          return;
+        }
+        if (reloadOutcome === 'skipped') {
+          throw new RefreshTokenError('permanent', REFRESH_TOKEN_ACCOUNT_MISMATCH_MESSAGE, 'other');
+        }
+
+        await this.refreshTokenFromAuthorityUnlocked();
+      });
+    });
+  }
+
+  private async withInProcessRefresh(work: () => Promise<void>): Promise<void> {
+    const existing = IN_PROCESS_REFRESHES.get(this.codexHome);
+    if (existing) {
+      await existing;
+      const expectedAccountId = this.getAccountId();
+      const reloadOutcome = this.reloadIfAccountIdMatchesWithOutcome(expectedAccountId);
+      if (reloadOutcome === 'skipped') {
+        throw new RefreshTokenError('permanent', REFRESH_TOKEN_ACCOUNT_MISMATCH_MESSAGE, 'other');
+      }
+      return;
+    }
+
+    const refresh = work();
+    IN_PROCESS_REFRESHES.set(this.codexHome, refresh);
+    try {
+      await refresh;
+    } finally {
+      if (IN_PROCESS_REFRESHES.get(this.codexHome) === refresh) {
+        IN_PROCESS_REFRESHES.delete(this.codexHome);
+      }
+    }
+  }
+
+  private async withManagedAuthRefreshLock(work: () => Promise<void>): Promise<void> {
+    if (!this.cached || this.cached.mode !== 'chatgpt' || this.storeMode === 'ephemeral') {
+      await work();
+      return;
+    }
+    await withAuthRefreshFileLock(this.codexHome, work);
+  }
+
   private async hydratePersonalAccessTokenIfNeeded(): Promise<void> {
     if (!this.cached || this.cached.mode !== 'personal_access_token' || this.cached.metadata) {
       return;
@@ -774,6 +837,10 @@ function parseLastRefresh(value: string | undefined): Date | undefined {
 
 function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
+}
+
+function isTransientRefreshError(error: unknown): boolean {
+  return error instanceof RefreshTokenError && error.kind === 'transient';
 }
 
 function accountIdForAuth(auth: AuthState | null): string | undefined {
