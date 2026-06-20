@@ -8,6 +8,7 @@
     "format": "prettier --write \"**/*.{js,jsx,ts,tsx,md,json}\"",
     "rtws": "tsx cli.ts",
     "auth": "tsx auth.ts",
+    "codex-auth-refresh": "tsx codex-auth-refresh.ts",
     "certificates": "tsx certificates.ts",
     "webui-port-selection": "tsx webui-port-selection.ts",
     "setup-env-input": "tsx setup-env-input.ts",
