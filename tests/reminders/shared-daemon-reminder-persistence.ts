@@ -75,17 +75,17 @@ setInterval(() => {}, 10000);
       });
 
       const visibleA = await dialogA.listVisibleReminders();
+      const daemonReminders = visibleA.filter(
+        (candidate) => candidate.owner?.name === shellCmdReminderOwner.name,
+      );
       assert.equal(
-        visibleA.length,
+        daemonReminders.length,
         1,
         'Expected daemon reminder to be shared-visible in origin dialog',
       );
-      const reminderA = visibleA.find(
-        (candidate) => candidate.owner?.name === shellCmdReminderOwner.name,
-      );
-      const pid = requireDaemonPid(reminderA);
-
+      const reminderA = daemonReminders[0];
       assert.ok(reminderA, 'Expected daemon reminder to exist in origin dialog');
+      const pid = requireDaemonPid(reminderA);
       const sharedReminderPath = path.join(
         sandboxDir,
         '.dialogs',
@@ -141,7 +141,11 @@ setInterval(() => {}, 10000);
       assert.match(stopOutput, /stopped|已停止/);
 
       const remaining = await dialogB.listVisibleReminders();
-      assert.equal(remaining.length, 0, 'Expected shared daemon reminder to disappear after stop');
+      assert.equal(
+        remaining.some((candidate) => candidate.owner?.name === shellCmdReminderOwner.name),
+        false,
+        'Expected shared daemon reminder to disappear after stop',
+      );
     } finally {
       unregisterReminderOwner(shellCmdReminderOwner.name);
     }

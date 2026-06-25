@@ -39,7 +39,7 @@ async function runCase(language: 'zh' | 'en', expectedSubstring: string): Promis
     `Expected output to include "${expectedSubstring}", got: ${output}`,
   );
   assert.equal(
-    dlg.reminders[0]?.content,
+    dlg.reminders.find((reminder) => reminder.id === reminderId)?.content,
     'auto reminder',
     'Expected update_reminder guard to preserve the reminder content',
   );

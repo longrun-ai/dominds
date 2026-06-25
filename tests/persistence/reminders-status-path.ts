@@ -98,8 +98,10 @@ async function main(): Promise<void> {
     assert.equal(await pathExists(runningReminderPath), false);
 
     const restored = await DialogPersistence.loadReminderState(dialogId, 'completed');
-    assert.equal(restored.length, 1);
-    assert.equal(restored[0]?.content, 'Completed dialog reminder');
+    const completedReminder = restored.find(
+      (reminder) => reminder.content === 'Completed dialog reminder',
+    );
+    assert.ok(completedReminder, 'Expected completed dialog reminder to be restored');
 
     const sent: unknown[] = [];
     const ws = {

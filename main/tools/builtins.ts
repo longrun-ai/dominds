@@ -16,6 +16,7 @@ import {
   mindMoreTool,
   neverMindTool,
   recallTaskdocTool,
+  setDialogGoalTool,
   updateReminderTool,
 } from './ctrl';
 import { envGetTool, envSetTool, envUnsetTool } from './env';
@@ -215,6 +216,7 @@ registerTool(addReminderTool);
 registerTool(deleteReminderTool);
 registerTool(updateReminderTool);
 registerTool(migrateReminderTool);
+registerTool(setDialogGoalTool);
 registerTool(clearMindTool);
 registerTool(doMindTool);
 registerTool(changeMindTool);
@@ -290,6 +292,7 @@ registerToolset('control', [
   deleteReminderTool,
   updateReminderTool,
   migrateReminderTool,
+  setDialogGoalTool,
   clearMindTool,
   doMindTool,
   changeMindTool,

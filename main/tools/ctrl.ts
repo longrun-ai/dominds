@@ -40,6 +40,7 @@ import {
   type Dialog,
   type VisibleReminderTarget,
 } from '../dialog';
+import { setMainDialogGoalReminder } from '../main-dialog-goal-reminder';
 import { domindsRtwsRootAbs } from '../rtws';
 import {
   formatNewCourseStartPrompt,
@@ -87,6 +88,12 @@ type CtrlMessages = Readonly<{
   reminderContentEmpty: string;
   invalidFormatUpdate: string;
   invalidFormatMigrate: string;
+  invalidFormatSetDialogGoal: string;
+  setDialogGoalMainOnly: string;
+  setDialogGoalGoalRequired: string;
+  setDialogGoalFollowTaskdocRejected: string;
+  setDialogGoalSetToGoal: string;
+  setDialogGoalSetToFollowTaskdoc: string;
   reminderAlreadyDialogScope: (reminderId: string) => string;
   reminderMigrateManagedBlocked: (managerTool: string) => string;
   invalidFormatDoMind: string;
@@ -554,6 +561,14 @@ function getCtrlMessages(language: LanguageCode): CtrlMessages {
         '参数格式不对。用法：update_reminder({ reminder_id: string, content: string })',
       invalidFormatMigrate:
         '参数格式不对。用法：migrate_reminder({ reminder_id: string, scope: "dialog" })',
+      invalidFormatSetDialogGoal:
+        '参数格式不对。用法：set_dialog_goal({ mode: "goal", goal: string }) 或 set_dialog_goal({ mode: "follow_taskdoc" })',
+      setDialogGoalMainOnly: '错误：set_dialog_goal 只用于主线对话；支线对话按收到的诉请目标推进。',
+      setDialogGoalGoalRequired: '错误：mode="goal" 时必须提供非空 goal。',
+      setDialogGoalFollowTaskdocRejected:
+        '错误：Dominds 已确认这个智能体现在有其它并行对话，不能只按“依差遣牒推进”继续。已保留“依差遣牒推进”，并在本路主线目标提醒中补充：立即问人类这一路主线接下来具体推进什么。',
+      setDialogGoalSetToGoal: '已记录本路主线目标。',
+      setDialogGoalSetToFollowTaskdoc: '已记录本路主线目标：依差遣牒推进。',
       reminderAlreadyDialogScope: (reminderId) =>
         `reminder_id=${reminderId} 已经是当前对话范围提醒项，不需要迁移。`,
       reminderMigrateManagedBlocked: (managerTool) =>
@@ -632,6 +647,16 @@ function getCtrlMessages(language: LanguageCode): CtrlMessages {
       'Error: Invalid args. Use: update_reminder({ reminder_id: string, content: string })',
     invalidFormatMigrate:
       'Error: Invalid args. Use: migrate_reminder({ reminder_id: string, scope: "dialog" })',
+    invalidFormatSetDialogGoal:
+      'Error: Invalid args. Use: set_dialog_goal({ mode: "goal", goal: string }) or set_dialog_goal({ mode: "follow_taskdoc" }).',
+    setDialogGoalMainOnly:
+      'Error: set_dialog_goal is only for Main Dialogs; Side Dialogs should follow the request they received.',
+    setDialogGoalGoalRequired: 'Error: mode="goal" requires a non-empty goal.',
+    setDialogGoalFollowTaskdocRejected:
+      'Error: Dominds has confirmed this agent now has another parallel dialog, so this one cannot proceed from the Taskdoc alone. The reminder keeps "proceed from the Taskdoc" and now adds: ask the human what this Main Dialog should work on next.',
+    setDialogGoalSetToGoal: 'Recorded the goal for this Main Dialog.',
+    setDialogGoalSetToFollowTaskdoc:
+      'Recorded the goal for this Main Dialog: proceed from the Taskdoc.',
     reminderAlreadyDialogScope: (reminderId) =>
       `reminder_id=${reminderId} is already dialog-scope in the current dialog; no migration is needed.`,
     reminderMigrateManagedBlocked: (managerTool) =>
@@ -1017,6 +1042,63 @@ export const migrateReminderTool: FuncTool = {
             language,
           });
     return appendSharedReminderMigrationImpactToToolResult(baseOutput, language, dispatch);
+  },
+};
+
+export const setDialogGoalTool: FuncTool = {
+  type: 'func',
+  name: 'set_dialog_goal',
+  description:
+    'Record what this Main Dialog should work on next. Use mode="goal" for a concrete goal; use mode="follow_taskdoc" only when Dominds allows this dialog to simply proceed from the Taskdoc.',
+  descriptionI18n: {
+    en: 'Record what this Main Dialog should work on next. Use mode="goal" for a concrete goal; use mode="follow_taskdoc" only when Dominds allows this dialog to simply proceed from the Taskdoc.',
+    zh: '记录这一路主线接下来具体推进什么。mode="goal" 用于写清目标；只有 Dominds 允许时，才用 mode="follow_taskdoc" 表示依差遣牒推进。',
+  },
+  parameters: {
+    type: 'object',
+    additionalProperties: false,
+    required: ['mode'],
+    properties: {
+      mode: {
+        type: 'string',
+        enum: ['goal', 'follow_taskdoc'],
+        description:
+          'goal = record a concrete goal; follow_taskdoc = proceed from the Taskdoc when Dominds allows it.',
+      },
+      goal: {
+        type: 'string',
+        description: 'Required when mode="goal"; ignored when mode="follow_taskdoc".',
+      },
+    },
+  },
+  argsValidation: 'dominds',
+  async call(dlg: Dialog, _caller: Team.Member, args: ToolArguments): Promise<ToolCallOutput> {
+    const language = getWorkLanguage();
+    const t = getCtrlMessages(language);
+    if (dlg.id.selfId !== dlg.id.rootId) {
+      return toolFailure(t.setDialogGoalMainOnly);
+    }
+
+    const modeValue = args['mode'];
+    if (modeValue !== 'goal' && modeValue !== 'follow_taskdoc') {
+      return toolFailure(t.invalidFormatSetDialogGoal);
+    }
+
+    if (modeValue === 'follow_taskdoc') {
+      const result = await setMainDialogGoalReminder(dlg, { mode: 'follow_taskdoc' });
+      if (result.kind === 'rejected_parallel_dialogs') {
+        return toolFailure(t.setDialogGoalFollowTaskdocRejected);
+      }
+      return toolSuccess(t.setDialogGoalSetToFollowTaskdoc);
+    }
+
+    const goalValue = args['goal'];
+    const goal = typeof goalValue === 'string' ? goalValue.trim() : '';
+    if (goal === '') {
+      return toolFailure(t.setDialogGoalGoalRequired);
+    }
+    await setMainDialogGoalReminder(dlg, { mode: 'goal', goal });
+    return toolSuccess(t.setDialogGoalSetToGoal);
   },
 };
 

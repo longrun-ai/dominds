@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 
 import { driveDialogStream } from '../../main/llm/kernel-driver';
+import { MAIN_DIALOG_GOAL_REMINDER_ID } from '../../main/main-dialog-goal-reminder';
 import { DialogPersistence } from '../../main/persistence';
 import { setWorkLanguage } from '../../main/runtime/work-language';
 import type { FuncTool } from '../../main/tool';
@@ -16,6 +17,10 @@ import {
 } from './helpers';
 
 const PARTIAL_FAILURE_TOOL_NAME = 'clear_mind_sibling_partial_failure_probe';
+
+function nonGoalReminderCount(dlg: Awaited<ReturnType<typeof createMainDialog>>): number {
+  return dlg.reminders.filter((reminder) => reminder.id !== MAIN_DIALOG_GOAL_REMINDER_ID).length;
+}
 
 async function main(): Promise<void> {
   await withTempRtws(async (tmpRoot) => {
@@ -192,7 +197,7 @@ async function main(): Promise<void> {
       assert.equal(dlg.currentCourse, 1, 'blocked clear_mind must not switch to a new course');
       assert.equal(lastAssistantSaying(dlg), finalAnswer);
       assert.equal(
-        dlg.reminders.length,
+        nonGoalReminderCount(dlg),
         0,
         'blocked clear_mind must not create its continuation reminder',
       );
@@ -234,7 +239,7 @@ async function main(): Promise<void> {
       );
       assert.equal(lastAssistantSaying(dlg), clearFirstFinalAnswer);
       assert.equal(
-        dlg.reminders.length,
+        nonGoalReminderCount(dlg),
         0,
         'front-position blocked clear_mind must not create its continuation reminder',
       );
@@ -266,7 +271,7 @@ async function main(): Promise<void> {
       );
       assert.equal(lastAssistantSaying(dlg), invalidSpecialFinalAnswer);
       assert.equal(
-        dlg.reminders.length,
+        nonGoalReminderCount(dlg),
         0,
         'special-failure blocked clear_mind must not create its continuation reminder',
       );
@@ -301,7 +306,7 @@ async function main(): Promise<void> {
       );
       assert.equal(lastAssistantSaying(dlg), partialFailureFinalAnswer);
       assert.equal(
-        dlg.reminders.length,
+        nonGoalReminderCount(dlg),
         0,
         'partial-failure blocked clear_mind must not create its continuation reminder',
       );

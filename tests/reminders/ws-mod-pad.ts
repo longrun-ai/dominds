@@ -43,6 +43,30 @@ function getPadText(reminder: unknown): string {
   return text;
 }
 
+function getPadId(reminder: unknown): string | undefined {
+  if (typeof reminder !== 'object' || reminder === null || Array.isArray(reminder)) {
+    return undefined;
+  }
+  const meta = (reminder as { meta?: unknown }).meta;
+  if (typeof meta !== 'object' || meta === null || Array.isArray(meta)) {
+    return undefined;
+  }
+  const record = meta as Record<string, unknown>;
+  return record['kind'] === 'ws_mod_pad' && typeof record['padId'] === 'string'
+    ? record['padId']
+    : undefined;
+}
+
+function requirePadReminder(dlg: MainDialog, padId: string): MainDialog['reminders'][number] {
+  const reminder = dlg.reminders.find((candidate) => getPadId(candidate) === padId);
+  assert.ok(reminder, `Expected pad reminder to exist: ${padId}`);
+  return reminder;
+}
+
+function hasPadReminder(dlg: MainDialog, padId: string): boolean {
+  return dlg.reminders.some((candidate) => getPadId(candidate) === padId);
+}
+
 async function main(): Promise<void> {
   const oldCwd = process.cwd();
   const tmpRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'dominds-ws-mod-pad-'));
@@ -104,7 +128,7 @@ async function main(): Promise<void> {
       'pad_write should report a successful notice when intent metadata is missing',
     );
     assert.ok(
-      dlg.reminders[0].content.includes(
+      requirePadReminder(dlg, 'missing_intent').content.includes(
         'intent: （未填写；建议用 pad_write/pad_load_file_range 补充 intent）',
       ),
       'pad reminder should visibly mark missing intent',
@@ -132,8 +156,7 @@ async function main(): Promise<void> {
       'pad_write result should not ask for intent when intent was provided',
     );
 
-    const reminder = dlg.reminders[0];
-    assert.ok(reminder, 'pad_write should create a reminder-backed pad');
+    const reminder = requirePadReminder(dlg, 'draft1');
     assert.equal(
       serializeReminderContentMeta(reminder),
       undefined,
@@ -193,7 +216,7 @@ async function main(): Promise<void> {
       manualDeleteOutput.includes('pad_delete({ "pad_id": "draft1" })'),
       'delete_reminder should refuse managed pad deletion and point to pad_delete',
     );
-    assert.equal(dlg.reminders.length, 1, 'delete_reminder must not delete the pad');
+    assert.ok(hasPadReminder(dlg, 'draft1'), 'delete_reminder must not delete the pad');
 
     const editOutput = (
       await padEditTool.call(dlg, caller, {
@@ -204,8 +227,8 @@ async function main(): Promise<void> {
     ).content;
     assert.ok(editOutput.includes('status: ok'));
     assert.ok(!editOutput.includes('changed'), 'pad_edit result must not echo edited body');
-    assert.equal(getPadText(dlg.reminders[0]), `${secret}\nchanged\n`);
-    assert.ok(dlg.reminders[0].content.includes('   2| changed'));
+    assert.equal(getPadText(requirePadReminder(dlg, 'draft1')), `${secret}\nchanged\n`);
+    assert.ok(requirePadReminder(dlg, 'draft1').content.includes('   2| changed'));
 
     const insertOutput = (
       await padInsertTool.call(dlg, caller, {
@@ -219,8 +242,11 @@ async function main(): Promise<void> {
       !insertOutput.includes('INSERTED_BODY_TOKEN'),
       'pad_insert result must not echo inserted body',
     );
-    assert.equal(getPadText(dlg.reminders[0]), `${secret}\nINSERTED_BODY_TOKEN\nchanged\n`);
-    assert.ok(dlg.reminders[0].content.includes('   2| INSERTED_BODY_TOKEN'));
+    assert.equal(
+      getPadText(requirePadReminder(dlg, 'draft1')),
+      `${secret}\nINSERTED_BODY_TOKEN\nchanged\n`,
+    );
+    assert.ok(requirePadReminder(dlg, 'draft1').content.includes('   2| INSERTED_BODY_TOKEN'));
 
     const copyOutput = (
       await padCopyTool.call(dlg, caller, {
@@ -231,9 +257,11 @@ async function main(): Promise<void> {
     ).content;
     assert.ok(copyOutput.includes('status: ok'));
     assert.ok(!copyOutput.includes(secret), 'pad_copy result must not echo copied body');
-    assert.equal(getPadText(dlg.reminders[1]), `${secret}\n`);
+    assert.equal(getPadText(requirePadReminder(dlg, 'draft2')), `${secret}\n`);
     assert.ok(
-      dlg.reminders[1].content.includes('intent: Test pad display with line-numbered body'),
+      requirePadReminder(dlg, 'draft2').content.includes(
+        'intent: Test pad display with line-numbered body',
+      ),
       'pad_copy should inherit source intent when creating a target pad',
     );
 
@@ -247,8 +275,8 @@ async function main(): Promise<void> {
     ).content;
     assert.ok(moveOutput.includes('status: ok'));
     assert.ok(!moveOutput.includes('changed'), 'pad_move result must not echo moved body');
-    assert.equal(getPadText(dlg.reminders[0]), `${secret}\nINSERTED_BODY_TOKEN\n`);
-    assert.equal(getPadText(dlg.reminders[1]), `${secret}\nchanged\n`);
+    assert.equal(getPadText(requirePadReminder(dlg, 'draft1')), `${secret}\nINSERTED_BODY_TOKEN\n`);
+    assert.equal(getPadText(requirePadReminder(dlg, 'draft2')), `${secret}\nchanged\n`);
 
     const deleteRangeOutput = (
       await padDeleteRangeTool.call(dlg, caller, {
@@ -261,7 +289,7 @@ async function main(): Promise<void> {
       !deleteRangeOutput.includes(secret),
       'pad_delete_range result must not echo remaining body',
     );
-    assert.equal(getPadText(dlg.reminders[1]), 'changed\n');
+    assert.equal(getPadText(requirePadReminder(dlg, 'draft2')), 'changed\n');
 
     const fullFileToken = 'FULL_FILE_LOAD_TOKEN';
     await fs.writeFile(path.join(tmpRoot, 'whole.txt'), `alpha\n${fullFileToken}\nomega\n`, 'utf8');
@@ -277,7 +305,10 @@ async function main(): Promise<void> {
       !fullFileLoadOutput.includes(fullFileToken),
       'pad_load_file_range full-file result must not echo file body',
     );
-    assert.equal(getPadText(dlg.reminders[2]), `alpha\n${fullFileToken}\nomega\n`);
+    assert.equal(
+      getPadText(requirePadReminder(dlg, 'whole_file')),
+      `alpha\n${fullFileToken}\nomega\n`,
+    );
     await padDeleteTool.call(dlg, caller, { pad_id: 'whole_file' });
 
     await fs.writeFile(path.join(tmpRoot, 'target.txt'), 'old1\nold2\n', 'utf8');
@@ -379,7 +410,8 @@ async function main(): Promise<void> {
     await padDeleteTool.call(dlg, caller, { pad_id: 'draft2' });
     const deleteOutput = (await padDeleteTool.call(dlg, caller, { pad_id: 'draft1' })).content;
     assert.ok(deleteOutput.includes('status: ok'));
-    assert.equal(dlg.reminders.length, 0, 'pad_delete should remove the pad');
+    assert.equal(hasPadReminder(dlg, 'draft1'), false, 'pad_delete should remove draft1');
+    assert.equal(hasPadReminder(dlg, 'draft2'), false, 'pad_delete should remove draft2');
 
     dlg.reminders.push(
       materializeReminder({
@@ -394,7 +426,11 @@ async function main(): Promise<void> {
     const brokenDeleteOutput = (await padDeleteTool.call(dlg, caller, { pad_id: 'broken1' }))
       .content;
     assert.ok(brokenDeleteOutput.includes('status: ok'));
-    assert.equal(dlg.reminders.length, 0, 'pad_delete should clean unreadable pad metadata by id');
+    assert.equal(
+      hasPadReminder(dlg, 'broken1'),
+      false,
+      'pad_delete should clean unreadable pad metadata by id',
+    );
 
     console.log('✓ ws_mod pad reminder contract test passed');
   } finally {

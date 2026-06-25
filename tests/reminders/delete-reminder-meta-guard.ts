@@ -35,7 +35,12 @@ async function runCase(language: 'zh' | 'en', expectedSubstring: string): Promis
     output.includes(expectedSubstring),
     `Expected output to include "${expectedSubstring}", got: ${output}`,
   );
-  assert.equal(dlg.reminders.length, 1, 'Expected delete_reminder guard to preserve the reminder');
+  assert.ok(
+    dlg.reminders.some(
+      (reminder) => reminder.id === reminderId && reminder.content === 'daemon reminder',
+    ),
+    'Expected delete_reminder guard to preserve the reminder',
+  );
 }
 
 async function main(): Promise<void> {

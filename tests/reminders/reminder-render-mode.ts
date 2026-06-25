@@ -12,6 +12,15 @@ function createDialog(agentId: string): MainDialog {
   return new MainDialog(new DialogStore(), 'reminder-render-mode.tsk', undefined, agentId);
 }
 
+function requireReminderByContent(
+  dialog: MainDialog,
+  content: string,
+): MainDialog['reminders'][number] {
+  const reminder = dialog.reminders.find((candidate) => candidate.content === content);
+  assert.ok(reminder, `Expected reminder content to exist: ${content}`);
+  return reminder;
+}
+
 async function main(): Promise<void> {
   await withTempCwd('dominds-reminder-render-mode-', async () => {
     const dlg = createDialog('tester');
@@ -49,26 +58,32 @@ async function main(): Promise<void> {
       content: '**Keep** this as markdown',
       scope: 'dialog',
     });
-    const markdownReminder = dlg.reminders[0];
-    assert.equal(markdownReminder?.renderMode, 'markdown');
+    const markdownReminder = requireReminderByContent(dlg, '**Keep** this as markdown');
+    assert.equal(markdownReminder.renderMode, 'markdown');
 
     await updateReminderTool.call(dlg, caller, {
-      reminder_id: markdownReminder?.id,
+      reminder_id: markdownReminder.id,
       content: '**Still** markdown after update',
     });
-    assert.equal(dlg.reminders[0]?.renderMode, 'markdown');
+    const updatedMarkdownReminder = requireReminderByContent(
+      dlg,
+      '**Still** markdown after update',
+    );
+    assert.equal(updatedMarkdownReminder.renderMode, 'markdown');
 
     await addReminderTool.call(dlg, caller, {
       content: '**Literal asterisks wanted**',
       scope: 'dialog',
       render_mode: 'plain',
     });
-    const plainReminder = dlg.reminders[1];
-    assert.equal(plainReminder?.renderMode, 'plain');
+    const plainReminder = requireReminderByContent(dlg, '**Literal asterisks wanted**');
+    assert.equal(plainReminder.renderMode, 'plain');
 
     const reminders = await dlg.processReminderUpdates();
-    const markdownContent = reminders.find((item) => item.reminder_id === markdownReminder?.id);
-    const plainContent = reminders.find((item) => item.reminder_id === plainReminder?.id);
+    const markdownContent = reminders.find(
+      (item) => item.reminder_id === updatedMarkdownReminder.id,
+    );
+    const plainContent = reminders.find((item) => item.reminder_id === plainReminder.id);
     assert.equal(markdownContent?.renderMode, 'markdown');
     assert.equal(plainContent?.renderMode, 'plain');
 

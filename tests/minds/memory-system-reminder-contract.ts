@@ -36,11 +36,15 @@ async function main(): Promise<void> {
     'zh prompt should distinguish Taskdoc-covered vs volatile details',
   );
   assert.ok(
-    zh.includes('尚未落实到文档、且下一程需要知会的讨论细节'),
-    'zh prompt should require documenting unrecorded discussion details before continuation reminders',
+    zh.includes('固定“本路主线目标”提醒'),
+    'zh prompt should require following the fixed Main Dialog goal reminder',
   );
   assert.ok(
-    zh.includes('只有 Dominds 实际开启新一程后，第一步才是以清醒头脑复核并整理'),
+    zh.includes('尚未落实到文档、且下一程需要同一差遣牒其它对话/队友知会'),
+    'zh prompt should require documenting unrecorded shared discussion details before continuation reminders',
+  );
+  assert.ok(
+    zh.includes('只有 Dominds 实际开启新一程后，第一步才是按固定“本路主线目标”提醒继续'),
     'zh prompt should pin clear-headed review to the Dominds-started new course',
   );
   assert.ok(
@@ -129,7 +133,7 @@ async function main(): Promise<void> {
   );
   assert.ok(
     en.includes(
-      'Once Dominds actually starts the new course, the first step is to review/rewrite them',
+      'Once Dominds actually starts the new course, first continue from the fixed Main Dialog goal reminder',
     ),
     'en prompt should pin clear-headed review to the Dominds-started new course',
   );

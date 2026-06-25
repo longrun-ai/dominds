@@ -48,12 +48,12 @@ async function main(): Promise<void> {
     'zh guide should allow rough multi-reminder bridge when muddled',
   );
   assert.ok(
-    zhSoft.includes('当前对话范围（scope=dialog）接续包提醒项'),
-    'zh guide should require current-dialog scoped continuation reminders',
+    zhSoft.includes('当前对话 scope=dialog 过桥提醒项'),
+    'zh guide should require current-dialog scoped bridge reminders',
   );
   assert.ok(
-    zhSoft.includes('本路任务目标'),
-    'zh guide should require preserving this dialog task goal',
+    zhSoft.includes('固定“本路主线目标”提醒'),
+    'zh guide should require following the fixed Main Dialog goal reminder',
   );
   assert.ok(
     zhSoft.includes('确实需要同一差遣牒下其它对话/队友知会'),
@@ -119,12 +119,12 @@ async function main(): Promise<void> {
     'en guide should allow rough multi-reminder bridge during remediation',
   );
   assert.ok(
-    enSoft.includes('current-dialog scoped (scope=dialog) continuation-package reminder'),
-    'en guide should require current-dialog scoped continuation reminders',
+    enSoft.includes('current-dialog scope=dialog bridge reminder'),
+    'en guide should require current-dialog scoped bridge reminders',
   );
   assert.ok(
-    enSoft.includes('this specific Main Dialog task goal'),
-    'en guide should require preserving this dialog task goal',
+    enSoft.includes('fixed Main Dialog goal reminder'),
+    'en guide should require following the fixed Main Dialog goal reminder',
   );
   assert.ok(
     enSoft.includes('other dialogs/teammates sharing the same Taskdoc truly need to know'),

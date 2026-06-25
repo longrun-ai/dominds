@@ -63,6 +63,7 @@ import { postDialogEvent } from './evt-registry';
 import { ChatMessage, FuncResultMsg, TellaskCarryoverMsg, TellaskResultMsg } from './llm/client';
 import type { ToolResultImageIngest, UserImageIngest } from './llm/gen';
 import { log } from './log';
+import { ensureMainDialogGoalReminder } from './main-dialog-goal-reminder';
 import { AsyncFifoMutex } from './runtime/async-fifo-mutex';
 import {
   formatCurrentUserLanguagePreference,
@@ -829,6 +830,7 @@ export abstract class Dialog {
   }
 
   public async listVisibleReminderTargets(): Promise<VisibleReminderTarget[]> {
+    await ensureMainDialogGoalReminder(this);
     const targets: VisibleReminderTarget[] = this.reminders.map((reminder, index) => ({
       source: 'dialog',
       index,
@@ -1019,9 +1021,11 @@ export abstract class Dialog {
 
   /**
    * Emits current visible reminders without reconciling tool-owned state or writing persistence.
+   * Dominds-managed fixed dialog reminders may be materialized in memory so display stays complete.
    * This is for read-only dialog display, especially completed/archived dialogs opened from old tabs.
    */
   public async emitReminderSnapshot(): Promise<ReminderContent[]> {
+    await ensureMainDialogGoalReminder(this);
     const taskSharedTarget: SharedReminderTarget = {
       kind: 'task',
       agentId: this.agentId,
@@ -1041,6 +1045,7 @@ export abstract class Dialog {
    * Returns reminder contents with metadata for the frontend.
    */
   public async processReminderUpdates(): Promise<ReminderContent[]> {
+    await ensureMainDialogGoalReminder(this);
     const taskSharedTarget: SharedReminderTarget = {
       kind: 'task',
       agentId: this.agentId,

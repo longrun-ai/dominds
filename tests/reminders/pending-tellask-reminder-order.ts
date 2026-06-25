@@ -10,6 +10,7 @@ import {
   createEmptyDialogTellaskCallState,
   createEmptyDialogTellaskResultState,
 } from '../../main/dialog-latest-state';
+import { MAIN_DIALOG_GOAL_REMINDER_ID } from '../../main/main-dialog-goal-reminder';
 import { DialogPersistence } from '../../main/persistence';
 import { materializeReminder } from '../../main/tool';
 import {
@@ -18,6 +19,10 @@ import {
 } from '../../main/tools/pending-tellask-reminder';
 import { createMainDialog } from '../kernel-driver/helpers';
 import { withTempCwd } from './daemon-test-utils';
+
+function withoutMainDialogGoal<T extends Readonly<{ id: string }>>(reminders: readonly T[]): T[] {
+  return reminders.filter((reminder) => reminder.id !== MAIN_DIALOG_GOAL_REMINDER_ID);
+}
 
 async function writeYaml(filePath: string, value: unknown): Promise<void> {
   await fs.mkdir(path.dirname(filePath), { recursive: true });
@@ -178,7 +183,7 @@ async function main(): Promise<void> {
     );
 
     await syncPendingTellaskReminderState(root);
-    let visible = await root.listVisibleReminders();
+    let visible = withoutMainDialogGoal(await root.listVisibleReminders());
     assert.equal(
       visible[0]?.id,
       'daemon001',
@@ -194,7 +199,7 @@ async function main(): Promise<void> {
     });
 
     await syncPendingTellaskReminderState(root);
-    visible = await root.listVisibleReminders();
+    visible = withoutMainDialogGoal(await root.listVisibleReminders());
     assert.equal(
       visible[0]?.id,
       'pending001',

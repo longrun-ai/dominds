@@ -27,7 +27,7 @@ function expectedMainlineReplacement(originalBytes: number): string {
     '',
     '不要再尝试获取各种大段的输出，都不会显示给你。现在先做两件事：',
     '1. 把下一程对话需要知道的此程细节信息写入差遣牒合适章节。',
-    '2. 对于不适合差遣牒章节覆盖、但下一程恢复当前对话需要的信息，用当前对话范围（scope=dialog）提醒项写明本路对话任务目标并带过桥。',
+    '2. 先看固定“本路主线目标”提醒；它要求先问人类就立即问，并用 set_dialog_goal 记录答案。对于不适合差遣牒章节覆盖、但下一程恢复当前对话需要的信息，用当前对话范围（scope=dialog）提醒项带过桥。',
     '',
     '然后调用 clear_mind({}) 开启新一程。',
     '',
@@ -55,7 +55,7 @@ function expectedEnglishMainlineReplacement(originalBytes: number): string {
     '',
     'Do not try again to fetch any kind of large output; it still will not be shown. Do two things now:',
     '1. Write the details from this course that the next course needs into the appropriate Taskdoc sections.',
-    '2. For information that does not fit a Taskdoc section but is needed to resume this dialog in the next course, use current-dialog scoped (scope=dialog) reminders to state this dialog task goal and carry it over.',
+    '2. First read the fixed Main Dialog goal reminder. If it says to ask the human, ask and record the answer with set_dialog_goal. For information that does not fit a Taskdoc section but is needed to resume this dialog in the next course, use current-dialog scoped (scope=dialog) reminders to carry it over.',
     '',
     'Then call clear_mind({}) to start a new course.',
     '',
@@ -345,7 +345,8 @@ async function main(): Promise<void> {
       assert.equal(resultContent, expectedReplacement);
       assert.match(resultContent, /这次函数返回内容太大，清理头脑之前不会显示给你/);
       assert.match(resultContent, /不要再尝试获取各种大段的输出，都不会显示给你/);
-      assert.match(resultContent, /当前对话范围（scope=dialog）提醒项写明本路对话任务目标/);
+      assert.match(resultContent, /固定“本路主线目标”提醒/);
+      assert.match(resultContent, /set_dialog_goal/);
       assert.match(resultContent, /恢复当前对话需要的信息/);
       assert.match(resultContent, /然后调用 clear_mind\(\{\}\) 开启新一程/);
       assert.match(
@@ -586,7 +587,7 @@ async function main(): Promise<void> {
       assert.match(englishResultContent, /details from this course that the next course needs/);
       assert.match(englishResultContent, /does not fit a Taskdoc section/);
       assert.match(englishResultContent, /current-dialog scoped \(scope=dialog\) reminders/);
-      assert.match(englishResultContent, /state this dialog task goal and carry it over/);
+      assert.match(englishResultContent, /fixed Main Dialog goal reminder/);
       assert.doesNotMatch(englishResultContent, /english-start/);
       assert.doesNotMatch(englishResultContent, /english-end/);
 

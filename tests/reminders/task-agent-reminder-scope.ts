@@ -5,6 +5,7 @@ import { crc32 } from 'zlib';
 
 import { DialogStore, MainDialog } from '../../main/dialog';
 import { globalDialogRegistry } from '../../main/dialog-global-registry';
+import { MAIN_DIALOG_GOAL_REMINDER_ID } from '../../main/main-dialog-goal-reminder';
 import { mutateSharedReminders } from '../../main/shared-reminders';
 import type { Team } from '../../main/team';
 import { materializeReminder, type ReminderOwner } from '../../main/tool';
@@ -21,6 +22,10 @@ function createDialog(agentId: string, taskDocPath = 'task-agent-reminder-scope.
 function taskStorageKey(taskDocPath: string): string {
   const normalized = taskDocPath.trim().replace(/\\/g, '/').replace(/\/+$/g, '');
   return `crc32-${((crc32(normalized) >>> 0).toString(16) as string).padStart(8, '0')}`;
+}
+
+function withoutMainDialogGoal<T extends Readonly<{ id: string }>>(reminders: readonly T[]): T[] {
+  return reminders.filter((reminder) => reminder.id !== MAIN_DIALOG_GOAL_REMINDER_ID);
 }
 
 async function main(): Promise<void> {
@@ -62,7 +67,7 @@ async function main(): Promise<void> {
         'Expected default task reminder not to live in dialog-local array',
       );
 
-      const visibleA = await dialogA.listVisibleReminders();
+      const visibleA = withoutMainDialogGoal(await dialogA.listVisibleReminders());
       assert.equal(visibleA.length, 2, 'Expected dialog and task reminders to both be visible');
       const taskReminder = visibleA.find((reminder) => reminder.scope === 'task');
       assert.ok(taskReminder, 'Expected task reminder to exist');
@@ -87,7 +92,7 @@ async function main(): Promise<void> {
 
       const dialogB = createDialog('tester', taskDocPath);
       registerRuntimeDialog(dialogB);
-      const visibleB = await dialogB.listVisibleReminders();
+      const visibleB = withoutMainDialogGoal(await dialogB.listVisibleReminders());
       assert.equal(
         visibleB[0]?.id,
         taskReminder.id,
@@ -102,7 +107,7 @@ async function main(): Promise<void> {
       const dialogOtherTask = createDialog('tester', otherTaskDocPath);
       registerRuntimeDialog(dialogOtherTask);
       assert.equal(
-        (await dialogOtherTask.listVisibleReminders()).length,
+        withoutMainDialogGoal(await dialogOtherTask.listVisibleReminders()).length,
         0,
         'Expected same agent with a different Taskdoc not to see task-scoped reminder',
       );
@@ -441,7 +446,8 @@ async function main(): Promise<void> {
       );
 
       assert.equal(
-        (await createDialog('other-agent', taskDocPath).listVisibleReminders()).length,
+        withoutMainDialogGoal(await createDialog('other-agent', taskDocPath).listVisibleReminders())
+          .length,
         0,
         'Expected another agent not to see tester task/agent reminders',
       );
@@ -473,7 +479,7 @@ async function main(): Promise<void> {
         })
       ).content;
       assert.match(deleteAgentOutput, /Deleted|已删除/);
-      assert.equal((await dialogOtherTask.listVisibleReminders()).length, 0);
+      assert.equal(withoutMainDialogGoal(await dialogOtherTask.listVisibleReminders()).length, 0);
     } finally {
       if (releaseActiveMainPeer) {
         releaseActiveMainPeer();

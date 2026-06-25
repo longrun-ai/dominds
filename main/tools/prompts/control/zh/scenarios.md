@@ -15,7 +15,7 @@
 
 ### 场景描述
 
-使用 reminders 承接当前任务的手头工作：下一步、临时阻塞、易丢细节，而不是把它写成面向全队同步的 Taskdoc 公告牌。准备 `clear_mind` 的接续包是当前对话恢复线索，必须显式 `scope=dialog` 并写明本路对话任务目标。
+使用 reminders 承接当前任务的手头工作：下一步、临时阻塞、易丢细节，而不是把它写成面向全队同步的 Taskdoc 公告牌。主线对话的目标看固定“本路主线目标”提醒，并用 `set_dialog_goal` 维护；准备 `clear_mind` 的普通接续包只放恢复现场需要的细节。支线对话的接续包必须显式 `scope=dialog` 并写明本路支线任务目标。
 
 ### 示例
 
@@ -31,10 +31,15 @@ add_reminder({
   scope: 'dialog',
 });
 
-// clear_mind 接续包必须显式 dialog，并写明当前这一路对话的任务目标
+// 主线目标用固定提醒维护；普通 dialog 接续包只保留恢复现场需要的细节
+set_dialog_goal({
+  mode: 'goal',
+  goal: '继续复核 control 手册换程引导。',
+});
+
 add_reminder({
   content:
-    '接续目标：继续复核 control 手册换程引导；下一步先检查 scenarios/index 是否还把接续包暗示成 task',
+    '下一步先检查 scenarios/index 是否还把接续包暗示成 task；重点看 control 手册的提醒范围说明。',
   scope: 'dialog',
 });
 
@@ -59,7 +64,7 @@ delete_reminder({
 ### 关键点
 
 - 同一差遣牒任务内的普通下一步、临时阻塞、手头细节默认用 `task`
-- 真正只对当前对话有效的提醒才用 `dialog`；准备 `clear_mind` 的接续包必须显式 `scope=dialog`，并写明本路对话任务目标
+- 真正只对当前对话有效的提醒才用 `dialog`；主线目标看固定“本路主线目标”提醒，支线接续包才在 `scope=dialog` 里写明本路支线任务目标
 - 只有紧急、短期、全局刺眼提醒才用 `agent`
 - 如果信息需要向全队同步当前有效状态、关键决策、下一步或仍成立阻塞，应写入 Taskdoc `progress`
 - 如果内容本质上是长期知识而不是当前手头工作提示，应改存到 `personal_memory`

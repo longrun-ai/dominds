@@ -26,7 +26,7 @@
 
 control is Dominds' **dialog control toolset** for managing dialog state, reminders, taskdocs, and inter-dialog reply closure semantics:
 
-- **Reminder management**: Three reminder scopes: `dialog` / `task` / `agent`. Default to `task` for ordinary current work under the same Taskdoc; use `dialog` for truly dialog-local notes, and continuation packages before `clear_mind` must explicitly use `scope=dialog` and state this dialog task goal; use `agent` only for urgent, short-lived, globally visible cues
+- **Reminder management**: Main Dialogs always show a fixed "Goal for this Main Dialog" reminder. If it says to ask the human first, ask immediately and record the answer with `set_dialog_goal`. Ordinary reminders have three scopes: `dialog` / `task` / `agent`. Default to `task` for ordinary current work under the same Taskdoc; use `dialog` for truly dialog-local continuation details; use `agent` only for urgent, short-lived, globally visible cues
 - **Taskdoc operations**: Append to, replace, or delete task contract sections (goals/constraints/progress); within Taskdoc, `progress` is the team-shared, quasi-real-time, scannable task bulletin board
 - **Context maintenance**: Reduce cognitive load without losing key resume state
 - **Reply routing**: Separate asking the tellasker back, sending the final reply, and ordinary plain text in Side Dialog / ask-back flows
@@ -58,11 +58,13 @@ Reminders are temporary current-work information for:
 - Recording blocking issues
 - Holding current-dialog scoped continuation-package bridge notes before `clear_mind`
 
+Main Dialogs always carry a Dominds-managed "Goal for this Main Dialog" reminder. Read the whole reminder. If it says to ask the human first, ask what this Main Dialog should work on next, then record the answer with `set_dialog_goal`. If it says "proceed from the Taskdoc" and has no parallel-dialog note, continue from the Taskdoc; if the same reminder says Dominds has confirmed a parallel dialog, ask the human first.
+
 Reminders are not for manually copying environment state automatically maintained by Dominds, such as background process status, in-flight background asks/collaboration, or browser/session attachment state. Dominds-managed reminders, panels, and tool outputs are the authoritative place for that state; manual notes go stale easily and create cognitive noise.
 
 Scope rule:
 
-- `dialog`: current-dialog current work; continuation packages before `clear_mind` must explicitly use this scope and state this dialog task goal
+- `dialog`: current-dialog current work and continuation details. Main Dialog goals come from the fixed goal reminder; Side Dialog continuation packages must state this Side Dialog's task goal
 - `task`: current work under the current Taskdoc, and the default scope
 - `agent`: urgent, short-lived, globally visible cues you should keep seeing across later dialogs you lead
 

@@ -7,6 +7,7 @@ import {
 } from '@longrun-ai/kernel/evt';
 import { scheduleGlobalDialogMutexCleanupForRoot, type Dialog, type MainDialog } from './dialog';
 import { createLogger } from './log';
+import { refreshFollowTaskdocMainDialogGoalReminderForKnownParallelState } from './main-dialog-goal-reminder';
 import { DialogPersistence } from './persistence';
 
 const log = createLogger('dialog-global-registry');
@@ -65,6 +66,53 @@ class GlobalDialogRegistry {
     return this.entries.get(rootId)?.mainDialog;
   }
 
+  getRunningDialogsByAgent(agentId: string): Dialog[] {
+    const dialogs: Dialog[] = [];
+    const seenDialogIds = new Set<string>();
+    for (const entry of this.entries.values()) {
+      for (const dialog of entry.mainDialog.getLoadedDialogTreeSnapshot()) {
+        const dialogId = dialog.id.valueOf();
+        if (
+          dialog.status === 'running' &&
+          dialog.agentId === agentId &&
+          !seenDialogIds.has(dialogId)
+        ) {
+          seenDialogIds.add(dialogId);
+          dialogs.push(dialog);
+        }
+      }
+    }
+    return dialogs;
+  }
+
+  private reconcileMainDialogGoalRemindersForAgent(agentId: string): void {
+    const runningDialogs = this.getRunningDialogsByAgent(agentId);
+    if (runningDialogs.length <= 1) {
+      return;
+    }
+    for (const entry of this.entries.values()) {
+      const dialog = entry.mainDialog;
+      if (dialog.status !== 'running' || dialog.agentId !== agentId) {
+        continue;
+      }
+      const changed = refreshFollowTaskdocMainDialogGoalReminderForKnownParallelState(dialog);
+      if (!changed) {
+        continue;
+      }
+      void dialog.dlgStore.persistReminders(dialog, dialog.reminders).catch((error: unknown) => {
+        log.warn(
+          'Failed to persist main-dialog goal reminder after parallel dialog detection',
+          error,
+          {
+            rootId: dialog.id.rootId,
+            selfId: dialog.id.selfId,
+            agentId: dialog.agentId,
+          },
+        );
+      });
+    }
+  }
+
   register(mainDialog: MainDialog): void {
     // This registry is keyed by the *tree root id*.
     // Only the canonical main dialog (selfId === rootId) should be stored here.
@@ -80,6 +128,7 @@ class GlobalDialogRegistry {
       driveQueued: false,
       activeRunClearedDrivePending: false,
     });
+    this.reconcileMainDialogGoalRemindersForAgent(mainDialog.agentId);
     void (async () => {
       try {
         const hasPendingNextStepTriggers = await DialogPersistence.hasPendingNextStepTriggers(

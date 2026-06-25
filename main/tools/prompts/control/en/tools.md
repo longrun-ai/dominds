@@ -45,7 +45,7 @@ Add reminder.
 Use when:
 
 - Adding a new temporary current-work item
-- Before `clear_mind`, first state this dialog task goal in a current-dialog scoped (`scope=dialog`) continuation-package reminder. A Main Dialog records only discussion facts that other dialogs/teammates sharing the same Taskdoc truly need to know into Taskdoc, then keeps resume-critical details for this dialog in `dialog` reminders; a Side Dialog directly maintains sufficiently detailed `dialog` continuation-package reminders. When Dominds has already warned that context is tight or critical, Side Dialog reminders have no fixed length limit and rough bridge notes are acceptable
+- Before `clear_mind`, ordinary `dialog` continuation packages keep next steps, key pointers, run/verify notes, and volatile details. Main Dialog goals come from the fixed goal reminder and are maintained with `set_dialog_goal`. A Side Dialog directly maintains sufficiently detailed `dialog` continuation-package reminders and states that Side Dialog's task goal. When Dominds has already warned that context is tight or critical, Side Dialog reminders have no fixed length limit and rough bridge notes are acceptable
 - Record only manually maintained current-work / continuation details; do not put environment state automatically maintained by Dominds, such as background process status, in-flight background asks, or session attachment state, into manual reminders
 
 **Parameters:**
@@ -135,7 +135,41 @@ migrate_reminder({
 });
 ```
 
-### 5. clear_mind
+### 5. set_dialog_goal
+
+Set the fixed "Goal for this Main Dialog" reminder.
+
+Use when:
+
+- The fixed reminder says "not set" or "needs human confirmation": first ask the human what this Main Dialog should work on next, then record the answer with `mode="goal"`
+- Dominds allows this Main Dialog to proceed from the Taskdoc: record that with `mode="follow_taskdoc"`
+
+**Parameters:**
+
+- `mode` (required): `goal` / `follow_taskdoc`
+- `goal`: required when `mode="goal"`; write what this Main Dialog should work on next
+
+**Failures:**
+
+- Side Dialogs cannot call this tool
+- If Dominds has confirmed that the same agent now has another parallel dialog, `mode="follow_taskdoc"` fails; the fixed reminder keeps "proceed from the Taskdoc" and adds a parallel-dialog note telling the agent to ask the human first
+
+**Example:**
+
+```js
+set_dialog_goal({
+  mode: 'goal',
+  goal: 'Finish the fixed Main Dialog goal reminder and run reminder-scope regression tests.',
+});
+```
+
+```js
+set_dialog_goal({
+  mode: 'follow_taskdoc',
+});
+```
+
+### 6. clear_mind
 
 Start a new dialog course.
 
@@ -160,7 +194,7 @@ status: ok|error
 - If you just finished writing the same continuation info via `add_reminder` / `update_reminder`, prefer `clear_mind({})`
 - If you are not sure whether it duplicates something, a small amount of redundancy is acceptable; do not risk losing information just to force perfect dedupe
 
-### 5. do_mind
+### 7. do_mind
 
 Create a new Taskdoc section. It fails if the target section already exists.
 
@@ -178,7 +212,7 @@ Create a new Taskdoc section. It fails if the target section already exists.
 - Does not start a new course
 - Changes visible to all teammates
 
-### 6. change_mind
+### 8. change_mind
 
 Update taskdoc chapter.
 
@@ -205,7 +239,7 @@ updated_at: <update timestamp>
 - Changes visible to all teammates
 - Constraint rule: `constraints` must include only task-specific hard requirements; do not repeat global rules. If a duplicate is found, delete it and inform the user
 
-### 7. mind_more
+### 9. mind_more
 
 Append entries to a Taskdoc section; defaults to `progress`, reducing full-section replacement pressure.
 
@@ -235,7 +269,7 @@ mind_more({
 - If stale entries must be removed, reordered, or compressed, call `recall_taskdoc` first and then use `change_mind` with the returned `content_hash` as `previous_content_hash` for a full-section replacement; if a whole section file should be deleted, use `never_mind`
 - When one topic already has several phase notes, prefer `change_mind` to merge them into a concise current announcement instead of continuing to call `mind_more`
 
-### 8. never_mind
+### 10. never_mind
 
 Delete a Taskdoc section file.
 
@@ -250,7 +284,7 @@ Delete a Taskdoc section file.
 - Use it only when the whole section is no longer valid. If you only need to remove stale entries or compress structure, prefer `recall_taskdoc` followed by `change_mind` with the cleaned full section and returned `content_hash` as `previous_content_hash`
 - Does not start a new course
 
-### 9. recall_taskdoc
+### 11. recall_taskdoc
 
 Read taskdoc chapter.
 
@@ -282,6 +316,15 @@ update_reminder({
 });
 
 clear_mind({});
+```
+
+### Set Main Dialog Goal
+
+```typescript
+set_dialog_goal({
+  mode: 'goal',
+  goal: 'Finish the fixed Main Dialog goal reminder and verify single-/multi-dialog state changes.',
+});
 ```
 
 ### Switch Course and Add One Extra Continuation Note
@@ -382,8 +425,9 @@ message: <error message>
 ## Reminder Content Guidance
 
 - Normal reminders should stay concise, fresh, and directly actionable; often 1-3 items total
-- For a continuation package, explicitly use `scope=dialog` and structure notes by default: current dialog task goal, next step, key pointers, run/verify, easy-to-lose volatile details
-- If Dominds has already warned that context is tight or critical: the Main Dialog first states this dialog goal in a `dialog` continuation-package reminder, then records only facts that other dialogs/teammates sharing the same Taskdoc truly need into the appropriate Taskdoc sections, and finally keeps necessary resume-critical details for this dialog in continuation-package reminders; a Side Dialog must not maintain Taskdoc or draft Taskdoc update proposals, and should directly maintain sufficiently detailed `dialog` continuation-package reminders with no fixed length limit. Rough multi-reminder bridge notes are acceptable; once the new course starts, continue this dialog from the task goal in `scope=dialog` reminders before reconciling
+- Main Dialog goals come only from the fixed goal reminder: read the whole reminder; if it says to ask the human, ask first and record the answer with `set_dialog_goal`; if it says "proceed from the Taskdoc" and has no parallel-dialog note, continue from the Taskdoc
+- For an ordinary continuation package, explicitly use `scope=dialog` and structure notes by default: next step, key pointers, run/verify, easy-to-lose volatile details. Side Dialog continuation packages must also state that Side Dialog's task goal
+- If Dominds has already warned that context is tight or critical: the Main Dialog first follows the fixed goal reminder, then records only facts that other dialogs/teammates sharing the same Taskdoc truly need into the appropriate Taskdoc sections, and finally keeps necessary resume-critical details for this dialog in continuation-package reminders; a Side Dialog must not maintain Taskdoc or draft Taskdoc update proposals, and should directly maintain sufficiently detailed `dialog` continuation-package reminders with no fixed length limit. Rough multi-reminder bridge notes are acceptable; once the new course starts, continue this dialog from the fixed Main Dialog goal reminder or the Side Dialog task goal in `scope=dialog` reminders before reconciling
 - Keep only details still not covered by Taskdoc but easy to lose when resuming this dialog; do not repeat team-shared status. If the team needs “where we are now / which decisions are in effect / what is next / which blockers still hold”, write it back to Taskdoc `progress`
 - Do not manually record environment state automatically maintained by Dominds, such as whether background processes are still running, in-flight background asks/collaboration, or browser/session attachment state. Manual copies go stale easily and conflict with the Dominds-managed status, creating cognitive noise
 - Do not paste long logs, large tool outputs, or raw material into reminders
