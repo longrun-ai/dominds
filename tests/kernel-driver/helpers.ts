@@ -37,6 +37,7 @@ export type MockEntry = {
   usage?: Readonly<{
     promptTokens: number;
     completionTokens?: number;
+    reasoningTokens?: number;
     totalTokens?: number;
   }>;
   funcCalls?: ReadonlyArray<{

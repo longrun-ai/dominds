@@ -969,11 +969,16 @@ function tryExtractChatUsage(usage: unknown): LlmUsageStats {
   const prompt = usage.prompt_tokens;
   const completion = usage.completion_tokens;
   const total = usage.total_tokens;
+  const completionDetails = usage.completion_tokens_details;
   if (typeof prompt !== 'number' || typeof completion !== 'number') return { kind: 'unavailable' };
+  const reasoningTokens = isRecord(completionDetails)
+    ? completionDetails.reasoning_tokens
+    : undefined;
   return {
     kind: 'available',
     promptTokens: prompt,
     completionTokens: completion,
+    ...(typeof reasoningTokens === 'number' ? { reasoningTokens } : {}),
     totalTokens: typeof total === 'number' ? total : prompt + completion,
   };
 }

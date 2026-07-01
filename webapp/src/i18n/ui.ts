@@ -1358,10 +1358,15 @@ export function formatTeamMembersTitle(language: LanguageCode, count: number): s
 }
 
 export type ContextUsageTitleArgs =
-  | { kind: 'unknown' }
+  | {
+      kind: 'unknown';
+      promptTokens?: number;
+      reasoningTokens?: number;
+    }
   | {
       kind: 'known';
       promptTokens: number;
+      reasoningTokens?: number;
       hardPercentText: string;
       modelContextLimitTokens: number;
       modelContextWindowText?: string;
@@ -1397,8 +1402,17 @@ export function formatContextUsageTitle(
   switch (language) {
     case 'zh': {
       switch (args.kind) {
-        case 'unknown':
-          return '上下文情况：未知';
+        case 'unknown': {
+          const promptLine =
+            typeof args.promptTokens === 'number'
+              ? [`输入：${formatTokenCountCompact(args.promptTokens)}`]
+              : [];
+          const reasoningLine =
+            typeof args.reasoningTokens === 'number'
+              ? [`推理：${formatTokenCountCompact(args.reasoningTokens)}`]
+              : [];
+          return ['上下文情况：未知', ...promptLine, ...reasoningLine].join('\n');
+        }
         case 'known': {
           const optimalSource = args.optimalConfigured ? '配置' : '默认';
           const criticalSource = args.criticalConfigured ? '配置' : '默认';
@@ -1409,9 +1423,14 @@ export function formatContextUsageTitle(
             args.modelContextWindowText.trim() !== ''
               ? args.modelContextWindowText.trim()
               : formatTokenCountCompact(args.modelContextLimitTokens);
+          const reasoningLine =
+            typeof args.reasoningTokens === 'number'
+              ? [`推理：${formatTokenCountCompact(args.reasoningTokens)}`]
+              : [];
           return [
             `上下文情况 • ${levelText}`,
             `输入：${formatTokenCountCompact(args.promptTokens)}（${args.hardPercentText}；上限 ${limitText}）`,
+            ...reasoningLine,
             `软线：${formatTokenCountCompact(args.optimalTokens)}（${args.optimalPercentText}；${optimalSource}）`,
             `红线：${formatTokenCountCompact(args.criticalTokens)}（${args.criticalPercentText}；${criticalSource}）`,
           ].join('\n');
@@ -1424,8 +1443,17 @@ export function formatContextUsageTitle(
     }
     case 'en': {
       switch (args.kind) {
-        case 'unknown':
-          return 'Context status: unknown';
+        case 'unknown': {
+          const promptLine =
+            typeof args.promptTokens === 'number'
+              ? [`Prompt: ${formatTokenCountCompact(args.promptTokens)}`]
+              : [];
+          const reasoningLine =
+            typeof args.reasoningTokens === 'number'
+              ? [`Reasoning: ${formatTokenCountCompact(args.reasoningTokens)}`]
+              : [];
+          return ['Context status: unknown', ...promptLine, ...reasoningLine].join('\n');
+        }
         case 'known': {
           const optimalSource = args.optimalConfigured ? 'config' : 'default';
           const criticalSource = args.criticalConfigured ? 'config' : 'default';
@@ -1440,9 +1468,14 @@ export function formatContextUsageTitle(
             args.modelContextWindowText.trim() !== ''
               ? args.modelContextWindowText.trim()
               : formatTokenCountCompact(args.modelContextLimitTokens);
+          const reasoningLine =
+            typeof args.reasoningTokens === 'number'
+              ? [`Reasoning: ${formatTokenCountCompact(args.reasoningTokens)}`]
+              : [];
           return [
             `Context status • ${levelText}`,
             `Prompt: ${formatTokenCountCompact(args.promptTokens)} (${args.hardPercentText}; limit ${limitText})`,
+            ...reasoningLine,
             `Soft: ${formatTokenCountCompact(args.optimalTokens)} (${args.optimalPercentText}; ${optimalSource})`,
             `Critical: ${formatTokenCountCompact(args.criticalTokens)} (${args.criticalPercentText}; ${criticalSource})`,
           ].join('\n');

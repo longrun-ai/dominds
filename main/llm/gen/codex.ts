@@ -1282,10 +1282,12 @@ export class CodexGen implements LlmGenerator {
               typeof responseUsage.input_tokens === 'number' &&
               typeof responseUsage.output_tokens === 'number'
             ) {
+              const reasoningTokens = responseUsage.output_tokens_details?.reasoning_tokens;
               usage = {
                 kind: 'available',
                 promptTokens: responseUsage.input_tokens,
                 completionTokens: responseUsage.output_tokens,
+                ...(typeof reasoningTokens === 'number' ? { reasoningTokens } : {}),
                 totalTokens:
                   typeof responseUsage.total_tokens === 'number'
                     ? responseUsage.total_tokens

@@ -6,6 +6,7 @@ export type LlmUsageStats =
       kind: 'available';
       promptTokens: number;
       completionTokens: number;
+      reasoningTokens?: number;
       totalTokens?: number;
     };
 
@@ -15,6 +16,10 @@ export type ContextHealthSnapshot =
   | {
       kind: 'unavailable';
       reason: 'usage_unavailable' | 'model_limit_unavailable';
+      promptTokens?: number;
+      completionTokens?: number;
+      reasoningTokens?: number;
+      totalTokens?: number;
       modelContextWindowText?: string;
       modelContextLimitTokens?: number;
       effectiveOptimalMaxTokens?: number;
@@ -26,6 +31,7 @@ export type ContextHealthSnapshot =
       kind: 'available';
       promptTokens: number;
       completionTokens: number;
+      reasoningTokens?: number;
       totalTokens?: number;
       modelContextWindowText?: string;
       modelContextLimitTokens: number;

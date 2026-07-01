@@ -4,6 +4,7 @@ import type { AddressInfo } from 'net';
 
 import type { ChatMessage, ProviderConfig } from '../../main/llm/client';
 import { LlmConfig } from '../../main/llm/client';
+import type { LlmBatchResult } from '../../main/llm/gen';
 import { OpenAiCompatibleGen } from '../../main/llm/gen/openai-compatible';
 import { DOMINDS_RUNNING_VERSION } from '../../main/server/dominds-running-version';
 import { Team } from '../../main/team';
@@ -89,7 +90,12 @@ async function withCaptureServer<T>(
               message: { role: 'assistant', content: 'ok' },
             },
           ],
-          usage: { prompt_tokens: 1, completion_tokens: 1, total_tokens: 2 },
+          usage: {
+            prompt_tokens: 1,
+            completion_tokens: 1,
+            completion_tokens_details: { reasoning_tokens: 1 },
+            total_tokens: 2,
+          },
         }),
       );
     });
@@ -109,17 +115,17 @@ async function withCaptureServer<T>(
   }
 }
 
-async function captureKimiCodeRequest(
+async function captureKimiCodeExchange(
   openAiCompatibleParams: NonNullable<Team.ModelParams['openai-compatible']>,
   funcTools: FuncTool[] = [],
-): Promise<CapturedRequest> {
+): Promise<{ request: CapturedRequest; result: LlmBatchResult }> {
   const previousApiKey = process.env.KIMI_CODE_API_KEY;
   process.env.KIMI_CODE_API_KEY = 'test-kimi-code-key';
   try {
     return await withCaptureServer(async ({ baseUrl, captured }) => {
       const provider = makeProvider(baseUrl);
       const agent = makeAgent(openAiCompatibleParams);
-      await new OpenAiCompatibleGen().genMoreMessages(
+      const result = await new OpenAiCompatibleGen().genMoreMessages(
         provider,
         agent,
         '',
@@ -135,7 +141,7 @@ async function captureKimiCodeRequest(
         1,
       );
       assert.equal(captured.length, 1);
-      return captured[0];
+      return { request: captured[0], result };
     });
   } finally {
     if (previousApiKey === undefined) {
@@ -144,6 +150,14 @@ async function captureKimiCodeRequest(
       process.env.KIMI_CODE_API_KEY = previousApiKey;
     }
   }
+}
+
+async function captureKimiCodeRequest(
+  openAiCompatibleParams: NonNullable<Team.ModelParams['openai-compatible']>,
+  funcTools: FuncTool[] = [],
+): Promise<CapturedRequest> {
+  const exchange = await captureKimiCodeExchange(openAiCompatibleParams, funcTools);
+  return exchange.request;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -172,7 +186,7 @@ async function testBuiltinKimiCodeProvider(): Promise<void> {
 }
 
 async function testKimiCodeAutoThinkingPayload(): Promise<void> {
-  const request = await captureKimiCodeRequest({ thinking: 'auto' });
+  const { request, result } = await captureKimiCodeExchange({ thinking: 'auto' });
   assert.equal(request.method, 'POST');
   assert.equal(request.url, '/coding/v1/chat/completions');
   assert.equal(request.userAgent, `KimiCLI/Dominds/${DOMINDS_RUNNING_VERSION}`);
@@ -183,6 +197,13 @@ async function testKimiCodeAutoThinkingPayload(): Promise<void> {
   assert.equal(Object.prototype.hasOwnProperty.call(request.body, 'reasoning_effort'), false);
   assert.equal(Object.prototype.hasOwnProperty.call(request.body, 'tool_choice'), false);
   assert.equal(request.body.parallel_tool_calls, true);
+  assert.deepEqual(result.usage, {
+    kind: 'available',
+    promptTokens: 1,
+    completionTokens: 1,
+    reasoningTokens: 1,
+    totalTokens: 2,
+  });
 }
 
 async function testKimiCodeThinkingHighPayload(): Promise<void> {

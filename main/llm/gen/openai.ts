@@ -794,13 +794,18 @@ function parseOpenAiUsage(usage: unknown): LlmUsageStats {
   const inputTokens = usage.input_tokens;
   const outputTokens = usage.output_tokens;
   const totalTokens = usage.total_tokens;
+  const outputTokensDetails = usage.output_tokens_details;
   if (typeof inputTokens !== 'number' || typeof outputTokens !== 'number') {
     return { kind: 'unavailable' };
   }
+  const reasoningTokens = isRecord(outputTokensDetails)
+    ? outputTokensDetails.reasoning_tokens
+    : undefined;
   return {
     kind: 'available',
     promptTokens: inputTokens,
     completionTokens: outputTokens,
+    ...(typeof reasoningTokens === 'number' ? { reasoningTokens } : {}),
     totalTokens: typeof totalTokens === 'number' ? totalTokens : inputTokens + outputTokens,
   };
 }

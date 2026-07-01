@@ -1288,6 +1288,17 @@ function computeContextHealthSnapshot(args: {
   model: string;
   usage: LlmUsageStats;
 }): ContextHealthSnapshot {
+  const usageFields =
+    args.usage.kind === 'available'
+      ? {
+          promptTokens: args.usage.promptTokens,
+          completionTokens: args.usage.completionTokens,
+          ...(typeof args.usage.reasoningTokens === 'number'
+            ? { reasoningTokens: args.usage.reasoningTokens }
+            : {}),
+          totalTokens: args.usage.totalTokens,
+        }
+      : {};
   const modelInfo: ModelInfo | undefined = args.providerCfg.models[args.model];
   const modelContextWindowText =
     modelInfo && typeof modelInfo.context_window === 'string'
@@ -1295,7 +1306,12 @@ function computeContextHealthSnapshot(args: {
       : undefined;
   const modelContextLimitTokens = resolveModelContextLimitTokens(modelInfo);
   if (modelContextLimitTokens === null) {
-    return { kind: 'unavailable', reason: 'model_limit_unavailable', modelContextWindowText };
+    return {
+      kind: 'unavailable',
+      reason: 'model_limit_unavailable',
+      ...usageFields,
+      modelContextWindowText,
+    };
   }
 
   const {
@@ -1334,6 +1350,9 @@ function computeContextHealthSnapshot(args: {
     kind: 'available',
     promptTokens: args.usage.promptTokens,
     completionTokens: args.usage.completionTokens,
+    ...(typeof args.usage.reasoningTokens === 'number'
+      ? { reasoningTokens: args.usage.reasoningTokens }
+      : {}),
     totalTokens: args.usage.totalTokens,
     modelContextWindowText,
     modelContextLimitTokens,

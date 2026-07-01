@@ -2954,6 +2954,46 @@ export class DomindsApp extends HTMLElement {
     `;
   }
 
+  private formatContextUsageTitleForSnapshot(snapshot: ContextHealthSnapshot | null): string {
+    if (!snapshot) {
+      return formatContextUsageTitle(this.uiLanguage, { kind: 'unknown' });
+    }
+
+    if (snapshot.kind !== 'available') {
+      return formatContextUsageTitle(this.uiLanguage, {
+        kind: 'unknown',
+        ...(typeof snapshot.promptTokens === 'number'
+          ? { promptTokens: snapshot.promptTokens }
+          : {}),
+        ...(typeof snapshot.reasoningTokens === 'number'
+          ? { reasoningTokens: snapshot.reasoningTokens }
+          : {}),
+      });
+    }
+
+    return formatContextUsageTitle(this.uiLanguage, {
+      kind: 'known',
+      promptTokens: snapshot.promptTokens,
+      ...(typeof snapshot.reasoningTokens === 'number'
+        ? { reasoningTokens: snapshot.reasoningTokens }
+        : {}),
+      hardPercentText: this.formatPercent(snapshot.hardUtil),
+      modelContextLimitTokens: snapshot.modelContextLimitTokens,
+      modelContextWindowText: snapshot.modelContextWindowText,
+      level: snapshot.level,
+      optimalTokens: snapshot.effectiveOptimalMaxTokens,
+      optimalPercentText: this.formatPercent(
+        snapshot.effectiveOptimalMaxTokens / snapshot.modelContextLimitTokens,
+      ),
+      optimalConfigured: snapshot.optimalMaxTokensConfigured !== undefined,
+      criticalTokens: snapshot.effectiveCriticalMaxTokens,
+      criticalPercentText: this.formatPercent(
+        snapshot.effectiveCriticalMaxTokens / snapshot.modelContextLimitTokens,
+      ),
+      criticalConfigured: snapshot.criticalMaxTokensConfigured !== undefined,
+    });
+  }
+
   private updateContextHealthUi(): void {
     const el = this.shadowRoot?.querySelector('#navibar-context-health');
     if (!(el instanceof HTMLElement)) return;
@@ -2963,7 +3003,7 @@ export class DomindsApp extends HTMLElement {
     const snapshot = this.toolbarContextHealth;
     if (!snapshot) {
       el.setAttribute('data-level', 'unknown');
-      const label = formatContextUsageTitle(this.uiLanguage, { kind: 'unknown' });
+      const label = this.formatContextUsageTitleForSnapshot(null);
       el.setAttribute('aria-label', label);
       el.innerHTML = this.renderContextUsageIcon(null);
       if (tooltip instanceof HTMLElement) {
@@ -2974,7 +3014,7 @@ export class DomindsApp extends HTMLElement {
 
     if (snapshot.kind !== 'available') {
       el.setAttribute('data-level', 'unknown');
-      const label = formatContextUsageTitle(this.uiLanguage, { kind: 'unknown' });
+      const label = this.formatContextUsageTitleForSnapshot(snapshot);
       el.setAttribute('aria-label', label);
       el.innerHTML = this.renderContextUsageIcon(snapshot);
       if (tooltip instanceof HTMLElement) {
@@ -2987,24 +3027,7 @@ export class DomindsApp extends HTMLElement {
 
     el.setAttribute('data-level', level);
     el.innerHTML = this.renderContextUsageIcon(snapshot);
-    const label = formatContextUsageTitle(this.uiLanguage, {
-      kind: 'known',
-      promptTokens: snapshot.promptTokens,
-      hardPercentText: this.formatPercent(snapshot.hardUtil),
-      modelContextLimitTokens: snapshot.modelContextLimitTokens,
-      modelContextWindowText: snapshot.modelContextWindowText,
-      level,
-      optimalTokens: snapshot.effectiveOptimalMaxTokens,
-      optimalPercentText: this.formatPercent(
-        snapshot.effectiveOptimalMaxTokens / snapshot.modelContextLimitTokens,
-      ),
-      optimalConfigured: snapshot.optimalMaxTokensConfigured !== undefined,
-      criticalTokens: snapshot.effectiveCriticalMaxTokens,
-      criticalPercentText: this.formatPercent(
-        snapshot.effectiveCriticalMaxTokens / snapshot.modelContextLimitTokens,
-      ),
-      criticalConfigured: snapshot.criticalMaxTokensConfigured !== undefined,
-    });
+    const label = this.formatContextUsageTitleForSnapshot(snapshot);
     el.setAttribute('aria-label', label);
     if (tooltip instanceof HTMLElement) {
       tooltip.textContent = label;
@@ -7018,29 +7041,7 @@ export class DomindsApp extends HTMLElement {
 
   public getHTML(): string {
     const t = getUiStrings(this.uiLanguage);
-    const contextUsageTitle =
-      this.toolbarContextHealth && this.toolbarContextHealth.kind === 'available'
-        ? formatContextUsageTitle(this.uiLanguage, {
-            kind: 'known',
-            promptTokens: this.toolbarContextHealth.promptTokens,
-            hardPercentText: this.formatPercent(this.toolbarContextHealth.hardUtil),
-            modelContextLimitTokens: this.toolbarContextHealth.modelContextLimitTokens,
-            modelContextWindowText: this.toolbarContextHealth.modelContextWindowText,
-            level: this.toolbarContextHealth.level,
-            optimalTokens: this.toolbarContextHealth.effectiveOptimalMaxTokens,
-            optimalPercentText: this.formatPercent(
-              this.toolbarContextHealth.effectiveOptimalMaxTokens /
-                this.toolbarContextHealth.modelContextLimitTokens,
-            ),
-            optimalConfigured: this.toolbarContextHealth.optimalMaxTokensConfigured !== undefined,
-            criticalTokens: this.toolbarContextHealth.effectiveCriticalMaxTokens,
-            criticalPercentText: this.formatPercent(
-              this.toolbarContextHealth.effectiveCriticalMaxTokens /
-                this.toolbarContextHealth.modelContextLimitTokens,
-            ),
-            criticalConfigured: this.toolbarContextHealth.criticalMaxTokensConfigured !== undefined,
-          })
-        : formatContextUsageTitle(this.uiLanguage, { kind: 'unknown' });
+    const contextUsageTitle = this.formatContextUsageTitleForSnapshot(this.toolbarContextHealth);
     const contextUsageTooltipText = escapeHtml(contextUsageTitle);
     const uiLanguageMatch = getUiLanguageMatchState({
       uiLanguage: this.uiLanguage,

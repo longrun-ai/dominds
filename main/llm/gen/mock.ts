@@ -145,6 +145,7 @@ interface MockResponse {
   usage?: {
     promptTokens: number;
     completionTokens?: number;
+    reasoningTokens?: number;
     totalTokens?: number;
   };
 
@@ -604,6 +605,10 @@ responses:
       const promptTokens = matched.usage.promptTokens;
       const completionTokens =
         typeof matched.usage.completionTokens === 'number' ? matched.usage.completionTokens : 0;
+      const reasoningTokens =
+        typeof matched.usage.reasoningTokens === 'number'
+          ? matched.usage.reasoningTokens
+          : undefined;
       const totalTokens =
         typeof matched.usage.totalTokens === 'number'
           ? matched.usage.totalTokens
@@ -612,6 +617,7 @@ responses:
         kind: 'available',
         promptTokens,
         completionTokens,
+        ...(reasoningTokens === undefined ? {} : { reasoningTokens }),
         totalTokens,
       };
     } else {
@@ -750,6 +756,10 @@ responses:
         const promptTokens = matched.usage.promptTokens;
         const completionTokens =
           typeof matched.usage.completionTokens === 'number' ? matched.usage.completionTokens : 0;
+        const reasoningTokens =
+          typeof matched.usage.reasoningTokens === 'number'
+            ? matched.usage.reasoningTokens
+            : undefined;
         const totalTokens =
           typeof matched.usage.totalTokens === 'number'
             ? matched.usage.totalTokens
@@ -758,6 +768,7 @@ responses:
           kind: 'available',
           promptTokens,
           completionTokens,
+          ...(reasoningTokens === undefined ? {} : { reasoningTokens }),
           totalTokens,
         };
       } else {
