@@ -10,6 +10,7 @@ export const KIMI_CODE_API_QUIRK = 'kimi-code';
 export const MINIMAX_REASONING_DETAILS_API_QUIRK = 'minimax-reasoning-details';
 // MiniMax's `/v1` API rejects `thinking.type: 'enabled'`; rewrites the request `thinking` form to use `adaptive` instead.
 export const MINIMAX_THINKING_TYPE_API_QUIRK = 'minimax-thinking-type';
+export const CODEX_ANTI_EARLY_FINALIZATION_API_QUIRK = 'codex-anti-early-finalization';
 export const SAME_CONTEXT_EMPTY_RESPONSE_API_QUIRK = 'same-context-empty-response';
 export const VOLCENGINE_INVALID_PARAMETER_AGGRESSIVE_RETRY_API_QUIRK =
   'volcengine-invalid-parameter-aggressive-retry';

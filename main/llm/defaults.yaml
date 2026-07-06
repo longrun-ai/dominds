@@ -6,8 +6,8 @@
 # - llm_retry_conservative_delay_ms: base delay for provider-classified conservative retries (default 30000; fixed for first 10 retries, then ramps by x1.5 with the normal max-delay cap).
 # - llm_retry_backoff_multiplier: exponential factor between retries (default 1.5).
 # - llm_retry_max_delay_ms: upper bound for retry delay (default 1800000 / 30m).
-# - apiQuirks: optional provider/gateway quirk profile(s) for non-standard transport behavior
-#   and provider-specific failure handling that can override the driver's default retry disposition.
+# - apiQuirks: optional provider/gateway quirk profile(s) for non-standard transport behavior,
+#   request shaping, and provider-specific failure handling that can override the driver's default retry disposition.
 #   Example: `apiQuirks: xcode.best` currently covers both keepalive/heartbeat stream quirks and
 #   repeated empty-response deadlock detection for the same unchanged dialog context, plus conservative retry
 #   classification for gateway-returned HTML 502 Bad Gateway pages and
@@ -17,6 +17,10 @@
 #   `apiQuirks: volcengine-invalid-parameter-aggressive-retry` classifies Volcano Ark Coding Plan
 #   transient `400 InvalidParameter` failures as aggressive retry when the shape matches that
 #   provider's replay-successful instability.
+#   `apiQuirks: codex-anti-early-finalization` is Codex-provider-only request shaping that appends
+#   a work-language-specific reasoning-completion guard to ChatGPT/Codex instructions to reduce
+#   early-finalization / suspiciously short reasoning runs. It is intentionally not applied to the
+#   OpenAI API provider.
 # - tool_result_max_chars: optional transport-level cap for a single tool-result text payload
 #   before Dominds projects it into the provider request. Use this when a provider/gateway enforces
 #   a stricter per-item string limit than Dominds' built-in defaults.
@@ -111,6 +115,8 @@ providers:
   codex:
     name: Codex (ChatGPT)
     apiType: codex
+    apiQuirks:
+      - codex-anti-early-finalization
     baseUrl: https://chatgpt.com/backend-api/
     apiKeyEnvVar: CODEX_HOME
     tech_spec_url: https://platform.openai.com/docs/api-reference/responses

@@ -21,12 +21,14 @@ import type {
   ChatGptWebSearchTool,
 } from '@longrun-ai/codex-auth';
 import type { LlmUsageStats } from '@longrun-ai/kernel/types/context-health';
+import type { LanguageCode } from '@longrun-ai/kernel/types/language';
 import type { ReasoningPayload } from '@longrun-ai/kernel/types/storage';
 import { createLogger } from '../../log';
 import { getTextForLanguage } from '../../runtime/i18n-text';
 import { getWorkLanguage } from '../../runtime/work-language';
 import type { Team } from '../../team';
 import type { FuncTool } from '../../tool';
+import { CODEX_ANTI_EARLY_FINALIZATION_API_QUIRK, normalizeProviderApiQuirks } from '../api-quirks';
 import type { ChatMessage, FuncResultMsg, ProviderConfig } from '../client';
 import type {
   CodexLlmWebSearchCall,
@@ -63,6 +65,16 @@ import {
 
 const log = createLogger('llm/codex');
 const codexFallbackInstructions = 'You are Codex CLI.';
+const codexAntiEarlyFinalizationInstructionSections = {
+  zh: {
+    title: '每轮作答前的推理完成检查',
+    body: '请在每轮作答前至少花一分钟推理。深入而充分地思考。在给出本轮答案前，证明充分性和必要性。',
+  },
+  en: {
+    title: 'Reasoning Completion Guard',
+    body: 'Please spend at least a minute reasoning before each response. Think long and hard. Prove both sufficiency and necessity before giving the answer for this turn.',
+  },
+} satisfies Record<LanguageCode, { title: string; body: string }>;
 
 type CodexToolChoice = 'none' | 'auto' | 'required';
 type CodexResponsesRequest = Omit<ChatGptResponsesRequest, 'tool_choice'> & {
@@ -185,8 +197,24 @@ function tryExtractApiReturnedModel(value: unknown): string | undefined {
   return trimmed.length > 0 ? trimmed : undefined;
 }
 
-export function resolveCodexInstructions(systemPrompt: string): string {
-  return systemPrompt.trim().length > 0 ? systemPrompt : codexFallbackInstructions;
+function applyCodexInstructionQuirks(
+  instructions: string,
+  providerConfig: ProviderConfig | undefined,
+): string {
+  if (!providerConfig) return instructions;
+  if (providerConfig.apiType !== 'codex') return instructions;
+  const quirks = normalizeProviderApiQuirks(providerConfig);
+  if (!quirks.has(CODEX_ANTI_EARLY_FINALIZATION_API_QUIRK)) return instructions;
+  const section = codexAntiEarlyFinalizationInstructionSections[getWorkLanguage()];
+  return `${instructions}\n\n## ${section.title}\n${section.body}`;
+}
+
+export function resolveCodexInstructions(
+  systemPrompt: string,
+  providerConfig?: ProviderConfig,
+): string {
+  const instructions = systemPrompt.trim().length > 0 ? systemPrompt : codexFallbackInstructions;
+  return applyCodexInstructionQuirks(instructions, providerConfig);
 }
 
 function funcToolToCodex(funcTool: FuncTool): ChatGptFunctionTool {
@@ -936,7 +964,7 @@ export class CodexGen implements LlmGenerator {
     if (!agent.model) {
       throw new Error(`Internal error: Model is undefined for agent '${agent.id}'`);
     }
-    const instructions = resolveCodexInstructions(systemPrompt);
+    const instructions = resolveCodexInstructions(systemPrompt, providerConfig);
     const payload = await buildCodexRequest(
       providerConfig,
       agent,
