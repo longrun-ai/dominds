@@ -57,6 +57,71 @@ export type CreateDialogFailure = {
 
 export type CreateDialogResult = CreateDialogSuccess | CreateDialogFailure;
 
+type CreateDialogAgentSelection = {
+  initialPickShadow: boolean;
+  selectedVisibleAgentId: string | null;
+  selectedShadowAgentId: string | null;
+};
+
+type CreateDialogPresetAgentTarget =
+  | { kind: 'visible'; agentId: string }
+  | { kind: 'shadow'; agentId: string }
+  | { kind: 'none' };
+
+export function resolveCreateDialogPresetAgentTarget(params: {
+  visibleAgentIds: ReadonlyArray<string>;
+  shadowAgentIds: ReadonlyArray<string>;
+  presetAgentId?: string;
+}): CreateDialogPresetAgentTarget {
+  const presetAgentId =
+    typeof params.presetAgentId === 'string' && params.presetAgentId.trim() !== ''
+      ? params.presetAgentId.trim()
+      : null;
+  if (presetAgentId === null) return { kind: 'none' };
+  if (params.visibleAgentIds.some((id) => id === presetAgentId)) {
+    return { kind: 'visible', agentId: presetAgentId };
+  }
+  if (params.shadowAgentIds.some((id) => id === presetAgentId)) {
+    return { kind: 'shadow', agentId: presetAgentId };
+  }
+  return { kind: 'none' };
+}
+
+export function resolveCreateDialogAgentSelection(params: {
+  visibleMembers: ReadonlyArray<Pick<FrontendTeamMember, 'id'>>;
+  shadowMembers: ReadonlyArray<Pick<FrontendTeamMember, 'id'>>;
+  defaultResponder: string | null;
+  presetAgentId?: string;
+}): CreateDialogAgentSelection {
+  const presetTarget = resolveCreateDialogPresetAgentTarget({
+    visibleAgentIds: params.visibleMembers.map((m) => m.id),
+    shadowAgentIds: params.shadowMembers.map((m) => m.id),
+    presetAgentId: params.presetAgentId,
+  });
+  const preferredResponder =
+    presetTarget.kind === 'none' ? params.defaultResponder : presetTarget.agentId;
+  const preferredIsVisible =
+    typeof preferredResponder === 'string' &&
+    params.visibleMembers.some((m) => m.id === preferredResponder);
+  const preferredIsShadow =
+    typeof preferredResponder === 'string' &&
+    params.shadowMembers.some((m) => m.id === preferredResponder);
+  const initialPickShadow =
+    params.shadowMembers.length > 0 &&
+    (preferredIsShadow || (!preferredIsVisible && params.visibleMembers.length === 0));
+  const firstVisibleId = params.visibleMembers.length > 0 ? params.visibleMembers[0].id : null;
+  const firstShadowId = params.shadowMembers.length > 0 ? params.shadowMembers[0].id : null;
+  return {
+    initialPickShadow,
+    selectedVisibleAgentId: preferredIsVisible
+      ? preferredResponder
+      : initialPickShadow
+        ? null
+        : firstVisibleId,
+    selectedShadowAgentId: preferredIsShadow ? preferredResponder : firstShadowId,
+  };
+}
+
 function formatRoutingCardEntries(card: FrontendTeamMember['gofor']): string[] {
   if (typeof card === 'string') return [card];
   if (Array.isArray(card)) return card;
@@ -110,6 +175,7 @@ type PrimingSelectionPreferenceStore = {
   version: 1;
   byAgent: Record<string, PrimingSelectionPreference>;
 };
+const SHADOW_TEAMMATE_SELECT_VALUE = '__shadow__';
 const PRIMING_SELECTION_STORAGE_KEY = 'dominds-create-dialog-priming-selection-v1';
 const TASKDOC_SUGGESTION_DEBOUNCE_MS = 120;
 
@@ -230,10 +296,31 @@ export class CreateDialogFlowController {
     if (typeof intent.presetAgentId === 'string' && intent.presetAgentId.trim() !== '') {
       const teammateSelect = this.modal.querySelector('#teammate-select');
       if (teammateSelect instanceof HTMLSelectElement) {
-        const nextAgentId = intent.presetAgentId.trim();
-        if (teammateSelect.value !== nextAgentId) {
-          teammateSelect.value = nextAgentId;
+        const shadowSelect = this.modal.querySelector('#shadow-teammate-select');
+        const target = resolveCreateDialogPresetAgentTarget({
+          visibleAgentIds: Array.from(teammateSelect.options)
+            .map((option) => option.value)
+            .filter((value) => value !== SHADOW_TEAMMATE_SELECT_VALUE),
+          shadowAgentIds:
+            shadowSelect instanceof HTMLSelectElement
+              ? Array.from(shadowSelect.options).map((option) => option.value)
+              : [],
+          presetAgentId: intent.presetAgentId,
+        });
+        if (target.kind === 'visible' && teammateSelect.value !== target.agentId) {
+          teammateSelect.value = target.agentId;
           teammateSelect.dispatchEvent(new Event('change', { bubbles: true }));
+        }
+        if (target.kind === 'shadow' && shadowSelect instanceof HTMLSelectElement) {
+          const shadowChanged = shadowSelect.value !== target.agentId;
+          const teammateChanged = teammateSelect.value !== SHADOW_TEAMMATE_SELECT_VALUE;
+          shadowSelect.value = target.agentId;
+          teammateSelect.value = SHADOW_TEAMMATE_SELECT_VALUE;
+          if (teammateChanged) {
+            teammateSelect.dispatchEvent(new Event('change', { bubbles: true }));
+          } else if (shadowChanged) {
+            shadowSelect.dispatchEvent(new Event('change', { bubbles: true }));
+          }
         }
       }
     }
@@ -255,14 +342,12 @@ export class CreateDialogFlowController {
   ): void {
     const t = getUiStrings(this.deps.getLanguage());
     const defaultResponder = this.deps.getDefaultResponder();
-    const defaultIsVisible =
-      typeof defaultResponder === 'string' && visibleMembers.some((m) => m.id === defaultResponder);
-    const defaultIsShadow =
-      typeof defaultResponder === 'string' && shadowMembers.some((m) => m.id === defaultResponder);
-    const initialPickShadow =
-      shadowMembers.length > 0 &&
-      (defaultIsShadow || (!defaultIsVisible && visibleMembers.length === 0));
-    const firstShadowId = shadowMembers.length > 0 ? shadowMembers[0].id : '';
+    const selection = resolveCreateDialogAgentSelection({
+      visibleMembers,
+      shadowMembers,
+      defaultResponder,
+      presetAgentId: intent.presetAgentId,
+    });
     const taskPreset = typeof intent.presetTaskDocPath === 'string' ? intent.presetTaskDocPath : '';
     const modal = document.createElement('div');
     modal.className = 'dominds-modal create-dialog-modal';
@@ -295,10 +380,7 @@ export class CreateDialogFlowController {
                   .map((member) => {
                     const isDefault = member.id === defaultResponder;
                     const emoji = this.getAgentEmoji(member.icon);
-                    const selected =
-                      (typeof intent.presetAgentId === 'string' &&
-                        intent.presetAgentId === member.id) ||
-                      (!intent.presetAgentId && isDefault);
+                    const selected = member.id === selection.selectedVisibleAgentId;
                     return `<option value="${escapeHtml(member.id)}" ${selected ? 'selected' : ''}>${escapeHtml(
                       `${emoji} ${member.name} (@${member.id})${isDefault ? t.defaultMarker : ''}`,
                     )}</option>`;
@@ -306,7 +388,7 @@ export class CreateDialogFlowController {
                   .join('')}
                 ${
                   shadowMembers.length > 0
-                    ? `<option value="__shadow__" ${initialPickShadow ? 'selected' : ''}>${escapeHtml(
+                    ? `<option value="${SHADOW_TEAMMATE_SELECT_VALUE}" ${selection.initialPickShadow ? 'selected' : ''}>${escapeHtml(
                         t.shadowMembersOption,
                       )}</option>`
                     : ''
@@ -314,17 +396,14 @@ export class CreateDialogFlowController {
               </select>
             </div>
           </div>
-          <div class="form-group form-group-vertical shadow-members-group${initialPickShadow ? '' : ' hidden'}" id="shadow-members-group">
+          <div class="form-group form-group-vertical shadow-members-group${selection.initialPickShadow ? '' : ' hidden'}" id="shadow-members-group">
             <label for="shadow-teammate-select">${escapeHtml(t.shadowMembersLabel)}</label>
             <select id="shadow-teammate-select" class="teammate-dropdown">
               ${shadowMembers
                 .map((member) => {
                   const isDefault = member.id === defaultResponder;
                   const emoji = this.getAgentEmoji(member.icon);
-                  const selected =
-                    isDefault ||
-                    (!defaultIsShadow && firstShadowId === member.id) ||
-                    intent.presetAgentId === member.id;
+                  const selected = member.id === selection.selectedShadowAgentId;
                   return `<option value="${escapeHtml(member.id)}" ${selected ? 'selected' : ''}>${escapeHtml(
                     `${emoji} ${member.name} (@${member.id})${isDefault ? t.defaultMarker : ''}`,
                   )}</option>`;
@@ -881,7 +960,7 @@ export class CreateDialogFlowController {
     this.activeKeydownListener = modalKeydownListener;
 
     const resolveSelectedAgentId = (): string => {
-      if (select.value === '__shadow__') {
+      if (select.value === SHADOW_TEAMMATE_SELECT_VALUE) {
         if (shadowSelect instanceof HTMLSelectElement) return shadowSelect.value || '';
         return '';
       }
@@ -899,7 +978,7 @@ export class CreateDialogFlowController {
 
     const showTeammateInfo = (selectedAgentId: string): void => {
       let resolved = selectedAgentId;
-      if (selectedAgentId === '__shadow__') {
+      if (selectedAgentId === SHADOW_TEAMMATE_SELECT_VALUE) {
         resolved = shadowSelect instanceof HTMLSelectElement ? shadowSelect.value : '';
       }
       if (!resolved) {
@@ -938,7 +1017,7 @@ export class CreateDialogFlowController {
     };
 
     select.addEventListener('change', () => {
-      const isShadow = select.value === '__shadow__';
+      const isShadow = select.value === SHADOW_TEAMMATE_SELECT_VALUE;
       if (shadowGroup instanceof HTMLElement) {
         shadowGroup.classList.toggle('hidden', !isShadow);
       }
@@ -947,7 +1026,7 @@ export class CreateDialogFlowController {
     });
     if (shadowSelect instanceof HTMLSelectElement) {
       shadowSelect.addEventListener('change', () => {
-        showTeammateInfo('__shadow__');
+        showTeammateInfo(SHADOW_TEAMMATE_SELECT_VALUE);
         void loadPrimingScriptsForSelectedAgent();
       });
     }

@@ -175,6 +175,7 @@
     "kernel-unified-timestamp-ordering": "tsx kernel/unified-timestamp-ordering.ts",
     "webapp-run-control-visual": "tsx webapp/run-control-visual.ts",
     "webapp-context-usage-title": "tsx webapp/context-usage-title.ts",
+    "webapp-create-dialog-flow-selection": "tsx webapp/create-dialog-flow-selection.ts",
     "context-health-critical-countdown": "tsx context-health/critical-countdown.ts",
     "context-health-critical-user-interjection": "tsx context-health/critical-user-interjection.ts",
     "context-health-caution-guide": "tsx context-health/caution-guide.ts",
