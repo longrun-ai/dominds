@@ -5,6 +5,7 @@ import { parseIdToken, parseJwtExpiration } from '../oauth/tokenParsing.js';
 import { getBooleanClaim, getStringClaim, parseJwtPayload } from '../utils/jwt.js';
 import {
   AgentIdentityAuthRecord,
+  AgentIdentityStorage,
   AuthCredentialsStoreMode,
   AuthDotJson,
   AuthState,
@@ -33,6 +34,8 @@ export interface AuthManagerOptions {
   enableCodexApiKeyEnv?: boolean;
   externalAuth?: ExternalAuth;
   forcedChatgptWorkspaceIds?: string[];
+  validateStoredAuth?: (auth: AuthDotJson, source: StoredAuthSource) => void;
+  validateAuthState?: (auth: AuthState) => void;
 }
 
 export type ExternalAuthRefreshReason = 'unauthorized';
@@ -42,24 +45,13 @@ export interface ExternalAuthRefreshContext {
   previousAccountId?: string;
 }
 
-export interface ExternalAuthTokens {
-  accessToken: string;
-  idToken?: string;
-  refreshToken?: string;
-  chatgptMetadata?: {
-    accountId: string;
-    planType?: string;
-  };
-}
-
 export interface ExternalAuth {
-  authMode(): 'api_key' | 'chatgpt_auth_tokens';
-  resolve?(): Promise<ExternalAuthTokens | null>;
-  refresh(context: ExternalAuthRefreshContext): Promise<ExternalAuthTokens>;
+  resolve(): Promise<AuthState>;
+  refresh(context: ExternalAuthRefreshContext): Promise<AuthState>;
 }
 
 export type ReloadOutcome = 'reloaded_changed' | 'reloaded_no_change' | 'skipped';
-type AuthLoadSource = 'ephemeral' | 'persistent';
+export type StoredAuthSource = 'ephemeral' | 'persistent';
 
 const REFRESH_TOKEN_ACCOUNT_MISMATCH_MESSAGE =
   'Your access token could not be refreshed because you have since logged out or signed in to another account. Please sign in again.';
@@ -70,6 +62,8 @@ export class AuthManager {
   private readonly storeMode: AuthCredentialsStoreMode;
   private readonly enableCodexApiKeyEnv: boolean;
   private readonly forcedChatgptWorkspaceIds?: string[];
+  private readonly validateStoredAuth?: (auth: AuthDotJson, source: StoredAuthSource) => void;
+  private readonly validateAuthState?: (auth: AuthState) => void;
   private externalAuth?: ExternalAuth;
   private cached: AuthState | null;
 
@@ -79,7 +73,9 @@ export class AuthManager {
     this.enableCodexApiKeyEnv = options.enableCodexApiKeyEnv ?? false;
     this.externalAuth = options.externalAuth;
     this.forcedChatgptWorkspaceIds = options.forcedChatgptWorkspaceIds;
-    this.cached = this.loadAuthFromStorage();
+    this.validateStoredAuth = options.validateStoredAuth;
+    this.validateAuthState = options.validateAuthState;
+    this.cached = this.externalAuth ? null : this.loadAuthFromStorage();
   }
 
   authCached(): AuthState | null {
@@ -87,9 +83,10 @@ export class AuthManager {
   }
 
   async auth(): Promise<AuthState | null> {
-    const externalApiKeyAuth = await this.resolveExternalApiKeyAuth();
-    if (externalApiKeyAuth) {
-      return externalApiKeyAuth;
+    if (this.externalAuth) {
+      const resolved = await this.externalAuth.resolve();
+      this.commitExternalAuth(resolved);
+      return this.cached;
     }
 
     if (!this.cached) {
@@ -107,7 +104,13 @@ export class AuthManager {
     return this.cached;
   }
 
-  reload(): boolean {
+  async reload(): Promise<boolean> {
+    if (this.externalAuth) {
+      const resolved = await this.externalAuth.resolve();
+      const changed = !authStatesEqual(this.cached, resolved);
+      this.commitExternalAuth(resolved);
+      return changed;
+    }
     const next = this.loadAuthFromStorage();
     const changed = !authStatesEqual(this.cached, next);
     this.cached = next;
@@ -125,6 +128,8 @@ export class AuthManager {
       case 'chatgpt':
       case 'chatgpt_auth_tokens':
         return this.cached.tokens.accessToken;
+      case 'headers':
+        throw new Error('header auth does not expose a bearer token.');
       case 'personal_access_token':
         return this.cached.personalAccessToken;
       case 'agent_identity':
@@ -162,6 +167,7 @@ export class AuthManager {
       case 'personal_access_token':
         return auth.metadata?.chatgpt_account_id;
       case 'api_key':
+      case 'headers':
       case 'bedrock_api_key':
         return undefined;
       default: {
@@ -185,6 +191,7 @@ export class AuthManager {
       case 'personal_access_token':
         return auth.metadata?.email;
       case 'api_key':
+      case 'headers':
       case 'bedrock_api_key':
         return undefined;
       default: {
@@ -208,6 +215,7 @@ export class AuthManager {
       case 'personal_access_token':
         return auth.metadata?.chatgpt_user_id;
       case 'api_key':
+      case 'headers':
       case 'bedrock_api_key':
         return undefined;
       default: {
@@ -231,6 +239,7 @@ export class AuthManager {
       case 'personal_access_token':
         return auth.metadata?.chatgpt_plan_type;
       case 'api_key':
+      case 'headers':
       case 'bedrock_api_key':
         return undefined;
       default: {
@@ -254,6 +263,7 @@ export class AuthManager {
       case 'personal_access_token':
         return auth.metadata?.chatgpt_account_is_fedramp ?? false;
       case 'api_key':
+      case 'headers':
       case 'bedrock_api_key':
         return false;
       default: {
@@ -263,16 +273,19 @@ export class AuthManager {
     }
   }
 
-  setExternalAuth(externalAuth: ExternalAuth): void {
+  async setExternalAuth(externalAuth: ExternalAuth): Promise<void> {
+    const resolved = await externalAuth.resolve();
+    this.commitExternalAuth(resolved);
     this.externalAuth = externalAuth;
   }
 
   clearExternalAuth(): void {
     this.externalAuth = undefined;
+    this.cached = null;
   }
 
-  externalAuthMode(): 'api_key' | 'chatgpt_auth_tokens' | undefined {
-    return this.externalAuth?.authMode();
+  externalAuthMode(): AuthState['mode'] | undefined {
+    return this.externalAuth ? this.cached?.mode : undefined;
   }
 
   hasExternalAuth(): boolean {
@@ -283,19 +296,12 @@ export class AuthManager {
     if (!this.externalAuth) {
       throw new RefreshTokenError('transient', 'external auth is not configured.');
     }
-    if (this.externalAuth.authMode() === 'api_key') {
-      const resolved = await this.externalAuth.refresh({
-        reason: 'unauthorized',
-        previousAccountId,
-      });
-      this.cached = {
-        mode: 'api_key',
-        apiKey: resolved.accessToken,
-        raw: { auth_mode: 'apikey', OPENAI_API_KEY: resolved.accessToken },
-      };
-      return;
-    }
-    await this.refreshExternalChatGptAuth('unauthorized');
+    const refreshed = await this.externalAuth.refresh({
+      reason: 'unauthorized',
+      previousAccountId,
+    });
+    this.validateExternalAuth(refreshed);
+    this.commitExternalAuth(refreshed);
   }
 
   createUnauthorizedRecovery(): UnauthorizedRecovery {
@@ -303,6 +309,10 @@ export class AuthManager {
   }
 
   async refreshToken(): Promise<void> {
+    if (this.externalAuth) {
+      await this.refreshExternalAuthForUnauthorized(this.getAccountId());
+      return;
+    }
     if (!this.cached || this.cached.mode === 'api_key') {
       return;
     }
@@ -328,17 +338,16 @@ export class AuthManager {
   }
 
   private async refreshTokenFromAuthorityUnlocked(): Promise<void> {
+    if (this.externalAuth) {
+      await this.refreshExternalAuthForUnauthorized(this.getAccountId());
+      return;
+    }
     if (!this.cached) {
       return;
     }
     const unsupportedRefreshError = refreshUnsupportedAuthError(this.cached.mode);
     if (unsupportedRefreshError) {
       throw unsupportedRefreshError;
-    }
-
-    if (this.cached.mode === 'chatgpt_auth_tokens') {
-      await this.refreshExternalChatGptAuth('unauthorized');
-      return;
     }
 
     if (this.cached.mode !== 'chatgpt') {
@@ -351,7 +360,7 @@ export class AuthManager {
     }
 
     await this.refreshTokens(refreshToken);
-    this.reload();
+    await this.reload();
   }
 
   async refreshIfStale(): Promise<boolean> {
@@ -417,22 +426,22 @@ export class AuthManager {
     if (this.enableCodexApiKeyEnv) {
       const envApiKey = readNonEmptyEnvVar(CODEX_API_KEY_ENV_VAR);
       if (envApiKey) {
-        return {
+        return this.validatedAuthState({
           mode: 'api_key',
           apiKey: envApiKey,
           raw: { auth_mode: 'apikey', OPENAI_API_KEY: envApiKey },
-        };
+        });
       }
     }
 
     const ephemeralAuth = readAuthFile(this.codexHome, 'ephemeral');
     if (ephemeralAuth) {
-      return this.authStateFromAuthDotJson(ephemeralAuth, 'ephemeral');
+      return this.validatedAuthState(this.authStateFromAuthDotJson(ephemeralAuth, 'ephemeral'));
     }
 
     const envAccessToken = readNonEmptyEnvVar(CODEX_ACCESS_TOKEN_ENV_VAR);
     if (envAccessToken) {
-      return authStateFromCodexAccessToken(envAccessToken);
+      return this.validatedAuthState(authStateFromCodexAccessToken(envAccessToken));
     }
 
     const auth =
@@ -441,10 +450,16 @@ export class AuthManager {
       return null;
     }
 
-    return this.authStateFromAuthDotJson(auth, 'persistent');
+    return this.validatedAuthState(this.authStateFromAuthDotJson(auth, 'persistent'));
   }
 
-  private authStateFromAuthDotJson(auth: AuthDotJson, source: AuthLoadSource): AuthState {
+  private validatedAuthState(auth: AuthState): AuthState {
+    this.validateAuthState?.(auth);
+    return auth;
+  }
+
+  private authStateFromAuthDotJson(auth: AuthDotJson, source: StoredAuthSource): AuthState {
+    this.validateStoredAuth?.(auth, source);
     const authMode = resolveAuthDotJsonMode(auth);
 
     if (authMode === 'apikey') {
@@ -460,16 +475,17 @@ export class AuthManager {
     }
 
     if (authMode === 'agentIdentity') {
-      const agentIdentity = readAgentIdentityToken(auth.agent_identity);
-      if (!agentIdentity) {
-        throw new Error('agent identity auth is missing an agent identity token.');
-      }
+      const { storage, record } = parseAgentIdentityStorage(auth.agent_identity);
       return {
         mode: 'agent_identity',
-        agentIdentity,
-        agentIdentityRecord: parseAgentIdentityJwt(agentIdentity),
+        agentIdentity: storage,
+        agentIdentityRecord: record,
         raw: auth,
       };
+    }
+
+    if (authMode === 'headers') {
+      throw new Error('externally provided header auth cannot be loaded from auth.json.');
     }
 
     if (authMode === 'personalAccessToken') {
@@ -500,7 +516,7 @@ export class AuthManager {
         if (promoted) {
           return promoted;
         }
-        if (!this.externalAuth || this.externalAuth.authMode() !== 'chatgpt_auth_tokens') {
+        if (!this.externalAuth) {
           throw new Error(
             'auth.json uses chatgptAuthTokens without a refresh_token and no external ChatGPT auth provider is configured. This token cannot be refreshed automatically; re-run Codex login to create managed ChatGPT OAuth file auth.',
           );
@@ -513,12 +529,16 @@ export class AuthManager {
         refreshToken: auth.tokens.refresh_token,
         accountId: auth.tokens.account_id ?? idTokenInfo.chatgpt_account_id,
       };
-      return {
-        mode: authMode === 'chatgptAuthTokens' ? 'chatgpt_auth_tokens' : 'chatgpt',
-        tokens,
-        lastRefresh: parseLastRefresh(auth.last_refresh),
-        raw: auth,
-      };
+      const lastRefresh = parseLastRefresh(auth.last_refresh);
+      if (authMode === 'chatgptAuthTokens') {
+        return {
+          mode: 'chatgpt_auth_tokens',
+          tokens,
+          lastRefresh,
+          raw: auth,
+        };
+      }
+      return { mode: 'chatgpt', tokens, lastRefresh, raw: auth };
     }
 
     if (authMode === 'chatgpt' || authMode === 'chatgptAuthTokens') {
@@ -531,7 +551,7 @@ export class AuthManager {
 
   private promoteChatGptAuthTokensToFileAuth(
     auth: AuthDotJson,
-    source: AuthLoadSource,
+    source: StoredAuthSource,
   ): AuthState | null {
     const tokens = auth.tokens;
     if (
@@ -630,7 +650,12 @@ export class AuthManager {
   }
 
   private async withManagedAuthRefreshLock(work: () => Promise<void>): Promise<void> {
-    if (!this.cached || this.cached.mode !== 'chatgpt' || this.storeMode === 'ephemeral') {
+    if (
+      this.externalAuth ||
+      !this.cached ||
+      this.cached.mode !== 'chatgpt' ||
+      this.storeMode === 'ephemeral'
+    ) {
       await work();
       return;
     }
@@ -650,80 +675,20 @@ export class AuthManager {
     };
   }
 
-  private async resolveExternalApiKeyAuth(): Promise<AuthState | null> {
-    if (!this.externalAuth || this.externalAuth.authMode() !== 'api_key') {
-      return null;
+  private validateExternalAuth(auth: AuthState): void {
+    const accountId = accountIdForAuth(auth);
+    if (accountId) {
+      enforceWorkspaceRestriction(this.forcedChatgptWorkspaceIds, accountId);
     }
-    const resolved = this.externalAuth.resolve ? await this.externalAuth.resolve() : null;
-    if (!resolved) {
-      return null;
-    }
-    return {
-      mode: 'api_key',
-      apiKey: resolved.accessToken,
-      raw: {
-        auth_mode: 'apikey',
-        OPENAI_API_KEY: resolved.accessToken,
-      },
-    };
   }
 
-  private async refreshExternalChatGptAuth(reason: ExternalAuthRefreshReason): Promise<void> {
-    if (!this.externalAuth || this.externalAuth.authMode() !== 'chatgpt_auth_tokens') {
-      throw new RefreshTokenError('transient', 'external auth is not configured.');
+  private commitExternalAuth(auth: AuthState): void {
+    this.validateAuthState?.(auth);
+    this.validateExternalAuth(auth);
+    if (auth.mode === 'chatgpt_auth_tokens') {
+      writeAuthFile(this.codexHome, auth.raw, 'ephemeral');
     }
-    const refreshed = await this.externalAuth.refresh({
-      reason,
-      previousAccountId: this.getAccountId(),
-    });
-    const metadata = refreshed.chatgptMetadata;
-    if (!metadata) {
-      throw new RefreshTokenError(
-        'transient',
-        'external auth refresh did not return ChatGPT metadata.',
-      );
-    }
-    enforceWorkspaceRestriction(this.forcedChatgptWorkspaceIds, metadata.accountId);
-    const idTokenInfo = parseIdToken(refreshed.idToken ?? refreshed.accessToken);
-    idTokenInfo.chatgpt_account_id = metadata.accountId;
-    idTokenInfo.chatgpt_plan_type =
-      normalizeAccountPlanType(metadata.planType) ?? idTokenInfo.chatgpt_plan_type ?? 'unknown';
-    const refreshToken = refreshed.refreshToken ?? '';
-    const tokens: TokenData = {
-      idToken: idTokenInfo,
-      accessToken: refreshed.accessToken,
-      refreshToken,
-      accountId: metadata.accountId,
-    };
-    const lastRefresh = new Date();
-    const raw: AuthDotJson = {
-      auth_mode: 'chatgptAuthTokens',
-      tokens: {
-        id_token: idTokenInfo.raw_jwt,
-        access_token: refreshed.accessToken,
-        refresh_token: refreshToken,
-        account_id: metadata.accountId,
-      },
-      last_refresh: lastRefresh.toISOString(),
-    };
-    if (isNonEmptyString(refreshToken)) {
-      writeAuthFile(this.codexHome, { ...raw, auth_mode: 'chatgpt' }, 'file');
-      deleteAuthFile(this.codexHome, 'ephemeral');
-      this.cached = {
-        mode: 'chatgpt',
-        tokens,
-        lastRefresh,
-        raw: { ...raw, auth_mode: 'chatgpt' },
-      };
-      return;
-    }
-    writeAuthFile(this.codexHome, raw, 'ephemeral');
-    this.cached = {
-      mode: 'chatgpt_auth_tokens',
-      tokens,
-      lastRefresh,
-      raw,
-    };
+    this.cached = auth;
   }
 }
 
@@ -736,14 +701,12 @@ export class UnauthorizedRecovery {
     this.expectedAccountId = manager.getAccountId();
     const cached = manager.authCached();
     this.mode =
-      cached?.mode === 'chatgpt_auth_tokens' || manager.externalAuthMode() === 'api_key'
-        ? 'external'
-        : 'managed';
+      manager.hasExternalAuth() || cached?.mode === 'chatgpt_auth_tokens' ? 'external' : 'managed';
     this.step = this.mode === 'external' ? 'external_refresh' : 'reload';
   }
 
   hasNext(): boolean {
-    if (this.manager.externalAuthMode() === 'api_key') {
+    if (this.manager.hasExternalAuth()) {
       return this.step !== 'done';
     }
     const auth = this.manager.authCached();
@@ -803,8 +766,13 @@ function authStatesEqual(a: AuthState | null, b: AuthState | null): boolean {
       return (
         (b.mode === 'chatgpt' || b.mode === 'chatgpt_auth_tokens') && authDotJsonEqual(a.raw, b.raw)
       );
+    case 'headers':
+      return b.mode === 'headers' && JSON.stringify(a.headers) === JSON.stringify(b.headers);
     case 'agent_identity':
-      return b.mode === 'agent_identity' && a.agentIdentity === b.agentIdentity;
+      return (
+        b.mode === 'agent_identity' &&
+        JSON.stringify(a.agentIdentity) === JSON.stringify(b.agentIdentity)
+      );
     case 'personal_access_token':
       return b.mode === 'personal_access_token' && a.personalAccessToken === b.personalAccessToken;
     case 'bedrock_api_key':
@@ -856,6 +824,7 @@ function accountIdForAuth(auth: AuthState | null): string | undefined {
     case 'personal_access_token':
       return auth.metadata?.chatgpt_account_id;
     case 'api_key':
+    case 'headers':
     case 'bedrock_api_key':
       return undefined;
     default: {
@@ -889,17 +858,17 @@ function refreshUnsupportedAuthError(mode: AuthState['mode']): RefreshTokenError
     case 'chatgpt':
     case 'chatgpt_auth_tokens':
       return undefined;
+    case 'headers':
+      return new RefreshTokenError(
+        'permanent',
+        'header auth can only be refreshed by its external auth provider.',
+        'other',
+      );
     default: {
       const _exhaustive: never = mode;
       throw new Error(`Unhandled auth mode: ${String(_exhaustive)}`);
     }
   }
-}
-
-function readAgentIdentityToken(agentIdentity: string | undefined): string | undefined {
-  return typeof agentIdentity === 'string' && agentIdentity.trim().length > 0
-    ? agentIdentity
-    : undefined;
 }
 
 function parseJwtExpirationSafely(jwt: string): Date | undefined {
@@ -954,7 +923,6 @@ function parseAgentIdentityJwt(jwt: string): AgentIdentityAuthRecord {
     !agentPrivateKey ||
     !accountId ||
     !chatgptUserId ||
-    !email ||
     planType === undefined ||
     accountIsFedramp === undefined
   ) {
@@ -966,10 +934,72 @@ function parseAgentIdentityJwt(jwt: string): AgentIdentityAuthRecord {
     agent_private_key: agentPrivateKey,
     account_id: accountId,
     chatgpt_user_id: chatgptUserId,
-    email,
+    ...(email ? { email } : {}),
     plan_type: planType,
     chatgpt_account_is_fedramp: accountIsFedramp,
   };
+}
+
+function parseAgentIdentityStorage(value: AgentIdentityStorage | undefined): {
+  storage: AgentIdentityStorage;
+  record: AgentIdentityAuthRecord;
+} {
+  if (typeof value === 'string') {
+    if (value.trim().length === 0) {
+      throw new Error('agent identity auth is missing agent identity auth material.');
+    }
+    return { storage: value, record: parseAgentIdentityJwt(value) };
+  }
+  if (!value) {
+    throw new Error('agent identity auth is missing agent identity auth material.');
+  }
+  return { storage: value, record: parseAgentIdentityRecord(value) };
+}
+
+function parseAgentIdentityRecord(value: AgentIdentityAuthRecord): AgentIdentityAuthRecord {
+  // auth.json is an external persistence boundary, so every record field is validated at runtime.
+  const record = value as unknown as Record<string, unknown>;
+  const agentRuntimeId = getNonEmptyRecordString(record, 'agent_runtime_id');
+  const agentPrivateKey = getNonEmptyRecordString(record, 'agent_private_key');
+  const accountId = getNonEmptyRecordString(record, 'account_id');
+  const chatgptUserId = getNonEmptyRecordString(record, 'chatgpt_user_id');
+  const rawPlanType = getNonEmptyRecordString(record, 'plan_type');
+  const planType = normalizeAccountPlanType(rawPlanType);
+  const accountIsFedramp = record.chatgpt_account_is_fedramp;
+  if (planType === undefined || typeof accountIsFedramp !== 'boolean') {
+    throw new Error('agent identity record is missing required fields.');
+  }
+  const email = getOptionalRecordString(record, 'email');
+  const taskId = getOptionalRecordString(record, 'task_id');
+  return {
+    agent_runtime_id: agentRuntimeId,
+    agent_private_key: agentPrivateKey,
+    account_id: accountId,
+    chatgpt_user_id: chatgptUserId,
+    ...(email ? { email } : {}),
+    plan_type: planType,
+    chatgpt_account_is_fedramp: accountIsFedramp,
+    ...(taskId ? { task_id: taskId } : {}),
+  };
+}
+
+function getNonEmptyRecordString(record: Record<string, unknown>, key: string): string {
+  const value = record[key];
+  if (typeof value !== 'string' || value.trim().length === 0) {
+    throw new Error(`agent identity record field ${key} must be a non-empty string.`);
+  }
+  return value;
+}
+
+function getOptionalRecordString(record: Record<string, unknown>, key: string): string | undefined {
+  const value = record[key];
+  if (value === undefined || value === null || value === '') {
+    return undefined;
+  }
+  if (typeof value !== 'string') {
+    throw new Error(`agent identity record field ${key} must be a string when present.`);
+  }
+  return value;
 }
 
 function personalAccessTokenAuthApiBaseUrl(): string {
@@ -1010,12 +1040,74 @@ function isPersonalAccessTokenMetadata(value: unknown): value is PersonalAccessT
   }
   const record = value as Record<string, unknown>;
   return (
-    typeof record.email === 'string' &&
+    (record.email === undefined || typeof record.email === 'string') &&
     typeof record.chatgpt_user_id === 'string' &&
     typeof record.chatgpt_account_id === 'string' &&
     typeof record.chatgpt_plan_type === 'string' &&
     typeof record.chatgpt_account_is_fedramp === 'boolean'
   );
+}
+
+export function createExternalApiKeyAuth(apiKey: string): AuthState {
+  if (!isNonEmptyString(apiKey)) {
+    throw new Error('external API key auth requires a non-empty API key.');
+  }
+  return {
+    mode: 'api_key',
+    apiKey,
+    raw: { auth_mode: 'apikey', OPENAI_API_KEY: apiKey },
+  };
+}
+
+export function createExternalChatGptAuth(
+  accessToken: string,
+  accountId: string,
+  planType?: string,
+): AuthState {
+  if (!isNonEmptyString(accessToken) || !isNonEmptyString(accountId)) {
+    throw new Error('external ChatGPT auth requires an access token and account id.');
+  }
+  const idTokenInfo = parseIdToken(accessToken);
+  idTokenInfo.chatgpt_account_id = accountId;
+  idTokenInfo.chatgpt_plan_type =
+    normalizeAccountPlanType(planType) ?? idTokenInfo.chatgpt_plan_type ?? 'unknown';
+  const lastRefresh = new Date();
+  const raw: AuthDotJson = {
+    auth_mode: 'chatgptAuthTokens',
+    tokens: {
+      id_token: accessToken,
+      access_token: accessToken,
+      refresh_token: '',
+      account_id: accountId,
+    },
+    last_refresh: lastRefresh.toISOString(),
+  };
+  return {
+    mode: 'chatgpt_auth_tokens',
+    tokens: {
+      idToken: idTokenInfo,
+      accessToken,
+      refreshToken: '',
+      accountId,
+    },
+    lastRefresh,
+    raw,
+  };
+}
+
+export function createExternalHeaderAuth(headers: Record<string, string>): AuthState {
+  const entries = Object.entries(headers);
+  if (entries.length === 0) {
+    throw new Error('external header auth requires at least one header.');
+  }
+  const normalized: Record<string, string> = {};
+  for (const [name, value] of entries) {
+    if (name.trim().length === 0 || value.trim().length === 0) {
+      throw new Error('external header auth names and values must be non-empty strings.');
+    }
+    normalized[name] = value;
+  }
+  return { mode: 'headers', headers: normalized };
 }
 
 function enforceWorkspaceRestriction(

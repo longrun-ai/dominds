@@ -15,10 +15,16 @@ import {
 } from '../auth/schema.js';
 import { resolveCodexHome } from '../auth/storage.js';
 
-export interface ChatGptCredentials {
-  accessToken: string;
-  accountId: string;
-}
+export type ChatGptCredentials =
+  | {
+      kind: 'chatgpt';
+      accessToken: string;
+      accountId: string;
+    }
+  | {
+      kind: 'headers';
+      headers: Record<string, string>;
+    };
 
 export interface ChatGptClientOptions {
   baseUrl?: string;
@@ -29,6 +35,7 @@ export interface ChatGptClientOptions {
   proxyUrl?: string;
   useEnvProxy?: boolean;
   authManager?: AuthManager;
+  validateAuthState?: (auth: AuthState) => void;
 }
 
 export type ProxyEnvVarName = 'HTTP_PROXY' | 'http_proxy' | 'HTTPS_PROXY' | 'https_proxy';
@@ -135,7 +142,14 @@ export type ChatGptJsonValue =
   | ChatGptJsonValue[]
   | { [key: string]: ChatGptJsonValue };
 
-export type ChatGptReasoningEffort = 'none' | 'minimal' | 'low' | 'medium' | 'high' | 'xhigh';
+export type ChatGptReasoningEffort =
+  | 'none'
+  | 'minimal'
+  | 'low'
+  | 'medium'
+  | 'high'
+  | 'xhigh'
+  | 'max';
 
 export type ChatGptReasoningSummary = 'auto' | 'concise' | 'detailed' | 'none';
 
@@ -719,6 +733,7 @@ export class ChatGptClient {
   private headers: Record<string, string>;
   private readonly dispatcher: Dispatcher;
   private readonly authManager?: AuthManager;
+  private readonly validateAuthState?: (auth: AuthState) => void;
   private readonly originator: string;
   private readonly userAgent: string;
 
@@ -737,6 +752,7 @@ export class ChatGptClient {
     this.userAgent = userAgent;
     this.headers = buildAuthHeaders(credentials, originator, userAgent);
     this.authManager = options.authManager;
+    this.validateAuthState = options.validateAuthState;
 
     this.dispatcher = resolveDispatcher(this.baseUrl, options);
   }
@@ -857,6 +873,7 @@ export class ChatGptClient {
     if (!auth) {
       throw new Error('Auth data is not available.');
     }
+    this.validateAuthState?.(auth);
     const credentials = credentialsFromAuthState(auth);
     this.headers = buildAuthHeaders(credentials, this.originator, this.userAgent);
   }
@@ -867,12 +884,25 @@ function buildAuthHeaders(
   originator: string,
   userAgent: string,
 ): Record<string, string> {
-  return {
-    Authorization: `Bearer ${credentials.accessToken}`,
-    'ChatGPT-Account-ID': credentials.accountId,
-    originator,
-    'User-Agent': userAgent,
-  };
+  switch (credentials.kind) {
+    case 'chatgpt':
+      return {
+        Authorization: `Bearer ${credentials.accessToken}`,
+        'ChatGPT-Account-ID': credentials.accountId,
+        originator,
+        'User-Agent': userAgent,
+      };
+    case 'headers':
+      return {
+        originator,
+        'User-Agent': userAgent,
+        ...credentials.headers,
+      };
+    default: {
+      const _exhaustive: never = credentials;
+      throw new Error(`Unhandled ChatGPT credentials: ${JSON.stringify(_exhaustive)}`);
+    }
+  }
 }
 
 async function drainUnauthorizedResponse(response: ChatGptHttpResponse): Promise<void> {
@@ -957,31 +987,41 @@ function delay(ms: number): Promise<void> {
 }
 
 export function credentialsFromAuthState(auth: AuthState): ChatGptCredentials {
-  if (auth.mode === 'chatgpt' || auth.mode === 'chatgpt_auth_tokens') {
-    if (!auth.tokens.accountId) {
-      throw new Error('ChatGPT account id is missing.');
+  switch (auth.mode) {
+    case 'chatgpt':
+    case 'chatgpt_auth_tokens':
+      if (!auth.tokens.accountId) {
+        throw new Error('ChatGPT account id is missing.');
+      }
+      return {
+        kind: 'chatgpt',
+        accessToken: auth.tokens.accessToken,
+        accountId: auth.tokens.accountId,
+      };
+    case 'headers':
+      return {
+        kind: 'headers',
+        headers: { ...auth.headers },
+      };
+    case 'personal_access_token':
+      throw new Error(
+        'personalAccessToken auth cannot be refreshed automatically and cannot be converted to managed ChatGPT OAuth file auth. Re-run Codex login to create refreshable file auth.',
+      );
+    case 'agent_identity':
+      throw new Error(
+        'agentIdentity auth does not expose refreshable ChatGPT bearer credentials in this package. Re-run Codex login to create managed ChatGPT OAuth file auth.',
+      );
+    case 'bedrock_api_key':
+      throw new Error(
+        'bedrockApiKey auth is not ChatGPT OAuth file auth. Re-run Codex login to create managed ChatGPT OAuth file auth.',
+      );
+    case 'api_key':
+      throw new Error('ChatGPT token data is not available.');
+    default: {
+      const _exhaustive: never = auth;
+      throw new Error(`Unhandled auth state: ${JSON.stringify(_exhaustive)}`);
     }
-    return {
-      accessToken: auth.tokens.accessToken,
-      accountId: auth.tokens.accountId,
-    };
   }
-  if (auth.mode === 'personal_access_token') {
-    throw new Error(
-      'personalAccessToken auth cannot be refreshed automatically and cannot be converted to managed ChatGPT OAuth file auth. Re-run Codex login to create refreshable file auth.',
-    );
-  }
-  if (auth.mode === 'agent_identity') {
-    throw new Error(
-      'agentIdentity auth does not expose refreshable ChatGPT bearer credentials in this package. Re-run Codex login to create managed ChatGPT OAuth file auth.',
-    );
-  }
-  if (auth.mode === 'bedrock_api_key') {
-    throw new Error(
-      'bedrockApiKey auth is not ChatGPT OAuth file auth. Re-run Codex login to create managed ChatGPT OAuth file auth.',
-    );
-  }
-  throw new Error('ChatGPT token data is not available.');
 }
 
 export async function createChatGptClientFromManager(
@@ -1001,6 +1041,7 @@ export async function createChatGptClientFromManager(
   if (!auth) {
     throw new Error('Auth data is not available.');
   }
+  options.validateAuthState?.(auth);
   const credentials = credentialsFromAuthState(auth);
   return new ChatGptClient(credentials, { ...options, authManager: manager });
 }

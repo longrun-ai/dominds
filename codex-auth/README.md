@@ -27,14 +27,14 @@ if (!auth) {
   const server = await runLoginServer({ openBrowser: true });
   console.log(`Open this URL if your browser did not open: ${server.authUrl}`);
   await server.waitForCompletion();
-  manager.reload();
+  await manager.reload();
   auth = await manager.auth();
 }
 
 const client = await createChatGptClientFromManager(manager);
 const conversationId = createChatGptConversationId();
 const payload = createChatGptStartRequest({
-  model: 'gpt-5.3-codex',
+  model: 'gpt-5.6-sol',
   instructions: 'You are Codex CLI.',
   conversationId,
   tools: [{ type: 'web_search', external_web_access: true }],
@@ -53,7 +53,7 @@ import { createChatGptContinuationRequest } from '@longrun-ai/codex-auth';
 const history = JSON.parse(historyJson);
 const conversationId = createChatGptConversationId();
 const followup = createChatGptContinuationRequest({
-  model: 'gpt-5.3-codex',
+  model: 'gpt-5.6-sol',
   instructions: 'You are Codex CLI.',
   conversationId,
   history,
@@ -172,7 +172,7 @@ npx @longrun-ai/codex-auth --no-probe-models
 Override model or base URL:
 
 ```sh
-npx @longrun-ai/codex-auth --model gpt-5.3-codex \
+npx @longrun-ai/codex-auth --model gpt-5.6-sol \
   --chatgpt-base-url https://chatgpt.com/backend-api/
 ```
 
@@ -184,15 +184,24 @@ npx @longrun-ai/codex-auth --codex-home /path/to/.codex
 
 ## Notes
 
+- `codex-auth` contract coverage and the Dominds Codex provider product surface are deliberately
+  different. The library recognizes current `codex-rs` auth variants for integration and
+  diagnostics, while the built-in Dominds `apiType: codex` provider accepts only managed,
+  refreshable ChatGPT OAuth file auth. Future `codex-rs` alignment must not automatically widen
+  that provider boundary; see the
+  [Codex provider auth policy](https://github.com/longrun-ai/dominds/blob/main/docs/codex-provider-auth-policy.md).
 - Default `CODEX_HOME` is `~/.codex` unless overridden.
 - The library reads the current Codex Rust auth modes: `apikey`, `chatgpt`,
   `chatgptAuthTokens`, `agentIdentity`, `personalAccessToken`, and `bedrockApiKey`.
+  The `headers` mode is in-memory only and must come from an `ExternalAuth` provider.
 - `CODEX_API_KEY` is honored before other auth when environment API key auth is enabled.
 - `CODEX_ACCESS_TOKEN` is honored before persistent storage. Tokens beginning with
   `at-` are treated as personal access tokens; other values are treated as agent identity JWTs.
-- ChatGPT request helpers use managed ChatGPT OAuth file auth. Externally supplied
-  ChatGPT tokens are accepted only while an external refresh provider is active; if
-  they contain a refresh token, they are promoted to managed file auth automatically.
+- `CODEX_APP_SERVER_LOGIN_CLIENT_ID` overrides the OAuth client id for browser login,
+  device-code login, and refresh requests.
+- ChatGPT request helpers use managed ChatGPT OAuth file auth, externally supplied
+  ChatGPT tokens, or externally supplied request headers. External auth resolution is
+  authoritative on every `auth()` call, and its provider owns refresh and persistence.
   Personal access token, agent identity, and Bedrock API key auth are detected loudly
   but are not used for ChatGPT request helpers because they cannot be converted into
   automatically refreshable ChatGPT OAuth file auth here.
@@ -201,6 +210,8 @@ npx @longrun-ai/codex-auth --codex-home /path/to/.codex
   bearer credentials.
 - `auth-doctor` accepts either explicit instructions text or `--builtin-instructions`
   when you want the bundled Codex prompt as-is.
+- Bundled prompts include distinct GPT-5.6 Sol instructions and the shared GPT-5.6
+  Terra/Luna instructions from the current Codex model catalog.
 - Library callers should load bundled prompts explicitly via `loadCodexPrompt*` /
   `requireCodexPrompt*` and then decide for themselves how to compose or hardcode
   surrounding instructions.
@@ -214,3 +225,6 @@ npx @longrun-ai/codex-auth --codex-home /path/to/.codex
   function/custom tools via the `tools` field.
 - Proxy env vars are detected via `HTTP_PROXY`, `HTTPS_PROXY`, and `NO_PROXY`
   (case-insensitive). If set, the verification request uses them.
+- Browser login can return directly to the hosted Codex/ChatGPT app by setting
+  `loginSuccessPage: { kind: 'hosted', appBrand: 'codex' }`; accounts that still need
+  platform setup continue through the local setup page.

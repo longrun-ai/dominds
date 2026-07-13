@@ -2,18 +2,49 @@
 
 ## Auth loading
 
+> **Dominds provider boundary:** the APIs below describe library-level contract support. The
+> built-in Dominds `apiType: codex` provider accepts only managed, refreshable ChatGPT OAuth file
+> auth. It intentionally rejects external tokens, headers, PAT, Agent Identity, API key, and
+> Bedrock auth before sending a request. See
+> [Codex provider auth policy](https://github.com/longrun-ai/dominds/blob/main/docs/codex-provider-auth-policy.md).
+
 `AuthManager` follows the current Codex Rust auth precedence: optional
 `CODEX_API_KEY` when `enableCodexApiKeyEnv` is set, ephemeral external auth,
-`CODEX_ACCESS_TOKEN`, then configured persistent storage.
+`CODEX_ACCESS_TOKEN`, then configured persistent storage. When an `ExternalAuth`
+provider is installed, its resolved `AuthState` is authoritative on every `auth()` call.
 
 `CODEX_ACCESS_TOKEN` values beginning with `at-` are treated as personal access
 tokens; other values are treated as agent identity JWTs. `createChatGptClientFromManager`
-requires automatically refreshable ChatGPT credentials: managed ChatGPT OAuth file
-auth, or externally supplied ChatGPT tokens with an active external refresh provider.
-If externally supplied ChatGPT tokens include a refresh token, they are promoted to
-managed file auth automatically. Personal access token, agent identity, and Bedrock
+requires ChatGPT credentials: managed ChatGPT OAuth file auth, externally supplied
+ChatGPT tokens, or in-memory request headers from an active external refresh provider.
+Personal access token, agent identity, and Bedrock
 API key modes are recognized, but this package refuses to use them for ChatGPT
 requests because they cannot be converted into refreshable ChatGPT OAuth file auth.
+
+External request headers follow the current Codex contract and are never read from or
+written to `auth.json`:
+
+```ts
+import { AuthManager, createExternalHeaderAuth, type ExternalAuth } from '@longrun-ai/codex-auth';
+
+const externalAuth: ExternalAuth = {
+  resolve: async () => createExternalHeaderAuth(await resolveHeaders()),
+  refresh: async () => createExternalHeaderAuth(await refreshHeaders()),
+};
+const manager = new AuthManager({ externalAuth });
+```
+
+Callers with a narrower product policy can pass `validateAuthState` to `AuthManager` so every
+resolved environment, external, ephemeral, or persistent state is checked before it becomes the
+active state. Passing the same validator to `createChatGptClientFromManager` adds a request-client
+boundary check before initial client creation and after every auth reload or refresh, before a
+recovered request can be sent. They can also pass `validateStoredAuth` to `AuthManager` to inspect
+stored credentials and their `'persistent' | 'ephemeral'` source before a mode is parsed,
+normalized, or promoted.
+
+The Dominds-specific policy assertions throw `DomindsCodexProviderAuthPolicyError` with the stable
+code `DOMINDS_CODEX_PROVIDER_AUTH_POLICY`, allowing the Dominds runtime to stop immediately instead
+of retrying a local authentication configuration failure.
 
 ## Responses request types
 
@@ -30,7 +61,7 @@ import {
 
 const conversationId = createChatGptConversationId();
 const payload = createChatGptStartRequest({
-  model: 'gpt-5.4',
+  model: 'gpt-5.6-sol',
   instructions: 'You are Codex CLI.',
   conversationId,
   // Native built-in tools are supported:
@@ -54,7 +85,7 @@ const payload = createChatGptStartRequest({
 
 const history = JSON.parse(historyJson);
 const followup = createChatGptContinuationRequest({
-  model: 'gpt-5.4',
+  model: 'gpt-5.6-sol',
   instructions: 'You are Codex CLI.',
   conversationId,
   history,
@@ -87,7 +118,7 @@ Example:
 ```ts
 import { requireCodexPromptSync } from '@longrun-ai/codex-auth';
 
-const instructions = requireCodexPromptSync('gpt-5.2');
+const instructions = requireCodexPromptSync('gpt-5.6-sol');
 ```
 
 `service_tier` is optional. For most callers, `default` and `priority` are the

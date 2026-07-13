@@ -4,11 +4,11 @@ import { URL } from 'node:url';
 
 import {
   AuthCredentialsStoreMode,
-  CLIENT_ID,
   CODEX_INTERNAL_ORIGINATOR_OVERRIDE_ENV_VAR,
   DEFAULT_ISSUER,
   DEFAULT_LOGIN_PORT,
   DEFAULT_ORIGINATOR,
+  oauthClientId,
 } from '../auth/schema.js';
 import { persistTokens, resolveCodexHome } from '../auth/storage.js';
 import { getBooleanClaim, getStringClaim, jwtAuthClaims } from '../utils/jwt.js';
@@ -16,6 +16,16 @@ import { openBrowser } from '../utils/openBrowser.js';
 import { generatePkce, generateState } from './pkce.js';
 import { exchangeCodeForTokens, obtainApiKey } from './tokenExchange.js';
 import { parseIdToken } from './tokenParsing.js';
+
+export const CODEX_OPEN_APP_URL = 'https://chatgpt.com/codex/open-app';
+
+export type LoginSuccessPage =
+  | { kind: 'local' }
+  | {
+      kind: 'hosted';
+      url?: string;
+      appBrand: 'codex' | 'chatgpt';
+    };
 
 export interface BrowserLoginOptions {
   codexHome?: string;
@@ -27,6 +37,7 @@ export interface BrowserLoginOptions {
   forcedChatgptWorkspaceId?: string;
   storeMode?: AuthCredentialsStoreMode;
   originator?: string;
+  loginSuccessPage?: LoginSuccessPage;
 }
 
 export interface LoginServer {
@@ -38,7 +49,7 @@ export interface LoginServer {
 
 export async function runLoginServer(options: BrowserLoginOptions = {}): Promise<LoginServer> {
   const codexHome = resolveCodexHome(options.codexHome);
-  const clientId = options.clientId ?? CLIENT_ID;
+  const clientId = options.clientId ?? oauthClientId();
   const issuer = (options.issuer ?? DEFAULT_ISSUER).replace(/\/$/, '');
   const port = options.port ?? DEFAULT_LOGIN_PORT;
   const openInBrowser = options.openBrowser ?? true;
@@ -111,16 +122,21 @@ export async function runLoginServer(options: BrowserLoginOptions = {}): Promise
           storeMode,
         );
 
-        const successUrl = composeSuccessUrl(
+        const successRedirect = composeSuccessRedirect(
           actualPort,
           issuer,
           tokens.idToken,
           tokens.accessToken,
+          options.loginSuccessPage ?? { kind: 'local' },
         );
         res.statusCode = 302;
-        res.setHeader('Location', successUrl);
+        res.setHeader('Location', successRedirect.url);
         res.setHeader('Connection', 'close');
         res.end();
+        if (successRedirect.kind === 'hosted') {
+          completion.resolve();
+          server.close();
+        }
       } catch (error) {
         const message = error instanceof Error ? error.message : String(error);
         respondPlain(res, 500, `Token exchange failed: ${message}`);
@@ -305,12 +321,13 @@ export function ensureWorkspaceAllowed(expected: string | undefined, idToken: st
   }
 }
 
-function composeSuccessUrl(
+export function composeSuccessRedirect(
   port: number,
   issuer: string,
   idToken: string,
   accessToken: string,
-): string {
+  loginSuccessPage: LoginSuccessPage,
+): { kind: 'local' | 'hosted'; url: string } {
   const tokenClaims = jwtAuthClaims(idToken);
   const accessClaims = jwtAuthClaims(accessToken);
 
@@ -319,6 +336,14 @@ function composeSuccessUrl(
   const completed = getBooleanClaim(tokenClaims.completed_platform_onboarding) ?? false;
   const isOwner = getBooleanClaim(tokenClaims.is_org_owner) ?? false;
   const needsSetup = !completed && isOwner;
+  if (!needsSetup && loginSuccessPage.kind === 'hosted') {
+    const successUrl = new URL(loginSuccessPage.url ?? CODEX_OPEN_APP_URL);
+    successUrl.search = '';
+    successUrl.searchParams.set('source', 'login');
+    successUrl.searchParams.set('app_brand', loginSuccessPage.appBrand);
+    return { kind: 'hosted', url: successUrl.toString() };
+  }
+
   const planType = getStringClaim(accessClaims.chatgpt_plan_type) ?? '';
 
   const platformUrl =
@@ -333,7 +358,7 @@ function composeSuccessUrl(
     platform_url: platformUrl,
   });
 
-  return `http://localhost:${port}/success?${params.toString()}`;
+  return { kind: 'local', url: `http://localhost:${port}/success?${params.toString()}` };
 }
 
 async function sleep(ms: number): Promise<void> {

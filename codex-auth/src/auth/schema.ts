@@ -2,6 +2,7 @@ export const DEFAULT_ISSUER = 'https://auth.openai.com';
 export const DEFAULT_CHATGPT_BASE_URL = 'https://chatgpt.com/backend-api/';
 export const DEFAULT_LOGIN_PORT = 1455;
 export const CLIENT_ID = 'app_EMoamEEZ73f0CkXaXp7hrann';
+export const CODEX_APP_SERVER_LOGIN_CLIENT_ID_ENV_VAR = 'CODEX_APP_SERVER_LOGIN_CLIENT_ID';
 export const DEFAULT_ORIGINATOR = 'codex_cli_rs';
 export const CODEX_REFRESH_TOKEN_URL_OVERRIDE_ENV_VAR = 'CODEX_REFRESH_TOKEN_URL_OVERRIDE';
 export const CODEX_AUTHAPI_BASE_URL_ENV_VAR = 'CODEX_AUTHAPI_BASE_URL';
@@ -18,6 +19,7 @@ export type CodexStoredAuthMode =
   | 'apikey'
   | 'chatgpt'
   | 'chatgptAuthTokens'
+  | 'headers'
   | 'agentIdentity'
   | 'personalAccessToken'
   | 'bedrockApiKey';
@@ -49,7 +51,7 @@ export interface AuthDotJson {
   OPENAI_API_KEY?: string;
   tokens?: TokenDataFile;
   last_refresh?: string;
-  agent_identity?: string;
+  agent_identity?: AgentIdentityStorage;
   personal_access_token?: string;
   bedrock_api_key?: BedrockApiKeyAuth;
 }
@@ -59,10 +61,13 @@ export interface AgentIdentityAuthRecord {
   agent_private_key: string;
   account_id: string;
   chatgpt_user_id: string;
-  email: string;
+  email?: string;
   plan_type: AccountPlanType;
   chatgpt_account_is_fedramp: boolean;
+  task_id?: string;
 }
+
+export type AgentIdentityStorage = string | AgentIdentityAuthRecord;
 
 export interface BedrockApiKeyAuth {
   api_key: string;
@@ -86,7 +91,7 @@ export interface TokenData {
 }
 
 export interface PersonalAccessTokenMetadata {
-  email: string;
+  email?: string;
   chatgpt_user_id: string;
   chatgpt_account_id: string;
   chatgpt_plan_type: AccountPlanType;
@@ -97,6 +102,7 @@ export type AuthMode =
   | 'api_key'
   | 'chatgpt'
   | 'chatgpt_auth_tokens'
+  | 'headers'
   | 'agent_identity'
   | 'personal_access_token'
   | 'bedrock_api_key';
@@ -109,14 +115,24 @@ export type AuthState =
       raw: AuthDotJson;
     }
   | {
-      mode: 'chatgpt' | 'chatgpt_auth_tokens';
+      mode: 'chatgpt';
       tokens: TokenData;
       lastRefresh?: Date;
       raw: AuthDotJson;
     }
   | {
+      mode: 'chatgpt_auth_tokens';
+      tokens: TokenData;
+      lastRefresh?: Date;
+      raw: AuthDotJson;
+    }
+  | {
+      mode: 'headers';
+      headers: Record<string, string>;
+    }
+  | {
       mode: 'agent_identity';
-      agentIdentity: string;
+      agentIdentity: AgentIdentityStorage;
       agentIdentityRecord: AgentIdentityAuthRecord;
       raw: AuthDotJson;
     }
@@ -160,6 +176,7 @@ export function isCodexStoredAuthMode(value: unknown): value is CodexStoredAuthM
     value === 'apikey' ||
     value === 'chatgpt' ||
     value === 'chatgptAuthTokens' ||
+    value === 'headers' ||
     value === 'agentIdentity' ||
     value === 'personalAccessToken' ||
     value === 'bedrockApiKey'
@@ -174,6 +191,8 @@ export function storedAuthModeToStateMode(mode: CodexStoredAuthMode): AuthMode {
       return 'chatgpt';
     case 'chatgptAuthTokens':
       return 'chatgpt_auth_tokens';
+    case 'headers':
+      return 'headers';
     case 'agentIdentity':
       return 'agent_identity';
     case 'personalAccessToken':
@@ -194,6 +213,7 @@ export function authModeHasChatGptAccount(mode: AuthMode): boolean {
     case 'personal_access_token':
       return true;
     case 'api_key':
+    case 'headers':
     case 'agent_identity':
     case 'bedrock_api_key':
       return false;
@@ -208,6 +228,7 @@ export function authModeUsesCodexBackend(mode: AuthMode): boolean {
   switch (mode) {
     case 'chatgpt':
     case 'chatgpt_auth_tokens':
+    case 'headers':
     case 'agent_identity':
     case 'personal_access_token':
       return true;
@@ -219,6 +240,11 @@ export function authModeUsesCodexBackend(mode: AuthMode): boolean {
       throw new Error(`Unhandled auth mode: ${String(_exhaustive)}`);
     }
   }
+}
+
+export function oauthClientId(): string {
+  const override = process.env[CODEX_APP_SERVER_LOGIN_CLIENT_ID_ENV_VAR]?.trim();
+  return override && override.length > 0 ? override : CLIENT_ID;
 }
 
 export function normalizeAccountPlanType(value: string | undefined): AccountPlanType | undefined {
@@ -251,6 +277,8 @@ export function normalizeAccountPlanType(value: string | undefined): AccountPlan
     case 'edu':
       return 'edu';
     default:
-      return 'unknown';
+      // codex-rs preserves unrecognized plan strings so newer server-side plans remain visible
+      // to older clients instead of being collapsed into an indistinguishable sentinel.
+      return value;
   }
 }

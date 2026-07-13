@@ -4,6 +4,12 @@ import { readFile } from 'node:fs/promises';
 const promptCache = new Map<string, string>();
 
 export function resolveCodexPromptFilename(model: string): string {
+  if (model === 'gpt-5.6' || model.startsWith('gpt-5.6-sol')) {
+    return 'gpt-5.6-sol_prompt.md';
+  }
+  if (model.startsWith('gpt-5.6')) {
+    return 'gpt-5.6_prompt.md';
+  }
   if (model.startsWith('gpt-5.4')) {
     return 'gpt_5_4_prompt.md';
   }

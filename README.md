@@ -375,6 +375,7 @@ Result: fewer bad side effects, higher plan fidelity, and more first‑try succe
 - **[Dialog Persistence](docs/dialog-persistence.md)** — On-disk layout and lifecycle
 - **[Interruption & Resumption](docs/interruption-resumption.md)** — Stop/resume semantics
 - **[Auth](docs/auth.md)** — Authentication and access model
+- **[Codex Provider Auth Policy](docs/codex-provider-auth-policy.md)** — Managed-ChatGPT-OAuth-only boundary and alternatives
 - **[Mottos](docs/mottos.md)** — Short guiding statements
 
 ### Getting Help

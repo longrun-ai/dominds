@@ -4,6 +4,7 @@ import { randomUUID } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import path from 'node:path';
 import {
+  AgentIdentityStorage,
   AuthDotJson,
   CODEX_ACCESS_TOKEN_ENV_VAR,
   CODEX_API_KEY_ENV_VAR,
@@ -238,6 +239,7 @@ interface ModelsProbeModel {
   slug: string;
   display_name?: string;
   context_window?: number;
+  max_context_window?: number;
   auto_compact_token_limit?: number;
   effective_context_window_percent?: number;
   visibility?: string;
@@ -251,6 +253,7 @@ interface ModelsProbeResult {
   models_count?: number;
   models?: ModelsProbeModel[];
   model_slugs?: string[];
+  gpt_56_family?: ModelsProbeModel[];
   gpt_54_model?: ModelsProbeModel | null;
   gpt_54_mini_model?: ModelsProbeModel | null;
   codex_53_family?: ModelsProbeModel[];
@@ -363,7 +366,7 @@ function buildReport(codexHome: string, auth: AuthDotJson | null) {
 
   if (auth.agent_identity) {
     try {
-      const agentIdentity = parseAgentIdentityJwtClaims(auth.agent_identity);
+      const agentIdentity = parseAgentIdentityClaims(auth.agent_identity);
       report.agent_identity_account_id = agentIdentity.accountId;
       report.agent_identity_email = agentIdentity.email;
       report.agent_identity_user_id = agentIdentity.chatgptUserId;
@@ -947,10 +950,10 @@ function selectChatGptModel(options: DoctorOptions): ChatGptSelection {
     };
   }
 
-  const fallbackModels = ['gpt-5.4', 'gpt-5.3-codex', 'gpt-5.2-codex', 'gpt-5.2'];
+  const defaultModel = 'gpt-5.6-sol';
   return {
-    model: 'gpt-5.4',
-    ...resolveInstructionsSelection(options, fallbackModels[0]),
+    model: defaultModel,
+    ...resolveInstructionsSelection(options, defaultModel),
   };
 }
 
@@ -1046,6 +1049,10 @@ function parseModelsProbeResponse(raw: string): {
     if (contextWindow !== undefined) {
       model.context_window = contextWindow;
     }
+    const maxContextWindow = asFiniteNumber(entry.max_context_window);
+    if (maxContextWindow !== undefined) {
+      model.max_context_window = maxContextWindow;
+    }
     const autoCompactLimit = asFiniteNumber(entry.auto_compact_token_limit);
     if (autoCompactLimit !== undefined) {
       model.auto_compact_token_limit = autoCompactLimit;
@@ -1107,7 +1114,7 @@ async function probeChatGptModels(
   printPreflight(options, preflight);
 
   const client = new ChatGptClient(
-    { accessToken, accountId },
+    { kind: 'chatgpt', accessToken, accountId },
     {
       baseUrl,
       codexHome,
@@ -1142,6 +1149,7 @@ async function probeChatGptModels(
     }
 
     const modelSlugs = parsed.models.map((model) => model.slug);
+    const gpt56Family = parsed.models.filter((model) => model.slug.startsWith('gpt-5.6-'));
     const gpt54Model = parsed.models.find((model) => model.slug === 'gpt-5.4') ?? null;
     const gpt54MiniModel = parsed.models.find((model) => model.slug === 'gpt-5.4-mini') ?? null;
     const codex53Family = parsed.models.filter((model) => model.slug.startsWith('gpt-5.3-codex'));
@@ -1153,6 +1161,7 @@ async function probeChatGptModels(
       models_count: parsed.models.length,
       models: parsed.models,
       model_slugs: modelSlugs,
+      gpt_56_family: gpt56Family,
       gpt_54_model: gpt54Model,
       gpt_54_mini_model: gpt54MiniModel,
       codex_53_family: codex53Family,
@@ -1218,7 +1227,7 @@ async function verifyChatGptConversation(
   printPreflight(options, preflight);
 
   const client = new ChatGptClient(
-    { accessToken, accountId },
+    { kind: 'chatgpt', accessToken, accountId },
     {
       baseUrl,
       codexHome,
@@ -1309,7 +1318,7 @@ async function probeChatGptReasoningStream(
   printPreflight(options, preflight);
 
   const client = new ChatGptClient(
-    { accessToken, accountId },
+    { kind: 'chatgpt', accessToken, accountId },
     {
       baseUrl,
       codexHome,
@@ -1556,7 +1565,7 @@ async function probeChatGptFuncResultReplacement(
   printPreflight(options, preflightRound3);
 
   const client = new ChatGptClient(
-    { accessToken, accountId },
+    { kind: 'chatgpt', accessToken, accountId },
     {
       baseUrl,
       codexHome,
@@ -1718,7 +1727,7 @@ function getAccountId(auth: AuthDotJson): string | undefined {
   }
   if (auth.agent_identity) {
     try {
-      return parseAgentIdentityJwtClaims(auth.agent_identity).accountId;
+      return parseAgentIdentityClaims(auth.agent_identity).accountId;
     } catch {
       return undefined;
     }
@@ -1726,20 +1735,31 @@ function getAccountId(auth: AuthDotJson): string | undefined {
   return undefined;
 }
 
-function parseAgentIdentityJwtClaims(jwt: string): {
+function parseAgentIdentityClaims(agentIdentity: AgentIdentityStorage): {
   accountId: string;
   chatgptUserId: string;
-  email: string;
+  email?: string;
   planType: string;
   accountIsFedramp: boolean;
 } {
+  if (typeof agentIdentity !== 'string') {
+    return {
+      accountId: agentIdentity.account_id,
+      chatgptUserId: agentIdentity.chatgpt_user_id,
+      email: agentIdentity.email,
+      planType: agentIdentity.plan_type,
+      accountIsFedramp: agentIdentity.chatgpt_account_is_fedramp,
+    };
+  }
+
+  const jwt = agentIdentity;
   const payload = parseJwtPayload(jwt);
   const accountId = getStringClaim(payload.account_id);
   const chatgptUserId = getStringClaim(payload.chatgpt_user_id);
   const email = getStringClaim(payload.email);
   const planType = normalizeAccountPlanType(getStringClaim(payload.plan_type));
   const accountIsFedramp = getBooleanClaim(payload.chatgpt_account_is_fedramp);
-  if (!accountId || !chatgptUserId || !email || !planType || accountIsFedramp === undefined) {
+  if (!accountId || !chatgptUserId || !planType || accountIsFedramp === undefined) {
     throw new Error('agent identity JWT is missing required claims.');
   }
   return {
@@ -1934,6 +1954,29 @@ async function main(): Promise<void> {
       }
       if (typeof chatgptModelsProbe.models_count === 'number') {
         console.log(`- chatgpt /models count: ${chatgptModelsProbe.models_count}`);
+      }
+      if (chatgptModelsProbe.gpt_56_family && chatgptModelsProbe.gpt_56_family.length > 0) {
+        for (const model of chatgptModelsProbe.gpt_56_family) {
+          console.log(`- gpt-5.6 model found: ${model.slug}`);
+          if (typeof model.context_window === 'number') {
+            console.log(`- ${model.slug} context_window: ${model.context_window}`);
+          }
+          if (typeof model.max_context_window === 'number') {
+            console.log(`- ${model.slug} max_context_window: ${model.max_context_window}`);
+          }
+          if (typeof model.auto_compact_token_limit === 'number') {
+            console.log(
+              `- ${model.slug} auto_compact_token_limit: ${model.auto_compact_token_limit}`,
+            );
+          }
+          if (typeof model.effective_context_window_percent === 'number') {
+            console.log(
+              `- ${model.slug} effective_context_window_percent: ${model.effective_context_window_percent}`,
+            );
+          }
+        }
+      } else {
+        console.log('- gpt-5.6 family: none');
       }
       if (chatgptModelsProbe.gpt_54_model) {
         const frontier = chatgptModelsProbe.gpt_54_model;

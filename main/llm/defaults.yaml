@@ -115,6 +115,9 @@ providers:
   codex:
     name: Codex (ChatGPT)
     apiType: codex
+    # Product auth policy: this provider accepts only managed, refreshable ChatGPT OAuth file
+    # auth. Do not widen it automatically when syncing codex-rs auth modes; direct other auth
+    # methods to a custom `apiType: openai` Responses provider or a Dominds feature request.
     apiQuirks:
       - codex-anti-early-finalization
     baseUrl: https://chatgpt.com/backend-api/
@@ -134,10 +137,10 @@ providers:
           prominent: true
           default: high
           # Trade latency/cost for quality on reasoning-capable models.
-          # Allowed: none | minimal | low | medium | high | xhigh
+          # Allowed: none | minimal | low | medium | high | xhigh | max | ultra
           type: enum
-          values: [none, minimal, low, medium, high, xhigh]
-          description: Reasoning effort level (when supported by the model).
+          values: [none, minimal, low, medium, high, xhigh, max, ultra]
+          description: Reasoning effort level. For GPT-5.6 Sol/Terra, ultra is a Codex orchestration preset and is sent to inference as max, matching codex-rs.
         reasoning_summary:
           type: enum
           default: auto
@@ -188,6 +191,30 @@ providers:
           type: boolean
           description: Force JSON object output mode.
     models:
+      gpt-5.6-sol:
+        name: GPT-5.6 Sol
+        optimal_max_tokens: 200000
+        caution_remediation_cadence_generations: 10
+        context_length: 272000
+        input_length: 272000
+        output_length: 32768
+        context_window: '272K'
+      gpt-5.6-terra:
+        name: GPT-5.6 Terra
+        optimal_max_tokens: 200000
+        caution_remediation_cadence_generations: 10
+        context_length: 272000
+        input_length: 272000
+        output_length: 32768
+        context_window: '272K'
+      gpt-5.6-luna:
+        name: GPT-5.6 Luna
+        optimal_max_tokens: 200000
+        caution_remediation_cadence_generations: 10
+        context_length: 272000
+        input_length: 272000
+        output_length: 32768
+        context_window: '272K'
       gpt-5.5:
         name: GPT-5.5
         optimal_max_tokens: 200000
@@ -1016,9 +1043,9 @@ providers:
           prominent: true
           default: high
           # Trade latency/cost for quality on reasoning-capable models.
-          # Allowed: none | minimal | low | medium | high | xhigh
+          # Allowed: none | minimal | low | medium | high | xhigh | max
           type: enum
-          values: [none, minimal, low, medium, high, xhigh]
+          values: [none, minimal, low, medium, high, xhigh, max]
           description: Reasoning effort level (when supported by the model).
         reasoning_summary:
           type: enum
@@ -1087,6 +1114,42 @@ providers:
           type: boolean
           description: Include `web_search_call.action.sources` in the response payload.
     models:
+      gpt-5.6:
+        name: GPT-5.6 Sol (alias)
+        optimal_max_tokens: 600000
+        critical_max_tokens: 922000
+        caution_remediation_cadence_generations: 10
+        context_length: 1050000
+        input_length: 1050000
+        output_length: 128000
+        context_window: '1.05M'
+      gpt-5.6-sol:
+        name: GPT-5.6 Sol
+        optimal_max_tokens: 600000
+        critical_max_tokens: 922000
+        caution_remediation_cadence_generations: 10
+        context_length: 1050000
+        input_length: 1050000
+        output_length: 128000
+        context_window: '1.05M'
+      gpt-5.6-terra:
+        name: GPT-5.6 Terra
+        optimal_max_tokens: 600000
+        critical_max_tokens: 922000
+        caution_remediation_cadence_generations: 10
+        context_length: 1050000
+        input_length: 1050000
+        output_length: 128000
+        context_window: '1.05M'
+      gpt-5.6-luna:
+        name: GPT-5.6 Luna
+        optimal_max_tokens: 600000
+        critical_max_tokens: 922000
+        caution_remediation_cadence_generations: 10
+        context_length: 1050000
+        input_length: 1050000
+        output_length: 128000
+        context_window: '1.05M'
       gpt-5.5:
         name: GPT-5.5
         optimal_max_tokens: 200000

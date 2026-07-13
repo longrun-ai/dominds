@@ -832,6 +832,40 @@ async function main(): Promise<void> {
       'no team yaml errors expected for valid model_params.codex.service_tier usage',
     );
 
+    // GPT-5.6 exposes reasoning effort levels beyond xhigh on the Codex and OpenAI paths.
+    removeProblemsByPrefix('team/team_yaml_error/');
+    await writeText(
+      path.join(tmpRoot, '.minds', 'team.yaml'),
+      [
+        'member_defaults:',
+        '  provider: codex',
+        '  model: gpt-5.6-sol',
+        'default_responder: alice',
+        'members:',
+        '  alice:',
+        '    name: Alice',
+        '    model_params:',
+        '      codex:',
+        '        reasoning_effort: ultra',
+        '  bob:',
+        '    name: Bob',
+        '    provider: openai',
+        '    model: gpt-5.6-terra',
+        '    model_params:',
+        '      openai:',
+        '        reasoning_effort: max',
+        '',
+      ].join('\n'),
+    );
+
+    const teamGpt56 = await Team.load();
+    assert.equal(teamGpt56.getMember('alice')?.model_params?.codex?.reasoning_effort, 'ultra');
+    assert.equal(teamGpt56.getMember('bob')?.model_params?.openai?.reasoning_effort, 'max');
+    assert.ok(
+      getProblemsSnapshot().problems.every((p) => !p.id.startsWith('team/team_yaml_error/')),
+      'no team yaml errors expected for GPT-5.6 reasoning effort levels',
+    );
+
     // shell_specialists policy:
     // - must list the only members allowed to have shell tools
     // - should surface misconfig as Problems without breaking Team.load()

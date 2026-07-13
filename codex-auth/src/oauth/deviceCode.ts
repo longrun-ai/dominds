@@ -1,4 +1,4 @@
-import { AuthCredentialsStoreMode, CLIENT_ID, DEFAULT_ISSUER } from '../auth/schema.js';
+import { AuthCredentialsStoreMode, DEFAULT_ISSUER, oauthClientId } from '../auth/schema.js';
 import { persistTokens, resolveCodexHome } from '../auth/storage.js';
 import { sleep } from '../utils/time.js';
 import { ensureWorkspaceAllowed } from './browserLogin.js';
@@ -25,7 +25,7 @@ export interface DeviceCodeLoginOptions extends DeviceCodeOptions {
 
 export async function requestDeviceCode(options: DeviceCodeOptions = {}): Promise<DeviceCode> {
   const issuer = (options.issuer ?? DEFAULT_ISSUER).replace(/\/$/, '');
-  const clientId = options.clientId ?? CLIENT_ID;
+  const clientId = options.clientId ?? oauthClientId();
   const apiBase = `${issuer}/api/accounts`;
 
   const response = await fetch(`${apiBase}/deviceauth/usercode`, {
@@ -71,7 +71,7 @@ export async function completeDeviceCodeLogin(
 ): Promise<void> {
   const codexHome = resolveCodexHome(options.codexHome);
   const issuer = (options.issuer ?? DEFAULT_ISSUER).replace(/\/$/, '');
-  const clientId = options.clientId ?? CLIENT_ID;
+  const clientId = options.clientId ?? oauthClientId();
   const storeMode = options.storeMode ?? 'file';
   const apiBase = `${issuer}/api/accounts`;
 

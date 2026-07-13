@@ -2,7 +2,11 @@ import assert from 'node:assert/strict';
 import YAML from 'yaml';
 import { CODEX_ANTI_EARLY_FINALIZATION_API_QUIRK } from '../../main/llm/api-quirks';
 import { readBuiltinDefaultsYamlRaw, type ProviderConfig } from '../../main/llm/client';
-import { resolveCodexInstructions } from '../../main/llm/gen/codex';
+import {
+  CodexGen,
+  resolveCodexInstructions,
+  resolveCodexReasoningEffortForRequest,
+} from '../../main/llm/gen/codex';
 import { getWorkLanguage, setWorkLanguage } from '../../main/runtime/work-language';
 
 function asRecord(value: unknown, at: string): Record<string, unknown> {
@@ -125,10 +129,115 @@ async function main(): Promise<void> {
       'codex anti-early-finalization quirk should stay scoped to apiType=codex',
     );
 
+    assert.equal(resolveCodexReasoningEffortForRequest('gpt-5.6-sol', 'ultra'), 'max');
+    assert.equal(resolveCodexReasoningEffortForRequest('gpt-5.6-terra', 'ultra'), 'max');
+    assert.equal(resolveCodexReasoningEffortForRequest('gpt-5.6-luna', 'max'), 'max');
+    assert.throws(
+      () => resolveCodexReasoningEffortForRequest('gpt-5.6-luna', 'ultra'),
+      /GPT-5\.6 Luna supports up to max/,
+    );
+    assert.throws(
+      () => resolveCodexReasoningEffortForRequest('gpt-5.6-sol', 'none'),
+      /GPT-5\.6 Codex models support low\|medium\|high\|xhigh\|max/,
+    );
+    const policyError = Object.assign(new Error('managed ChatGPT OAuth file auth required'), {
+      code: 'DOMINDS_CODEX_PROVIDER_AUTH_POLICY',
+    });
+    assert.deepEqual(new CodexGen().classifyFailure(policyError), {
+      kind: 'fatal',
+      message: policyError.message,
+      code: policyError.code,
+    });
+
     const defaultsRaw = await readBuiltinDefaultsYamlRaw();
     const parsed = asRecord(YAML.parse(defaultsRaw), 'defaults.yaml');
     const providers = asRecord(parsed['providers'], 'defaults.yaml.providers');
     const codex = asRecord(providers['codex'], 'defaults.yaml.providers.codex');
+    const codexParamOptions = asRecord(
+      codex['model_param_options'],
+      'defaults.yaml.providers.codex.model_param_options',
+    );
+    const codexParamNamespace = asRecord(
+      codexParamOptions['codex'],
+      'defaults.yaml.providers.codex.model_param_options.codex',
+    );
+    const codexReasoningEffort = asRecord(
+      codexParamNamespace['reasoning_effort'],
+      'defaults.yaml.providers.codex.model_param_options.codex.reasoning_effort',
+    );
+    assert.deepEqual(codexReasoningEffort['values'], [
+      'none',
+      'minimal',
+      'low',
+      'medium',
+      'high',
+      'xhigh',
+      'max',
+      'ultra',
+    ]);
+    const codexModels = asRecord(codex['models'], 'defaults.yaml.providers.codex.models');
+    const codexModelNames = {
+      'gpt-5.6-sol': 'GPT-5.6 Sol',
+      'gpt-5.6-terra': 'GPT-5.6 Terra',
+      'gpt-5.6-luna': 'GPT-5.6 Luna',
+    } as const;
+    for (const [model, expectedName] of Object.entries(codexModelNames)) {
+      const modelInfo = asRecord(
+        codexModels[model],
+        `defaults.yaml.providers.codex.models.${model}`,
+      );
+      assert.equal(modelInfo['name'], expectedName);
+      assert.equal(modelInfo['optimal_max_tokens'], 200000);
+      assert.equal(modelInfo['caution_remediation_cadence_generations'], 10);
+      assert.equal(modelInfo['context_length'], 272000);
+      assert.equal(modelInfo['input_length'], 272000);
+      assert.equal(modelInfo['output_length'], 32768);
+      assert.equal(modelInfo['context_window'], '272K');
+    }
+    assert.equal(codexModels['gpt-5.6'], undefined, 'Codex provider should not expose API alias');
+    const openAi = asRecord(providers['openai'], 'defaults.yaml.providers.openai');
+    const openAiParamOptions = asRecord(
+      openAi['model_param_options'],
+      'defaults.yaml.providers.openai.model_param_options',
+    );
+    const openAiParamNamespace = asRecord(
+      openAiParamOptions['openai'],
+      'defaults.yaml.providers.openai.model_param_options.openai',
+    );
+    const openAiReasoningEffort = asRecord(
+      openAiParamNamespace['reasoning_effort'],
+      'defaults.yaml.providers.openai.model_param_options.openai.reasoning_effort',
+    );
+    assert.deepEqual(openAiReasoningEffort['values'], [
+      'none',
+      'minimal',
+      'low',
+      'medium',
+      'high',
+      'xhigh',
+      'max',
+    ]);
+    const openAiModels = asRecord(openAi['models'], 'defaults.yaml.providers.openai.models');
+    const openAiModelNames = {
+      'gpt-5.6': 'GPT-5.6 Sol (alias)',
+      'gpt-5.6-sol': 'GPT-5.6 Sol',
+      'gpt-5.6-terra': 'GPT-5.6 Terra',
+      'gpt-5.6-luna': 'GPT-5.6 Luna',
+    } as const;
+    for (const [model, expectedName] of Object.entries(openAiModelNames)) {
+      const modelInfo = asRecord(
+        openAiModels[model],
+        `defaults.yaml.providers.openai.models.${model}`,
+      );
+      assert.equal(modelInfo['name'], expectedName);
+      assert.equal(modelInfo['optimal_max_tokens'], 600000);
+      assert.equal(modelInfo['critical_max_tokens'], 922000);
+      assert.equal(modelInfo['caution_remediation_cadence_generations'], 10);
+      assert.equal(modelInfo['context_length'], 1050000);
+      assert.equal(modelInfo['input_length'], 1050000);
+      assert.equal(modelInfo['output_length'], 128000);
+      assert.equal(modelInfo['context_window'], '1.05M');
+    }
     assert.deepEqual(
       codex['apiQuirks'],
       [CODEX_ANTI_EARLY_FINALIZATION_API_QUIRK],

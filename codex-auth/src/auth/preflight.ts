@@ -2,14 +2,30 @@ import fs from 'node:fs';
 import path from 'node:path';
 
 import { parseIdToken } from '../oauth/tokenParsing.js';
-import { AuthDotJson, CodexStoredAuthMode, resolveAuthDotJsonMode } from './schema.js';
-import { readAuthFile, resolveCodexHome, writeAuthFile } from './storage.js';
+import type { StoredAuthSource } from './manager.js';
+import type { AuthDotJson, AuthState, CodexStoredAuthMode } from './schema.js';
+import { CODEX_ACCESS_TOKEN_ENV_VAR, resolveAuthDotJsonMode } from './schema.js';
+import { readAuthFile, resolveCodexHome } from './storage.js';
 
 export type CodexCliAuthStoreMode = 'file' | 'keyring' | 'auto' | 'ephemeral';
 
 const CLI_AUTH_CREDENTIALS_STORE_ASSIGNMENT = 'cli_auth_credentials_store = "file"';
 const CLI_AUTH_CREDENTIALS_STORE_PATTERN =
   /^[ \t]*cli_auth_credentials_store[ \t]*=[ \t]*(?:"([^"]*)"|'([^']*)'|([A-Za-z0-9_-]+))[ \t]*(?:#.*)?$/m;
+const DOMINDS_FEATURE_REQUEST_URL = 'https://github.com/longrun-ai/dominds/issues';
+
+export const DOMINDS_CODEX_PROVIDER_AUTH_POLICY =
+  'The Dominds codex provider supports only managed ChatGPT OAuth file auth.';
+export const DOMINDS_CODEX_PROVIDER_AUTH_POLICY_ERROR_CODE = 'DOMINDS_CODEX_PROVIDER_AUTH_POLICY';
+
+export class DomindsCodexProviderAuthPolicyError extends Error {
+  readonly code = DOMINDS_CODEX_PROVIDER_AUTH_POLICY_ERROR_CODE;
+
+  constructor(message: string) {
+    super(message);
+    this.name = 'DomindsCodexProviderAuthPolicyError';
+  }
+}
 
 export type CodexFileAuthPreparationResult =
   | {
@@ -103,6 +119,21 @@ export function prepareCodexFileAuth(
   let previousStoreMode: CodexCliAuthStoreMode | undefined;
   let changedConfigToFile = false;
 
+  const codexAccessToken = process.env[CODEX_ACCESS_TOKEN_ENV_VAR]?.trim();
+  if (codexAccessToken) {
+    const detectedMode = codexAccessToken.startsWith('at-')
+      ? 'personalAccessToken via CODEX_ACCESS_TOKEN'
+      : 'agentIdentity via CODEX_ACCESS_TOKEN';
+    return actionRequired({
+      codexHome,
+      configPath,
+      reason: 'unsupported_auth_mode',
+      changedConfigToFile,
+      message: formatDomindsCodexProviderUnsupportedAuth(detectedMode),
+      steps: unsupportedAuthSteps(codexHome, options.codexHomeEnvVar, true),
+    });
+  }
+
   try {
     const change = setCodexCliAuthStoreModeToFile(codexHome);
     configPath = change.configPath;
@@ -163,49 +194,15 @@ export function prepareCodexFileAuth(
       reason: 'unsupported_auth_mode',
       changedConfigToFile,
       previousStoreMode,
-      message: `${providerName} cannot use the current Codex auth: ${details}`,
-      steps: loginSteps(codexHome, options.codexHomeEnvVar),
+      message: `${providerName} cannot use the current Codex auth: ${details} ${formatDomindsCodexProviderUnsupportedAuth('unknown auth.json mode')}`,
+      steps: unsupportedAuthSteps(codexHome, options.codexHomeEnvVar, false),
     });
-  }
-
-  if (mode === 'chatgptAuthTokens') {
-    const promoted = promoteChatgptAuthTokensToFileAuth(auth);
-    if (promoted) {
-      const promotedIssue = validateChatgptAuth('chatgpt', promoted);
-      if (promotedIssue !== undefined) {
-        const { reason, message } = promotedIssue;
-        return actionRequired({
-          codexHome,
-          configPath,
-          reason,
-          changedConfigToFile,
-          previousStoreMode,
-          message: `${providerName} cannot use the current Codex auth: ${message}`,
-          steps: loginSteps(codexHome, options.codexHomeEnvVar),
-        });
-      }
-      try {
-        writeAuthFile(codexHome, promoted, 'file');
-      } catch (err: unknown) {
-        const details = err instanceof Error ? err.message : String(err);
-        return actionRequired({
-          codexHome,
-          configPath,
-          reason: 'config_write_failed',
-          changedConfigToFile,
-          previousStoreMode,
-          message: `${providerName} can convert the current Codex auth to managed file auth, but could not update ${path.join(codexHome, 'auth.json')}: ${details}`,
-          steps: loginSteps(codexHome, options.codexHomeEnvVar),
-        });
-      }
-      auth = promoted;
-      mode = 'chatgpt';
-    }
   }
 
   const chatgptIssue = validateChatgptAuth(mode, auth);
   if (chatgptIssue !== undefined) {
     const { reason, message } = chatgptIssue;
+    const unsupportedMode = reason === 'api_key_auth' || reason === 'unsupported_auth_mode';
     return actionRequired({
       codexHome,
       configPath,
@@ -213,7 +210,9 @@ export function prepareCodexFileAuth(
       changedConfigToFile,
       previousStoreMode,
       message: `${providerName} cannot use the current Codex auth: ${message}`,
-      steps: loginSteps(codexHome, options.codexHomeEnvVar),
+      steps: unsupportedMode
+        ? unsupportedAuthSteps(codexHome, options.codexHomeEnvVar, false)
+        : loginSteps(codexHome, options.codexHomeEnvVar),
     });
   }
 
@@ -237,6 +236,69 @@ export function formatCodexFileAuthActionRequired(
   ].join('\n');
 }
 
+export function formatDomindsCodexProviderUnsupportedAuth(detectedMode: string): string {
+  return `${DOMINDS_CODEX_PROVIDER_AUTH_POLICY} Detected ${detectedMode}. To use another authentication method, configure a custom Dominds OpenAI Responses API provider (apiType: openai), or submit a Dominds feature request at ${DOMINDS_FEATURE_REQUEST_URL}.`;
+}
+
+export function assertDomindsCodexProviderManagedChatGptAuth(
+  auth: AuthState | null,
+): asserts auth is Extract<AuthState, { mode: 'chatgpt' }> {
+  if (auth?.mode !== 'chatgpt') {
+    throw new DomindsCodexProviderAuthPolicyError(
+      formatDomindsCodexProviderUnsupportedAuth(auth?.mode ?? 'missing auth'),
+    );
+  }
+
+  const tokens = auth.tokens;
+  if (
+    !isNonEmptyString(tokens.idToken.raw_jwt) ||
+    !isNonEmptyString(tokens.accessToken) ||
+    !isNonEmptyString(tokens.refreshToken) ||
+    !isNonEmptyString(tokens.accountId)
+  ) {
+    throw new DomindsCodexProviderAuthPolicyError(
+      formatDomindsCodexProviderInvalidManagedAuth(
+        'The loaded ChatGPT auth state is missing an id token, access token, refresh token, or account id.',
+      ),
+    );
+  }
+}
+
+export function assertDomindsCodexProviderManagedChatGptStoredAuth(
+  auth: AuthDotJson,
+  source: StoredAuthSource,
+): void {
+  let mode: CodexStoredAuthMode;
+  try {
+    mode = resolveAuthDotJsonMode(auth);
+  } catch {
+    throw new DomindsCodexProviderAuthPolicyError(
+      formatDomindsCodexProviderUnsupportedAuth('unknown auth.json mode'),
+    );
+  }
+  if (source !== 'persistent') {
+    throw new DomindsCodexProviderAuthPolicyError(
+      formatDomindsCodexProviderUnsupportedAuth(`${mode} from the ephemeral auth store`),
+    );
+  }
+  if (mode !== 'chatgpt') {
+    throw new DomindsCodexProviderAuthPolicyError(
+      formatDomindsCodexProviderUnsupportedAuth(`${mode} in auth.json`),
+    );
+  }
+
+  const issue = validateChatgptAuth(mode, auth);
+  if (issue !== undefined) {
+    throw new DomindsCodexProviderAuthPolicyError(
+      formatDomindsCodexProviderInvalidManagedAuth(issue.message),
+    );
+  }
+}
+
+function formatDomindsCodexProviderInvalidManagedAuth(details: string): string {
+  return `${DOMINDS_CODEX_PROVIDER_AUTH_POLICY} ${details} Re-run Codex ChatGPT login in file mode. To use another authentication method, configure a custom Dominds OpenAI Responses API provider (apiType: openai), or submit a Dominds feature request at ${DOMINDS_FEATURE_REQUEST_URL}.`;
+}
+
 function validateChatgptAuth(
   mode: CodexStoredAuthMode,
   auth: AuthDotJson,
@@ -246,33 +308,43 @@ function validateChatgptAuth(
       message: string;
     }
   | undefined {
-  if (mode === 'apikey') {
-    return {
-      reason: 'api_key_auth',
-      message:
-        'auth.json is in API key mode. Dominds uses the ChatGPT Codex backend and needs ChatGPT OAuth tokens, not only an OpenAI API key.',
-    };
-  }
-  if (mode === 'agentIdentity') {
-    return {
-      reason: 'unsupported_auth_mode',
-      message:
-        'auth.json uses agentIdentity auth. Agent identity auth is not equivalent to reusable ChatGPT OAuth file auth.',
-    };
-  }
-  if (mode === 'personalAccessToken') {
-    return {
-      reason: 'unsupported_auth_mode',
-      message:
-        'auth.json uses personalAccessToken auth. This preflight requires managed ChatGPT OAuth file auth.',
-    };
-  }
-  if (mode === 'bedrockApiKey') {
-    return {
-      reason: 'api_key_auth',
-      message:
-        'auth.json uses Bedrock API key auth. Dominds uses the ChatGPT Codex backend and needs ChatGPT OAuth tokens.',
-    };
+  switch (mode) {
+    case 'chatgpt':
+      break;
+    case 'apikey':
+      return {
+        reason: 'api_key_auth',
+        message: formatDomindsCodexProviderUnsupportedAuth('apikey in auth.json'),
+      };
+    case 'chatgptAuthTokens':
+      return {
+        reason: 'unsupported_auth_mode',
+        message: formatDomindsCodexProviderUnsupportedAuth('chatgptAuthTokens in auth.json'),
+      };
+    case 'headers':
+      return {
+        reason: 'unsupported_auth_mode',
+        message: formatDomindsCodexProviderUnsupportedAuth('headers auth'),
+      };
+    case 'agentIdentity':
+      return {
+        reason: 'unsupported_auth_mode',
+        message: formatDomindsCodexProviderUnsupportedAuth('agentIdentity in auth.json'),
+      };
+    case 'personalAccessToken':
+      return {
+        reason: 'unsupported_auth_mode',
+        message: formatDomindsCodexProviderUnsupportedAuth('personalAccessToken in auth.json'),
+      };
+    case 'bedrockApiKey':
+      return {
+        reason: 'unsupported_auth_mode',
+        message: formatDomindsCodexProviderUnsupportedAuth('bedrockApiKey in auth.json'),
+      };
+    default: {
+      const _exhaustive: never = mode;
+      throw new Error(`Unhandled Codex stored auth mode: ${String(_exhaustive)}`);
+    }
   }
 
   const tokens = auth.tokens;
@@ -308,24 +380,6 @@ function validateChatgptAuth(
     };
   }
   return undefined;
-}
-
-function promoteChatgptAuthTokensToFileAuth(auth: AuthDotJson): AuthDotJson | undefined {
-  const tokens = auth.tokens;
-  if (
-    !tokens ||
-    !isNonEmptyString(tokens.id_token) ||
-    !isNonEmptyString(tokens.access_token) ||
-    !isNonEmptyString(tokens.refresh_token)
-  ) {
-    return undefined;
-  }
-  return {
-    ...auth,
-    auth_mode: 'chatgpt',
-    tokens: { ...tokens },
-    last_refresh: auth.last_refresh ?? new Date().toISOString(),
-  };
 }
 
 function actionRequired(
@@ -380,6 +434,24 @@ function loginSteps(codexHome: string, codexHomeEnvVar: string | undefined): str
     `Run ChatGPT login in file mode: ${envPrefix}codex -c cli_auth_credentials_store=file login`,
     `Verify file auth exists: ${envPrefix}codex -c cli_auth_credentials_store=file login status`,
     `Then retry Dominds. Expected file: ${path.join(codexHome, 'auth.json')}`,
+  ];
+}
+
+function unsupportedAuthSteps(
+  codexHome: string,
+  codexHomeEnvVar: string | undefined,
+  unsetCodexAccessToken: boolean,
+): string[] {
+  const steps = unsetCodexAccessToken
+    ? [
+        `Unset ${CODEX_ACCESS_TOKEN_ENV_VAR}; the Dominds codex provider does not consume PAT or Agent Identity credentials.`,
+      ]
+    : [];
+  return [
+    ...steps,
+    ...loginSteps(codexHome, codexHomeEnvVar),
+    'If another authentication method is intentional, configure a custom Dominds OpenAI Responses API provider with apiType: openai.',
+    `If that provider cannot cover the required authentication flow, submit a Dominds feature request: ${DOMINDS_FEATURE_REQUEST_URL}`,
   ];
 }
 

@@ -350,7 +350,7 @@ export namespace Team {
     temperature?: number; // 0-2, controls randomness
     service_tier?: 'auto' | 'default' | 'flex' | 'scale' | 'priority'; // Processing tier / latency class
     top_p?: number; // 0-1, nucleus sampling
-    reasoning_effort?: 'none' | 'minimal' | 'low' | 'medium' | 'high' | 'xhigh'; // For reasoning-capable models
+    reasoning_effort?: 'none' | 'minimal' | 'low' | 'medium' | 'high' | 'xhigh' | 'max' | 'ultra'; // For reasoning-capable models
     reasoning_summary?: 'auto' | 'concise' | 'detailed' | 'none'; // Control reasoning summary detail level
     verbosity?: 'low' | 'medium' | 'high'; // Control response detail level (GPT-5 series)
     parallel_tool_calls?: boolean; // Allow models to emit parallel tool calls (LLM/provider-native term).
@@ -362,7 +362,7 @@ export namespace Team {
     temperature?: number; // 0-2, controls randomness
     service_tier?: 'auto' | 'default' | 'flex' | 'scale' | 'priority'; // Processing tier / latency class
     top_p?: number; // 0-1, nucleus sampling
-    reasoning_effort?: 'none' | 'minimal' | 'low' | 'medium' | 'high' | 'xhigh'; // For reasoning-capable models
+    reasoning_effort?: 'none' | 'minimal' | 'low' | 'medium' | 'high' | 'xhigh' | 'max'; // For reasoning-capable models
     reasoning_summary?: 'auto' | 'concise' | 'detailed' | 'none'; // Control reasoning summary detail level
     verbosity?: 'low' | 'medium' | 'high'; // Control response detail level (GPT-5 series)
     parallel_tool_calls?: boolean; // Allow models to emit parallel tool calls.
@@ -2939,10 +2939,12 @@ export namespace Team {
         reasoningEffort !== 'low' &&
         reasoningEffort !== 'medium' &&
         reasoningEffort !== 'high' &&
-        reasoningEffort !== 'xhigh'
+        reasoningEffort !== 'xhigh' &&
+        reasoningEffort !== 'max' &&
+        reasoningEffort !== 'ultra'
       ) {
         throw new Error(
-          `Invalid ${at2}.reasoning_effort: expected none|minimal|low|medium|high|xhigh (got ${describeValueType(
+          `Invalid ${at2}.reasoning_effort: expected none|minimal|low|medium|high|xhigh|max|ultra (got ${describeValueType(
             reasoningEffort,
           )})`,
         );
@@ -3031,10 +3033,11 @@ export namespace Team {
         reasoningEffort !== 'low' &&
         reasoningEffort !== 'medium' &&
         reasoningEffort !== 'high' &&
-        reasoningEffort !== 'xhigh'
+        reasoningEffort !== 'xhigh' &&
+        reasoningEffort !== 'max'
       ) {
         throw new Error(
-          `Invalid ${at2}.reasoning_effort: expected none|minimal|low|medium|high|xhigh (got ${describeValueType(
+          `Invalid ${at2}.reasoning_effort: expected none|minimal|low|medium|high|xhigh|max (got ${describeValueType(
             reasoningEffort,
           )})`,
         );

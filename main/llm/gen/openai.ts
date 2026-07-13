@@ -862,12 +862,15 @@ function buildOpenAiReasoning(
   }
 
   const summary = openAiParams.reasoning_summary === 'none' ? null : openAiParams.reasoning_summary;
-  return {
+  const reasoning = {
     ...(openAiParams.reasoning_effort !== undefined
       ? { effort: openAiParams.reasoning_effort }
       : {}),
     ...(summary !== undefined ? { summary } : {}),
   };
+  // OpenAI SDK 6.42.0 predates the GPT-5.6 `max` effort literal exposed by the current
+  // API model catalog. Keep the widening isolated at this external SDK boundary.
+  return reasoning as unknown as ResponseCreateParamsStreaming['reasoning'];
 }
 
 function buildOpenAiNativeTools(openAiParams: NonNullable<Team.ModelParams['openai']>): Tool[] {

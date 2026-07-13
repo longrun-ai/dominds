@@ -285,6 +285,7 @@ Dominds 面向“长期开发运作（DevOps）”场景设计，基于社会化
 - **[Dialog Persistence](docs/dialog-persistence.zh.md)** — 磁盘持久化存储结构
 - **[Interruption & Resumption](docs/interruption-resumption.zh.md)** — 任务中断与恢复语义
 - **[Auth](docs/auth.zh.md)** — 认证机制与访问模型（WebUI + API）
+- **[Codex Provider 认证策略](docs/codex-provider-auth-policy.zh.md)** — 仅支持 ChatGPT 托管 OAuth 的产品边界与替代路径
 - **[Mottos](docs/mottos.zh.md)** — 警世名言
 
 ## 获取帮助

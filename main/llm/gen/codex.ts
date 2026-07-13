@@ -11,6 +11,7 @@ import type {
   ChatGptFunctionTool,
   ChatGptMessageItem,
   ChatGptMessageRole,
+  ChatGptReasoningEffort,
   ChatGptReasoningItem,
   ChatGptResponseItem,
   ChatGptResponsesRequest,
@@ -65,6 +66,9 @@ import {
 
 const log = createLogger('llm/codex');
 const codexFallbackInstructions = 'You are Codex CLI.';
+// Runtime import of codex-auth is dynamic because Dominds is CommonJS; keep this discriminator
+// identical to the exported codex-auth policy error code.
+const DOMINDS_CODEX_PROVIDER_AUTH_POLICY_ERROR_CODE = 'DOMINDS_CODEX_PROVIDER_AUTH_POLICY';
 const codexAntiEarlyFinalizationInstructionSections = {
   zh: {
     title: '每轮作答前的推理完成检查',
@@ -80,6 +84,16 @@ type CodexToolChoice = 'none' | 'auto' | 'required';
 type CodexResponsesRequest = Omit<ChatGptResponsesRequest, 'tool_choice'> & {
   tool_choice: CodexToolChoice;
 };
+
+function isDomindsCodexProviderAuthPolicyError(
+  error: unknown,
+): error is Error & { code: typeof DOMINDS_CODEX_PROVIDER_AUTH_POLICY_ERROR_CODE } {
+  return (
+    error instanceof Error &&
+    'code' in error &&
+    error.code === DOMINDS_CODEX_PROVIDER_AUTH_POLICY_ERROR_CODE
+  );
+}
 
 export function resolveCodexToolChoice(
   tools: readonly ChatGptTool[],
@@ -280,17 +294,46 @@ function buildCodexTextControls(agent: Team.Member): ChatGptTextControls | undef
   return Object.keys(text).length > 0 ? text : undefined;
 }
 
-function buildCodexReasoning(agent: Team.Member): ChatGptResponsesRequest['reasoning'] | null {
+export function resolveCodexReasoningEffortForRequest(
+  model: string,
+  reasoningEffort: NonNullable<Team.ModelParams['codex']>['reasoning_effort'],
+): ChatGptReasoningEffort | undefined {
+  if (
+    model.startsWith('gpt-5.6-') &&
+    (reasoningEffort === 'none' || reasoningEffort === 'minimal')
+  ) {
+    throw new Error(
+      `Invalid Codex reasoning_effort=${reasoningEffort} for model '${model}'; GPT-5.6 Codex models support low|medium|high|xhigh|max, plus ultra on Sol and Terra.`,
+    );
+  }
+  if (model.startsWith('gpt-5.6-luna') && reasoningEffort === 'ultra') {
+    throw new Error(
+      `Invalid Codex reasoning_effort=ultra for model '${model}'; GPT-5.6 Luna supports up to max.`,
+    );
+  }
+
+  // `ultra` is a Codex client orchestration preset. codex-rs sends `max` to the inference API
+  // and handles the additional delegation behavior locally; never put `ultra` on the wire.
+  return reasoningEffort === 'ultra' ? 'max' : reasoningEffort;
+}
+
+function buildCodexReasoning(
+  agent: Team.Member,
+  model: string,
+): ChatGptResponsesRequest['reasoning'] | null {
   // Provider isolation rule: do not borrow OpenAI Responses params inside the Codex wrapper.
   const codexParams = agent.model_params?.codex;
   if (codexParams?.reasoning_effort === undefined && codexParams?.reasoning_summary === undefined) {
     return null;
   }
 
+  const reasoningEffort = resolveCodexReasoningEffortForRequest(
+    model,
+    codexParams?.reasoning_effort,
+  );
+
   return {
-    ...(codexParams?.reasoning_effort !== undefined
-      ? { effort: codexParams.reasoning_effort }
-      : {}),
+    ...(reasoningEffort !== undefined ? { effort: reasoningEffort } : {}),
     ...(codexParams?.reasoning_summary !== undefined
       ? { summary: codexParams.reasoning_summary }
       : { summary: 'auto' }),
@@ -879,7 +922,7 @@ async function buildCodexRequest(
   // Provider isolation rule: request construction must only read Codex-native params here.
   const codexParams = agent.model_params?.codex;
   const parallelToolCalls = codexParams?.parallel_tool_calls ?? true;
-  const reasoning = buildCodexReasoning(agent);
+  const reasoning = buildCodexReasoning(agent, agent.model);
   const include: ChatGptResponsesRequest['include'] =
     reasoning !== null ? ['reasoning.encrypted_content'] : [];
   const serviceTier = resolveCodexServiceTier(codexParams?.service_tier);
@@ -915,6 +958,13 @@ export class CodexGen implements LlmGenerator {
   }
 
   classifyFailure(error: unknown): LlmFailureDisposition | undefined {
+    if (isDomindsCodexProviderAuthPolicyError(error)) {
+      return {
+        kind: 'fatal',
+        message: error.message,
+        code: error.code,
+      };
+    }
     return classifyOpenAiLikeFailure(error);
   }
 
@@ -937,13 +987,20 @@ export class CodexGen implements LlmGenerator {
     // compiled as CommonJS, so Node.js requires a dynamic `import()` for runtime access here.
     const codexAuth: typeof import('@longrun-ai/codex-auth') =
       await import('@longrun-ai/codex-auth');
+    // PRODUCT POLICY: this provider is intentionally narrower than codex-rs. It accepts only
+    // managed, refreshable ChatGPT OAuth file auth. Keep recognizing new codex-rs auth modes so
+    // they fail with actionable diagnostics, but do not enable them here during future syncs
+    // without an explicit Dominds product decision. Other auth belongs in a custom OpenAI
+    // Responses API provider or a separately approved Dominds feature.
     const authPreparation = codexAuth.prepareCodexFileAuth({
       codexHome,
       codexHomeEnvVar: providerConfig.apiKeyEnvVar,
       providerName: `Dominds codex provider '${providerConfig.name}'`,
     });
     if (authPreparation.kind === 'action_required') {
-      throw new Error(codexAuth.formatCodexFileAuthActionRequired(authPreparation));
+      throw new codexAuth.DomindsCodexProviderAuthPolicyError(
+        codexAuth.formatCodexFileAuthActionRequired(authPreparation),
+      );
     }
     if (authPreparation.changedConfigToFile) {
       log.info(
@@ -956,9 +1013,24 @@ export class CodexGen implements LlmGenerator {
         },
       );
     }
-    const manager = new codexAuth.AuthManager({ codexHome });
+    const manager = new codexAuth.AuthManager({
+      codexHome,
+      // Reject ephemeral credentials, incomplete managed auth, or a changed auth.json before
+      // AuthManager can normalize or promote another stored mode into a managed-looking in-memory
+      // state during refresh/401 recovery.
+      validateStoredAuth: codexAuth.assertDomindsCodexProviderManagedChatGptStoredAuth,
+      // Validate environment and external precedence candidates before recovery can compare
+      // account ids or replace the cached state, so policy failures keep their actionable error.
+      validateAuthState: codexAuth.assertDomindsCodexProviderManagedChatGptAuth,
+    });
+    // Defense in depth against AuthManager precedence changes, environment overrides, or
+    // ephemeral credentials appearing after the file-auth preflight and before request creation.
+    codexAuth.assertDomindsCodexProviderManagedChatGptAuth(manager.authCached());
     const client = await codexAuth.createChatGptClientFromManager(manager, {
       baseUrl: providerConfig.baseUrl,
+      // Re-run the product-policy assertion after every auth-manager reload/refresh, before a
+      // recovered request can be sent with credentials that changed during the dialog lifetime.
+      validateAuthState: codexAuth.assertDomindsCodexProviderManagedChatGptAuth,
     });
 
     if (!agent.model) {
