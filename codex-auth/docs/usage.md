@@ -121,6 +121,27 @@ import { requireCodexPromptSync } from '@longrun-ai/codex-auth';
 const instructions = requireCodexPromptSync('gpt-5.6-sol');
 ```
 
+## Max and Ultra reasoning
+
+`max` is a ChatGPT Responses inference effort and can be used directly in a request:
+
+```ts
+import type { ChatGptReasoning } from '@longrun-ai/codex-auth';
+
+const reasoning: ChatGptReasoning = { effort: 'max', summary: 'auto' };
+```
+
+`ultra` is a Codex client-level selection rather than an inference API effort. Current codex-rs
+converts it to `max` before sending the request and separately enables proactive multi-agent
+delegation. `codex-auth` intentionally does not accept `ultra` or provide an `ultra`-to-`max`
+normalizer: doing so would imply that the missing orchestration behavior had also been reproduced.
+Use `max` when only the highest supported inference effort is wanted. Do not send the literal value
+`ultra` in a raw ChatGPT Responses request.
+
+The `/models` output from `auth-doctor --probe-models` may list `ultra`. That output reports the
+remote Codex catalog for diagnosis; it does not expand the request values supported by this
+library.
+
 `service_tier` is optional. For most callers, `default` and `priority` are the
 useful user-facing choices. `priority` corresponds to faster processing without
 changing reasoning effort.

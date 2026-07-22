@@ -238,11 +238,19 @@ interface VerifyResult {
 interface ModelsProbeModel {
   slug: string;
   display_name?: string;
+  default_reasoning_level?: string;
+  supported_reasoning_levels?: ModelsProbeReasoningLevel[];
+  multi_agent_version?: string | null;
   context_window?: number;
   max_context_window?: number;
   auto_compact_token_limit?: number;
   effective_context_window_percent?: number;
   visibility?: string;
+}
+
+interface ModelsProbeReasoningLevel {
+  effort: string;
+  description?: string;
 }
 
 interface ModelsProbeResult {
@@ -1044,6 +1052,29 @@ function parseModelsProbeResponse(raw: string): {
     const model: ModelsProbeModel = { slug };
     if (typeof entry.display_name === 'string') {
       model.display_name = entry.display_name;
+    }
+    if (typeof entry.default_reasoning_level === 'string') {
+      model.default_reasoning_level = entry.default_reasoning_level;
+    }
+    if (Array.isArray(entry.supported_reasoning_levels)) {
+      model.supported_reasoning_levels = entry.supported_reasoning_levels.flatMap(
+        (reasoningLevel): ModelsProbeReasoningLevel[] => {
+          if (!isRecord(reasoningLevel) || typeof reasoningLevel.effort !== 'string') {
+            return [];
+          }
+          return [
+            {
+              effort: reasoningLevel.effort,
+              ...(typeof reasoningLevel.description === 'string'
+                ? { description: reasoningLevel.description }
+                : {}),
+            },
+          ];
+        },
+      );
+    }
+    if (entry.multi_agent_version === null || typeof entry.multi_agent_version === 'string') {
+      model.multi_agent_version = entry.multi_agent_version;
     }
     const contextWindow = asFiniteNumber(entry.context_window);
     if (contextWindow !== undefined) {
@@ -1972,6 +2003,23 @@ async function main(): Promise<void> {
           if (typeof model.effective_context_window_percent === 'number') {
             console.log(
               `- ${model.slug} effective_context_window_percent: ${model.effective_context_window_percent}`,
+            );
+          }
+          if (typeof model.default_reasoning_level === 'string') {
+            console.log(
+              `- ${model.slug} default_reasoning_level: ${model.default_reasoning_level}`,
+            );
+          }
+          if (model.supported_reasoning_levels && model.supported_reasoning_levels.length > 0) {
+            console.log(
+              `- ${model.slug} supported_reasoning_levels: ${model.supported_reasoning_levels
+                .map((level) => level.effort)
+                .join(', ')}`,
+            );
+          }
+          if (model.multi_agent_version !== undefined) {
+            console.log(
+              `- ${model.slug} multi_agent_version: ${model.multi_agent_version ?? 'none'}`,
             );
           }
         }

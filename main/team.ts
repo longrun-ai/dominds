@@ -350,7 +350,7 @@ export namespace Team {
     temperature?: number; // 0-2, controls randomness
     service_tier?: 'auto' | 'default' | 'flex' | 'scale' | 'priority'; // Processing tier / latency class
     top_p?: number; // 0-1, nucleus sampling
-    reasoning_effort?: 'none' | 'minimal' | 'low' | 'medium' | 'high' | 'xhigh' | 'max' | 'ultra'; // For reasoning-capable models
+    reasoning_effort?: 'none' | 'minimal' | 'low' | 'medium' | 'high' | 'xhigh' | 'max'; // For reasoning-capable models
     reasoning_summary?: 'auto' | 'concise' | 'detailed' | 'none'; // Control reasoning summary detail level
     verbosity?: 'low' | 'medium' | 'high'; // Control response detail level (GPT-5 series)
     parallel_tool_calls?: boolean; // Allow models to emit parallel tool calls (LLM/provider-native term).
@@ -2932,6 +2932,11 @@ export namespace Team {
       }
 
       const reasoningEffort = params.reasoning_effort;
+      if (reasoningEffort === 'ultra') {
+        throw new Error(
+          `Invalid ${at2}.reasoning_effort: ultra is a Codex client orchestration preset, not an inference effort supported by Dominds. Use max for the highest supported inference effort; Dominds teammate coordination is independent of this provider parameter.`,
+        );
+      }
       if (
         reasoningEffort !== undefined &&
         reasoningEffort !== 'none' &&
@@ -2940,11 +2945,10 @@ export namespace Team {
         reasoningEffort !== 'medium' &&
         reasoningEffort !== 'high' &&
         reasoningEffort !== 'xhigh' &&
-        reasoningEffort !== 'max' &&
-        reasoningEffort !== 'ultra'
+        reasoningEffort !== 'max'
       ) {
         throw new Error(
-          `Invalid ${at2}.reasoning_effort: expected none|minimal|low|medium|high|xhigh|max|ultra (got ${describeValueType(
+          `Invalid ${at2}.reasoning_effort: expected none|minimal|low|medium|high|xhigh|max (got ${describeValueType(
             reasoningEffort,
           )})`,
         );

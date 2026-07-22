@@ -142,6 +142,14 @@ export type ChatGptJsonValue =
   | ChatGptJsonValue[]
   | { [key: string]: ChatGptJsonValue };
 
+/**
+ * Reasoning effort values accepted by the ChatGPT Responses inference boundary.
+ *
+ * Codex also exposes `ultra` as a client-level selection, but codex-rs combines `max` inference
+ * effort with separate proactive delegation behavior. This package intentionally does not expose
+ * or normalize `ultra`: mapping it to `max` alone would falsely imply that the full Codex behavior
+ * had been reproduced.
+ */
 export type ChatGptReasoningEffort =
   | 'none'
   | 'minimal'

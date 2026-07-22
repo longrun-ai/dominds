@@ -157,7 +157,8 @@ Dump SSE events from the verification request:
 npx @longrun-ai/codex-auth --verbose
 ```
 
-Probe remote `/models` (enabled by default) and print model metadata:
+Probe remote `/models` (enabled by default) and print model metadata, including advertised default
+and supported reasoning levels plus the multi-agent catalog version:
 
 ```sh
 npx @longrun-ai/codex-auth --probe-models
@@ -217,6 +218,14 @@ npx @longrun-ai/codex-auth --codex-home /path/to/.codex
   surrounding instructions.
 - Reasoning/thinking SSE events (`response.reasoning_*`) only stream when the request enables
   `reasoning` (and typically includes `reasoning.encrypted_content`).
+- `max` is a ChatGPT Responses inference effort and is accepted directly in
+  `ChatGptReasoning.effort`. `ultra` is different: it is a Codex client-level selection that
+  codex-rs converts to `max` at the inference boundary while separately enabling proactive
+  multi-agent delegation. This package intentionally does not accept or normalize `ultra`, because
+  mapping it to `max` alone would misrepresent the missing orchestration behavior. Use `max` when
+  only the highest supported inference effort is wanted. `auth-doctor --probe-models` may still
+  report `ultra` because that diagnostic reflects the remote Codex catalog, not this package's
+  request contract.
 - Reusing the same `conversationId` across turns also reuses the same `prompt_cache_key`.
 - `service_tier` is supported on responses requests. In typical user-facing UX, `default`
   and `priority` are the practical choices; `priority` is the API-side equivalent of Codex

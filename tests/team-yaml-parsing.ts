@@ -832,7 +832,43 @@ async function main(): Promise<void> {
       'no team yaml errors expected for valid model_params.codex.service_tier usage',
     );
 
-    // GPT-5.6 exposes reasoning effort levels beyond xhigh on the Codex and OpenAI paths.
+    // GPT-5.6 exposes max inference effort beyond xhigh on the Codex and OpenAI paths.
+    removeProblemsByPrefix('team/team_yaml_error/');
+    await writeText(
+      path.join(tmpRoot, '.minds', 'team.yaml'),
+      [
+        'member_defaults:',
+        '  provider: codex',
+        '  model: gpt-5.6-sol',
+        'default_responder: alice',
+        'members:',
+        '  alice:',
+        '    name: Alice',
+        '    model_params:',
+        '      codex:',
+        '        reasoning_effort: max',
+        '  bob:',
+        '    name: Bob',
+        '    provider: openai',
+        '    model: gpt-5.6-terra',
+        '    model_params:',
+        '      openai:',
+        '        reasoning_effort: max',
+        '',
+      ].join('\n'),
+    );
+
+    const teamGpt56 = await Team.load();
+    assert.equal(teamGpt56.getMember('alice')?.model_params?.codex?.reasoning_effort, 'max');
+    assert.equal(teamGpt56.getMember('bob')?.model_params?.openai?.reasoning_effort, 'max');
+    assert.ok(
+      getProblemsSnapshot().problems.every((p) => !p.id.startsWith('team/team_yaml_error/')),
+      'no team yaml errors expected for GPT-5.6 reasoning effort levels',
+    );
+
+    // Codex Ultra is a client orchestration preset rather than an inference effort. Dominds has
+    // its own provider-independent teammate coordination, so accepting Ultra here would imply a
+    // behavior that this provider parameter cannot reproduce.
     removeProblemsByPrefix('team/team_yaml_error/');
     await writeText(
       path.join(tmpRoot, '.minds', 'team.yaml'),
@@ -847,23 +883,30 @@ async function main(): Promise<void> {
         '    model_params:',
         '      codex:',
         '        reasoning_effort: ultra',
-        '  bob:',
-        '    name: Bob',
-        '    provider: openai',
-        '    model: gpt-5.6-terra',
-        '    model_params:',
-        '      openai:',
-        '        reasoning_effort: max',
         '',
       ].join('\n'),
     );
 
-    const teamGpt56 = await Team.load();
-    assert.equal(teamGpt56.getMember('alice')?.model_params?.codex?.reasoning_effort, 'ultra');
-    assert.equal(teamGpt56.getMember('bob')?.model_params?.openai?.reasoning_effort, 'max');
+    const teamUltra = await Team.load();
+    assert.equal(
+      teamUltra.getMember('alice')?.model_params,
+      undefined,
+      'unsupported Codex Ultra should cause model_params to be ignored',
+    );
+    const ultraProblem = getProblemsSnapshot().problems.find(
+      (p) => p.id === 'team/team_yaml_error/members/alice/model_params/invalid_ignored',
+    );
+    assert.ok(ultraProblem && ultraProblem.kind === 'team_workspace_config_error');
+    assert.equal(ultraProblem.severity, 'warning');
     assert.ok(
-      getProblemsSnapshot().problems.every((p) => !p.id.startsWith('team/team_yaml_error/')),
-      'no team yaml errors expected for GPT-5.6 reasoning effort levels',
+      ultraProblem.detail.errorText.includes(
+        'ultra is a Codex client orchestration preset, not an inference effort supported by Dominds',
+      ),
+    );
+    assert.ok(
+      ultraProblem.detail.errorText.includes(
+        'Dominds teammate coordination is independent of this provider parameter',
+      ),
     );
 
     // shell_specialists policy:

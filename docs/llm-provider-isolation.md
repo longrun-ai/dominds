@@ -16,6 +16,8 @@ Some provider / API paths expose similar endpoints or model capabilities while s
 
 Similar field names across wrappers do not imply compatibility. For example, `reasoning_effort`, `verbosity`, `parallel_tool_calls`, and web search controls may look similar but can still differ in accepted values, payload shape, lifecycle events, validation rules, and runtime meaning.
 
+The built-in Codex provider supports `reasoning_effort` only through `max`. Ultra in the Codex client is not a standalone inference effort that can be reproduced in isolation: current codex-rs sends `max` at the request boundary and separately enables proactive delegation through its own multi-agent mode. Dominds does not accept `model_params.codex.reasoning_effort: ultra` or silently map it to `max`, because that would imply that the complete Codex Ultra behavior had been reproduced. Dominds `tellask` / Sideline Dialogs are a provider-independent, durable team-coordination mechanism and remain independent of this provider parameter. Any future delegation-aggressiveness setting should be an explicit Dominds product-level collaboration policy.
+
 ## Hard Rules
 
 - A wrapper must only read its own provider namespace when building requests.

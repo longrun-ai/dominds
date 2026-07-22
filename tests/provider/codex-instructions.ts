@@ -129,13 +129,9 @@ async function main(): Promise<void> {
       'codex anti-early-finalization quirk should stay scoped to apiType=codex',
     );
 
-    assert.equal(resolveCodexReasoningEffortForRequest('gpt-5.6-sol', 'ultra'), 'max');
-    assert.equal(resolveCodexReasoningEffortForRequest('gpt-5.6-terra', 'ultra'), 'max');
+    assert.equal(resolveCodexReasoningEffortForRequest('gpt-5.6-sol', 'max'), 'max');
+    assert.equal(resolveCodexReasoningEffortForRequest('gpt-5.6-terra', 'max'), 'max');
     assert.equal(resolveCodexReasoningEffortForRequest('gpt-5.6-luna', 'max'), 'max');
-    assert.throws(
-      () => resolveCodexReasoningEffortForRequest('gpt-5.6-luna', 'ultra'),
-      /GPT-5\.6 Luna supports up to max/,
-    );
     assert.throws(
       () => resolveCodexReasoningEffortForRequest('gpt-5.6-sol', 'none'),
       /GPT-5\.6 Codex models support low\|medium\|high\|xhigh\|max/,
@@ -173,7 +169,6 @@ async function main(): Promise<void> {
       'high',
       'xhigh',
       'max',
-      'ultra',
     ]);
     const codexModels = asRecord(codex['models'], 'defaults.yaml.providers.codex.models');
     const codexModelNames = {

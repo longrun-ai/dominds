@@ -298,23 +298,17 @@ export function resolveCodexReasoningEffortForRequest(
   model: string,
   reasoningEffort: NonNullable<Team.ModelParams['codex']>['reasoning_effort'],
 ): ChatGptReasoningEffort | undefined {
+  // Codex Ultra is deliberately absent: codex-rs combines max inference with client-side
+  // multi-agent orchestration. Team config rejects Ultra instead of silently degrading it to max.
   if (
     model.startsWith('gpt-5.6-') &&
     (reasoningEffort === 'none' || reasoningEffort === 'minimal')
   ) {
     throw new Error(
-      `Invalid Codex reasoning_effort=${reasoningEffort} for model '${model}'; GPT-5.6 Codex models support low|medium|high|xhigh|max, plus ultra on Sol and Terra.`,
+      `Invalid Codex reasoning_effort=${reasoningEffort} for model '${model}'; GPT-5.6 Codex models support low|medium|high|xhigh|max.`,
     );
   }
-  if (model.startsWith('gpt-5.6-luna') && reasoningEffort === 'ultra') {
-    throw new Error(
-      `Invalid Codex reasoning_effort=ultra for model '${model}'; GPT-5.6 Luna supports up to max.`,
-    );
-  }
-
-  // `ultra` is a Codex client orchestration preset. codex-rs sends `max` to the inference API
-  // and handles the additional delegation behavior locally; never put `ultra` on the wire.
-  return reasoningEffort === 'ultra' ? 'max' : reasoningEffort;
+  return reasoningEffort;
 }
 
 function buildCodexReasoning(

@@ -137,10 +137,10 @@ providers:
           prominent: true
           default: high
           # Trade latency/cost for quality on reasoning-capable models.
-          # Allowed: none | minimal | low | medium | high | xhigh | max | ultra
+          # Allowed: none | minimal | low | medium | high | xhigh | max
           type: enum
-          values: [none, minimal, low, medium, high, xhigh, max, ultra]
-          description: Reasoning effort level. For GPT-5.6 Sol/Terra, ultra is a Codex orchestration preset and is sent to inference as max, matching codex-rs.
+          values: [none, minimal, low, medium, high, xhigh, max]
+          description: Reasoning effort level. Max is the highest supported value. Codex Ultra is intentionally unsupported because it combines max inference effort with Codex-specific proactive subagent orchestration; Dominds teammate coordination is a separate product-level mechanism.
         reasoning_summary:
           type: enum
           default: auto
