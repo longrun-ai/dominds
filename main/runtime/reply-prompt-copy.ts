@@ -2,14 +2,14 @@ import type { LanguageCode } from '@longrun-ai/kernel/types/language';
 import type { TellaskReplyDirective } from '@longrun-ai/kernel/types/storage';
 import { getTellaskKindLabel } from './tellask-labels';
 
-export const ACTIVE_REPLY_TOOL_PREFIX_EN = '[Dominds reply path]';
-export const ACTIVE_REPLY_TOOL_PREFIX_ZH = '[Dominds 回复路径]';
-export const NO_ACTIVE_REPLY_PREFIX_EN = '[Dominds no reply needed]';
-export const NO_ACTIVE_REPLY_PREFIX_ZH = '[Dominds 无需回贴]';
-export const REPLY_TOOL_REMINDER_PREFIX_EN = '[Dominds send the reply now]';
-export const REPLY_TOOL_REMINDER_PREFIX_ZH = '[Dominds 现在发送回贴]';
-export const ANSWERING_REPLY_REMINDER_PREFIX_EN = '[Dominds requester still needs reply]';
-export const ANSWERING_REPLY_REMINDER_PREFIX_ZH = '[Dominds 诉请者仍需回贴]';
+export const ACTIVE_REPLY_TOOL_PREFIX_EN = '[Dominds Tellask reply path]';
+export const ACTIVE_REPLY_TOOL_PREFIX_ZH = '[Dominds 诉请回复路径]';
+export const NO_ACTIVE_REPLY_PREFIX_EN = '[Dominds no Tellask reply needed]';
+export const NO_ACTIVE_REPLY_PREFIX_ZH = '[Dominds 无需发送诉请回复]';
+export const REPLY_TOOL_REMINDER_PREFIX_EN = '[Dominds send the Tellask reply now]';
+export const REPLY_TOOL_REMINDER_PREFIX_ZH = '[Dominds 现在发送诉请回复]';
+export const ANSWERING_REPLY_REMINDER_PREFIX_EN = '[Dominds Tellask reply still required]';
+export const ANSWERING_REPLY_REMINDER_PREFIX_ZH = '[Dominds 仍需发送诉请回复]';
 export const REPLY_SUPPRESSION_PREFIX_EN = '[Dominds handle this interjection first]';
 export const REPLY_SUPPRESSION_PREFIX_ZH = '[Dominds 先接住这轮]';
 
@@ -35,8 +35,8 @@ function buildReplyToolReminderLine(args: ReplyObligationCopyArgs): string {
     bracketed: true,
   });
   return args.language === 'zh'
-    ? `${replyTarget} 还在等你完成${kindLabel}的回贴。请现在调用 \`${toolName}({ replyContent })\` 发送。`
-    : `${replyTarget} is still waiting for your ${kindLabel} reply. Call \`${toolName}({ replyContent })\` now to send it.`;
+    ? `${replyTarget} 还在等你完成${kindLabel}的诉请回复。请现在调用 \`${toolName}({ replyContent })\` 发送。`
+    : `${replyTarget} is still waiting for your ${kindLabel} Tellask reply. Call \`${toolName}({ replyContent })\` now to send it.`;
 }
 
 // Business scenario: Dominds has a durable record that this dialog still owes a final reply to
@@ -58,8 +58,8 @@ export function buildActiveReplyToolNote(args: {
   }
   return [
     ACTIVE_REPLY_TOOL_PREFIX_EN,
-    'Dominds has already decided the reply path: if this turn sends the final result back to the requester, use only the tool below.',
-    `Do the current task correctly first; when the final content is ready, call \`${args.toolName}\`. Do not send early or switch to another reply tool.`,
+    'Dominds has already decided the Tellask reply path: if this turn sends the final result back to the tellasker, use only the tool below.',
+    `Do the current task correctly first; when the final content is ready, call \`${args.toolName}\`. Do not send early or switch to another Tellask reply tool.`,
   ].join('\n');
 }
 
@@ -74,7 +74,7 @@ export function buildActiveReplyObligationContextText(args: {
 }): string {
   if (args.language === 'zh') {
     return [
-      '[Dominds 待回贴任务]',
+      '[Dominds 待发送诉请回复]',
       '这是 Dominds 状态，不是新的用户请求。',
       `要回给的对话：${args.directive.targetDialogId}`,
       `对应请求：${args.directive.targetCallId}`,
@@ -85,10 +85,10 @@ export function buildActiveReplyObligationContextText(args: {
     ].join('\n');
   }
   return [
-    '[Dominds pending reply task]',
+    '[Dominds pending Tellask reply]',
     'This is Dominds state, not a new user request.',
-    `Dialog to reply to: ${args.directive.targetDialogId}`,
-    `Request to answer: ${args.directive.targetCallId}`,
+    `Tellasker dialog: ${args.directive.targetDialogId}`,
+    `Tellask callId: ${args.directive.targetCallId}`,
     `When sending the final content, call: \`${args.directive.expectedReplyCallName}({ replyContent })\``,
     '',
     'Original request content:',
@@ -104,7 +104,7 @@ export function buildActiveReplyObligationContextText(args: {
 export function buildSideDialogCompletionRule(language: LanguageCode): string {
   return language === 'zh'
     ? '当前支线已完成并能给出最终交付时：先专注把当前任务做对；若 Dominds 点名了精确回复工具，就只在发送最终内容时调用那个工具，不要改用别的回复工具，也不要用 `tellaskBack` 发送最终结果。'
-    : 'If the current Side Dialog is complete and can deliver the final result: focus on finishing the actual task first; if Dominds names an exact reply tool, call that tool only when sending the final content, do not switch to another reply tool, and do not use `tellaskBack` for final delivery.';
+    : 'If the current Side Dialog is complete and can deliver the final result: focus on finishing the actual task first; if Dominds names an exact Tellask reply tool, call that tool only when sending the final content, do not switch to another Tellask reply tool, and do not use `tellaskBack` for final delivery.';
 }
 
 export function buildSideDialogRoleHeaderCopy(args: {
@@ -124,8 +124,8 @@ export function buildSideDialogRoleHeaderCopy(args: {
     bracketed: true,
   });
   return args.language === 'zh'
-    ? `${tellaskerTag} 已通过${kindLabel}安排你处理下述诉请内容。等你准备好最终回复后，调用 \`${args.expectedReplyTool}\` 发回去。只有确实需要向诉请者回问、且现有规程无法直接判责时，才调用 \`tellaskBack\`。`
-    : `${tellaskerTag} has assigned you, via this ${kindLabel}, to handle the request content below. When the final reply is ready, call \`${args.expectedReplyTool}\` to send it back. Call \`tellaskBack\` only when you truly need to ask the tellasker back and existing SOP cannot directly identify another owner.`;
+    ? `${tellaskerTag} 已通过${kindLabel}安排你处理下述诉请内容。等你准备好最终诉请回复后，调用 \`${args.expectedReplyTool}\` 发回去。只有确实需要向诉请者回问、且现有规程无法直接判责时，才调用 \`tellaskBack\`。`
+    : `${tellaskerTag} has assigned you, via this ${kindLabel}, to handle the request content below. When the final Tellask reply is ready, call \`${args.expectedReplyTool}\` to send it back. Call \`tellaskBack\` only when you truly need to ask the tellasker back and existing SOP cannot directly identify another owner.`;
 }
 
 // Business scenario: a real user interjected while a longer-running requester reply was still
@@ -140,7 +140,7 @@ export function buildReplyObligationSuppressionGuideText(language: LanguageCode)
     return [
       REPLY_SUPPRESSION_PREFIX_ZH,
       '本轮最新用户消息是真实用户插话；先按这条最新用户消息回答，让用户看到你已经接住了当前话题。',
-      '原来的长线诉请、回贴任务、技能/SOP 触发条件都不能抢在当前用户消息前面；不要在回答当前用户消息前切回旧任务、旧工具流程或旧收口。',
+      '原来的长线诉请、诉请回复任务、技能/SOP 触发条件都不能抢在当前用户消息前面；不要在回答当前用户消息前切回旧任务、旧工具流程或旧收口。',
       '只有当前用户消息本身需要，才使用工具；不要因为旧长线任务、旧技能提示或旧提醒项去调用工具。',
       '当前用户插话得到可见回复后，Dominds 会按已有回复义务、续推和普通驱动规则继续处理后续状态。',
     ].join('\n');
@@ -148,7 +148,7 @@ export function buildReplyObligationSuppressionGuideText(language: LanguageCode)
   return [
     REPLY_SUPPRESSION_PREFIX_EN,
     'The latest user message in this turn is a real user interjection; answer that latest user message first so the user can see you handled the current topic.',
-    'The earlier long-line request, reply task, and skill/SOP triggers must not jump ahead of the current user message; do not switch back to the old task, old tool flow, or old closure before answering the current user message.',
+    'The earlier long-line request, Tellask reply task, and skill/SOP triggers must not jump ahead of the current user message; do not switch back to the old task, old tool flow, or old closure before answering the current user message.',
     'Use tools only if the current user message itself requires them; do not call tools because of the earlier long-line task, old skill hints, or old reminders.',
     'After the current user interjection has a visible reply, Dominds will continue according to the existing reply obligation, diligence push, and normal drive rules.',
   ].join('\n');
@@ -173,7 +173,7 @@ export function buildReplyToolReminderText(args: {
         `你刚才已经写出了可以发回去的内容，但还没调用 \`${args.directive.expectedReplyCallName}\`。`,
         '',
         buildReplyToolReminderLine(args),
-        '请现在用这个工具发送；不要只发普通文本，否则对方那边可能收不到正式回贴。',
+        '请现在用这个工具发送；不要只发普通文本，否则对方那边可能收不到正式诉请回复。',
       ].join('\n')
     : [
         prefix,
@@ -181,7 +181,7 @@ export function buildReplyToolReminderText(args: {
         `You already wrote content that can be sent back, but you still have not called \`${args.directive.expectedReplyCallName}\`.`,
         '',
         buildReplyToolReminderLine(args),
-        'Use this tool to send it now; do not rely on plain text, because the other dialog may not receive a formal reply that way.',
+        'Use this tool to send it now; do not rely on plain text, because the other dialog may not receive a formal Tellask reply that way.',
       ].join('\n');
 }
 
@@ -209,16 +209,16 @@ export function buildAnsweringReplyReminderText(args: {
     ? [
         prefix,
         '',
-        '`answering` / `answerHuman` 只会记录给人类看的 A2H 答复或状态说明，不会把正式回贴送达诉请者。',
+        '`answering` / `answerHuman` 只会记录给人类看的 A2H 答复或状态说明，不会把正式诉请回复送达诉请者。',
         '',
-        `${replyTarget} 还在等你完成${kindLabel}的回贴。若最终内容已经准备好，请现在调用 \`${args.directive.expectedReplyCallName}({ replyContent })\` 发送；不要用 \`answering\` 或 \`answerHuman\` 代替诉请者回贴。`,
+        `${replyTarget} 还在等你完成${kindLabel}的诉请回复。若最终内容已经准备好，请现在调用 \`${args.directive.expectedReplyCallName}({ replyContent })\` 发送；不要用 \`answering\` 或 \`answerHuman\` 代替向诉请者发送诉请回复。`,
       ].join('\n')
     : [
         prefix,
         '',
-        '`answering` / `answerHuman` only records an A2H answer or status for the human. It does not deliver the formal reply to the requester.',
+        '`answering` / `answerHuman` only records an A2H answer or status for the human. It does not deliver the formal Tellask reply to the tellasker.',
         '',
-        `${replyTarget} is still waiting for your ${kindLabel} reply. If the final content is ready, call \`${args.directive.expectedReplyCallName}({ replyContent })\` now; do not use \`answering\` or \`answerHuman\` as the requester reply path.`,
+        `${replyTarget} is still waiting for your ${kindLabel} Tellask reply. If the final content is ready, call \`${args.directive.expectedReplyCallName}({ replyContent })\` now; do not use \`answering\` or \`answerHuman\` as the Tellask reply path.`,
       ].join('\n');
 }
 

@@ -474,10 +474,12 @@ export class MockGen implements LlmGenerator {
         '\n[Dominds tellask status]\n',
         '\n[Dominds 等待人类回复]\n',
         '\n[Dominds waiting for human answer]\n',
-        '\n[Dominds 等待队友回贴]\n',
-        '\n[Dominds waiting for teammate reply]\n',
-        '\n[Dominds 队友回贴状态]\n',
-        '\n[Dominds teammate reply status]\n',
+        '\n[Dominds 等待诉请回复]\n',
+        '\n[Dominds waiting for Tellask reply]\n',
+        '\n[Dominds 诉请结果状态]\n',
+        '\n[Dominds Tellask result status]\n',
+        '\n[Dominds 人类回答结果状态]\n',
+        '\n[Dominds human answer result status]\n',
       ];
       const tellaskStatusIndex = Math.max(
         ...tellaskStatusPrefixes.map((prefix) => trimmed.lastIndexOf(prefix)),

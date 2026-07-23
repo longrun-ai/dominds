@@ -119,7 +119,7 @@ async function main() {
     'Expected zh auto-continue reminder footer to preserve Main Dialog diligence keep-alive',
   );
   assert(
-    !zhAutoContinueFooter.includes('需要回贴时会收到回贴提醒'),
+    !zhAutoContinueFooter.includes('需要诉请回复时会收到诉请回复提醒'),
     'Expected zh main auto-continue reminder footer not to include Side Dialog reply-reminder wording',
   );
   assert(
@@ -148,7 +148,7 @@ async function main() {
     'Expected zh side auto-continue reminder footer to reserve askHuman for truly human input',
   );
   assert(
-    zhSideAutoContinueFooter.includes('需要回贴时会收到回贴提醒'),
+    zhSideAutoContinueFooter.includes('需要诉请回复时会收到诉请回复提醒'),
     'Expected zh side auto-continue reminder footer to preserve Side Dialog reply reminders',
   );
   assert(
@@ -191,7 +191,7 @@ async function main() {
     'Expected zh reminder footer to surface pending user interjection reply',
   );
   assert(
-    zhInterjectionPendingFooter.includes('同时还有回贴任务未完成'),
+    zhInterjectionPendingFooter.includes('同时还有诉请回复任务未完成'),
     'Expected zh reminder footer to describe active handoff while user interjection is pending',
   );
   const zhInterjectionActiveFooter = formatMainReminderContextFooter('zh', {
@@ -200,7 +200,7 @@ async function main() {
     contextHealth: { kind: 'normal' },
   });
   assert(
-    zhInterjectionActiveFooter.includes('同时还有回贴任务未完成'),
+    zhInterjectionActiveFooter.includes('同时还有诉请回复任务未完成'),
     'Expected zh reminder footer to describe active handoff while user interjection is pending',
   );
   assert(
@@ -263,7 +263,7 @@ async function main() {
     contextHealth: { kind: 'normal' },
   });
   assert(
-    zhActiveReplyFooter.includes('当前仍有回贴任务未完成'),
+    zhActiveReplyFooter.includes('当前仍有诉请回复任务未完成'),
     'Expected zh reminder footer to surface active handoff',
   );
   const zhCautionFooter = formatMainReminderContextFooter('zh', {

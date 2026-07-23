@@ -9,7 +9,7 @@ Chinese version: [中文版](./tellask-collab.zh.md)
 
 Dominds already has a real Tellask runtime. The current pain is not syntax, but coordination behavior:
 
-- The tellasker receives a checkpoint-style reply and assumes the tellaskee is still executing in the background.
+- The tellasker receives a checkpoint-style Tellask reply and assumes the tellaskee is still executing in the background.
 - The tellasker narrates “what should happen next” instead of sending the next Tellask.
 
 That mismatch stalls execution while sounding productive.
@@ -54,13 +54,13 @@ For teammate Tellasks, the runtime lifecycle is:
 
 1. Tellask is emitted.
 2. The callee Side Dialog runs as background work; the caller may naturally idle or keep working from other concrete triggers.
-3. When the callee response is supplied back, that response becomes a new fact for the caller.
+3. When the callee delivers its Tellask reply, that reply becomes a new fact for the caller.
 4. The caller resumes only from that result-arrival fact, a queued prompt, user input, Diligence Push when no active callee is pending, or another explicit drive source.
 
 Critical operational fact:
 
-- The current teammate response status is effectively `completed` or `failed`.
-- There is no “still running that same request” status after a response is delivered.
+- The current Tellask result status is either `completed` or `failed`.
+- There is no “still running that same request” status after a Tellask reply is delivered.
 
 So if more work is needed, the tellasker must issue the next Tellask explicitly.
 
@@ -74,7 +74,7 @@ So if more work is needed, the tellasker must issue the next Tellask explicitly.
 
 ## 3. Primary failure mode and root cause
 
-### 3.1 Primary issue: checkpoint reply is misread as ongoing execution
+### 3.1 Primary issue: checkpoint Tellask reply is misread as ongoing execution
 
 Observed behavior:
 
@@ -106,20 +106,20 @@ That is a workflow break. The model should send the Tellask directly.
 - Runtime builds a canonical inter-dialog transfer payload; this payload is delivered to target-agent context, and UI must display the same payload verbatim.
 - First-line markers are runtime-injected into that payload by semantics; agents must not hand-write them:
   - English work language:
-    - Ask-back reply: `【TellaskBack】`
-    - Regular completed Side Dialog reply: `【Completed】`
-    - FBR reply: `【FBR-Direct Reply】` or `【FBR-Reasoning Only】`
+    - Ask-back Tellask reply: `【TellaskBack】`
+    - Regular completed Side Dialog Tellask reply: `【Completed】`
+    - FBR Tellask reply: `【FBR-Direct Reply】` or `【FBR-Reasoning Only】`
   - Chinese work language:
-    - Ask-back reply: `【回问诉请】`
-    - Regular completed Side Dialog reply: `【最终完成】`
-    - FBR reply: `【FBR-直接回复】` or `【FBR-仅推理】`
-- If the tellasker defines a “reply/delivery format” in tellask body, keep it to the business delivery structure; do not require tellaskee-side hand-written markers, because Dominds runtime injects those markers automatically.
+    - Ask-back Tellask reply: `【回问诉请】`
+    - Regular completed Side Dialog Tellask reply: `【最终完成】`
+    - FBR Tellask reply: `【FBR-直接回复】` or `【FBR-仅推理】`
+- If the tellasker defines a “Tellask reply/delivery format” in the Tellask body, keep it to the business delivery structure; do not require tellaskee-side hand-written markers, because Dominds runtime injects those markers automatically.
 - Source-dialog model raw is naturally preserved in source-dialog persistence; inter-dialog transfer must not rewrite or overwrite that source raw.
 - Template-wrapped transfer is allowed: model output from one dialog can be embedded into a runtime template and sent as another dialog body.
 
 **Side Dialog delivery rule**:
 
-- If a Side Dialog has completed all goals and can deliver the final result, it MUST reply directly with the response body; do not use `tellaskBack` to send final delivery.
+- If a Side Dialog has completed all goals and can deliver the final result, it MUST reply directly with the Tellask reply body; do not use `tellaskBack` to send final delivery.
 - Runtime treats that direct reply as the completion delivery to the tellasker and injects the work-language marker automatically (`【Completed】` in English work language, `【最终完成】` in Chinese work language).
 - If the work is unfinished, do not default to `tellaskBack`: first use team SOP / role ownership to judge whether a responsible owner is already clear; if yes and the issue is execution work, directly use `tellask` / `tellaskSessionless` for that owner.
 - Use `tellaskBack({ tellaskContent: "..." })` only when the tellasker must clarify the request, decide a tradeoff, confirm acceptance criteria, provide missing input, or current SOP cannot determine ownership; do not post plain-text intermediate status updates while unfinished.
@@ -133,8 +133,8 @@ Note: no extra "Status: ..." line is required; the first-line marker is the stag
 For teammate Tellasks (non-`freshBootsReasoning({ tellaskContent: "..." })`), always run this loop:
 
 1. `Initiate`: send a Tellask with scope, constraints, and acceptance evidence.
-2. `Wait`: wait for that specific response.
-3. `Judge`: classify response as done / not done / needs clarification.
+2. `Wait`: wait for that specific Tellask reply.
+3. `Judge`: classify the Tellask reply as done / not done / needs clarification.
 4. `Continue`: if not done, send the next Tellask immediately (usually same session slug).
 
 Hard rule:
@@ -198,7 +198,7 @@ A reminder-only approach will keep regressing. Use two layers:
 
 Add or strengthen these coordination constraints:
 
-1. `Response-closes-call`: teammate response closes the current call; continuation requires a new Tellask.
+1. `Tellask-reply-closes-call`: a teammate Tellask reply closes the current call; continuation requires a new Tellask.
 2. `Wait-state guard`: only claim waiting when a concrete pending Tellask exists.
 3. `Autonomy guard`: do not use askHuman() as a relay for executable teammate work.
 4. `Action-over-narration`: if you write “next ask @X to do Y”, emit `tellaskSessionless({ targetAgentId: "X", tellaskContent: "..." })` in the same turn.
@@ -214,7 +214,7 @@ Split the collaboration drill into two short segments, both grounded in verifiab
 Operating rules:
 
 1. If no `shell_specialist` is available, Dominds runtime gathers the same facts (`uname -a` + git inventory). This is a standard mode, not a degraded path.
-2. A response closes the current round; continuation requires a new explicit Tellask.
+2. A Tellask reply closes the current round; continuation requires a new explicit Tellask.
 3. “Ask teammate to do X” must materialize as `tellask* function call`, not as a relay request to askHuman().
 
 ### 5.3 P1 design baseline (implemented)
@@ -224,13 +224,13 @@ Operating rules:
 1. Keep it short: only `uname` plus two VCS rounds are added to existing priming.
 2. Keep it general: works in any rtws, with or without a shell specialist.
 3. Keep it stable: runtime templates script key steps to reduce model drift.
-4. Keep semantics sharp: behavior must reflect “response closes round; continuation requires re-Tellask”.
+4. Keep semantics sharp: behavior must reflect “Tellask reply closes round; continuation requires re-Tellask”.
 
 #### Unified sequence
 
 1. `Prelude Intro`: declare shell policy (`specialist_only` / `self_is_specialist` / `no_specialist`).
 2. `uname` baseline:
-   - `specialist_only`: tellasker sends one-shot Tellask to `@<shell_specialist>` and receives response.
+   - `specialist_only`: tellasker sends one-shot Tellask to `@<shell_specialist>` and receives a Tellask reply.
    - other policies: runtime collects and displays `uname -a`.
 3. `VCS Round-1` (same `tellaskSession`): topology inventory
    - whether rtws root is a git repo
@@ -253,23 +253,23 @@ Operating rules:
 
 1. Runtime emits `uname` and both VCS round notes directly.
 2. FBR receives the same structured evidence shape as the specialist path.
-3. Priming note requirements stay identical: close-on-response and explicit re-Tellask for continuation.
+3. Priming note requirements stay identical: close-on-Tellask-reply and explicit re-Tellask for continuation.
 
 #### Data shape (legacy priming plan)
 
 1. `shell` is a discriminated union:
-   - `specialist_tellask` (tellask body, response, `uname` snapshot)
+   - `specialist_tellask` (Tellask body, Tellask reply, `uname` snapshot)
    - `direct_shell` (runtime note, `uname` snapshot)
 2. `vcs` is a discriminated union:
-   - `specialist_session` (Round-1/2 tellask+response, `inventoryText`)
+   - `specialist_session` (Round-1/2 Tellask + Tellask reply, `inventoryText`)
    - `runtime_inventory` (Round-1/2 runtime notes, `inventoryText`)
 3. `buildCoursePrefixMsgs` injects in fixed order: shell snapshot -> VCS inventory -> FBR summary -> priming note.
 
 #### P1 acceptance criteria
 
-1. Priming transcript shows `uname` baseline plus two VCS rounds (Round-2 after Round-1 response).
+1. Priming transcript shows `uname` baseline plus two VCS rounds (Round-2 after the Round-1 Tellask reply).
 2. No-shell-specialist path still shows two runtime VCS rounds and uses them for the same FBR step.
-3. Priming note explicitly states “response closes round; continuation requires re-Tellask”.
+3. Priming note explicitly states “Tellask reply closes round; continuation requires re-Tellask”.
 4. Replay preserves the path-specific pattern (`specialist_session` or `runtime_inventory`).
 5. `pnpm -C dominds run lint:types` passes without breaking existing priming/FBR/diligence behavior.
 

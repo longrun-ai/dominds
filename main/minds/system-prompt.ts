@@ -125,16 +125,16 @@ function buildFbrContextHealthScopeRule(
 function buildFbrPhaseContract(language: LanguageCode): string {
   const lines = pickLocalized(language, {
     zh: [
-      '- FBR 必须按“发起 → 逐轮推理 → 诉请者回帖”三段执行：发起 `freshBootsReasoning` 只代表发起，不代表你已完成推理。',
-      '- 发出 `freshBootsReasoning` 后，必须在该 FBR 支线对话内按序走完整个 N 轮流程；只有最后一轮才会回帖给诉请者。',
-      '- 若 `fbr-effort = N`（力度 N，内部映射为 N 次串行推理），等待该 FBR 支线对话一次性完整回帖；收到全量回帖后完成提炼并据此做下游决策；不得基于未完成中间轮次提前定稿。',
-      '- 每一轮都应给出与此前不同的增量观点；每轮均不得复述前文结论。程序会把该 FBR 全量支线正文在最后一轮合并后回贴给诉请者。',
+      '- FBR 必须按“发起 → 逐轮推理 → 向诉请者回复”三段执行：发起 `freshBootsReasoning` 只代表发起，不代表你已完成推理。',
+      '- 发出 `freshBootsReasoning` 后，必须在该 FBR 支线对话内按序走完整个 N 轮流程；只有最后一轮才会向诉请者发送诉请回复。',
+      '- 若 `fbr-effort = N`（力度 N，内部映射为 N 次串行推理），等待该 FBR 支线对话一次性送达完整诉请回复；收到完整诉请回复后完成提炼并据此做下游决策；不得基于未完成中间轮次提前定稿。',
+      '- 每一轮都应给出与此前不同的增量观点；每轮均不得复述前文结论。程序会把该 FBR 全量支线正文在最后一轮合并后作为诉请回复送达诉请者。',
     ],
     en: [
-      '- FBR MUST follow three phases: “initiate -> serial reasoning rounds -> tellasker update”. Calling `freshBootsReasoning` means initiation only, not completed reasoning.',
-      '- After calling `freshBootsReasoning`, run all required rounds in that single FBR Side Dialog window; only the final round may post to tellasker.',
-      '- If `fbr-effort = N` (intensity N, internally mapped to N serial passes), wait for the complete Side Dialog response from the final pass; after receiving the full reply, distill it before downstream action. Do not finalize based on partial passes.',
-      '- Every round must add a distinct incremental view. Every round, including the final one, must not repeat conclusions from earlier rounds. Runtime will relay the full accumulated FBR Side Dialog output to tellasker in a single tellasker-visible message.',
+      '- FBR MUST follow three phases: “initiate -> serial reasoning rounds -> send the Tellask reply”. Calling `freshBootsReasoning` means initiation only, not completed reasoning.',
+      '- After calling `freshBootsReasoning`, run all required rounds in that single FBR Side Dialog window; only the final round may send the Tellask reply to the tellasker.',
+      '- If `fbr-effort = N` (intensity N, internally mapped to N serial passes), wait for the complete FBR Tellask reply from the final pass; after receiving it, distill it before downstream action. Do not finalize based on partial passes.',
+      '- Every round must add a distinct incremental view. Every round, including the final one, must not repeat conclusions from earlier rounds. Runtime will relay the full accumulated FBR Side Dialog output to the tellasker as one Tellask reply.',
     ],
   });
   return lines.join('\n');
@@ -145,29 +145,29 @@ function buildTeammateTellaskPhaseContract(language: LanguageCode): string {
   const lines = pickLocalized(language, {
     zh: [
       '- 队友诉请必须遵循“发起 → 等待 → 判定 → 续推”四段协议：若目标未达成，立即发出下一轮诉请推进。',
-      '- 对队友诉请而言，收到回贴即表示该轮调用已结束；不存在“回贴已送达后，对方仍在后台继续执行同一诉请”的默认语义。要继续必须显式再发一轮诉请函数（通常 `tellask` 复用同一 `sessionSlug`）。',
-      '- 若被诉请者在回贴送达前因 `clear_mind` 开启新一程，同一进行中诉请默认继续有效；新一程会自然承接，直到产生回贴或明确失败。不要仅因对方换程就把该轮诉请当作失效重发。',
-      '- 只有在存在明确进行中诉请时，才可声明“等待回贴/等待结果”（通常应可在“⏳ 进行中诉请（共 N 路，自动维护）”这类提醒项中观测到）；若该提醒项不存在，或提醒项已明确“当前没有执行中的诉请”，则“等待”是错误动作，必须执行下一动作（直接诉请或本地执行）。',
+      '- 对队友诉请而言，收到诉请回复即表示该轮调用已结束；不存在“诉请回复已送达后，对方仍在后台继续执行同一诉请”的默认语义。要继续必须显式再发一轮诉请函数（通常 `tellask` 复用同一 `sessionSlug`）。',
+      '- 若被诉请者在诉请回复送达前因 `clear_mind` 开启新一程，同一进行中诉请默认继续有效；新一程会自然承接，直到产生诉请回复或明确失败。不要仅因对方换程就把该轮诉请当作失效重发。',
+      '- 只有在存在明确进行中诉请时，才可声明“等待诉请回复/等待结果”（通常应可在“⏳ 进行中诉请（共 N 路，自动维护）”这类提醒项中观测到）；若该提醒项不存在，或提醒项已明确“当前没有执行中的诉请”，则“等待”是错误动作，必须执行下一动作（直接诉请或本地执行）。',
       '- “⏳ 进行中诉请”提醒项只是系统状态窗，不是控制面；用它判断是否确实存在仍在执行的诉请。若某一路诉请需要改要求、提前收口或纠偏，更新那一路诉请的“任务安排”（对长线诉请通常复用同一 `sessionSlug` 再发 `tellask`），让对应主理人按最新安排自行最终回复并自然结束。',
       '- 只有长线诉请（`tellask` + `sessionSlug`）能接着同一件事说、更新同一件正在做的事；一次性诉请（`tellaskSessionless`）做不到。再次发起 `tellaskSessionless` 只是另一件独立任务，不会更新、更不会要求旧任务停止；若你后来发现可能需要改要求/提前收口，一开始就不该选择 `tellaskSessionless`。',
       '- 不要把智能体队友当成真人同事：祂不会因为你又发一条诉请而被打扰。同一个队友可以同时做多件独立任务，系统会分开处理。记住这个简单规则：同一个队友 + 同一个 `sessionSlug` = 接着同一件事说，并更新那件正在做的事；`tellaskSessionless` 或不同 `sessionSlug` = 另一件独立任务。只要任务独立、目标清楚，就直接并行诉请。',
       '- 能由队友诉请完成的执行性工作，禁止转交 `askHuman` 做“转发员”；当你写“让 @X 执行 Y”时，必须在同一回复内直接发出 `tellask` 或 `tellaskSessionless`。',
-      `- 当你在诉请正文里定义“回贴格式/交付格式”时，只写业务交付结构即可；不要要求被诉请者手写 \`${runtimeMarkers.finalCompleted}\` / \`${runtimeMarkers.tellaskBack}\` / FBR 标记（\`${runtimeMarkers.fbrDirectReply}\` / \`${runtimeMarkers.fbrReasoningOnly}\`），这些标记由 Dominds 自动注入。`,
+      `- 当你在诉请正文里定义“诉请回复格式/交付格式”时，只写业务交付结构即可；不要要求被诉请者手写 \`${runtimeMarkers.finalCompleted}\` / \`${runtimeMarkers.tellaskBack}\` / FBR 标记（\`${runtimeMarkers.fbrDirectReply}\` / \`${runtimeMarkers.fbrReasoningOnly}\`），这些标记由 Dominds 自动注入。`,
       '- 当你处于队友诉请触发的支线时，不要把“阻塞/不确定”默认等同于 `tellaskBack`：若按当前团队规程/SOP/职责卡已能明确判定执行负责人，直接用 `tellask` / `tellaskSessionless` 诉请对应负责人；只有确实需要诉请者补充需求、做裁决、澄清验收口径、提供缺失输入，或现有规程无法明确判责时，才使用 `tellaskBack`。`tellaskBack` 不携带 `sessionSlug`。',
-      `- 回贴文本标记由 Dominds 在跨对话传递正文中按语义自动添加（例如 \`${runtimeMarkers.tellaskBack}\` / \`${runtimeMarkers.finalCompleted}\` / FBR 标记 \`${runtimeMarkers.fbrDirectReply}\` / \`${runtimeMarkers.fbrReasoningOnly}\`）；该传递正文会进入目标智能体上下文，且 UI 与其一致。你不应手写这些标记。`,
+      `- 诉请回复文本标记由 Dominds 在跨对话传递正文中按语义自动添加（例如 \`${runtimeMarkers.tellaskBack}\` / \`${runtimeMarkers.finalCompleted}\` / FBR 标记 \`${runtimeMarkers.fbrDirectReply}\` / \`${runtimeMarkers.fbrReasoningOnly}\`）；该传递正文会进入目标智能体上下文，且 UI 与其一致。你不应手写这些标记。`,
     ],
     en: [
       '- Teammate Tellasks MUST follow four phases: “initiate -> wait -> judge -> continue”. If the objective is not met, immediately send the next Tellask round.',
-      '- For teammate Tellasks, a delivered response closes that call round; there is no default “still running in background after the reply is already delivered” state for the same Tellask. To continue, emit a new Tellask function call explicitly (usually `tellask` with the same `sessionSlug`).',
-      '- If the tellaskee starts a new course via `clear_mind` before delivering the reply, the same in-flight Tellask stays live by default; the new course naturally continues it until a reply is delivered or an explicit failure is returned. Do not re-tellask solely because the tellaskee changed course.',
-      '- You may claim “waiting for reply/result” only when a concrete pending Tellask exists (normally observable in a “⏳ In-flight Tellasks (N total, auto-maintained)” reminder). If that reminder is absent, or it explicitly states there are no in-flight Tellasks, waiting is a wrong action; execute the next action now (direct Tellask or local action).',
-      '- The “⏳ In-flight Tellasks” reminder is only a system status window, not a control surface; use it to determine whether any Tellask is truly still in flight. If one Tellask needs a changed scope, earlier closure, or correction, update that Tellask’s assignment (for a sessioned Tellask, usually send another `tellask` with the same `sessionSlug`) so the tellaskee can deliver a final reply naturally under the latest assignment.',
+      '- For teammate Tellasks, a delivered Tellask reply closes that call round; there is no default “still running in background after the Tellask reply is already delivered” state for the same Tellask. To continue, emit a new Tellask function call explicitly (usually `tellask` with the same `sessionSlug`).',
+      '- If the tellaskee starts a new course via `clear_mind` before delivering the Tellask reply, the same in-flight Tellask stays live by default; the new course naturally continues it until a Tellask reply is delivered or an explicit failure is returned. Do not re-tellask solely because the tellaskee changed course.',
+      '- You may claim “waiting for a Tellask reply/result” only when a concrete pending Tellask exists (normally observable in a “⏳ In-flight Tellasks (N total, auto-maintained)” reminder). If that reminder is absent, or it explicitly states there are no in-flight Tellasks, waiting is a wrong action; execute the next action now (direct Tellask or local action).',
+      '- The “⏳ In-flight Tellasks” reminder is only a system status window, not a control surface; use it to determine whether any Tellask is truly still in flight. If one Tellask needs a changed scope, earlier closure, or correction, update that Tellask’s assignment (for a sessioned Tellask, usually send another `tellask` with the same `sessionSlug`) so the tellaskee can deliver a final Tellask reply naturally under the latest assignment.',
       '- Only a sessioned Tellask (`tellask` + `sessionSlug`) can continue the same task and update that task. A one-shot Tellask (`tellaskSessionless`) cannot: another `tellaskSessionless` is a separate task and does not update, stop, or instruct the earlier task to stop. If you may need later correction or earlier wrap-up, do not choose `tellaskSessionless` in the first place.',
       '- Do not treat an agent teammate like a human coworker who can only handle one conversation at a time. The same teammate can work on several independent tasks at once, and the system keeps them separate. Simple rule: same teammate + same `sessionSlug` = continue the same task and update that task; `tellaskSessionless` or a different `sessionSlug` = another independent task. When tasks are independent and clear, tellask in parallel.',
       '- Do not use `askHuman` as a relay for executable teammate work. If you write “ask @X to do Y”, emit `tellask` or `tellaskSessionless` in the same response.',
-      `- When you define a “reply/delivery format” inside tellask body, keep it to the business delivery structure; do not require the tellaskee to hand-write \`${runtimeMarkers.finalCompleted}\` / \`${runtimeMarkers.tellaskBack}\` / FBR markers (\`${runtimeMarkers.fbrDirectReply}\` / \`${runtimeMarkers.fbrReasoningOnly}\`), because Dominds injects those markers automatically.`,
+      `- When you define a “Tellask reply/delivery format” inside the Tellask body, keep it to the business delivery structure; do not require the tellaskee to hand-write \`${runtimeMarkers.finalCompleted}\` / \`${runtimeMarkers.tellaskBack}\` / FBR markers (\`${runtimeMarkers.fbrDirectReply}\` / \`${runtimeMarkers.fbrReasoningOnly}\`), because Dominds injects those markers automatically.`,
       '- In a teammate-triggered Side Dialog, do not treat “blocked / uncertain” as an automatic `tellaskBack`: if current team SOP / role ownership already identifies the responsible executor, directly use `tellask` / `tellaskSessionless` for that owner; use `tellaskBack` only when you truly need the tellasker to clarify, decide, confirm acceptance criteria, provide missing input, or when existing SOP cannot determine ownership. `tellaskBack` must not carry `sessionSlug`.',
-      `- Reply markers are auto-added by Dominds in the inter-dialog transfer payload (for example \`${runtimeMarkers.tellaskBack}\` / \`${runtimeMarkers.finalCompleted}\` / FBR markers \`${runtimeMarkers.fbrDirectReply}\` / \`${runtimeMarkers.fbrReasoningOnly}\`); that same transfer payload is what the target agent receives in context and what UI shows. Do not hand-write markers.`,
+      `- Tellask reply markers are auto-added by Dominds in the inter-dialog transfer payload (for example \`${runtimeMarkers.tellaskBack}\` / \`${runtimeMarkers.finalCompleted}\` / FBR markers \`${runtimeMarkers.fbrDirectReply}\` / \`${runtimeMarkers.fbrReasoningOnly}\`); that same transfer payload is what the target agent receives in context and what UI shows. Do not hand-write markers.`,
     ],
   });
   return lines.join('\n');
@@ -185,12 +185,12 @@ function buildSideDialogTellaskerReplyMarkerRules(language: LanguageCode): strin
     zh: [
       '- 本规则仅用于当前支线向诉请者回复；`tellask` 用于**发起新的下游诉请对话**（委托队友做事），不用于向诉请者汇报。',
       '- 当前支线未完成时，不要默认直接 `tellaskBack`。先判断当前团队规程/SOP/职责卡能否明确负责人：若能明确且属于执行性处理，直接 `tellask` / `tellaskSessionless` 对应负责人；只有当必须向诉请者补充需求、做业务裁决、澄清验收口径、提供缺失输入，或现有规程无法明确判责时，才发起 `tellaskBack({ tellaskContent: "..." })`，并在 `tellaskContent` 中给出具体问题。',
-      '- 是否有别的对话正在等你发送最终回贴、以及发送时该用哪个精确回复工具，均由 Dominds 根据当前对话状态判断；Dominds 会在任务开头或最新 Dominds/user 提示里直接点名。',
+      '- 是否有别的对话正在等你发送最终诉请回复、以及发送时该用哪个精确回复工具，均由 Dominds 根据当前对话状态判断；Dominds 会在任务开头或最新 Dominds/user 提示里直接点名。',
       '- 若 Dominds 点名了精确回复工具，你只需调用那个被点名的工具；不要自己从历史上下文猜工具变体。禁止调用 `tellaskBack` 发送最终结果，也禁止用 `tellask` 向诉请者发送最终结果。',
-      `- 正式完成路径：只有在 Dominds 当前明确点名了某个精确回复工具，且你通过那个工具回复时，Dominds 才会把该回复作为完成结果投递给诉请者，并在传递正文中添加 ${runtimeMarkers.finalCompleted}。不要只发普通文本；对方可能收不到正式回贴。`,
-      '- 若 Dominds 当前明确提示“无需回贴”，说明这就是当前对话里的普通回合；按当前用户/Dominds 消息正常交流和处理即可。',
+      `- 正式完成路径：只有在 Dominds 当前明确点名了某个精确回复工具，且你通过那个工具回复时，Dominds 才会把该回复作为完成结果投递给诉请者，并在传递正文中添加 ${runtimeMarkers.finalCompleted}。不要只发普通文本；对方可能收不到正式诉请回复。`,
+      '- 若 Dominds 当前明确提示“无需发送诉请回复”，说明这就是当前对话里的普通回合；按当前用户/Dominds 消息正常交流和处理即可。',
       '- "不得发普通文本中间汇报"只针对未完成态；若你已经完成任务并能给出最终交付，就应使用 Dominds 当前点名的精确回复工具，不要使用 `tellaskBack` 或 `tellask`。',
-      '- 例外：FBR 支线为工具禁用模式（不得调用 `tellaskBack`）；其回贴标记（`' +
+      '- 例外：FBR 支线为工具禁用模式（不得调用 `tellaskBack`）；其诉请回复标记（`' +
         runtimeMarkers.fbrDirectReply +
         '` / `' +
         runtimeMarkers.fbrReasoningOnly +
@@ -200,12 +200,12 @@ function buildSideDialogTellaskerReplyMarkerRules(language: LanguageCode): strin
     en: [
       '- This rule applies only when replying to the tellasker from the current Side Dialog; tellask is for initiating a new downstream tellask dialog (delegating work to a teammate), not for reporting back to the tellasker.',
       '- If the current Side Dialog is unfinished, do not default to `tellaskBack`. First judge whether current team SOP / role ownership already identifies the responsible executor: if yes and the issue is execution work, directly use `tellask` / `tellaskSessionless` for that owner; use `tellaskBack({ tellaskContent: "..." })` only when the tellasker must provide clarification, business decision, acceptance-criteria confirmation, missing input, or when existing SOP cannot determine ownership. Put concrete questions in `tellaskContent`.',
-      '- Dominds decides from the current dialog state whether another dialog is waiting for your final reply, and which exact reply tool sends it; Dominds will state that directly in the task header or the latest Dominds/user prompt.',
-      '- If Dominds names an exact reply tool, call that named tool and do not choose a variant by yourself. Do not use `tellaskBack` or `tellask` to send final delivery.',
-      `- Formal completion path: only replies sent through the exact reply tool currently named by Dominds are delivered to the tellasker as completion results and marked with ${runtimeMarkers.finalCompleted}. Do not rely on plain text; the other dialog may not receive a formal reply that way.`,
-      '- If Dominds explicitly says no reply is needed right now, this is just a normal turn in the current conversation; handle the current user/Dominds message normally.',
+      '- Dominds decides from the current dialog state whether another dialog is waiting for your final Tellask reply, and which exact Tellask reply tool sends it; Dominds will state that directly in the task header or the latest Dominds/user prompt.',
+      '- If Dominds names an exact Tellask reply tool, call that named tool and do not choose a variant by yourself. Do not use `tellaskBack` or `tellask` to send final delivery.',
+      `- Formal completion path: only Tellask replies sent through the exact Tellask reply tool currently named by Dominds are delivered to the tellasker as completion results and marked with ${runtimeMarkers.finalCompleted}. Do not rely on plain text; the other dialog may not receive a formal Tellask reply that way.`,
+      '- If Dominds explicitly says no Tellask reply is needed right now, this is just a normal turn in the current conversation; handle the current user/Dominds message normally.',
       '- "Do not post a plain-text progress update" only applies to unfinished states; if the task is done and you can deliver the final result, use the exact reply tool currently named by Dominds instead of `tellaskBack` or `tellask`.',
-      '- Exception: FBR Side Dialog is tool-less (no \`tellaskBack\`); its reply markers (`' +
+      '- Exception: FBR Side Dialog is tool-less (no \`tellaskBack\`); its Tellask reply markers (`' +
         runtimeMarkers.fbrDirectReply +
         '` / `' +
         runtimeMarkers.fbrReasoningOnly +
@@ -224,7 +224,8 @@ function buildTellaskReplyMarkerScopePolicy(
   if (dialogScope === 'sideDialog') {
     // Business scenario: this policy is embedded in the standing Side Dialog system prompt, so
     // it must teach the stable rule without forcing the model to infer the live state. The live
-    // state comes from runtime prompts such as "[Dominds 回复路径]" or "[Dominds 无需回贴]"; this
+    // state comes from runtime prompts such as "[Dominds 诉请回复路径]" or
+    // "[Dominds 无需发送诉请回复]"; this
     // standing text only says how to obey those runtime facts when they appear.
     //
     // The "no reply needed" wording is deliberately phrased as "normal current turn" instead of
@@ -234,30 +235,30 @@ function buildTellaskReplyMarkerScopePolicy(
     return [
       ...pickLocalized(language, {
         zh: [
-          `- 回贴文本标记由 Dominds 在跨对话传递正文中自动添加（常规完成=${runtimeMarkers.finalCompleted}；FBR=${runtimeMarkers.fbrDirectReply} 或 ${runtimeMarkers.fbrReasoningOnly}）；该正文直接进入诉请者上下文，且 UI 展示与其一致。你无需、也不应手写标记。`,
-          '- 若你在正文中给下游写“回贴格式”，只写业务交付结构；不得要求下游手写任何标记，Dominds 会自动注入。',
+          `- 诉请回复文本标记由 Dominds 在跨对话传递正文中自动添加（常规完成=${runtimeMarkers.finalCompleted}；FBR=${runtimeMarkers.fbrDirectReply} 或 ${runtimeMarkers.fbrReasoningOnly}）；该正文直接进入诉请者上下文，且 UI 展示与其一致。你无需、也不应手写标记。`,
+          '- 若你在正文中给下游写“诉请回复格式”，只写业务交付结构；不得要求下游手写任何标记，Dominds 会自动注入。',
           '- `tellaskBack` 只允许用于回问诉请者；仅当必须向诉请者补需求/澄清/裁决/缺失输入，或现有团队规程无法明确判责时才使用。禁止用 `tellaskBack` 发送最终结果。',
           '- 当前支线未完成时，不得把“阻塞/不确定”机械等同于 `tellaskBack`；若团队规程/SOP/职责卡已明确负责人，应直接 `tellask` / `tellaskSessionless` 对应负责人，不得发普通文本中间汇报。',
           `- ${buildSideDialogCompletionRule('zh')}`,
-          `- 正式完成路径中，仅当 Dominds 当前明确点名了某个精确回复工具，且你通过那个工具回复时，Dominds 才会把该回复投递给诉请者并标注 ${runtimeMarkers.finalCompleted}；不要只发普通文本，对方可能收不到正式回贴。`,
-          '- 若 Dominds 当前明确提示“无需回贴”，说明这轮没有别的对话在等你发送最终回贴；这是当前对话里的普通回合，按当前消息正常交流和处理即可。',
+          `- 正式完成路径中，仅当 Dominds 当前明确点名了某个精确回复工具，且你通过那个工具回复时，Dominds 才会把该回复投递给诉请者并标注 ${runtimeMarkers.finalCompleted}；不要只发普通文本，对方可能收不到正式诉请回复。`,
+          '- 若 Dominds 当前明确提示“无需发送诉请回复”，说明这轮没有别的对话在等你发送最终诉请回复；这是当前对话里的普通回合，按当前消息正常交流和处理即可。',
         ],
         en: [
-          `- Reply markers are added by Dominds in the inter-dialog transfer payload (regular completed reply = ${runtimeMarkers.finalCompleted}; FBR = ${runtimeMarkers.fbrDirectReply} or ${runtimeMarkers.fbrReasoningOnly}); this payload is delivered to tellasker context and shown identically in UI. Do not hand-write markers.`,
-          '- If you define a reply format for downstream, keep it to the business delivery structure; do not require downstream to hand-write any marker, because Dominds injects markers automatically.',
+          `- Tellask reply markers are added by Dominds in the inter-dialog transfer payload (regular completed Tellask reply = ${runtimeMarkers.finalCompleted}; FBR = ${runtimeMarkers.fbrDirectReply} or ${runtimeMarkers.fbrReasoningOnly}); this payload is delivered to tellasker context and shown identically in UI. Do not hand-write markers.`,
+          '- If you define a Tellask reply format for downstream, keep it to the business delivery structure; do not require downstream to hand-write any marker, because Dominds injects markers automatically.',
           '- `tellaskBack` is only for asking the tellasker back; use it only when tellasker clarification / decision / missing input is required, or current team SOP cannot determine ownership. Do not use `tellaskBack` to send final results.',
           '- If the current Side Dialog is unfinished, do not mechanically map “blocked / uncertain” to `tellaskBack`; when team SOP / role ownership already identifies the responsible owner, directly use `tellask` / `tellaskSessionless` for that owner instead of posting a plain-text progress update.',
           `- ${buildSideDialogCompletionRule('en')}`,
-          `- In the formal completion path, Dominds marks ${runtimeMarkers.finalCompleted} and delivers to the tellasker only when Dominds currently names an exact reply tool and you reply through that named tool; do not rely on plain text, because the other dialog may not receive a formal reply that way.`,
-          '- If Dominds currently tells you no reply is needed, then no other dialog is waiting for your final reply in this turn; this is a normal turn in the current conversation, so handle the current message normally.',
+          `- In the formal completion path, Dominds marks ${runtimeMarkers.finalCompleted} and delivers to the tellasker only when Dominds currently names an exact Tellask reply tool and you send the Tellask reply through that named tool; do not rely on plain text, because the other dialog may not receive a formal Tellask reply that way.`,
+          '- If Dominds currently tells you no Tellask reply is needed, then no other dialog is waiting for your final Tellask reply in this turn; this is a normal turn in the current conversation, so handle the current message normally.',
         ],
       }),
     ];
   }
   return [
     pickLocalized(language, {
-      zh: '- 发起 `tellask` / `tellaskSessionless` 时，`tellaskContent` 必须是业务正文，不应手写任何回贴标记；若写回贴格式，只描述业务交付结构即可。',
-      en: '- When initiating `tellask` / `tellaskSessionless`, `tellaskContent` must stay as business body and must not hand-write reply markers; if you specify a reply format, describe only the business delivery structure.',
+      zh: '- 发起 `tellask` / `tellaskSessionless` 时，`tellaskContent` 必须是业务正文，不应手写任何诉请回复标记；若写诉请回复格式，只描述业务交付结构即可。',
+      en: '- When initiating `tellask` / `tellaskSessionless`, `tellaskContent` must stay as the business body and must not hand-write Tellask reply markers; if you specify a Tellask reply format, describe only the business delivery structure.',
     }),
   ];
 }
@@ -314,7 +315,7 @@ function buildFbrGuidelines(
   const lines = pickLocalized(language, {
     zh: [
       '- FBR 由 `freshBootsReasoning` 触发，不属于普通队友诉请分类；请按本节规则执行。',
-      '- FBR 不可调用 `tellaskBack`；其回贴标记由 Dominds 在跨对话传递正文中自动注入。',
+      '- FBR 不可调用 `tellaskBack`；其诉请回复标记由 Dominds 在跨对话传递正文中自动注入。',
       '- FBR 禁止一切 tellask-special（包括 `tellaskBack` / `tellask` / `tellaskSessionless` / `askHuman` / `answerHuman`）。',
       '- 当用户明确要求“做一次 FBR/扪心自问”，对话主理人必须发起 `freshBootsReasoning`。',
       fbrContextHealthRule,
@@ -324,14 +325,14 @@ function buildFbrGuidelines(
       '- 发起前自检（强制）：若正文出现“请从以下维度/按以下方面/按步骤 1..N 分析”等预设提纲语句，必须先改写再调用 `freshBootsReasoning`；否则视为违规调用。',
       '- 发起正文推荐模板（强制遵循语义）：`目标` / `事实` / `约束` / `证据`（可选 `未知项`）。正文应是事实陈述，不是对 FBR 支线下达“按维度/按步骤分析”的命令。',
       '- 典型反例（禁止）：`请从以下维度分析`、`按步骤 1..N 推理`、`每个维度至少 N 轮`。出现这些句式时，必须先改写为中性事实描述。',
-      '- 即使用户未明确要求，在诉诸 `askHuman`（Q4H）之前，若感觉目标不够清晰或难以决定下一步行动，应首先发起一次扪心自问，充分总结当前对话上下文的事实情况作为 FBR 正文；在收到该次 FBR 回贴前，不要提前下最终行动决策。',
+      '- 即使用户未明确要求，在诉诸 `askHuman`（Q4H）之前，若感觉目标不够清晰或难以决定下一步行动，应首先发起一次扪心自问，充分总结当前对话上下文的事实情况作为 FBR 正文；在收到该次 FBR 诉请回复前，不要提前下最终行动决策。',
       '- FBR 阶段协议（强制）：',
       fbrPhaseContract,
       '- 鼓励 FBR 自我建议立即获取哪些未明事实，得到建议利用当前对话工具获取，再补足上下文迭代 FBR 直到获得清晰的下一步行动思路。',
     ],
     en: [
       '- FBR is triggered by `freshBootsReasoning`, not by normal teammate tellasks; follow this section’s rules.',
-      '- FBR cannot call `tellaskBack`; its reply marker is injected by Dominds into the inter-dialog transfer payload.',
+      '- FBR cannot call `tellaskBack`; its Tellask reply marker is injected by Dominds into the inter-dialog transfer payload.',
       '- FBR forbids all tellask-special calls (including `tellaskBack` / `tellask` / `tellaskSessionless` / `askHuman` / `answerHuman`).',
       '- When the user explicitly requests “do an FBR / fresh boots reasoning”, the Dialog Responder must call `freshBootsReasoning`.',
       fbrContextHealthRule,
@@ -359,7 +360,7 @@ function buildTellaskInteractionRules(language: LanguageCode): string {
       '- `tellask`：用于可恢复的长线诉请（必须提供 `targetAgentId` / `sessionSlug` / `tellaskContent`）。',
       '- `tellaskSessionless`：用于一次性诉请（必须提供 `targetAgentId` / `tellaskContent`）；它不能接着旧任务改要求，后续再次调用只是另一件独立任务，不会影响旧任务继续执行，也不会打扰同一队友正在执行的其它独立诉请。不要把智能体队友当成需要排队说话的真人同事。',
       '- `askHuman`（Q4H，最后手段）：向人类请求必要澄清/决策/授权/缺失输入。适合 Q4H 的典型场景：你和所有队友都查不到的凭据或外部信息、多个合理方向都需要人类拍板长期方向、涉及外部不可逆操作的授权。**不要**用 `askHuman` 来发诊断报告、进度更新、已做完的总结、日常 A/B 选择——自己能挑的就自己挑，记在 \`progress\` 里，让人类审阅，必要时回滚。',
-      '- `answerHuman`（A2H）：**主用途**是回应人类用户的插话、追问、提问、评论；**次用途**是在合适时机主动给人类一份自由文本说明（阶段性诊断、变更总结、阻塞说明等），它仍然走人类通道；**末位用途**是本轮必须出工具调用、但确实没有其它实质工具应调用、唯一正确动作是说明情况并等待（典型场景：等活跃诉请对象或诉请回贴），用 `answerHuman({ answerContent })` 收口。对象只能是人类——回队友走 `replyTellask*`，不要在 A2H 里夹带对队友的指令或反馈。',
+      '- `answerHuman`（A2H）：**主用途**是回应人类用户的插话、追问、提问、评论；**次用途**是在合适时机主动给人类一份自由文本说明（阶段性诊断、变更总结、阻塞说明等），它仍然走人类通道；**末位用途**是本轮必须出工具调用、但确实没有其它实质工具应调用、唯一正确动作是说明情况并等待（典型场景：等活跃诉请对象或诉请回复），用 `answerHuman({ answerContent })` 收口。对象只能是人类——回队友走 `replyTellask*`，不要在 A2H 里夹带对队友的指令或反馈。',
       '- `freshBootsReasoning`：用于发起扪心自问（FBR）支线（`tellaskContent` 必填，`effort` 可选）。',
     ],
     en: [
@@ -369,7 +370,7 @@ function buildTellaskInteractionRules(language: LanguageCode): string {
       '- `tellask`: resumable tellask (requires `targetAgentId` / `sessionSlug` / `tellaskContent`).',
       '- `tellaskSessionless`: one-shot tellask (requires `targetAgentId` / `tellaskContent`); it cannot continue an earlier task or change its requirements. Later calls are separate tasks and do not affect earlier work for the same teammate. Do not treat agent teammates like human coworkers who need you to wait in line to talk.',
       '- `askHuman` (Q4H, last resort): request necessary clarification, decision, authorization, or missing input from the human. Q4H fits when neither you nor any teammate can resolve it on your own—a credential you cannot find, a long-term direction with multiple defensible options that needs a human call, authorization for an external irreversible action. Do not use `askHuman` to send a diagnosis report, a status update, a wrap-up summary, or a routine A/B choice—pick the more defensible option yourself, record the rationale in `progress`, and let the human review or roll back if needed.',
-      '- `answerHuman` (A2H): the **primary** use is to react to the human user’s interjection, follow-up, question, or comment; the **secondary** use is a proactive free-form note to the human at a natural checkpoint (a stage diagnosis, a change summary, a blocker note)—still on the human channel, just not reactive; the **fallback** use is when the round must emit a tool call but no substantive tool applies and the only correct action is to state the situation and wait (typical case: waiting for active callees or tellask replies), in which case call `answerHuman({ answerContent })` to close the round. The target is always the human. To reply to a teammate, use `replyTellask*`. Do not embed instructions or feedback for a teammate inside an A2H.',
+      '- `answerHuman` (A2H): the **primary** use is to react to the human user’s interjection, follow-up, question, or comment; the **secondary** use is a proactive free-form note to the human at a natural checkpoint (a stage diagnosis, a change summary, a blocker note)—still on the human channel, just not reactive; the **fallback** use is when the round must emit a tool call but no substantive tool applies and the only correct action is to state the situation and wait (typical case: waiting for active callees or Tellask replies), in which case call `answerHuman({ answerContent })` to close the round. The target is always the human. To send a Tellask reply to a teammate, use `replyTellask*`. Do not embed instructions or feedback for a teammate inside an A2H.',
       '- `freshBootsReasoning`: starts an FBR Side Dialog (requires `tellaskContent`, optional `effort`).',
     ],
   });
@@ -381,13 +382,13 @@ function buildFunctionToolRules(language: LanguageCode, funcToolRulesText: strin
     zh: [
       '- 回答必须基于可观测事实；为获取事实优先使用可用工具，缺乏观测事实时明确说明并请求/补充获取，不得臆测。',
       `- 你必须通过原生 function-calling 发起函数工具调用。请提供严格的 JSON 参数对象，并尽量匹配工具 schema。Dominds 会对 schema 做 best-effort 校验（例如 required / additionalProperties:false / 基础 type / primitive enum / primitive const）；其余复杂关键字（pattern/format/min/max/oneOf 等）与语义约束以工具报错为准。${funcToolRulesText}`,
-      '- 若本轮被要求调用工具，但当前确实没有应调用的事实获取/执行/诉请/回贴工具，且唯一合理动作是停止并等待（例如等待 active callees 或诉请回贴），调用 `answerHuman({ answerContent })` 说明当前等待状态并完成本工具轮次；不要为了满足工具要求而重复调用无意义的普通工具。',
+      '- 若本轮被要求调用工具，但当前确实没有应调用的事实获取、执行、诉请或回复工具，且唯一合理动作是停止并等待（例如等待 active callees 或诉请回复），调用 `answerHuman({ answerContent })` 说明当前等待状态并完成本工具轮次；不要为了满足工具要求而重复调用无意义的普通工具。',
       '- 若遇到权限/沙盒/工具不可用：按要求申请升级或发起 Q4H；禁止编造结果。',
     ],
     en: [
       '- Answers must be grounded in observed facts. Use available tools to obtain facts; if facts are missing, say so and request/obtain them—do not guess.',
       `- You must invoke function tools via native function-calling. Provide a valid JSON object for the tool's arguments and match the tool schema as closely as possible. Dominds performs best-effort schema validation (for example required / additionalProperties:false / basic types / primitive enum / primitive const); other complex keywords (pattern/format/min/max/oneOf etc.) and semantic constraints are enforced via tool errors.${funcToolRulesText}`,
-      '- If this round requires a tool call but there is truly no fact-gathering, action, tellask, or reply tool that should be called, and the only reasonable action is to stop and wait (for example waiting for active callees or tellask replies), call `answerHuman({ answerContent })` to explain the current wait state and complete this tool round; do not repeat meaningless ordinary tool calls just to satisfy the tool requirement.',
+      '- If this round requires a tool call but there is truly no fact-gathering, action, Tellask, or Tellask reply tool that should be called, and the only reasonable action is to stop and wait (for example waiting for active callees or Tellask replies), call `answerHuman({ answerContent })` to explain the current wait state and complete this tool round; do not repeat meaningless ordinary tool calls just to satisfy the tool requirement.',
       '- If a tool is unavailable due to permissions/sandboxing, request escalation or ask Q4H; do not fabricate results.',
     ],
   });
@@ -541,7 +542,7 @@ ${input.mcpToolsetRuntimeNote ? `## MCP 工具集当前状态\n\n${input.mcpTool
 
 **Q4H 机制**：通过 \`askHuman\` 发起向人类请求（澄清/决策/授权/缺失输入），或汇报当前环境中无法由智能体自主完成的阻塞事项。
 **注意**：不要把可由智能体完成的执行性工作外包给 \`askHuman\`。Q4H 请求应尽量最小化、可验证（给出需要的具体信息、预期格式/选项），并在得到答复后继续由智能体自主完成后续工作。
-**补充**：像“发起队友诉请/推进迭代/收集回贴”这类常规协作动作属于智能体的自主工作流，不要向 \`askHuman\` 询问“是否要执行”；直接执行并在必要时汇报进度即可。
+**补充**：像“发起队友诉请/推进迭代/收集诉请回复”这类常规协作动作属于智能体的自主工作流，不要向 \`askHuman\` 询问“是否要执行”；直接执行并在必要时汇报进度即可。
 **自主 vs Q4H**：每次准备发 \`askHuman\` 前先做这道题。
 - 目标清晰 + 你或队友能推进 → 直接推进，把决策记在 \`progress\`，必要时用 \`answerHuman\` 主动同步阶段性结论。
 - 目标清晰 + 你或队友推不动（缺信息、缺授权、缺能力）→ 先自助一轮：查文档、查既有提示、向能补位的能力来源求助；实在拿不到结果再 \`askHuman\`。

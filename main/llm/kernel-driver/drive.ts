@@ -63,6 +63,11 @@ import {
   type ReminderMaintenanceReferenceItem,
 } from '../../runtime/driver-messages';
 import {
+  formatTellaskResultContextAnchor,
+  formatTellaskResultContextContent,
+  type ResultContextAnchorCallName,
+} from '../../runtime/inter-dialog-format';
+import {
   buildActiveReplyObligationContextText,
   isStandaloneRuntimeGuidePromptContent,
 } from '../../runtime/reply-prompt-copy';
@@ -1465,6 +1470,19 @@ type PendingTellaskSpecialState = Readonly<{
   startedAtMs: number | null;
 }>;
 
+type TellaskSpecialCallForContextProjection = Readonly<{
+  callName: TellaskCallFunctionName;
+  sourceIndex: number;
+}>;
+
+type TellaskResultForContextProjection = Readonly<{
+  callName: ResultContextAnchorCallName;
+  message: Extract<ChatMessage, { type: 'tellask_result_msg' }>;
+  sourceIndex: number;
+  recordedAt: string;
+  contentAnchor: string;
+}>;
+
 async function loadPendingTellaskSpecialStates(
   dialog: Dialog,
 ): Promise<ReadonlyMap<string, PendingTellaskSpecialState>> {
@@ -1477,26 +1495,81 @@ async function loadPendingTellaskSpecialStates(
   for (const dispatch of activeCalleeDispatches) {
     const callId = dispatch.callId.trim();
     if (callId === '') {
-      continue;
+      throw new Error(
+        `tellask pending-state invariant violation: empty active callee callId ` +
+          `(rootId=${dialog.id.rootId}, selfId=${dialog.id.selfId})`,
+      );
+    }
+    if (callId !== dispatch.callId || /[\r\n\u2028\u2029]/u.test(callId)) {
+      throw new Error(
+        `tellask pending-state invariant violation: invalid active callee callId ` +
+          `(rootId=${dialog.id.rootId}, selfId=${dialog.id.selfId}, ` +
+          `callId=${JSON.stringify(dispatch.callId)})`,
+      );
+    }
+    const startedAtMs = parseUnifiedTimestampMs(dispatch.createdAt);
+    if (startedAtMs === null) {
+      throw new Error(
+        `tellask pending-state invariant violation: invalid active callee createdAt ` +
+          `(rootId=${dialog.id.rootId}, selfId=${dialog.id.selfId}, callId=${callId}, ` +
+          `createdAt=${JSON.stringify(dispatch.createdAt)})`,
+      );
+    }
+    const existing = pendingByCallId.get(callId);
+    if (existing !== undefined) {
+      throw new Error(
+        `tellask pending-state invariant violation: duplicate active correlation ` +
+          `(rootId=${dialog.id.rootId}, selfId=${dialog.id.selfId}, callId=${callId}, ` +
+          `existingCallName=${existing.callName}, incomingCallName=${dispatch.callName})`,
+      );
     }
     pendingByCallId.set(callId, {
       callName: dispatch.callName,
-      startedAtMs: parseUnifiedTimestampMs(dispatch.createdAt),
+      startedAtMs,
     });
   }
 
   const pendingQ4H = await DialogPersistence.loadQuestions4HumanState(dialog.id, dialog.status);
   for (const question of pendingQ4H) {
     if (typeof question.callId !== 'string') {
-      continue;
+      throw new Error(
+        `tellask pending-state invariant violation: missing Q4H callId ` +
+          `(rootId=${dialog.id.rootId}, selfId=${dialog.id.selfId}, questionId=${question.id})`,
+      );
     }
     const callId = question.callId.trim();
     if (callId === '') {
-      continue;
+      throw new Error(
+        `tellask pending-state invariant violation: empty Q4H callId ` +
+          `(rootId=${dialog.id.rootId}, selfId=${dialog.id.selfId}, questionId=${question.id})`,
+      );
+    }
+    if (callId !== question.callId || /[\r\n\u2028\u2029]/u.test(callId)) {
+      throw new Error(
+        `tellask pending-state invariant violation: invalid Q4H callId ` +
+          `(rootId=${dialog.id.rootId}, selfId=${dialog.id.selfId}, questionId=${question.id}, ` +
+          `callId=${JSON.stringify(question.callId)})`,
+      );
+    }
+    const startedAtMs = parseUnifiedTimestampMs(question.askedAt);
+    if (startedAtMs === null) {
+      throw new Error(
+        `tellask pending-state invariant violation: invalid Q4H askedAt ` +
+          `(rootId=${dialog.id.rootId}, selfId=${dialog.id.selfId}, questionId=${question.id}, ` +
+          `callId=${callId}, askedAt=${JSON.stringify(question.askedAt)})`,
+      );
+    }
+    const existing = pendingByCallId.get(callId);
+    if (existing !== undefined) {
+      throw new Error(
+        `tellask pending-state invariant violation: duplicate active correlation ` +
+          `(rootId=${dialog.id.rootId}, selfId=${dialog.id.selfId}, callId=${callId}, ` +
+          `existingCallName=${existing.callName}, incomingCallName=askHuman)`,
+      );
     }
     pendingByCallId.set(callId, {
       callName: 'askHuman',
-      startedAtMs: parseUnifiedTimestampMs(question.askedAt),
+      startedAtMs,
     });
   }
 
@@ -1517,46 +1590,216 @@ async function projectTellaskFuncResultsForContext(args: {
   }
 
   const pendingSpecialByCallId = await loadPendingTellaskSpecialStates(args.dialog);
+  const latest = await DialogPersistence.loadDialogLatest(args.dialog.id, args.dialog.status);
+  if (latest === null) {
+    throw new Error(
+      `tellask result projection invariant violation: missing latest state ` +
+        `(rootId=${args.dialog.id.rootId}, selfId=${args.dialog.id.selfId})`,
+    );
+  }
+  const recordedResultByCallId = new Map<string, (typeof latest.tellaskResults.results)[number]>();
+  for (const result of latest.tellaskResults.results) {
+    const callId = result.callId.trim();
+    if (callId === '') {
+      throw new Error('tellask result projection invariant violation: empty durable result callId');
+    }
+    if (callId !== result.callId) {
+      throw new Error(
+        `tellask result projection invariant violation: durable result callId has surrounding whitespace ` +
+          `(callId=${JSON.stringify(result.callId)})`,
+      );
+    }
+    if (
+      result.recordedAt.trim() === '' ||
+      result.recordedAt !== result.recordedAt.trim() ||
+      parseUnifiedTimestampMs(result.recordedAt) === null
+    ) {
+      throw new Error(
+        `tellask result projection invariant violation: invalid durable result recordedAt ` +
+          `(rootId=${args.dialog.id.rootId}, selfId=${args.dialog.id.selfId}, callId=${callId}, ` +
+          `recordedAt=${JSON.stringify(result.recordedAt)})`,
+      );
+    }
+    if (recordedResultByCallId.has(callId)) {
+      throw new Error(
+        `tellask result projection invariant violation: duplicate durable result callId=${callId}`,
+      );
+    }
+    recordedResultByCallId.set(callId, result);
+  }
+  const specialCallByCallId = new Map<string, TellaskSpecialCallForContextProjection>();
+  for (const [sourceIndex, msg] of args.dialogMsgsForContext.entries()) {
+    if (msg.type !== 'func_call_msg' || !isTellaskCallFunctionName(msg.name)) {
+      continue;
+    }
+    const callId = msg.id.trim();
+    if (callId === '') {
+      throw new Error('tellask result projection invariant violation: empty call callId');
+    }
+    if (callId !== msg.id) {
+      throw new Error(
+        `tellask result projection invariant violation: call callId has surrounding whitespace ` +
+          `(callId=${JSON.stringify(msg.id)})`,
+      );
+    }
+    if (specialCallByCallId.has(callId)) {
+      throw new Error(
+        `tellask result projection invariant violation: duplicate call callId=${callId}`,
+      );
+    }
+    specialCallByCallId.set(callId, {
+      callName: msg.name,
+      sourceIndex,
+    });
+  }
 
   // Only technical tool-result-shaped messages can satisfy provider tool-call adjacency. Tellask
   // result/carryover messages are business facts in timeline order; the adjacent call-site
   // projection must be only a pending/pointer status, never the real reply body.
-  const pairedToolResultContentByCallId = new Map<string, string>();
+  const tellaskResultByCallId = new Map<string, TellaskResultForContextProjection>();
   const existingSpecialFuncResults = new Map<string, FuncResultMsg>();
-  for (const msg of args.dialogMsgsForContext) {
+  for (const [sourceIndex, msg] of args.dialogMsgsForContext.entries()) {
     if (msg.type === 'tellask_result_msg') {
       const callId = typeof msg.callId === 'string' ? msg.callId.trim() : '';
-      if (callId !== '') {
-        if (!isTellaskCallFunctionName(msg.callName)) {
-          throw new Error(
-            `tellask result projection invariant violation: unsupported callName '${msg.callName}' for callId=${callId}`,
-          );
-        }
-        pairedToolResultContentByCallId.set(
-          callId,
-          formatResolvedTellaskFuncResultContent({
-            name: msg.callName,
-            callId,
-            status: msg.status,
-          }),
+      if (callId === '') {
+        throw new Error('tellask result projection invariant violation: empty result callId');
+      }
+      if (callId !== msg.callId) {
+        throw new Error(
+          `tellask result projection invariant violation: result callId has surrounding whitespace ` +
+            `(callId=${JSON.stringify(msg.callId)})`,
         );
       }
+      if (
+        msg.callName !== 'tellaskBack' &&
+        msg.callName !== 'tellask' &&
+        msg.callName !== 'tellaskSessionless' &&
+        msg.callName !== 'askHuman' &&
+        msg.callName !== 'freshBootsReasoning'
+      ) {
+        throw new Error(
+          `tellask result projection invariant violation: unsupported callName '${msg.callName}' for callId=${callId}`,
+        );
+      }
+      if (tellaskResultByCallId.has(callId)) {
+        throw new Error(
+          `tellask result projection invariant violation: duplicate result callId=${callId}`,
+        );
+      }
+      const recordedResult = recordedResultByCallId.get(callId);
+      if (recordedResult === undefined) {
+        throw new Error(
+          `tellask result projection invariant violation: missing durable result index ` +
+            `(rootId=${args.dialog.id.rootId}, selfId=${args.dialog.id.selfId}, callId=${callId})`,
+        );
+      }
+      if (recordedResult.callName !== msg.callName) {
+        throw new Error(
+          `tellask result projection invariant violation: durable result callName mismatch ` +
+            `(rootId=${args.dialog.id.rootId}, selfId=${args.dialog.id.selfId}, callId=${callId}, ` +
+            `message=${msg.callName}, durable=${recordedResult.callName})`,
+        );
+      }
+      const contextResultContent = formatTellaskResultContextContent({
+        callId,
+        callName: msg.callName,
+        content: msg.content,
+        language: getWorkLanguage(),
+      });
+      const contentAnchor = contextResultContent.split(/\r?\n/u, 1)[0];
+      const zhContentAnchor = formatTellaskResultContextAnchor({
+        callId,
+        callName: msg.callName,
+        language: 'zh',
+      });
+      const enContentAnchor = formatTellaskResultContextAnchor({
+        callId,
+        callName: msg.callName,
+        language: 'en',
+      });
+      if (contentAnchor !== zhContentAnchor && contentAnchor !== enContentAnchor) {
+        throw new Error(
+          `tellask result projection invariant violation: invalid result first-line anchor ` +
+            `(callId=${callId}, anchor=${JSON.stringify(contentAnchor)})`,
+        );
+      }
+      tellaskResultByCallId.set(callId, {
+        callName: msg.callName,
+        message: {
+          ...msg,
+          content: contextResultContent,
+        },
+        sourceIndex,
+        recordedAt: recordedResult.recordedAt,
+        contentAnchor,
+      });
       continue;
     }
     if (msg.type === 'func_result_msg' && isTellaskCallFunctionName(msg.name)) {
+      const callId = msg.id.trim();
+      if (callId === '' || callId !== msg.id) {
+        throw new Error(
+          `tellask result projection invariant violation: invalid tool receipt callId=` +
+            JSON.stringify(msg.id),
+        );
+      }
+      if (existingSpecialFuncResults.has(msg.id)) {
+        throw new Error(
+          `tellask result projection invariant violation: duplicate tool receipt callId=${msg.id}`,
+        );
+      }
+      const specialCall = specialCallByCallId.get(callId);
+      if (specialCall !== undefined) {
+        if (specialCall.callName !== msg.name) {
+          throw new Error(
+            `tellask result projection invariant violation: tool receipt callName mismatch ` +
+              `(callId=${callId}, call=${specialCall.callName}, receipt=${msg.name})`,
+          );
+        }
+        if (sourceIndex <= specialCall.sourceIndex) {
+          throw new Error(
+            `tellask result projection invariant violation: tool receipt is not after call ` +
+              `(callId=${callId}, callIndex=${String(specialCall.sourceIndex)}, ` +
+              `receiptIndex=${String(sourceIndex)})`,
+          );
+        }
+      }
       existingSpecialFuncResults.set(msg.id, msg);
     }
   }
 
   const projected: ChatMessage[] = [];
   const specialCallIds = new Set<string>();
-  for (const msg of args.dialogMsgsForContext) {
+  const resolvedToolResultIndexByCallId = new Map<string, number>();
+  const businessResultIndexByCallId = new Map<string, number>();
+  for (const [sourceIndex, msg] of args.dialogMsgsForContext.entries()) {
     if (msg.type === 'func_result_msg' && specialCallIds.has(msg.id)) {
       continue;
     }
 
-    projected.push(msg);
+    if (msg.type === 'tellask_result_msg') {
+      const callId = msg.callId.trim();
+      const specialCall = specialCallByCallId.get(callId);
+      if (specialCall !== undefined && sourceIndex < specialCall.sourceIndex) {
+        // A synchronous reply may be mirrored into the live message array while its originating
+        // tellask-special round is still executing, before that round commits its call/result pair
+        // to `dlg.msgs`. Durable event order is call -> business result -> technical receipt.
+        // Withhold only this live-order inversion and place it after the adjacent receipt below so
+        // live and restored contexts expose the same call -> receipt -> independent result order.
+        continue;
+      }
+      const contextResult = tellaskResultByCallId.get(callId);
+      if (contextResult === undefined) {
+        throw new Error(
+          `tellask result projection invariant violation: missing normalized result callId=${callId}`,
+        );
+      }
+      projected.push(contextResult.message);
+      businessResultIndexByCallId.set(callId, projected.length - 1);
+      continue;
+    }
 
+    projected.push(msg);
     if (msg.type !== 'func_call_msg') {
       continue;
     }
@@ -1565,16 +1808,27 @@ async function projectTellaskFuncResultsForContext(args: {
     }
 
     specialCallIds.add(msg.id);
-    const pairedToolResultContent = pairedToolResultContentByCallId.get(msg.id);
-    if (pairedToolResultContent !== undefined) {
+    const tellaskResult = tellaskResultByCallId.get(msg.id);
+    if (tellaskResult !== undefined) {
+      if (tellaskResult.callName !== msg.name) {
+        throw new Error(
+          `tellask result projection invariant violation: callName mismatch ` +
+            `(callId=${msg.id}, call=${msg.name}, result=${tellaskResult.callName})`,
+        );
+      }
+      resolvedToolResultIndexByCallId.set(msg.id, projected.length);
       projected.push({
         type: 'func_result_msg',
         role: 'tool',
         genseq: msg.genseq,
         id: msg.id,
         name: msg.name,
-        content: pairedToolResultContent,
+        content: '',
       });
+      if (tellaskResult.sourceIndex < sourceIndex) {
+        projected.push(tellaskResult.message);
+        businessResultIndexByCallId.set(msg.id, projected.length - 1);
+      }
       continue;
     }
 
@@ -1585,7 +1839,14 @@ async function projectTellaskFuncResultsForContext(args: {
     }
 
     const pendingSpecialState = pendingSpecialByCallId.get(msg.id);
-    if (pendingSpecialState?.callName === msg.name) {
+    if (pendingSpecialState !== undefined && pendingSpecialState.callName !== msg.name) {
+      throw new Error(
+        `tellask result projection invariant violation: pending callName mismatch ` +
+          `(rootId=${args.dialog.id.rootId}, selfId=${args.dialog.id.selfId}, callId=${msg.id}, ` +
+          `call=${msg.name}, pending=${pendingSpecialState.callName})`,
+      );
+    }
+    if (pendingSpecialState !== undefined) {
       projected.push({
         type: 'func_result_msg',
         role: 'tool',
@@ -1610,8 +1871,56 @@ async function projectTellaskFuncResultsForContext(args: {
     );
   }
 
+  const messages = projected.map((msg, index): ChatMessage => {
+    if (
+      msg.type !== 'func_result_msg' ||
+      !isTellaskCallFunctionName(msg.name) ||
+      resolvedToolResultIndexByCallId.get(msg.id) !== index
+    ) {
+      return msg;
+    }
+    const tellaskResult = tellaskResultByCallId.get(msg.id);
+    const businessResultIndex = businessResultIndexByCallId.get(msg.id);
+    if (tellaskResult === undefined || businessResultIndex === undefined) {
+      throw new Error(
+        `tellask result projection invariant violation: unresolved context pointer ` +
+          `(rootId=${args.dialog.id.rootId}, selfId=${args.dialog.id.selfId}, callId=${msg.id})`,
+      );
+    }
+    const messageOffset = businessResultIndex - index;
+    if (messageOffset <= 0) {
+      throw new Error(
+        `tellask result projection invariant violation: result is not later than tool receipt ` +
+          `(rootId=${args.dialog.id.rootId}, selfId=${args.dialog.id.selfId}, callId=${msg.id}, ` +
+          `toolResultIndex=${String(index)}, businessResultIndex=${String(businessResultIndex)})`,
+      );
+    }
+    const content =
+      tellaskResult.message.status === 'pending'
+        ? formatResolvedTellaskFuncResultContent({
+            name: tellaskResult.callName,
+            callId: msg.id,
+            status: 'pending',
+          })
+        : formatResolvedTellaskFuncResultContent({
+            name: tellaskResult.callName,
+            callId: msg.id,
+            status: tellaskResult.message.status,
+            resultPointer: {
+              kind: 'later_context_message',
+              recordedAt: tellaskResult.recordedAt,
+              messageOffset,
+              contentAnchor: tellaskResult.contentAnchor,
+            },
+          });
+    return {
+      ...msg,
+      content,
+    };
+  });
+
   return {
-    messages: projected,
+    messages,
   };
 }
 

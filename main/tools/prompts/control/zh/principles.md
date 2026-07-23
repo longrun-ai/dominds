@@ -108,11 +108,11 @@
 - 当前支线已经完成，且当前任务开头明确要求 `replyTellask`：调用 `replyTellask({ replyContent })`
 - 当前支线已经完成，且当前任务开头明确要求 `replyTellaskSessionless`：调用 `replyTellaskSessionless({ replyContent })`
 - 当前是在回复一条诉请者发来的 `tellaskBack` 续诉请，且 Dominds 显示了 `replyTellaskBack`：调用 `replyTellaskBack({ replyContent })`
-- 普通文本不是跨对话完成交付通道；如果你直接写出了可回给诉请者的最终内容但没按 Dominds 点名的回复工具发送，Dominds 可能临时提醒你改用那个工具。不要把普通文本当成正式回贴路径；对方可能收不到正式回贴。
+- 普通文本不是跨对话完成交付通道；如果你直接写出了可回给诉请者的最终内容但没按 Dominds 点名的回复工具发送，Dominds 可能临时提醒你改用那个工具。不要把普通文本当成正式诉请回复路径；对方可能收不到正式诉请回复。
 
 ### 心智负担最小化规则
 
-- 先专注把当前任务做对；只有最终内容准备好、且 Dominds 点名了回复工具时，才发送最终回贴
+- 先专注把当前任务做对；只有最终内容准备好、且 Dominds 点名了回复工具时，才发送最终诉请回复
 - 不要靠记忆硬选回复工具；以当前任务开头和 Dominds 当前点名/显示的回复工具为准
 - 回复工具自身说明文案故意保持极简，只承载最小规格；情景判断看本手册的 principles / scenarios
 - 若 Dominds 只点名/显示一个回复工具，那就是当前应调用的唯一完成路径

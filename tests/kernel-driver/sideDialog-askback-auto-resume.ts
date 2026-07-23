@@ -171,7 +171,7 @@ async function main(): Promise<void> {
           event.anchorRole === 'response' &&
           event.callId === 'root-call-pangu-askback',
       ),
-      'expected sideDialog to emit the original tellask response anchor after ask-back resolution',
+      'expected sideDialog to emit the original Tellask reply anchor after ask-back resolution',
     );
   });
 

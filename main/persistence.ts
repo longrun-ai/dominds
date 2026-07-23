@@ -645,10 +645,10 @@ function isSuppressedTellaskPlaceholderFuncResult(args: {
   if (
     raw.startsWith('[Dominds 等待人类回复]') ||
     raw.startsWith('[Dominds waiting for human answer]') ||
-    raw.startsWith('[Dominds 等待队友回贴]') ||
-    raw.startsWith('[Dominds waiting for teammate reply]') ||
-    raw.startsWith('[Dominds 队友回贴状态]') ||
-    raw.startsWith('[Dominds teammate reply status]')
+    raw.startsWith('[Dominds 等待诉请回复]') ||
+    raw.startsWith('[Dominds waiting for Tellask reply]') ||
+    raw.startsWith('[Dominds 诉请结果状态]') ||
+    raw.startsWith('[Dominds Tellask result status]')
   ) {
     return true;
   }

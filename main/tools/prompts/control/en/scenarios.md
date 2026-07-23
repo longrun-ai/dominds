@@ -86,7 +86,7 @@ replyTellask({
 
 ### Key Points
 
-- Do not replace this with a plain final message; formal delivery must use the reply tool named by Dominds, or the other dialog may not receive a formal reply
+- Do not replace this with a plain final message; formal delivery must use the Tellask reply tool named by Dominds, or the other dialog may not receive a formal Tellask reply
 - Put the final deliverable body directly in `replyContent`
 - If the header says `replyTellaskSessionless`, use the same shape with that exact function name
 
@@ -109,7 +109,7 @@ tellaskBack({
 
 - This example uses `tellaskBack` because tellasker input is specifically required
 - If team SOP / role ownership already identifies the responsible executor, directly use `tellask` / `tellaskSessionless` for that owner instead of mapping every unfinished state to `tellaskBack`
-- Do not use reply tools for intermediate clarifications
+- Do not use Tellask reply tools for intermediate clarifications
 
 ## Scenario 4: Tellasker answered the ask-back, so use replyTellaskBack to close
 

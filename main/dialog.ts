@@ -69,7 +69,10 @@ import {
   formatCurrentUserLanguagePreference,
   formatUserLanguagePreferenceChangedNotice,
 } from './runtime/driver-messages';
-import { formatAssignmentFromAskerDialog } from './runtime/inter-dialog-format';
+import {
+  formatAssignmentFromAskerDialog,
+  formatTellaskResultContextContent,
+} from './runtime/inter-dialog-format';
 import type { SharedReminderUpdateImpactScope } from './runtime/shared-reminder-update-impact';
 import { getWorkLanguage } from './runtime/work-language';
 import {
@@ -1931,6 +1934,12 @@ export abstract class Dialog {
       callSiteGenseq?: CallSiteGenseqNo;
     },
   ): Promise<void> {
+    const anchoredResult = formatTellaskResultContextContent({
+      callId,
+      callName,
+      content: result,
+      language: getWorkLanguage(),
+    });
     const tellaskResult: TellaskResultMsg =
       callName === 'tellask'
         ? {
@@ -1939,7 +1948,7 @@ export abstract class Dialog {
             callId,
             callName,
             status,
-            content: result,
+            content: anchoredResult,
             ...(options?.callSiteCourse !== undefined
               ? { callSiteCourse: options.callSiteCourse }
               : {}),
@@ -1961,7 +1970,7 @@ export abstract class Dialog {
               callId,
               callName,
               status,
-              content: result,
+              content: anchoredResult,
               ...(options?.callSiteCourse !== undefined
                 ? { callSiteCourse: options.callSiteCourse }
                 : {}),
@@ -1982,7 +1991,7 @@ export abstract class Dialog {
               callId,
               callName,
               status,
-              content: result,
+              content: anchoredResult,
               ...(options?.callSiteCourse !== undefined
                 ? { callSiteCourse: options.callSiteCourse }
                 : {}),
@@ -2049,7 +2058,7 @@ export abstract class Dialog {
       }
       if (options.response.trim() === '') {
         throw new Error(
-          `receiveTellaskResponse invariant violation: empty carryover response body ` +
+          `receiveTellaskResponse invariant violation: empty carryover Tellask reply body ` +
             `(callId=${options.callId}, callName=${callName})`,
         );
       }
@@ -2090,6 +2099,12 @@ export abstract class Dialog {
       return carryoverResult;
     }
 
+    const anchoredResponse = formatTellaskResultContextContent({
+      callId: options.callId,
+      callName,
+      content: options.response,
+      language: getWorkLanguage(),
+    });
     const tellaskResult: TellaskResultMsg =
       callName === 'tellask'
         ? {
@@ -2098,7 +2113,7 @@ export abstract class Dialog {
             callId: options.callId,
             callName,
             status,
-            content: options.response,
+            content: anchoredResponse,
             ...(options.contentItems === undefined ? {} : { contentItems: options.contentItems }),
             ...(options.callSiteCourse !== undefined
               ? { callSiteCourse: options.callSiteCourse }
@@ -2125,7 +2140,7 @@ export abstract class Dialog {
               callId: options.callId,
               callName,
               status,
-              content: options.response,
+              content: anchoredResponse,
               ...(options.contentItems === undefined ? {} : { contentItems: options.contentItems }),
               ...(options.callSiteCourse !== undefined
                 ? { callSiteCourse: options.callSiteCourse }
@@ -2150,7 +2165,7 @@ export abstract class Dialog {
               callId: options.callId,
               callName,
               status,
-              content: options.response,
+              content: anchoredResponse,
               ...(options.contentItems === undefined ? {} : { contentItems: options.contentItems }),
               ...(options.callSiteCourse !== undefined
                 ? { callSiteCourse: options.callSiteCourse }

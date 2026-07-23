@@ -1956,7 +1956,7 @@ export class DomindsDialogContainer extends HTMLElement {
         this.handleTellaskCallee(event);
         break;
 
-      // Teammate responses (separate bubble)
+      // Cross-course Tellask results (separate bubble)
       case 'tellask_carryover_evt':
         this.handleTellaskCarryover(event);
         break;
@@ -3815,7 +3815,7 @@ export class DomindsDialogContainer extends HTMLElement {
     });
   }
   // === TELLASK CALL RESULT HANDLER ===
-  // Final response body is shown in a separate teammate bubble.
+  // Final Tellask reply body is shown in a separate teammate bubble.
   // Call site only tracks lifecycle status/timing.
   //
   // Call Type Distinction:
@@ -5357,21 +5357,21 @@ export class DomindsDialogContainer extends HTMLElement {
         ? (() => {
             switch (funcName) {
               case 'replyTellask':
-                return '向诉请者提交最终回复';
+                return '提交长线诉请回复';
               case 'replyTellaskSessionless':
                 return '提交一次性诉请回复';
               case 'replyTellaskBack':
-                return '回答诉请者回问';
+                return '提交回问诉请回复';
             }
           })()
         : (() => {
             switch (funcName) {
               case 'replyTellask':
-                return 'Deliver final tellasker reply';
+                return 'Deliver final Tellask reply';
               case 'replyTellaskSessionless':
-                return 'Deliver one-shot tellask reply';
+                return 'Deliver one-shot Tellask reply';
               case 'replyTellaskBack':
-                return 'Answer tellasker ask-back';
+                return 'Deliver TellaskBack reply';
             }
           })();
 

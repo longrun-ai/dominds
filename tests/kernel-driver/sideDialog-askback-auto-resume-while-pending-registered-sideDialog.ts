@@ -2,9 +2,11 @@ import assert from 'node:assert/strict';
 
 import { formatUnifiedTimestamp } from '@longrun-ai/kernel/utils/time';
 import { driveDialogStream } from '../../main/llm/kernel-driver';
-import { formatResolvedTellaskFuncResultContent } from '../../main/llm/kernel-driver/tellask-special';
 import { DialogPersistence } from '../../main/persistence';
-import { formatAskerDialogCallPrompt } from '../../main/runtime/inter-dialog-format';
+import {
+  formatAskerDialogCallPrompt,
+  formatTellaskResponseContent,
+} from '../../main/runtime/inter-dialog-format';
 import { getWorkLanguage } from '../../main/runtime/work-language';
 
 import {
@@ -122,10 +124,15 @@ async function main(): Promise<void> {
       language,
     });
 
-    const tellaskBackToolResult = formatResolvedTellaskFuncResultContent({
-      name: 'tellaskBack',
+    const tellaskBackBusinessResult = formatTellaskResponseContent({
+      callName: 'tellaskBack',
       callId: 'pangu-ask-back-for-loop-resume',
+      responderId: 'tester',
+      tellaskerId: 'pangu',
+      tellaskContent: askBackBody,
+      responseBody: askBackReply,
       status: 'completed',
+      language,
     });
 
     await writeMockDb(tmpRoot, [
@@ -158,9 +165,13 @@ async function main(): Promise<void> {
         ],
       },
       {
-        message: tellaskBackToolResult,
+        message: tellaskBackBusinessResult,
         role: 'tool',
         response: resumedResponse,
+        contextContains: [
+          'Context position: approximately 1 message block after this tool receipt',
+          'Unique first-line anchor: "[Dominds Tellask result | callId: pangu-ask-back-for-loop-resume]"',
+        ],
       },
     ]);
 

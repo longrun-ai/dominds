@@ -303,11 +303,11 @@ function formatZhReminderBusinessTail(business: ReminderContextBusiness): string
       // A user interjection is pending while a handoff is still active. The user still gets the
       // next visible answer; reply closure only happens if answering that user message naturally
       // becomes the final handoff delivery.
-      return '当前仍有真实用户插话尚未得到可见回复，同时还有回贴任务未完成；先完成对用户插话的回应，只有在这条用户插话本身已经自然到达最终交付时，才进入回贴收口。';
+      return '当前仍有真实用户插话尚未得到可见回复，同时还有诉请回复任务未完成；先完成对用户插话的回应，只有在这条用户插话本身已经自然到达最终交付时，才进入诉请回复收口。';
     case 'active_reply_obligation':
       // There is still an unfinished handoff, but no user interjection is pending. Say this is
       // a final-delivery constraint, not a command to abandon necessary current work.
-      return '当前仍有回贴任务未完成；它是最终交付要求，不是要求你立刻停止当前必要工作，但到达最终交付时必须按 Dominds 指定方式收口。';
+      return '当前仍有诉请回复任务未完成；它是最终交付要求，不是要求你立刻停止当前必要工作，但到达最终交付时必须按 Dominds 指定方式收口。';
     default: {
       const _exhaustive: never = business;
       throw new Error(`Unhandled zh reminder business state: ${String(_exhaustive)}`);
@@ -420,7 +420,7 @@ function formatZhNormalAutoContinueByDialogScope(scope: ReminderContextDialogSco
       // not infer whether askHuman or tellaskBack is appropriate. First reconcile reminders that
       // could mislead the current answer; then ask the requester before the human whenever the
       // requester can supply the missing requirement/decision/criteria/input.
-      return '当前是支线对话。先校对会影响当前判断的提醒项：如果某条提醒项已经过时、失真、互相冲突或会误导当前行动，就先修正或删除；其余提醒项只作为背景参考。然后按校正后的真实任务状态行动：已有明确、相关且有价值的任务动作就继续执行；若缺少需求澄清、业务裁决、验收口径、授权或输入，先判断缺的东西该由谁补：如果诉请者能补需求澄清、业务裁决、验收口径或缺失输入，先按当前工具规则考虑 `tellaskBack({ tellaskContent })` 回问诉请者；只有确实需要人类本人澄清、决策、授权或输入时，才用 `askHuman({ tellaskContent })` 提出一个最小且可回答的问题；如果既不缺这些信息、也没有真实任务动作，就交给 Dominds 按支线安排处理：需要回贴时会收到回贴提醒，已完成且无新诉求时可以自然收住。';
+      return '当前是支线对话。先校对会影响当前判断的提醒项：如果某条提醒项已经过时、失真、互相冲突或会误导当前行动，就先修正或删除；其余提醒项只作为背景参考。然后按校正后的真实任务状态行动：已有明确、相关且有价值的任务动作就继续执行；若缺少需求澄清、业务裁决、验收口径、授权或输入，先判断缺的东西该由谁补：如果诉请者能补需求澄清、业务裁决、验收口径或缺失输入，先按当前工具规则考虑 `tellaskBack({ tellaskContent })` 回问诉请者；只有确实需要人类本人澄清、决策、授权或输入时，才用 `askHuman({ tellaskContent })` 提出一个最小且可回答的问题；如果既不缺这些信息、也没有真实任务动作，就交给 Dominds 按支线安排处理：需要诉请回复时会收到诉请回复提醒，已完成且无新诉求时可以自然收住。';
     default: {
       const _exhaustive: never = scope;
       throw new Error(`Unhandled zh reminder dialog scope: ${String(_exhaustive)}`);

@@ -52,15 +52,15 @@ function main(): void {
   const zhMainDialog = buildPrompt('mainDialog', 'zh');
   assert.ok(
     zhMainDialog.includes(
-      '发起 `tellask` / `tellaskSessionless` 时，`tellaskContent` 必须是业务正文，不应手写任何回贴标记；若写回贴格式，只描述业务交付结构即可。',
+      '发起 `tellask` / `tellaskSessionless` 时，`tellaskContent` 必须是业务正文，不应手写任何诉请回复标记；若写诉请回复格式，只描述业务交付结构即可。',
     ),
   );
   assert.ok(
     zhMainDialog.includes(
-      `当你在诉请正文里定义“回贴格式/交付格式”时，只写业务交付结构即可；不要要求被诉请者手写 \`${zhMarkers.finalCompleted}\` / \`${zhMarkers.tellaskBack}\` / FBR 标记（\`${zhMarkers.fbrDirectReply}\` / \`${zhMarkers.fbrReasoningOnly}\`），这些标记由 Dominds 自动注入。`,
+      `当你在诉请正文里定义“诉请回复格式/交付格式”时，只写业务交付结构即可；不要要求被诉请者手写 \`${zhMarkers.finalCompleted}\` / \`${zhMarkers.tellaskBack}\` / FBR 标记（\`${zhMarkers.fbrDirectReply}\` / \`${zhMarkers.fbrReasoningOnly}\`），这些标记由 Dominds 自动注入。`,
     ),
   );
-  assert.ok(!zhMainDialog.includes('Dominds 会自动注入回贴标记，禁止手写标记'));
+  assert.ok(!zhMainDialog.includes('Dominds 会自动注入诉请回复标记，禁止手写标记'));
   assert.ok(
     zhMainDialog.includes(
       '“⏳ 进行中诉请”提醒项只是系统状态窗，不是控制面；用它判断是否确实存在仍在执行的诉请。',
@@ -75,19 +75,19 @@ function main(): void {
   );
   assert.ok(
     !zhMainDialog.includes(
-      '回贴文本标记由运行时在展示层自动添加（常规完成=【最终完成】；FBR=【FBR-直接回复】或【FBR-仅推理】），不会改写正文；你无需、也不应手写标记。',
+      '诉请回复文本标记由运行时在展示层自动添加（常规完成=【最终完成】；FBR=【FBR-直接回复】或【FBR-仅推理】），不会改写正文；你无需、也不应手写标记。',
     ),
   );
 
   const enMainDialog = buildPrompt('mainDialog', 'en');
   assert.ok(
     enMainDialog.includes(
-      'When initiating `tellask` / `tellaskSessionless`, `tellaskContent` must stay as business body and must not hand-write reply markers; if you specify a reply format, describe only the business delivery structure.',
+      'When initiating `tellask` / `tellaskSessionless`, `tellaskContent` must stay as the business body and must not hand-write Tellask reply markers; if you specify a Tellask reply format, describe only the business delivery structure.',
     ),
   );
   assert.ok(
     enMainDialog.includes(
-      `When you define a “reply/delivery format” inside tellask body, keep it to the business delivery structure; do not require the tellaskee to hand-write \`${enMarkers.finalCompleted}\` / \`${enMarkers.tellaskBack}\` / FBR markers (\`${enMarkers.fbrDirectReply}\` / \`${enMarkers.fbrReasoningOnly}\`), because Dominds injects those markers automatically.`,
+      `When you define a “Tellask reply/delivery format” inside the Tellask body, keep it to the business delivery structure; do not require the tellaskee to hand-write \`${enMarkers.finalCompleted}\` / \`${enMarkers.tellaskBack}\` / FBR markers (\`${enMarkers.fbrDirectReply}\` / \`${enMarkers.fbrReasoningOnly}\`), because Dominds injects those markers automatically.`,
     ),
   );
   assert.ok(
@@ -114,12 +114,12 @@ function main(): void {
   const zhSideDialog = buildPrompt('sideDialog', 'zh');
   assert.ok(
     zhSideDialog.includes(
-      `回贴文本标记由 Dominds 在跨对话传递正文中自动添加（常规完成=${zhMarkers.finalCompleted}；FBR=${zhMarkers.fbrDirectReply} 或 ${zhMarkers.fbrReasoningOnly}）；该正文直接进入诉请者上下文，且 UI 展示与其一致。你无需、也不应手写标记。`,
+      `诉请回复文本标记由 Dominds 在跨对话传递正文中自动添加（常规完成=${zhMarkers.finalCompleted}；FBR=${zhMarkers.fbrDirectReply} 或 ${zhMarkers.fbrReasoningOnly}）；该正文直接进入诉请者上下文，且 UI 展示与其一致。你无需、也不应手写标记。`,
     ),
   );
   assert.ok(
     zhSideDialog.includes(
-      '若你在正文中给下游写“回贴格式”，只写业务交付结构；不得要求下游手写任何标记，Dominds 会自动注入。',
+      '若你在正文中给下游写“诉请回复格式”，只写业务交付结构；不得要求下游手写任何标记，Dominds 会自动注入。',
     ),
   );
   assert.ok(
@@ -145,19 +145,19 @@ function main(): void {
   );
   assert.ok(
     zhSideDialog.includes(
-      '若 Dominds 当前明确提示“无需回贴”，说明这轮没有别的对话在等你发送最终回贴；这是当前对话里的普通回合，按当前消息正常交流和处理即可。',
+      '若 Dominds 当前明确提示“无需发送诉请回复”，说明这轮没有别的对话在等你发送最终诉请回复；这是当前对话里的普通回合，按当前消息正常交流和处理即可。',
     ),
   );
 
   const enSideDialog = buildPrompt('sideDialog', 'en');
   assert.ok(
     enSideDialog.includes(
-      `Reply markers are added by Dominds in the inter-dialog transfer payload (regular completed reply = ${enMarkers.finalCompleted}; FBR = ${enMarkers.fbrDirectReply} or ${enMarkers.fbrReasoningOnly}); this payload is delivered to tellasker context and shown identically in UI. Do not hand-write markers.`,
+      `Tellask reply markers are added by Dominds in the inter-dialog transfer payload (regular completed Tellask reply = ${enMarkers.finalCompleted}; FBR = ${enMarkers.fbrDirectReply} or ${enMarkers.fbrReasoningOnly}); this payload is delivered to tellasker context and shown identically in UI. Do not hand-write markers.`,
     ),
   );
   assert.ok(
     enSideDialog.includes(
-      'If you define a reply format for downstream, keep it to the business delivery structure; do not require downstream to hand-write any marker, because Dominds injects markers automatically.',
+      'If you define a Tellask reply format for downstream, keep it to the business delivery structure; do not require downstream to hand-write any marker, because Dominds injects markers automatically.',
     ),
   );
   assert.ok(
@@ -178,12 +178,12 @@ function main(): void {
   assert.ok(enSideDialog.includes(buildSideDialogCompletionRule('en')));
   assert.ok(
     enSideDialog.includes(
-      `In the formal completion path, Dominds marks ${enMarkers.finalCompleted} and delivers to the tellasker only when Dominds currently names an exact reply tool and you reply through that named tool`,
+      `In the formal completion path, Dominds marks ${enMarkers.finalCompleted} and delivers to the tellasker only when Dominds currently names an exact Tellask reply tool and you send the Tellask reply through that named tool`,
     ),
   );
   assert.ok(
     enSideDialog.includes(
-      'If Dominds currently tells you no reply is needed, then no other dialog is waiting for your final reply in this turn; this is a normal turn in the current conversation, so handle the current message normally.',
+      'If Dominds currently tells you no Tellask reply is needed, then no other dialog is waiting for your final Tellask reply in this turn; this is a normal turn in the current conversation, so handle the current message normally.',
     ),
   );
 
@@ -226,7 +226,9 @@ function main(): void {
     language: 'en',
   });
   assert.ok(
-    enCompletedReply.startsWith(`${enMarkers.finalCompleted}\n\n@tester provided response:`),
+    enCompletedReply.startsWith(
+      `[Dominds Tellask result | callId: collab-en-completed]\n\n${enMarkers.finalCompleted}\n\n@tester provided a Tellask reply:`,
+    ),
   );
 
   const zhAskBackReply = formatTellaskResponseContent({
@@ -239,7 +241,11 @@ function main(): void {
     status: 'failed',
     language: 'zh',
   });
-  assert.ok(zhAskBackReply.startsWith(`${zhMarkers.tellaskBack}\n\n@tester 已回复：`));
+  assert.ok(
+    zhAskBackReply.startsWith(
+      `【Dominds 诉请结果｜callId: collab-zh-askback】\n\n${zhMarkers.tellaskBack}\n\n@tester 已回复：`,
+    ),
+  );
   assert.equal(zhMarkers.tellaskBack, '【回问诉请】');
 
   const enReply = formatTellaskResponseContent({
@@ -254,7 +260,11 @@ function main(): void {
     deliveryMode: 'reply_tool',
     language: 'en',
   });
-  assert.ok(enReply.startsWith(`${enMarkers.finalCompleted}\n\n@tester provided response:`));
+  assert.ok(
+    enReply.startsWith(
+      `[Dominds Tellask result | callId: collab-en-sessionless]\n\n${enMarkers.finalCompleted}\n\n@tester provided a Tellask reply:`,
+    ),
+  );
 
   console.log('✅ system-prompt-collab-marker-scope: ok');
 }

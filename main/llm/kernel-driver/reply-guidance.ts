@@ -87,7 +87,7 @@ function buildPromptContentWithExactReplyToolName(args: {
       args.language === 'zh'
         ? [
             noActivePrefix,
-            'Dominds 已经判断好：当前没有别的对话在等你发送最终回贴。',
+            'Dominds 已经判断好：当前没有别的对话在等你发送最终诉请回复。',
             '本轮按当前对话正常交流即可；如果用户提出了问题，就直接回答这个问题。',
           ].join('\n')
         : [

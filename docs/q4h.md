@@ -191,6 +191,6 @@ Back-compat:
 - Deep link:
   - With pending Q4H: auto-selects the question and focuses input (answer mode).
   - With answered Q4H: scrolls but does not select; input remains usable.
-- Teammate response bubbles:
+- Tellask reply bubbles:
   - Internal icon scrolls to call site in current tab.
   - External icon opens new tab and scrolls to the same call site.

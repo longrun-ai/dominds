@@ -115,7 +115,7 @@ export type TellaskCarryoverMsg = Readonly<{
   callName: 'tellask' | 'tellaskSessionless' | 'askHuman' | 'freshBootsReasoning';
   tellaskContent: string;
   status: 'completed' | 'failed';
-  // Raw tellask response body before it is wrapped into current-course carryover narration.
+  // Raw Tellask reply body before it is wrapped into current-course carryover narration.
   response: string;
   agentId: string;
   callId: string;

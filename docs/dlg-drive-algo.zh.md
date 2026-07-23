@@ -70,7 +70,7 @@ dialog-level wake cue storage 的问题类似。它把某个 dialog 标成“值
 
 - caller/callee 命名与 badge 推送属于 UI/观测层规则；保留在相关代码与测试中，不再由 drive algorithm 文档承载现场细节。
 - duplicate pending `replyDelivery` 的结论保留为 reply delivery handler 规则：可恢复 stale pending delivery 应 loud warn 并按当前有效 reply obligation 替换，真正 correlation 冲突才 loud fail。
-- 支线 caller 收到 callee 回贴后没有继续运行的结论保留为 wake queue 规则：不能全量扫描历史支线，必须有 root-local 精确 wake queue entry。
+- 支线 caller 收到 callee 诉请回复后没有继续运行的结论保留为 wake queue 规则：不能全量扫描历史支线，必须有 root-local 精确 wake queue entry。
 - `needsDrive` / `backend_queue` 旧术语继续收敛为显式 wake queue entry 与 next-step trigger，不再作为文档概念保留。
 - malformed 边界已覆盖关键恢复路径：必要状态机元信息缺失时应 loud fail / quarantine malformed，而不是初始化默认值后继续 unsafe drive；后续扩展仍按同一原则处理。
 

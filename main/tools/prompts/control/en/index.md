@@ -24,21 +24,21 @@
 
 - <When to use this vs a sibling toolset>
 
-control is Dominds' **dialog control toolset** for managing dialog state, reminders, taskdocs, and inter-dialog reply closure semantics:
+control is Dominds' **dialog control toolset** for managing dialog state, reminders, taskdocs, and Tellask reply closure semantics:
 
 - **Reminder management**: Main Dialogs always show a fixed "Goal for this Main Dialog" reminder. If it says to ask the human first, ask immediately and record the answer with `set_dialog_goal`. Ordinary reminders have three scopes: `dialog` / `task` / `agent`. Default to `task` for ordinary current work under the same Taskdoc; use `dialog` for truly dialog-local continuation details; use `agent` only for urgent, short-lived, globally visible cues
 - **Taskdoc operations**: Append to, replace, or delete task contract sections (goals/constraints/progress); within Taskdoc, `progress` is the team-shared, quasi-real-time, scannable task bulletin board
 - **Context maintenance**: Reduce cognitive load without losing key resume state
-- **Reply routing**: Separate asking the tellasker back, sending the final reply, and ordinary plain text in Side Dialog / ask-back flows
+- **Tellask reply routing**: Separate asking the tellasker back, sending the final Tellask reply, and ordinary plain text in Side Dialog / ask-back flows
 
 ## Quick Navigation
 
-| Topic                         | Description                                                               |
-| ----------------------------- | ------------------------------------------------------------------------- |
-| [principles](./principles.md) | Core concepts, reminder lifecycle, taskdoc structure, reply-routing model |
-| [tools](./tools.md)           | Usage guidance, boundaries, and reply quick reference                     |
-| [scenarios](./scenarios.md)   | Common usage scenarios (copy-paste ready)                                 |
-| [errors](./errors.md)         | Error codes and solutions                                                 |
+| Topic                         | Description                                                                       |
+| ----------------------------- | --------------------------------------------------------------------------------- |
+| [principles](./principles.md) | Core concepts, reminder lifecycle, taskdoc structure, Tellask reply-routing model |
+| [tools](./tools.md)           | Usage guidance, boundaries, and Tellask reply quick reference                     |
+| [scenarios](./scenarios.md)   | Common usage scenarios (copy-paste ready)                                         |
+| [errors](./errors.md)         | Error codes and solutions                                                         |
 
 ## Status
 

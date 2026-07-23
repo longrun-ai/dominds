@@ -228,7 +228,7 @@ flowchart TD
 
 **Side Dialog delivery rule (normative)**:
 
-- If a Side Dialog has completed all assigned goals and can deliver the final result, it MUST reply directly with the response body; do not use `tellaskBack` to send final delivery.
+- If a Side Dialog has completed all assigned goals and can deliver the final result, it MUST reply directly with the Tellask reply body; do not use `tellaskBack` to send final delivery.
 - Runtime treats that direct reply as the completion delivery to the tellasker and injects the work-language marker automatically (`【Completed】` in English work language, `【最终完成】` in Chinese work language).
 - There is no separate technical state for keeping Side Dialogs active. A Side Dialog continues because normal business state still requires work: a tool result needs reaction, Q4H is pending, a downstream callee reply is pending, or an explicit runtime/user prompt is queued. Do not add a side path whose only purpose is to keep a dialog active.
 - Reply-obligation tail handling is one small state machine: after runtime reaches a non-suspended tail, it inspects the newest non-empty assistant generation candidate produced by the current drive, preferring public saying over thinking when both exist on the same generation. If a Side Dialog still owes `replyTellask*` and has produced that candidate content without using the exact reply tool, runtime queues one reply-tool reminder. If the next answer to that reminder is still only thinking/saying, runtime intentionally delivers that content through direct-reply fallback and marks it as fallback.

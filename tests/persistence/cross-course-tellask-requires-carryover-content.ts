@@ -38,7 +38,7 @@ async function main(): Promise<void> {
           event.callId === 'ask-human-cross-course',
       ),
       false,
-      'expected cross-course tellask response without carryover content to persist nothing',
+      'expected cross-course Tellask reply without carryover content to persist nothing',
     );
   });
 

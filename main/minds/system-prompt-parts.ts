@@ -317,7 +317,7 @@ function getMemoryPromptCopy(ctx: PromptdocContext): MemoryPromptCopy {
           : '你当前处于支线对话，且 Dominds 已提醒上下文吃紧/告急：本程不要维护差遣牒，也不要整理差遣牒更新提案。请把本路任务目标、下一程需要恢复的讨论细节、定位、验证方式和临时信息写入足够详尽的当前对话范围（scope=dialog）接续包提醒项。',
       mainDialogDutyLine:
         '你当前处于主线对话：你负责综合维护全队共享差遣牒（尤其是 progress 公告牌）。当队友/支线对话提出更新建议时，及时合并、压缩并保持清晰。',
-      teammateTellaskRoundDoneLine: `队友诉请重要语义：当你在诉请者上下文中收到带${runtimeMarkers.finalCompleted}标记的回贴，表示该轮诉请已经结束；对方不会继续执行同一轮诉请。此时如果目标未达成，“等待”是错误的：必须显式发起新一轮 tellask 才能继续推进。并行语义：不要把智能体队友当成真人同事；祂不会因为你又发一条诉请而被打扰。同一个队友 + 同一个 sessionSlug = 接着同一件事说，并更新那件正在做的事；tellaskSessionless 或不同 sessionSlug = 另一件独立任务。`,
+      teammateTellaskRoundDoneLine: `队友诉请重要语义：当你在诉请者上下文中收到带${runtimeMarkers.finalCompleted}标记的诉请回复，表示该轮诉请已经结束；对方不会继续执行同一轮诉请。此时如果目标未达成，“等待”是错误的：必须显式发起新一轮 tellask 才能继续推进。并行语义：不要把智能体队友当成真人同事；祂不会因为你又发一条诉请而被打扰。同一个队友 + 同一个 sessionSlug = 接着同一件事说，并更新那件正在做的事；tellaskSessionless 或不同 sessionSlug = 另一件独立任务。`,
       teamMemoryHintLine:
         '提示：你具备团队记忆工具（`add_team_memory` / `replace_team_memory` / `drop_team_memory` / `clear_team_memory`），可在必要时维护团队记忆（谨慎、少量、只写稳定约定）。',
       personalMemoryHintLine: `提示：你具备个人记忆工具（\`add_personal_memory\` / \`replace_personal_memory\` / \`drop_personal_memory\` / \`clear_personal_memory\`）。个人记忆仅对当前智能体可见，且系统会自动按成员隔离到 \`.minds/memory/individual/<member-id>/...\`；因此 \`path\` 不应包含你的成员 id（不要写 \`${ctx.agentId}/...\`）。首次创建时直接用 \`add_personal_memory\` 即可，目录会由系统自动创建。记忆会在每次生成时自动注入上下文：保持少量、保持准确、按“未来会一起更新的内容”合并；写稳定事实（关键路径 + 最小必要约定），不要写任务进度/当天状态；一旦你修改了相关文件或发现记忆过期/冲突，立刻用 \`replace_personal_memory\` 更新。`,

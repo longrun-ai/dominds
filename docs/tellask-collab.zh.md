@@ -9,7 +9,7 @@
 
 诉请已经是 Dominds 的核心协作机制，但“能用”不等于“用顺”。当前最常见的卡点不是语法错误，而是**协作节奏误判**：
 
-- 诉请者收到阶段性回贴后，误以为被诉请者还在后台继续执行最初诉请。
+- 诉请者收到阶段性诉请回复后，误以为被诉请者还在后台继续执行最初诉请。
 - 诉请者口头描述“下一步该谁做什么”，却没有真的发出下一轮诉请。
 
 这两个问题会把协作拖进“看似推进、实则停滞”的状态。
@@ -54,13 +54,13 @@
 
 1. 发出 `tellaskSessionless({ targetAgentId: "<teammate>", tellaskContent: "..." }) ...`。
 2. 被诉请者所在支线作为后台工作推进；诉请者可自然 idle，也可因其它明确驱动事实继续工作。
-3. 被诉请者完成本轮驱动并回贴结果；这条回贴成为诉请者的新事实。
+3. 被诉请者完成本轮驱动并送达诉请回复；这条诉请回复成为诉请者的新事实。
 4. 诉请者只会因结果到达、queued prompt、用户输入、无 pending active callee 时的 Diligence Push 或其它显式驱动源继续。
 
 关键事实（与停滞问题直接相关）：
 
-- 当前 `teammate_response` 语义只有 `completed` / `failed`，没有“后台仍执行中”的第三态。
-- 因此，“收到阶段性回贴”在协议上等价于“这一轮诉请已结束，是否继续要由诉请者显式发起下一轮”。
+- 当前诉请结果状态只有 `completed` / `failed`，没有“后台仍执行中”的第三态。
+- 因此，“收到阶段性诉请回复”在协议上等价于“这一轮诉请已结束，是否继续要由诉请者显式发起下一轮”。
 
 ### 2.4 Diligence Push 的边界
 
@@ -72,7 +72,7 @@
 
 ## 3. 主要问题与根因
 
-### 3.1 主要问题：阶段性回贴后误判执行状态
+### 3.1 主要问题：阶段性诉请回复后误判执行状态
 
 表象：
 
@@ -88,7 +88,7 @@
 
 典型坏味道：
 
-- “我没有 shell 权限，请你让 @<shell_specialist> 执行 `pnpm lint:types` 并回贴。”
+- “我没有 shell 权限，请你让 @<shell_specialist> 执行 `pnpm lint:types` 并发送诉请回复。”
 
 这里真正缺的不是知识，而是动作闭环：该发诉请时没发诉请。
 
@@ -103,14 +103,14 @@
 - 运行时会生成“跨对话传递正文”作为标准载荷；该正文会进入目标智能体上下文，且 UI 必须与其保持一致。
 - 首行标记由运行时按工作语言和语义自动注入该传递正文，智能体不应手写：
   - 中文工作语言：
-    - 回问诉请回贴：`【回问诉请】`
-    - 常规支线完成回贴：`【最终完成】`
-    - FBR 回贴：`【FBR-直接回复】` 或 `【FBR-仅推理】`
+    - 回问诉请回复：`【回问诉请】`
+    - 常规支线完成回复：`【最终完成】`
+    - FBR 诉请回复：`【FBR-直接回复】` 或 `【FBR-仅推理】`
   - 英文工作语言：
-    - 回问诉请回贴：`【TellaskBack】`
-    - 常规支线完成回贴：`【Completed】`
-    - FBR 回贴：`【FBR-Direct Reply】` 或 `【FBR-Reasoning Only】`
-- 若诉请方在正文中定义“回贴格式/交付格式”，只写业务交付结构即可；不得要求被诉请者手写任何标记，这些标记由 Dominds 运行时自动注入。
+    - 回问诉请回复：`【TellaskBack】`
+    - 常规支线完成回复：`【Completed】`
+    - FBR 诉请回复：`【FBR-Direct Reply】` 或 `【FBR-Reasoning Only】`
+- 若诉请方在正文中定义“诉请回复格式/交付格式”，只写业务交付结构即可；不得要求被诉请者手写任何标记，这些标记由 Dominds 运行时自动注入。
 - 源对话模型原始输出（raw）天然保留在源对话持久记录中；跨对话传递不得改写或覆盖该源 raw。
 - 允许将“某对话的模型原文”拼接进运行时模板后，作为传递到另一对话的正文（模板化传递是规范路径）。
 
@@ -129,14 +129,14 @@
 对**队友诉请（非 `freshBootsReasoning({ tellaskContent: "..." })`）**，统一执行四段协议：
 
 1. `发起`：明确目标、约束、验收口径，发出 `tellask* function call`。
-2. `等待`：等待本轮回贴，不预设对方会自动继续。
-3. `判定`：回贴到达后判断“已达成 / 未达成 / 需澄清”。
+2. `等待`：等待本轮诉请回复，不预设对方会自动继续。
+3. `判定`：诉请回复到达后判断“已达成 / 未达成 / 需澄清”。
 4. `续推`：若未达成，立即发下一轮诉请（通常沿用同一 `sessionSlug`）。
 
 强约束：
 
-- 任何“等待结果/等待回贴”表述，必须能指向**刚刚已发出的具体诉请**与**等待的验收证据**。
-- 若没有已发出的待回贴诉请，就不能写“等待”；应立刻发诉请或改为本地执行。
+- 任何“等待结果/等待诉请回复”表述，必须能指向**刚刚已发出的具体诉请**与**等待的验收证据**。
+- 若没有已经发出且仍在等待回复的诉请，就不能写“等待”；应立刻发诉请或改为本地执行。
 - 若有多件独立工作要交给同一队友，不需要排队、不需要担心打扰：分别发起 `tellaskSessionless`，或用不同 `sessionSlug` 发起 `tellask`。
 
 ### 4.2 续推时必须显式“再诉请”
@@ -148,7 +148,7 @@ tellask({
   targetAgentId: "shell_specialist",
   sessionSlug: "typecheck-loop",
   tellaskContent: [
-    "执行 `pnpm lint:types`，仅回贴原始输出。",
+    "执行 `pnpm lint:types`，诉请回复中仅提供原始输出。",
     "若失败：只列前 3 个错误（含文件路径与行号），并给出你建议先处理的 1 个错误。",
     "验收：我需要看到命令退出码与首个错误锚点。",
   ].join("\n"),
@@ -176,8 +176,8 @@ tellask({
   targetAgentId: "shell_specialist",
   sessionSlug: "typecheck-loop",
   tellaskContent: [
-    "请立即执行 `pnpm lint:types` 并原样回贴结果。",
-    "若命令不存在，回贴错误并给出本仓可行替代命令。",
+    "请立即执行 `pnpm lint:types`，并在诉请回复中原样提供结果。",
+    "若命令不存在，请在诉请回复中提供错误信息和本仓可行的替代命令。",
   ].join("\n"),
 })
 ```
@@ -195,8 +195,8 @@ tellask({
 
 建议新增/强化以下约束卡片（中英文各自母语撰写）：
 
-1. `回贴终止约束`  
-   对队友 tellask 而言，收到回贴即表示该轮调用结束；若要继续推进，必须显式再发一轮 tellask。
+1. `诉请回复终止约束`
+   对队友 tellask 而言，收到诉请回复即表示该轮调用结束；若要继续推进，必须显式再发一轮 tellask。
 2. `等待声明约束`  
    只有当存在明确 pending tellask 时，才可声明“等待中”；否则必须执行下一动作。
 3. `自主执行约束`  
@@ -215,7 +215,7 @@ tellask({
 关键原则：
 
 1. 无可用 `shell_specialist` 时，由 Dominds 运行时采集同样事实（`uname -a` + git 盘点），这是标准模式，不是降级。
-2. 回贴即本轮结束；要继续必须显式发起下一轮诉请。
+2. 诉请回复即本轮结束；要继续必须显式发起下一轮诉请。
 3. “让队友做”必须直接落成 `tellask* function call`，不能转交 askHuman() 当转发员。
 
 ### 5.3 P1 设计基线（当前实现）
@@ -225,13 +225,13 @@ tellask({
 1. 短：新增流程集中在 `uname` + 两轮 VCS 盘点，不引入长提示词。
 2. 普适：任何 rtws 都能执行（是否有 shell 专员都可跑通）。
 3. 稳：关键步骤由运行时模板驱动，降低模型自由发挥漂移。
-4. 准：通过真实两轮诉请建立“回贴收束、续推再诉请”的行为记忆。
+4. 准：通过真实两轮诉请建立“诉请回复收束、续推再诉请”的行为记忆。
 
 #### 统一时序
 
 1. `Prelude Intro`：声明 shell 策略（`specialist_only` / `self_is_specialist` / `no_specialist`）。
 2. `uname` 基线：
-   - `specialist_only`：诉请者 `tellaskSessionless({ targetAgentId: "<shell_specialist>", tellaskContent: "..." })` 发一次性诉请并接收回贴。
+   - `specialist_only`：诉请者 `tellaskSessionless({ targetAgentId: "<shell_specialist>", tellaskContent: "..." })` 发一次性诉请并接收诉请回复。
    - 其他两种策略：运行时采集并显示 `uname -a`。
 3. `VCS Round-1`（同一 `tellaskSession`）：确认 rtws 拓扑
    - 根路径是否 git repo
@@ -242,7 +242,7 @@ tellask({
    - branch / upstream
    - dirty 状态
 5. 汇总 `uname + VCS` 作为同一份环境证据，发起 `freshBootsReasoning({ tellaskContent: "..." })` FBR。
-6. 收齐 FBR 回贴后做 distillation，产出 priming note。
+6. 收齐 FBR 诉请回复后做 distillation，产出 priming note。
 
 #### 诉请模板约束
 
@@ -253,13 +253,13 @@ tellask({
 #### 无 shell 专员场景（标准模式）
 
 1. 运行时直接给出 `uname` 与两轮 VCS 盘点文本。
-2. FBR 使用与 shell 专员路径同结构的信息（不缩水，不伪造队友回贴）。
-3. priming note 语义要求完全一致：回贴收束 + 续推再诉请。
+2. FBR 使用与 shell 专员路径同结构的信息（不缩水，不伪造队友的诉请回复）。
+3. priming note 语义要求完全一致：诉请回复收束 + 续推再诉请。
 
 #### 数据结构（旧实现）
 
 1. `shell` 使用判别联合：
-   - `specialist_tellask`（含诉请正文、回贴、`uname` 快照）
+   - `specialist_tellask`（含诉请正文、诉请回复、`uname` 快照）
    - `direct_shell`（运行时说明 + `uname` 快照）
 2. `vcs` 使用判别联合：
    - `specialist_session`（两轮 tellask/response + `inventoryText`）
@@ -268,9 +268,9 @@ tellask({
 
 #### 验收标准（P1 最小可用）
 
-1. priming 实录可见：`uname` 基线 + VCS 两轮（Round-2 晚于 Round-1 回贴）。
+1. priming 实录可见：`uname` 基线 + VCS 两轮（Round-2 晚于 Round-1 诉请回复）。
 2. 无 shell 专员时仍可看到两轮 VCS runtime 盘点，且用于同一轮 FBR。
-3. priming note 明确写出“回贴=本轮结束；继续=再诉请”。
+3. priming note 明确写出“诉请回复=本轮结束；继续=再诉请”。
 4. replay 可复现对应路径（`specialist_session` 或 `runtime_inventory`）。
 5. `pnpm -C dominds run lint:types` 通过，且不破坏现有 priming/FBR/diligence 约束。
 
@@ -282,7 +282,7 @@ tellask({
 
 1. 我这轮是否已经发出明确 tellask（有目标、约束、验收）？
 2. 我现在说“等待”时，是否真有 pending tellask 对应？
-3. 回贴到达后，我是否做了“判定 + 下一轮诉请/本地动作”？
+3. 诉请回复到达后，我是否做了“判定 + 下一轮诉请/本地动作”？
 4. 我是否把“让队友做”落成了真实 `tellask* function call`，而不是口头转派给 askHuman()？
 5. 关键决策是否已写回差遣牒（仅主线对话）而不是只留在聊天里？
 
@@ -293,9 +293,9 @@ tellask({
 建议按优先级推进：
 
 1. `P0`：更新系统提示中的协作硬约束（先把明显停滞压下去）。
-2. `P1`：增加 tellask-collab priming（建立“回贴即收束、续推要再诉请”的本能）。
+2. `P1`：增加 tellask-collab priming（建立“诉请回复即收束、续推要再诉请”的本能）。
 3. `P2`：补回归用例，重点覆盖：
-   - 收到阶段性回贴后能否自动补发下一轮诉请；
+   - 收到阶段性诉请回复后能否自动补发下一轮诉请；
    - 是否还会出现“请人类转发给队友执行”的停滞话术。
 
 这三步结合后，diligence push 才会成为“锦上添花”，而不是“替代执行”的补丁。

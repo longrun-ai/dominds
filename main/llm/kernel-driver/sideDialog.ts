@@ -27,7 +27,6 @@ import {
 } from '../../runtime/inter-dialog-format';
 import { getWorkLanguage } from '../../runtime/work-language';
 import { syncPendingTellaskReminderState } from '../../tools/pending-tellask-reminder';
-import type { ChatMessage } from '../client';
 import { withSideDialogTxnLock } from './sideDialog-txn';
 import type { KernelDriverCalleeReplyTarget, KernelDriverDriveCallOptions } from './types';
 
@@ -415,7 +414,7 @@ export async function supplyResponseToAskerDialog(args: {
       const askerCourse = result.askerCourse;
       if (askerCourse === undefined) {
         throw new Error(
-          `tellask response anchor invariant violation: missing askerCourse ` +
+          `Tellask reply anchor invariant violation: missing askerCourse ` +
             `(callerId=${callerDialog.id.selfId}, sideDialogId=${sideDialogId.selfId}, callId=${resolvedCallId})`,
         );
       }
@@ -429,7 +428,7 @@ export async function supplyResponseToAskerDialog(args: {
         // prompt for that call is rendered locally, for example after a direct user nudge inside
         // the Side Dialog. Keep the asker deep-link anchor, but do not treat the missing
         // local assignment bubble as an invariant violation.
-        log.debug('Tellask response anchor has no local assignment anchor', undefined, {
+        log.debug('Tellask reply anchor has no local assignment anchor', undefined, {
           callerId: callerDialog.id.selfId,
           sideDialogId: sideDialogId.selfId,
           callId: resolvedCallId,
@@ -548,7 +547,7 @@ export async function supplyResponseToAskerDialog(args: {
 
     const responseRouteRef = calleeResponseRef;
 
-    await callerDialog.receiveTellaskResponse(
+    const immediateMirror = await callerDialog.receiveTellaskResponse(
       result.responderId,
       result.callName,
       result.mentionList,
@@ -579,89 +578,6 @@ export async function supplyResponseToAskerDialog(args: {
             : undefined,
       },
     );
-
-    const immediateMirror: ChatMessage =
-      carryoverContent !== undefined
-        ? {
-            type: 'tellask_carryover_msg',
-            role: 'user',
-            genseq: callerDialog.activeGenSeqOrUndefined ?? 1,
-            content: carryoverContent,
-            callSiteCourse: carryoverCallSiteCourse!,
-            carryoverCourse: callerDialog.currentCourse,
-            responderId: result.responderId,
-            callName: result.callName,
-            tellaskContent: result.tellaskContent,
-            status,
-            response: tellaskerResponseText,
-            agentId: result.responderAgentId ?? result.responderId,
-            callId: resolvedCallId,
-            originMemberId: tellaskerId,
-            ...(result.callName === 'tellask'
-              ? {
-                  mentionList: result.mentionList ?? [],
-                  sessionSlug: result.sessionSlug,
-                }
-              : result.callName === 'tellaskSessionless'
-                ? {
-                    mentionList: result.mentionList ?? [],
-                  }
-                : {}),
-            ...(responseRouteRef !== undefined
-              ? {
-                  calleeDialogId: sideDialogId.selfId,
-                  calleeCourse: responseRouteRef.course,
-                  calleeGenseq: responseRouteRef.genseq,
-                }
-              : {
-                  calleeDialogId: sideDialogId.selfId,
-                }),
-          }
-        : {
-            type: 'tellask_result_msg',
-            role: 'tool',
-            callId: resolvedCallId,
-            callName: result.callName,
-            status,
-            content: tellaskerResponseText,
-            ...(result.callSiteCourse !== undefined
-              ? { callSiteCourse: result.callSiteCourse }
-              : {}),
-            ...(result.callSiteGenseq !== undefined
-              ? { callSiteGenseq: result.callSiteGenseq }
-              : assignmentRef !== undefined
-                ? { callSiteGenseq: assignmentRef.genseq }
-                : {}),
-            call:
-              result.callName === 'tellask'
-                ? {
-                    tellaskContent: result.tellaskContent,
-                    mentionList: result.mentionList ?? [],
-                    ...(result.sessionSlug ? { sessionSlug: result.sessionSlug } : {}),
-                  }
-                : result.callName === 'tellaskSessionless'
-                  ? {
-                      tellaskContent: result.tellaskContent,
-                      mentionList: result.mentionList ?? [],
-                    }
-                  : {
-                      tellaskContent: result.tellaskContent,
-                    },
-            responder: {
-              responderId: result.responderId,
-              agentId: result.responderAgentId ?? result.responderId,
-              originMemberId: tellaskerId,
-            },
-            route: {
-              calleeDialogId: sideDialogId.selfId,
-              ...(responseRouteRef !== undefined
-                ? {
-                    calleeCourse: responseRouteRef.course,
-                    calleeGenseq: responseRouteRef.genseq,
-                  }
-                : {}),
-            },
-          };
     await callerDialog.addChatMessages(immediateMirror);
 
     if (result.shouldDriveContinuation) {

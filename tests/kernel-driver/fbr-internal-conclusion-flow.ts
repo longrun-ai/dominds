@@ -367,8 +367,8 @@ async function main(): Promise<void> {
       'root should receive the final low-noise conclusion body',
     );
     assert.ok(
-      !successTellaskResult.content.includes('FBR 全量回帖') &&
-        !successTellaskResult.content.includes('收到全量回帖后请提炼'),
+      !successTellaskResult.content.includes('FBR 全量诉请回复') &&
+        !successTellaskResult.content.includes('收到全量诉请回复后请提炼'),
       'main dialog must no longer receive raw all-round FBR dumps or tellasker distill instructions',
     );
     assert.equal(

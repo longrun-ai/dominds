@@ -19,24 +19,24 @@
 
 ## Tool List
 
-## Inter-dialog Reply Quick Reference
+## Tellask Reply Quick Reference
 
 The **tool descriptions themselves** for these functions intentionally stay minimal and spec-like. This section carries the smallest practical lookup for when they appear and how to choose among them.
 
 | Function                  | Minimal parameter contract   | When Dominds shows it                                                                                       | Effect                                                         |
 | ------------------------- | ---------------------------- | ----------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------- |
-| `replyTellask`            | `{ replyContent: string }`   | Current Side Dialog comes from a sessioned `tellask` and is ready for final delivery                        | Delivers the final result for the current tellask session      |
-| `replyTellaskSessionless` | `{ replyContent: string }`   | Current Side Dialog comes from a one-shot `tellaskSessionless` and is ready for final delivery              | Delivers the final result for the current one-shot tellask     |
-| `replyTellaskBack`        | `{ replyContent: string }`   | Current dialog holds an unresolved `tellaskBack` reply directive                                            | Delivers the final answer to the tellasker ask-back            |
+| `replyTellask`            | `{ replyContent: string }`   | Current Side Dialog comes from a sessioned `tellask` and is ready for final delivery                        | Delivers the final Tellask reply for the current session       |
+| `replyTellaskSessionless` | `{ replyContent: string }`   | Current Side Dialog comes from a one-shot `tellaskSessionless` and is ready for final delivery              | Delivers the final reply for the current one-shot Tellask      |
+| `replyTellaskBack`        | `{ replyContent: string }`   | Current dialog holds an unresolved `tellaskBack` reply directive                                            | Delivers the Tellask reply to the tellasker ask-back           |
 | `tellaskBack`             | `{ tellaskContent: string }` | Current Side Dialog must ask the tellasker back, and existing team SOP cannot directly assign another owner | Sends a follow-up request to the tellasker; not final delivery |
 
 ### Minimal Usage Rules
 
-- Focus on doing the current task correctly first; send the final reply only when the final content is ready and Dominds names a reply tool
-- Call whichever reply tool Dominds currently shows; do not switch to another reply tool by yourself
-- If the task header explicitly names a reply tool, follow that exact name
+- Focus on doing the current task correctly first; send the final Tellask reply only when the final content is ready and Dominds names a Tellask reply tool
+- Call whichever Tellask reply tool Dominds currently shows; do not switch to another Tellask reply tool by yourself
+- If the task header explicitly names a Tellask reply tool, follow that exact name
 - Put only the final deliverable body in `replyContent`; do not wrap it in meta-explanations like "I am now calling replyTellask"
-- If you write final deliverable content but do not send it through the reply tool named by Dominds, Dominds may temporarily remind you to use that tool; do not treat plain text as the formal reply path, because the other dialog may not receive a formal reply that way
+- If you write final deliverable content but do not send it through the Tellask reply tool named by Dominds, Dominds may temporarily remind you to use that tool; do not treat plain text as the formal Tellask reply path, because the other dialog may not receive a formal Tellask reply that way
 
 ### 1. add_reminder
 

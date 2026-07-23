@@ -98,7 +98,7 @@ Taskdoc is a **task contract** and the task's **team-shared source of current tr
 | never_mind       | Delete Taskdoc section file                      |
 | recall_taskdoc   | Read taskdoc chapter                             |
 
-## Inter-dialog Reply Routing
+## Tellask Reply Routing
 
 ### Decision Rules
 
@@ -109,14 +109,14 @@ Taskdoc is a **task contract** and the task's **team-shared source of current tr
 - If the current Side Dialog is complete and the task header says `replyTellask`: call `replyTellask({ replyContent })`
 - If the current Side Dialog is complete and the task header says `replyTellaskSessionless`: call `replyTellaskSessionless({ replyContent })`
 - If you are answering a tellasker `tellaskBack` follow-up and Dominds shows `replyTellaskBack`: call `replyTellaskBack({ replyContent })`
-- Plain text is not the completion channel for inter-dialog delivery. If you write final content for the requester but do not send it through the reply tool named by Dominds, Dominds may temporarily remind you to use that tool. Do not treat plain text as the formal reply path; the other dialog may not receive a formal reply that way.
+- Plain text is not the completion channel for Tellask delivery. If you write final content for the tellasker but do not send it through the Tellask reply tool named by Dominds, Dominds may temporarily remind you to use that tool. Do not treat plain text as the formal Tellask reply path; the other dialog may not receive a formal Tellask reply that way.
 
 ### Low-Burden Rule
 
-- Focus on doing the current task correctly first; send the final reply only when the final content is ready and Dominds names a reply tool
-- Do not memorize reply variants by yourself; follow the current task header and the reply tool currently named/shown by Dominds
-- Reply tool descriptions are intentionally minimal and spec-like; use this manual's principles / scenarios for situational guidance
-- If Dominds names/shows only one reply tool, that is the only correct completion path for the current state
+- Focus on doing the current task correctly first; send the final Tellask reply only when the final content is ready and Dominds names a Tellask reply tool
+- Do not memorize Tellask reply variants by yourself; follow the current task header and the Tellask reply tool currently named/shown by Dominds
+- Tellask reply tool descriptions are intentionally minimal and spec-like; use this manual's principles / scenarios for situational guidance
+- If Dominds names/shows only one Tellask reply tool, that is the only correct completion path for the current state
 - `tellaskBack` is valid only when ownership cannot be determined from existing SOP, or when the tellasker must answer; it is not the default first move for every blocked state
 
 ## Best Practices

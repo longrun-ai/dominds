@@ -38,7 +38,10 @@ import {
   formatTellaskCarryoverResultContent,
   formatTellaskReplacementNoticeContent,
   formatTellaskResponseContent,
+  formatTellaskResultContextAnchor,
+  formatTellaskResultContextContent,
   formatUpdatedAssignmentFromAskerDialog,
+  type ResultContextAnchorCallName,
 } from '../../runtime/inter-dialog-format';
 import { getWorkLanguage } from '../../runtime/work-language';
 import { Team } from '../../team';
@@ -230,12 +233,12 @@ function formatReplyFuncErrorResult(args: {
         );
       case 'no_active':
         return (
-          `错误：当前没有别的对话在等你发送最终回贴。\n\n` +
+          `错误：当前没有别的对话在等你发送最终诉请回复。\n\n` +
           `你刚才调用的 \`${args.attemptedCallName}\` 这次不会送达给别的对话。请按当前对话正常交流；如果用户提出了问题，就直接回答这个问题。`
         );
       case 'no_pending':
         return (
-          `错误：这条回贴任务已经不再等待本对话送达（可能已回复或已失效）。\n\n` +
+          `错误：这条诉请回复任务已经不再等待本对话送达（可能已回复或已失效）。\n\n` +
           `你刚才调用的 \`${args.attemptedCallName}\` 这次不会送达给别的对话。请按当前对话正常交流；如果用户提出了问题，就直接回答这个问题。`
         );
     }
@@ -850,6 +853,20 @@ export function formatPendingTellaskFuncResultContent(
   callId?: string,
 ): string {
   const language = getWorkLanguage();
+  let normalizedCallId: string | undefined;
+  if (callId !== undefined) {
+    normalizedCallId = callId.trim();
+    if (
+      normalizedCallId === '' ||
+      normalizedCallId !== callId ||
+      /[\r\n\u2028\u2029]/u.test(normalizedCallId)
+    ) {
+      throw new Error(
+        `tellask pending-status formatter invariant violation: invalid callId for ${name}: ` +
+          JSON.stringify(callId),
+      );
+    }
+  }
   const elapsed = (() => {
     if (startedAtMs === null) {
       return language === 'zh' ? '未知时长' : 'unknown elapsed time';
@@ -870,7 +887,7 @@ export function formatPendingTellaskFuncResultContent(
           '',
           '你已经向人类提问，当前仍在等待回答。',
           '',
-          ...(callId ? [`- callId: ${callId}`] : []),
+          ...(normalizedCallId !== undefined ? [`- callId: ${normalizedCallId}`] : []),
           `- 已等待: ${elapsed}`,
           '',
           '这不是回答正文。若人类稍后回复，Dominds 会把对应结果补入后续上下文。',
@@ -880,7 +897,7 @@ export function formatPendingTellaskFuncResultContent(
           '',
           'You already asked the human and are still waiting for their answer.',
           '',
-          ...(callId ? [`- callId: ${callId}`] : []),
+          ...(normalizedCallId !== undefined ? [`- callId: ${normalizedCallId}`] : []),
           `- Elapsed: ${elapsed}`,
           '',
           'This is not the answer body. If the human replies later, Dominds will add the result to later context.',
@@ -888,92 +905,222 @@ export function formatPendingTellaskFuncResultContent(
   }
   return language === 'zh'
     ? [
-        '[Dominds 等待队友回贴]',
+        '[Dominds 等待诉请回复]',
         '',
-        `你已经发出 \`${name}\`，当前仍在等待队友回贴。`,
+        `你已经发出 \`${name}\`，当前仍在等待诉请回复。`,
         '',
-        ...(callId ? [`- callId: ${callId}`] : []),
+        ...(normalizedCallId !== undefined ? [`- callId: ${normalizedCallId}`] : []),
         `- 已等待: ${elapsed}`,
         '',
-        '这不是回贴正文。若稍后收到回贴，Dominds 会把对应结果补入后续上下文。',
+        '这不是诉请回复正文。若稍后收到诉请回复，Dominds 会把对应结果补入后续上下文。',
       ].join('\n')
     : [
-        '[Dominds waiting for teammate reply]',
+        '[Dominds waiting for Tellask reply]',
         '',
-        `You already sent \`${name}\` and are still waiting for the teammate's reply.`,
+        `You already sent \`${name}\` and are still waiting for its Tellask reply.`,
         '',
-        ...(callId ? [`- callId: ${callId}`] : []),
+        ...(normalizedCallId !== undefined ? [`- callId: ${normalizedCallId}`] : []),
         `- Elapsed: ${elapsed}`,
         '',
         'This is not the reply body. If a reply arrives later, Dominds will add the result to later context.',
       ].join('\n');
 }
 
-export function formatResolvedTellaskFuncResultContent(args: {
-  name: TellaskCallFunctionName;
-  callId: string;
-  status: 'pending' | 'completed' | 'failed';
-}): string {
+export type TellaskResultContextPointer = Readonly<{
+  kind: 'later_context_message';
+  recordedAt: string;
+  messageOffset: number;
+  contentAnchor: string;
+}>;
+
+type ResolvedTellaskFuncResultFormatArgs =
+  | Readonly<{
+      name: ResultContextAnchorCallName;
+      callId: string;
+      status: 'pending';
+    }>
+  | Readonly<{
+      name: ResultContextAnchorCallName;
+      callId: string;
+      status: 'completed' | 'failed';
+      resultPointer: TellaskResultContextPointer;
+    }>;
+
+export function formatResolvedTellaskFuncResultContent(
+  args: ResolvedTellaskFuncResultFormatArgs,
+): string {
   const language = getWorkLanguage();
   const callId = args.callId.trim();
-  if (callId === '') {
-    throw new Error(`tellask status formatter invariant violation: empty callId for ${args.name}`);
+  if (callId === '' || callId !== args.callId) {
+    throw new Error(
+      `tellask status formatter invariant violation: invalid callId for ${args.name}: ` +
+        JSON.stringify(args.callId),
+    );
   }
-  // Business scenario: a previously dispatched teammate request is being summarized back into
-  // context as status. For `pending`, there is still no reply body. For `completed`/`failed`, the
-  // actual reply/failure fact is injected separately. The model-facing text must keep those
-  // separate so the model neither hallucinates a pending result nor treats this status line as the
-  // teammate's answer.
+  const resultPointer =
+    args.status === 'pending'
+      ? undefined
+      : {
+          kind: args.resultPointer.kind,
+          recordedAt: args.resultPointer.recordedAt,
+          messageOffset: args.resultPointer.messageOffset,
+          contentAnchor: args.resultPointer.contentAnchor,
+        };
+  const validContentAnchors = new Set([
+    formatTellaskResultContextAnchor({ callId, callName: args.name, language: 'zh' }),
+    formatTellaskResultContextAnchor({ callId, callName: args.name, language: 'en' }),
+  ]);
+  if (
+    resultPointer !== undefined &&
+    (resultPointer.recordedAt.trim() === '' ||
+      resultPointer.recordedAt !== resultPointer.recordedAt.trim())
+  ) {
+    throw new Error(
+      `tellask status formatter invariant violation: invalid recordedAt ` +
+        `(callId=${callId}, recordedAt=${JSON.stringify(resultPointer.recordedAt)})`,
+    );
+  }
+  if (
+    resultPointer !== undefined &&
+    (!Number.isSafeInteger(resultPointer.messageOffset) || resultPointer.messageOffset <= 0)
+  ) {
+    throw new Error(
+      `tellask status formatter invariant violation: invalid messageOffset ` +
+        `(callId=${callId}, messageOffset=${String(resultPointer.messageOffset)})`,
+    );
+  }
+  if (resultPointer !== undefined && !validContentAnchors.has(resultPointer.contentAnchor)) {
+    throw new Error(
+      `tellask status formatter invariant violation: contentAnchor does not match callId ` +
+        `(callId=${callId}, contentAnchor=${JSON.stringify(resultPointer.contentAnchor)})`,
+    );
+  }
+  // Business scenario: a previously dispatched teammate request or human question is being
+  // summarized back into context as status. For `pending`, there is still no reply/answer body.
+  // For `completed`/`failed`, the actual result fact is injected separately. At resolved call sites the projection
+  // already knows the result's durable timestamp and exact timeline position. Preserve those facts
+  // as a compact pointer so the model can locate the separate result instead of guessing from the
+  // pending-count reminder or issuing a duplicate tellask.
   if (language === 'zh') {
     if (args.status === 'pending') {
+      if (args.name === 'askHuman') {
+        return [
+          '[Dominds 等待人类回复]',
+          '',
+          '`askHuman` 仍在等待人类回答，当前没有回答正文。',
+          '',
+          `- callId: ${callId}`,
+          '',
+          '不要把这条状态当作回答正文；若人类稍后回答，Dominds 会补入对应结果。',
+        ].join('\n');
+      }
       return [
-        '[Dominds 等待队友回贴]',
+        '[Dominds 等待诉请回复]',
         '',
-        `\`${args.name}\` 仍在等待队友回贴，当前没有回贴正文。`,
+        `\`${args.name}\` 仍在等待诉请回复，当前没有诉请回复正文。`,
         '',
         `- callId: ${callId}`,
         '',
-        '不要把这条状态当作回贴正文；若稍后收到回贴，Dominds 会补入对应结果。',
+        '不要把这条状态当作诉请回复正文；若稍后收到诉请回复，Dominds 会补入对应结果。',
       ].join('\n');
     }
-    const statusLabel = args.status === 'completed' ? '已收到回贴' : '已失败收口';
+    if (resultPointer === undefined) {
+      throw new Error(
+        `tellask status formatter invariant violation: missing pointer for ${callId}`,
+      );
+    }
+    if (args.name === 'askHuman') {
+      const statusSentence = args.status === 'completed' ? '人类已经回答' : '`askHuman` 已失败收口';
+      return [
+        '[Dominds 人类回答结果状态]',
+        '',
+        `${statusSentence}；对应结果已作为独立上下文消息补入。`,
+        '',
+        `- callId: ${callId}`,
+        `- 结果记录时间: ${resultPointer.recordedAt}`,
+        `- 上下文位置: 从本工具回执向后约第 ${String(resultPointer.messageOffset)} 个消息块`,
+        `- 唯一首行锚点: ${JSON.stringify(resultPointer.contentAnchor)}`,
+        '',
+        '请向后查找完整的唯一首行锚点；该锚点已包含同一 callId。以那条独立结果为准，不要把本状态回执当作回答正文。',
+      ].join('\n');
+    }
+    const statusSentence =
+      args.status === 'completed'
+        ? `\`${args.name}\` 已收到诉请回复`
+        : `\`${args.name}\` 对应诉请已失败收口`;
     return [
-      '[Dominds 队友回贴状态]',
+      '[Dominds 诉请结果状态]',
       '',
-      `\`${args.name}\` ${statusLabel}，对应结果已作为独立上下文补入。`,
+      `${statusSentence}；对应诉请结果已作为独立上下文消息补入。`,
       '',
       `- callId: ${callId}`,
+      `- 诉请结果记录时间: ${resultPointer.recordedAt}`,
+      `- 上下文位置: 从本工具回执向后约第 ${String(resultPointer.messageOffset)} 个消息块`,
+      `- 唯一首行锚点: ${JSON.stringify(resultPointer.contentAnchor)}`,
       '',
-      '请以那条独立结果为准；不要把这条状态当作回贴正文。',
+      '请向后查找完整的唯一首行锚点；该锚点已包含同一 callId。以那条独立诉请结果为准，不要把本状态回执当作结果正文。',
     ].join('\n');
   }
   if (args.status === 'pending') {
+    if (args.name === 'askHuman') {
+      return [
+        '[Dominds waiting for human answer]',
+        '',
+        '`askHuman` is still waiting for the human; there is no answer body yet.',
+        '',
+        `- callId: ${callId}`,
+        '',
+        'Do not treat this status as the answer body. If the human answers later, Dominds will add the result.',
+      ].join('\n');
+    }
     return [
-      '[Dominds waiting for teammate reply]',
+      '[Dominds waiting for Tellask reply]',
       '',
-      `\`${args.name}\` is still waiting for the teammate's reply; there is no reply body yet.`,
+      `\`${args.name}\` is still waiting for its Tellask reply; there is no reply body yet.`,
       '',
       `- callId: ${callId}`,
       '',
       'Do not treat this status as the reply body. If a reply arrives later, Dominds will add the result.',
     ].join('\n');
   }
-  const statusLabel = args.status === 'completed' ? 'has received a reply' : 'has failed/closed';
+  if (resultPointer === undefined) {
+    throw new Error(`tellask status formatter invariant violation: missing pointer for ${callId}`);
+  }
+  if (args.name === 'askHuman') {
+    const statusSentence =
+      args.status === 'completed' ? 'The human has answered' : '`askHuman` has failed/closed';
+    const messageBlockLabel =
+      resultPointer.messageOffset === 1 ? 'message block' : 'message blocks';
+    return [
+      '[Dominds human answer result status]',
+      '',
+      `${statusSentence}; the corresponding result is a separate context message.`,
+      '',
+      `- callId: ${callId}`,
+      `- Result recorded at: ${resultPointer.recordedAt}`,
+      `- Context position: approximately ${String(resultPointer.messageOffset)} ${messageBlockLabel} after this tool receipt`,
+      `- Unique first-line anchor: ${JSON.stringify(resultPointer.contentAnchor)}`,
+      '',
+      'Search forward for the complete unique first-line anchor; the anchor already contains the same callId. Use the separate result as authoritative; do not treat this status receipt as the answer body.',
+    ].join('\n');
+  }
+  const statusSentence =
+    args.status === 'completed'
+      ? `\`${args.name}\` has received a Tellask reply`
+      : `The Tellask for \`${args.name}\` has failed/closed`;
+  const messageBlockLabel = resultPointer.messageOffset === 1 ? 'message block' : 'message blocks';
   return [
-    '[Dominds teammate reply status]',
+    '[Dominds Tellask result status]',
     '',
-    `\`${args.name}\` ${statusLabel}; the corresponding result is present separately in context.`,
+    `${statusSentence}; the corresponding Tellask result is a separate context message.`,
     '',
     `- callId: ${callId}`,
+    `- Tellask result recorded at: ${resultPointer.recordedAt}`,
+    `- Context position: approximately ${String(resultPointer.messageOffset)} ${messageBlockLabel} after this tool receipt`,
+    `- Unique first-line anchor: ${JSON.stringify(resultPointer.contentAnchor)}`,
     '',
-    'Use that separate result as authoritative; do not treat this status as the reply body.',
+    'Search forward for the complete unique first-line anchor; the anchor already contains the same callId. Use the separate Tellask result as authoritative; do not treat this status receipt as the result body.',
   ].join('\n');
-}
-
-export function formatResolvedAskHumanResultContent(): string {
-  return getWorkLanguage() === 'zh'
-    ? '人类已经回答；请参考 askHuman 结果气泡。'
-    : 'The human has answered; refer to the askHuman result bubble.';
 }
 
 function buildPendingTellaskFuncResult(args: {
@@ -1023,7 +1170,12 @@ function buildTellaskResultToolOutput(args: {
     callId: args.callId,
     callName: args.callName,
     status: args.status,
-    content: args.content,
+    content: formatTellaskResultContextContent({
+      callId: args.callId,
+      callName: args.callName,
+      content: args.content,
+      language: getWorkLanguage(),
+    }),
     ...(typeof args.callSiteCourse === 'number' ? { callSiteCourse: args.callSiteCourse } : {}),
     ...(typeof args.callSiteGenseq === 'number' ? { callSiteGenseq: args.callSiteGenseq } : {}),
     call:
@@ -1329,6 +1481,7 @@ async function finishRegisteredTellaskReplacement(args: {
   const language = getWorkLanguage();
   const tellaskerId = callerDialog.agentId;
   const response = formatTellaskReplacementNoticeContent({
+    callId: pendingRecord.callId,
     responderId: sideDialog.agentId,
     tellaskerId,
     mentionList: pendingRecord.mentionList,

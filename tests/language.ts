@@ -23,9 +23,11 @@ function run(): void {
       status: 'completed',
       language: 'en',
     });
-    const expected = `【Completed】
+    const expected = `[Dominds Tellask result | callId: language-en-call]
 
-@bob provided response:
+【Completed】
+
+@bob provided a Tellask reply:
 
 > ok
 
@@ -33,10 +35,10 @@ regarding the original tellask: @alice
 
 > @bob hello
 
-[Dominds teammate reply status]
+[Dominds Tellask result status]
 - Function: \`tellaskSessionless\`
 - callId: language-en-call
-- Note: This is a reply fact for an earlier tellask, not a new user request or a newly initiated function call in the current course.
+- Note: This is a result fact for an earlier Tellask, not a new user request or a newly initiated function call in the current course.
 `;
     assert.equal(actual, expected);
   }
@@ -52,7 +54,9 @@ regarding the original tellask: @alice
       status: 'completed',
       language: 'zh',
     });
-    const expected = `【最终完成】
+    const expected = `【Dominds 诉请结果｜callId: language-zh-call】
+
+【最终完成】
 
 @bob 已回复：
 
@@ -62,10 +66,10 @@ regarding the original tellask: @alice
 
 > @bob hello
 
-[Dominds 队友回贴状态]
+[Dominds 诉请结果状态]
 - 函数: \`tellaskSessionless\`
 - callId: language-zh-call
-- 说明: 这是前序诉请的回贴事实，不是新的用户请求，也不是当前程新发起的函数调用。
+- 说明: 这是前序诉请的结果事实，不是新的用户请求，也不是当前程新发起的函数调用。
 `;
     assert.equal(actual, expected);
   }

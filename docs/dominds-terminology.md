@@ -33,6 +33,8 @@
 - EN: `Tellask` | ZH: `诉请`
 - EN: `Tellask headline` | ZH: `诉请头`
 - EN: `Tellask body` | ZH: `诉请正文`
+- EN: `Tellask reply` | ZH: `诉请回复`
+- EN: `Tellask result` | ZH: `诉请结果`
 - EN: `tellasker` | ZH: `诉请者`
 - EN: `tellaskee` | ZH: `被诉请者`
 - EN: `Dialog Responder` | ZH: `对话主理人`
@@ -69,7 +71,7 @@
 - ZH: 这是一次诉请的**角色关系**，不是层级关系；诉请者可能是也可能不是结构上的 askerDialog。
 
 - EN: Use **Main Dialog / Side Dialog** for lifecycle, navigation, archival, Taskdoc ownership, and storage topology. Use **tellasker/tellaskee** or **caller/callee** for who asked whom, who owes a reply, result arrival, and continuation decisions.
-- ZH: **主线对话 / 支线对话**只用于生命周期、导航、归档、差遣牒职责与存储拓扑。表达“谁诉请谁、谁欠回贴、结果到达、是否继续推进”时，使用**诉请者/被诉请者**或 **caller/callee**。
+- ZH: **主线对话 / 支线对话**只用于生命周期、导航、归档、差遣牒职责与存储拓扑。表达“谁诉请谁、谁负有诉请回复义务、结果到达、是否继续推进”时，使用**诉请者/被诉请者**或 **caller/callee**。
 
 - EN (cross-reference): In implementation-facing docs/code, the standard class/concept names are `MainDialog` / `main dialog` for **Main Dialog**, and `SideDialog` / `sideDialog` for **Side Dialog**. `rootId` remains a structural identifier field, not the user-facing term.
 - ZH（交叉说明）: 在系统实现语境（文档/代码）中，标准类名/概念名是 **MainDialog / main dialog（主线对话）** 与 **SideDialog / sideDialog（支线对话）**。`rootId` 仍是结构标识字段，不是对外术语。
@@ -92,6 +94,19 @@
 
 - EN: A Tellask is not casual chat; it is a collaboration action that Dominds can drive, route, and coordinate (including suspend/resume).
 - ZH: Tellask 不是随意聊天，而是一种可被 Dominds 驱动、路由、并由系统协调（包括挂起/恢复）的协作动作。
+
+### Tellask reply（诉请回复）
+
+- EN: A **Tellask reply** is the reply content delivered by the tellaskee to the tellasker. Use this term for reply bodies, reply obligations, reply tools, and delivery.
+- ZH: **Tellask reply（诉请回复）**是被诉请者向诉请者送达的回复内容。回复正文、回复义务、回复工具与送达行为统一使用“诉请回复”，不使用论坛语境中的非正式说法。
+
+### Tellask result（诉请结果）
+
+- EN: A **Tellask result** is the resolved runtime fact injected into context for a Tellask. A completed result contains a Tellask reply; a failed result contains the failure closure instead.
+- ZH: **Tellask result（诉请结果）**是 Dominds 为一轮诉请注入上下文的已决事实。完成结果包含诉请回复；失败结果包含失败收口事实，因此不能把所有诉请结果统称为“诉请回复”。
+
+- EN: When a Tellask result needs a searchable context anchor, use `Tellask result` / `诉请结果` together with the exact `callId`.
+- ZH: 诉请结果需要上下文定位锚点时，使用“Tellask result / 诉请结果”并带上精确 `callId`。
 
 ### Tellask Carryover（诉请补全）
 
@@ -224,7 +239,7 @@ tellask({
 Example / 示例（概念）:
 
 - EN: `tellaskSessionless({ targetAgentId: "shell-specialist", tellaskContent: "Please run a single build and paste the failure output." })`
-- ZH: `tellaskSessionless({ targetAgentId: "shell-specialist", tellaskContent: "请运行一次构建并回贴失败信息。" })`
+- ZH: `tellaskSessionless({ targetAgentId: "shell-specialist", tellaskContent: "请运行一次构建，并在诉请回复中提供失败信息。" })`
 
 ### 系统提示可复用的一句话（One-Sentence Summary for System Prompts）
 
@@ -330,6 +345,9 @@ Example / 示例（概念）:
 
 - EN: A Dominds-specific interaction unit: a structured request addressed to a dialog participant. **Always use "Tellask" (noun) or "tellask" (verb); never use "ask", "request", "query", or "invocation".**
 - ZH: Dominds 的专有交互单元：一个对对话参与方发出的结构化请求。**统一使用"Tellask"（名词）或"tellask"（动词）；避免使用"询问"、"请求"、"查询"、"调用"等变体。**
+
+- EN: Use **Tellask reply / 诉请回复** for delivered reply content and reply obligations. Use **Tellask result / 诉请结果** for the resolved runtime fact, which may represent either completion or failure.
+- ZH: 已送达的回复内容及回复义务使用 **Tellask reply / 诉请回复**；可表示完成或失败的运行时已决事实使用 **Tellask result / 诉请结果**。禁止使用论坛语境中的非正式说法。
 
 ### Teammate / 智能体队友
 
