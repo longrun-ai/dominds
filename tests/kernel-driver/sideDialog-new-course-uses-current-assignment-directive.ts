@@ -101,7 +101,6 @@ async function main(): Promise<void> {
         tellaskReplyDirective: queuedPrompt.tellaskReplyDirective,
         skipTaskdoc: queuedPrompt.skipTaskdoc,
         calleeDialogReplyTarget: queuedPrompt.calleeDialogReplyTarget,
-        runControl: queuedPrompt.runControl,
       },
       language: 'en',
     });

@@ -25,14 +25,7 @@ function parseStringRecord(value: unknown): Record<string, string> {
   return out;
 }
 
-async function listVisibleMcpServerIds(
-  caller: Team.Member,
-  taskDocPath?: string,
-): Promise<Set<string>> {
-  const dynamicToolsetNames = await Team.listDynamicToolsetNamesForMember({
-    member: caller,
-    taskDocPath,
-  });
+async function listVisibleMcpServerIds(caller: Team.Member): Promise<Set<string>> {
   const declared = await Team.readMcpDeclaredToolsets();
   const declaredMcpToolsetNames =
     declared.kind === 'loaded' ? declared.declaredServerIds : undefined;
@@ -41,7 +34,6 @@ async function listVisibleMcpServerIds(
     caller
       .listResolvedToolsetNames({
         onMissing: 'silent',
-        dynamicToolsetNames,
         declaredMcpToolsetNames,
         invalidMcpToolsetNames,
       })
@@ -77,7 +69,7 @@ export const listResourcesTool: FuncTool = {
         ? _dlg.getLastUserLanguageCode()
         : getWorkLanguage();
     const serverId = typeof args.serverId === 'string' ? args.serverId.trim() : '';
-    const visibleMcpServerIds = await listVisibleMcpServerIds(_caller, _dlg.taskDocPath);
+    const visibleMcpServerIds = await listVisibleMcpServerIds(_caller);
     const query = typeof args.query === 'string' ? args.query.trim().toLowerCase() : '';
     const kind =
       args.kind === 'resource' || args.kind === 'resource_template' ? args.kind : undefined;
@@ -163,7 +155,7 @@ export const fetchResourceTool: FuncTool = {
           : `Error: resource '${resourceId}' was not found.`,
       );
     }
-    const visibleMcpServerIds = await listVisibleMcpServerIds(_caller, _dlg.taskDocPath);
+    const visibleMcpServerIds = await listVisibleMcpServerIds(_caller);
     if (!visibleMcpServerIds.has(resource.serverId)) {
       return toolFailure(
         language === 'zh'

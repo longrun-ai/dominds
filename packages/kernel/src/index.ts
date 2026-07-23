@@ -1,16 +1,11 @@
 export type {
   CreateDomindsAppFn,
-  DomindsAppDynamicToolsetsContext,
-  DomindsAppDynamicToolsetsHandler,
   DomindsAppHostInstance,
   DomindsAppHostStartResult,
   DomindsAppReminderOwnerApplyContext,
   DomindsAppReminderOwnerHandler,
   DomindsAppReminderOwnerRenderContext,
   DomindsAppReminderOwnerUpdateContext,
-  DomindsAppRunControlContext,
-  DomindsAppRunControlHandler,
-  DomindsAppRunControlResult,
 } from './app-host-contract';
 
 export {
@@ -30,7 +25,6 @@ export type {
   DomindsAppContributesJson,
   DomindsAppDialogInfo,
   DomindsAppDialogReminderRequestBatch,
-  DomindsAppDialogRunControlJson,
   DomindsAppDialogTargetRef,
   DomindsAppFrontendJson,
   DomindsAppHostEntryJson,

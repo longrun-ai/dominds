@@ -48,14 +48,7 @@ type CopyOnWritePersonalSkillResult =
 
 type PersonalSkillWriteMode = 'add' | 'replace';
 
-async function listVisibleMcpServerIds(
-  caller: Team.Member,
-  taskDocPath?: string,
-): Promise<Set<string>> {
-  const dynamicToolsetNames = await Team.listDynamicToolsetNamesForMember({
-    member: caller,
-    taskDocPath,
-  });
+async function listVisibleMcpServerIds(caller: Team.Member): Promise<Set<string>> {
   const declared = await Team.readMcpDeclaredToolsets();
   const declaredMcpToolsetNames =
     declared.kind === 'loaded' ? declared.declaredServerIds : undefined;
@@ -64,7 +57,6 @@ async function listVisibleMcpServerIds(
     caller
       .listResolvedToolsetNames({
         onMissing: 'silent',
-        dynamicToolsetNames,
         declaredMcpToolsetNames,
         invalidMcpToolsetNames,
       })
@@ -1188,7 +1180,7 @@ export const readSkillTool: FuncTool = {
       memberId: caller.id,
       language,
       skillId,
-      visibleMcpServerIds: await listVisibleMcpServerIds(caller, _dlg.taskDocPath),
+      visibleMcpServerIds: await listVisibleMcpServerIds(caller),
     });
     if (!skill) {
       return toolFailure(

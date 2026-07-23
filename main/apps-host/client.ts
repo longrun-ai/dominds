@@ -3,15 +3,13 @@ import { randomUUID } from 'crypto';
 import fsSync from 'fs';
 import { createRequire } from 'module';
 import path from 'path';
+import { pathToFileURL } from 'url';
 
 import type {
-  DomindsAppDynamicToolsetsContext,
   DomindsAppReminderOwnerApplyContext,
   DomindsAppReminderOwnerRenderContext,
   DomindsAppReminderOwnerUpdateContext,
   DomindsAppReminderRenderedMessage,
-  DomindsAppRunControlContext,
-  DomindsAppRunControlResult,
   DomindsKernelEndpoint,
 } from '@longrun-ai/kernel/app-host-contract';
 import type {
@@ -25,12 +23,10 @@ import type {
 import { createLogger } from '../log';
 import type { ToolArguments } from '../tool';
 import type {
-  AppsHostKernelDynamicToolsetsMessage,
   AppsHostKernelInitMessage,
   AppsHostKernelReminderApplyMessage,
   AppsHostKernelReminderRenderMessage,
   AppsHostKernelReminderUpdateMessage,
-  AppsHostKernelRunControlApplyMessage,
   AppsHostMessageFromKernel,
   AppsHostMessageToKernel,
 } from './ipc-types';
@@ -44,16 +40,6 @@ function isRecord(v: unknown): v is Record<string, unknown> {
 
 function asString(v: unknown): string | null {
   return typeof v === 'string' ? v : null;
-}
-
-function asStringArray(v: unknown): string[] | null {
-  if (!Array.isArray(v)) return null;
-  const out: string[] = [];
-  for (const item of v) {
-    if (typeof item !== 'string') return null;
-    out.push(item);
-  }
-  return out;
 }
 
 function parseMessageToKernel(v: unknown): AppsHostMessageToKernel {
@@ -79,28 +65,6 @@ function parseMessageToKernel(v: unknown): AppsHostMessageToKernel {
     if (!callId) throw new Error('Invalid tool_result message: callId required');
     return v as unknown as AppsHostMessageToKernel;
   }
-  if (type === 'dynamic_toolsets_result') {
-    const callId = asString(v['callId']);
-    if (!callId) throw new Error('Invalid dynamic_toolsets_result message: callId required');
-    const ok = v['ok'];
-    if (ok === true) {
-      const toolsetIds = asStringArray(v['toolsetIds']);
-      if (toolsetIds === null) {
-        throw new Error('Invalid dynamic_toolsets_result message: toolsetIds must be string[]');
-      }
-      return { type, callId, ok: true, toolsetIds };
-    }
-    if (ok === false) {
-      const errorText = asString(v['errorText']);
-      if (!errorText) {
-        throw new Error(
-          'Invalid dynamic_toolsets_result message: errorText required when ok=false',
-        );
-      }
-      return { type, callId, ok: false, errorText };
-    }
-    return v as unknown as AppsHostMessageToKernel;
-  }
   if (type === 'reminder_apply_result') {
     const callId = asString(v['callId']);
     if (!callId) throw new Error('Invalid reminder_apply_result message: callId required');
@@ -114,27 +78,6 @@ function parseMessageToKernel(v: unknown): AppsHostMessageToKernel {
   if (type === 'reminder_render_result') {
     const callId = asString(v['callId']);
     if (!callId) throw new Error('Invalid reminder_render_result message: callId required');
-    return v as unknown as AppsHostMessageToKernel;
-  }
-  if (type === 'run_control_result') {
-    const callId = asString(v['callId']);
-    if (!callId) throw new Error('Invalid run_control_result message: callId required');
-    const ok = v['ok'];
-    if (ok === true) {
-      return {
-        type,
-        callId,
-        ok: true,
-        result: v['result'] as DomindsAppRunControlResult,
-      };
-    }
-    if (ok === false) {
-      const errorText = asString(v['errorText']);
-      if (!errorText) {
-        throw new Error('Invalid run_control_result message: errorText required when ok=false');
-      }
-      return { type, callId, ok: false, errorText };
-    }
     return v as unknown as AppsHostMessageToKernel;
   }
   throw new Error(`Invalid IPC message from apps-host: unknown type '${type}'`);
@@ -160,11 +103,6 @@ export type AppsHostClient = Readonly<{
       callerId: string;
     }>,
   ) => Promise<DomindsAppHostToolResult>;
-  listDynamicToolsets: (ctx: DomindsAppDynamicToolsetsContext) => Promise<readonly string[]>;
-  applyRunControl: (
-    controlId: string,
-    payload: DomindsAppRunControlContext,
-  ) => Promise<DomindsAppRunControlResult>;
   applyReminder: (
     appId: string,
     ownerRef: string,
@@ -188,18 +126,6 @@ export type AppsHostReadyMessage = Extract<AppsHostMessageToKernel, { type: 'rea
 
 type PendingCall = Readonly<{
   resolve: (out: DomindsAppHostToolResult) => void;
-  reject: (err: Error) => void;
-  timeout: NodeJS.Timeout;
-}>;
-
-type PendingRunControlCall = Readonly<{
-  resolve: (out: DomindsAppRunControlResult) => void;
-  reject: (err: Error) => void;
-  timeout: NodeJS.Timeout;
-}>;
-
-type PendingDynamicToolsetsCall = Readonly<{
-  resolve: (out: readonly string[]) => void;
   reject: (err: Error) => void;
   timeout: NodeJS.Timeout;
 }>;
@@ -234,7 +160,11 @@ function resolveAppsHostEntrypointAbs():
   const tsCandidate = path.resolve(__dirname, 'host.ts');
   if (fsSync.existsSync(tsCandidate)) {
     const tsxLoaderAbs = requireFn.resolve('tsx');
-    return { ok: true, scriptAbs: tsCandidate, execArgv: ['--import', tsxLoaderAbs] };
+    return {
+      ok: true,
+      scriptAbs: tsCandidate,
+      execArgv: ['--import', pathToFileURL(tsxLoaderAbs).href],
+    };
   }
   return {
     ok: false,
@@ -259,8 +189,6 @@ export async function startAppsHost(params: {
   }
 
   const pendingTools = new Map<string, PendingCall>();
-  const pendingDynamicToolsets = new Map<string, PendingDynamicToolsetsCall>();
-  const pendingRunControls = new Map<string, PendingRunControlCall>();
   const pendingReminderApplies = new Map<string, PendingReminderApplyCall>();
   const pendingReminderUpdates = new Map<string, PendingReminderUpdateCall>();
   const pendingReminderRenders = new Map<string, PendingReminderRenderCall>();
@@ -283,16 +211,6 @@ export async function startAppsHost(params: {
       p.reject(err);
     }
     pendingTools.clear();
-    for (const p of pendingDynamicToolsets.values()) {
-      clearTimeout(p.timeout);
-      p.reject(err);
-    }
-    pendingDynamicToolsets.clear();
-    for (const p of pendingRunControls.values()) {
-      clearTimeout(p.timeout);
-      p.reject(err);
-    }
-    pendingRunControls.clear();
     for (const p of pendingReminderApplies.values()) {
       clearTimeout(p.timeout);
       p.reject(err);
@@ -312,6 +230,7 @@ export async function startAppsHost(params: {
 
   child.on('exit', (code, signal) => {
     const err = new Error(`apps-host exited (code=${code ?? 'null'} signal=${signal ?? 'null'})`);
+    clearTimeout(readyTimeout);
     readyReject?.(err);
     failAllPending(err);
   });
@@ -351,34 +270,6 @@ export async function startAppsHost(params: {
               | undefined,
           });
         } else p.reject(new Error(msg.errorText));
-        return;
-      }
-      if (msg.type === 'dynamic_toolsets_result') {
-        const p = pendingDynamicToolsets.get(msg.callId);
-        if (!p) {
-          throw new Error(`Unexpected dynamic_toolsets_result for unknown callId: ${msg.callId}`);
-        }
-        pendingDynamicToolsets.delete(msg.callId);
-        clearTimeout(p.timeout);
-        if (!msg.ok) {
-          p.reject(new Error(msg.errorText));
-          return;
-        }
-        p.resolve(msg.toolsetIds);
-        return;
-      }
-      if (msg.type === 'run_control_result') {
-        const p = pendingRunControls.get(msg.callId);
-        if (!p) {
-          throw new Error(`Unexpected run_control_result for unknown callId: ${msg.callId}`);
-        }
-        pendingRunControls.delete(msg.callId);
-        clearTimeout(p.timeout);
-        if (!msg.ok) {
-          p.reject(new Error(msg.errorText));
-          return;
-        }
-        p.resolve(msg.result);
         return;
       }
       if (msg.type === 'reminder_apply_result') {
@@ -455,49 +346,6 @@ export async function startAppsHost(params: {
         reject(new Error(`apps-host tool call timed out: tool=${toolName} callId=${callId}`));
       }, 60_000);
       pendingTools.set(callId, { resolve, reject, timeout });
-      child.send(msg);
-    });
-  };
-
-  const listDynamicToolsets: AppsHostClient['listDynamicToolsets'] = async (ctx) => {
-    if (!ready) {
-      throw new Error('apps-host is not ready yet (dynamicToolsets)');
-    }
-    const callId = randomUUID();
-    const msg: AppsHostKernelDynamicToolsetsMessage = {
-      type: 'dynamic_toolsets',
-      callId,
-      ctx,
-    };
-    return await new Promise<readonly string[]>((resolve, reject) => {
-      const timeout = setTimeout(() => {
-        pendingDynamicToolsets.delete(callId);
-        reject(new Error(`apps-host dynamic toolsets call timed out: callId=${callId}`));
-      }, 60_000);
-      pendingDynamicToolsets.set(callId, { resolve, reject, timeout });
-      child.send(msg);
-    });
-  };
-
-  const applyRunControl: AppsHostClient['applyRunControl'] = async (controlId, payload) => {
-    if (!ready) {
-      throw new Error(`apps-host is not ready yet (runControl=${controlId})`);
-    }
-    const callId = randomUUID();
-    const msg: AppsHostKernelRunControlApplyMessage = {
-      type: 'run_control_apply',
-      callId,
-      controlId,
-      payload,
-    };
-    return await new Promise<DomindsAppRunControlResult>((resolve, reject) => {
-      const timeout = setTimeout(() => {
-        pendingRunControls.delete(callId);
-        reject(
-          new Error(`apps-host run control timed out: runControl=${controlId} callId=${callId}`),
-        );
-      }, 60_000);
-      pendingRunControls.set(callId, { resolve, reject, timeout });
       child.send(msg);
     });
   };
@@ -647,8 +495,6 @@ export async function startAppsHost(params: {
   return {
     client: {
       callTool,
-      listDynamicToolsets,
-      applyRunControl,
       applyReminder,
       updateReminder,
       renderReminder,

@@ -1,6 +1,5 @@
 import type {
   DomindsAppReminderRenderedMessage,
-  DomindsAppRunControlResult,
   DomindsKernelEndpoint,
 } from '@longrun-ai/kernel/app-host-contract';
 import type {
@@ -39,47 +38,6 @@ export type AppsHostKernelToolCallMessage = Readonly<{
     taskDocPath: string;
     sessionSlug?: string;
     callerId: string;
-  }>;
-}>;
-
-export type AppsHostKernelDynamicToolsetsMessage = Readonly<{
-  type: 'dynamic_toolsets';
-  callId: string;
-  ctx: Readonly<{
-    memberId: string;
-    taskDocPath: string;
-    dialogId?: string;
-    mainDialogId?: string;
-    agentId?: string;
-    sessionSlug?: string;
-  }>;
-}>;
-
-export type AppsHostKernelRunControlApplyMessage = Readonly<{
-  type: 'run_control_apply';
-  callId: string;
-  controlId: string;
-  payload: Readonly<{
-    dialog: Readonly<{
-      selfId: string;
-      rootId: string;
-    }>;
-    agentId: string;
-    taskDocPath: string;
-    genIterNo: number;
-    prompt?: Readonly<{
-      content: string;
-      msgId: string;
-      grammar: 'markdown';
-      userLanguageCode: LanguageCode;
-      origin?: 'user' | 'diligence_push' | 'runtime';
-    }>;
-    source: 'drive_dlg_by_user_msg' | 'drive_dialog_by_user_answer';
-    input: Readonly<Record<string, unknown>>;
-    q4h?: Readonly<{
-      questionId: string;
-      continuationType: 'answer' | 'followup' | 'retry' | 'new_message';
-    }>;
   }>;
 }>;
 
@@ -126,8 +84,6 @@ export type AppsHostKernelShutdownMessage = Readonly<{
 export type AppsHostMessageFromKernel =
   | AppsHostKernelInitMessage
   | AppsHostKernelToolCallMessage
-  | AppsHostKernelDynamicToolsetsMessage
-  | AppsHostKernelRunControlApplyMessage
   | AppsHostKernelReminderApplyMessage
   | AppsHostKernelReminderUpdateMessage
   | AppsHostKernelReminderRenderMessage
@@ -166,19 +122,6 @@ export type AppsHostToolResultMessage = Readonly<
   )
 >;
 
-export type AppsHostDynamicToolsetsResultMessage = Readonly<
-  {
-    type: 'dynamic_toolsets_result';
-    callId: string;
-  } & (
-    | Readonly<{
-        ok: true;
-        toolsetIds: ReadonlyArray<string>;
-      }>
-    | Readonly<{ ok: false; errorText: string }>
-  )
->;
-
 export type AppsHostReminderApplyResultMessage = Readonly<
   {
     type: 'reminder_apply_result';
@@ -209,28 +152,13 @@ export type AppsHostReminderRenderResultMessage = Readonly<
   )
 >;
 
-export type AppsHostRunControlResultMessage = Readonly<
-  {
-    type: 'run_control_result';
-    callId: string;
-  } & (
-    | Readonly<{
-        ok: true;
-        result: DomindsAppRunControlResult;
-      }>
-    | Readonly<{ ok: false; errorText: string }>
-  )
->;
-
 export type AppsHostMessageToKernel =
   | AppsHostReadyMessage
   | AppsHostLogMessage
   | AppsHostToolResultMessage
-  | AppsHostDynamicToolsetsResultMessage
   | AppsHostReminderApplyResultMessage
   | AppsHostReminderUpdateResultMessage
-  | AppsHostReminderRenderResultMessage
-  | AppsHostRunControlResultMessage;
+  | AppsHostReminderRenderResultMessage;
 
 function isRecord(v: unknown): v is Record<string, unknown> {
   return typeof v === 'object' && v !== null && !Array.isArray(v);
@@ -440,57 +368,6 @@ export function parseAppsHostMessageFromKernel(v: unknown): AppsHostMessageFromK
     };
   }
 
-  if (type === 'dynamic_toolsets') {
-    const callId = asString(v['callId']);
-    const ctx = v['ctx'];
-    if (!callId) throw new Error('Invalid dynamic_toolsets message: callId required');
-    if (!isRecord(ctx)) throw new Error('Invalid dynamic_toolsets message: ctx must be object');
-    const memberId = asString(ctx['memberId']);
-    const taskDocPath = asString(ctx['taskDocPath']);
-    const dialogIdRaw = ctx['dialogId'];
-    const dialogId = dialogIdRaw === undefined ? undefined : asString(dialogIdRaw);
-    const mainDialogIdRaw = ctx['mainDialogId'];
-    const mainDialogId = mainDialogIdRaw === undefined ? undefined : asString(mainDialogIdRaw);
-    const agentIdRaw = ctx['agentId'];
-    const agentId = agentIdRaw === undefined ? undefined : asString(agentIdRaw);
-    const sessionSlugRaw = ctx['sessionSlug'];
-    const sessionSlug = sessionSlugRaw === undefined ? undefined : asString(sessionSlugRaw);
-    if (!memberId) throw new Error('Invalid dynamic_toolsets message: ctx.memberId required');
-    if (!taskDocPath) throw new Error('Invalid dynamic_toolsets message: ctx.taskDocPath required');
-    if (dialogIdRaw !== undefined && dialogId === null) {
-      throw new Error('Invalid dynamic_toolsets message: ctx.dialogId must be string when present');
-    }
-    if (mainDialogIdRaw !== undefined && mainDialogId === null) {
-      throw new Error(
-        'Invalid dynamic_toolsets message: ctx.mainDialogId must be string when present',
-      );
-    }
-    if (agentIdRaw !== undefined && agentId === null) {
-      throw new Error('Invalid dynamic_toolsets message: ctx.agentId must be string when present');
-    }
-    if (sessionSlugRaw !== undefined && sessionSlug === null) {
-      throw new Error(
-        'Invalid dynamic_toolsets message: ctx.sessionSlug must be string when present',
-      );
-    }
-    const normalizedDialogId = dialogId ?? undefined;
-    const normalizedMainDialogId = mainDialogId ?? undefined;
-    const normalizedAgentId = agentId ?? undefined;
-    const normalizedSessionSlug = sessionSlug ?? undefined;
-    return {
-      type: 'dynamic_toolsets',
-      callId,
-      ctx: {
-        memberId,
-        taskDocPath,
-        dialogId: normalizedDialogId,
-        mainDialogId: normalizedMainDialogId,
-        agentId: normalizedAgentId,
-        sessionSlug: normalizedSessionSlug,
-      },
-    };
-  }
-
   if (type === 'reminder_apply') {
     const callId = asString(v['callId']);
     const appId = asString(v['appId']);
@@ -572,111 +449,6 @@ export function parseAppsHostMessageFromKernel(v: unknown): AppsHostMessageFromK
         reminder: parseReminderState(ctx['reminder'], 'reminder_render.ctx.reminder'),
         reminderId,
         workLanguage,
-      },
-    };
-  }
-
-  if (type === 'run_control_apply') {
-    const callId = asString(v['callId']);
-    const controlId = asString(v['controlId']);
-    const payload = v['payload'];
-    if (!callId) throw new Error('Invalid run_control_apply message: callId required');
-    if (!controlId) throw new Error('Invalid run_control_apply message: controlId required');
-    if (!isRecord(payload))
-      throw new Error('Invalid run_control_apply message: payload must be object');
-    const dialog = payload['dialog'];
-    const prompt = payload['prompt'];
-    const agentId = asString(payload['agentId']);
-    const taskDocPath = asString(payload['taskDocPath']);
-    const genIterNoRaw = payload['genIterNo'];
-    const source = asString(payload['source']);
-    const input = payload['input'];
-    if (!isRecord(dialog)) throw new Error('Invalid run_control_apply payload: dialog required');
-    const genIterNo =
-      typeof genIterNoRaw === 'number' && Number.isFinite(genIterNoRaw)
-        ? Math.max(0, Math.floor(genIterNoRaw))
-        : null;
-    if (genIterNo === null)
-      throw new Error('Invalid run_control_apply payload: genIterNo required');
-    if (source !== 'drive_dlg_by_user_msg' && source !== 'drive_dialog_by_user_answer') {
-      throw new Error('Invalid run_control_apply payload: source invalid');
-    }
-    if (!isRecord(input))
-      throw new Error('Invalid run_control_apply payload: input must be object');
-
-    const dialogSelfId = asString(dialog['selfId']);
-    const dialogRootId = asString(dialog['rootId']);
-    if (!dialogSelfId || !dialogRootId) {
-      throw new Error('Invalid run_control_apply payload: dialog.selfId/rootId required');
-    }
-    if (!agentId) {
-      throw new Error('Invalid run_control_apply payload: agentId required');
-    }
-    if (!taskDocPath) {
-      throw new Error('Invalid run_control_apply payload: taskDocPath required');
-    }
-
-    const promptParsed = (() => {
-      if (prompt === undefined) return undefined;
-      if (!isRecord(prompt))
-        throw new Error('Invalid run_control_apply payload: prompt must be object');
-      const content = asString(prompt['content']);
-      const msgId = asString(prompt['msgId']);
-      const grammar = asString(prompt['grammar']);
-      const userLanguageCode = asLanguageCode(prompt['userLanguageCode']);
-      const originRaw = asString(prompt['origin']);
-      const origin: 'user' | 'diligence_push' | 'runtime' | undefined =
-        originRaw === 'user' || originRaw === 'diligence_push' || originRaw === 'runtime'
-          ? originRaw
-          : undefined;
-      if (!content) throw new Error('Invalid run_control_apply payload: prompt.content required');
-      if (!msgId) throw new Error('Invalid run_control_apply payload: prompt.msgId required');
-      if (grammar !== 'markdown') {
-        throw new Error("Invalid run_control_apply payload: prompt.grammar must be 'markdown'");
-      }
-      if (!userLanguageCode) {
-        throw new Error('Invalid run_control_apply payload: prompt.userLanguageCode must be zh|en');
-      }
-      return { content, msgId, grammar: 'markdown' as const, userLanguageCode, origin };
-    })();
-
-    const q4hRaw = payload['q4h'];
-    const q4h = (() => {
-      if (q4hRaw === undefined) return undefined;
-      if (!isRecord(q4hRaw))
-        throw new Error('Invalid run_control_apply payload: q4h must be object');
-      const questionId = asString(q4hRaw['questionId']);
-      const continuationTypeRaw = asString(q4hRaw['continuationType']);
-      if (!questionId)
-        throw new Error('Invalid run_control_apply payload: q4h.questionId required');
-      let continuationType: 'answer' | 'followup' | 'retry' | 'new_message';
-      if (continuationTypeRaw === 'answer') {
-        continuationType = 'answer';
-      } else if (continuationTypeRaw === 'followup') {
-        continuationType = 'followup';
-      } else if (continuationTypeRaw === 'retry') {
-        continuationType = 'retry';
-      } else if (continuationTypeRaw === 'new_message') {
-        continuationType = 'new_message';
-      } else {
-        throw new Error('Invalid run_control_apply payload: q4h.continuationType invalid');
-      }
-      return { questionId, continuationType };
-    })();
-
-    return {
-      type: 'run_control_apply',
-      callId,
-      controlId,
-      payload: {
-        dialog: { selfId: dialogSelfId, rootId: dialogRootId },
-        agentId,
-        taskDocPath,
-        genIterNo,
-        prompt: promptParsed,
-        source,
-        input: input as Readonly<Record<string, unknown>>,
-        q4h,
       },
     };
   }

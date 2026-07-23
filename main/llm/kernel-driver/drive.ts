@@ -2603,7 +2603,6 @@ function queuedNewCourseRuntimePromptToKernelPrompt(
     msgId: prompt.msgId,
     grammar: prompt.grammar ?? ('markdown' as const),
     userLanguageCode: prompt.userLanguageCode,
-    runControl: prompt.runControl,
     origin: 'runtime' as const,
     ...(prompt.skipTaskdoc === undefined ? {} : { skipTaskdoc: prompt.skipTaskdoc }),
   };

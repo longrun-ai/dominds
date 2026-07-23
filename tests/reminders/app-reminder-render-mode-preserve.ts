@@ -4,7 +4,6 @@ import type { DomindsAppReminderRenderedMessage } from '@longrun-ai/kernel/app-h
 import type {
   DomindsAppHostToolResult,
   DomindsAppReminderApplyResult,
-  DomindsAppRunControlResult,
 } from '@longrun-ai/kernel/app-json';
 import type { AppsHostClient, EnabledAppForHost } from '../../main/apps-host/client';
 import { DialogStore, MainDialog } from '../../main/dialog';
@@ -60,10 +59,6 @@ async function main(): Promise<void> {
   const fakeClient: AppsHostClient = {
     callTool: async (): Promise<DomindsAppHostToolResult> => {
       throw new Error('callTool should not be used in this test');
-    },
-    listDynamicToolsets: async (): Promise<readonly string[]> => [],
-    applyRunControl: async (): Promise<DomindsAppRunControlResult> => {
-      throw new Error('applyRunControl should not be used in this test');
     },
     applyReminder: async (): Promise<DomindsAppReminderApplyResult> => {
       applyCalls += 1;

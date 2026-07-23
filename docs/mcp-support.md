@@ -130,7 +130,7 @@ Releasing:
 ## File Location
 
 - Primary config file: `.minds/mcp.yaml`
-- If the file does not exist, MCP support is disabled (no dynamic MCP toolsets are registered).
+- If the file does not exist, MCP support is disabled (no MCP toolsets are registered).
 
 ## Mapping: MCP Server → Dominds Toolset
 

@@ -285,13 +285,29 @@ Example / 示例（概念）:
 - EN: Wording rule: when the meaning is **rtws**, prefer writing “rtws (runtime workspace)” (or just “rtws” after the first mention) rather than the ambiguous generic “workspace”.
 - ZH: 用词规则：当语义指向 **rtws** 时，优先写“rtws（运行时工作区）”（或在已定义后只写“rtws”），避免在对外提示/文档中只写“工作区”从而与其他语境的 workspace/workdir 混淆。
 
-### App（应用包）
+### Application Component（应用组件）
 
-- EN: An **App** is a Dominds install/resolve/composition unit. It owns an app id, manifest, team-facing assets, env docs, and may contribute tools, web surfaces, seeds, and related runtime state.
-- ZH: **App（应用包）**是 Dominds 的安装/解析/组合单元。它拥有 app id、manifest、面向团队的资产、环境文档，并可贡献工具、Web 能力、seed 与相关运行态。
+- EN: An **Application Component** is a stable, versioned App-side building block. It may define toolsets, configuration, a state namespace, business handlers, and UI contributions, but it has no independent application identity or global runtime authority.
+- ZH: **应用组件（Application Component）**是 App 侧稳定、版本化的构建单元。它可以定义工具集、配置、状态命名空间、业务处理器与 UI contribution，但不拥有独立应用身份或全局运行主权。
 
-- EN: Use **App** for this product/package concept. Do NOT use it as a synonym for “skill”, “workflow”, or “App Host”.
-- ZH: “App” 只用于指代这一产品/能力包概念；不要把它当成“skill”“流程定义”或“App 宿主”的同义词。
+- EN: A component artifact and definition have a relatively static lifecycle. A component instance exists only inside one App composition revision and is activated, drained, or disposed with that revision. Do not use “component” as a synonym for App or mini-App.
+- ZH: 组件制品与定义的生命周期相对静态；组件实例只存在于某个 App composition revision 内，并随该 revision 激活、drain 或释放。不要把“组件”当成 App 或 mini-App 的同义词。
+
+### App（应用）
+
+- EN: An **App** is the stable business runtime identity and the sole composition root. Its lifecycle is comparatively dynamic: it may explicitly add, remove, or replace Application Components as business needs change.
+- ZH: **App（应用）**是稳定的业务运行身份，也是唯一组合根。它的生命周期相对动态，可以按业务需要显式增加、移除或替换应用组件。
+
+- EN: Use **App** for the composed business application, not for a component artifact, skill, workflow, package, or App Host.
+- ZH: “App” 只用于指代组合后的具体业务应用，不是组件制品、skill、流程定义、软件包或 App 宿主的同义词。
+
+### App Composition Revision（App 组合修订）
+
+- EN: An **App Composition Revision** is an atomically resolved snapshot of one App's selected component versions, configuration, requirement bindings, and policies. Every in-flight action belongs to exactly one revision.
+- ZH: **App 组合修订（App Composition Revision）**是某个 App 所选组件版本、配置、依赖绑定与策略经过原子解析后形成的快照。每个进行中的动作必须且只能归属于一个 revision。
+
+- EN: Recomposition creates a new revision. Activating it is a Kernel-controlled operation that must complete validation, state migration, draining, and rollback preparation before the current-revision pointer changes.
+- ZH: App 重组会产生新的 revision。激活新 revision 是 Kernel 受控动作；只有校验、状态迁移、drain 与失败回滚准备全部完成后，当前 revision 指针才能切换。
 
 ### Skill（技能文档）
 
@@ -303,24 +319,24 @@ Example / 示例（概念）:
 
 ### Toolset（工具集）
 
-- EN: A **toolset** is a stable team-facing capability bundle name used for exposure, assignment, and policy (for example `playwright_interactive`).
-- ZH: **工具集（toolset）**是面向团队暴露、授予与调度的稳定能力名（例如 `playwright_interactive`）。
+- EN: A **toolset** is a stable team-facing capability bundle defined by an Application Component, selected through an App composition, and bound to an execution principal (for example `playwright_interactive`).
+- ZH: **工具集（toolset）**是由应用组件定义、经 App 组合选用、再绑定给执行主体的稳定能力名（例如 `playwright_interactive`）。
 
 - EN: Use “toolset” when you mean the capability surface or grant boundary. Do not call that concept a “workflow” or a “manual”.
 - ZH: 当语义指向能力面或授予边界时，应使用“工具集”；不要把这个概念写成“流程”或“手册”。
 
 ### Toolset Operating Manual（工具集操作手册）
 
-- EN: A **Toolset Operating Manual** is guidance bundled with a toolset or app that explains how to operate a capability. It is guidance, not the capability itself.
-- ZH: **工具集操作手册（Toolset Operating Manual）**是与工具集或 App 一起分发的操作指导，用于说明如何使用某项能力。它是指导层，不是能力本身。
+- EN: A **Toolset Operating Manual** is guidance bundled with a component-provided toolset that explains how to operate a capability. It is guidance, not the capability itself.
+- ZH: **工具集操作手册（Toolset Operating Manual）**是与组件所提供工具集一起分发的操作指导，用于说明如何使用某项能力。它是指导层，不是能力本身。
 
 - EN: Use this as the formal glossary term. In ordinary prose, the shorter `toolset manual` is acceptable; avoid vaguer labels such as `playbook`.
 - ZH: 在术语表与正式定义中，优先使用“工具集操作手册（Toolset Operating Manual）”这一全称；在一般英文正文中，可简写为 `toolset manual`。避免使用更模糊的 `playbook` 等说法。
 
 ### App Host（App 宿主）
 
-- EN: The **App Host** is the runtime-side component that executes an app's contributed handlers/tools and speaks the kernel↔app IPC contract.
-- ZH: **App 宿主（App Host）**是运行时侧组件，负责执行 app 贡献的处理器/工具，并承载 kernel ↔ app 之间的 IPC 契约。
+- EN: The **App Host** is the runtime-side process boundary that executes handlers and tools belonging to an App's active composition revision and speaks the Kernel↔App IPC contract.
+- ZH: **App 宿主（App Host）**是运行时侧的进程边界，负责执行 App 当前 composition revision 所含的处理器与工具，并承载 Kernel ↔ App 之间的 IPC 契约。
 
 - EN: Use “App Host” when you mean the runtime component. When you mean the capability surface exposed by an app, prefer “app-provided tools” rather than “app-host tools”.
 - ZH: 当语义指向运行时组件时，用“App 宿主”；当语义指向 app 暴露出来的能力面时，优先写“由 App 提供的工具”，不要写“app-host tools”。
@@ -330,8 +346,8 @@ Example / 示例（概念）:
 
 ### Workflow（流程定义）
 
-- EN: In Dominds terminology, **workflow** should be reserved for hard process mechanisms with explicit state/transition semantics (for example `phase-gate`).
-- ZH: 在 Dominds 术语体系中，**workflow** 应优先保留给带显式状态/转移语义的硬流程机制（例如 `phase-gate`）。
+- EN: In Dominds terminology, **workflow** should be reserved for hard process mechanisms with explicit state/transition semantics.
+- ZH: 在 Dominds 术语体系中，**workflow** 应优先保留给带显式状态/转移语义的硬流程机制。
 
 - EN: Do not use “workflow” for ordinary guidance, checklists, toolset operating manuals, or soft operating suggestions. In Chinese docs, prefer “流程定义” for the hard-mechanism sense and “操作流程” only for loose human guidance when needed.
 - ZH: 不要把普通指导、检查清单、工具集操作手册或软性的操作建议称为“workflow”。中文文档中，硬机制语义优先写“流程定义”；若只是松散的人类操作指导，必要时才写“操作流程”。

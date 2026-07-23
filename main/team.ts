@@ -12,7 +12,6 @@ import YAML from 'yaml';
 import type { ProblemI18nText, WorkspaceProblem } from '@longrun-ai/kernel/types/problems';
 import { formatUnifiedTimestamp } from '@longrun-ai/kernel/utils/time';
 import { loadEnabledAppsSnapshot } from './apps/enabled-apps';
-import { listDynamicAppToolsetsForMember } from './apps/runtime';
 import { loadEnabledAppTeammates, type AppTeammatesSnippet } from './apps/teammates';
 import { LlmConfig } from './llm/client';
 import { log } from './log';
@@ -759,19 +758,17 @@ export namespace Team {
      */
     listResolvedToolsetNames(options?: {
       onMissing?: 'warn' | 'silent';
-      dynamicToolsetNames?: readonly string[];
       declaredMcpToolsetNames?: ReadonlySet<string>;
       invalidMcpToolsetNames?: ReadonlySet<string>;
     }): string[] {
       const onMissing = options?.onMissing ?? 'warn';
-      const dynamicToolsetNames = options?.dynamicToolsetNames ?? [];
       const declaredMcpToolsetNames = options?.declaredMcpToolsetNames;
       const invalidMcpToolsetNames = options?.invalidMcpToolsetNames;
-      const staticToolsets = this.toolsets ?? [];
-      if (staticToolsets.length === 0 && dynamicToolsetNames.length === 0) return [];
+      const toolsets = this.toolsets ?? [];
+      if (toolsets.length === 0) return [];
 
       const excludedToolsets = new Set<string>();
-      for (const entry of staticToolsets) {
+      for (const entry of toolsets) {
         if (entry.startsWith('!') && entry.length > 1) {
           excludedToolsets.add(entry.slice(1));
         }
@@ -784,7 +781,7 @@ export namespace Team {
       const isWildcardAssignableToolset = (name: string): boolean =>
         getToolsetMeta(name)?.wildcardAssignable !== false;
 
-      for (const toolsetName of [...staticToolsets, ...dynamicToolsetNames]) {
+      for (const toolsetName of toolsets) {
         if (toolsetName.startsWith('!')) continue;
 
         const toolsetNames =
@@ -840,7 +837,6 @@ export namespace Team {
     listTools(options?: {
       onMissingToolset?: 'warn' | 'silent';
       onMissingTool?: 'warn' | 'silent';
-      dynamicToolsetNames?: readonly string[];
       declaredMcpToolsetNames?: ReadonlySet<string>;
       invalidMcpToolsetNames?: ReadonlySet<string>;
     }): Tool[] {
@@ -848,14 +844,12 @@ export namespace Team {
       const seenNames = new Set<string>();
       const onMissingToolset = options?.onMissingToolset ?? 'warn';
       const onMissingTool = options?.onMissingTool ?? 'warn';
-      const dynamicToolsetNames = options?.dynamicToolsetNames ?? [];
       const declaredMcpToolsetNames = options?.declaredMcpToolsetNames;
       const invalidMcpToolsetNames = options?.invalidMcpToolsetNames;
 
       // Process toolsets (in declaration order)
       for (const toolsetName of this.listResolvedToolsetNames({
         onMissing: onMissingToolset,
-        dynamicToolsetNames,
         declaredMcpToolsetNames,
         invalidMcpToolsetNames,
       })) {
@@ -906,21 +900,6 @@ export namespace Team {
 
       return Array.from(toolMap.values());
     }
-  }
-
-  export async function listDynamicToolsetNamesForMember(params: {
-    member: Team.Member;
-    taskDocPath?: string;
-    rtwsRootAbs?: string;
-  }): Promise<readonly string[]> {
-    if (params.taskDocPath === undefined || params.taskDocPath.trim() === '') {
-      return [];
-    }
-    return await listDynamicAppToolsetsForMember({
-      rtwsRootAbs: params.rtwsRootAbs ?? domindsRtwsRootAbs(),
-      taskDocPath: params.taskDocPath,
-      memberId: params.member.id,
-    });
   }
 
   // Team config support: load .minds/team.yaml

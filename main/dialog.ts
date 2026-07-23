@@ -31,7 +31,6 @@ import type {
   DialogQueuedPromptState,
   DialogQueuedRegisteredAssignmentUpdateState,
   DialogQueuedUserGenerationBoundaryState,
-  DialogRunControlSpec,
   DialogRuntimeGuidePrompt,
   DialogRuntimePrompt,
   DialogRuntimeReplyPrompt,
@@ -114,16 +113,6 @@ export class InvalidReminderIndexError extends Error {
     this.total = total;
   }
 }
-
-type NewCourseHookResult =
-  | { kind: 'continue'; prompt: DialogRuntimePrompt }
-  | { kind: 'reject'; errorText: string };
-
-type NewCourseHook = (args: {
-  dialog: Dialog;
-  prompt: DialogRuntimePrompt;
-  runControl?: DialogRunControlSpec;
-}) => Promise<NewCourseHookResult>;
 
 type ReminderCollectionProcessResult = Readonly<{
   changed: boolean;
@@ -418,8 +407,6 @@ export abstract class Dialog {
   // Prompts queued for future drives (set by startNewCourse or deferred-resume flows).
   protected _queuedPrompts: DialogQueuedPromptState[] = [];
   protected _driveIntents: DriveIntent[] = [];
-  protected _activeRunControlSpec?: DialogRunControlSpec;
-  protected _newCourseHook?: NewCourseHook;
   protected _driveIntentMode: 'legacy' | 'kernel' = 'legacy';
   // Course prefix messages injected into LLM context on every course.
   // This is an in-process cache only (not persisted), intended for small, stable “felt-sense” context
@@ -1314,7 +1301,6 @@ export abstract class Dialog {
             }
           }
         })(),
-        runControl: nextPrompt.runControl,
       };
       return nextPrompt;
     }
@@ -1485,7 +1471,6 @@ export abstract class Dialog {
           }
         }
       })(),
-      runControl: state.runControl,
     });
     this._updatedAt = formatUnifiedTimestamp(new Date());
   }
@@ -1569,7 +1554,6 @@ export abstract class Dialog {
       userLanguageCode: options.userLanguageCode ?? this._lastUserLanguageCode,
       origin: 'user',
       q4hAnswerCallId: options.q4hAnswerCallId,
-      runControl: undefined,
     };
     this.enqueueQueuedPromptState(created);
     return created;
@@ -1605,7 +1589,6 @@ export abstract class Dialog {
         tellaskReplyDirective: options.tellaskReplyDirective,
         skipTaskdoc: options.skipTaskdoc,
         calleeDialogReplyTarget: options.calleeDialogReplyTarget,
-        runControl: undefined,
       };
       this.enqueueQueuedPromptState(created);
       return created;
@@ -1621,7 +1604,6 @@ export abstract class Dialog {
       tellaskReplyDirective: options.tellaskReplyDirective,
       skipTaskdoc: options.skipTaskdoc ?? existing.skipTaskdoc,
       calleeDialogReplyTarget: options.calleeDialogReplyTarget,
-      runControl: undefined,
     };
     this.replaceQueuedPromptState(existing.msgId, merged);
     this._updatedAt = formatUnifiedTimestamp(new Date());
@@ -1649,7 +1631,6 @@ export abstract class Dialog {
     grammar: 'markdown';
     userLanguageCode?: LanguageCode;
     origin: 'runtime';
-    runControl: undefined;
   } {
     const trimmed = options.prompt.trim();
     if (!trimmed) {
@@ -1661,7 +1642,6 @@ export abstract class Dialog {
       grammar: options.grammar,
       userLanguageCode: options.userLanguageCode ?? this._lastUserLanguageCode,
       origin: 'runtime',
-      runControl: undefined,
     };
   }
 
@@ -1779,18 +1759,6 @@ export abstract class Dialog {
     return before - this._queuedPrompts.length;
   }
 
-  public setActiveRunControlSpec(spec?: DialogRunControlSpec): void {
-    this._activeRunControlSpec = spec;
-  }
-
-  public getActiveRunControlSpec(): DialogRunControlSpec | undefined {
-    return this._activeRunControlSpec;
-  }
-
-  public setNewCourseHook(hook?: NewCourseHook): void {
-    this._newCourseHook = hook;
-  }
-
   public enqueueDriveIntent(intent: DriveIntent): void {
     this._driveIntents.push(intent);
     this._updatedAt = formatUnifiedTimestamp(new Date());
@@ -1816,9 +1784,7 @@ export abstract class Dialog {
   public async startNewCourse(
     newCoursePrompt: string,
     options?: {
-      runControl?: DialogRunControlSpec;
       reason?: string;
-      skipRunControlHook?: boolean;
       skipEnqueueIntent?: boolean;
     },
   ): Promise<DialogRuntimePrompt> {
@@ -1858,19 +1824,7 @@ export abstract class Dialog {
             origin: 'runtime',
           };
 
-    const runControlSpec = options?.runControl ?? this._activeRunControlSpec;
-    let nextPrompt: DialogRuntimePrompt = basePrompt;
-    if (this._newCourseHook && options?.skipRunControlHook !== true) {
-      const hookResult = await this._newCourseHook({
-        dialog: this,
-        prompt: basePrompt,
-        runControl: runControlSpec,
-      });
-      if (hookResult.kind === 'reject') {
-        throw new Error(hookResult.errorText);
-      }
-      nextPrompt = hookResult.prompt;
-    }
+    const nextPrompt: DialogRuntimePrompt = basePrompt;
 
     // Clear all messages and Q4H questions for mental clarity
     this.msgs.length = 0;
@@ -1902,7 +1856,6 @@ export abstract class Dialog {
         kind: 'new_course',
         prompt: normalized,
         reason: options?.reason,
-        runControl: runControlSpec,
       });
     }
     return normalized;

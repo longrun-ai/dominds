@@ -5,7 +5,6 @@ import type {
 import type {
   DialogDiligencePrompt,
   DialogPrompt,
-  DialogRunControlSpec,
   DialogRuntimeGuidePrompt,
   DialogRuntimePrompt,
   DialogRuntimeReplyPrompt,
@@ -18,8 +17,6 @@ import type {
   DialogBusinessContinuation,
 } from '@longrun-ai/kernel/types/storage';
 import type { Dialog, DialogID } from '../../dialog';
-
-export type KernelDriverRunControl = DialogRunControlSpec;
 
 export type KernelDriverDriveSource =
   | 'unspecified'
@@ -53,7 +50,6 @@ export type KernelDriverDriveOptions = Readonly<{
    * contract, not a place to merge unrelated continuation semantics.
    */
   businessContinuation?: DialogBusinessContinuation;
-  runControl?: KernelDriverRunControl;
   source: KernelDriverDriveSource;
   reason: string;
 }>;
@@ -66,20 +62,13 @@ export type KernelDriverCalleeReplyTarget = {
   callSiteGenseq: CallSiteGenseqNo;
 };
 
-type KernelDriverPromptWithRunControl<TPrompt extends DialogPrompt> = TPrompt & {
-  runControl?: KernelDriverRunControl;
-};
-
-export type KernelDriverUserPrompt = KernelDriverPromptWithRunControl<DialogUserPrompt>;
-export type KernelDriverDiligencePrompt = KernelDriverPromptWithRunControl<DialogDiligencePrompt>;
-export type KernelDriverRuntimeGuidePrompt =
-  KernelDriverPromptWithRunControl<DialogRuntimeGuidePrompt>;
-export type KernelDriverRuntimeReplyPrompt =
-  KernelDriverPromptWithRunControl<DialogRuntimeReplyPrompt>;
-export type KernelDriverRuntimeSideDialogPrompt =
-  KernelDriverPromptWithRunControl<DialogRuntimeSideDialogPrompt>;
-export type KernelDriverRuntimePrompt = KernelDriverPromptWithRunControl<DialogRuntimePrompt>;
-export type KernelDriverPrompt = KernelDriverPromptWithRunControl<DialogPrompt>;
+export type KernelDriverUserPrompt = DialogUserPrompt;
+export type KernelDriverDiligencePrompt = DialogDiligencePrompt;
+export type KernelDriverRuntimeGuidePrompt = DialogRuntimeGuidePrompt;
+export type KernelDriverRuntimeReplyPrompt = DialogRuntimeReplyPrompt;
+export type KernelDriverRuntimeSideDialogPrompt = DialogRuntimeSideDialogPrompt;
+export type KernelDriverRuntimePrompt = DialogRuntimePrompt;
+export type KernelDriverPrompt = DialogPrompt;
 
 export type KernelDriverDriveCallOptions =
   | Readonly<{

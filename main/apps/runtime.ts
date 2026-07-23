@@ -30,7 +30,6 @@ import {
 } from '../tools/registry';
 
 import { startAppsHost, type AppsHostClient, type EnabledAppForHost } from '../apps-host/client';
-import { registerAppDialogRunControl, unregisterAppDialogRunControl } from './dialog-run-controls';
 import { loadEnabledAppsSnapshot } from './enabled-apps';
 import { reconcileAppsResolutionIssuesToProblems } from './problems';
 
@@ -49,24 +48,7 @@ type RegisteredAppArtifacts = Readonly<{
   signature: string;
   toolNames: ReadonlyArray<string>;
   toolsetIds: ReadonlyArray<string>;
-  dialogRunControlIds: ReadonlyArray<string>;
 }>;
-
-export type DynamicAppToolAvailabilityResult = Readonly<
-  | {
-      status: 'ready';
-      toolsetIds: ReadonlyArray<string>;
-    }
-  | {
-      status: 'error';
-      toolsetIds: ReadonlyArray<string>;
-      errorText: string;
-    }
-  | {
-      status: 'not_applicable';
-      toolsetIds: ReadonlyArray<string>;
-    }
->;
 
 const registeredAppArtifactsById = new Map<string, RegisteredAppArtifacts>();
 
@@ -338,9 +320,6 @@ function unregisterRegisteredAppArtifacts(appId: string): void {
   for (const toolsetId of registered.toolsetIds) {
     unregisterToolset(toolsetId);
   }
-  for (const controlId of registered.dialogRunControlIds) {
-    unregisterAppDialogRunControl(controlId);
-  }
   unregisterAppReminderOwnersForApps({ appIds: [appId] });
   registeredAppArtifactsById.delete(appId);
 }
@@ -361,7 +340,6 @@ async function ensureAppsHostReadyForToolCalls(): Promise<AppsHostClient> {
 function registerAppArtifacts(app: EnabledAppForHost): void {
   const toolNames: string[] = [];
   const toolsetIds: string[] = [];
-  const dialogRunControlIds: string[] = [];
   const toolsets = app.installJson.contributes?.toolsets ?? [];
 
   for (const ts of toolsets) {
@@ -427,16 +405,6 @@ function registerAppArtifacts(app: EnabledAppForHost): void {
     toolNames.push(...tools.map((tool) => tool.name));
   }
 
-  const controls = app.installJson.contributes?.dialogRunControls ?? [];
-  for (const control of controls) {
-    registerAppDialogRunControl({
-      id: control.id,
-      appId: app.appId,
-      descriptionI18n: control.descriptionI18n,
-    });
-    dialogRunControlIds.push(control.id);
-  }
-
   ensureAppReminderOwnersRegistered({
     enabledApps: [app],
     resolveHostClient: waitForAppsHostClient,
@@ -446,7 +414,6 @@ function registerAppArtifacts(app: EnabledAppForHost): void {
     signature: computeAppSignature(app),
     toolNames,
     toolsetIds,
-    dialogRunControlIds,
   });
 }
 
@@ -556,81 +523,6 @@ export async function registerEnabledAppsToolProxies(params: {
   );
   refreshQueue = run.catch(() => undefined);
   await run;
-}
-
-export async function listDynamicAppToolsetsForMember(_params: {
-  rtwsRootAbs: string;
-  taskDocPath: string;
-  memberId: string;
-  dialogId?: string;
-  mainDialogId?: string;
-  agentId?: string;
-  sessionSlug?: string;
-}): Promise<readonly string[]> {
-  const result = await resolveDynamicAppToolAvailabilityForMember(_params);
-  return result.status === 'ready' ? result.toolsetIds : [];
-}
-
-export async function resolveDynamicAppToolAvailabilityForMember(_params: {
-  rtwsRootAbs: string;
-  taskDocPath: string;
-  memberId: string;
-  dialogId?: string;
-  mainDialogId?: string;
-  agentId?: string;
-  sessionSlug?: string;
-}): Promise<DynamicAppToolAvailabilityResult> {
-  if (_params.taskDocPath.trim() === '') {
-    return { status: 'not_applicable', toolsetIds: [] };
-  }
-  try {
-    await registerEnabledAppsToolProxies({ rtwsRootAbs: _params.rtwsRootAbs });
-  } catch (error: unknown) {
-    const err = asError(error);
-    log.warn(
-      `Failed to refresh enabled app tool proxies while resolving dynamic toolsets for member '${_params.memberId}'.`,
-      err,
-    );
-    return {
-      status: 'error',
-      toolsetIds: [],
-      errorText: err.message,
-    };
-  }
-  if (!appsRuntimeConfig && !appsHostClient && !appsHostTransition) {
-    return { status: 'not_applicable', toolsetIds: [] };
-  }
-  if (!appsHostClient && !appsHostTransition) {
-    return { status: 'not_applicable', toolsetIds: [] };
-  }
-  try {
-    const host = await ensureAppsHostReadyForToolCalls();
-    const toolsetIds = await host.listDynamicToolsets({
-      memberId: _params.memberId,
-      taskDocPath: _params.taskDocPath,
-      ...(typeof _params.dialogId === 'string' && _params.dialogId.trim() !== ''
-        ? { dialogId: _params.dialogId.trim() }
-        : {}),
-      ...(typeof _params.mainDialogId === 'string' && _params.mainDialogId.trim() !== ''
-        ? { mainDialogId: _params.mainDialogId.trim() }
-        : {}),
-      ...(typeof _params.agentId === 'string' && _params.agentId.trim() !== ''
-        ? { agentId: _params.agentId.trim() }
-        : {}),
-      ...(typeof _params.sessionSlug === 'string' && _params.sessionSlug.trim() !== ''
-        ? { sessionSlug: _params.sessionSlug.trim() }
-        : {}),
-    });
-    return { status: 'ready', toolsetIds };
-  } catch (error: unknown) {
-    const err = asError(error);
-    log.warn(`Failed to load dynamic app toolsets for member '${_params.memberId}'.`, err);
-    return {
-      status: 'error',
-      toolsetIds: [],
-      errorText: err.message,
-    };
-  }
 }
 
 export async function initAppsRuntime(params: {

@@ -66,7 +66,7 @@ function printUsage(): void {
   console.log('');
   console.log('Print agent system prompt and memories with filtering flags.');
   console.log(
-    '`--audit` runs prompt audit via hidden teammate @fuxi using default LLM config (skips when unavailable), and also includes static toolset checks (registry vs `.minds/mcp.yaml` declarations).',
+    '`--audit` runs prompt audit via hidden teammate @fuxi using default LLM config (skips when unavailable), and also checks toolset consistency between the registry and `.minds/mcp.yaml` declarations.',
   );
   console.log('When <member-id> is omitted, reads all visible team members.');
   console.log('');

@@ -6,21 +6,6 @@ import type {
 } from './storage';
 export type { DialogCalleeReplyTarget } from './storage';
 
-export type DialogRunControlSource =
-  | 'drive_dlg_by_user_msg'
-  | 'drive_dialog_by_user_answer'
-  | 'start_new_course';
-
-export type DialogRunControlSpec = Readonly<{
-  controlId: string;
-  input: Readonly<Record<string, unknown>>;
-  source: DialogRunControlSource;
-  q4h?: Readonly<{
-    questionId: string;
-    continuationType: 'answer' | 'followup' | 'retry' | 'new_message';
-  }>;
-}>;
-
 type DialogPromptBase = Readonly<{
   content: string;
   contentItems?: FuncResultContentItem[];
@@ -92,7 +77,6 @@ type DialogQueuedPromptStateCommon = Readonly<{
   msgId: string;
   grammar?: 'markdown';
   userLanguageCode?: LanguageCode;
-  runControl?: DialogRunControlSpec;
 }>;
 
 export type DialogQueuedUserGenerationBoundaryState = DialogQueuedPromptStateCommon &
@@ -154,11 +138,9 @@ export type DriveIntent =
   | Readonly<{
       kind: 'prompt';
       prompt: DialogPrompt;
-      runControl?: DialogRunControlSpec;
     }>
   | Readonly<{
       kind: 'new_course';
       prompt: DialogRuntimePrompt;
       reason?: string;
-      runControl?: DialogRunControlSpec;
     }>;

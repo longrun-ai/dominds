@@ -9,7 +9,6 @@ export type ToolAvailabilityLayerStatus = 'ready' | 'error' | 'not_applicable';
 export type ToolAvailabilityUpdateReason =
   | 'registry_changed'
   | 'member_binding_changed'
-  | 'app_dynamic_availability_changed'
   | 'runtime_lease_changed';
 
 export type ToolInfo = {
@@ -52,20 +51,10 @@ export type MemberToolBindingLayer = Readonly<{
   memberId?: string;
   declaredToolsetSelectors: ReadonlyArray<string>;
   declaredToolIds: ReadonlyArray<string>;
-  resolvedStaticToolsetIds: ReadonlyArray<string>;
+  resolvedToolsetIds: ReadonlyArray<string>;
   resolvedDirectToolIds: ReadonlyArray<string>;
   unresolvedDeclaredToolsetIds: ReadonlyArray<string>;
   unresolvedDeclaredToolIds: ReadonlyArray<string>;
-  errorText?: string;
-}>;
-
-export type AppDynamicToolAvailabilityLayer = Readonly<{
-  status: ToolAvailabilityLayerStatus;
-  revision: string;
-  memberId?: string;
-  taskDocPath?: string;
-  toolsetIds: ReadonlyArray<string>;
-  unresolvedToolsetIds: ReadonlyArray<string>;
   errorText?: string;
 }>;
 
@@ -97,7 +86,6 @@ export type ToolAvailabilitySnapshot = Readonly<{
   layers: Readonly<{
     registry: ToolAvailabilityRegistryLayer;
     memberBinding: MemberToolBindingLayer;
-    appDynamicAvailability: AppDynamicToolAvailabilityLayer;
     runtimeLease: McpRuntimeLeaseLayer;
   }>;
   composition: ToolAvailabilityComposition;

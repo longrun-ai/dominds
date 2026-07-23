@@ -18,7 +18,7 @@ We want a safe way for a “team manager” agent (typically the shadow teammate
 
 - Create/update `.minds/team.yaml` (team roster + permissions + toolsets).
 - Create/update `.minds/llm.yaml` (LLM provider definitions overriding defaults).
-- Create/update `.minds/mcp.yaml` (MCP server definitions that register dynamic toolsets).
+- Create/update `.minds/mcp.yaml` (MCP server definitions that register toolsets).
 - Create/update `.minds/team/<member>/{persona,knowhow,pitfalls}.md` (agent minds).
 
 At the same time, we do **not** want to hand that agent full rtws read/write (e.g. the
@@ -229,9 +229,9 @@ must cover (at minimum) the information that used to live there:
   - Explain its boundary relative to `persona/knowhow/pitfalls`, skills, and priming.
 - `!toolsets`:
   - Explain that the visible toolsets include built-in toolsets, toolsets exposed by installed
-    apps, and MCP toolsets dynamically registered from `.minds/mcp.yaml`.
-  - Explain why this topic must be rendered from runtime state rather than maintained as a static
-    list in the design docs.
+    apps, and MCP toolsets registered from `.minds/mcp.yaml`.
+  - Explain why this topic must be rendered from current runtime state rather than maintained as an
+    inventory in the design docs.
 
 ## Dynamic Loading from the Dominds Installation (Runtime Resources)
 
@@ -256,16 +256,15 @@ Recommended sources by topic:
   - Load from the in-memory registries at runtime (`listToolsets()` / `listTools()` in
     `dominds/main/tools/registry.ts`), rather than maintaining a separate list.
 
-### Why `toolsets` Must Stay a Dynamic Topic
+### Why the `toolsets` Inventory Must Come from Runtime State
 
 - `toolsets` is not a stable inventory that should be hardcoded in a design document.
 - The visible toolsets are jointly determined by:
   - framework built-ins
   - toolsets exposed by the currently installed Dominds apps
   - MCP toolsets mapped at runtime from `.minds/mcp.yaml` `servers.<serverId>`
-- The MCP portion is inherently **dynamic**: teams can add/remove servers, rename exposure, and
-  constrain tool exposure per rtws, so the resulting toolset set changes with the live installation
-  and workspace state.
+- Teams can add/remove MCP servers, rename exposure, and constrain tool exposure per rtws, so the
+  resulting toolset set changes with the live installation and workspace state.
 - This is intentional. The design binds capability discovery to the actual runtime environment
   instead of to a static document that will drift:
   - it avoids maintaining a doomed-to-drift toolset list in the design docs

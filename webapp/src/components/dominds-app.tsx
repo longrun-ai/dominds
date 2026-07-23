@@ -12017,11 +12017,6 @@ export class DomindsApp extends HTMLElement {
         res.data.layers.memberBinding.errorText.trim() !== ''
           ? [res.data.layers.memberBinding.errorText.trim()]
           : []),
-        ...(res.data.layers.appDynamicAvailability.status === 'error' &&
-        typeof res.data.layers.appDynamicAvailability.errorText === 'string' &&
-        res.data.layers.appDynamicAvailability.errorText.trim() !== ''
-          ? [res.data.layers.appDynamicAvailability.errorText.trim()]
-          : []),
         ...(res.data.layers.runtimeLease.status === 'error' &&
         typeof res.data.layers.runtimeLease.errorText === 'string' &&
         res.data.layers.runtimeLease.errorText.trim() !== ''

@@ -7,10 +7,6 @@ import type {
 } from '@longrun-ai/kernel/types/storage';
 import { generateShortId } from '@longrun-ai/kernel/utils/id';
 import {
-  applyRegisteredAppDialogRunControls,
-  renderAppRunControlBlockForPreDrive,
-} from '../../apps/run-control';
-import {
   buildSideDialogAssignmentPromptMeta,
   DialogID,
   SideDialog,
@@ -96,7 +92,6 @@ type RuntimeReplyReminderPrompt = Readonly<{
   msgId: string;
   grammar?: KernelDriverPrompt['grammar'];
   userLanguageCode?: KernelDriverPrompt['userLanguageCode'];
-  runControl?: undefined;
   origin: 'runtime';
   tellaskReplyDirective: KernelDriverRuntimeReplyPrompt['tellaskReplyDirective'];
   skipTaskdoc?: undefined;
@@ -108,7 +103,6 @@ type RuntimeSideDialogReplyReminderPrompt = Readonly<{
   msgId: string;
   grammar?: KernelDriverPrompt['grammar'];
   userLanguageCode?: KernelDriverPrompt['userLanguageCode'];
-  runControl?: undefined;
   origin: 'runtime';
   tellaskReplyDirective: KernelDriverRuntimeSideDialogPrompt['tellaskReplyDirective'];
   skipTaskdoc?: undefined;
@@ -1244,80 +1238,6 @@ function resolveDriveRequestSource(
   return 'unspecified';
 }
 
-function resolveAppRunControlSource(args: {
-  humanPrompt: KernelDriverPrompt | undefined;
-  effectivePrompt: KernelDriverPrompt | undefined;
-  driveSource: KernelDriverDriveSource;
-}): 'drive_dlg_by_user_msg' | 'drive_dialog_by_user_answer' | null {
-  if (args.driveSource === 'ws_user_message') {
-    return 'drive_dlg_by_user_msg';
-  }
-  if (args.driveSource === 'ws_user_answer') {
-    return 'drive_dialog_by_user_answer';
-  }
-  const prompt =
-    args.humanPrompt?.origin === 'user'
-      ? args.humanPrompt
-      : args.effectivePrompt?.origin === 'user'
-        ? args.effectivePrompt
-        : undefined;
-  if (!prompt) {
-    return null;
-  }
-  return typeof prompt.q4hAnswerCallId === 'string' && prompt.q4hAnswerCallId.trim() !== ''
-    ? 'drive_dialog_by_user_answer'
-    : 'drive_dlg_by_user_msg';
-}
-
-async function applyRegisteredDialogRunControlsBeforeDrive(args: {
-  dialog: KernelDriverDriveArgs[0];
-  humanPrompt: KernelDriverPrompt | undefined;
-  effectivePrompt: KernelDriverPrompt | undefined;
-  driveSource: KernelDriverDriveSource;
-  genIterNo: number;
-}): Promise<void> {
-  const source = resolveAppRunControlSource({
-    humanPrompt: args.humanPrompt,
-    effectivePrompt: args.effectivePrompt,
-    driveSource: args.driveSource,
-  });
-  if (!source) {
-    return;
-  }
-  const prompt =
-    args.humanPrompt?.origin === 'user'
-      ? args.humanPrompt
-      : args.effectivePrompt?.origin === 'user'
-        ? args.effectivePrompt
-        : undefined;
-  const result = await applyRegisteredAppDialogRunControls({
-    dialog: {
-      selfId: args.dialog.id.selfId,
-      rootId: args.dialog.id.rootId,
-    },
-    agentId: args.dialog.agentId,
-    taskDocPath: args.dialog.taskDocPath,
-    genIterNo: args.genIterNo,
-    prompt: prompt
-      ? {
-          content: prompt.content,
-          msgId: prompt.msgId,
-          grammar: prompt.grammar,
-          userLanguageCode: prompt.userLanguageCode ?? getWorkLanguage(),
-          origin: prompt.origin,
-        }
-      : undefined,
-    source,
-    input: {},
-  });
-  if (result.kind === 'reject') {
-    throw new Error(result.errorText);
-  }
-  if (result.kind === 'block') {
-    throw new Error(renderAppRunControlBlockForPreDrive(result.block));
-  }
-}
-
 async function inspectSideDialogBusinessContinuationDrive(args: {
   dialog: SideDialog;
   driveOptions: KernelDriverDriveOptions | undefined;
@@ -1516,7 +1436,6 @@ async function resolveEffectivePrompt(
           msgId: queuedPrompt.msgId,
           grammar: queuedPrompt.grammar ?? 'markdown',
           userLanguageCode: normalizedUserLanguageCode,
-          runControl: queuedPrompt.runControl,
         };
         switch (queuedPrompt.kind) {
           case 'user_generation_boundary':
@@ -2086,13 +2005,6 @@ export async function executeDriveRound(args: {
       });
       return;
     }
-    await applyRegisteredDialogRunControlsBeforeDrive({
-      dialog,
-      humanPrompt,
-      effectivePrompt,
-      driveSource,
-      genIterNo: args.runtime.totalGenIterations,
-    });
     if (resolvedPrompt.fromQueuedPrompt) {
       const consumed: QueuedPrompt | undefined = dialog.takeQueuedPrompt();
       if (!consumed || consumed.msgId !== effectivePrompt?.msgId) {
@@ -2656,7 +2568,6 @@ export async function executeDriveRound(args: {
               msgId: followUp.msgId,
               grammar: followUp.grammar ?? 'markdown',
               userLanguageCode: normalizedUserLanguageCode,
-              runControl: followUp.runControl,
             };
             switch (followUp.kind) {
               case 'user_generation_boundary':

@@ -197,7 +197,7 @@ recall_taskdoc({
 change_mind({
   selector: 'constraints',
   content:
-    '## Constraints\n\n- man function must dynamically filter toolsets based on team.yaml\n- Runtime effective: Changes to team.yaml immediately visible\n- Toolset names use underscore format\n- New constraint: Each toolset needs 5 topics × 2 languages',
+    '## Constraints\n\n- man function must filter toolsets against the current team.yaml selection\n- Runtime effective: Changes to team.yaml immediately visible\n- Toolset names use underscore format\n- New constraint: Each toolset needs 5 topics × 2 languages',
   previous_content_hash: 'crc32:...',
 });
 ```

@@ -265,15 +265,10 @@ export async function loadAgentMinds(
   // shell_specialists is intended for visible teammates only. Hidden members are exempt from this
   // policy and may carry shell tools.
   const agentIsShellSpecialist = team.shellSpecialists.includes(agent.id) || agent.hidden === true;
-  const dynamicToolsetNames = await Team.listDynamicToolsetNamesForMember({
-    member: agent,
-    taskDocPath: dialog?.taskDocPath,
-  });
 
   const baseAgentTools: Tool[] = (() => {
     const tools = agent.listTools({
       onMissingToolset: missingToolsetPolicy,
-      dynamicToolsetNames,
       declaredMcpToolsetNames,
       invalidMcpToolsetNames,
     });
@@ -286,7 +281,6 @@ export async function loadAgentMinds(
     agent
       .listResolvedToolsetNames({
         onMissing: 'silent',
-        dynamicToolsetNames,
         declaredMcpToolsetNames,
         invalidMcpToolsetNames,
       })
@@ -337,7 +331,6 @@ export async function loadAgentMinds(
   const toolsetNames = agent
     .listResolvedToolsetNames({
       onMissing: missingToolsetPolicy,
-      dynamicToolsetNames,
       declaredMcpToolsetNames,
       invalidMcpToolsetNames,
     })

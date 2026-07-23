@@ -207,10 +207,6 @@ export function buildManTool(): FuncTool {
         typeof _dlg?.getLastUserLanguageCode === 'function'
           ? _dlg.getLastUserLanguageCode()
           : getWorkLanguage();
-      const dynamicToolsetNames = await Team.listDynamicToolsetNamesForMember({
-        member: _caller,
-        taskDocPath: _dlg.taskDocPath,
-      });
       const declaredMcpToolsets = await Team.readMcpDeclaredToolsets();
       const declaredMcpToolsetNames =
         declaredMcpToolsets.kind === 'loaded' ? declaredMcpToolsets.declaredServerIds : undefined;
@@ -222,7 +218,6 @@ export function buildManTool(): FuncTool {
       if (!toolsetId) {
         // When no toolsetId is provided, show all available toolsets
         const availableToolsetNames = _caller.listResolvedToolsetNames({
-          dynamicToolsetNames,
           declaredMcpToolsetNames,
           invalidMcpToolsetNames,
         });
@@ -248,9 +243,8 @@ export function buildManTool(): FuncTool {
         );
       }
 
-      // Step 1: Get available toolsets for this caller (dynamic availability)
+      // Step 1: Get toolsets selected for this caller.
       const availableToolsetNames = _caller.listResolvedToolsetNames({
-        dynamicToolsetNames,
         declaredMcpToolsetNames,
         invalidMcpToolsetNames,
       });

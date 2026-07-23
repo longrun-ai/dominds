@@ -64,11 +64,6 @@ export type DomindsAppToolsetJson = Readonly<{
   tools: ReadonlyArray<DomindsAppToolJson>;
 }>;
 
-export type DomindsAppDialogRunControlJson = Readonly<{
-  id: string;
-  descriptionI18n?: I18nText;
-}>;
-
 export type DomindsAppReminderOwnerJson = Readonly<{
   ref: string;
   manager?: Readonly<{
@@ -85,7 +80,6 @@ export type DomindsAppReminderOwnerJson = Readonly<{
 export type DomindsAppContributesJson = Readonly<{
   teammatesYamlRelPath?: string;
   toolsets?: ReadonlyArray<DomindsAppToolsetJson>;
-  dialogRunControls?: ReadonlyArray<DomindsAppDialogRunControlJson>;
   reminderOwners?: ReadonlyArray<DomindsAppReminderOwnerJson>;
 }>;
 
@@ -189,26 +183,6 @@ function parseToolsetJson(
       id,
       descriptionI18n: descriptionI18n as I18nText | undefined,
       tools,
-    },
-  };
-}
-
-function parseDialogRunControlJson(
-  v: unknown,
-  at: string,
-): { ok: true; control: DomindsAppDialogRunControlJson } | { ok: false; errorText: string } {
-  if (!isRecord(v)) return { ok: false, errorText: `Invalid ${at}: expected object` };
-  const id = asString(v['id']);
-  if (!id || id.trim() === '') return { ok: false, errorText: `Invalid ${at}.id: required` };
-  const descriptionI18n = v['descriptionI18n'];
-  if (descriptionI18n !== undefined && !isI18nText(descriptionI18n)) {
-    return { ok: false, errorText: `Invalid ${at}.descriptionI18n: expected {zh,en} string` };
-  }
-  return {
-    ok: true,
-    control: {
-      id,
-      descriptionI18n: descriptionI18n as I18nText | undefined,
     },
   };
 }
@@ -337,6 +311,19 @@ export function parseDomindsAppInstallJson(
   if (contributesRaw !== undefined) {
     if (!isRecord(contributesRaw))
       return { ok: false, errorText: 'Invalid app json: contributes must be an object' };
+    const unsupportedContributesKeys = Object.keys(contributesRaw)
+      .filter(
+        (key) => key !== 'teammatesYamlRelPath' && key !== 'toolsets' && key !== 'reminderOwners',
+      )
+      .sort();
+    if (unsupportedContributesKeys.length > 0) {
+      return {
+        ok: false,
+        errorText:
+          'Invalid app json: contributes contains unsupported properties: ' +
+          unsupportedContributesKeys.join(', '),
+      };
+    }
     const teammatesYamlRelPath = asString(contributesRaw['teammatesYamlRelPath']) ?? undefined;
 
     const toolsetsRaw = contributesRaw['toolsets'];
@@ -350,26 +337,6 @@ export function parseDomindsAppInstallJson(
         const parsed = parseToolsetJson(toolsetsRaw[i], `contributes.toolsets[${i}]`);
         if (!parsed.ok) return parsed;
         toolsets.push(parsed.toolset);
-      }
-    }
-
-    const dialogRunControlsRaw = contributesRaw['dialogRunControls'];
-    let dialogRunControls: DomindsAppDialogRunControlJson[] | undefined;
-    if (dialogRunControlsRaw !== undefined) {
-      if (!Array.isArray(dialogRunControlsRaw)) {
-        return {
-          ok: false,
-          errorText: 'Invalid app json: contributes.dialogRunControls must be an array',
-        };
-      }
-      dialogRunControls = [];
-      for (let i = 0; i < dialogRunControlsRaw.length; i += 1) {
-        const parsed = parseDialogRunControlJson(
-          dialogRunControlsRaw[i],
-          `contributes.dialogRunControls[${i}]`,
-        );
-        if (!parsed.ok) return parsed;
-        dialogRunControls.push(parsed.control);
       }
     }
 
@@ -392,7 +359,7 @@ export function parseDomindsAppInstallJson(
         reminderOwners.push(parsed.owner);
       }
     }
-    contributes = { teammatesYamlRelPath, toolsets, dialogRunControls, reminderOwners };
+    contributes = { teammatesYamlRelPath, toolsets, reminderOwners };
   }
 
   return {

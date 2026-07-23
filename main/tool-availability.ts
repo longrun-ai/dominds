@@ -1,7 +1,6 @@
 import { createHash } from 'crypto';
 
 import type {
-  AppDynamicToolAvailabilityLayer,
   McpRuntimeLeaseLayer,
   MemberToolBindingLayer,
   ToolAvailabilityContext,
@@ -11,9 +10,7 @@ import type {
   ToolsetInfo,
 } from '@longrun-ai/kernel/types/tools-registry';
 import { formatUnifiedTimestamp } from '@longrun-ai/kernel/utils/time';
-import { resolveDynamicAppToolAvailabilityForMember } from './apps/runtime';
 import { getMcpRuntimeLeasesForDialog } from './mcp/supervisor';
-import { domindsRtwsRootAbs } from './rtws';
 import { Team } from './team';
 import type { Tool } from './tool';
 import {
@@ -81,7 +78,7 @@ function buildNotApplicableMemberBindingLayer(): MemberToolBindingLayer {
     status: 'not_applicable' as const,
     declaredToolsetSelectors: [],
     declaredToolIds: [],
-    resolvedStaticToolsetIds: [],
+    resolvedToolsetIds: [],
     resolvedDirectToolIds: [],
     unresolvedDeclaredToolsetIds: [],
     unresolvedDeclaredToolIds: [],
@@ -102,9 +99,8 @@ function buildMemberBindingLayer(
     mcpDeclaredToolsets.kind === 'loaded' ? mcpDeclaredToolsets.declaredServerIds : undefined;
   const invalidMcpToolsetNames =
     mcpDeclaredToolsets.kind === 'loaded' ? mcpDeclaredToolsets.invalidServerIds : undefined;
-  const resolvedStaticToolsetIds = member.listResolvedToolsetNames({
+  const resolvedToolsetIds = member.listResolvedToolsetNames({
     onMissing: 'silent',
-    dynamicToolsetNames: [],
     declaredMcpToolsetNames,
     invalidMcpToolsetNames,
   });
@@ -128,70 +124,10 @@ function buildMemberBindingLayer(
     memberId: member.id,
     declaredToolsetSelectors,
     declaredToolIds,
-    resolvedStaticToolsetIds,
+    resolvedToolsetIds,
     resolvedDirectToolIds,
     unresolvedDeclaredToolsetIds,
     unresolvedDeclaredToolIds,
-  };
-  return {
-    ...payload,
-    revision: computeRevision(payload),
-  };
-}
-
-function buildNotApplicableAppDynamicLayer(): AppDynamicToolAvailabilityLayer {
-  const payload = {
-    status: 'not_applicable' as const,
-    toolsetIds: [],
-    unresolvedToolsetIds: [],
-  };
-  return {
-    ...payload,
-    revision: computeRevision(payload),
-  };
-}
-
-async function buildAppDynamicLayer(params: {
-  memberId: string;
-  taskDocPath: string;
-  agentId?: string;
-  dialog?: ToolAvailabilityContext['dialog'];
-}): Promise<AppDynamicToolAvailabilityLayer> {
-  const result = await resolveDynamicAppToolAvailabilityForMember({
-    rtwsRootAbs: domindsRtwsRootAbs(),
-    memberId: params.memberId,
-    taskDocPath: params.taskDocPath,
-    agentId: params.agentId,
-    dialogId: params.dialog?.selfId,
-    mainDialogId: params.dialog?.rootId,
-    sessionSlug: params.dialog?.sessionSlug,
-  });
-  if (result.status === 'not_applicable') {
-    return buildNotApplicableAppDynamicLayer();
-  }
-  if (result.status === 'error') {
-    const payload = {
-      status: 'error' as const,
-      memberId: params.memberId,
-      taskDocPath: params.taskDocPath,
-      toolsetIds: [],
-      unresolvedToolsetIds: [],
-      errorText: result.errorText,
-    };
-    return {
-      ...payload,
-      revision: computeRevision(payload),
-    };
-  }
-  const unresolvedToolsetIds = result.toolsetIds.filter(
-    (toolsetId) => getToolset(toolsetId) === undefined,
-  );
-  const payload = {
-    status: 'ready' as const,
-    memberId: params.memberId,
-    taskDocPath: params.taskDocPath,
-    toolsetIds: [...result.toolsetIds],
-    unresolvedToolsetIds,
   };
   return {
     ...payload,
@@ -297,7 +233,6 @@ function buildIntrinsicControlToolset(dialog: ToolAvailabilityContext['dialog'])
 function buildComposition(args: {
   registry: ToolAvailabilityRegistryLayer;
   memberBinding: MemberToolBindingLayer;
-  appDynamicAvailability: AppDynamicToolAvailabilityLayer;
   dialog: ToolAvailabilityContext['dialog'];
   agentIsShellSpecialist: boolean;
 }) {
@@ -306,28 +241,8 @@ function buildComposition(args: {
   );
   const visibleToolsetIds: string[] = [];
   const seen = new Set<string>();
-  const excludedToolsetIds = new Set(
-    args.memberBinding.declaredToolsetSelectors
-      .filter((selector) => selector.startsWith('!') && selector.length > 1)
-      .map((selector) => selector.slice(1)),
-  );
   if (args.memberBinding.status === 'ready') {
-    for (const toolsetId of args.memberBinding.resolvedStaticToolsetIds) {
-      if (seen.has(toolsetId)) {
-        continue;
-      }
-      if (!registryById.has(toolsetId)) {
-        continue;
-      }
-      seen.add(toolsetId);
-      visibleToolsetIds.push(toolsetId);
-    }
-  }
-  if (args.appDynamicAvailability.status === 'ready') {
-    for (const toolsetId of args.appDynamicAvailability.toolsetIds) {
-      if (excludedToolsetIds.has(toolsetId)) {
-        continue;
-      }
+    for (const toolsetId of args.memberBinding.resolvedToolsetIds) {
       if (seen.has(toolsetId)) {
         continue;
       }
@@ -407,20 +322,10 @@ export async function createToolAvailabilitySnapshot(args?: {
     member !== null
       ? buildMemberBindingLayer(member, mcpDeclaredToolsets)
       : buildNotApplicableMemberBindingLayer();
-  const appDynamicAvailability =
-    member !== null && typeof args?.taskDocPath === 'string' && args.taskDocPath.trim() !== ''
-      ? await buildAppDynamicLayer({
-          memberId: member.id,
-          taskDocPath: args.taskDocPath.trim(),
-          agentId: args.agentId?.trim(),
-          dialog: args.dialog,
-        })
-      : buildNotApplicableAppDynamicLayer();
   const runtimeLease = buildRuntimeLeaseLayer(args?.dialog);
   const composition = buildComposition({
     registry,
     memberBinding,
-    appDynamicAvailability,
     dialog: context.dialog,
     agentIsShellSpecialist,
   });
@@ -430,7 +335,6 @@ export async function createToolAvailabilitySnapshot(args?: {
     layers: {
       registry,
       memberBinding,
-      appDynamicAvailability,
       runtimeLease,
     },
     composition,

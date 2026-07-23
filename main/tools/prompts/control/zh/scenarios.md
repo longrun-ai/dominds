@@ -194,7 +194,7 @@ recall_taskdoc({
 change_mind({
   selector: 'constraints',
   content:
-    '## Constraints\n\n- man 函数必须根据 team.yaml 动态过滤工具集\n- 运行时生效：team.yaml 配置变更后立即可见\n- 工具集名称使用下划线格式\n- 新增约束：每个工具集需要 5 个 topic × 2 个语言',
+    '## Constraints\n\n- man 函数必须根据当前 team.yaml 选择过滤工具集\n- 运行时生效：team.yaml 配置变更后立即可见\n- 工具集名称使用下划线格式\n- 新增约束：每个工具集需要 5 个 topic × 2 个语言',
   previous_content_hash: 'crc32:...',
 });
 ```

@@ -139,6 +139,38 @@ async function main(): Promise<void> {
       async () => await started.client.callTool('legacy_output_tool', {}, ctx),
       /Invalid app tool result: output must be \{ content, outcome, contentItems\? \}/,
     );
+
+    await shutdownHost();
+    shutdownHost = null;
+    await writeText(
+      path.join(appRootAbs, 'src', 'app.js'),
+      [
+        'export async function createDomindsApp() {',
+        '  return {',
+        '    tools: {},',
+        '    unsupportedExtension: async () => {},',
+        '  };',
+        '}',
+        '',
+      ].join('\n'),
+    );
+    await assert.rejects(
+      async () =>
+        await startAppsHost({
+          rtwsRootAbs: tmpRoot,
+          kernel: { scheme: 'http', host: '127.0.0.1', port: 0 },
+          apps: [
+            {
+              appId: installJson.appId,
+              runtimePort: null,
+              installJson,
+              hostSourceVersion: null,
+            },
+          ],
+        }),
+      /apps-host exited/,
+      'Unknown host instance properties must prevent the app from becoming ready.',
+    );
   } finally {
     if (shutdownHost) {
       await shutdownHost();

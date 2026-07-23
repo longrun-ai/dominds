@@ -9,8 +9,6 @@ import type {
   DomindsAppHostStartResult,
   DomindsAppReminderOwnerHandler,
   DomindsAppReminderRenderedMessage,
-  DomindsAppRunControlBlock,
-  DomindsAppRunControlResult,
 } from '@longrun-ai/kernel/app-host-contract';
 import type {
   DomindsAppDialogReminderRequestBatch,
@@ -55,10 +53,6 @@ function isJsonValue(value: unknown): value is JsonValue {
   if (Array.isArray(value)) return value.every((item) => isJsonValue(item));
   if (!isRecord(value)) return false;
   return Object.values(value).every((item) => isJsonValue(item));
-}
-
-function isStringArray(value: unknown): value is readonly string[] {
-  return Array.isArray(value) && value.every((item) => typeof item === 'string');
 }
 
 function isToolCallOutput(value: unknown): value is DomindsAppHostToolResult['output'] {
@@ -279,17 +273,9 @@ const toolHandlers = new Map<
   string,
   Readonly<{ appId: string; fn: DomindsAppHostInstance['tools'][string] }>
 >();
-const runControlHandlers = new Map<
-  string,
-  Readonly<{ appId: string; fn: NonNullable<DomindsAppHostInstance['runControls']>[string] }>
->();
 const reminderOwnerHandlers = new Map<
   string,
   Readonly<{ appId: string; ownerRef: string; fn: DomindsAppReminderOwnerHandler }>
->();
-const dynamicToolsetHandlers = new Map<
-  string,
-  NonNullable<DomindsAppHostInstance['dynamicToolsets']>
 >();
 
 function buildReminderOwnerHandlerKey(appId: string, ownerRef: string): string {
@@ -316,6 +302,16 @@ function pickExportedFactory(
 
 function validateHostInstance(host: unknown, appId: string): DomindsAppHostInstance {
   if (!isRecord(host)) throw new Error(`Invalid app host instance for '${appId}': expected object`);
+  const unsupportedHostKeys = Object.keys(host)
+    .filter(
+      (key) => key !== 'tools' && key !== 'reminderOwners' && key !== 'start' && key !== 'shutdown',
+    )
+    .sort();
+  if (unsupportedHostKeys.length > 0) {
+    throw new Error(
+      `Invalid app host instance for '${appId}': unsupported properties: ${unsupportedHostKeys.join(', ')}`,
+    );
+  }
   const tools = host['tools'];
   if (!isRecord(tools))
     throw new Error(`Invalid app host instance for '${appId}': tools must be an object`);
@@ -327,17 +323,9 @@ function validateHostInstance(host: unknown, appId: string): DomindsAppHostInsta
   if (shutdown !== undefined && typeof shutdown !== 'function') {
     throw new Error(`Invalid app host instance for '${appId}': shutdown must be a function`);
   }
-  const runControls = host['runControls'];
-  if (runControls !== undefined && !isRecord(runControls)) {
-    throw new Error(`Invalid app host instance for '${appId}': runControls must be an object`);
-  }
   const reminderOwners = host['reminderOwners'];
   if (reminderOwners !== undefined && !isRecord(reminderOwners)) {
     throw new Error(`Invalid app host instance for '${appId}': reminderOwners must be an object`);
-  }
-  const dynamicToolsets = host['dynamicToolsets'];
-  if (dynamicToolsets !== undefined && typeof dynamicToolsets !== 'function') {
-    throw new Error(`Invalid app host instance for '${appId}': dynamicToolsets must be a function`);
   }
   const toolFns: Record<string, unknown> = tools;
   for (const [name, fn] of Object.entries(toolFns)) {
@@ -345,16 +333,6 @@ function validateHostInstance(host: unknown, appId: string): DomindsAppHostInsta
       throw new Error(
         `Invalid app host instance for '${appId}': tools['${name}'] must be a function`,
       );
-    }
-  }
-  if (runControls !== undefined) {
-    const runControlFns = runControls as Record<string, unknown>;
-    for (const [name, fn] of Object.entries(runControlFns)) {
-      if (typeof fn !== 'function') {
-        throw new Error(
-          `Invalid app host instance for '${appId}': runControls['${name}'] must be a function`,
-        );
-      }
     }
   }
   if (reminderOwners !== undefined) {
@@ -383,100 +361,6 @@ function validateHostInstance(host: unknown, appId: string): DomindsAppHostInsta
     }
   }
   return host as unknown as DomindsAppHostInstance;
-}
-
-function isValidRunControlResult(result: unknown): result is DomindsAppRunControlResult {
-  if (!isRecord(result)) return false;
-  if (result['kind'] === 'allow') {
-    const recoveryAction = result['recoveryAction'];
-    if (recoveryAction === undefined) return true;
-    if (!isRecord(recoveryAction)) return false;
-    return (
-      recoveryAction['actionId'] === 'continue' &&
-      typeof recoveryAction['promptSummary'] === 'string' &&
-      recoveryAction['promptSummary'].trim() !== ''
-    );
-  }
-  if (result['kind'] === 'reject') {
-    return typeof result['errorText'] === 'string' && result['errorText'].trim() !== '';
-  }
-  if (result['kind'] !== 'block') return false;
-  return isValidRunControlBlock(result['block']);
-}
-
-function isValidRunControlBlock(block: unknown): block is DomindsAppRunControlBlock {
-  if (!isRecord(block)) return false;
-  if (!isValidRunControlOwner(block['owner'])) return false;
-  if (!isValidRunControlTargetRef(block['targetRef'])) return false;
-  if (typeof block['title'] !== 'string' || block['title'].trim() === '') return false;
-  if (typeof block['promptSummary'] !== 'string' || block['promptSummary'].trim() === '') {
-    return false;
-  }
-  if (block['blockKind'] === 'await_members') {
-    return isValidRunControlMemberRefs(block['waitingFor']) && block['waitingFor'].length > 0;
-  }
-  if (block['blockKind'] === 'await_human') {
-    const question = block['question'];
-    const optionsSummary = block['optionsSummary'];
-    if (question !== undefined && (typeof question !== 'string' || question.trim() === ''))
-      return false;
-    return optionsSummary === undefined || isStringArray(optionsSummary);
-  }
-  if (block['blockKind'] === 'await_app_action') {
-    if (
-      block['actionClass'] !== 'input' &&
-      block['actionClass'] !== 'select' &&
-      block['actionClass'] !== 'confirm'
-    ) {
-      return false;
-    }
-    if (typeof block['actionId'] !== 'string' || block['actionId'].trim() === '') return false;
-    if (
-      block['resolutionMode'] !== 'explicit_continue' &&
-      block['resolutionMode'] !== 'auto_resume'
-    ) {
-      return false;
-    }
-    return block['optionsSummary'] === undefined || isStringArray(block['optionsSummary']);
-  }
-  return false;
-}
-
-function isValidRunControlOwner(owner: unknown): boolean {
-  if (!isRecord(owner)) return false;
-  if (owner['kind'] === 'human') return true;
-  if (owner['kind'] !== 'member') return false;
-  if (typeof owner['memberId'] !== 'string' || owner['memberId'].trim() === '') return false;
-  return owner['roleIds'] === undefined || isStringArray(owner['roleIds']);
-}
-
-function isValidRunControlTargetRef(targetRef: unknown): boolean {
-  if (!isRecord(targetRef)) return false;
-  const kind = targetRef['kind'];
-  if (
-    kind !== 'taskdoc' &&
-    kind !== 'phase' &&
-    kind !== 'gate' &&
-    kind !== 'change' &&
-    kind !== 'role' &&
-    kind !== 'member'
-  ) {
-    return false;
-  }
-  if (typeof targetRef['id'] !== 'string' || targetRef['id'].trim() === '') return false;
-  if (targetRef['title'] === undefined) return true;
-  return typeof targetRef['title'] === 'string' && targetRef['title'].trim() !== '';
-}
-
-function isValidRunControlMemberRefs(
-  value: unknown,
-): value is readonly Readonly<Record<string, unknown>>[] {
-  if (!Array.isArray(value)) return false;
-  return value.every((entry) => {
-    if (!isRecord(entry)) return false;
-    if (typeof entry['memberId'] !== 'string' || entry['memberId'].trim() === '') return false;
-    return entry['roleIds'] === undefined || isStringArray(entry['roleIds']);
-  });
 }
 
 async function initOnce(msg: AppsHostKernelInitMessage): Promise<void> {
@@ -515,17 +399,6 @@ async function initOnce(msg: AppsHostKernelInitMessage): Promise<void> {
       }
       toolHandlers.set(toolName, { appId, fn });
     }
-    if (host.runControls) {
-      for (const [controlId, fn] of Object.entries(host.runControls)) {
-        if (runControlHandlers.has(controlId)) {
-          const existing = runControlHandlers.get(controlId);
-          throw new Error(
-            `apps-host: duplicate run-control id '${controlId}' between apps '${existing?.appId ?? 'unknown'}' and '${appId}'`,
-          );
-        }
-        runControlHandlers.set(controlId, { appId, fn });
-      }
-    }
     if (host.reminderOwners) {
       for (const [ownerRef, fn] of Object.entries(host.reminderOwners)) {
         const handlerKey = buildReminderOwnerHandlerKey(appId, ownerRef);
@@ -535,10 +408,6 @@ async function initOnce(msg: AppsHostKernelInitMessage): Promise<void> {
         reminderOwnerHandlers.set(handlerKey, { appId, ownerRef, fn });
       }
     }
-    if (host.dynamicToolsets) {
-      dynamicToolsetHandlers.set(appId, host.dynamicToolsets);
-    }
-
     let frontend: DomindsAppHostStartResult | null = null;
     if (app.installJson.frontend) {
       if (!host.start) {
@@ -623,79 +492,6 @@ process.on('message', (raw: unknown) => {
         } catch (err: unknown) {
           send({
             type: 'tool_result',
-            callId: msg.callId,
-            ok: false,
-            errorText: err instanceof Error ? err.message : String(err),
-          });
-        }
-        return;
-      }
-      case 'dynamic_toolsets': {
-        try {
-          const collected = new Set<string>();
-          for (const [appId, handler] of dynamicToolsetHandlers.entries()) {
-            try {
-              const toolsetIds = await handler(msg.ctx);
-              if (!isStringArray(toolsetIds)) {
-                throw new Error('dynamicToolsets() must return string[]');
-              }
-              for (const toolsetId of toolsetIds) {
-                if (toolsetId.trim() !== '') {
-                  collected.add(toolsetId);
-                }
-              }
-            } catch (err: unknown) {
-              send({
-                type: 'log',
-                level: 'error',
-                msg: `dynamic_toolsets failed: ${err instanceof Error ? err.message : String(err)}`,
-                appId,
-              });
-              throw err;
-            }
-          }
-          send({
-            type: 'dynamic_toolsets_result',
-            callId: msg.callId,
-            ok: true,
-            toolsetIds: [...collected],
-          });
-        } catch (err: unknown) {
-          send({
-            type: 'dynamic_toolsets_result',
-            callId: msg.callId,
-            ok: false,
-            errorText: err instanceof Error ? err.message : String(err),
-          });
-        }
-        return;
-      }
-      case 'run_control_apply': {
-        const found = runControlHandlers.get(msg.controlId);
-        if (!found) {
-          send({
-            type: 'run_control_result',
-            callId: msg.callId,
-            ok: false,
-            errorText: `Unknown run control: ${msg.controlId}`,
-          });
-          return;
-        }
-        try {
-          const result = await found.fn(msg.payload);
-          if (!isValidRunControlResult(result)) {
-            send({
-              type: 'run_control_result',
-              callId: msg.callId,
-              ok: false,
-              errorText: `Invalid run control result shape: ${msg.controlId}`,
-            });
-            return;
-          }
-          send({ type: 'run_control_result', callId: msg.callId, ok: true, result });
-        } catch (err: unknown) {
-          send({
-            type: 'run_control_result',
             callId: msg.callId,
             ok: false,
             errorText: err instanceof Error ? err.message : String(err),

@@ -1,10 +1,8 @@
 import assert from 'node:assert/strict';
 import * as fs from 'node:fs/promises';
 import path from 'node:path';
-import { pathToFileURL } from 'node:url';
 
 import {
-  type DomindsAppRunControlResult,
   type Q4HDialogContext,
   TEAM_MGMT_GUIDE_UI_TOPIC_ORDER,
   getTeamMgmtGuideTopicTitle,
@@ -28,13 +26,6 @@ type PackageJsonShape = Readonly<{
   publishConfig?: unknown;
 }>;
 
-type PhaseGatePackageJsonShape = Readonly<{
-  exports?: unknown;
-  scripts?: unknown;
-  dependencies?: unknown;
-  devDependencies?: unknown;
-}>;
-
 function expectRecord(value: unknown, label: string): Record<string, unknown> {
   assert.equal(typeof value, 'object', `${label} must be an object.`);
   assert.notEqual(value, null, `${label} must not be null.`);
@@ -44,7 +35,6 @@ function expectRecord(value: unknown, label: string): Record<string, unknown> {
 
 async function main(): Promise<void> {
   const domindsRootAbs = path.resolve(__dirname, '..');
-  const repoRootAbs = path.resolve(domindsRootAbs, '..');
   const packageJsonText = await fs.readFile(
     path.join(domindsRootAbs, 'packages', 'kernel', 'package.json'),
     'utf-8',
@@ -154,6 +144,23 @@ async function main(): Promise<void> {
 
   const parsed = parseDomindsAppInstallJson(installJsonInput);
   assert.equal(parsed.ok, true, 'Kernel root export must parse valid app install json.');
+  const unsupportedContribution = parseDomindsAppInstallJson({
+    ...installJsonInput,
+    contributes: {
+      unsupportedExtension: {},
+    },
+  });
+  assert.equal(
+    unsupportedContribution.ok,
+    false,
+    'Unknown app contributions must fail closed instead of being silently ignored.',
+  );
+  if (!unsupportedContribution.ok) {
+    assert.match(
+      unsupportedContribution.errorText,
+      /contributes contains unsupported properties: unsupportedExtension/,
+    );
+  }
   const installJsonContract: DomindsAppInstallJson = installJsonInput;
   assert.equal(installJsonContract.host.exportName, 'createDomindsApp');
   assert.deepEqual(
@@ -211,16 +218,6 @@ async function main(): Promise<void> {
     'Kernel id util export must be part of the public contract.',
   );
 
-  const runControlResult: DomindsAppRunControlResult = {
-    kind: 'allow',
-    recoveryAction: { actionId: 'continue', promptSummary: 'Continue' },
-  };
-  assert.equal(
-    runControlResult.recoveryAction?.promptSummary,
-    'Continue',
-    'Kernel root export must carry run-control result typing.',
-  );
-
   const q4hContext: Q4HDialogContext = {
     selfId: 'dlg-1',
     rootId: 'dlg-1',
@@ -238,109 +235,6 @@ async function main(): Promise<void> {
     'function',
     'Kernel app host contract export must stay callable by consumers.',
   );
-
-  const phaseGatePackageJsonText = await fs.readFile(
-    path.join(repoRootAbs, 'dominds-apps', '@longrun-ai', 'phase-gate', 'package.json'),
-    'utf-8',
-  );
-  const phaseGatePackageJson = JSON.parse(phaseGatePackageJsonText) as PhaseGatePackageJsonShape;
-  const phaseGateExports = expectRecord(
-    phaseGatePackageJson.exports,
-    'phase-gate package.json exports',
-  );
-  assert.deepEqual(
-    Object.keys(phaseGateExports).sort(),
-    ['.', './app', './install', './package.json'].sort(),
-    'Phase Gate app must expose its formal TS app/install entrypoints only.',
-  );
-  const phaseGateRootExport = expectRecord(phaseGateExports['.'], 'phase-gate root export');
-  assert.equal(
-    phaseGateRootExport['types'],
-    './src/app.ts',
-    'Phase Gate root export must point type consumers at src/app.ts.',
-  );
-  assert.equal(
-    phaseGateRootExport['import'],
-    './dist/app.js',
-    'Phase Gate root export must resolve runtime imports to dist/app.js.',
-  );
-  const phaseGateInstallExport = expectRecord(
-    phaseGateExports['./install'],
-    'phase-gate install export',
-  );
-  assert.equal(
-    phaseGateInstallExport['types'],
-    './src/install.ts',
-    'Phase Gate install export must point type consumers at src/install.ts.',
-  );
-  assert.equal(
-    phaseGateInstallExport['import'],
-    './dist/install.js',
-    'Phase Gate install export must resolve runtime imports to dist/install.js.',
-  );
-  const phaseGateScripts = expectRecord(
-    phaseGatePackageJson.scripts,
-    'phase-gate package.json scripts',
-  );
-  assert.equal(
-    phaseGateScripts['build'],
-    'pnpm -C ../../../dominds exec tsc -p ../dominds-apps/@longrun-ai/phase-gate/tsconfig.json && cp ./src/app-impl.js ./src/app-metadata.js ./src/app-runtime-contract.js ./src/install-runtime.js ./dist/ && node --check ./src/app.js && node --check ./src/app-impl.js && node --check ./src/install.js && node --check ./src/install-runtime.js && node --check ./src/app-metadata.js && node --check ./src/app-runtime-contract.js && node --check ./bin/phase-gate.js',
-    'Phase Gate build must compile its formal TS entrypoints before runtime checks.',
-  );
-  assert.equal(
-    phaseGateScripts['lint:types'],
-    'pnpm -C ../../../dominds exec tsc -p ../dominds-apps/@longrun-ai/phase-gate/tsconfig.json --noEmit && node --check ./src/app.js && node --check ./src/app-impl.js && node --check ./src/install.js && node --check ./src/install-runtime.js && node --check ./src/app-metadata.js && node --check ./src/app-runtime-contract.js && node --check ./bin/phase-gate.js',
-    'Phase Gate typecheck must run through the formal TS authoring path.',
-  );
-  const phaseGateDependencies = expectRecord(
-    phaseGatePackageJson.dependencies,
-    'phase-gate package.json dependencies',
-  );
-  assert.equal(typeof phaseGateDependencies['@longrun-ai/kernel'], 'string');
-  assert.equal(
-    String(phaseGateDependencies['@longrun-ai/kernel']).startsWith('file:'),
-    false,
-    'Phase Gate app must depend on the published/formal kernel package surface instead of a repo-local file deep path.',
-  );
-  assert.equal(
-    String(phaseGateDependencies['@longrun-ai/kernel']).includes('workspace:'),
-    false,
-    'Phase Gate app must not rely on workspace protocol for its formal kernel dependency.',
-  );
-
-  const phaseGateInstallModule = (await import(
-    pathToFileURL(
-      path.join(repoRootAbs, 'dominds-apps', '@longrun-ai', 'phase-gate', 'src', 'install.ts'),
-    ).href
-  )) as Readonly<{
-    createInstallJson: () => Promise<DomindsAppInstallJson>;
-  }>;
-  const phaseGateAppModule = (await import(
-    pathToFileURL(
-      path.join(repoRootAbs, 'dominds-apps', '@longrun-ai', 'phase-gate', 'src', 'app.ts'),
-    ).href
-  )) as Readonly<{
-    createDomindsApp: CreateDomindsAppFn;
-  }>;
-  const phaseGateInstallJson = await phaseGateInstallModule.createInstallJson();
-  assert.equal(phaseGateInstallJson.appId, '@longrun-ai/phase-gate');
-  assert.equal(phaseGateInstallJson.host.exportName, 'createDomindsApp');
-  assert.match(
-    phaseGateInstallJson.host.moduleRelPath,
-    /^\.\/(src|dist)\/app\.js$/,
-    'Phase Gate install handshake must resolve to the formal app seam in source or built form.',
-  );
-  const phaseGateHost = await phaseGateAppModule.createDomindsApp({
-    appId: '@longrun-ai/phase-gate',
-    rtwsRootAbs: repoRootAbs,
-    rtwsAppDirAbs: path.join(repoRootAbs, '.apps', '@longrun-ai', 'phase-gate'),
-    packageRootAbs: path.join(repoRootAbs, 'dominds-apps', '@longrun-ai', 'phase-gate'),
-    kernel: { scheme: 'http', host: '127.0.0.1', port: 4321 },
-    log: () => {},
-  });
-  assert.equal(typeof phaseGateHost.dynamicToolsets, 'function');
-  assert.equal(typeof phaseGateHost.tools['phase_gate_validate_flow'], 'function');
-  assert.equal(typeof phaseGateHost.runControls?.['phase_gate_autonomy'], 'function');
 }
 
 main().catch((error: unknown) => {

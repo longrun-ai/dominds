@@ -4791,7 +4791,7 @@ export async function renderToolsets(language: LanguageCode): Promise<string> {
           windowsHost
             ? '按 provider 选择匹配的 toolsets：默认把 `ws_read` / `ws_mod` 作为通用基线；在 Windows 环境下不要配置 `codex_inspect_and_patch_tools`。如果还需要“读/探测 rtws”，通常再给 `os`（`shell_cmd`）并严格限制在少数专员成员手里。'
             : '按模型/工作形态选择匹配的 toolsets：默认把 `ws_read` / `ws_mod` 作为通用基线；当目标模型属于 `gpt-5.x` 家族时，在基线上追加 `codex_inspect_and_patch_tools`（`apply_patch`、`readonly_shell`），不是替换 `ws_read` / `ws_mod`。如果还需要“读/探测 rtws”，通常要再给 `os`（`shell_cmd`）并严格限制在少数专员成员手里。',
-          'MCP toolset 不是静态写死：它由 `.minds/mcp.yaml` 的 `servers.<serverId>` 动态映射而来（toolset 名称 = `serverId`）。下方会展示当前映射快照。',
+          'MCP toolset 由 `.minds/mcp.yaml` 的 `servers.<serverId>` 注册（toolset 名称 = `serverId`）。下方会展示当前映射快照。',
           '`os` 是 shell 工具集，当前包含 `shell_cmd` / `stop_daemon` / `get_daemon_output`。一旦成员拥有这些工具（包括通过 `os` 获得），其 id 必须出现在顶层 `shell_specialists`。',
           '`mcp_admin` 用于 MCP 运维：`mcp_restart` 启用/重启 server，`mcp_disable` 禁用 server 并保留 0 工具 toolset/手册可见性，`mcp_release` 只释放当前对话 lease；并配有 `env_get` / `env_set` / `env_unset` 便于联调环境变量。',
           '授予 `team_mgmt` 不只是“给工具权限”：一旦某成员承担团队管理职责，其 `persona.*.md` 也必须明确要求在执行团队管理操作前先查看 `man({ "toolsetId": "team_mgmt" })` 相关章节，并按手册标准做法维护 `.minds/**` 团队心智资产。',
@@ -4805,7 +4805,7 @@ export async function renderToolsets(language: LanguageCode): Promise<string> {
           windowsHost
             ? 'Pick toolsets to match the provider: keep `ws_read` / `ws_mod` as the general baseline; on Windows, do not configure `codex_inspect_and_patch_tools`. If you also need to read/probe the rtws, grant `os` (`shell_cmd`) only to a small specialist operator set.'
             : 'Pick toolsets to match the model/work style: keep `ws_read` / `ws_mod` as the general baseline; for models in the `gpt-5.x` family, add `codex_inspect_and_patch_tools` (`apply_patch`, `readonly_shell`) on top rather than replacing `ws_read` / `ws_mod`. If you also need to read/probe the rtws, you typically must grant `os` (`shell_cmd`) and keep it restricted to a small number of specialist operators.',
-          'MCP toolsets are not hardcoded: they are dynamically mapped from `.minds/mcp.yaml` `servers.<serverId>` (toolset name = `serverId`). The current mapping snapshot is shown below.',
+          'MCP toolsets are registered from `.minds/mcp.yaml` `servers.<serverId>` (toolset name = `serverId`). The current mapping snapshot is shown below.',
           '`os` is the shell toolset, currently including `shell_cmd`, `stop_daemon`, and `get_daemon_output`. If a member has any of these tools (including via `os`), that member id must appear in top-level `shell_specialists`.',
           '`mcp_admin` is for MCP operations: `mcp_restart` enables/restarts a server, `mcp_disable` disables a server while keeping its zero-tool toolset/manual visible, and `mcp_release` only releases the current dialog lease; `env_get` / `env_set` / `env_unset` are available for environment debugging.',
           'Granting `team_mgmt` is not just a tool-access change: once a member carries team-management responsibility, that member’s `persona.*.md` must explicitly require reading the relevant `man({ "toolsetId": "team_mgmt" })` chapters before any team-management action, and maintaining `.minds/**` team mind assets by handbook-standard workflow.',

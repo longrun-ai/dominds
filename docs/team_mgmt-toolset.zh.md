@@ -15,7 +15,7 @@
 
 - 创建/更新 `.minds/team.yaml`（团队名单 + 权限 + 工具集）
 - 创建/更新 `.minds/llm.yaml`（覆盖默认值的 LLM 提供商定义）
-- 创建/更新 `.minds/mcp.yaml`（注册动态工具集的 MCP 服务器定义）
+- 创建/更新 `.minds/mcp.yaml`（注册工具集的 MCP 服务器定义）
 - 创建/更新 `.minds/team/<member>/{persona,knowhow,pitfalls}.md`（智能体心智）
 
 同时，我们**不希望**赋予该智能体完整的 rtws 读写权限（例如 `ws_mod` 工具集 + 无限制的 `read_dirs`/`write_dirs`），因为：
@@ -172,7 +172,7 @@
   - 通过 `!llm !builtin-defaults` 提供"内置默认值"视图
     - 实现指导：在运行时从 `dominds/main/llm/defaults.yaml` 渲染此内容（或通过共享助手），而不是将静态块复制粘贴到代码中，这样它不会漂移
 - `!mcp`：
-  - 解释 `.minds/mcp.yaml` 作为动态 MCP 工具集的来源
+  - 解释 `.minds/mcp.yaml` 作为 MCP 工具集的来源
   - 解释 MCP 服务器如何映射到工具集（`<serverId>`）以及如何通过 `.minds/team.yaml` 授予这些工具集
   - 解释工具暴露控制（白名单/黑名单）和 ID 转换（前缀/后缀）
   - 解释密钥/env 接线模式和问题排查（问题 + 日志、重启、热重载语义）
@@ -184,8 +184,8 @@
   - 解释 `.minds/env.*.md` 用于描述当前 rtws 的运行环境，而不是定义人格或复制仓库总规范
   - 解释它与 `persona/knowhow/pitfalls`、skills、priming 的分工边界
 - `!toolsets`：
-  - 解释当前可见 toolsets 包含内建 toolsets、已安装 apps 暴露的 toolsets、以及由 `.minds/mcp.yaml` 动态注册的 MCP toolsets
-  - 解释为什么该主题必须以运行时动态视图为准，而不是在设计文档里维护一份静态名单
+  - 解释当前可见 toolsets 包含内建 toolsets、已安装 apps 暴露的 toolsets、以及由 `.minds/mcp.yaml` 注册的 MCP toolsets
+  - 解释为什么该主题必须以当前运行时视图为准，而不是在设计文档里维护一份清单
 
 ## 从 Dominds 安装动态加载（运行时资源）
 
@@ -205,14 +205,14 @@
 - `man({ "toolsetId": "team_mgmt", "topics": ["toolsets"] })`
   - 在运行时从内存中注册表加载（`dominds/main/tools/registry.ts` 中的 `listToolsets()` / `listTools()`），而不是维护单独的列表
 
-### 为什么 `toolsets` 必须是动态主题
+### 为什么 `toolsets` 清单必须来自当前运行时
 
 - `toolsets` 不是一份稳定、可写死在设计文档里的清单。
 - 当前可见的 toolsets 由三部分共同决定：
   - 框架内建 toolsets
   - 当前安装的 Dominds apps 所暴露的 toolsets
   - `.minds/mcp.yaml` 中 `servers.<serverId>` 在运行时映射出来的 MCP toolsets
-- 其中 MCP 部分天然是**动态的**：团队可以按 rtws 需要增删 server、调整命名、控制工具暴露；因此 toolset 集合会随当前安装状态与当前 rtws 配置而变化。
+- 团队可以按 rtws 需要增删 MCP server、调整命名、控制工具暴露；因此 toolset 集合会随当前安装状态与当前 rtws 配置而变化。
 - 这样设计的原因，是把“能力发现”绑定到当前实际运行环境，而不是绑定到一份很快过时的静态文档：
   - 避免设计文档维护一份注定漂移的 toolset 名单
   - 避免读者误以为某个 MCP toolset 是框架内建常量
@@ -303,7 +303,7 @@ providers:
 
 `.minds/mcp.yaml` 将 MCP（模型上下文协议）服务器配置为一级工具来源。每个配置的服务器注册一个 Dominds **工具集**，名为 `<serverId>`，以及该工具集下的一组工具。
 
-此文件在运行时**热重载**（无需服务器重启）。如果文件不存在，MCP 支持被禁用（不会注册动态 MCP 工具集）。
+此文件在运行时**热重载**（无需服务器重启）。如果文件不存在，MCP 支持被禁用（不会注册 MCP 工具集）。
 
 参考规范：
 

@@ -37,10 +37,6 @@ const MAIN_MUST_USE_KERNEL_IMPORTS: ReadonlyArray<
     needles: ['@longrun-ai/kernel/app-json', '@longrun-ai/kernel/types/language'],
   },
   {
-    fileRel: 'main/apps/run-control.ts',
-    needles: ['@longrun-ai/kernel/app-host-contract'],
-  },
-  {
     fileRel: 'main/tools/app-reminders.ts',
     needles: ['@longrun-ai/kernel/app-json', '@longrun-ai/kernel/types/dialog'],
   },
