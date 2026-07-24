@@ -212,7 +212,7 @@ must cover (at minimum) the information that used to live there:
     - Implementation guidance: render this content from `dominds/main/llm/defaults.yaml` at runtime
       (or via a shared helper) rather than copy/pasting a static block into code, so it won’t drift.
 - `!mcp`:
-  - Explain `.minds/mcp.yaml` as the source of dynamic MCP toolsets.
+  - Explain `.minds/mcp.yaml` as the source of MCP server and toolset configuration.
   - Explain how MCP servers map to toolsets (`<serverId>`) and how those toolsets are granted via
     `.minds/team.yaml`.
   - Explain tool exposure controls (whitelist/blacklist) and ID transforms (prefix/suffix).
@@ -221,15 +221,16 @@ must cover (at minimum) the information that used to live there:
 - `!skills`:
   - Explain `.minds/skills/*` as reusable team skill assets.
   - Explain the boundary that a skill is prompt/guidance content, not a permission system.
-  - Explain when content should remain a skill versus being elevated into an app / toolset /
-    teammate contract.
+  - Explain when content should remain a skill versus moving execution capability into an
+    Application Component whose toolsets and teammates are selected and bound by a consuming App.
 - `!env`:
   - Explain `.minds/env.*.md` as the place for current-rtws runtime-environment orientation, not
     persona definition or a dump of repo-wide policy.
   - Explain its boundary relative to `persona/knowhow/pitfalls`, skills, and priming.
 - `!toolsets`:
-  - Explain that the visible toolsets include built-in toolsets, toolsets exposed by installed
-    apps, and MCP toolsets registered from `.minds/mcp.yaml`.
+  - Explain that the visible toolsets include built-in toolsets, component-provided toolsets loaded
+    through the current Stage 0 package envelope, and MCP toolsets registered from
+    `.minds/mcp.yaml`.
   - Explain why this topic must be rendered from current runtime state rather than maintained as an
     inventory in the design docs.
 
@@ -261,7 +262,7 @@ Recommended sources by topic:
 - `toolsets` is not a stable inventory that should be hardcoded in a design document.
 - The visible toolsets are jointly determined by:
   - framework built-ins
-  - toolsets exposed by the currently installed Dominds apps
+  - component toolsets loaded through the current Stage 0 `DomindsApp` package envelope
   - MCP toolsets mapped at runtime from `.minds/mcp.yaml` `servers.<serverId>`
 - Teams can add/remove MCP servers, rename exposure, and constrain tool exposure per rtws, so the
   resulting toolset set changes with the live installation and workspace state.
@@ -364,7 +365,7 @@ Each configured server registers a Dominds **toolset** named `<serverId>` and a 
 under that toolset.
 
 This file is **hot-reloaded** at runtime (no server restart required). If the file is absent, MCP
-support is disabled (no dynamic MCP toolsets are registered).
+support is disabled (no MCP-provided toolsets are registered).
 
 Reference specs:
 
@@ -619,8 +620,9 @@ Design-level positioning:
   reusable procedure in the skill and keep this repo's paths, command entrypoints, and local
   contracts in memory/env so the skill does not become a hidden stale-fact warehouse.
 - If a skill depends on scripts, privileged tools, MCP, external binaries, or reusable execution
-  capability, the design should usually elevate it into a Dominds app / toolset / teammate contract
-  rather than stopping at Markdown alone.
+  capability, define that capability in an Application Component and let a consuming App select and
+  bind its toolsets, teammates, and handlers rather than stopping at Markdown alone. During Stage 0,
+  the component package is loaded through the existing `DomindsApp` bootstrap envelope.
 - This design doc intentionally limits itself to boundary and migration guidance. For current file
   naming, injection semantics, heading levels, and language-file rules, use
   `man({ "toolsetId": "team_mgmt", "topics": ["skills"] })`.

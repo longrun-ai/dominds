@@ -74,13 +74,13 @@ async function main(): Promise<void> {
       validateOut.includes(
         'team-management validation tools such as `team_mgmt_validate_team_cfg({})`, `team_mgmt_validate_mcp_cfg({})`, and `man({ "toolsetId": "team_mgmt" })` should remain usable',
       ),
-      'validate_team_cfg should remind that validation/manual tools remain available during app/toolset failures',
+      'validate_team_cfg should remind that validation/manual tools remain available during component-toolset failures',
     );
     assert.ok(
       validateOut.includes(
-        'inspect `.minds/app.yaml` via `team_mgmt_read_file({ path: "app.yaml" })`',
+        'inspect Stage 0 package dependencies in `.minds/app.yaml` via `team_mgmt_read_file({ path: "app.yaml" })`',
       ),
-      'validate_team_cfg should guide the team manager to inspect app.yaml when app toolset bindings fail',
+      `validate_team_cfg should guide the team manager to inspect app.yaml when component toolset bindings fail.\nOutput:\n${validateOut}`,
     );
     assert.ok(
       validateOut.includes(
@@ -97,9 +97,9 @@ async function main(): Promise<void> {
     ).content;
     assert.ok(
       manualOut.includes(
-        'app-provided toolset referenced from `team.yaml` is missing / app capability is unavailable',
+        'a Stage 0 package toolset referenced from `team.yaml` is missing / component capability is unavailable',
       ),
-      'troubleshooting manual should include the app toolset failure symptom',
+      'troubleshooting manual should include the component toolset failure symptom',
     );
     assert.ok(
       manualOut.includes('`team_mgmt_validate_team_cfg({})` remains available'),

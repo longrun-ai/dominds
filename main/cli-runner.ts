@@ -16,12 +16,12 @@
  *   validate_team_def - Validate explicit team toolset declarations
  *   cert     - Create and inspect local HTTPS certificates
  *   create   - Create a new runtime workspace (rtws) from a template
- *   install  - Install a Dominds App into this rtws
- *   doctor   - Diagnose Dominds App state in this rtws
- *   enable   - Enable an installed Dominds App in this rtws
- *   disable  - Disable an installed Dominds App in this rtws
- *   uninstall- Uninstall a Dominds App from this rtws
- *   update   - Update installed Dominds App(s)
+ *   install  - Load a Stage 0 capability package into this rtws
+ *   doctor   - Diagnose Stage 0 capability package state in this rtws
+ *   enable   - Enable a loaded Stage 0 capability package
+ *   disable  - Disable a loaded Stage 0 capability package
+ *   uninstall- Unload a Stage 0 capability package
+ *   update   - Update loaded Stage 0 capability package(s)
  *   new      - Alias for create
  *   help     - Show help
  *
@@ -99,12 +99,12 @@ Subcommands:
   validate_team_def [options] Validate explicit team toolset declarations
   cert [options]     Create and inspect local HTTPS certificates
   create [options]   Create a new runtime workspace (rtws) from a template
-  install [options]  Install a Dominds App into this rtws
+  install [options]  Load a Stage 0 capability package into this rtws
   doctor [options]   Read-only diagnosis across manifest/lock/configuration/resolution/handshake
-  enable [options]   Enable an installed Dominds App in this rtws
-  disable [options]  Disable an installed Dominds App in this rtws
-  uninstall [options] Uninstall a Dominds App from this rtws
-  update [options]   Update installed Dominds App(s)
+  enable [options]   Enable a loaded Stage 0 capability package
+  disable [options]  Disable a loaded Stage 0 capability package
+  uninstall [options] Unload a Stage 0 capability package
+  update [options]   Update loaded Stage 0 capability package(s)
   new [options]      Alias for create
   help               Show this help message
 
@@ -121,7 +121,7 @@ Examples:
   dominds cert create --host 192.168.1.10
   dominds cert status        # Inspect detected LAN HTTPS certificate status
   dominds create web-scaffold my-project   # Create rtws from a template
-  dominds doctor @longrun-ai/web-dev       # Diagnose a single app across all app-state layers
+  dominds doctor @example/capability-package # Diagnose one Stage 0 package across all state layers
 
 Installation:
   pnpm add -g dominds
@@ -225,7 +225,7 @@ export async function main(argv: readonly string[] = process.argv.slice(2)): Pro
       }
     } catch (err) {
       console.error(
-        'Error: failed to load enabled apps:',
+        'Error: failed to load enabled Stage 0 capability packages:',
         err instanceof Error ? err.message : String(err),
       );
       process.exit(1);

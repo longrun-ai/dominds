@@ -890,7 +890,7 @@ export abstract class Dialog {
             changed = true;
             break;
           case 'update': {
-            const nextContent = result.updatedContent ?? reminder.content;
+            const nextContent = result.updatedContent;
             const nextMeta = result.updatedMeta !== undefined ? result.updatedMeta : reminder.meta;
             const updatedReminder = materializeReminder({
               id: reminder.id,
@@ -916,7 +916,7 @@ export abstract class Dialog {
           case 'keep':
             break;
           default: {
-            const _exhaustive: never = result.treatment;
+            const _exhaustive: never = result;
             return _exhaustive;
           }
         }
@@ -2983,11 +2983,7 @@ export abstract class DialogStore {
     _dialog: Dialog,
     _payload: {
       callName:
-        | 'tellaskBack'
-        | 'tellask'
-        | 'tellaskSessionless'
-        | 'askHuman'
-        | 'freshBootsReasoning';
+        'tellaskBack' | 'tellask' | 'tellaskSessionless' | 'askHuman' | 'freshBootsReasoning';
       callId: string;
       mentionList?: string[];
       sessionSlug?: string;

@@ -10,18 +10,19 @@ import type {
   DomindsAppReminderOwnerHandler,
   DomindsAppReminderRenderedMessage,
 } from '@longrun-ai/kernel/app-host-contract';
-import type {
-  DomindsAppDialogReminderRequestBatch,
-  DomindsAppDialogTargetRef,
-  DomindsAppHostReminderUpdateResult,
-  DomindsAppHostToolResult,
-  DomindsAppReminderApplyRequest,
-  DomindsAppReminderApplyResult,
-  DomindsAppReminderState,
+import {
+  isJsonValue,
+  type DomindsAppDialogReminderRequestBatch,
+  type DomindsAppDialogTargetRef,
+  type DomindsAppHostReminderUpdateResult,
+  type DomindsAppHostToolResult,
+  type DomindsAppReminderApplyRequest,
+  type DomindsAppReminderApplyResult,
+  type DomindsAppReminderState,
 } from '@longrun-ai/kernel/app-json';
+import type { FuncResultContentItem } from '@longrun-ai/kernel/types/storage';
 import { resolveDomindsAppRtwsDirAbs } from '../apps/app-id';
 import { createLogger } from '../log';
-import type { JsonValue } from '../tool';
 import {
   parseAppsHostMessageFromKernel,
   type AppsHostKernelInitMessage,
@@ -39,20 +40,113 @@ function isRecord(v: unknown): v is Record<string, unknown> {
   return typeof v === 'object' && v !== null && !Array.isArray(v);
 }
 
-function isJsonPrimitive(value: unknown): value is string | number | boolean | null {
+function isLosslessFiniteNumber(value: unknown): value is number {
+  return typeof value === 'number' && Number.isFinite(value) && !Object.is(value, -0);
+}
+
+function assertSupportedProperties(
+  value: Readonly<Record<string, unknown>>,
+  allowedProperties: ReadonlyArray<string>,
+  label: string,
+): void {
+  const allowed = new Set(allowedProperties);
+  const ownKeys = Reflect.ownKeys(value);
+  const unsupported = ownKeys
+    .filter((key) => typeof key !== 'string' || !allowed.has(key))
+    .map((key) => String(key))
+    .sort();
+  if (unsupported.length > 0) {
+    throw new Error(`${label} contains unsupported properties: ${unsupported.join(', ')}`);
+  }
+  for (const key of ownKeys) {
+    if (typeof key !== 'string') continue;
+    const descriptor = Object.getOwnPropertyDescriptor(value, key);
+    if (
+      descriptor?.enumerable !== true ||
+      !Object.prototype.hasOwnProperty.call(descriptor, 'value')
+    ) {
+      throw new Error(`${label}.${key} must be an enumerable data property`);
+    }
+  }
+}
+
+function assertEnumerableDataProperties(
+  value: Readonly<Record<string, unknown>>,
+  label: string,
+): void {
+  const ownKeys = Reflect.ownKeys(value);
+  for (const key of ownKeys) {
+    if (typeof key !== 'string') {
+      throw new Error(`${label} contains unsupported symbol property ${String(key)}`);
+    }
+    const descriptor = Object.getOwnPropertyDescriptor(value, key);
+    if (
+      descriptor?.enumerable !== true ||
+      !Object.prototype.hasOwnProperty.call(descriptor, 'value')
+    ) {
+      throw new Error(`${label}.${key} must be an enumerable data property`);
+    }
+  }
+}
+
+function hasExactProperties(
+  value: Readonly<Record<string, unknown>>,
+  expectedProperties: ReadonlyArray<string>,
+): boolean {
+  const keys = Object.keys(value).sort();
+  const expected = [...expectedProperties].sort();
+  return keys.length === expected.length && keys.every((key, index) => key === expected[index]);
+}
+
+function isToolResultImageArtifact(value: unknown): boolean {
+  if (!isRecord(value)) return false;
+  if (!hasExactProperties(value, ['rootId', 'selfId', 'status', 'relPath'])) return false;
+  const status = value['status'];
   return (
-    typeof value === 'string' ||
-    typeof value === 'number' ||
-    typeof value === 'boolean' ||
-    value === null
+    typeof value['rootId'] === 'string' &&
+    value['rootId'].trim() !== '' &&
+    typeof value['selfId'] === 'string' &&
+    value['selfId'].trim() !== '' &&
+    (status === 'running' || status === 'completed' || status === 'archived') &&
+    typeof value['relPath'] === 'string' &&
+    value['relPath'].trim() !== ''
   );
 }
 
-function isJsonValue(value: unknown): value is JsonValue {
-  if (isJsonPrimitive(value)) return true;
-  if (Array.isArray(value)) return value.every((item) => isJsonValue(item));
+function isFuncResultContentItem(value: unknown): value is FuncResultContentItem {
   if (!isRecord(value)) return false;
-  return Object.values(value).every((item) => isJsonValue(item));
+  if (value['type'] === 'input_text') {
+    return hasExactProperties(value, ['type', 'text']) && typeof value['text'] === 'string';
+  }
+  if (value['type'] === 'input_image') {
+    return (
+      hasExactProperties(value, ['type', 'mimeType', 'byteLength', 'artifact']) &&
+      typeof value['mimeType'] === 'string' &&
+      value['mimeType'].trim() !== '' &&
+      typeof value['byteLength'] === 'number' &&
+      Number.isInteger(value['byteLength']) &&
+      value['byteLength'] >= 0 &&
+      isToolResultImageArtifact(value['artifact'])
+    );
+  }
+  return false;
+}
+
+function normalizeFuncResultContentItem(item: FuncResultContentItem): FuncResultContentItem {
+  if (item.type === 'input_text') {
+    return { type: 'input_text', text: item.text };
+  }
+  return {
+    type: 'input_image',
+    mimeType: item.mimeType,
+    byteLength: item.byteLength,
+    artifact: {
+      rootId: item.artifact.rootId,
+      selfId: item.artifact.selfId,
+      status: item.artifact.status,
+      relPath: item.artifact.relPath,
+    },
+  };
 }
 
 function isToolCallOutput(value: unknown): value is DomindsAppHostToolResult['output'] {
@@ -63,47 +157,79 @@ function isToolCallOutput(value: unknown): value is DomindsAppHostToolResult['ou
     return false;
   }
   const contentItems = value['contentItems'];
-  return contentItems === undefined || Array.isArray(contentItems);
+  return (
+    contentItems === undefined ||
+    (Array.isArray(contentItems) &&
+      isJsonValue(contentItems) &&
+      contentItems.every((item) => isFuncResultContentItem(item)))
+  );
 }
 
 function parseReminderRequest(value: unknown): DomindsAppReminderApplyRequest {
-  if (!isRecord(value)) throw new Error('Invalid app tool reminder request: expected object');
+  if (!isRecord(value)) {
+    throw new Error('Invalid Application Component tool reminder request: expected object');
+  }
+  assertEnumerableDataProperties(value, 'Invalid Application Component tool reminder request');
   const kind = value['kind'];
   const ownerRef = value['ownerRef'];
   if (typeof ownerRef !== 'string' || ownerRef.trim() === '') {
-    throw new Error('Invalid app tool reminder request: ownerRef required');
+    throw new Error('Invalid Application Component tool reminder request: ownerRef required');
   }
   if (kind === 'delete') {
+    assertSupportedProperties(
+      value,
+      ['kind', 'ownerRef', 'meta'],
+      'Invalid Application Component tool reminder request',
+    );
     const meta = value['meta'];
     if (meta !== undefined && !isJsonValue(meta)) {
-      throw new Error('Invalid app tool reminder request: delete.meta must be JSON-serializable');
+      throw new Error(
+        'Invalid Application Component tool reminder request: delete.meta must be JSON-serializable',
+      );
     }
-    return { kind: 'delete', ownerRef, meta };
+    return {
+      kind: 'delete',
+      ownerRef,
+      ...(meta === undefined ? {} : { meta }),
+    };
   }
   if (kind === 'upsert') {
+    assertSupportedProperties(
+      value,
+      ['kind', 'ownerRef', 'content', 'meta', 'position', 'echoback', 'renderMode'],
+      'Invalid Application Component tool reminder request',
+    );
     const content = value['content'];
     if (typeof content !== 'string') {
-      throw new Error('Invalid app tool reminder request: upsert.content must be string');
+      throw new Error(
+        'Invalid Application Component tool reminder request: upsert.content must be string',
+      );
     }
     const meta = value['meta'];
     if (meta !== undefined && !isJsonValue(meta)) {
-      throw new Error('Invalid app tool reminder request: upsert.meta must be JSON-serializable');
+      throw new Error(
+        'Invalid Application Component tool reminder request: upsert.meta must be JSON-serializable',
+      );
     }
     const positionRaw = value['position'];
     const position =
       positionRaw === undefined
         ? undefined
-        : typeof positionRaw === 'number' && Number.isFinite(positionRaw)
-          ? Math.floor(positionRaw)
+        : isLosslessFiniteNumber(positionRaw)
+          ? positionRaw
           : null;
     if (position === null) {
-      throw new Error('Invalid app tool reminder request: upsert.position must be finite number');
+      throw new Error(
+        'Invalid Application Component tool reminder request: upsert.position must be a lossless finite number',
+      );
     }
     const echobackRaw = value['echoback'];
     const echoback =
       echobackRaw === undefined ? undefined : typeof echobackRaw === 'boolean' ? echobackRaw : null;
     if (echoback === null) {
-      throw new Error('Invalid app tool reminder request: upsert.echoback must be boolean');
+      throw new Error(
+        'Invalid Application Component tool reminder request: upsert.echoback must be boolean',
+      );
     }
     const renderModeRaw = value['renderMode'];
     const renderMode =
@@ -114,20 +240,38 @@ function parseReminderRequest(value: unknown): DomindsAppReminderApplyRequest {
           : null;
     if (renderMode === null) {
       throw new Error(
-        'Invalid app tool reminder request: upsert.renderMode must be plain|markdown',
+        'Invalid Application Component tool reminder request: upsert.renderMode must be plain|markdown',
       );
     }
-    return { kind: 'upsert', ownerRef, content, meta, position, echoback, renderMode };
+    return {
+      kind: 'upsert',
+      ownerRef,
+      content,
+      ...(meta === undefined ? {} : { meta }),
+      ...(position === undefined ? {} : { position }),
+      ...(echoback === undefined ? {} : { echoback }),
+      ...(renderMode === undefined ? {} : { renderMode }),
+    };
   }
-  throw new Error(`Invalid app tool reminder request kind: ${String(kind)}`);
+  throw new Error(`Invalid Application Component tool reminder request kind: ${String(kind)}`);
 }
 
 function parseDialogTargetRef(value: unknown): DomindsAppDialogTargetRef {
   if (!isRecord(value)) throw new Error('Invalid dialog reminder target: expected object');
+  assertEnumerableDataProperties(value, 'Invalid dialog reminder target');
   const dialogId = value['dialogId'];
-  if (typeof dialogId === 'string' && dialogId.trim() !== '') {
+  if (dialogId !== undefined) {
+    assertSupportedProperties(value, ['dialogId'], 'Invalid dialog reminder target');
+    if (typeof dialogId !== 'string' || dialogId.trim() === '') {
+      throw new Error('Invalid dialog reminder target: dialogId must be non-empty string');
+    }
     return { dialogId };
   }
+  assertSupportedProperties(
+    value,
+    ['agentId', 'mainDialogId', 'sessionSlug'],
+    'Invalid dialog reminder target',
+  );
   const agentId = value['agentId'];
   if (typeof agentId !== 'string' || agentId.trim() === '') {
     throw new Error('Invalid dialog reminder target: agentId required when dialogId is absent');
@@ -152,11 +296,20 @@ function parseDialogTargetRef(value: unknown): DomindsAppDialogTargetRef {
   if (sessionSlug === null) {
     throw new Error('Invalid dialog reminder target: sessionSlug must be non-empty string');
   }
-  return { agentId, mainDialogId, sessionSlug };
+  return {
+    agentId,
+    ...(mainDialogId === undefined ? {} : { mainDialogId }),
+    ...(sessionSlug === undefined ? {} : { sessionSlug }),
+  };
 }
 
 function parseDialogReminderRequestBatch(value: unknown): DomindsAppDialogReminderRequestBatch {
   if (!isRecord(value)) throw new Error('Invalid dialog reminder request batch: expected object');
+  assertSupportedProperties(
+    value,
+    ['target', 'reminderRequests'],
+    'Invalid dialog reminder request batch',
+  );
   const reminderRequestsRaw = value['reminderRequests'];
   if (!Array.isArray(reminderRequestsRaw)) {
     throw new Error('Invalid dialog reminder request batch: reminderRequests must be an array');
@@ -167,96 +320,196 @@ function parseDialogReminderRequestBatch(value: unknown): DomindsAppDialogRemind
   };
 }
 
-function isReminderState(value: unknown): value is DomindsAppReminderState {
-  if (!isRecord(value)) return false;
-  if (typeof value['content'] !== 'string') return false;
+function parseReminderState(value: unknown, label: string): DomindsAppReminderState {
+  if (!isRecord(value)) throw new Error(`${label}: expected object`);
+  assertSupportedProperties(value, ['content', 'meta', 'echoback', 'renderMode'], label);
+  const content = value['content'];
+  if (typeof content !== 'string') throw new Error(`${label}.content must be string`);
   const meta = value['meta'];
-  if (meta !== undefined && !isJsonValue(meta)) return false;
+  if (meta !== undefined && !isJsonValue(meta)) {
+    throw new Error(`${label}.meta must be JSON-serializable`);
+  }
   const echoback = value['echoback'];
+  if (echoback !== undefined && typeof echoback !== 'boolean') {
+    throw new Error(`${label}.echoback must be boolean`);
+  }
   const renderMode = value['renderMode'];
-  return (
-    (echoback === undefined || typeof echoback === 'boolean') &&
-    (renderMode === undefined || renderMode === 'plain' || renderMode === 'markdown')
-  );
+  if (renderMode !== undefined && renderMode !== 'plain' && renderMode !== 'markdown') {
+    throw new Error(`${label}.renderMode must be plain|markdown`);
+  }
+  return {
+    content,
+    ...(meta === undefined ? {} : { meta }),
+    ...(echoback === undefined ? {} : { echoback }),
+    ...(renderMode === undefined ? {} : { renderMode }),
+  };
 }
 
-function isReminderApplyResult(value: unknown): value is DomindsAppReminderApplyResult {
-  if (!isRecord(value)) return false;
+function parseReminderApplyResult(value: unknown): DomindsAppReminderApplyResult {
+  const label = 'Invalid reminder apply result';
+  if (!isRecord(value)) throw new Error(`${label}: expected object`);
+  assertEnumerableDataProperties(value, label);
   const treatment = value['treatment'];
-  if (treatment === 'noop') return true;
+  if (treatment === 'noop') {
+    assertSupportedProperties(value, ['treatment'], label);
+    return { treatment };
+  }
   if (treatment === 'add') {
+    assertSupportedProperties(value, ['treatment', 'reminder', 'position'], label);
     const position = value['position'];
-    return (
-      isReminderState(value['reminder']) &&
-      (position === undefined || (typeof position === 'number' && Number.isFinite(position)))
-    );
+    if (position !== undefined && !isLosslessFiniteNumber(position)) {
+      throw new Error(`${label}.position must be a lossless finite number`);
+    }
+    return {
+      treatment,
+      reminder: parseReminderState(value['reminder'], `${label}.reminder`),
+      ...(position === undefined ? {} : { position }),
+    };
   }
   if (treatment === 'update') {
-    return (
-      typeof value['ownedIndex'] === 'number' &&
-      Number.isFinite(value['ownedIndex']) &&
-      isReminderState(value['reminder'])
-    );
+    assertSupportedProperties(value, ['treatment', 'ownedIndex', 'reminder'], label);
+    const ownedIndex = value['ownedIndex'];
+    if (typeof ownedIndex !== 'number' || !Number.isInteger(ownedIndex) || ownedIndex < 0) {
+      throw new Error(`${label}.ownedIndex must be a non-negative integer`);
+    }
+    return {
+      treatment,
+      ownedIndex,
+      reminder: parseReminderState(value['reminder'], `${label}.reminder`),
+    };
   }
   if (treatment === 'delete') {
-    return typeof value['ownedIndex'] === 'number' && Number.isFinite(value['ownedIndex']);
+    assertSupportedProperties(value, ['treatment', 'ownedIndex'], label);
+    const ownedIndex = value['ownedIndex'];
+    if (typeof ownedIndex !== 'number' || !Number.isInteger(ownedIndex) || ownedIndex < 0) {
+      throw new Error(`${label}.ownedIndex must be a non-negative integer`);
+    }
+    return { treatment, ownedIndex };
   }
-  return false;
+  throw new Error(`${label}.treatment is unsupported: ${String(treatment)}`);
 }
 
-function isReminderUpdateResult(value: unknown): value is DomindsAppHostReminderUpdateResult {
-  if (!isRecord(value)) return false;
+function parseReminderUpdateResult(value: unknown): DomindsAppHostReminderUpdateResult {
+  const label = 'Invalid reminder update result';
+  if (!isRecord(value)) throw new Error(`${label}: expected object`);
+  assertEnumerableDataProperties(value, label);
   const treatment = value['treatment'];
   if (treatment === 'drop' || treatment === 'keep') {
-    return true;
+    assertSupportedProperties(value, ['treatment'], label);
+    return { treatment };
   }
-  if (treatment !== 'update') return false;
-  if (typeof value['updatedContent'] !== 'string') return false;
+  if (treatment !== 'update') {
+    throw new Error(`${label}.treatment is unsupported: ${String(treatment)}`);
+  }
+  assertSupportedProperties(value, ['treatment', 'updatedContent', 'updatedMeta'], label);
+  const updatedContent = value['updatedContent'];
+  if (typeof updatedContent !== 'string') {
+    throw new Error(`${label}.updatedContent must be string`);
+  }
   const updatedMeta = value['updatedMeta'];
-  return updatedMeta === undefined || isJsonValue(updatedMeta);
+  if (updatedMeta !== undefined && !isJsonValue(updatedMeta)) {
+    throw new Error(`${label}.updatedMeta must be JSON-serializable`);
+  }
+  return {
+    treatment,
+    updatedContent,
+    ...(updatedMeta === undefined ? {} : { updatedMeta }),
+  };
 }
 
-function isReminderRenderedMessage(value: unknown): value is DomindsAppReminderRenderedMessage {
-  if (!isRecord(value)) return false;
-  if (typeof value['content'] !== 'string') return false;
-  return true;
+function parseReminderRenderedMessage(value: unknown): DomindsAppReminderRenderedMessage {
+  const label = 'Invalid reminder render result';
+  if (!isRecord(value)) throw new Error(`${label}: expected object`);
+  assertSupportedProperties(value, ['content'], label);
+  const content = value['content'];
+  if (typeof content !== 'string') throw new Error(`${label}.content must be string`);
+  return { content };
+}
+
+function parseHostStartResult(value: unknown, appId: string): DomindsAppHostStartResult {
+  const label = `Invalid app host start result for '${appId}'`;
+  if (!isRecord(value)) throw new Error(`${label}: expected object`);
+  assertSupportedProperties(value, ['port', 'baseUrl', 'wsUrl'], label);
+  const port = value['port'];
+  if (typeof port !== 'number' || !Number.isInteger(port) || port <= 0 || port > 65_535) {
+    throw new Error(`${label}.port must be an integer between 1 and 65535`);
+  }
+  const baseUrl = value['baseUrl'];
+  if (typeof baseUrl !== 'string' || baseUrl.trim() === '') {
+    throw new Error(`${label}.baseUrl must be a non-empty string`);
+  }
+  const wsUrl = value['wsUrl'];
+  if (wsUrl !== null && (typeof wsUrl !== 'string' || wsUrl.trim() === '')) {
+    throw new Error(`${label}.wsUrl must be a non-empty string or null`);
+  }
+  return { port, baseUrl, wsUrl };
 }
 
 function normalizeToolResult(value: unknown): DomindsAppHostToolResult {
   if (!isRecord(value)) {
     throw new Error(
-      'Invalid app tool result: expected { output: { content, outcome, contentItems? }, ... }',
+      'Invalid Application Component tool result: expected { output: { content, outcome, contentItems? }, ... }',
     );
   }
+  assertSupportedProperties(
+    value,
+    ['output', 'reminderRequests', 'dialogReminderRequests'],
+    'Invalid Application Component tool result',
+  );
   const output = value['output'];
-  if (!isToolCallOutput(output)) {
-    throw new Error('Invalid app tool result: output must be { content, outcome, contentItems? }');
+  if (isRecord(output)) {
+    assertSupportedProperties(
+      output,
+      ['content', 'outcome', 'contentItems'],
+      'Invalid Application Component tool result output',
+    );
   }
+  if (!isToolCallOutput(output)) {
+    throw new Error(
+      'Invalid Application Component tool result: output must be { content, outcome, contentItems? }',
+    );
+  }
+  const normalizedOutput: DomindsAppHostToolResult['output'] = {
+    content: output.content,
+    outcome: output.outcome,
+    ...(output.contentItems === undefined
+      ? {}
+      : { contentItems: output.contentItems.map(normalizeFuncResultContentItem) }),
+  };
   const reminderRequestsRaw = value['reminderRequests'];
   if (reminderRequestsRaw !== undefined && !Array.isArray(reminderRequestsRaw)) {
-    throw new Error('Invalid app tool result: reminderRequests must be an array');
+    throw new Error('Invalid Application Component tool result: reminderRequests must be an array');
   }
   const dialogReminderRequestsRaw = value['dialogReminderRequests'];
   if (dialogReminderRequestsRaw !== undefined && !Array.isArray(dialogReminderRequestsRaw)) {
-    throw new Error('Invalid app tool result: dialogReminderRequests must be an array');
+    throw new Error(
+      'Invalid Application Component tool result: dialogReminderRequests must be an array',
+    );
   }
   return {
-    output,
-    reminderRequests:
-      reminderRequestsRaw === undefined
-        ? undefined
-        : reminderRequestsRaw.map((request) => parseReminderRequest(request)),
-    dialogReminderRequests:
-      dialogReminderRequestsRaw === undefined
-        ? undefined
-        : dialogReminderRequestsRaw.map((batch) => parseDialogReminderRequestBatch(batch)),
+    output: normalizedOutput,
+    ...(reminderRequestsRaw === undefined
+      ? {}
+      : {
+          reminderRequests: reminderRequestsRaw.map((request) => parseReminderRequest(request)),
+        }),
+    ...(dialogReminderRequestsRaw === undefined
+      ? {}
+      : {
+          dialogReminderRequests: dialogReminderRequestsRaw.map((batch) =>
+            parseDialogReminderRequestBatch(batch),
+          ),
+        }),
   };
 }
 
 function send(msg: AppsHostMessageToKernel): void {
+  if (!isJsonValue(msg)) {
+    throw new Error(`apps-host refused non-lossless IPC message of type '${msg.type}'`);
+  }
   if (typeof process.send !== 'function') {
     throw new Error(
-      `apps-host: process.send is not available; must be started with child_process.fork (msg=${JSON.stringify(msg)})`,
+      `apps-host: process.send is not available; must be started with child_process.fork (type=${msg.type})`,
     );
   }
   process.send(msg);
@@ -302,19 +555,15 @@ function pickExportedFactory(
 
 function validateHostInstance(host: unknown, appId: string): DomindsAppHostInstance {
   if (!isRecord(host)) throw new Error(`Invalid app host instance for '${appId}': expected object`);
-  const unsupportedHostKeys = Object.keys(host)
-    .filter(
-      (key) => key !== 'tools' && key !== 'reminderOwners' && key !== 'start' && key !== 'shutdown',
-    )
-    .sort();
-  if (unsupportedHostKeys.length > 0) {
-    throw new Error(
-      `Invalid app host instance for '${appId}': unsupported properties: ${unsupportedHostKeys.join(', ')}`,
-    );
-  }
+  assertSupportedProperties(
+    host,
+    ['tools', 'reminderOwners', 'start', 'shutdown'],
+    `Invalid app host instance for '${appId}'`,
+  );
   const tools = host['tools'];
   if (!isRecord(tools))
     throw new Error(`Invalid app host instance for '${appId}': tools must be an object`);
+  assertEnumerableDataProperties(tools, `Invalid app host instance for '${appId}': tools`);
   const start = host['start'];
   const shutdown = host['shutdown'];
   if (start !== undefined && typeof start !== 'function') {
@@ -336,6 +585,10 @@ function validateHostInstance(host: unknown, appId: string): DomindsAppHostInsta
     }
   }
   if (reminderOwners !== undefined) {
+    assertEnumerableDataProperties(
+      reminderOwners,
+      `Invalid app host instance for '${appId}': reminderOwners`,
+    );
     const reminderOwnerFns = reminderOwners as Record<string, unknown>;
     for (const [ownerRef, handler] of Object.entries(reminderOwnerFns)) {
       if (!isRecord(handler)) {
@@ -343,6 +596,11 @@ function validateHostInstance(host: unknown, appId: string): DomindsAppHostInsta
           `Invalid app host instance for '${appId}': reminderOwners['${ownerRef}'] must be an object`,
         );
       }
+      assertSupportedProperties(
+        handler,
+        ['apply', 'updateReminder', 'renderReminder'],
+        `Invalid app host instance for '${appId}': reminderOwners['${ownerRef}']`,
+      );
       if (typeof handler['apply'] !== 'function') {
         throw new Error(
           `Invalid app host instance for '${appId}': reminderOwners['${ownerRef}'].apply must be a function`,
@@ -361,6 +619,52 @@ function validateHostInstance(host: unknown, appId: string): DomindsAppHostInsta
     }
   }
   return host as unknown as DomindsAppHostInstance;
+}
+
+function validateDeclaredHostHandlers(
+  host: DomindsAppHostInstance,
+  app: AppsHostKernelInitMessage['apps'][number],
+): void {
+  const declaredToolNames = new Set(
+    (app.installJson.contributes?.toolsets ?? []).flatMap((toolset) =>
+      toolset.tools.map((tool) => tool.name),
+    ),
+  );
+  const actualToolNames = new Set(Object.keys(host.tools));
+  const missingToolNames = [...declaredToolNames]
+    .filter((toolName) => !actualToolNames.has(toolName))
+    .sort();
+  const undeclaredToolNames = [...actualToolNames]
+    .filter((toolName) => !declaredToolNames.has(toolName))
+    .sort();
+  if (missingToolNames.length > 0 || undeclaredToolNames.length > 0) {
+    throw new Error(
+      `Invalid app host tool handlers for '${app.appId}': ` +
+        `missing=[${missingToolNames.join(', ')}] undeclared=[${undeclaredToolNames.join(', ')}]`,
+    );
+  }
+
+  const declaredOwnerRefs = new Set(
+    (app.installJson.contributes?.reminderOwners ?? []).map((owner) => owner.ref),
+  );
+  const actualOwnerRefs = new Set(Object.keys(host.reminderOwners ?? {}));
+  const missingOwnerRefs = [...declaredOwnerRefs]
+    .filter((ownerRef) => !actualOwnerRefs.has(ownerRef))
+    .sort();
+  const undeclaredOwnerRefs = [...actualOwnerRefs]
+    .filter((ownerRef) => !declaredOwnerRefs.has(ownerRef))
+    .sort();
+  if (missingOwnerRefs.length > 0 || undeclaredOwnerRefs.length > 0) {
+    throw new Error(
+      `Invalid app host reminder owner handlers for '${app.appId}': ` +
+        `missing=[${missingOwnerRefs.join(', ')}] undeclared=[${undeclaredOwnerRefs.join(', ')}]`,
+    );
+  }
+  if (!app.installJson.frontend && host.start) {
+    throw new Error(
+      `Invalid app host instance for '${app.appId}': start() requires a declared frontend`,
+    );
+  }
 }
 
 async function initOnce(msg: AppsHostKernelInitMessage): Promise<void> {
@@ -384,17 +688,24 @@ async function initOnce(msg: AppsHostKernelInitMessage): Promise<void> {
         packageRootAbs: app.installJson.package.rootAbs,
         kernel: msg.kernel,
         log: (level, text, data) => {
-          send({ type: 'log', level, msg: text, appId, data });
+          send({
+            type: 'log',
+            level,
+            msg: text,
+            appId,
+            ...(data === undefined ? {} : { data }),
+          });
         },
       }),
       appId,
     );
+    validateDeclaredHostHandlers(host, app);
 
     for (const [toolName, fn] of Object.entries(host.tools)) {
       if (toolHandlers.has(toolName)) {
         const existing = toolHandlers.get(toolName);
         throw new Error(
-          `apps-host: duplicate tool name '${toolName}' between apps '${existing?.appId ?? 'unknown'}' and '${appId}'`,
+          `apps-host: duplicate tool name '${toolName}' between Stage 0 component packages '${existing?.appId ?? 'unknown'}' and '${appId}'`,
         );
       }
       toolHandlers.set(toolName, { appId, fn });
@@ -403,7 +714,9 @@ async function initOnce(msg: AppsHostKernelInitMessage): Promise<void> {
       for (const [ownerRef, fn] of Object.entries(host.reminderOwners)) {
         const handlerKey = buildReminderOwnerHandlerKey(appId, ownerRef);
         if (reminderOwnerHandlers.has(handlerKey)) {
-          throw new Error(`apps-host: duplicate reminder owner '${ownerRef}' for app '${appId}'`);
+          throw new Error(
+            `apps-host: duplicate reminder owner '${ownerRef}' for Stage 0 component package '${appId}'`,
+          );
         }
         reminderOwnerHandlers.set(handlerKey, { appId, ownerRef, fn });
       }
@@ -412,13 +725,16 @@ async function initOnce(msg: AppsHostKernelInitMessage): Promise<void> {
     if (app.installJson.frontend) {
       if (!host.start) {
         throw new Error(
-          `apps-host: app '${appId}' declares frontend but host instance has no start()`,
+          `apps-host: Stage 0 component package '${appId}' declares frontend but host instance has no start()`,
         );
       }
-      frontend = await host.start({
-        runtimePort: app.runtimePort,
-        frontend: app.installJson.frontend,
-      });
+      frontend = parseHostStartResult(
+        await host.start({
+          runtimePort: app.runtimePort,
+          frontend: app.installJson.frontend,
+        }),
+        appId,
+      );
     }
 
     runningApps.set(appId, { appId, host, frontend });
@@ -486,8 +802,12 @@ process.on('message', (raw: unknown) => {
             callId: msg.callId,
             ok: true,
             output: result.output,
-            reminderRequests: result.reminderRequests,
-            dialogReminderRequests: result.dialogReminderRequests,
+            ...(result.reminderRequests === undefined
+              ? {}
+              : { reminderRequests: result.reminderRequests }),
+            ...(result.dialogReminderRequests === undefined
+              ? {}
+              : { dialogReminderRequests: result.dialogReminderRequests }),
           });
         } catch (err: unknown) {
           send({
@@ -513,16 +833,7 @@ process.on('message', (raw: unknown) => {
           return;
         }
         try {
-          const result = await found.fn.apply(msg.request, msg.ctx);
-          if (!isReminderApplyResult(result)) {
-            send({
-              type: 'reminder_apply_result',
-              callId: msg.callId,
-              ok: false,
-              errorText: `Invalid reminder apply result shape: ${msg.appId}/${msg.ownerRef}`,
-            });
-            return;
-          }
+          const result = parseReminderApplyResult(await found.fn.apply(msg.request, msg.ctx));
           send({ type: 'reminder_apply_result', callId: msg.callId, ok: true, result });
         } catch (err: unknown) {
           send({
@@ -548,16 +859,7 @@ process.on('message', (raw: unknown) => {
           return;
         }
         try {
-          const result = await found.fn.updateReminder(msg.ctx);
-          if (!isReminderUpdateResult(result)) {
-            send({
-              type: 'reminder_update_result',
-              callId: msg.callId,
-              ok: false,
-              errorText: `Invalid reminder update result shape: ${msg.appId}/${msg.ownerRef}`,
-            });
-            return;
-          }
+          const result = parseReminderUpdateResult(await found.fn.updateReminder(msg.ctx));
           send({ type: 'reminder_update_result', callId: msg.callId, ok: true, result });
         } catch (err: unknown) {
           send({
@@ -583,16 +885,7 @@ process.on('message', (raw: unknown) => {
           return;
         }
         try {
-          const message = await found.fn.renderReminder(msg.ctx);
-          if (!isReminderRenderedMessage(message)) {
-            send({
-              type: 'reminder_render_result',
-              callId: msg.callId,
-              ok: false,
-              errorText: `Invalid reminder render result shape: ${msg.appId}/${msg.ownerRef}; expected { content: string }`,
-            });
-            return;
-          }
+          const message = parseReminderRenderedMessage(await found.fn.renderReminder(msg.ctx));
           send({ type: 'reminder_render_result', callId: msg.callId, ok: true, message });
         } catch (err: unknown) {
           send({
@@ -624,8 +917,11 @@ process.on('message', (raw: unknown) => {
         msg: `apps-host fatal error: ${errorText}`,
         appId: null,
       });
-    } catch {
-      // ignore
+    } catch (sendError: unknown) {
+      log.error(
+        'Failed to emit apps-host fatal error over IPC',
+        sendError instanceof Error ? sendError : new Error(String(sendError)),
+      );
     }
     log.error('apps-host fatal error', err instanceof Error ? err : new Error(String(err)));
     void shutdownAll().finally(() => process.exit(1));

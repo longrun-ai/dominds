@@ -108,7 +108,10 @@ async function main(): Promise<void> {
 
     const interactiveToolset = getToolset('playwright_interactive');
     const interactiveToolsetMeta = getToolsetMeta('playwright_interactive');
-    assert.ok(interactiveToolset, 'expected app toolset after loadAgentMinds refresh');
+    assert.ok(
+      interactiveToolset,
+      'expected component-provided toolset after loadAgentMinds refresh',
+    );
     assert.equal(interactiveToolsetMeta?.source, 'app');
     assert.ok(interactiveToolset.some((tool) => tool.name === 'playwright_session_status'));
 

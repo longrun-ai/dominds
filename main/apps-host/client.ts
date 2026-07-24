@@ -12,13 +12,15 @@ import type {
   DomindsAppReminderRenderedMessage,
   DomindsKernelEndpoint,
 } from '@longrun-ai/kernel/app-host-contract';
-import type {
-  DomindsAppDialogReminderRequestBatch,
-  DomindsAppHostReminderUpdateResult,
-  DomindsAppHostToolResult,
-  DomindsAppInstallJson,
-  DomindsAppReminderApplyRequest,
-  DomindsAppReminderApplyResult,
+import {
+  isJsonValue,
+  parseDomindsAppInstallJson,
+  type DomindsAppHostReminderUpdateResult,
+  type DomindsAppHostToolResult,
+  type DomindsAppInstallJson,
+  type DomindsAppReminderApplyRequest,
+  type DomindsAppReminderApplyResult,
+  type DomindsAppReminderState,
 } from '@longrun-ai/kernel/app-json';
 import { createLogger } from '../log';
 import type { ToolArguments } from '../tool';
@@ -30,57 +32,66 @@ import type {
   AppsHostMessageFromKernel,
   AppsHostMessageToKernel,
 } from './ipc-types';
+import { parseAppsHostMessageFromKernel, parseAppsHostMessageToKernel } from './ipc-types';
 
 const log = createLogger('apps-host-client');
 const requireFn = createRequire(__filename);
 
-function isRecord(v: unknown): v is Record<string, unknown> {
-  return typeof v === 'object' && v !== null && !Array.isArray(v);
+function assertJsonValueForIpc(value: unknown, label: string): void {
+  if (!isJsonValue(value)) {
+    throw new Error(`${label} must be a lossless JSON value`);
+  }
 }
 
-function asString(v: unknown): string | null {
-  return typeof v === 'string' ? v : null;
+function buildReminderStateForIpc(
+  state: DomindsAppReminderState,
+  label: string,
+): DomindsAppReminderState {
+  if (state.meta !== undefined) {
+    assertJsonValueForIpc(state.meta, `${label}.meta`);
+  }
+  return {
+    content: state.content,
+    ...(state.meta === undefined ? {} : { meta: state.meta }),
+    ...(state.echoback === undefined ? {} : { echoback: state.echoback }),
+    ...(state.renderMode === undefined ? {} : { renderMode: state.renderMode }),
+  };
 }
 
-function parseMessageToKernel(v: unknown): AppsHostMessageToKernel {
-  if (!isRecord(v)) throw new Error('Invalid IPC message from apps-host: expected object');
-  const type = asString(v['type']);
-  if (!type) throw new Error('Invalid IPC message from apps-host: missing type');
-  if (type === 'ready') {
-    const apps = v['apps'];
-    if (!Array.isArray(apps)) throw new Error('Invalid ready message: apps must be array');
-    return v as unknown as AppsHostMessageToKernel;
+function buildReminderApplyRequestForIpc(
+  request: DomindsAppReminderApplyRequest,
+  label: string,
+): DomindsAppReminderApplyRequest {
+  if (request.meta !== undefined) {
+    assertJsonValueForIpc(request.meta, `${label}.meta`);
   }
-  if (type === 'log') {
-    const level = asString(v['level']);
-    const msg = asString(v['msg']);
-    if (level !== 'info' && level !== 'warn' && level !== 'error') {
-      throw new Error(`Invalid log message: level must be info|warn|error`);
-    }
-    if (!msg) throw new Error('Invalid log message: msg required');
-    return v as unknown as AppsHostMessageToKernel;
+  if (request.kind === 'delete') {
+    return {
+      kind: request.kind,
+      ownerRef: request.ownerRef,
+      ...(request.meta === undefined ? {} : { meta: request.meta }),
+    };
   }
-  if (type === 'tool_result') {
-    const callId = asString(v['callId']);
-    if (!callId) throw new Error('Invalid tool_result message: callId required');
-    return v as unknown as AppsHostMessageToKernel;
+  return {
+    kind: request.kind,
+    ownerRef: request.ownerRef,
+    content: request.content,
+    ...(request.meta === undefined ? {} : { meta: request.meta }),
+    ...(request.position === undefined ? {} : { position: request.position }),
+    ...(request.echoback === undefined ? {} : { echoback: request.echoback }),
+    ...(request.renderMode === undefined ? {} : { renderMode: request.renderMode }),
+  };
+}
+
+function buildInstallJsonForIpc(
+  installJson: DomindsAppInstallJson,
+  appId: string,
+): DomindsAppInstallJson {
+  const parsed = parseDomindsAppInstallJson(installJson);
+  if (!parsed.ok) {
+    throw new Error(`Invalid apps-host install json for '${appId}': ${parsed.errorText}`);
   }
-  if (type === 'reminder_apply_result') {
-    const callId = asString(v['callId']);
-    if (!callId) throw new Error('Invalid reminder_apply_result message: callId required');
-    return v as unknown as AppsHostMessageToKernel;
-  }
-  if (type === 'reminder_update_result') {
-    const callId = asString(v['callId']);
-    if (!callId) throw new Error('Invalid reminder_update_result message: callId required');
-    return v as unknown as AppsHostMessageToKernel;
-  }
-  if (type === 'reminder_render_result') {
-    const callId = asString(v['callId']);
-    if (!callId) throw new Error('Invalid reminder_render_result message: callId required');
-    return v as unknown as AppsHostMessageToKernel;
-  }
-  throw new Error(`Invalid IPC message from apps-host: unknown type '${type}'`);
+  return parsed.json;
 }
 
 export type EnabledAppForHost = Readonly<{
@@ -149,8 +160,7 @@ type PendingReminderRenderCall = Readonly<{
 }>;
 
 function resolveAppsHostEntrypointAbs():
-  | { ok: true; scriptAbs: string; execArgv: string[] }
-  | { ok: false; errorText: string } {
+  { ok: true; scriptAbs: string; execArgv: string[] } | { ok: false; errorText: string } {
   // Prefer compiled JS in dist/ when available.
   // When running via tsx in dev-server, fall back to main/apps-host/host.ts with tsx loader.
   const distCandidate = path.resolve(__dirname, 'host.js');
@@ -237,7 +247,7 @@ export async function startAppsHost(params: {
 
   child.on('message', (raw: unknown) => {
     try {
-      const msg = parseMessageToKernel(raw);
+      const msg = parseAppsHostMessageToKernel(raw);
       if (msg.type === 'log') {
         const prefix = msg.appId ? `[${msg.appId}]` : '';
         if (msg.level === 'info') log.info(`apps-host ${prefix} ${msg.msg}`, undefined, msg.data);
@@ -264,10 +274,12 @@ export async function startAppsHost(params: {
         if (msg.ok) {
           p.resolve({
             output: msg.output,
-            reminderRequests: msg.reminderRequests,
-            dialogReminderRequests: msg.dialogReminderRequests as
-              | ReadonlyArray<DomindsAppDialogReminderRequestBatch>
-              | undefined,
+            ...(msg.reminderRequests === undefined
+              ? {}
+              : { reminderRequests: msg.reminderRequests }),
+            ...(msg.dialogReminderRequests === undefined
+              ? {}
+              : { dialogReminderRequests: msg.dialogReminderRequests }),
           });
         } else p.reject(new Error(msg.errorText));
         return;
@@ -327,10 +339,18 @@ export async function startAppsHost(params: {
   const initMsg: AppsHostKernelInitMessage = {
     type: 'init',
     rtwsRootAbs: params.rtwsRootAbs,
-    kernel: params.kernel,
-    apps: params.apps,
+    kernel: {
+      scheme: params.kernel.scheme,
+      host: params.kernel.host,
+      port: params.kernel.port,
+    },
+    apps: params.apps.map((app) => ({
+      appId: app.appId,
+      runtimePort: app.runtimePort,
+      installJson: buildInstallJsonForIpc(app.installJson, app.appId),
+    })),
   };
-  child.send(initMsg);
+  child.send(parseAppsHostMessageFromKernel(initMsg));
 
   const readyResult = await readyPromise;
 
@@ -338,8 +358,22 @@ export async function startAppsHost(params: {
     if (!ready) {
       throw new Error(`apps-host is not ready yet (tool=${toolName})`);
     }
+    assertJsonValueForIpc(args, `apps-host tool arguments for '${toolName}'`);
     const callId = randomUUID();
-    const msg: AppsHostMessageFromKernel = { type: 'tool_call', callId, toolName, args, ctx };
+    const msg = parseAppsHostMessageFromKernel({
+      type: 'tool_call',
+      callId,
+      toolName,
+      args,
+      ctx: {
+        dialogId: ctx.dialogId,
+        mainDialogId: ctx.mainDialogId,
+        agentId: ctx.agentId,
+        taskDocPath: ctx.taskDocPath,
+        ...(ctx.sessionSlug === undefined ? {} : { sessionSlug: ctx.sessionSlug }),
+        callerId: ctx.callerId,
+      },
+    } satisfies AppsHostMessageFromKernel);
     return await new Promise<DomindsAppHostToolResult>((resolve, reject) => {
       const timeout = setTimeout(() => {
         pendingTools.delete(callId);
@@ -354,15 +388,49 @@ export async function startAppsHost(params: {
     if (!ready) {
       throw new Error(`apps-host is not ready yet (reminderOwner=${appId}/${ownerRef})`);
     }
+    if (request.meta !== undefined) {
+      assertJsonValueForIpc(
+        request.meta,
+        `apps-host reminder apply request meta for '${appId}/${ownerRef}'`,
+      );
+    }
+    if (
+      request.kind === 'upsert' &&
+      request.position !== undefined &&
+      (!Number.isFinite(request.position) || Object.is(request.position, -0))
+    ) {
+      throw new Error(
+        `apps-host reminder apply request position for '${appId}/${ownerRef}' must be a lossless finite number`,
+      );
+    }
+    for (const [index, reminder] of ctx.ownedReminders.entries()) {
+      if (reminder.meta !== undefined) {
+        assertJsonValueForIpc(
+          reminder.meta,
+          `apps-host reminder apply context ownedReminders[${index}].meta for '${appId}/${ownerRef}'`,
+        );
+      }
+    }
     const callId = randomUUID();
-    const msg: AppsHostKernelReminderApplyMessage = {
+    const msg = parseAppsHostMessageFromKernel({
       type: 'reminder_apply',
       callId,
       appId,
       ownerRef,
-      request,
-      ctx,
-    };
+      request: buildReminderApplyRequestForIpc(
+        request,
+        `apps-host reminder apply request for '${appId}/${ownerRef}'`,
+      ),
+      ctx: {
+        dialogId: ctx.dialogId,
+        ownedReminders: ctx.ownedReminders.map((reminder, index) =>
+          buildReminderStateForIpc(
+            reminder,
+            `apps-host reminder apply context ownedReminders[${index}] for '${appId}/${ownerRef}'`,
+          ),
+        ),
+      },
+    } satisfies AppsHostKernelReminderApplyMessage);
     return await new Promise<DomindsAppReminderApplyResult>((resolve, reject) => {
       const timeout = setTimeout(() => {
         pendingReminderApplies.delete(callId);
@@ -381,14 +449,26 @@ export async function startAppsHost(params: {
     if (!ready) {
       throw new Error(`apps-host is not ready yet (reminderOwner=${appId}/${ownerRef})`);
     }
+    if (ctx.reminder.meta !== undefined) {
+      assertJsonValueForIpc(
+        ctx.reminder.meta,
+        `apps-host reminder update context meta for '${appId}/${ownerRef}'`,
+      );
+    }
     const callId = randomUUID();
-    const msg: AppsHostKernelReminderUpdateMessage = {
+    const msg = parseAppsHostMessageFromKernel({
       type: 'reminder_update',
       callId,
       appId,
       ownerRef,
-      ctx,
-    };
+      ctx: {
+        dialogId: ctx.dialogId,
+        reminder: buildReminderStateForIpc(
+          ctx.reminder,
+          `apps-host reminder update context for '${appId}/${ownerRef}'`,
+        ),
+      },
+    } satisfies AppsHostKernelReminderUpdateMessage);
     return await new Promise<DomindsAppHostReminderUpdateResult>((resolve, reject) => {
       const timeout = setTimeout(() => {
         pendingReminderUpdates.delete(callId);
@@ -407,14 +487,28 @@ export async function startAppsHost(params: {
     if (!ready) {
       throw new Error(`apps-host is not ready yet (reminderOwner=${appId}/${ownerRef})`);
     }
+    if (ctx.reminder.meta !== undefined) {
+      assertJsonValueForIpc(
+        ctx.reminder.meta,
+        `apps-host reminder render context meta for '${appId}/${ownerRef}'`,
+      );
+    }
     const callId = randomUUID();
-    const msg: AppsHostKernelReminderRenderMessage = {
+    const msg = parseAppsHostMessageFromKernel({
       type: 'reminder_render',
       callId,
       appId,
       ownerRef,
-      ctx,
-    };
+      ctx: {
+        dialogId: ctx.dialogId,
+        reminder: buildReminderStateForIpc(
+          ctx.reminder,
+          `apps-host reminder render context for '${appId}/${ownerRef}'`,
+        ),
+        reminderId: ctx.reminderId,
+        workLanguage: ctx.workLanguage,
+      },
+    } satisfies AppsHostKernelReminderRenderMessage);
     return await new Promise<DomindsAppReminderRenderedMessage>((resolve, reject) => {
       const timeout = setTimeout(() => {
         pendingReminderRenders.delete(callId);
@@ -470,7 +564,7 @@ export async function startAppsHost(params: {
     };
 
     try {
-      child.send({ type: 'shutdown' } satisfies AppsHostMessageFromKernel);
+      child.send(parseAppsHostMessageFromKernel({ type: 'shutdown' }));
     } catch (err: unknown) {
       log.warn(
         'Failed to send shutdown to apps-host',

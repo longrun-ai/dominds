@@ -5,12 +5,14 @@ import path from 'node:path';
 import {
   type Q4HDialogContext,
   TEAM_MGMT_GUIDE_UI_TOPIC_ORDER,
+  appToolSuccess,
   getTeamMgmtGuideTopicTitle,
   isTeamMgmtGuideTopicKey,
   parseDomindsAppInstallJson,
+  toolSuccess,
 } from '@longrun-ai/kernel';
 import type { CreateDomindsAppFn } from '@longrun-ai/kernel/app-host-contract';
-import type { DomindsAppInstallJson } from '@longrun-ai/kernel/app-json';
+import { type DomindsAppInstallJson, isJsonValue } from '@longrun-ai/kernel/app-json';
 import { DILIGENCE_FALLBACK_TEXT } from '@longrun-ai/kernel/diligence';
 import { createPubChan, createSubChan } from '@longrun-ai/kernel/evt';
 import { supportedLanguageCodes } from '@longrun-ai/kernel/types/language';
@@ -144,6 +146,104 @@ async function main(): Promise<void> {
 
   const parsed = parseDomindsAppInstallJson(installJsonInput);
   assert.equal(parsed.ok, true, 'Kernel root export must parse valid app install json.');
+  const canonicalized = parseDomindsAppInstallJson({
+    ...installJsonInput,
+    displayName: undefined,
+    frontend: {
+      kind: 'http',
+      defaultPort: undefined,
+      basePath: undefined,
+      wsPath: undefined,
+    },
+    contributes: {
+      teammatesYamlRelPath: undefined,
+      toolsets: [
+        {
+          id: 'probe',
+          descriptionI18n: undefined,
+          tools: [
+            {
+              name: 'probe_tool',
+              description: undefined,
+              descriptionI18n: undefined,
+              parameters: {},
+            },
+          ],
+        },
+      ],
+      reminderOwners: [
+        {
+          ref: 'probe_owner',
+          manager: undefined,
+          update: undefined,
+          delete: undefined,
+        },
+      ],
+    },
+  });
+  assert.equal(canonicalized.ok, true, 'Valid install json must remain canonicalizable.');
+  if (canonicalized.ok) {
+    assert.equal(
+      isJsonValue(canonicalized.json),
+      true,
+      'Parsed install json must be a lossless IPC value without undefined optional properties.',
+    );
+    assert.deepEqual(canonicalized.json, {
+      appId: '@demo/example',
+      package: {
+        name: '@demo/example',
+        version: '1.0.0',
+        rootAbs: '/tmp/example-app',
+      },
+      host: {
+        kind: 'node_module',
+        moduleRelPath: 'dist/app.js',
+        exportName: 'createDomindsApp',
+      },
+      frontend: { kind: 'http' },
+      contributes: {
+        toolsets: [{ id: 'probe', tools: [{ name: 'probe_tool', parameters: {} }] }],
+        reminderOwners: [{ ref: 'probe_owner' }],
+      },
+    });
+  }
+  class InstallManifestClass {
+    readonly appId = installJsonInput.appId;
+    readonly displayName = installJsonInput.displayName;
+    readonly package = installJsonInput.package;
+    readonly host = installJsonInput.host;
+  }
+  assert.equal(
+    parseDomindsAppInstallJson(new InstallManifestClass()).ok,
+    false,
+    'Install json must reject class instances rather than treating them as plain manifests.',
+  );
+  let installGetterRead = false;
+  const getterInstallJson = { ...installJsonInput };
+  Object.defineProperty(getterInstallJson, 'displayName', {
+    enumerable: true,
+    get() {
+      installGetterRead = true;
+      return 'Getter Example';
+    },
+  });
+  assert.equal(
+    parseDomindsAppInstallJson(getterInstallJson).ok,
+    false,
+    'Install json must reject accessor properties.',
+  );
+  assert.equal(
+    installGetterRead,
+    false,
+    'Install json validation must reject accessors without invoking them.',
+  );
+  const symbolInstallJson: Record<PropertyKey, unknown> = { ...installJsonInput };
+  symbolInstallJson[Symbol('hidden')] = true;
+  assert.equal(
+    parseDomindsAppInstallJson(symbolInstallJson).ok,
+    false,
+    'Install json must reject symbol-keyed properties instead of silently discarding them.',
+  );
   const unsupportedContribution = parseDomindsAppInstallJson({
     ...installJsonInput,
     contributes: {
@@ -161,6 +261,330 @@ async function main(): Promise<void> {
       /contributes contains unsupported properties: unsupportedExtension/,
     );
   }
+  const unsupportedReminderOwner = parseDomindsAppInstallJson({
+    ...installJsonInput,
+    contributes: {
+      reminderOwners: [
+        {
+          ref: 'probe_owner',
+          managedByTool: 'probe_tool',
+          updateExample: 'probe_tool({})',
+        },
+      ],
+    },
+  });
+  assert.equal(
+    unsupportedReminderOwner.ok,
+    false,
+    'Unknown reminder-owner properties must fail closed instead of being silently ignored.',
+  );
+  if (!unsupportedReminderOwner.ok) {
+    assert.match(
+      unsupportedReminderOwner.errorText,
+      /contributes\.reminderOwners\[0\]: contains unsupported properties: managedByTool, updateExample/,
+    );
+  }
+
+  const validParameters = {
+    type: 'object',
+    properties: {
+      query: {
+        type: 'string',
+        enum: ['current', 'archived'],
+      },
+      limit: {
+        type: 'integer',
+        minimum: 0,
+      },
+    },
+    required: ['query'],
+    additionalProperties: false,
+  };
+  const validParametersResult = parseDomindsAppInstallJson({
+    ...installJsonInput,
+    contributes: {
+      toolsets: [
+        {
+          id: 'probe',
+          tools: [{ name: 'probe_tool', parameters: validParameters }],
+        },
+      ],
+    },
+  });
+  assert.equal(
+    validParametersResult.ok,
+    true,
+    'A nested lossless JSON object must remain a valid tool parameter schema.',
+  );
+  if (validParametersResult.ok) {
+    assert.deepEqual(
+      validParametersResult.json.contributes?.toolsets?.[0]?.tools[0]?.parameters,
+      validParameters,
+      'The parser must preserve every JSON schema value without normalization loss.',
+    );
+  }
+
+  class SchemaClass {
+    readonly type = 'object';
+  }
+  const cyclicParameters: Record<string, unknown> = { type: 'object' };
+  cyclicParameters['self'] = cyclicParameters;
+  let getterRead = false;
+  const getterParameters: Record<string, unknown> = {};
+  Object.defineProperty(getterParameters, 'type', {
+    enumerable: true,
+    get() {
+      getterRead = true;
+      return 'object';
+    },
+  });
+  const symbolKeyParameters: Record<PropertyKey, unknown> = { type: 'object' };
+  symbolKeyParameters[Symbol('hidden')] = true;
+  const sparseEnum = new Array<unknown>(1);
+  const invalidParameterCases: ReadonlyArray<Readonly<{ label: string; parameters: unknown }>> = [
+    {
+      label: 'positive infinity',
+      parameters: { type: 'object', maximum: Number.POSITIVE_INFINITY },
+    },
+    {
+      label: 'negative infinity',
+      parameters: { type: 'object', minimum: Number.NEGATIVE_INFINITY },
+    },
+    {
+      label: 'NaN',
+      parameters: { type: 'object', default: Number.NaN },
+    },
+    {
+      label: 'negative zero',
+      parameters: { type: 'object', default: -0 },
+    },
+    {
+      label: 'Date instance',
+      parameters: new Date(0),
+    },
+    {
+      label: 'class instance',
+      parameters: new SchemaClass(),
+    },
+    {
+      label: 'getter property',
+      parameters: getterParameters,
+    },
+    {
+      label: 'cyclic object',
+      parameters: cyclicParameters,
+    },
+    {
+      label: 'undefined value',
+      parameters: { type: 'object', default: undefined },
+    },
+    {
+      label: 'symbol value',
+      parameters: { type: 'object', default: Symbol('invalid') },
+    },
+    {
+      label: 'symbol key',
+      parameters: symbolKeyParameters,
+    },
+    {
+      label: 'function value',
+      parameters: { type: 'object', default: () => 'invalid' },
+    },
+    {
+      label: 'bigint value',
+      parameters: { type: 'object', default: BigInt(1) },
+    },
+    {
+      label: 'sparse array',
+      parameters: { type: 'object', enum: sparseEnum },
+    },
+  ];
+  for (const testCase of invalidParameterCases) {
+    const result = parseDomindsAppInstallJson({
+      ...installJsonInput,
+      contributes: {
+        toolsets: [
+          {
+            id: 'probe',
+            tools: [{ name: 'probe_tool', parameters: testCase.parameters }],
+          },
+        ],
+      },
+    });
+    assert.equal(result.ok, false, `${testCase.label} must fail the JsonSchema boundary.`);
+    if (!result.ok) {
+      assert.match(
+        result.errorText,
+        /contributes\.toolsets\[0\]\.tools\[0\]\.parameters: expected lossless JSON object/,
+      );
+    }
+  }
+  assert.equal(
+    getterRead,
+    false,
+    'JsonSchema validation must reject accessors without invoking them.',
+  );
+
+  const invalidOptionalFieldCases: ReadonlyArray<
+    Readonly<{ label: string; input: unknown; expected: RegExp }>
+  > = [
+    {
+      label: 'displayName wrong type',
+      input: { ...installJsonInput, displayName: 42 },
+      expected: /displayName must be a string/,
+    },
+    {
+      label: 'package.version wrong type',
+      input: {
+        ...installJsonInput,
+        package: { ...installJsonInput.package, version: 42 },
+      },
+      expected: /package\.version must be string\|null/,
+    },
+    {
+      label: 'frontend.basePath wrong type',
+      input: {
+        ...installJsonInput,
+        frontend: { kind: 'http', basePath: 42 },
+      },
+      expected: /frontend\.basePath must be a string/,
+    },
+    {
+      label: 'frontend.wsPath wrong type',
+      input: {
+        ...installJsonInput,
+        frontend: { kind: 'http', wsPath: false },
+      },
+      expected: /frontend\.wsPath must be a string/,
+    },
+    {
+      label: 'frontend.defaultPort fractional value',
+      input: {
+        ...installJsonInput,
+        frontend: { kind: 'http', defaultPort: 43123.5 },
+      },
+      expected: /frontend\.defaultPort must be an integer between 0 and 65535/,
+    },
+    {
+      label: 'frontend.defaultPort negative zero',
+      input: {
+        ...installJsonInput,
+        frontend: { kind: 'http', defaultPort: -0 },
+      },
+      expected: /frontend\.defaultPort must be an integer between 0 and 65535/,
+    },
+    {
+      label: 'frontend.defaultPort above TCP port range',
+      input: {
+        ...installJsonInput,
+        frontend: { kind: 'http', defaultPort: 65_536 },
+      },
+      expected: /frontend\.defaultPort must be an integer between 0 and 65535/,
+    },
+    {
+      label: 'teammatesYamlRelPath wrong type',
+      input: {
+        ...installJsonInput,
+        contributes: { teammatesYamlRelPath: 42 },
+      },
+      expected: /teammatesYamlRelPath must be a non-empty string/,
+    },
+    {
+      label: 'tool description wrong type',
+      input: {
+        ...installJsonInput,
+        contributes: {
+          toolsets: [
+            {
+              id: 'probe',
+              tools: [{ name: 'probe', description: 42, parameters: {} }],
+            },
+          ],
+        },
+      },
+      expected: /tools\[0\]\.description: expected string/,
+    },
+    {
+      label: 'descriptionI18n extra language',
+      input: {
+        ...installJsonInput,
+        contributes: {
+          toolsets: [
+            {
+              id: 'probe',
+              descriptionI18n: { zh: '探针', en: 'Probe', fr: 'Sonde' },
+              tools: [],
+            },
+          ],
+        },
+      },
+      expected: /descriptionI18n: expected \{zh,en\} string/,
+    },
+    {
+      label: 'duplicate toolset id',
+      input: {
+        ...installJsonInput,
+        contributes: {
+          toolsets: [
+            { id: 'probe', tools: [] },
+            { id: 'probe', tools: [] },
+          ],
+        },
+      },
+      expected: /duplicate toolset id 'probe'/,
+    },
+    {
+      label: 'duplicate tool name within one component',
+      input: {
+        ...installJsonInput,
+        contributes: {
+          toolsets: [
+            {
+              id: 'probe',
+              tools: [
+                { name: 'probe_tool', parameters: {} },
+                { name: 'probe_tool', parameters: {} },
+              ],
+            },
+          ],
+        },
+      },
+      expected: /duplicate tool name 'probe_tool'/,
+    },
+    {
+      label: 'duplicate reminder owner ref',
+      input: {
+        ...installJsonInput,
+        contributes: {
+          reminderOwners: [{ ref: 'probe_owner' }, { ref: 'probe_owner' }],
+        },
+      },
+      expected: /duplicate reminder owner ref 'probe_owner'/,
+    },
+  ];
+  for (const testCase of invalidOptionalFieldCases) {
+    const result = parseDomindsAppInstallJson(testCase.input);
+    assert.equal(result.ok, false, `${testCase.label} must fail closed.`);
+    if (!result.ok) {
+      assert.match(result.errorText, testCase.expected);
+    }
+  }
+  assert.equal(
+    parseDomindsAppInstallJson({
+      ...installJsonInput,
+      frontend: { kind: 'http', defaultPort: 0 },
+    }).ok,
+    true,
+    'Port 0 remains the explicit Stage 0 request for automatic port assignment.',
+  );
+  assert.equal(
+    parseDomindsAppInstallJson({
+      ...installJsonInput,
+      frontend: { kind: 'http', defaultPort: 65_535 },
+    }).ok,
+    true,
+    'The highest valid TCP port must remain accepted.',
+  );
   const installJsonContract: DomindsAppInstallJson = installJsonInput;
   assert.equal(installJsonContract.host.exportName, 'createDomindsApp');
   assert.deepEqual(
@@ -216,6 +640,16 @@ async function main(): Promise<void> {
     generateShortId().length,
     6,
     'Kernel id util export must be part of the public contract.',
+  );
+  assert.deepEqual(
+    toolSuccess('ok'),
+    { content: 'ok', outcome: 'success' },
+    'Kernel tool helpers must omit absent optional fields instead of relying on JSON IPC to erase undefined values.',
+  );
+  assert.deepEqual(
+    appToolSuccess('ok'),
+    { output: { content: 'ok', outcome: 'success' } },
+    'Stage 0 App tool helpers must produce lossless IPC objects without undefined optional fields.',
   );
 
   const q4hContext: Q4HDialogContext = {

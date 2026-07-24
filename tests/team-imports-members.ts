@@ -170,7 +170,7 @@ async function main(): Promise<void> {
     mustHaveProblemPrefix('team/team_yaml_error/members/rtws/bad_use/use/invalid');
     mustHaveProblemPrefix('team/team_yaml_error/members/rtws/bad_import/import/invalid');
 
-    // Case 4: from-only should be accepted as a default (no from_app Problems in v0).
+    // Case 4: during Stage 0, from-only remains a local definition without import problems.
     removeProblemsByPrefix('team/team_yaml_error/');
     await writeText(
       path.join(tmpRoot, '.minds', 'team.yaml'),
@@ -192,7 +192,8 @@ async function main(): Promise<void> {
     await Team.load();
     mustNotHaveProblemPrefix('team/team_yaml_error/members/rtws/librarian/');
 
-    // Case 5: from+use should import config from enabled app teammates YAML (with local overrides winning).
+    // Case 5: from+use imports a teammate from an enabled Stage 0 component package,
+    // with local overrides winning.
     removeProblemsByPrefix('team/team_yaml_error/');
     await writeText(
       path.join(tmpRoot, '.minds', 'app.yaml'),

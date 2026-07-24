@@ -218,7 +218,7 @@ export async function loadAgentMinds(
     await registerEnabledAppsToolProxies({ rtwsRootAbs });
   } catch (error: unknown) {
     log.warn(
-      `Failed to refresh enabled app tool proxies before loading agent minds: ${error instanceof Error ? error.message : String(error)}`,
+      `Failed to refresh enabled Stage 0 package tool proxies before loading agent minds: ${error instanceof Error ? error.message : String(error)}`,
     );
   }
   let team = await Team.load();

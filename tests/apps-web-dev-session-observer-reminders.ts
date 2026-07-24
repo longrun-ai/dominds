@@ -20,13 +20,117 @@ async function main(): Promise<void> {
       fixture.controllerCtx,
     );
     assertStructuredResult(created);
+    const controllerUpsert = requireSingleUpsertReminder(created);
     const controllerReminder = requireReminderStateAdded(
-      await fixture.reminderOwner.apply(requireSingleUpsertReminder(created), {
+      await fixture.reminderOwner.apply(controllerUpsert, {
         dialogId: fixture.controllerCtx.dialogId,
         ownedReminders: [],
       }),
     );
     const sessionId = sessionIdFromReminder(controllerReminder);
+
+    await assert.rejects(
+      async () =>
+        await fixture.reminderOwner.apply(controllerUpsert, {
+          dialogId: fixture.controllerCtx.dialogId,
+          ownedReminders: [{ content: 'corrupt owned reminder', meta: { sessionId } }],
+        }),
+      /playwright_session owned reminder\[0\] meta\.role is required/,
+    );
+    await assert.rejects(
+      async () =>
+        await fixture.reminderOwner.apply(controllerUpsert, {
+          dialogId: fixture.controllerCtx.dialogId,
+          ownedReminders: [
+            controllerReminder,
+            { content: 'corrupt trailing reminder', meta: { sessionId: 'pws_other' } },
+          ],
+        }),
+      /playwright_session owned reminder\[1\] meta\.role is required/,
+    );
+    await assert.rejects(
+      async () =>
+        await fixture.reminderOwner.apply(controllerUpsert, {
+          dialogId: fixture.controllerCtx.dialogId,
+          ownedReminders: [controllerReminder, controllerReminder],
+        }),
+      /playwright_session reminder invariant violation: duplicate sessionId=.* at owned indexes 0,1/,
+    );
+    await assert.rejects(
+      async () =>
+        await fixture.reminderOwner.updateReminder({
+          dialogId: fixture.controllerCtx.dialogId,
+          reminder: { content: 'corrupt update reminder', meta: { sessionId } },
+        }),
+      /playwright_session update reminder meta\.role is required/,
+    );
+    await assert.rejects(
+      async () =>
+        await fixture.reminderOwner.renderReminder({
+          dialogId: fixture.controllerCtx.dialogId,
+          reminder: { content: 'corrupt render reminder', meta: { sessionId } },
+          reminderId: 'corrupt-reminder',
+          workLanguage: 'en',
+        }),
+      /playwright_session render reminder meta\.role is required/,
+    );
+
+    await assert.rejects(
+      async () =>
+        await fixture.host.tools.playwright_session_list(
+          { scope: 'same_root_dialog' },
+          fixture.controllerCtx,
+        ),
+      /scope must be 'attached_to_current_dialog', 'same_main_dialog', or 'all_visible'/,
+    );
+
+    await assert.rejects(
+      async () =>
+        await fixture.host.tools.playwright_session_attach(
+          {
+            sessionId,
+            role: 'observer',
+            target: {
+              rootDialogId: fixture.controllerCtx.mainDialogId,
+              agentId: fixture.observerCtx.agentId,
+            },
+          },
+          fixture.controllerCtx,
+        ),
+      /target agent reference contains unsupported properties: rootDialogId/,
+    );
+
+    const implicitMainTarget = {
+      agentId: fixture.observerCtx.agentId,
+      sessionSlug: fixture.observerCtx.sessionSlug,
+    };
+    const implicitMainAttach = await fixture.host.tools.playwright_session_attach(
+      { sessionId, role: 'observer', target: implicitMainTarget },
+      fixture.controllerCtx,
+    );
+    assertStructuredResult(implicitMainAttach);
+    const implicitMainStatus = await fixture.host.tools.playwright_session_status(
+      { sessionId },
+      fixture.observerCtx,
+    );
+    assertStructuredResult(implicitMainStatus);
+    assert.match(implicitMainStatus.output.content, /role=observer/);
+    const implicitMainDetach = await fixture.host.tools.playwright_session_detach(
+      { sessionId, target: implicitMainTarget },
+      fixture.controllerCtx,
+    );
+    assertStructuredResult(implicitMainDetach);
+
+    const otherRootList = await fixture.host.tools.playwright_session_list(
+      { scope: 'same_main_dialog' },
+      {
+        ...fixture.observerCtx,
+        dialogId: 'dlg_other_root',
+        mainDialogId: 'root_other',
+      },
+    );
+    assertStructuredResult(otherRootList);
+    assert.match(otherRootList.output.content, /no visible Web Dev browser sessions/);
 
     const observerStatusBeforeAttach = await fixture.host.tools.playwright_session_status(
       { sessionId },

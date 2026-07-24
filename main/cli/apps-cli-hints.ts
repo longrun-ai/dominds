@@ -15,7 +15,7 @@ export function formatDoctorGuidance(
     params.includeLayerSummary === false
       ? ''
       : ' declaration, lock, configuration, resolution, and fresh handshake';
-  return `${prefix} run '${command}' before retrying or editing app state manually.${layerSummary}`;
+  return `${prefix} run '${command}' before retrying or editing Stage 0 package state manually.${layerSummary}`;
 }
 
 export function formatMutationBoundaryNote(params: {
@@ -24,7 +24,7 @@ export function formatMutationBoundaryNote(params: {
   appId?: string | null;
 }): string {
   return (
-    `${params.commandName} only updates ${params.layerDescription}; it does not prove that the app is healthy. ` +
+    `${params.commandName} only updates ${params.layerDescription}; it does not prove that the Stage 0 package is healthy. ` +
     formatDoctorGuidance({
       appId: params.appId ?? null,
       prefix: 'If the result is not what you expected,',

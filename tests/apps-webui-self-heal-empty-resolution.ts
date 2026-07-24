@@ -27,8 +27,8 @@ async function canonicalPath(pathAbs: string): Promise<string> {
 async function main(): Promise<void> {
   const previousCwd = process.cwd();
   const tmpRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'dominds-apps-webui-self-heal-'));
-  const appId = '@longrun-ai/web-dev';
-  const localAppRel = path.join('dominds-apps', '@longrun-ai', 'web-dev');
+  const appId = '@tests/self-heal-package';
+  const localAppRel = path.join('dominds-apps', '@tests', 'self-heal-package');
   const localAppAbs = path.join(tmpRoot, localAppRel);
 
   try {
@@ -65,11 +65,11 @@ async function main(): Promise<void> {
         'member_defaults:',
         '  provider: stub',
         '  model: fake_model',
-        'default_responder: web_tester_from_app',
+        'default_responder: reviewer_from_package',
         'members:',
-        '  web_tester_from_app:',
+        '  reviewer_from_package:',
         `    from: ${JSON.stringify(appId)}`,
-        '    use: web_tester',
+        '    use: reviewer',
         '',
       ].join('\n'),
     );
@@ -83,7 +83,7 @@ async function main(): Promise<void> {
       path.join(localAppAbs, 'package.json'),
       JSON.stringify(
         {
-          name: '@longrun-ai/web-dev',
+          name: appId,
           version: '0.1.0',
           type: 'module',
           bin: 'bin.js',
@@ -111,8 +111,8 @@ async function main(): Promise<void> {
       path.join(localAppAbs, '.minds', 'team.yaml'),
       [
         'members:',
-        '  web_tester:',
-        '    name: Web Tester',
+        '  reviewer:',
+        '    name: Review Worker',
         '    toolsets:',
         '      - ws_read',
         '',
@@ -125,9 +125,9 @@ async function main(): Promise<void> {
         "if (!process.argv.includes('--dominds-app')) throw new Error('expected --dominds-app');",
         'process.stdout.write(JSON.stringify({',
         `  appId: ${JSON.stringify(appId)},`,
-        "  displayName: 'Web Dev',",
+        "  displayName: 'Self-heal Fixture',",
         '  package: {',
-        "    name: '@longrun-ai/web-dev',",
+        `    name: ${JSON.stringify(appId)},`,
         "    version: '0.1.0',",
         '    rootAbs: process.cwd(),',
         '  },',

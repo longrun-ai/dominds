@@ -55,7 +55,7 @@ async function main(): Promise<void> {
       help.stdout,
       /doctor \[options\]\s+Read-only diagnosis across manifest\/lock\/configuration\/resolution\/handshake/,
     );
-    assert.match(help.stdout, /dominds doctor @longrun-ai\/web-dev/);
+    assert.match(help.stdout, /dominds doctor @example\/capability-package/);
 
     const unknownAppId = '@longrun-ai/missing-app';
     const update = await runNode({

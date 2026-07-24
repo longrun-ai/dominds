@@ -179,12 +179,13 @@
 - `!skills`：
   - 解释 `.minds/skills/*` 属于可复用的团队技能资产
   - 解释 skill 的职责边界：它是提示/指导资产，不是权限系统
-  - 解释何时应继续保留为 skill，何时应升级为 app / toolset / teammates contract
+  - 解释何时应继续保留为 skill，何时应把执行能力放入应用组件，再由消费 App
+    选择并绑定其 toolsets 与 teammates
 - `!env`：
   - 解释 `.minds/env.*.md` 用于描述当前 rtws 的运行环境，而不是定义人格或复制仓库总规范
   - 解释它与 `persona/knowhow/pitfalls`、skills、priming 的分工边界
 - `!toolsets`：
-  - 解释当前可见 toolsets 包含内建 toolsets、已安装 apps 暴露的 toolsets、以及由 `.minds/mcp.yaml` 注册的 MCP toolsets
+  - 解释当前可见 toolsets 包含内建 toolsets、通过当前 Stage 0 软件包信封装载的组件所提供的 toolsets，以及由 `.minds/mcp.yaml` 注册的 MCP toolsets
   - 解释为什么该主题必须以当前运行时视图为准，而不是在设计文档里维护一份清单
 
 ## 从 Dominds 安装动态加载（运行时资源）
@@ -210,7 +211,7 @@
 - `toolsets` 不是一份稳定、可写死在设计文档里的清单。
 - 当前可见的 toolsets 由三部分共同决定：
   - 框架内建 toolsets
-  - 当前安装的 Dominds apps 所暴露的 toolsets
+  - 当前通过 Stage 0 `DomindsApp` 软件包信封装载的组件 toolsets
   - `.minds/mcp.yaml` 中 `servers.<serverId>` 在运行时映射出来的 MCP toolsets
 - 团队可以按 rtws 需要增删 MCP server、调整命名、控制工具暴露；因此 toolset 集合会随当前安装状态与当前 rtws 配置而变化。
 - 这样设计的原因，是把“能力发现”绑定到当前实际运行环境，而不是绑定到一份很快过时的静态文档：
@@ -524,7 +525,7 @@ members:
 - 选型原则：工作区关联强的事实、路径、局部契约与索引应进入 `personal_memory` / `team_memory` / `.minds/env*.md`；独立于工作区内容的操作方法、检查清单、触发条件与边界应进入 skill。
 - 团队协作 SOP 通常应优先做成团队共享 skill：把职责、阶段、输入输出、升级条件和同步节奏抽象成可迁移规程；当前工作区的具体路径、成员绑定、工具绑定只作为 memory/env/team.yaml 里的绑定事实。
 - 若某个经验同时包含通用方法与当前 rtws 事实，应拆开维护：skill 写通用步骤，memory/env 写当前仓库路径、命令入口与局部契约，避免 skill 成为隐蔽的过期事实仓库。
-- 如果某个 skill 需要脚本、专有工具、MCP、外部二进制、或稳定复用的执行能力，那么设计上通常更适合上升为 Dominds app / toolset / teammates contract，而不应只停留在 markdown 文案。
+- 如果某个 skill 需要脚本、专有工具、MCP、外部二进制或稳定复用的执行能力，应把这些能力定义在应用组件中，再由消费 App 选择并绑定其 toolsets、teammates 与 handlers，而不应只停留在 Markdown 文案。Stage 0 期间，组件软件包仍通过现有 `DomindsApp` 引导信封装载。
 - 设计文档在这里仅说明边界与迁移方向；具体文件命名、注入位置、标题层级、语言文件选择等，以运行时 `man({ "toolsetId": "team_mgmt", "topics": ["skills"] })` 为准。
 
 ## 管理 `.minds/env.*.md`（运行环境说明）

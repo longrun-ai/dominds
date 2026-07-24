@@ -55,6 +55,8 @@ async function main(): Promise<void> {
   const registryName = buildAppReminderOwnerRegistryName(appId, ownerRef);
 
   let applyCalls = 0;
+  let applyMode: 'valid' | 'non_finite_position' | 'negative_zero_position' = 'valid';
+  let updateCalls = 0;
   let renderCalls = 0;
   const fakeClient: AppsHostClient = {
     callTool: async (): Promise<DomindsAppHostToolResult> => {
@@ -62,6 +64,13 @@ async function main(): Promise<void> {
     },
     applyReminder: async (): Promise<DomindsAppReminderApplyResult> => {
       applyCalls += 1;
+      if (applyMode !== 'valid') {
+        return {
+          treatment: 'add',
+          position: applyMode === 'non_finite_position' ? Number.NaN : -0,
+          reminder: { content: 'invalid position' },
+        };
+      }
       return {
         treatment: 'update',
         ownedIndex: 0,
@@ -73,7 +82,8 @@ async function main(): Promise<void> {
       };
     },
     updateReminder: async () => {
-      throw new Error('updateReminder should not be used in this test');
+      updateCalls += 1;
+      throw new Error('component reminder update exploded');
     },
     renderReminder: async (): Promise<DomindsAppReminderRenderedMessage> => {
       renderCalls += 1;
@@ -89,7 +99,7 @@ async function main(): Promise<void> {
 
   try {
     const owner = getReminderOwner(registryName);
-    assert.ok(owner, 'Expected app reminder owner to be registered');
+    assert.ok(owner, 'Expected Application Component reminder owner to be registered');
 
     const dlg = createDialog('tester');
     dlg.reminders.push(
@@ -130,6 +140,69 @@ async function main(): Promise<void> {
       /This state is system-maintained; do not copy, rewrite, or separately maintain it in manual reminders/,
     );
     assert.match(rendered.content, /app rendered reminder content/);
+
+    await assert.rejects(
+      async () => await owner.updateReminder(dlg, reminder),
+      /component reminder update exploded/,
+    );
+    assert.equal(updateCalls, 1, 'Host update failures must propagate instead of becoming keep');
+
+    const corruptReminder = materializeReminder({
+      content: 'corrupt component reminder',
+      owner,
+      meta: { ownerState: 'missing kernel wrapper' },
+      scope: 'dialog',
+      renderMode: 'markdown',
+    });
+    await assert.rejects(
+      async () => await owner.updateReminder(dlg, corruptReminder),
+      new RegExp(
+        `Application Component reminder update invariant violation: stage0PackageId=${appId.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')} ownerRef=${ownerRef}.*meta=invalid`,
+      ),
+    );
+    await assert.rejects(
+      async () => await owner.renderReminder(dlg, corruptReminder),
+      new RegExp(
+        `Application Component reminder render invariant violation: stage0PackageId=${appId.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')} ownerRef=${ownerRef}.*meta=invalid`,
+      ),
+    );
+
+    applyMode = 'non_finite_position';
+    await assert.rejects(
+      async () =>
+        await applyAppReminderRequests(createDialog('invalid-position'), {
+          appId,
+          reminderRequests: [{ kind: 'upsert', ownerRef, content: 'invalid position request' }],
+          resolveHostClient: async () => fakeClient,
+        }),
+      /Application Component reminder position invariant violation: expected lossless finite number, received NaN/,
+    );
+    applyMode = 'negative_zero_position';
+    await assert.rejects(
+      async () =>
+        await applyAppReminderRequests(createDialog('negative-zero-position'), {
+          appId,
+          reminderRequests: [{ kind: 'upsert', ownerRef, content: 'invalid position request' }],
+          resolveHostClient: async () => fakeClient,
+        }),
+      /Application Component reminder position invariant violation: expected lossless finite number, received -0/,
+    );
+    applyMode = 'valid';
+    assert.equal(applyCalls, 3);
+
+    dlg.reminders.push(corruptReminder);
+    await assert.rejects(
+      async () =>
+        await applyAppReminderRequests(dlg, {
+          appId,
+          reminderRequests: [{ kind: 'upsert', ownerRef, content: 'must not be applied' }],
+          resolveHostClient: async () => fakeClient,
+        }),
+      new RegExp(
+        `Application Component reminder collect invariant violation: stage0PackageId=${appId.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')} ownerRef=${ownerRef}.*meta=invalid`,
+      ),
+    );
+    assert.equal(applyCalls, 3, 'Corrupt owned state must fail before the component is called');
   } finally {
     unregisterAppReminderOwnersForApps({ appIds: [appId] });
   }

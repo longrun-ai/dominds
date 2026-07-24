@@ -27,15 +27,15 @@ function printHelp(): void {
   dominds uninstall <appId> [--purge]
 
 Options:
-  --purge   Also delete rtws app state directory: .apps/<appId path segments>/
+  --purge   Also delete the Stage 0 package rtws state directory: .apps/<appId path segments>/
 
 Notes:
-  - uninstall removes the app from .minds/app.yaml dependencies, clears its lock/config disabled state,
-    and refreshes derived state.
+  - uninstall removes the Stage 0 package from .minds/app.yaml dependencies, clears its
+    lock/config disabled state, and refreshes derived state.
   - ${formatMutationBoundaryNote({
     commandName: 'uninstall',
     layerDescription:
-      '.minds/app.yaml plus app-specific lock/configuration entries and derived resolution state',
+      '.minds/app.yaml plus package-specific lock/configuration entries and derived resolution state',
   })}
 `);
 }
@@ -82,7 +82,9 @@ async function main(argv: readonly string[] = process.argv.slice(2)): Promise<vo
     dependencyId: args.appId,
   });
   if (nextManifest === manifest) {
-    console.error(`Error: app '${args.appId}' is not declared in .minds/app.yaml dependencies`);
+    console.error(
+      `Error: Stage 0 package '${args.appId}' is not declared in .minds/app.yaml dependencies`,
+    );
     console.error(formatDoctorGuidance({ appId: args.appId }));
     process.exit(1);
     return;
@@ -124,17 +126,19 @@ async function main(argv: readonly string[] = process.argv.slice(2)): Promise<vo
     const rtwsDirRel = formatDomindsAppRtwsDirRel(args.appId);
     const appDirAbs = resolveDomindsAppRtwsDirAbs(rtwsRootAbs, args.appId);
     await fs.rm(appDirAbs, { recursive: true, force: true });
-    console.log(`Uninstalled app '${args.appId}' and purged rtws state directory ${rtwsDirRel}/.`);
+    console.log(
+      `Unloaded Stage 0 package '${args.appId}' and purged rtws state directory ${rtwsDirRel}/.`,
+    );
   } else {
     console.log(
-      `Uninstalled app '${args.appId}' while preserving rtws data under ${formatDomindsAppRtwsDirRel(args.appId)}/.`,
+      `Unloaded Stage 0 package '${args.appId}' while preserving rtws data under ${formatDomindsAppRtwsDirRel(args.appId)}/.`,
     );
   }
   console.log(
     formatMutationBoundaryNote({
       commandName: 'uninstall',
       layerDescription:
-        '.minds/app.yaml plus app-specific lock/configuration entries and derived resolution state',
+        '.minds/app.yaml plus package-specific lock/configuration entries and derived resolution state',
       appId: args.appId,
     }),
   );

@@ -52,6 +52,7 @@ type ToolHandler = (args: Record<string, unknown>, ctx: ToolCtx) => Promise<Stru
 export type WebDevAppHost = Readonly<{
   tools: Readonly<Record<string, ToolHandler>>;
   reminderOwners?: Readonly<Record<string, ReminderOwnerHandler>>;
+  shutdown: () => Promise<void>;
 }>;
 
 type BrowserRuntimePageState = {
@@ -133,6 +134,7 @@ type FakeTrackerState = {
   browserClosed: number;
   contextClosed: number;
   reloads: number;
+  failViewportMeasurement: boolean;
   electronLaunched: number;
   electronClosed: number;
   newContextOptions: unknown[];
@@ -145,7 +147,7 @@ export type FakePlaywrightEnvironment = Readonly<{
   trackers: FakeTrackerState;
 }>;
 
-type WebDevAppFactoryContext = AppFactoryContext &
+export type WebDevAppFactoryContext = AppFactoryContext &
   Readonly<{
     playwrightLoader?: () => Promise<FakePlaywrightModule>;
   }>;
@@ -155,13 +157,24 @@ export type WebDevFixture = Readonly<{
   rtwsAppDirAbs: string;
   sessionsCacheDirAbs: string;
   artifactsDirAbs: string;
-  legacySessionsDirAbs: string;
   fakeEnv: FakePlaywrightEnvironment;
   host: WebDevAppHost;
   reminderOwner: ReminderOwnerHandler;
   controllerCtx: ToolCtx;
   observerCtx: ToolCtx;
   cleanup: () => Promise<void>;
+}>;
+
+export type WebDevFixturePaths = Readonly<{
+  tempRoot: string;
+  packageRootAbs: string;
+  rtwsAppDirAbs: string;
+  sessionsCacheDirAbs: string;
+  artifactsDirAbs: string;
+}>;
+
+export type WebDevFixtureOptions = Readonly<{
+  prepareRtws?: (paths: WebDevFixturePaths) => Promise<void>;
 }>;
 
 export async function pathExists(absPath: string): Promise<boolean> {
@@ -257,6 +270,7 @@ export function createFakePlaywrightEnvironment(): FakePlaywrightEnvironment {
     browserClosed: 0,
     contextClosed: 0,
     reloads: 0,
+    failViewportMeasurement: false,
     electronLaunched: 0,
     electronClosed: 0,
     newContextOptions: [],
@@ -312,7 +326,30 @@ export function createFakePlaywrightEnvironment(): FakePlaywrightEnvironment {
         currentState.html = buildRenderedHtml(currentState);
       },
       waitForLoadState: async (_state) => undefined,
-      evaluate: async (fn) => fn(),
+      evaluate: async <T>(fn: () => T): Promise<T> => {
+        const isViewportMeasurement = Function.prototype.toString
+          .call(fn)
+          .includes('viewportWidth');
+        if (!isViewportMeasurement) {
+          return fn();
+        }
+        if (trackers.failViewportMeasurement) {
+          throw new Error('viewport evaluate failed');
+        }
+        return {
+          viewportWidth: 1280,
+          viewportHeight: 720,
+          documentClientWidth: 1280,
+          documentClientHeight: 720,
+          documentScrollWidth: 1280,
+          documentScrollHeight: 720,
+          outerWidth: 1280,
+          outerHeight: 800,
+          devicePixelRatio: 1,
+          scrollX: 0,
+          scrollY: 0,
+        } as T;
+      },
       click: async (selector) => {
         if (selector === '#increment') {
           currentState.statusText = 'Clicked 1';
@@ -467,7 +504,9 @@ export function createFakePlaywrightEnvironment(): FakePlaywrightEnvironment {
   return { playwright, trackers };
 }
 
-export async function createWebDevFixture(): Promise<WebDevFixture> {
+export async function createWebDevFixture(
+  options: WebDevFixtureOptions = {},
+): Promise<WebDevFixture> {
   const repoRootAbs = path.resolve(__dirname, '..', '..', '..');
   const appId = '@longrun-ai/web-dev';
   const appIdPathParts = ['@longrun-ai', 'web-dev'];
@@ -478,36 +517,55 @@ export async function createWebDevFixture(): Promise<WebDevFixture> {
     tempRoot,
     '.cache',
     ...appIdPathParts,
-    'js-repl',
+    'playwright',
     'sessions',
   );
-  const artifactsDirAbs = path.join(tempRoot, '.cache', ...appIdPathParts, 'js-repl', 'artifacts');
-  const legacySessionsDirAbs = path.join(rtwsAppDirAbs, 'state', 'js-repl', 'sessions');
-  const { appFactory } = await loadLocalAppEntry({ packageRootAbs });
-  const fakeEnv = createFakePlaywrightEnvironment();
-  const webDevAppFactory = appFactory as unknown as (
-    ctx: WebDevAppFactoryContext,
-  ) => Promise<WebDevAppHost>;
-  const host = await webDevAppFactory({
-    appId,
-    rtwsRootAbs: tempRoot,
-    rtwsAppDirAbs,
+  const artifactsDirAbs = path.join(
+    tempRoot,
+    '.cache',
+    ...appIdPathParts,
+    'playwright',
+    'artifacts',
+  );
+  const fixturePaths: WebDevFixturePaths = {
+    tempRoot,
     packageRootAbs,
-    kernel: { scheme: 'http', host: '127.0.0.1', port: 0 },
-    log: () => undefined,
-    playwrightLoader: async () => fakeEnv.playwright,
-  });
-  const reminderOwner = host.reminderOwners?.['js_repl_session'];
-  assert.ok(reminderOwner, 'expected js_repl_session reminder owner');
+    rtwsAppDirAbs,
+    sessionsCacheDirAbs,
+    artifactsDirAbs,
+  };
+  let fakeEnv: FakePlaywrightEnvironment;
+  let host: WebDevAppHost;
+  try {
+    await options.prepareRtws?.(fixturePaths);
+    const { appFactory } = await loadLocalAppEntry({ packageRootAbs });
+    fakeEnv = createFakePlaywrightEnvironment();
+    const webDevAppFactory = appFactory as unknown as (
+      ctx: WebDevAppFactoryContext,
+    ) => Promise<WebDevAppHost>;
+    host = await webDevAppFactory({
+      appId,
+      rtwsRootAbs: tempRoot,
+      rtwsAppDirAbs,
+      packageRootAbs,
+      kernel: { scheme: 'http', host: '127.0.0.1', port: 0 },
+      log: () => undefined,
+      playwrightLoader: async () => fakeEnv.playwright,
+    });
+  } catch (error) {
+    await fs.rm(tempRoot, { recursive: true, force: true });
+    throw error;
+  }
+  const reminderOwner = host.reminderOwners?.['playwright_session'];
+  assert.ok(reminderOwner, 'expected playwright_session reminder owner');
   if (!reminderOwner) {
-    throw new Error('missing js_repl_session reminder owner');
+    throw new Error('missing playwright_session reminder owner');
   }
   return {
     tempRoot,
     rtwsAppDirAbs,
     sessionsCacheDirAbs,
     artifactsDirAbs,
-    legacySessionsDirAbs,
     fakeEnv,
     host,
     reminderOwner,

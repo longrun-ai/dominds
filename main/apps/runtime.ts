@@ -56,16 +56,16 @@ function asError(error: unknown): Error {
   return error instanceof Error ? error : new Error(String(error));
 }
 
-function formatAppCapabilityUnavailableMessage(params: {
-  appId: string;
+function formatComponentCapabilityFailureMessage(params: {
+  componentPackageId: string;
   capability: string;
   detail: string;
 }): string {
   return [
-    `App capability unavailable: ${params.capability}`,
-    `appId=${params.appId}`,
+    `Application Component capability failed: ${params.capability}`,
+    `stage0PackageId=${params.componentPackageId}`,
     `reason=${params.detail}`,
-    'This app-specific capability is unavailable for now. Continue with other available tools unless this app is required.',
+    'The Stage 0 component boundary failed; no fallback was applied.',
   ].join('\n');
 }
 
@@ -76,7 +76,7 @@ function resolveMainDialogFor(dlg: Dialog): MainDialog {
   if (dlg instanceof SideDialog) {
     return dlg.mainDialog;
   }
-  throw new Error(`Unsupported dialog type for app runtime: ${dlg.constructor.name}`);
+  throw new Error(`Unsupported dialog type for component runtime: ${dlg.constructor.name}`);
 }
 
 async function ensureMainDialogLoaded(rootId: string): Promise<MainDialog | undefined> {
@@ -242,14 +242,18 @@ export async function shutdownAppsRuntime(): Promise<void> {
 function ensureNoDuplicateTool(toolName: string, appId: string): void {
   const existing = getTool(toolName);
   if (existing) {
-    throw new Error(`App '${appId}' attempted to register duplicate tool '${toolName}'`);
+    throw new Error(
+      `Stage 0 component package '${appId}' attempted to register duplicate tool '${toolName}'`,
+    );
   }
 }
 
 function ensureNoDuplicateToolset(toolsetId: string, appId: string): void {
   const existing = getToolset(toolsetId);
   if (existing) {
-    throw new Error(`App '${appId}' attempted to register duplicate toolset '${toolsetId}'`);
+    throw new Error(
+      `Stage 0 component package '${appId}' attempted to register duplicate toolset '${toolsetId}'`,
+    );
   }
 }
 
@@ -376,8 +380,8 @@ function registerAppArtifacts(app: EnabledAppForHost): void {
           return result.output;
         } catch (error: unknown) {
           const err = asError(error);
-          log.warn('App tool call failed', err, {
-            appId: app.appId,
+          log.warn('Application Component tool call failed', err, {
+            stage0PackageId: app.appId,
             toolName: t.name,
             dialogId: dlg.id.valueOf(),
             rootId: dlg.id.rootId,
@@ -386,8 +390,8 @@ function registerAppArtifacts(app: EnabledAppForHost): void {
             callerId: caller.id,
           });
           throw new Error(
-            formatAppCapabilityUnavailableMessage({
-              appId: app.appId,
+            formatComponentCapabilityFailureMessage({
+              componentPackageId: app.appId,
               capability: `tool:${t.name}`,
               detail: err.message,
             }),
@@ -460,7 +464,7 @@ async function syncAppsHostToEnabledApps(params: {
     return;
   }
 
-  log.info(`Starting apps-host (${params.enabledApps.length} enabled apps)`);
+  log.info(`Starting apps-host (${params.enabledApps.length} enabled Stage 0 component packages)`);
   const transition = (async (): Promise<AppsHostClient> => {
     await stopAppsHost();
     const { client } = await startAppsHost({

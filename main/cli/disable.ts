@@ -17,7 +17,7 @@ function printHelp(): void {
   dominds disable <appId>
 
 Notes:
-  - disable only adds the app to .apps/configuration.yaml.disabledApps and refreshes derived state.
+  - disable only adds the Stage 0 package appId to .apps/configuration.yaml.disabledApps and refreshes derived state.
   - ${formatMutationBoundaryNote({
     commandName: 'disable',
     layerDescription: '.apps/configuration.yaml.disabledApps',
@@ -52,7 +52,9 @@ async function main(argv: readonly string[] = process.argv.slice(2)): Promise<vo
 
   const rtwsRootAbs = domindsRtwsRootAbs();
   if (!(await hasRtwsDeclaredAppDependency({ rtwsRootAbs, appId: args.appId }))) {
-    console.error(`Error: app '${args.appId}' is not declared in .minds/app.yaml dependencies`);
+    console.error(
+      `Error: Stage 0 package '${args.appId}' is not declared in .minds/app.yaml dependencies`,
+    );
     console.error(formatDoctorGuidance({ appId: args.appId }));
     process.exit(1);
     return;
@@ -74,7 +76,7 @@ async function main(argv: readonly string[] = process.argv.slice(2)): Promise<vo
   await writeAppsConfigurationFileIfChanged({ rtwsRootAbs, file: nextConfig });
   await refreshAppsDerivedState({ rtwsRootAbs });
   console.log(
-    `Disabled app '${args.appId}' in .apps/configuration.yaml and refreshed derived state.`,
+    `Disabled Stage 0 package '${args.appId}' in .apps/configuration.yaml and refreshed derived state.`,
   );
   console.log(
     formatMutationBoundaryNote({

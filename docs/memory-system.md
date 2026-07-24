@@ -143,7 +143,7 @@ Poor skill content:
 
 - current rtws paths, file indexes, architecture facts, or temporary state: use `personal_memory` / `team_memory` / `.minds/env*.md` / Taskdoc instead
 - quasi-real-time task state, next steps, or blockers: use Taskdoc `progress`
-- content that really needs scripts, privileged tools, MCP, external binaries, or reusable execution capability: elevate it into a Dominds app / toolset / teammate contract instead of leaving it as a Markdown skill
+- content that really needs scripts, privileged tools, MCP, external binaries, or reusable execution capability: define it in an Application Component and let a consuming App select and bind its toolsets, teammates, and handlers instead of leaving it as a Markdown skill
 
 A useful split: **workspace-coupled facts go to memory; workspace-independent operating methods go to skills**. If an experience contains both, split it: put the portable method in a skill, put this repo’s paths, command entrypoints, and local contracts in memory or env notes, and have the skill say to consult those assets first. If an SOP looks path-heavy, first try to abstract it into generic collaboration concepts; keep paths as binding data, not as the SOP body.
 
@@ -263,7 +263,7 @@ Ask four questions first:
 1. **Is it strongly tied to the current workspace?** Exact paths, symbols, interface facts, repo conventions, and rtws runtime constraints belong in memory/env; cross-workspace methods belong in skills.
 2. **Is it a fact or a method?** “File X owns Y” is memory. “When reviewing X-class changes, check A/B/C” is a skill.
 3. **Who needs it?** Stable facts everyone must share go to `team_memory`; team collaboration SOPs and team-wide procedures usually go to team-shared skills. A member’s entry map goes to `personal_memory`; that member’s operating preference goes to an individual skill.
-4. **Does it need real execution capability?** If it needs scripts, permissions, MCP, external binaries, or a stable UI/API, do not leave it as a skill only. Design an app/toolset/teammate contract and keep the skill as the usage/judgment guidance.
+4. **Does it need real execution capability?** If it needs scripts, permissions, MCP, external binaries, or a stable UI/API, do not leave it as a skill only. Define an Application Component, let the consuming App select and bind its capability, and keep the skill as usage/judgment guidance.
 
 Additional design considerations:
 

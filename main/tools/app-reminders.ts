@@ -9,11 +9,7 @@ import type { AppsHostClient, EnabledAppForHost } from '../apps-host/client';
 import type { Dialog } from '../dialog';
 import { postDialogEvent } from '../evt-registry';
 import type { ChatMessage } from '../llm/client';
-import { log } from '../log';
-import {
-  formatAutoMaintainedReminderManualMirrorBan,
-  formatReminderItemGuide,
-} from '../runtime/driver-messages';
+import { formatAutoMaintainedReminderManualMirrorBan } from '../runtime/driver-messages';
 import { getWorkLanguage } from '../runtime/work-language';
 import { loadSharedReminders } from '../shared-reminders';
 import {
@@ -105,7 +101,11 @@ function isAppReminderMeta(value: unknown): value is AppReminderMeta {
 
 function normalizeInsertPosition(remindersLength: number, position: number | undefined): number {
   if (position === undefined) return remindersLength;
-  if (!Number.isFinite(position)) return remindersLength;
+  if (!Number.isFinite(position) || Object.is(position, -0)) {
+    throw new Error(
+      `Application Component reminder position invariant violation: expected lossless finite number, received ${Object.is(position, -0) ? '-0' : String(position)}`,
+    );
+  }
   const normalized = Math.floor(position);
   if (normalized <= 0) return 0;
   if (normalized >= remindersLength) return remindersLength;
@@ -205,30 +205,42 @@ function findOwnedReminderEntries(
   const entries: Array<Readonly<{ index: number; reminder: Reminder }>> = [];
   for (let index = 0; index < dlg.reminders.length; index += 1) {
     const reminder = dlg.reminders[index];
-    if (!reminder || reminder.owner !== owner || !isAppReminderMeta(reminder.meta)) {
+    if (!reminder) {
+      throw new Error(
+        `Application Component reminder collection invariant violation: stage0PackageId=${descriptor.appId} ownerRef=${descriptor.ownerRef} dialogId=${dlg.id.selfId} index=${index} reminder=missing`,
+      );
+    }
+    if (reminder.owner !== owner) {
       continue;
     }
-    if (
-      reminder.meta.appId !== descriptor.appId ||
-      reminder.meta.ownerRef !== descriptor.ownerRef
-    ) {
-      continue;
-    }
+    assertOwnedReminderInvariant('collect', dlg, reminder, owner, descriptor);
     entries.push({ index, reminder });
   }
   return entries;
 }
 
-function fallbackRenderedReminder(reminder: Reminder): ChatMessage {
-  const language = getWorkLanguage();
-  return {
-    type: 'environment_msg',
-    role: 'user',
-    content: formatReminderItemGuide(language, reminder.id, reminder.content, {
-      meta: reminder.meta,
-      scope: reminder.scope,
-    }),
-  };
+function assertOwnedReminderInvariant(
+  action: 'collect' | 'update' | 'render',
+  dlg: Dialog,
+  reminder: Reminder,
+  owner: ReminderOwner,
+  descriptor: AppReminderOwnerDescriptor,
+): asserts reminder is Reminder & Readonly<{ meta: AppReminderMeta }> {
+  if (reminder.owner !== owner) {
+    throw new Error(
+      `Application Component reminder ${action} invariant violation: stage0PackageId=${descriptor.appId} ownerRef=${descriptor.ownerRef} dialogId=${dlg.id.selfId} reminderId=${reminder.id} owner=mismatch`,
+    );
+  }
+  if (!isAppReminderMeta(reminder.meta)) {
+    throw new Error(
+      `Application Component reminder ${action} invariant violation: stage0PackageId=${descriptor.appId} ownerRef=${descriptor.ownerRef} dialogId=${dlg.id.selfId} reminderId=${reminder.id} meta=invalid`,
+    );
+  }
+  if (reminder.meta.appId !== descriptor.appId || reminder.meta.ownerRef !== descriptor.ownerRef) {
+    throw new Error(
+      `Application Component reminder ${action} invariant violation: stage0PackageId=${descriptor.appId} ownerRef=${descriptor.ownerRef} dialogId=${dlg.id.selfId} reminderId=${reminder.id} metaPackageId=${reminder.meta.appId} metaOwnerRef=${reminder.meta.ownerRef}`,
+    );
+  }
 }
 
 function formatAppReminderWrapperPrelude(
@@ -236,8 +248,8 @@ function formatAppReminderWrapperPrelude(
   reminderId: string,
 ): string {
   return language === 'zh'
-    ? `这是 app 自动维护的状态提醒 [${reminderId}]，不是你自己写的工作便签。${formatAutoMaintainedReminderManualMirrorBan(language)}`
-    : `This is app-maintained state [${reminderId}], not a work note you wrote. ${formatAutoMaintainedReminderManualMirrorBan(language)}`;
+    ? `这是应用组件自动维护的状态提醒 [${reminderId}]，不是你自己写的工作便签。${formatAutoMaintainedReminderManualMirrorBan(language)}`
+    : `This is component-maintained state [${reminderId}], not a work note you wrote. ${formatAutoMaintainedReminderManualMirrorBan(language)}`;
 }
 
 function wrapAppRenderedReminder(
@@ -288,59 +300,35 @@ function createAppReminderOwner(params: {
   const owner: ReminderOwner = {
     name: descriptor.registryName,
     async updateReminder(dlg: Dialog, reminder: Reminder): Promise<ReminderUpdateResult> {
-      if (reminder.owner !== owner || !isAppReminderMeta(reminder.meta)) {
-        return { treatment: 'keep' };
+      assertOwnedReminderInvariant('update', dlg, reminder, owner, descriptor);
+      const client = await resolveHostClient();
+      const result = await client.updateReminder(descriptor.appId, descriptor.ownerRef, {
+        dialogId: dlg.id.selfId,
+        reminder: toReminderState(reminder),
+      });
+      if (result.treatment !== 'update') {
+        return result;
       }
-      try {
-        const client = await resolveHostClient();
-        const result = await client.updateReminder(descriptor.appId, descriptor.ownerRef, {
-          dialogId: dlg.id.selfId,
-          reminder: toReminderState(reminder),
-        });
-        if (result.treatment !== 'update') {
-          return result;
-        }
-        return {
-          treatment: 'update',
-          updatedContent: result.updatedContent ?? reminder.content,
-          updatedMeta:
-            result.updatedMeta !== undefined
-              ? buildAppReminderMeta(descriptor, result.updatedMeta)
-              : reminder.meta,
-        };
-      } catch (error: unknown) {
-        log.warn('App reminder update failed; keeping existing reminder state', error, {
-          appId: descriptor.appId,
-          ownerRef: descriptor.ownerRef,
-          dialogId: dlg.id.selfId,
-          reminderId: reminder.id,
-        });
-        return { treatment: 'keep' };
-      }
+      return {
+        treatment: 'update',
+        updatedContent: result.updatedContent,
+        updatedMeta:
+          result.updatedMeta !== undefined
+            ? buildAppReminderMeta(descriptor, result.updatedMeta)
+            : reminder.meta,
+      };
     },
     async renderReminder(dlg: Dialog, reminder: Reminder): Promise<ChatMessage> {
-      if (reminder.owner !== owner || !isAppReminderMeta(reminder.meta)) {
-        return fallbackRenderedReminder(reminder);
-      }
-      try {
-        const client = await resolveHostClient();
-        const language = getWorkLanguage();
-        const rendered = await client.renderReminder(descriptor.appId, descriptor.ownerRef, {
-          dialogId: dlg.id.selfId,
-          reminder: toReminderState(reminder),
-          reminderId: reminder.id,
-          workLanguage: language,
-        });
-        return wrapAppRenderedReminder(reminder.id, rendered, language);
-      } catch (error: unknown) {
-        log.warn('App reminder render failed; using generic reminder rendering', error, {
-          appId: descriptor.appId,
-          ownerRef: descriptor.ownerRef,
-          dialogId: dlg.id.selfId,
-          reminderId: reminder.id,
-        });
-        return fallbackRenderedReminder(reminder);
-      }
+      assertOwnedReminderInvariant('render', dlg, reminder, owner, descriptor);
+      const client = await resolveHostClient();
+      const language = getWorkLanguage();
+      const rendered = await client.renderReminder(descriptor.appId, descriptor.ownerRef, {
+        dialogId: dlg.id.selfId,
+        reminder: toReminderState(reminder),
+        reminderId: reminder.id,
+        workLanguage: language,
+      });
+      return wrapAppRenderedReminder(reminder.id, rendered, language);
     },
   };
 
@@ -360,7 +348,9 @@ export function ensureAppReminderOwnersRegistered(params: {
     const seenOwnerRefs = new Set<string>();
     for (const owner of reminderOwners) {
       if (seenOwnerRefs.has(owner.ref)) {
-        throw new Error(`App '${app.appId}' declares duplicate reminder owner ref '${owner.ref}'`);
+        throw new Error(
+          `Stage 0 component package '${app.appId}' declares duplicate reminder owner ref '${owner.ref}'`,
+        );
       }
       seenOwnerRefs.add(owner.ref);
       const descriptor = buildDescriptor({ appId: app.appId, owner });
@@ -405,7 +395,7 @@ export async function applyAppReminderRequests(
     const owner = getReminderOwner(registryName);
     if (!descriptor || !owner) {
       throw new Error(
-        `App '${params.appId}' attempted to use unregistered reminder owner '${request.ownerRef}'`,
+        `Stage 0 component package '${params.appId}' attempted to use unregistered reminder owner '${request.ownerRef}'`,
       );
     }
 
@@ -437,7 +427,7 @@ export async function applyAppReminderRequests(
         const target = ownedEntries[result.ownedIndex];
         if (!target) {
           throw new Error(
-            `App '${params.appId}' reminder owner '${request.ownerRef}' returned invalid ownedIndex=${result.ownedIndex}`,
+            `Stage 0 component package '${params.appId}' reminder owner '${request.ownerRef}' returned invalid ownedIndex=${result.ownedIndex}`,
           );
         }
         dlg.updateReminder(
@@ -457,7 +447,7 @@ export async function applyAppReminderRequests(
         const target = ownedEntries[result.ownedIndex];
         if (!target) {
           throw new Error(
-            `App '${params.appId}' reminder owner '${request.ownerRef}' returned invalid ownedIndex=${result.ownedIndex}`,
+            `Stage 0 component package '${params.appId}' reminder owner '${request.ownerRef}' returned invalid ownedIndex=${result.ownedIndex}`,
           );
         }
         dlg.deleteReminder(target.index);
@@ -466,7 +456,9 @@ export async function applyAppReminderRequests(
       }
       default: {
         const _exhaustive: never = result;
-        throw new Error(`Unsupported app reminder apply result: ${String(_exhaustive)}`);
+        throw new Error(
+          `Unsupported Application Component reminder apply result: ${String(_exhaustive)}`,
+        );
       }
     }
   }

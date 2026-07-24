@@ -14,12 +14,13 @@ reported alongside them but does not grant or revoke tool visibility.
 
 ## Registry
 
-The registry catalog contains the toolsets currently contributed by Dominds, installed Apps, and
-configured MCP servers. Its source of truth is the in-process tools registry.
+The registry catalog contains the toolsets currently contributed by Dominds, component packages
+loaded through the Stage 0 `DomindsApp` envelope, and configured MCP servers. Its source of truth is
+the in-process tools registry.
 
 Registry changes include:
 
-- App toolset registration or removal
+- Stage 0 package toolset registration or removal
 - MCP server registration, restart, disablement, or collision resolution
 - framework toolset registration changes
 
@@ -35,7 +36,8 @@ Member selection is resolved from:
 - the current registry catalog
 
 The result records declared selectors, resolved toolset ids, directly selected tools, and unresolved
-declarations. Built-in, App-provided, and MCP-provided toolsets all use the same selection rules.
+declarations. Built-in, component-provided (currently loaded through Stage 0 packages), and
+MCP-provided toolsets all use the same selection rules.
 
 ## MCP Runtime Leases
 
@@ -54,9 +56,9 @@ For a concrete member and dialog context, the kernel:
 4. injects intrinsic dialog-control capabilities according to dialog scope
 5. exposes runtime-provided helpers such as `man` and `read_skill` when they are not already present
 
-Apps participate by contributing normal toolsets and by supplying team/application configuration
-that selects the components required by the App. There is no second category of toolset with a
-separate availability callback.
+Application Components provide normal toolsets. An App composition selects the required components
+and binds their capabilities through team/application configuration. There is no second category of
+toolset with a separate availability callback.
 
 ## Snapshot Contract
 

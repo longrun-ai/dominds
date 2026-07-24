@@ -14,7 +14,7 @@ export function isValidDomindsAppId(value: string): boolean {
 export function domindsAppIdToPathParts(appId: string): ReadonlyArray<string> {
   const normalized = normalizeDomindsAppId(appId);
   if (!isValidDomindsAppId(normalized)) {
-    throw new Error(`Invalid Dominds app id: '${appId}'`);
+    throw new Error(`Invalid Stage 0 Dominds package id: '${appId}'`);
   }
   return normalized.split('/');
 }

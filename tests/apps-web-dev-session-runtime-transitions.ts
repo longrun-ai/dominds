@@ -85,6 +85,17 @@ async function main(): Promise<void> {
       /PASS surface=page viewport=1280x720 document=1280x720 regions=1/,
     );
 
+    fixture.fakeEnv.trackers.failViewportMeasurement = true;
+    await assert.rejects(
+      async () =>
+        await fixture.host.tools.playwright_session_viewport_fit_check(
+          { sessionId },
+          fixture.controllerCtx,
+        ),
+      /viewport measurement failed: viewport evaluate failed/,
+    );
+    fixture.fakeEnv.trackers.failViewportMeasurement = false;
+
     const relaunch = await fixture.host.tools.playwright_session_relaunch(
       {
         sessionId,

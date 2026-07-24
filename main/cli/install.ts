@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 
 /**
- * install subcommand for dominds CLI (Apps)
+ * install subcommand for the Stage 0 Dominds capability-package envelope
  *
  * Usage:
  *   dominds install <spec|path> [--local] [--id <appId>] [--enable] [--force]
@@ -49,19 +49,19 @@ function printHelp(): void {
 
 Options:
   --local              Treat <spec|path> as a local package directory (dev package)
-  --id <appId>         Require app id (must match app --dominds-app appId)
-  --enable             Remove the app from disabledApps after install
+  --id <appId>         Require the package appId (must match --dominds-app output)
+  --enable             Remove the package appId from disabledApps after install
   --force              Reserved for future use; currently ignored
 
 Notes:
-  - install adds the app to .minds/app.yaml dependencies.
-  - app resolution source is determined dynamically via .apps/configuration.yaml resolutionStrategy.
+  - install registers the Stage 0 package in .minds/app.yaml dependencies.
+  - package resolution source is determined via .apps/configuration.yaml resolutionStrategy.
   - install may also refresh .minds/app-lock.yaml, .apps/configuration.yaml, and
-    .apps/resolution.yaml for the installed app, but it is not a health check.
+    .apps/resolution.yaml for the loaded package, but it is not a health check.
   - ${formatMutationBoundaryNote({
     commandName: 'install',
     layerDescription:
-      '.minds/app.yaml plus derived lock/configuration/resolution state for the installed app',
+      '.minds/app.yaml plus derived lock/configuration/resolution state for the loaded package',
   })}
 `);
 }
@@ -116,8 +116,7 @@ async function pathIsDirectory(pathAbs: string): Promise<boolean> {
 }
 
 type InstallSource =
-  | Readonly<{ kind: 'local'; packageRootAbs: string }>
-  | Readonly<{ kind: 'npx'; spec: string }>;
+  Readonly<{ kind: 'local'; packageRootAbs: string }> | Readonly<{ kind: 'npx'; spec: string }>;
 
 async function resolveInstallSource(params: {
   rtwsRootAbs: string;
@@ -269,20 +268,20 @@ async function main(argv: readonly string[] = process.argv.slice(2)): Promise<vo
   void args.force;
   console.log(
     installSource.kind === 'local'
-      ? `Installed app '${installJson.appId}' from local package: ${installSource.packageRootAbs}`
-      : `Installed app '${installJson.appId}' via resolver strategy seed: ${specOrPath}`,
+      ? `Loaded Stage 0 package '${installJson.appId}' from local package: ${installSource.packageRootAbs}`
+      : `Loaded Stage 0 package '${installJson.appId}' via resolver strategy seed: ${specOrPath}`,
   );
   console.log(
     formatMutationBoundaryNote({
       commandName: 'install',
       layerDescription:
-        '.minds/app.yaml plus derived lock/configuration/resolution state for the installed app',
+        '.minds/app.yaml plus derived lock/configuration/resolution state for the loaded package',
       appId: installJson.appId,
     }),
   );
   if (args.enable) {
     console.log(
-      `Enabled app '${installJson.appId}' in .apps/configuration.yaml and refreshed derived state.`,
+      `Enabled Stage 0 package '${installJson.appId}' in .apps/configuration.yaml and refreshed derived state.`,
     );
   }
 }

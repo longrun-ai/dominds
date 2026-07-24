@@ -142,7 +142,7 @@ skills 的关键词是：**程序化思路**、**可复用操作路径**、**触
 
 - 当前 rtws 的精确路径、文件索引、架构事实、临时状态：这类内容更适合 `personal_memory` / `team_memory` / `.minds/env*.md` / Taskdoc
 - 需要准实时同步的任务状态、下一步、阻塞：进入 Taskdoc `progress`
-- 需要脚本、专有工具、MCP、外部二进制或稳定执行能力的内容：应升级为 Dominds app / toolset / teammates contract，而不是只停留在 Markdown skill
+- 需要脚本、专有工具、MCP、外部二进制或稳定执行能力的内容：应定义为应用组件，再由消费 App 选择并绑定其 toolsets、teammates 与 handlers，而不是只停留在 Markdown skill
 
 一个实用拆分法：**工作区关联强的事实进 memory；独立于工作区内容的操作方法进 skill**。如果一个经验同时包含二者，就拆开：把通用步骤写成 skill，把当前仓库的路径、命令入口、局部契约写进 memory 或 env notes，并在 skill 中说明需要先读取相应 memory/env 信息。若某个 SOP 看起来“写满了路径”，先尝试把它抽象成可泛指的协作概念；路径只保留为绑定信息，不要让它吞掉 SOP 主体。
 
@@ -262,7 +262,7 @@ skills 的关键词是：**程序化思路**、**可复用操作路径**、**触
 1. **它是否强依赖当前工作区内容？** 精确路径、符号、接口事实、仓库约定、当前 rtws 运行约束，优先 memory/env；跨工作区可复用的方法，优先 skill。
 2. **它是事实还是做法？** “X 文件负责 Y”是 memory；“做 X 类评审时按 A/B/C 检查”是 skill。
 3. **它需要团队共享还是个人携带？** 多人都应遵守的稳定事实进 `team_memory`；团队协作 SOP 与团队级操作规程通常进团队共享 skill。只服务某成员的入口地图进 `personal_memory`，只服务某成员的操作偏好进个人 skill。
-4. **它是否需要真正的执行能力？** 如果需要脚本、权限、MCP、外部二进制、稳定 UI/API 能力，就不要只写 skill；应设计 app/toolset/teammates contract，并在 skill 里只保留调用与判断规程。
+4. **它是否需要真正的执行能力？** 如果需要脚本、权限、MCP、外部二进制或稳定 UI/API 能力，就不要只写 skill；应定义应用组件，由消费 App 选择并绑定其能力，并在 skill 里只保留调用与判断规程。
 
 设计上的额外考量：
 

@@ -130,16 +130,16 @@ async function writeLocalAppPackage(params: {
     path.join(params.packageRootAbs, '.minds', 'team.yaml'),
     [
       'members:',
-      '  web_tester:',
-      '    name: Web Tester From App',
+      '  reviewer:',
+      '    name: Reviewer From Component',
       '    toolsets: [ws_read]',
       '    gofor:',
-      '      - capture browser evidence',
-      '  web_developer:',
-      '    name: Web Developer From App',
-      '    toolsets: [ws_read, playwright_interactive, codex_inspect_and_patch_tools]',
+      '      - verify imported component behavior',
+      '  implementer:',
+      '    name: Implementer From Component',
+      '    toolsets: [ws_read, ws_mod, codex_inspect_and_patch_tools]',
       '    gofor:',
-      '      - attach to existing browser sessions with a provided sessionId before asking others for status relays',
+      '      - implement changes using the selected component capabilities',
       '',
     ].join('\n'),
   );
@@ -152,10 +152,10 @@ async function writeLocalAppPackage(params: {
 async function main(): Promise<void> {
   const oldCwd = process.cwd();
   const tmpRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'dominds-apps-install-configure-use-'));
-  const appId = '@longrun-ai/web-dev';
-  const packageName = '@longrun-ai/web-dev';
+  const appId = '@tests/install-flow-package';
+  const packageName = '@tests/install-flow-package';
   const packageVersion = '0.1.0';
-  const localAppRel = path.join('dominds-apps', '@longrun-ai', 'web-dev');
+  const localAppRel = path.join('dominds-apps', '@tests', 'install-flow-package');
   const localAppAbs = path.join(tmpRoot, localAppRel);
 
   const mainTsconfigAbs = path.resolve(__dirname, '..', 'main', 'tsconfig.json');
@@ -183,9 +183,9 @@ async function main(): Promise<void> {
     );
     assert.match(
       installRes.stdout,
-      new RegExp(`Installed app '${escapeRegExp(appId)}' from local package:`),
+      new RegExp(`Loaded Stage 0 package '${escapeRegExp(appId)}' from local package:`),
     );
-    assert.match(installRes.stdout, new RegExp(`Enabled app '${escapeRegExp(appId)}'`));
+    assert.match(installRes.stdout, new RegExp(`Enabled Stage 0 package '${escapeRegExp(appId)}'`));
 
     const manifestLoaded = await loadDomindsAppManifest({
       packageRootAbs: tmpRoot,
@@ -218,24 +218,26 @@ async function main(): Promise<void> {
     if (resolutionLoaded.kind !== 'ok') throw new Error(resolutionLoaded.errorText);
     assert.equal(resolutionLoaded.kind, 'ok', 'expected ok');
     assert.equal(resolutionLoaded.file.apps.length, 1);
-    const resolvedApp = resolutionLoaded.file.apps[0] ?? null;
-    assert.ok(resolvedApp, 'expected resolved app entry');
-    assert.equal(resolvedApp?.id, appId);
-    assert.equal(resolvedApp?.enabled, true);
-    assert.equal(resolvedApp?.source.kind, 'local');
+    const resolvedPackage = resolutionLoaded.file.apps[0] ?? null;
+    assert.ok(resolvedPackage, 'expected resolved Stage 0 package entry');
+    assert.equal(resolvedPackage?.id, appId);
+    assert.equal(resolvedPackage?.enabled, true);
+    assert.equal(resolvedPackage?.source.kind, 'local');
     const resolvedSourcePath =
-      resolvedApp?.source.kind === 'local' ? await canonicalPath(resolvedApp.source.pathAbs) : null;
+      resolvedPackage?.source.kind === 'local'
+        ? await canonicalPath(resolvedPackage.source.pathAbs)
+        : null;
     assert.equal(resolvedSourcePath, await canonicalPath(localAppAbs));
-    assert.equal(resolvedApp?.installJson.appId, appId);
-    assert.equal(resolvedApp?.installJson.package.name, packageName);
+    assert.equal(resolvedPackage?.installJson.appId, appId);
+    assert.equal(resolvedPackage?.installJson.package.name, packageName);
     assert.equal(
-      resolvedApp?.assignedPort !== null,
+      resolvedPackage?.assignedPort !== null,
       true,
-      'frontend app should get a stable assignedPort',
+      'frontend Stage 0 package should get a stable assignedPort',
     );
-    assert.equal(typeof resolvedApp?.assignedPort, 'number');
+    assert.equal(typeof resolvedPackage?.assignedPort, 'number');
     assert.ok(
-      (resolvedApp?.assignedPort ?? 0) > 0,
+      (resolvedPackage?.assignedPort ?? 0) > 0,
       'assignedPort must be non-zero once materialized',
     );
 
@@ -250,35 +252,35 @@ async function main(): Promise<void> {
         '  builder:',
         '    name: Builder',
         '    toolsets: []',
-        '  qa_from_app:',
+        '  reviewer_from_package:',
         `    from: ${JSON.stringify(appId)}`,
-        '    use: web_tester',
-        '    name: QA Override',
-        '  dev_from_app:',
+        '    use: reviewer',
+        '    name: Reviewer Override',
+        '  implementer_from_package:',
         `    from: ${JSON.stringify(appId)}`,
-        '    use: web_developer',
-        '    name: Dev Override',
+        '    use: implementer',
+        '    name: Implementer Override',
         '',
       ].join('\n'),
     );
 
     const team = await Team.load();
-    const importedMember = team.getMember('qa_from_app');
-    assert.ok(importedMember, 'expected team import from installed app');
-    assert.equal(importedMember?.name, 'QA Override');
+    const importedMember = team.getMember('reviewer_from_package');
+    assert.ok(importedMember, 'expected component teammate import from loaded Stage 0 package');
+    assert.equal(importedMember?.name, 'Reviewer Override');
     assert.deepEqual(importedMember?.toolsets, ['ws_read']);
-    assert.deepEqual(importedMember?.gofor, ['capture browser evidence']);
+    assert.deepEqual(importedMember?.gofor, ['verify imported component behavior']);
 
-    const importedDeveloper = team.getMember('dev_from_app');
-    assert.ok(importedDeveloper, 'expected developer import from installed app');
-    assert.equal(importedDeveloper?.name, 'Dev Override');
-    assert.deepEqual(importedDeveloper?.toolsets, [
+    const importedImplementer = team.getMember('implementer_from_package');
+    assert.ok(importedImplementer, 'expected implementer import from loaded Stage 0 package');
+    assert.equal(importedImplementer?.name, 'Implementer Override');
+    assert.deepEqual(importedImplementer?.toolsets, [
       'ws_read',
-      'playwright_interactive',
+      'ws_mod',
       'codex_inspect_and_patch_tools',
     ]);
-    assert.deepEqual(importedDeveloper?.gofor, [
-      'attach to existing browser sessions with a provided sessionId before asking others for status relays',
+    assert.deepEqual(importedImplementer?.gofor, [
+      'implement changes using the selected component capabilities',
     ]);
 
     const resolutionYamlText = await fs.readFile(

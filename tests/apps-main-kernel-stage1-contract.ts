@@ -60,7 +60,7 @@ async function main(): Promise<void> {
       assert.equal(
         source.includes(needle),
         true,
-        `${entry.fileRel} must import ${needle} as part of the main -> kernel Phase 1 cutover.`,
+        `${entry.fileRel} must import ${needle} as part of the main -> kernel Stage 1 cutover.`,
       );
     }
     for (const forbidden of FORBIDDEN_MAIN_IMPORT_SNIPPETS) {
@@ -83,7 +83,7 @@ async function main(): Promise<void> {
       .access(path.join(domindsRootAbs, relPath))
       .then(() => true)
       .catch(() => false);
-    assert.equal(exists, false, `${relPath} must be removed after the Phase 1 cutover.`);
+    assert.equal(exists, false, `${relPath} must be removed after the Stage 1 cutover.`);
   }
 }
 

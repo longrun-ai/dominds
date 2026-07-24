@@ -70,15 +70,27 @@ Dominds is an AI-powered DevOps framework that creates autonomous agentic teams 
 ### Prerequisites
 
 - **Node.js (with npm bundled)**: Version 24.5+ LTS
-- **npm (if used directly)**: Use the npm bundled with your installed Node.js 24 LTS; current minimum in this repo is `11.16.0`, and newer versions are allowed.
+- **npm (if used directly)**: Use the latest stable release compatible with the
+  current Node.js LTS. npm updates itself with
+  `npm install --global npm@<exact-version>`; do not download a separate
+  installer.
 - **LLM provider configured for your team**: Dominds ships with a built-in provider catalog [main/llm/defaults.yaml](./main/llm/defaults.yaml) including Codex (ChatGPT) and Anthropic, plus several Anthropic-compatible endpoints (e.g. MiniMax, Z.ai, BigModel). You’ll need valid credentials for at least one provider.
-- **pnpm (optional)**: Recommended only if you’re developing Dominds itself. Prefer enabling the pinned CLI once via `npm run setup:pm`. If Corepack shims cannot be enabled in your environment, install `pnpm@11.5.0` manually.
+- **pnpm (only for Dominds development)**: The workspace root
+  `packageManager` is the sole version pin, and Corepack is the only
+  installation or upgrade path. Ordinary workspace packages do not repeat the
+  pnpm version. Do not run `npm install --global pnpm` or `pnpm self-update`.
 
-For repo development, initialize the package manager once after `nvm use --lts`:
+For repository development, enable and cache the pinned pnpm:
 
 ```bash
 npm run setup:pm
 ```
+
+If the current Node installation does not include Corepack, first run
+`npm install --global corepack@<exact-latest-stable-version>`. In an integrated
+development checkout, follow the outer
+`../docs/toolchain-maintenance-sop.md` for the complete Windows/macOS/Linux
+maintenance flow.
 
 ### Proxy Support
 
@@ -155,29 +167,39 @@ Notes:
 - `npx dominds` does **not** necessarily mean “always latest”: if your project already has `dominds` installed, or your npm cache already contains an older version, `npx` may reuse that.
 - If you want “resolve whatever `latest` points to”, use `dominds@latest` explicitly. It may still reuse the cached copy of that same version (expected).
 
-### Installing Dominds apps
+### Loading Stage 0 Dominds packages
 
-Installing the `dominds` CLI itself and installing a **Dominds app** into your current rtws are two different operations:
+Installing the `dominds` CLI itself and loading a Dominds capability package into your current rtws
+are two different operations:
 
 - `npm install -g dominds` / `pnpm add -g dominds`: install the Dominds CLI.
 - `npx -y dominds@latest`: run the Dominds CLI without a global install.
-- `dominds install <app>`: add a Dominds app into the current rtws capability graph.
+- `dominds install <package>`: register a package through the current Stage 0 `DomindsApp`
+  bootstrap envelope.
+
+This envelope predates the final Kernel–Component–App model. In particular,
+`@longrun-ai/web-dev` is an Application Component carried through that bootstrap channel, not an
+independent business App. A future App composition revision will explicitly select and bind such
+components.
 
 Examples:
 
 ```bash
-# Install a published app into the current rtws
+# Load the published Web Dev component through the Stage 0 envelope
 dominds install @longrun-ai/web-dev --enable
 
-# Install a local app under development into the current rtws
+# Load a local Web Dev component checkout
 dominds install ./dominds-apps/@longrun-ai/web-dev --local --enable
 ```
 
 Important distinctions:
 
-- `npm install` / `pnpm add` only download packages; they do **not** register an app into `.minds/app.yaml` for the current rtws.
-- `npx` is used by the kernel/CLI as a package-execution backend. For app installation, the kernel may execute `npx -y <pkg> --dominds-app` under the hood.
-- `--dominds-app` is a low-level app handshake flag between the kernel/CLI and the app package. It is not the normal end-user interface.
+- `npm install` / `pnpm add` only download packages; they do **not** register capabilities into the
+  current rtws.
+- `npx` is used by the Kernel/CLI as a package-execution backend. The Stage 0 loader may execute
+  `npx -y <pkg> --dominds-app` under the hood.
+- `--dominds-app` is the legacy low-level package handshake flag. It is not the final component
+  activation semantic or the normal end-user interface.
 
 For development and any sort of open source contribution, use the in-tree dev wrapper rtws:
 

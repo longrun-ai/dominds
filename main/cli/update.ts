@@ -13,7 +13,7 @@ function printHelp(): void {
   dominds update [<appId>]
 
 Notes:
-  - Re-runs dynamic app resolution using .minds/app.yaml + .apps/configuration.yaml.
+  - Re-runs Stage 0 package resolution using .minds/app.yaml + .apps/configuration.yaml.
   - Refreshes derived state in .apps/resolution.yaml and .minds/app-lock.yaml.
   - update recomputes derived state; it does not explain root-cause mismatches in
     declaration, disabled state, resolution snapshots, or handshake entry fields.
@@ -54,7 +54,9 @@ async function main(argv: readonly string[] = process.argv.slice(2)): Promise<vo
     args.appId !== null &&
     !(await hasRtwsDeclaredAppDependency({ rtwsRootAbs, appId: args.appId }))
   ) {
-    console.error(`Error: app '${args.appId}' is not declared in .minds/app.yaml dependencies`);
+    console.error(
+      `Error: Stage 0 package '${args.appId}' is not declared in .minds/app.yaml dependencies`,
+    );
     console.error(formatDoctorGuidance({ appId: args.appId }));
     process.exit(1);
     return;
@@ -88,7 +90,7 @@ async function main(argv: readonly string[] = process.argv.slice(2)): Promise<vo
   if (args.appId === null) {
     for (const app of resolution.apps) {
       console.log(
-        `Updated app '${app.id}' derived state in .minds/app-lock.yaml and .apps/resolution.yaml.`,
+        `Updated Stage 0 package '${app.id}' derived state in .minds/app-lock.yaml and .apps/resolution.yaml.`,
       );
     }
     console.log(
@@ -101,7 +103,7 @@ async function main(argv: readonly string[] = process.argv.slice(2)): Promise<vo
   }
 
   console.log(
-    `Updated app '${args.appId}' derived state in .minds/app-lock.yaml and .apps/resolution.yaml.`,
+    `Updated Stage 0 package '${args.appId}' derived state in .minds/app-lock.yaml and .apps/resolution.yaml.`,
   );
   console.log(
     formatMutationBoundaryNote({

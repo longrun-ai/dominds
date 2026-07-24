@@ -24,15 +24,24 @@ Dominds 是一款面向开发运作（DevOps）场景的智能体框架，它将
 ### 环境要求
 
 - **Node.js（含 npm）**：版本 24.5+ LTS
-- **npm（如直接使用）**：使用当前安装的 Node.js 24 LTS 自带 npm；本仓库当前最低要求为 `11.16.0`，更高版本也允许。
+- **npm（如直接使用）**：使用与当前 Node.js LTS 兼容的最新稳定版；npm 通过
+  `npm install --global npm@<精确版本>` 自更新，不下载独立安装包。
 - **至少一个可用的 LLM 服务提供商**：Dominds 内置提供商目录（路径：[main/llm/defaults.yaml](./main/llm/defaults.yaml)），需为其中至少一个提供商配置有效凭证（通过环境变量设置）。
-- **pnpm（可选）**：仅在开发 Dominds 本体时推荐使用。优先执行一次 `npm run setup:pm` 启用并缓存仓库固定的 pnpm；若你的环境无法启用 Corepack shim，再手动安装 `pnpm@11.5.0`。
+- **pnpm（仅开发 Dominds 本体时使用）**：版本只由仓库根
+  `packageManager` 锁定，且只通过 Corepack 安装或升级；普通 workspace
+  package 不重复声明 pnpm 版本。不要执行 `npm install --global pnpm` 或
+  `pnpm self-update`。
 
-开发本仓库时，建议在 `nvm use --lts` 之后先执行一次：
+开发本仓库时，先启用并缓存仓库锁定的 pnpm：
 
 ```bash
 npm run setup:pm
 ```
+
+若当前 Node 安装不含 Corepack，先执行
+`npm install --global corepack@<精确最新稳定版本>`。集成开发 checkout
+的完整 Windows/macOS/Linux 维护流程以外层
+`../docs/toolchain-maintenance-sop.md` 为准。
 
 ### 代理支持
 
@@ -110,29 +119,34 @@ npx -y dominds@latest
 - 仅写 `npx dominds` **不一定**会自动跑“最新版”：如果你本地项目已安装了 `dominds`，或 npm cache 已存在旧版本，`npx` 可能会直接复用已有版本。
 - 想要“每次都按 latest 标签解析版本”，请显式写 `dominds@latest`；它仍可能复用 cache 中已下载的同版本（属于正常行为）。
 
-### 安装 Dominds app
+### 装载 Stage 0 Dominds 软件包
 
-安装 `dominds` CLI 本体，和把一个 **Dominds app** 装进当前 rtws，是两件不同的事：
+安装 `dominds` CLI 本体，和把一个 Dominds 能力软件包装载进当前 rtws，是两件不同的事：
 
 - `npm install -g dominds` / `pnpm add -g dominds`：安装 Dominds CLI。
 - `npx -y dominds@latest`：无需全局安装，直接运行 Dominds CLI。
-- `dominds install <app>`：把一个 Dominds app 纳入当前 rtws 的能力图。
+- `dominds install <package>`：通过当前 Stage 0 的 `DomindsApp` 引导信封登记软件包。
+
+这个信封早于最终的 Kernel–Component–App 模型。特别是，`@longrun-ai/web-dev`
+是经由该引导通道装载的应用组件，不是独立业务 App。未来将由 App composition revision
+显式选择并绑定这类组件。
 
 示例：
 
 ```bash
-# 安装已发布 app 到当前 rtws
+# 通过 Stage 0 信封装载已发布的 Web Dev 组件
 dominds install @longrun-ai/web-dev --enable
 
-# 安装本地开发中的 app 到当前 rtws
+# 装载本地 Web Dev 组件 checkout
 dominds install ./dominds-apps/@longrun-ai/web-dev --local --enable
 ```
 
 几个关键区别：
 
-- `npm install` / `pnpm add` 只负责下载包；它们**不会**自动把 app 登记到当前 rtws 的 `.minds/app.yaml`。
-- `npx` 在这里主要是 Kernel/CLI 的包执行后端。安装 app 时，Kernel 可能会在底层执行 `npx -y <pkg> --dominds-app` 来做握手。
-- `--dominds-app` 是 Kernel/CLI 与 app 包之间的底层握手参数，不是普通用户的常规操作入口。
+- `npm install` / `pnpm add` 只负责下载包；它们**不会**自动把能力登记到当前 rtws。
+- `npx` 在这里主要是 Kernel/CLI 的包执行后端。Stage 0 装载器可能会在底层执行
+  `npx -y <pkg> --dominds-app` 来做握手。
+- `--dominds-app` 是旧的底层软件包握手参数，不是最终的组件激活语义，也不是普通用户的常规操作入口。
 
 ### 开发与贡献（树内工作流 / in-tree 工作流）
 

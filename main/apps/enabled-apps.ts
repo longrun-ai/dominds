@@ -75,7 +75,7 @@ function getResolutionHint(params: { rtwsRootAbs: string; hasConfigurationFile: 
   const action = params.hasConfigurationFile ? 'Edit' : 'Create';
   return (
     `${action} ${filePathAbs} to configure 'resolutionStrategy'. ` +
-    `Default local root is 'dominds-apps' (rtws-relative) and resolves app ids under '<root>/<appId path segments>/'.`
+    `Default local root is 'dominds-apps' (rtws-relative) and resolves Stage 0 package ids under '<root>/<appId path segments>/'.`
   );
 }
 
@@ -95,7 +95,7 @@ async function loadManifestDepsFromResolvedApp(params: {
   });
   if (loaded.kind === 'error') {
     throw new Error(
-      `Failed to load app manifest for '${params.appId}': ${loaded.errorText} (${loaded.filePathAbs})`,
+      `Failed to load Stage 0 component-package manifest for '${params.appId}': ${loaded.errorText} (${loaded.filePathAbs})`,
     );
   }
   return loaded.manifest.dependencies ?? [];
@@ -141,7 +141,7 @@ async function probeAppByStrategy(params: {
       const installJson = await runDomindsAppJsonViaLocalPackage({ packageRootAbs });
       if (installJson.appId !== params.appId) {
         throw new Error(
-          `App id mismatch for local package '${packageRootAbs}': expected '${params.appId}', got '${installJson.appId}'`,
+          `Stage 0 package id mismatch for local package '${packageRootAbs}': expected '${params.appId}', got '${installJson.appId}'`,
         );
       }
       return { source: { kind: 'local', pathAbs: packageRootAbs }, installJson };
@@ -159,7 +159,7 @@ async function probeAppByStrategy(params: {
       });
       if (installJson.appId !== params.appId) {
         throw new Error(
-          `App id mismatch for npx '${spec}': expected '${params.appId}', got '${installJson.appId}'`,
+          `Stage 0 package id mismatch for npx '${spec}': expected '${params.appId}', got '${installJson.appId}'`,
         );
       }
       return { source: { kind: 'npx', spec }, installJson };
@@ -243,7 +243,7 @@ async function resolveGraph(params: {
       kind: 'app_manifest_load_failed',
       severity: 'error',
       message:
-        'Failed to load rtws app manifest (.minds/app.yaml); app dependencies will not be resolved.',
+        'Failed to load the rtws Stage 0 package manifest (.minds/app.yaml); package dependencies will not be resolved.',
       detail: {
         appId: 'rtws',
         manifestRelPath: '.minds/app.yaml',
@@ -279,8 +279,8 @@ async function resolveGraph(params: {
           kind: explicitlyDisabled ? 'required_dependency_disabled' : 'required_dependency_missing',
           severity: 'error',
           message: explicitlyDisabled
-            ? `Required app dependency '${appId}' is disabled.`
-            : `Required app dependency '${appId}' failed to resolve.`,
+            ? `Required Stage 0 package dependency '${appId}' is disabled.`
+            : `Required Stage 0 package dependency '${appId}' failed to resolve.`,
           detail: {
             appId,
             searchedLocalRootsAbs: roots,
@@ -305,8 +305,8 @@ async function resolveGraph(params: {
           kind: explicitlyDisabled ? 'required_dependency_disabled' : 'required_dependency_missing',
           severity: 'error',
           message: explicitlyDisabled
-            ? `Required app dependency '${appId}' is disabled.`
-            : `Required app dependency '${appId}' is missing.`,
+            ? `Required Stage 0 package dependency '${appId}' is disabled.`
+            : `Required Stage 0 package dependency '${appId}' is missing.`,
           detail: {
             appId,
             searchedLocalRootsAbs: roots,
@@ -333,7 +333,7 @@ async function resolveGraph(params: {
         pushIssue({
           kind: 'required_dependency_disabled',
           severity: 'error',
-          message: `Required app dependency '${appId}' is disabled.`,
+          message: `Required Stage 0 package dependency '${appId}' is disabled.`,
           detail: {
             appId,
             configurationFileRelPath: APPS_CONFIGURATION_REL_PATH,
@@ -354,7 +354,7 @@ async function resolveGraph(params: {
       pushIssue({
         kind: 'app_manifest_load_failed',
         severity: 'error',
-        message: `Failed to load app manifest for '${appId}'.`,
+        message: `Failed to load Stage 0 component-package manifest for '${appId}'.`,
         detail: {
           appId,
           packageRootAbs: entry.installJson.package.rootAbs,
@@ -402,7 +402,7 @@ async function resolveGraph(params: {
           pushIssue({
             kind: 'app_effectively_disabled_due_to_required_dependency',
             severity: 'error',
-            message: `App '${appId}' is effectively disabled due to missing/disabled required dependency '${edge.depId}'.`,
+            message: `Stage 0 package '${appId}' is effectively disabled due to missing/disabled required package dependency '${edge.depId}'.`,
             detail: {
               appId,
               dependencyId: edge.depId,
@@ -445,7 +445,7 @@ async function resolveGraph(params: {
       pushIssue({
         kind: 'assigned_port_reassigned',
         severity: 'warning',
-        message: `App '${appId}' assignedPort was reassigned due to runtime port conflict.`,
+        message: `Stage 0 component package '${appId}' assignedPort was reassigned due to runtime port conflict.`,
         detail: {
           appId,
           previousAssignedPort: entry.assignedPort,
@@ -474,20 +474,22 @@ export async function resolveAppsGraphState(params: {
   const loadedConfig = await loadAppsConfigurationFile({ rtwsRootAbs: params.rtwsRootAbs });
   if (loadedConfig.kind === 'error') {
     throw new Error(
-      `Failed to load apps configuration: ${loadedConfig.errorText} (${loadedConfig.filePathAbs})`,
+      `Failed to load Stage 0 package configuration: ${loadedConfig.errorText} (${loadedConfig.filePathAbs})`,
     );
   }
 
   const loadedResolution = await loadAppsResolutionFile({ rtwsRootAbs: params.rtwsRootAbs });
   if (loadedResolution.kind === 'error') {
     throw new Error(
-      `Failed to load apps resolution snapshot: ${loadedResolution.errorText} (${loadedResolution.filePathAbs})`,
+      `Failed to load Stage 0 package resolution snapshot: ${loadedResolution.errorText} (${loadedResolution.filePathAbs})`,
     );
   }
 
   const loadedLock = await loadAppLockFile({ rtwsRootAbs: params.rtwsRootAbs });
   if (loadedLock.kind === 'error') {
-    throw new Error(`Failed to load app lock: ${loadedLock.errorText} (${loadedLock.filePathAbs})`);
+    throw new Error(
+      `Failed to load Stage 0 package lock: ${loadedLock.errorText} (${loadedLock.filePathAbs})`,
+    );
   }
 
   const previousResolutionById = new Map<string, AppsResolutionEntry>();
@@ -518,7 +520,7 @@ export async function materializeAppsResolution(params: {
   const loadedResolution = await loadAppsResolutionFile({ rtwsRootAbs: params.rtwsRootAbs });
   if (loadedResolution.kind === 'error') {
     throw new Error(
-      `Failed to load apps resolution snapshot: ${loadedResolution.errorText} (${loadedResolution.filePathAbs})`,
+      `Failed to load Stage 0 package resolution snapshot: ${loadedResolution.errorText} (${loadedResolution.filePathAbs})`,
     );
   }
 

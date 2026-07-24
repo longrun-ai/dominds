@@ -338,8 +338,8 @@ Example / 示例（概念）:
 - EN: The **App Host** is the runtime-side process boundary that executes handlers and tools belonging to an App's active composition revision and speaks the Kernel↔App IPC contract.
 - ZH: **App 宿主（App Host）**是运行时侧的进程边界，负责执行 App 当前 composition revision 所含的处理器与工具，并承载 Kernel ↔ App 之间的 IPC 契约。
 
-- EN: Use “App Host” when you mean the runtime component. When you mean the capability surface exposed by an app, prefer “app-provided tools” rather than “app-host tools”.
-- ZH: 当语义指向运行时组件时，用“App 宿主”；当语义指向 app 暴露出来的能力面时，优先写“由 App 提供的工具”，不要写“app-host tools”。
+- EN: Use “App Host” when you mean the runtime component. When you mean the capability surface, prefer “component-provided tools exposed by the App composition” rather than “app-host tools”.
+- ZH: 当语义指向运行时组件时，用“App 宿主”；当语义指向能力面时，优先写“由组件提供、经 App composition 暴露的工具”，不要写“app-host tools”。
 
 - EN: “App Host” is not an entry-file naming contract. For app entry semantics, prefer terms such as `app entry module` and `app factory export`; avoid implying default filenames like `src/app-host.js` or export names like `createDomindsAppHost`.
 - ZH: “App 宿主”不是入口文件命名契约。涉及 app 入口语义时，优先使用 `app entry module` / `app factory export`（可译为“入口模块”/“工厂导出”），避免暗示默认文件名 `src/app-host.js` 或默认导出名 `createDomindsAppHost`。

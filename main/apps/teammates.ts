@@ -89,7 +89,7 @@ function computeOverrideOwnersByTarget(params: {
     }
 
     // Use shortest dependency distance from target to owner so traversal remains bounded
-    // even when enabled apps contain dependency cycles.
+    // even when enabled Stage 0 packages contain dependency cycles.
     for (let i = 0; i < queue.length; i += 1) {
       const current = queue[i];
       const nextOwners = ownersByDep.get(current.ownerId) ?? [];
@@ -139,7 +139,7 @@ export async function loadEnabledAppTeammates(params: {
 
     const appOverrideOwners = overrideOwnersByTarget.get(app.id) ?? [];
 
-    // Priority: rtws override > app override (integrator-provided) > app defaults.
+    // Priority: rtws override > integrator-package override > component-package defaults.
     const override = await resolveAppOverrideFileAbs({
       rtwsRootAbs: params.rtwsRootAbs,
       appId: app.id,
@@ -153,13 +153,15 @@ export async function loadEnabledAppTeammates(params: {
     const raw = await fs.readFile(filePathAbs, 'utf-8');
     const parsed = YAML.parse(raw) as unknown;
     if (!isRecord(parsed)) {
-      throw new Error(`Invalid app teammates yaml: expected object (${app.id} at ${filePathAbs})`);
+      throw new Error(
+        `Invalid Stage 0 component teammates YAML: expected object (${app.id} at ${filePathAbs})`,
+      );
     }
     const keys = Object.keys(parsed);
     for (const k of keys) {
       if (k !== 'members') {
         throw new Error(
-          `Invalid app teammates yaml: unknown top-level key '${k}' (only 'members' allowed) (${app.id} at ${filePathAbs})`,
+          `Invalid Stage 0 component teammates YAML: unknown top-level key '${k}' (only 'members' allowed) (${app.id} at ${filePathAbs})`,
         );
       }
     }
@@ -170,7 +172,7 @@ export async function loadEnabledAppTeammates(params: {
     }
     if (!isRecord(membersRaw)) {
       throw new Error(
-        `Invalid app teammates yaml: members must be an object (${app.id} at ${filePathAbs})`,
+        `Invalid Stage 0 component teammates YAML: members must be an object (${app.id} at ${filePathAbs})`,
       );
     }
     out.push({ appId: app.id, members: membersRaw });

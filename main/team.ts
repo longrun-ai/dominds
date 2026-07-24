@@ -12,7 +12,10 @@ import YAML from 'yaml';
 import type { ProblemI18nText, WorkspaceProblem } from '@longrun-ai/kernel/types/problems';
 import { formatUnifiedTimestamp } from '@longrun-ai/kernel/utils/time';
 import { loadEnabledAppsSnapshot } from './apps/enabled-apps';
-import { loadEnabledAppTeammates, type AppTeammatesSnippet } from './apps/teammates';
+import {
+  loadEnabledAppTeammates,
+  type AppTeammatesSnippet as Stage0ComponentTeammatesSnippet,
+} from './apps/teammates';
 import { LlmConfig } from './llm/client';
 import { log } from './log';
 import { parseMcpYaml } from './mcp/config';
@@ -220,24 +223,27 @@ export namespace Team {
           '先修好 .minds/mcp.yaml，再运行 team_mgmt_validate_team_cfg({}) 和 team_mgmt_validate_mcp_cfg({})。',
         ],
         [
-          /If '(.+?)' is expected from an enabled app, confirm the app is installed\/enabled in this rtws and that its contributes\.toolsets were loaded successfully\./g,
-          "如果 '$1' 本来应该由某个已启用 app 提供，请确认这个 app 已在当前 rtws 安装并启用，而且它的 contributes.toolsets 已成功加载。",
+          /If '(.+?)' is expected from an enabled Stage 0 component package, confirm the package is loaded\/enabled in this rtws and that its contributes\.toolsets were loaded successfully\./g,
+          "如果 '$1' 本来应该由某个已启用的 Stage 0 组件软件包提供，请确认这个软件包已在当前 rtws 装载并启用，而且它的 contributes.toolsets 已成功加载。",
         ],
         [
-          /Otherwise, fix (.+?)\.toolsets to a valid built-in\/app toolset name, or declare MCP server '(.+?)' in \.minds\/mcp\.yaml\./g,
-          "否则，请把 $1.toolsets 改成合法的内置或 app 工具集名称，或者在 .minds/mcp.yaml 里声明 MCP 服务 '$2'。",
+          /Otherwise, fix (.+?)\.toolsets to a valid built-in\/component-provided toolset name, or declare MCP server '(.+?)' in \.minds\/mcp\.yaml\./g,
+          "否则，请把 $1.toolsets 改成合法的内置或组件提供的工具集名称，或者在 .minds/mcp.yaml 里声明 MCP 服务 '$2'。",
         ],
         [
-          /Tip: run team_mgmt_validate_mcp_cfg\(\{\}\) for MCP checks, and inspect \/ refresh enabled apps if this toolset should come from an app\./g,
-          '建议运行 team_mgmt_validate_mcp_cfg({}) 做 MCP 检查；如果这个工具集应该来自 app，再检查或刷新已启用的 app。',
+          /Tip: run team_mgmt_validate_mcp_cfg\(\{\}\) for MCP checks, and inspect \/ refresh enabled Stage 0 packages if this toolset should come from a component package\./g,
+          '建议运行 team_mgmt_validate_mcp_cfg({}) 做 MCP 检查；如果这个工具集应该来自组件软件包，再检查或刷新已启用的 Stage 0 软件包。',
         ],
         [/Invalid \.minds\/team\.yaml:/g, '无效的 .minds/team.yaml：'],
         [/Failed to parse \.minds\/team\.yaml\./g, '解析 .minds/team.yaml 失败。'],
         [/Failed to load \.minds\/team\.yaml\./g, '加载 .minds/team.yaml 失败。'],
-        [/Failed to load enabled app teammates\./g, '加载已启用 app 的成员定义失败。'],
         [
-          /Failed to load enabled app toolsets while validating \.minds\/team\.yaml toolset bindings\./g,
-          '校验 .minds/team.yaml 的工具集绑定时，加载已启用 app 的工具集失败。',
+          /Failed to load enabled Stage 0 component-package teammates\./g,
+          '加载已启用 Stage 0 组件软件包的成员定义失败。',
+        ],
+        [
+          /Failed to load enabled Stage 0 component-package toolsets while validating \.minds\/team\.yaml toolset bindings\./g,
+          '校验 .minds/team.yaml 的工具集绑定时，加载已启用 Stage 0 组件软件包的工具集失败。',
         ],
         [
           /Failed to load LLM configuration for validating \.minds\/team\.yaml provider\/model bindings\./g,
@@ -394,9 +400,7 @@ export namespace Team {
   };
 
   type AnthropicThinkingConfig =
-    | { type: 'adaptive' }
-    | { type: 'disabled' }
-    | { type: 'enabled'; budget_tokens: number };
+    { type: 'adaptive' } | { type: 'disabled' } | { type: 'enabled'; budget_tokens: number };
 
   type AnthropicModelParams = {
     temperature?: number; // 0-1, controls randomness
@@ -1065,18 +1069,18 @@ export namespace Team {
     async function validateMemberToolsetBindings(team: Team, md: Team.Member): Promise<void> {
       const registeredToolsets = new Set(Object.keys(listToolsets()));
       const mcpDeclared = await readMcpDeclaredToolsets();
-      let enabledAppToolsets = new Set<string>();
+      let enabledComponentPackageToolsets = new Set<string>();
       try {
         const snapshot = await loadEnabledAppsSnapshot({ rtwsRootAbs: domindsRtwsRootAbs() });
-        enabledAppToolsets = new Set(
+        enabledComponentPackageToolsets = new Set(
           snapshot.enabledApps.flatMap((app) =>
             (app.installJson.contributes?.toolsets ?? []).map((toolset) => toolset.id),
           ),
         );
       } catch (err: unknown) {
         addIssue(
-          'apps/toolsets/load',
-          'Failed to load enabled app toolsets while validating .minds/team.yaml toolset bindings.',
+          'stage0_packages/toolsets/load',
+          'Failed to load enabled Stage 0 component-package toolsets while validating .minds/team.yaml toolset bindings.',
           err instanceof Error ? err.message : String(err),
         );
       }
@@ -1105,7 +1109,7 @@ export namespace Team {
             }
             continue;
           }
-          if (enabledAppToolsets.has(toolsetName)) {
+          if (enabledComponentPackageToolsets.has(toolsetName)) {
             continue;
           }
 
@@ -1143,9 +1147,9 @@ export namespace Team {
             `Invalid .minds/team.yaml: ${args.atPrefix}.toolsets contains an unknown toolset.`,
             [
               `Resolved ${args.atPrefix}.toolsets includes '${toolsetName}', but this toolset is not currently registered in runtime registry and is not declared in .minds/mcp.yaml.`,
-              `If '${toolsetName}' is expected from an enabled app, confirm the app is installed/enabled in this rtws and that its contributes.toolsets were loaded successfully.`,
-              `Otherwise, fix ${args.atPrefix}.toolsets to a valid built-in/app toolset name, or declare MCP server '${toolsetName}' in .minds/mcp.yaml.`,
-              `Tip: run team_mgmt_validate_mcp_cfg({}) for MCP checks, and inspect / refresh enabled apps if this toolset should come from an app.`,
+              `If '${toolsetName}' is expected from an enabled Stage 0 component package, confirm the package is loaded/enabled in this rtws and that its contributes.toolsets were loaded successfully.`,
+              `Otherwise, fix ${args.atPrefix}.toolsets to a valid built-in/component-provided toolset name, or declare MCP server '${toolsetName}' in .minds/mcp.yaml.`,
+              `Tip: run team_mgmt_validate_mcp_cfg({}) for MCP checks, and inspect / refresh enabled Stage 0 packages if this toolset should come from a component package.`,
             ].join('\n'),
           );
         }
@@ -1432,18 +1436,18 @@ export namespace Team {
         return team;
       }
 
-      let appTeammates: ReadonlyArray<AppTeammatesSnippet> = [];
+      let componentTeammates: ReadonlyArray<Stage0ComponentTeammatesSnippet> = [];
       try {
-        appTeammates = await loadEnabledAppTeammates({ rtwsRootAbs: domindsRtwsRootAbs() });
+        componentTeammates = await loadEnabledAppTeammates({ rtwsRootAbs: domindsRtwsRootAbs() });
       } catch (err: unknown) {
         addIssue(
-          'apps/teammates/load',
-          'Failed to load enabled app teammates.',
+          'stage0_packages/teammates/load',
+          'Failed to load enabled Stage 0 component-package teammates.',
           err instanceof Error ? err.message : String(err),
         );
       }
 
-      const parsedTeam = parseTeamYamlObject(parsed, md, { fuxi, pangu }, { appTeammates });
+      const parsedTeam = parseTeamYamlObject(parsed, md, { fuxi, pangu }, { componentTeammates });
       for (const issue of parsedTeam.issues) {
         addIssue(issue.id, issue.message, issue.errorText, undefined, issue.severity);
       }
@@ -1606,8 +1610,8 @@ export namespace Team {
   ] as const;
   export const TEAM_YAML_MEMBER_KEYS = [
     'name',
-    // Cross-app teammate reference (design draft): members.<id>.from + (use|import)
-    // These are currently validated (best-effort) but not executed as real cross-app semantics.
+    // Stage 0 component teammate reference: members.<id>.from + (use|import).
+    // The current package envelope resolves these imports from enabled component-package contributions.
     'from',
     'use',
     'import',
@@ -2411,7 +2415,7 @@ export namespace Team {
     obj: unknown,
     md: Team.Member,
     shadow: { fuxi: Team.Member; pangu: Team.Member },
-    deps: { appTeammates: ReadonlyArray<AppTeammatesSnippet> },
+    deps: { componentTeammates: ReadonlyArray<Stage0ComponentTeammatesSnippet> },
   ): { team: Team; issues: TeamYamlIssue[] } {
     const issues: TeamYamlIssue[] = [];
     const pushIssue = (
@@ -2423,9 +2427,9 @@ export namespace Team {
       issues.push({ id, message, errorText, severity });
     };
 
-    const appMembersByAppId = new Map<string, Record<string, unknown>>();
-    for (const snip of deps.appTeammates) {
-      appMembersByAppId.set(snip.appId, snip.members);
+    const componentMembersByPackageId = new Map<string, Record<string, unknown>>();
+    for (const snip of deps.componentTeammates) {
+      componentMembersByPackageId.set(snip.appId, snip.members);
     }
 
     const teamObj: Record<string, unknown> = (() => {
@@ -2558,7 +2562,7 @@ export namespace Team {
         continue;
       }
 
-      // Cross-app teammate reference (v0): members.<id>.from + (use|import).
+      // Stage 0 component teammate reference: members.<id>.from + (use|import).
       // Surface Problems without crashing Team.load(); unresolved references keep loading other
       // members, but this member can still be omitted later if strict fields remain invalid.
       const effectiveRaw: Record<string, unknown> = (() => {
@@ -2587,8 +2591,8 @@ export namespace Team {
         if ((hasUse || hasImport) && !hasFrom) {
           pushIssue(
             `${memberPrefix}/from/missing`,
-            `Invalid .minds/team.yaml: ${memberAt} uses cross-app member reference but is missing 'from'.`,
-            `Either remove ${memberAt}.use/${memberAt}.import, or add ${memberAt}.from: <dep-app-id>.`,
+            `Invalid .minds/team.yaml: ${memberAt} uses a Stage 0 component teammate reference but is missing 'from'.`,
+            `Either remove ${memberAt}.use/${memberAt}.import, or add ${memberAt}.from: <component-package-id>.`,
           );
           return memberObj;
         }
@@ -2604,7 +2608,7 @@ export namespace Team {
           return memberObj;
         }
 
-        // `from`-only is accepted (v0 no-op): treat it as a local member definition.
+        // During Stage 0, `from` without `use`/`import` remains a local member definition.
         if (!hasUse && !hasImport) return memberObj;
 
         const refKind: 'use' | 'import' = hasUse ? 'use' : 'import';
@@ -2618,32 +2622,32 @@ export namespace Team {
           return memberObj;
         }
 
-        const fromAppId = fromRaw.trim();
+        const fromPackageId = fromRaw.trim();
         const refMemberId = refRaw.trim();
-        const appMembers = appMembersByAppId.get(fromAppId);
-        if (!appMembers) {
+        const componentMembers = componentMembersByPackageId.get(fromPackageId);
+        if (!componentMembers) {
           pushIssue(
-            `${memberPrefix}/from/unresolved_app`,
-            `Invalid .minds/team.yaml: ${memberAt}.from refers to an app that is not enabled.`,
-            `App '${fromAppId}' is not enabled (or does not export teammates YAML).`,
+            `${memberPrefix}/from/unresolved_component_package`,
+            `Invalid .minds/team.yaml: ${memberAt}.from refers to a Stage 0 component package that is not enabled.`,
+            `Stage 0 package '${fromPackageId}' is not enabled (or does not export component teammates YAML).`,
           );
           return memberObj;
         }
 
-        const sourceRaw = appMembers[refMemberId];
+        const sourceRaw = componentMembers[refMemberId];
         if (sourceRaw === undefined) {
           pushIssue(
             `${memberPrefix}/${refKind}/unresolved_member`,
-            `Invalid .minds/team.yaml: ${memberAt}.${refKind} refers to a missing member in app '${fromAppId}'.`,
-            `App '${fromAppId}' does not export member id '${refMemberId}'.`,
+            `Invalid .minds/team.yaml: ${memberAt}.${refKind} refers to a missing teammate in Stage 0 component package '${fromPackageId}'.`,
+            `Stage 0 package '${fromPackageId}' does not export teammate id '${refMemberId}'.`,
           );
           return memberObj;
         }
         if (!isRecordValue(sourceRaw)) {
           pushIssue(
             `${memberPrefix}/${refKind}/invalid_member`,
-            `Invalid app teammates YAML: member '${refMemberId}' must be an object (app '${fromAppId}').`,
-            `Expected app member '${fromAppId}.${refMemberId}' to be an object (got ${describeValueType(sourceRaw)}).`,
+            `Invalid component teammates YAML: teammate '${refMemberId}' must be an object (Stage 0 package '${fromPackageId}').`,
+            `Expected component teammate '${fromPackageId}.${refMemberId}' to be an object (got ${describeValueType(sourceRaw)}).`,
           );
           return memberObj;
         }

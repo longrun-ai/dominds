@@ -310,7 +310,7 @@ function getMemoryPromptCopy(ctx: PromptdocContext): MemoryPromptCopy {
       personalMemoryLine:
         '- 个人记忆：稳定的个人习惯/偏好与职责域知识；记忆会在每次生成时自动注入上下文，应保持少量且准确（关键文档/代码的精确路径 + 最小必要事实）。不要记录具体任务状态。',
       skillsLine:
-        '- Skills：可复用操作指引/检查清单/触发条件与边界。工作区关联强的事实、路径、局部契约进 memory/env；独立于工作区内容的“怎么做”进 skill。skill 不授予工具权限；需要脚本/MCP/外部能力时应配套 app/toolset/权限配置。',
+        '- Skills：可复用操作指引/检查清单/触发条件与边界。工作区关联强的事实、路径、局部契约进 memory/env；独立于工作区内容的“怎么做”进 skill。skill 不授予工具权限；需要脚本/MCP/外部能力时，应由应用组件定义能力、消费 App 选择绑定，并配置执行主体权限。',
       sideDialogDutyLine:
         ctx.contextHealthPromptMode === 'normal'
           ? `你当前处于支线对话：此处不允许 \`do_mind\` / \`mind_more\` / \`change_mind\` / \`never_mind\`。当你判断需要更新差遣牒（尤其是 progress 公告牌）时，请在合适时机直接诉请差遣牒维护人 \`@${ctx.taskdocMaintainerId}\` 执行更新，并给出要新增的章节、要追加的条目、已合并好的“新全文/替换稿”，或要删除的章节。不要声称已更新，除非看到回执。`
@@ -367,7 +367,7 @@ function getMemoryPromptCopy(ctx: PromptdocContext): MemoryPromptCopy {
     personalMemoryLine:
       '- Personal memory: stable personal habits/preferences and responsibility-scope knowledge. Memory is automatically injected into context on each generation: keep it small and accurate (exact key doc/code paths + minimal key facts); do not store per-task state.',
     skillsLine:
-      '- Skills: reusable operating guidance, checklists, triggers, and boundaries. Workspace-coupled facts, paths, and local contracts belong in memory/env; workspace-independent “how to do it” procedures belong in skills. Skills do not grant tool permissions; pair scripts/MCP/external capabilities with apps/toolsets/permission configuration.',
+      '- Skills: reusable operating guidance, checklists, triggers, and boundaries. Workspace-coupled facts, paths, and local contracts belong in memory/env; workspace-independent “how to do it” procedures belong in skills. Skills do not grant tool permissions; scripts/MCP/external capabilities belong in Application Components selected and bound by a consuming App, with explicit execution-principal permissions.',
     sideDialogDutyLine:
       ctx.contextHealthPromptMode === 'normal'
         ? `You are currently in a Side Dialog: \`do_mind\` / \`mind_more\` / \`change_mind\` / \`never_mind\` are not allowed here. When Taskdoc should be updated (especially the shared progress bulletin board), tellask the Taskdoc maintainer \`@${ctx.taskdocMaintainerId}\` with the new section to create, entries to append, a fully merged replacement draft, or the section to delete. Do not claim it is updated until you see a receipt.`

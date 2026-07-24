@@ -70,7 +70,7 @@ export async function renderTeamMgmtGuideContent(
           '',
           `\`man({ "toolsetId": "team_mgmt", "topics": ["team"] })\`：${topicTitle('team')} — .minds/team.yaml（团队花名册、工具集、目录权限入口）`,
           `\`man({ "toolsetId": "team_mgmt", "topics": ["minds"] })\`：${topicTitle('minds')} — .minds/team/<id>/*（persona/knowhow/pitfalls 资产怎么写）`,
-          `\`man({ "toolsetId": "team_mgmt", "topics": ["skills"] })\`：${topicTitle('skills')} — .minds/skills/*（公开 skill 格式迁移、字段映射、app 化边界）`,
+          `\`man({ "toolsetId": "team_mgmt", "topics": ["skills"] })\`：${topicTitle('skills')} — .minds/skills/*（公开 skill 格式迁移、字段映射、组件化边界）`,
           `\`man({ "toolsetId": "team_mgmt", "topics": ["priming"] })\`：${topicTitle('priming')} — .minds/priming/*（启动脚本如何编写、维护与复用）`,
           '`启动脚本修改后建议立即运行：`team_mgmt_validate_priming_scripts({})`',
           `\`man({ "toolsetId": "team_mgmt", "topics": ["env"] })\`：${topicTitle('env')} — .minds/env.*.md（运行环境提示：在团队介绍之前注入）`,

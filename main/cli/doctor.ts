@@ -54,9 +54,9 @@ function printHelp(): void {
 
 Notes:
   - doctor is read-only: it compares .minds/app.yaml, .minds/app-lock.yaml,
-    .apps/configuration.yaml, .apps/resolution.yaml, and a fresh app handshake probe.
+    .apps/configuration.yaml, .apps/resolution.yaml, and a fresh Stage 0 package handshake probe.
   - doctor does not rewrite resolution/lock/config files.
-  - Run this first when an app is missing, unexpectedly disabled, or behaving
+  - Run this first when a Stage 0 package is missing, unexpectedly disabled, or behaving
     differently from the current package handshake.
 `);
 }
@@ -188,7 +188,7 @@ async function runDoctor(params: { rtwsRootAbs: string; appId: string | null }):
       addReason(reasons, 'not declared in .minds/app.yaml dependencies');
       addNextAction(
         nextActions,
-        `Add '${appId}' to .minds/app.yaml dependencies if this app should be active in the rtws.`,
+        `Add '${appId}' to .minds/app.yaml dependencies if this package should be loaded in the rtws.`,
       );
     }
     if (disabled) {
@@ -224,7 +224,7 @@ async function runDoctor(params: { rtwsRootAbs: string; appId: string | null }):
     if (!resolutionEntry && freshEntry) {
       addReason(
         reasons,
-        'fresh probe resolves the app, but .apps/resolution.yaml has no snapshot entry yet',
+        'fresh probe resolves the package, but .apps/resolution.yaml has no snapshot entry yet',
       );
       addNextAction(
         nextActions,
@@ -251,7 +251,7 @@ async function runDoctor(params: { rtwsRootAbs: string; appId: string | null }):
         );
         addNextAction(
           nextActions,
-          `The app entry must come from handshake only. Refresh the snapshot with 'dominds update ${appId}' after confirming the app package's handshake output.`,
+          `The host entry must come from handshake only. Refresh the snapshot with 'dominds update ${appId}' after confirming the package handshake output.`,
         );
       }
       if (resolutionEntry.installJson.host.exportName !== freshEntry.installJson.host.exportName) {
@@ -261,7 +261,7 @@ async function runDoctor(params: { rtwsRootAbs: string; appId: string | null }):
         );
         addNextAction(
           nextActions,
-          `The app factory export must come from handshake only. Refresh the snapshot with 'dominds update ${appId}' after confirming the app package's handshake output.`,
+          `The host factory export must come from handshake only. Refresh the snapshot with 'dominds update ${appId}' after confirming the package handshake output.`,
         );
       }
     }
@@ -319,7 +319,7 @@ function printDiagnosis(params: {
   strategy: NormalizedAppsResolutionStrategy;
 }): void {
   const { diagnosis, strategy } = params;
-  console.log(`App: ${diagnosis.appId}`);
+  console.log(`Stage 0 package: ${diagnosis.appId}`);
   console.log(`  status: ${diagnosis.status}`);
   console.log(
     `  declared: ${diagnosis.declared ? `yes${diagnosis.declaredAsOptional ? ' (optional)' : ' (required)'}` : 'no'}`,
@@ -375,12 +375,12 @@ async function main(argv: readonly string[] = process.argv.slice(2)): Promise<vo
   const rtwsRootAbs = domindsRtwsRootAbs();
   const report = await runDoctor({ rtwsRootAbs, appId: args.appId });
   console.log(`Doctor report for ${path.resolve(rtwsRootAbs)}`);
-  console.log(`Tracked apps: ${report.diagnoses.length}`);
+  console.log(`Tracked Stage 0 packages: ${report.diagnoses.length}`);
   console.log(`Global issues: ${report.issues.length}`);
   console.log('');
 
   if (report.diagnoses.length === 0) {
-    console.log('No app declarations or snapshots found.');
+    console.log('No Stage 0 package declarations or snapshots found.');
     return;
   }
 
@@ -392,9 +392,11 @@ async function main(argv: readonly string[] = process.argv.slice(2)): Promise<vo
   }
 
   if (!hasDegraded) {
-    console.log('Summary: all inspected apps are healthy and handshake-consistent.');
+    console.log('Summary: all inspected Stage 0 packages are healthy and handshake-consistent.');
   } else {
-    console.log('Summary: degraded apps detected. Follow the suggested next actions above.');
+    console.log(
+      'Summary: degraded Stage 0 packages detected. Follow the suggested next actions above.',
+    );
   }
 }
 

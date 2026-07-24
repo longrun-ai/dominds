@@ -37,12 +37,14 @@ function assertRecord(value: unknown): asserts value is Record<string, unknown> 
 
 async function main(): Promise<void> {
   await withTempCwd(async (sandboxDir) => {
-    const appId = '@longrun-ai/web-dev';
+    const appId = '@tests/reminder-owner-package';
+    const ownerRef = 'probe_session';
+    const managerTool = 'probe_session_status';
     const mcpLeaseOwner = getReminderOwner('mcpLease');
     assert.ok(mcpLeaseOwner, 'Expected mcpLease ReminderOwner to be registered');
     const shellCmdOwner = getReminderOwner('shellCmd');
     assert.ok(shellCmdOwner, 'Expected shellCmd ReminderOwner to be registered');
-    const appOwnerName = buildAppReminderOwnerRegistryName(appId, 'playwright_interactive_manual');
+    const appOwnerName = buildAppReminderOwnerRegistryName(appId, ownerRef);
     const appReminderOwner: ReminderOwner = {
       name: appOwnerName,
       async updateReminder() {
@@ -58,7 +60,7 @@ async function main(): Promise<void> {
     };
     registerReminderOwner(appReminderOwner);
     const registeredAppOwner = getReminderOwner(appOwnerName);
-    assert.ok(registeredAppOwner, 'Expected app reminder owner to be registered');
+    assert.ok(registeredAppOwner, 'Expected Application Component reminder owner to be registered');
 
     const dialogId = new DialogID('11/22/33334444');
     // This test writes reminder state directly for a synthetic dialog id without going through
@@ -80,19 +82,19 @@ async function main(): Promise<void> {
         renderMode: 'markdown',
       }),
       materializeReminder({
-        content: 'App tool reminder',
+        content: 'Component-owned reminder',
         owner: appReminderOwner,
         meta: {
           kind: 'app_reminder_owner',
           appId,
-          ownerRef: 'playwright_interactive_manual',
+          ownerRef,
           manager: {
-            tool: 'playwright_interactive_manual',
+            tool: managerTool,
           },
           update: {
-            altInstruction: 'playwright_interactive_manual({})',
+            altInstruction: 'probe_session_status({})',
           },
-          workflow: 'playwright_interactive_manual',
+          componentState: 'active',
         },
         scope: 'dialog',
         renderMode: 'plain',
@@ -126,14 +128,12 @@ async function main(): Promise<void> {
     assert.equal(reminders[2]['renderMode'], 'plain');
     assertRecord(reminders[2]['meta']);
     assert.equal(reminders[2]['meta']['appId'], appId);
-    assert.equal(reminders[2]['meta']['ownerRef'], 'playwright_interactive_manual');
+    assert.equal(reminders[2]['meta']['ownerRef'], ownerRef);
     assertRecord(reminders[2]['meta']['manager']);
-    assert.equal(reminders[2]['meta']['manager']['tool'], 'playwright_interactive_manual');
+    assert.equal(reminders[2]['meta']['manager']['tool'], managerTool);
     assertRecord(reminders[2]['meta']['update']);
-    assert.equal(
-      reminders[2]['meta']['update']['altInstruction'],
-      'playwright_interactive_manual({})',
-    );
+    assert.equal(reminders[2]['meta']['update']['altInstruction'], 'probe_session_status({})');
+    assert.equal(reminders[2]['meta']['componentState'], 'active');
 
     const loaded = await DialogPersistence.loadReminderState(dialogId);
     assert.equal(loaded.length, 3);
@@ -149,11 +149,12 @@ async function main(): Promise<void> {
     assert.equal(loaded[2].renderMode, 'plain');
     assertRecord(loaded[2].meta);
     assert.equal(loaded[2].meta['appId'], appId);
-    assert.equal(loaded[2].meta['ownerRef'], 'playwright_interactive_manual');
+    assert.equal(loaded[2].meta['ownerRef'], ownerRef);
     assertRecord(loaded[2].meta['manager']);
-    assert.equal(loaded[2].meta['manager']['tool'], 'playwright_interactive_manual');
+    assert.equal(loaded[2].meta['manager']['tool'], managerTool);
     assertRecord(loaded[2].meta['update']);
-    assert.equal(loaded[2].meta['update']['altInstruction'], 'playwright_interactive_manual({})');
+    assert.equal(loaded[2].meta['update']['altInstruction'], 'probe_session_status({})');
+    assert.equal(loaded[2].meta['componentState'], 'active');
 
     // No backward-compat: old reminders.json data (missing ownerName/meta) is assumed cleared.
     // This script intentionally tests only the current on-disk schema.

@@ -151,7 +151,7 @@ async function main(): Promise<void> {
     assert.equal(
       snap.enabledApps.length,
       2,
-      `expected 2 enabled apps, got ${snap.enabledApps.length}`,
+      `expected 2 enabled Stage 0 packages, got ${snap.enabledApps.length}`,
     );
 
     const runtimePorts = snap.enabledApps.map((e) => e.runtimePort);
