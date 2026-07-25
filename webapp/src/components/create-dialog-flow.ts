@@ -179,6 +179,13 @@ const SHADOW_TEAMMATE_SELECT_VALUE = '__shadow__';
 const PRIMING_SELECTION_STORAGE_KEY = 'dominds-create-dialog-priming-selection-v1';
 const TASKDOC_SUGGESTION_DEBOUNCE_MS = 120;
 
+export function isImeCompositionKeydown(
+  event: Pick<KeyboardEvent, 'isComposing' | 'keyCode'>,
+  compositionActive: boolean,
+): boolean {
+  return compositionActive || event.isComposing || event.keyCode === 229;
+}
+
 export class CreateDialogFlowController {
   private readonly deps: CreateDialogControllerDeps;
   private state: CreateDialogUiState = { kind: 'idle' };
@@ -516,6 +523,7 @@ export class CreateDialogFlowController {
     let activeTaskdocSuggestionRequestKey: string | null = null;
     let taskdocSuggestionAbortController: AbortController | null = null;
     let taskdocSuggestionFailureNotified = false;
+    let taskInputComposing = false;
     const isRecord = (value: unknown): value is Record<string, unknown> => {
       return typeof value === 'object' && value !== null && !Array.isArray(value);
     };
@@ -1173,7 +1181,22 @@ export class CreateDialogFlowController {
       scheduleTaskdocSuggestions(target.value);
     });
 
+    taskInput.addEventListener('compositionstart', () => {
+      taskInputComposing = true;
+    });
+    taskInput.addEventListener('compositionend', () => {
+      taskInputComposing = false;
+    });
+    taskInput.addEventListener('compositioncancel', () => {
+      taskInputComposing = false;
+    });
+    taskInput.addEventListener('blur', () => {
+      taskInputComposing = false;
+    });
+
     taskInput.addEventListener('keydown', (e) => {
+      if (isImeCompositionKeydown(e, taskInputComposing)) return;
+
       if (e.key === 'ArrowDown' || e.key === 'ArrowUp' || e.key === 'Tab' || e.key === 'Enter') {
         if (pendingTaskdocSuggestionQuery !== null) {
           e.preventDefault();
