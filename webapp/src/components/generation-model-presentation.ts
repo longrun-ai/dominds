@@ -12,32 +12,25 @@ function formatValueWithLabel(value: string, valueLabel: string | undefined): st
 export function formatGenerationModelPresentation(
   metadata: LlmGenerationMetadata,
 ): GenerationModelPresentation {
-  const compactValues = metadata.prominentModelParams.map((param) =>
-    param.kind === 'set' ? param.value : 'unset',
-  );
+  const compactValues = metadata.fields
+    .filter((field) => field.prominent)
+    .map((field) => (field.kind === 'set' ? field.value : 'unset'));
   const compactLabel = [`${metadata.providerId}/${metadata.modelId}`, ...compactValues].join('·');
 
-  const tooltipLines = [
-    `provider-id: ${metadata.providerId}`,
-    `model-id: ${metadata.modelId}`,
-    `configured-model-id: ${metadata.configuredModelId}`,
-  ];
-  for (const param of metadata.prominentModelParams) {
-    const fieldPath = `${param.namespace}.${param.key}`;
-    if (param.kind === 'set') {
-      tooltipLines.push(
-        '',
-        `${fieldPath}: ${formatValueWithLabel(param.value, param.valueLabel)}`,
-        param.description,
-      );
+  const tooltipLines = [`provider-id: ${metadata.providerId}`, `model-id: ${metadata.modelId}`];
+  for (const field of metadata.fields) {
+    if (field.kind === 'set') {
+      tooltipLines.push('', `${field.key}: ${formatValueWithLabel(field.value, field.valueLabel)}`);
+      if (field.description !== undefined) tooltipLines.push(field.description);
       continue;
     }
-    tooltipLines.push('', `${fieldPath}: unset`, param.description);
-    if (param.documentedDefault !== undefined) {
+    tooltipLines.push('', `${field.key}: unset`);
+    if (field.description !== undefined) tooltipLines.push(field.description);
+    if (field.documentedDefault !== undefined) {
       tooltipLines.push(
         `documented-default: ${formatValueWithLabel(
-          param.documentedDefault,
-          param.documentedDefaultLabel,
+          field.documentedDefault,
+          field.documentedDefaultLabel,
         )}`,
       );
     }

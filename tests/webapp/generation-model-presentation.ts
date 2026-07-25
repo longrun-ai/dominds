@@ -5,27 +5,32 @@ import { formatGenerationModelPresentation } from '../../webapp/src/components/g
 const presentation = formatGenerationModelPresentation({
   providerId: 'codex',
   modelId: 'gpt-5.6-sol',
-  configuredModelId: 'gpt-5.6-sol',
-  prominentModelParams: [
+  fields: [
     {
       kind: 'set',
-      namespace: 'codex',
-      key: 'reasoning_effort',
+      key: 'configured-model-id',
+      prominent: false,
+      value: 'gpt-5.6-sol',
+    },
+    {
+      kind: 'set',
+      key: 'codex.reasoning_effort',
+      prominent: true,
       value: 'high',
       description: 'Reasoning effort level.',
     },
     {
       kind: 'unset',
-      namespace: 'codex',
-      key: 'service_tier',
+      key: 'codex.service_tier',
+      prominent: true,
       documentedDefault: 'auto',
       documentedDefaultLabel: 'Standard',
       description: 'Processing tier.',
     },
     {
       kind: 'set',
-      namespace: 'codex',
-      key: 'verbosity',
+      key: 'codex.verbosity',
+      prominent: true,
       value: 'medium',
       description: 'Response detail level.',
     },
@@ -42,6 +47,7 @@ assert.equal(
   [
     'provider-id: codex',
     'model-id: gpt-5.6-sol',
+    '',
     'configured-model-id: gpt-5.6-sol',
     '',
     'codex.reasoning_effort: high',

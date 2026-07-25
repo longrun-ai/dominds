@@ -11,7 +11,7 @@ import type {
   HumanTextRecord,
   JsonValue,
   LlmGenerationMetadata,
-  LlmGenerationProminentModelParam,
+  LlmGenerationMetadataField,
   NativeToolCallRecord,
   PersistedDialogRecord,
   ReasoningContentItem,
@@ -165,22 +165,6 @@ function isJsonValue(value: unknown): value is JsonValue {
   return Object.values(value).every((item) => isJsonValue(item));
 }
 
-function isProminentModelParamNamespace(
-  value: unknown,
-): value is LlmGenerationProminentModelParam['namespace'] {
-  switch (value) {
-    case 'codex':
-    case 'openai':
-    case 'openai-compatible':
-    case 'anthropic':
-    case 'anthropic-compatible':
-    case 'google':
-      return true;
-    default:
-      return false;
-  }
-}
-
 function parseLlmGenerationMetadata(
   value: unknown,
   context: string,
@@ -191,24 +175,24 @@ function parseLlmGenerationMetadata(
   }
   const providerId = expectStringField(value, 'providerId', context);
   const modelId = expectStringField(value, 'modelId', context);
-  const configuredModelId = expectStringField(value, 'configuredModelId', context);
-  const prominentRaw = value['prominentModelParams'];
-  if (!Array.isArray(prominentRaw)) {
-    throw new Error(`${context}.prominentModelParams must be an array`);
+  const fieldsRaw = value['fields'];
+  if (!Array.isArray(fieldsRaw)) {
+    throw new Error(`${context}.fields must be an array`);
   }
-  const prominentModelParams = prominentRaw.map((item, index) => {
-    const itemContext = `${context}.prominentModelParams[${String(index)}]`;
+  const fields = fieldsRaw.map((item, index) => {
+    const itemContext = `${context}.fields[${String(index)}]`;
     if (!isRecord(item)) {
       throw new Error(`${itemContext} must be an object`);
     }
-    const namespace = item['namespace'];
-    if (!isProminentModelParamNamespace(namespace)) {
-      throw new Error(`${itemContext}.namespace is invalid`);
+    const prominent = item['prominent'];
+    if (typeof prominent !== 'boolean') {
+      throw new Error(`${itemContext}.prominent must be a boolean`);
     }
+    const description = parseOptionalStringField(item, 'description', itemContext);
     const base = {
-      namespace,
       key: expectStringField(item, 'key', itemContext),
-      description: expectStringField(item, 'description', itemContext, true),
+      prominent,
+      ...(description === undefined ? {} : { description }),
     };
     const kind = item['kind'];
     if (kind === 'set') {
@@ -219,7 +203,7 @@ function parseLlmGenerationMetadata(
         ...base,
         value: valueText,
         ...(valueLabel === undefined ? {} : { valueLabel }),
-      } satisfies LlmGenerationProminentModelParam;
+      } satisfies LlmGenerationMetadataField;
     }
     if (kind === 'unset') {
       const documentedDefault = parseOptionalStringField(item, 'documentedDefault', itemContext);
@@ -233,15 +217,14 @@ function parseLlmGenerationMetadata(
         ...base,
         ...(documentedDefault === undefined ? {} : { documentedDefault }),
         ...(documentedDefaultLabel === undefined ? {} : { documentedDefaultLabel }),
-      } satisfies LlmGenerationProminentModelParam;
+      } satisfies LlmGenerationMetadataField;
     }
     throw new Error(`${itemContext}.kind must be set | unset`);
   });
   return {
     providerId,
     modelId,
-    configuredModelId,
-    prominentModelParams,
+    fields,
   };
 }
 

@@ -61,27 +61,32 @@ assert.deepEqual(
   {
     providerId: 'codex',
     modelId: 'reported-2026-07-25',
-    configuredModelId: 'configured',
-    prominentModelParams: [
+    fields: [
       {
         kind: 'set',
-        namespace: 'codex',
-        key: 'reasoning_effort',
+        key: 'configured-model-id',
+        prominent: false,
+        value: 'configured',
+      },
+      {
+        kind: 'set',
+        key: 'codex.reasoning_effort',
+        prominent: true,
         description: 'Reasoning effort used for this generation.',
         value: 'high',
       },
       {
         kind: 'unset',
-        namespace: 'codex',
-        key: 'service_tier',
+        key: 'codex.service_tier',
+        prominent: true,
         description: 'Processing tier used for this generation.',
         documentedDefault: 'auto',
         documentedDefaultLabel: 'Standard',
       },
       {
         kind: 'set',
-        namespace: 'codex',
-        key: 'verbosity',
+        key: 'codex.verbosity',
+        prominent: true,
         description: 'Response detail level.',
         value: 'low',
       },
@@ -114,8 +119,8 @@ const structuredValueMetadata = buildLlmGenerationMetadata({
   },
 });
 assert.equal(
-  structuredValueMetadata.prominentModelParams[0]?.kind === 'set'
-    ? structuredValueMetadata.prominentModelParams[0].value
+  structuredValueMetadata.fields[1]?.kind === 'set'
+    ? structuredValueMetadata.fields[1].value
     : undefined,
   '{"type":"adaptive"}',
   'structured prominent values should use stable valid JSON',

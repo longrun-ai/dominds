@@ -108,12 +108,17 @@ async function main(): Promise<void> {
       llmGeneration: {
         providerId: 'codex',
         modelId: 'gpt-5.6-sol',
-        configuredModelId: 'gpt-5.6-sol',
-        prominentModelParams: [
+        fields: [
           {
             kind: 'set',
-            namespace: 'codex',
-            key: 'reasoning_effort',
+            key: 'configured-model-id',
+            prominent: false,
+            value: 'gpt-5.6-sol',
+          },
+          {
+            kind: 'set',
+            key: 'codex.reasoning_effort',
+            prominent: true,
             value: 'high',
             description: 'Reasoning effort level.',
           },
@@ -243,12 +248,17 @@ async function main(): Promise<void> {
       {
         providerId: 'codex',
         modelId: 'gpt-5.6-sol',
-        configuredModelId: 'gpt-5.6-sol',
-        prominentModelParams: [
+        fields: [
           {
             kind: 'set',
-            namespace: 'codex',
-            key: 'reasoning_effort',
+            key: 'configured-model-id',
+            prominent: false,
+            value: 'gpt-5.6-sol',
+          },
+          {
+            kind: 'set',
+            key: 'codex.reasoning_effort',
+            prominent: true,
             value: 'high',
             description: 'Reasoning effort level.',
           },

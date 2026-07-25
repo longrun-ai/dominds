@@ -1,7 +1,7 @@
 import type { SetupProminentModelParamNamespace } from '@longrun-ai/kernel/types/setup';
 import type {
   LlmGenerationMetadata,
-  LlmGenerationProminentModelParam,
+  LlmGenerationMetadataField,
 } from '@longrun-ai/kernel/types/storage';
 import type { Team } from '../team';
 import type { ModelParamOption, ProviderConfig } from './client';
@@ -168,20 +168,27 @@ export function buildLlmGenerationMetadata(args: {
   }
 
   const source = resolveProminentParamSource(args.providerConfig, args.modelParams);
-  const prominentModelParams: LlmGenerationProminentModelParam[] = [];
+  const fields: LlmGenerationMetadataField[] = [
+    {
+      kind: 'set',
+      key: 'configured-model-id',
+      prominent: false,
+      value: configuredModelId,
+    },
+  ];
   if (source) {
     for (const [key, option] of Object.entries(source.options)) {
       if (option.prominent !== true) continue;
       const base = {
-        namespace: source.namespace,
-        key,
+        key: `${source.namespace}.${key}`,
+        prominent: true,
         description: option.description,
       };
       const configuredValue = source.configuredValues?.[key];
       if (configuredValue !== undefined) {
         const value = serializeModelParamValue(configuredValue);
         const valueLabel = resolveValueLabel(option, value);
-        prominentModelParams.push({
+        fields.push({
           kind: 'set',
           ...base,
           value,
@@ -192,12 +199,12 @@ export function buildLlmGenerationMetadata(args: {
 
       const documentedDefault = resolveDocumentedDefault(option);
       if (documentedDefault === undefined) {
-        prominentModelParams.push({ kind: 'unset', ...base });
+        fields.push({ kind: 'unset', ...base });
         continue;
       }
       const documentedDefaultText = serializeModelParamValue(documentedDefault);
       const documentedDefaultLabel = resolveValueLabel(option, documentedDefaultText);
-      prominentModelParams.push({
+      fields.push({
         kind: 'unset',
         ...base,
         documentedDefault: documentedDefaultText,
@@ -209,7 +216,6 @@ export function buildLlmGenerationMetadata(args: {
   return {
     providerId,
     modelId,
-    configuredModelId,
-    prominentModelParams,
+    fields,
   };
 }

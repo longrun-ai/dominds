@@ -59,8 +59,14 @@ async function main(): Promise<void> {
     assert.deepEqual(finishRecord.llmGeneration, {
       providerId: 'local-mock',
       modelId: 'default',
-      configuredModelId: 'default',
-      prominentModelParams: [],
+      fields: [
+        {
+          kind: 'set',
+          key: 'configured-model-id',
+          prominent: false,
+          value: 'default',
+        },
+      ],
     });
   });
 

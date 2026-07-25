@@ -13,7 +13,6 @@ import type {
 } from './display-state';
 import type { DialogRuntimePrompt } from './drive-intent';
 import type { LanguageCode } from './language';
-import type { SetupProminentModelParamNamespace } from './setup';
 
 export type JsonPrimitive = string | number | boolean | null;
 export type JsonValue = JsonPrimitive | JsonObject | JsonArray;
@@ -1064,19 +1063,19 @@ export interface GenStartRecord extends RootGenerationRef {
   sourceTag?: 'priming_script';
 }
 
-type LlmGenerationProminentModelParamBase = {
-  namespace: SetupProminentModelParamNamespace;
+type LlmGenerationMetadataFieldBase = {
   key: string;
-  description: string;
+  prominent: boolean;
+  description?: string;
 };
 
-export type LlmGenerationProminentModelParam =
-  | (LlmGenerationProminentModelParamBase & {
+export type LlmGenerationMetadataField =
+  | (LlmGenerationMetadataFieldBase & {
       kind: 'set';
       value: string;
       valueLabel?: string;
     })
-  | (LlmGenerationProminentModelParamBase & {
+  | (LlmGenerationMetadataFieldBase & {
       kind: 'unset';
       documentedDefault?: string;
       documentedDefaultLabel?: string;
@@ -1085,8 +1084,7 @@ export type LlmGenerationProminentModelParam =
 export type LlmGenerationMetadata = {
   providerId: string;
   modelId: string;
-  configuredModelId: string;
-  prominentModelParams: LlmGenerationProminentModelParam[];
+  fields: LlmGenerationMetadataField[];
 };
 
 export interface GenFinishRecord extends RootGenerationRef {
