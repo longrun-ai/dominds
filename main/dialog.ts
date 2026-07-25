@@ -50,6 +50,7 @@ import type {
   DialogMetadataFile,
   DialogNextStepTrigger,
   HumanQuestion,
+  LlmGenerationMetadata,
   ProviderData,
   ReasoningPayload,
   TellaskCallRecordName,
@@ -2169,13 +2170,13 @@ export abstract class Dialog {
 
   public async notifyGeneratingFinish(
     contextHealth?: ContextHealthSnapshot,
-    llmGenModel?: string,
+    llmGeneration?: LlmGenerationMetadata,
   ): Promise<void> {
     if (contextHealth) {
       this.setLastContextHealth(contextHealth);
     }
     try {
-      await this.dlgStore.notifyGeneratingFinish(this, contextHealth, llmGenModel);
+      await this.dlgStore.notifyGeneratingFinish(this, contextHealth, llmGeneration);
     } finally {
       // Reset generation tracking for the next course even when persistence fails loudly.
       this._generationStarted = false;
@@ -2877,7 +2878,7 @@ export abstract class DialogStore {
   public async notifyGeneratingFinish(
     _dialog: Dialog,
     _contextHealth?: ContextHealthSnapshot,
-    _llmGenModel?: string,
+    _llmGeneration?: LlmGenerationMetadata,
   ): Promise<void> {}
 
   // Explicit phase notifications (driver-driven)
@@ -2983,7 +2984,11 @@ export abstract class DialogStore {
     _dialog: Dialog,
     _payload: {
       callName:
-        'tellaskBack' | 'tellask' | 'tellaskSessionless' | 'askHuman' | 'freshBootsReasoning';
+        | 'tellaskBack'
+        | 'tellask'
+        | 'tellaskSessionless'
+        | 'askHuman'
+        | 'freshBootsReasoning';
       callId: string;
       mentionList?: string[];
       sessionSlug?: string;

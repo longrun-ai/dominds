@@ -20,6 +20,7 @@ import type {
   CallSiteGenseqNo,
   DialogCourseNumber,
   FuncResultContentItem,
+  LlmGenerationMetadata,
   ReasoningPayload,
   SideDialogAssignmentFromAsker,
   ToolResultImageArtifact,
@@ -134,7 +135,7 @@ export type GeneratingStartEvent = LlmGenDlgEvent & {
 
 export type GeneratingFinishEvent = LlmGenDlgEvent & {
   type: 'generating_finish_evt';
-  llmGenModel?: string;
+  llmGeneration?: LlmGenerationMetadata;
 };
 
 export type ContextHealthEvent = LlmGenDlgEvent & {

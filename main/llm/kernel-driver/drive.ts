@@ -115,6 +115,7 @@ import {
   sanitizeToolContextForProvider,
   type ToolCallAdjacencyViolation,
 } from '../gen/tool-call-context';
+import { buildLlmGenerationMetadata } from '../generation-metadata';
 import { buildHumanSystemStopReasonTextI18n } from '../stop-reason-i18n';
 import { projectFuncToolsForProvider } from '../tools-projection';
 import { assembleDriveContextMessages } from './context';
@@ -5690,7 +5691,16 @@ export async function driveDialogStreamCore(
                 checkPoint: 'before_notify_generating_finish',
               });
             }
-            await dlg.notifyGeneratingFinish(contextHealthForGen, llmGenModelForGen);
+            await dlg.notifyGeneratingFinish(
+              contextHealthForGen,
+              buildLlmGenerationMetadata({
+                providerId: provider,
+                configuredModelId: model,
+                reportedModelId: llmGenModelForGen,
+                providerConfig: providerCfg,
+                modelParams: agent.model_params,
+              }),
+            );
           } catch (finishErr) {
             if (generationBodyError !== undefined) {
               const combinedError = new Error(

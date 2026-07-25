@@ -80,6 +80,7 @@ import type {
   FuncResultRecord,
   HumanQuestion,
   HumanTextRecord,
+  LlmGenerationMetadata,
   MainDialogMetadataFile,
   NativeToolCallRecord,
   PersistedDialogRecord,
@@ -3429,7 +3430,7 @@ export class DiskFileDialogStore extends DialogStore {
   public async notifyGeneratingFinish(
     dialog: Dialog,
     contextHealth?: ContextHealthSnapshot,
-    llmGenModel?: string,
+    llmGeneration?: LlmGenerationMetadata,
   ): Promise<void> {
     const course = dialog.activeGenCourseOrUndefined ?? dialog.currentCourse;
     const genseq = dialog.activeGenSeq;
@@ -3442,7 +3443,7 @@ export class DiskFileDialogStore extends DialogStore {
       type: 'gen_finish_record',
       genseq: genseq,
       contextHealth,
-      llmGenModel,
+      llmGeneration,
     };
     await this.appendEvent(dialog, course, ev);
 
@@ -3451,7 +3452,7 @@ export class DiskFileDialogStore extends DialogStore {
       type: 'generating_finish_evt',
       course,
       genseq: genseq,
-      llmGenModel,
+      llmGeneration,
     };
     postDialogEvent(dialog, genFinishEvt);
 
@@ -5082,7 +5083,7 @@ export class DiskFileDialogStore extends DialogStore {
           type: 'generating_finish_evt',
           course,
           genseq: event.genseq,
-          llmGenModel: typeof event.llmGenModel === 'string' ? event.llmGenModel : undefined,
+          llmGeneration: event.llmGeneration,
           dialog: {
             selfId: dialog.id.selfId,
             rootId: dialog.id.rootId,

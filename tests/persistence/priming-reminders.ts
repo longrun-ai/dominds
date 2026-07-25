@@ -105,6 +105,20 @@ async function main(): Promise<void> {
       ts,
       type: 'gen_finish_record',
       genseq: 1,
+      llmGeneration: {
+        providerId: 'codex',
+        modelId: 'gpt-5.6-sol',
+        configuredModelId: 'gpt-5.6-sol',
+        prominentModelParams: [
+          {
+            kind: 'set',
+            namespace: 'codex',
+            key: 'reasoning_effort',
+            value: 'high',
+            description: 'Reasoning effort level.',
+          },
+        ],
+      },
     });
 
     const sourceReminder: Reminder = materializeReminder({
@@ -153,6 +167,11 @@ async function main(): Promise<void> {
       savedMarkdown.includes('activeCalleeDispatches'),
       false,
       'priming markdown must not export pending runtime state',
+    );
+    assert.equal(
+      savedMarkdown.includes('llmGeneration:'),
+      true,
+      'priming markdown must export generation model metadata',
     );
 
     const replayId = new DialogID('11/22/priming-replay');
@@ -215,6 +234,27 @@ async function main(): Promise<void> {
       replayedEvents.some((event) => event.type === 'active_callees_reconciled_record'),
       false,
       'replayed priming must not append pending runtime state records',
+    );
+    const replayedGenerationFinish = replayedEvents.find(
+      (event) => event.type === 'gen_finish_record',
+    );
+    assert.deepEqual(
+      replayedGenerationFinish?.llmGeneration,
+      {
+        providerId: 'codex',
+        modelId: 'gpt-5.6-sol',
+        configuredModelId: 'gpt-5.6-sol',
+        prominentModelParams: [
+          {
+            kind: 'set',
+            namespace: 'codex',
+            key: 'reasoning_effort',
+            value: 'high',
+            description: 'Reasoning effort level.',
+          },
+        ],
+      },
+      'priming replay must preserve generation model metadata',
     );
 
     const remindersOnlyRef = 'team_shared/reminders-only';

@@ -56,6 +56,12 @@ async function main(): Promise<void> {
     assert.equal(finishRecord.contextHealth.completionTokens, 7);
     assert.equal(finishRecord.contextHealth.reasoningTokens, 516);
     assert.equal(finishRecord.contextHealth.totalTokens, 42_007);
+    assert.deepEqual(finishRecord.llmGeneration, {
+      providerId: 'local-mock',
+      modelId: 'default',
+      configuredModelId: 'default',
+      prominentModelParams: [],
+    });
   });
 
   console.log('kernel-driver context-health-model-limit-usage: PASS');

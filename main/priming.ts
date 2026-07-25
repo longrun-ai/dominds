@@ -10,6 +10,8 @@ import type {
   GenStartRecord,
   HumanTextRecord,
   JsonValue,
+  LlmGenerationMetadata,
+  LlmGenerationProminentModelParam,
   NativeToolCallRecord,
   PersistedDialogRecord,
   ReasoningContentItem,
@@ -161,6 +163,86 @@ function isJsonValue(value: unknown): value is JsonValue {
     return false;
   }
   return Object.values(value).every((item) => isJsonValue(item));
+}
+
+function isProminentModelParamNamespace(
+  value: unknown,
+): value is LlmGenerationProminentModelParam['namespace'] {
+  switch (value) {
+    case 'codex':
+    case 'openai':
+    case 'openai-compatible':
+    case 'anthropic':
+    case 'anthropic-compatible':
+    case 'google':
+      return true;
+    default:
+      return false;
+  }
+}
+
+function parseLlmGenerationMetadata(
+  value: unknown,
+  context: string,
+): LlmGenerationMetadata | undefined {
+  if (value === undefined) return undefined;
+  if (!isRecord(value)) {
+    throw new Error(`${context} must be an object when provided`);
+  }
+  const providerId = expectStringField(value, 'providerId', context);
+  const modelId = expectStringField(value, 'modelId', context);
+  const configuredModelId = expectStringField(value, 'configuredModelId', context);
+  const prominentRaw = value['prominentModelParams'];
+  if (!Array.isArray(prominentRaw)) {
+    throw new Error(`${context}.prominentModelParams must be an array`);
+  }
+  const prominentModelParams = prominentRaw.map((item, index) => {
+    const itemContext = `${context}.prominentModelParams[${String(index)}]`;
+    if (!isRecord(item)) {
+      throw new Error(`${itemContext} must be an object`);
+    }
+    const namespace = item['namespace'];
+    if (!isProminentModelParamNamespace(namespace)) {
+      throw new Error(`${itemContext}.namespace is invalid`);
+    }
+    const base = {
+      namespace,
+      key: expectStringField(item, 'key', itemContext),
+      description: expectStringField(item, 'description', itemContext, true),
+    };
+    const kind = item['kind'];
+    if (kind === 'set') {
+      const valueText = expectStringField(item, 'value', itemContext, true);
+      const valueLabel = parseOptionalStringField(item, 'valueLabel', itemContext);
+      return {
+        kind,
+        ...base,
+        value: valueText,
+        ...(valueLabel === undefined ? {} : { valueLabel }),
+      } satisfies LlmGenerationProminentModelParam;
+    }
+    if (kind === 'unset') {
+      const documentedDefault = parseOptionalStringField(item, 'documentedDefault', itemContext);
+      const documentedDefaultLabel = parseOptionalStringField(
+        item,
+        'documentedDefaultLabel',
+        itemContext,
+      );
+      return {
+        kind,
+        ...base,
+        ...(documentedDefault === undefined ? {} : { documentedDefault }),
+        ...(documentedDefaultLabel === undefined ? {} : { documentedDefaultLabel }),
+      } satisfies LlmGenerationProminentModelParam;
+    }
+    throw new Error(`${itemContext}.kind must be set | unset`);
+  });
+  return {
+    providerId,
+    modelId,
+    configuredModelId,
+    prominentModelParams,
+  };
 }
 
 function ensureInside(basePath: string, candidatePath: string): boolean {
@@ -1642,12 +1724,12 @@ function normalizePrimingRecordFromJson(raw: unknown): PrimingReplayRecord {
     }
     case 'gen_finish_record': {
       const contextHealth = raw['contextHealth'];
-      const llmGenModel = raw['llmGenModel'];
+      const llmGeneration = parseLlmGenerationMetadata(
+        raw['llmGeneration'],
+        `${context}.llmGeneration`,
+      );
       if (contextHealth !== undefined && !isRecord(contextHealth)) {
         throw new Error(`${context}.contextHealth must be an object when provided`);
-      }
-      if (llmGenModel !== undefined && typeof llmGenModel !== 'string') {
-        throw new Error(`${context}.llmGenModel must be a string when provided`);
       }
       const record: GenFinishRecord = {
         ts: '',
@@ -1657,7 +1739,7 @@ function normalizePrimingRecordFromJson(raw: unknown): PrimingReplayRecord {
       if (contextHealth !== undefined) {
         record.contextHealth = contextHealth as GenFinishRecord['contextHealth'];
       }
-      if (llmGenModel !== undefined) record.llmGenModel = llmGenModel;
+      if (llmGeneration !== undefined) record.llmGeneration = llmGeneration;
       if (sourceTag) record.sourceTag = sourceTag;
       const { ts: _unusedTs, ...withoutTs } = record;
       return withoutTs;
@@ -2835,7 +2917,7 @@ function formatScriptMarkdown(args: {
       case 'gen_finish_record': {
         blockMeta['genseq'] = record.genseq;
         if (record.contextHealth !== undefined) blockMeta['contextHealth'] = record.contextHealth;
-        if (record.llmGenModel !== undefined) blockMeta['llmGenModel'] = record.llmGenModel;
+        if (record.llmGeneration !== undefined) blockMeta['llmGeneration'] = record.llmGeneration;
         if (record.sourceTag !== undefined) blockMeta['sourceTag'] = record.sourceTag;
         break;
       }

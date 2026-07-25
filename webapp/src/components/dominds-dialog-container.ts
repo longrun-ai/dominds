@@ -19,7 +19,7 @@ import type {
 } from '@longrun-ai/kernel/types/display-state';
 import type { LanguageCode } from '@longrun-ai/kernel/types/language';
 import { normalizeLanguageCode } from '@longrun-ai/kernel/types/language';
-import type { ReasoningPayload } from '@longrun-ai/kernel/types/storage';
+import type { LlmGenerationMetadata, ReasoningPayload } from '@longrun-ai/kernel/types/storage';
 import {
   toCalleeCourseNumber,
   toCalleeGenerationSeqNumber,
@@ -46,6 +46,7 @@ import {
   renderDomindsMarkdown,
 } from './dominds-markdown-render';
 import { DomindsMarkdownSection } from './dominds-markdown-section';
+import { formatGenerationModelPresentation } from './generation-model-presentation';
 import { ICON_MASK_BASE_CSS, ICON_MASK_URLS } from './icon-masks';
 import {
   getProgressiveExpandLabel,
@@ -1842,12 +1843,11 @@ export class DomindsDialogContainer extends HTMLElement {
             this.handleProtocolError('generating_finish_evt missing required field: genseq');
             break;
           }
-          const llmGenModel = typeof event.llmGenModel === 'string' ? event.llmGenModel : undefined;
           // Delegate to handleGeneratingFinish which handles all cases gracefully:
           // - missing bubble: logs warning, cleans up state, returns
           // - seq mismatch: logs warning but proceeds
           // - valid case: completes the bubble
-          this.handleGeneratingFinish(event.genseq, llmGenModel);
+          this.handleGeneratingFinish(event.genseq, event.llmGeneration);
           this.activeGenSeq = undefined;
         }
         break;
@@ -2335,7 +2335,7 @@ export class DomindsDialogContainer extends HTMLElement {
     }
   }
 
-  private handleGeneratingFinish(seq: number, llmGenModel?: string): void {
+  private handleGeneratingFinish(seq: number, llmGeneration?: LlmGenerationMetadata): void {
     const container = this.shadowRoot?.querySelector('.messages') as HTMLElement | null;
     const activeBubble = this.generationBubble;
     const bubble =
@@ -2365,13 +2365,12 @@ export class DomindsDialogContainer extends HTMLElement {
     }
     const finalizingActiveBubble = bubble === activeBubble;
 
-    if (typeof llmGenModel === 'string') {
-      const trimmed = llmGenModel.trim();
-      if (trimmed.length > 0) {
-        const modelEl = bubble.querySelector('.bubble-author-model');
-        if (modelEl instanceof HTMLElement) {
-          modelEl.textContent = trimmed;
-        }
+    if (llmGeneration !== undefined) {
+      const modelEl = bubble.querySelector('.bubble-author-model');
+      if (modelEl instanceof HTMLElement) {
+        const presentation = formatGenerationModelPresentation(llmGeneration);
+        modelEl.textContent = presentation.compactLabel;
+        modelEl.title = presentation.tooltip;
       }
     }
 
@@ -2928,6 +2927,7 @@ export class DomindsDialogContainer extends HTMLElement {
     const modelEl = bubble.querySelector('.bubble-author-model') as HTMLElement | null;
     if (modelEl) {
       modelEl.textContent = '';
+      modelEl.removeAttribute('title');
     }
 
     const body = bubble.querySelector('.bubble-body') as HTMLElement | null;
@@ -5997,6 +5997,7 @@ export class DomindsDialogContainer extends HTMLElement {
         align-items: baseline;
         gap: 6px;
         flex-wrap: wrap;
+        min-width: 0;
       }
 
       .bubble-author-name {
@@ -6007,6 +6008,8 @@ export class DomindsDialogContainer extends HTMLElement {
         font-size: 8px;
         font-weight: 500;
         color: var(--dominds-muted, var(--color-fg-tertiary, #64748b));
+        cursor: help;
+        overflow-wrap: anywhere;
       }
 
       .bubble-title {
