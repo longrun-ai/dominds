@@ -28,7 +28,7 @@ Positioning: validate “stable and effective ways of working”, and make the c
 
 - Establish reusable work patterns: Main Dialog progress + parallel Side Dialogs + result backflow/aggregation (Tellask / FBR, etc.).
 - Harden a minimal runtime loop: dialog persistence, tool invocation, streaming output + transcripts, basic observability and failure diagnosis.
-- Identify mature capabilities that are still coupled into built-in implementation: keep dialog driving in the Kernel; form a tellask component from tellask and team definition; form a workenv component from the work environment and control toolset; temporarily keep WebUI built in while Dominds evolves.
+- Identify mature behavior that is still coupled into built-in implementation. Preserve its value first through business Stories and cross-Story business-concern analysis, then perform software architecture and functional decomposition separately: keep dialog driving in the Kernel; continue to validate the tellask-plus-team-definition component direction on its own; do not pre-freeze the current workenv, control, Reminder, Taskdoc, pad, and daemon names or groupings into one workenv component; temporarily keep WebUI built in while Dominds evolves.
 - Iterate in small steps: allow internal structure to change rapidly while continuously distilling what is stable/effective into explicit constraints.
 
 ---
@@ -46,6 +46,7 @@ Positioning: clearly separate the Kernel, reusable application components, and t
 ### 2) Establish the application component model
 
 - An application component is an App-side reuse and building unit, not a mini-App with independent runtime authority.
+- The application component model is a software-architecture artifact, not a mirror of a business-concern or business-feature list. The relationship is many-to-many; never turn rows or columns of a business-analysis matrix directly into components, toolsets, or Kernel/runtime types.
 - An application component has a relatively static lifecycle: its artifact is installed and upgraded by version, and its definition is not repeatedly enabled, disabled, or rewritten as business context changes.
 - Component contracts explicitly declare lifecycle, configuration, state namespace, `requires/provides`, toolsets, business handlers, and UI contributions.
 - Toolsets have one unified meaning: provided by a component, selected by an App, and bound to an execution principal. They are not split into separate “dynamic” and “static” wiring models.

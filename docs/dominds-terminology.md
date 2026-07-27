@@ -287,8 +287,8 @@ Example / 示例（概念）:
 
 ### Application Component（应用组件）
 
-- EN: An **Application Component** is a stable, versioned App-side building block. It may define toolsets, configuration, a state namespace, business handlers, and UI contributions, but it has no independent application identity or global runtime authority.
-- ZH: **应用组件（Application Component）**是 App 侧稳定、版本化的构建单元。它可以定义工具集、配置、状态命名空间、业务处理器与 UI contribution，但不拥有独立应用身份或全局运行主权。
+- EN: An **Application Component** is a stable, versioned App-side software building block. It may define toolsets, configuration, a state namespace, business handlers, and UI contributions, but it has no independent application identity or global runtime authority. It is an architecture concept, not a synonym for a business concern or business feature; the mapping between them is many-to-many.
+- ZH: **应用组件（Application Component）**是 App 侧稳定、版本化的软件构建单元。它可以定义工具集、配置、状态命名空间、业务处理器与 UI contribution，但不拥有独立应用身份或全局运行主权。它是软件架构概念，不是业务关切或业务功能特性的同义词；二者是多对多关系。
 
 - EN: A component artifact and definition have a relatively static lifecycle. A component instance exists only inside one App composition revision and is activated, drained, or disposed with that revision. Do not use “component” as a synonym for App or mini-App.
 - ZH: 组件制品与定义的生命周期相对静态；组件实例只存在于某个 App composition revision 内，并随该 revision 激活、drain 或释放。不要把“组件”当成 App 或 mini-App 的同义词。
@@ -319,8 +319,8 @@ Example / 示例（概念）:
 
 ### Toolset（工具集）
 
-- EN: A **toolset** is a stable team-facing capability bundle defined by an Application Component, selected through an App composition, and bound to an execution principal (for example `playwright_interactive`).
-- ZH: **工具集（toolset）**是由应用组件定义、经 App 组合选用、再绑定给执行主体的稳定能力名（例如 `playwright_interactive`）。
+- EN: A **toolset** is a stable team-facing software capability and grant boundary defined by an Application Component, selected through an App composition, and bound to an execution principal (for example `playwright_interactive`). It is not, by itself, a business-feature boundary.
+- ZH: **工具集（toolset）**是由应用组件定义、经 App 组合选用、再绑定给执行主体的稳定软件能力面与授予边界（例如 `playwright_interactive`）。它本身不构成业务功能特性的边界。
 
 - EN: Use “toolset” when you mean the capability surface or grant boundary. Do not call that concept a “workflow” or a “manual”.
 - ZH: 当语义指向能力面或授予边界时，应使用“工具集”；不要把这个概念写成“流程”或“手册”。

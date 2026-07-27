@@ -28,7 +28,7 @@ Dominds 的长期方向是把“智能体分工协作”沉淀为一个可复用
 
 - 建立可复用的工作范式：主线对话推进 + 支线对话并行推进 + 回传聚合（诉请 / FBR 等）。
 - 打磨最小可用的运行时闭环：对话持久化、工具调用、流式输出与转录、基础可观测性与故障定位。
-- 识别已成熟但仍耦合在固有实现中的能力：dialog-driving 留在 Kernel；tellask 与 team definition 形成 tellask 组件；workenv 与 control 工具集形成 workenv 组件；WebUI 暂时作为固有特性随 Dominds 迭代。
+- 识别已成熟但仍耦合在固有实现中的行为，先用业务 Story 与跨 Story 业务关切分析保留其价值，再另行完成软件架构与功能分解：dialog-driving 留在 Kernel；tellask 与 team definition 形成 tellask 组件的方向继续单独验证；现有 workenv、control、Reminder、Taskdoc、pad、daemon 等名称和分组不再预先冻结为一个 workenv 组件；WebUI 暂时作为固有特性随 Dominds 迭代。
 - 以小步快跑方式迭代：允许内部结构快速变化，但持续沉淀“什么是稳定有效”的方法论与约束边界。
 
 ---
@@ -46,6 +46,7 @@ Dominds 的长期方向是把“智能体分工协作”沉淀为一个可复用
 ### 2) 建立应用组件模型
 
 - 应用组件是 App 侧的复用和构建单元，不是拥有独立运行主权的 mini-App。
+- 应用组件模型是软件架构产物，不镜像业务关切或业务功能特性清单；二者是多对多关系，不能把业务分析矩阵的行列直接变成组件、toolset 或 Kernel/runtime 类型。
 - 应用组件的生命周期相对静态：组件制品按版本安装和升级，本身不随业务上下文反复启停或改写定义。
 - 组件契约明确声明生命周期、配置、状态命名空间、`requires/provides`、工具集、业务处理器和界面 contribution。
 - 工具集只有“组件提供、App 选用、执行主体绑定”的统一语义，不按“动态/静态”划分两套接线。
