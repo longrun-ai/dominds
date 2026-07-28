@@ -132,7 +132,7 @@ members:
 
 ### 位置
 
-在 MicroKernel driver 循环中实现（`dominds/main/llm/kernel-driver/drive.ts`），作为迭代后的小检查：
+在微内核的 driver 循环中实现（`dominds/main/llm/kernel-driver/drive.ts`），作为迭代后的小检查：
 
 1. 如果对话正在等待 Q4H，或仍有 pending active callee dispatch，则停止。active callee dispatch 是后台被诉请者事实，不是 caller 的阻塞态；但在没有其它具体驱动来源时，它是自然 idle 边界，不能触发鞭策注入。
 2. 如果有任何工具反馈，则正常继续。

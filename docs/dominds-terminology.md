@@ -287,8 +287,11 @@ Example / 示例（概念）:
 
 ### MicroKernel（微内核）
 
-- EN: The **MicroKernel** is Dominds' App-agnostic runtime core. It owns only the generic mechanisms that every App must share, such as dialog driving, protocols, persistence, isolation, composition loading, and non-bypassable execution boundaries. **MicroKernel** is the canonical architecture term; do not omit the `Micro` prefix in prose.
-- ZH: **MicroKernel（微内核）**是 Dominds 与具体 App 业务无关的运行核心，只拥有所有 App 必须共享的通用机制，例如对话驱动、协议、持久化、隔离、组合装载和不可绕过的执行边界。`MicroKernel` 是唯一规范的英文架构称谓；正文中不得省略 `Micro` 前缀。
+- EN: The **MicroKernel** is Dominds' App-agnostic runtime core. It owns only the generic mechanisms that every App must share, such as dialog driving, protocols, persistence, isolation, composition loading, and non-bypassable execution boundaries. **MicroKernel** and **微内核** are the canonical English and Chinese architecture terms; do not omit the `Micro` or `微` prefix in prose.
+- ZH: **微内核（MicroKernel）**是 Dominds 与具体 App 业务无关的运行核心，只拥有所有 App 必须共享的通用机制，例如对话驱动、协议、持久化、隔离、组合装载和不可绕过的执行边界。`MicroKernel` 和“微内核”分别是唯一规范的英文、中文架构称谓；正文中不得省略 `Micro` 或“微”字前缀。
+
+- EN: In Chinese architecture prose, write the compound boundaries as **微内核–App** and **微内核–应用组件–App**. Keep `App` as the formal domain term for the business runtime identity and composition root; do not translate it to the generic “应用”.
+- ZH: 中文架构正文中的复合边界写作“微内核–App”和“微内核–应用组件–App”。`App` 是业务运行身份与组合根的正式领域概念，不改成容易与应用侧、应用组件或应用能力混淆的泛称“应用”。
 
 - EN: Existing machine identifiers such as `@longrun-ai/kernel`, `packages/kernel/**`, `main/llm/kernel-driver/**`, and `DomindsKernelEndpoint` keep their exact spelling until a separate holistic contract migration renames them. They are implementation identifiers, not a second architecture term.
 - ZH: `@longrun-ai/kernel`、`packages/kernel/**`、`main/llm/kernel-driver/**`、`DomindsKernelEndpoint` 等现行机器标识，在另一次完整契约迁移真正重命名它们之前必须保持精确拼写。它们是实现标识，不构成第二套架构称谓。
@@ -315,7 +318,7 @@ Example / 示例（概念）:
 - ZH: **App 组合修订（App Composition Revision）**是某个 App 所选组件版本、配置、依赖绑定与策略经过原子解析后形成的快照。每个进行中的动作必须且只能归属于一个 revision。
 
 - EN: Recomposition creates a new revision. Activating it is a MicroKernel-controlled operation that must complete validation, state migration, draining, and rollback preparation before the current-revision pointer changes.
-- ZH: App 重组会产生新的 revision。激活新 revision 是 MicroKernel 受控动作；只有校验、状态迁移、drain 与失败回滚准备全部完成后，当前 revision 指针才能切换。
+- ZH: App 重组会产生新的 revision。激活新 revision 是微内核受控动作；只有校验、状态迁移、drain 与失败回滚准备全部完成后，当前 revision 指针才能切换。
 
 ### Skill（技能文档）
 
@@ -344,7 +347,7 @@ Example / 示例（概念）:
 ### App Host（App 宿主）
 
 - EN: The **App Host** is the runtime-side process boundary that executes handlers and tools belonging to an App's active composition revision and speaks the MicroKernel↔App IPC contract.
-- ZH: **App 宿主（App Host）**是运行时侧的进程边界，负责执行 App 当前 composition revision 所含的处理器与工具，并承载 MicroKernel ↔ App 之间的 IPC 契约。
+- ZH: **App 宿主（App Host）**是运行时侧的进程边界，负责执行 App 当前 composition revision 所含的处理器与工具，并承载微内核 ↔ App 之间的 IPC 契约。
 
 - EN: Use “App Host” when you mean the runtime component. When you mean the capability surface, prefer “component-provided tools exposed by the App composition” rather than “app-host tools”.
 - ZH: 当语义指向运行时组件时，用“App 宿主”；当语义指向能力面时，优先写“由组件提供、经 App composition 暴露的工具”，不要写“app-host tools”。

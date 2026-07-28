@@ -10,7 +10,7 @@
 
 ### 当前状态
 
-- **✅ 完全实现**：现代存储系统使用由 `@longrun-ai/kernel/types/storage` 对外导出的 MicroKernel 自有 TypeScript 合同（源码：`packages/kernel/src/types/storage.ts`）
+- **✅ 完全实现**：现代存储系统使用由 `@longrun-ai/kernel/types/storage` 对外导出的微内核自有 TypeScript 合同（源码：`packages/kernel/src/types/storage.ts`）
 - **✅ latest.yaml 支持**：当前对话过程和 lastModified 跟踪，用于准确的 UI 时间戳
 - **✅ 仅追加事件**：基于 JSONL 的事件流，具有原子操作
 - **✅ 强类型安全**：可区分联合和类型守卫，用于编译时验证
