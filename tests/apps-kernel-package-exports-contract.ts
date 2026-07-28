@@ -42,27 +42,27 @@ async function main(): Promise<void> {
     'utf-8',
   );
   const packageJson = JSON.parse(packageJsonText) as PackageJsonShape;
-  const exportsField = expectRecord(packageJson.exports, 'kernel package.json exports');
+  const exportsField = expectRecord(packageJson.exports, 'MicroKernel package.json exports');
   const publishConfig = expectRecord(
     packageJson.publishConfig,
-    'kernel package.json publishConfig',
+    'MicroKernel package.json publishConfig',
   );
 
-  assert.equal(packageJson.name, '@longrun-ai/kernel', 'Kernel package name must be stable.');
+  assert.equal(packageJson.name, '@longrun-ai/kernel', 'MicroKernel package name must be stable.');
   assert.equal(
     packageJson.main,
     'dist/index.js',
-    'Kernel package main must point at dist/index.js.',
+    'MicroKernel package main must point at dist/index.js.',
   );
   assert.equal(
     packageJson.types,
     'src/index.ts',
-    'Kernel package types must point at src/index.ts so workspace consumers can type-check against the formal package surface before prebuilding dist.',
+    'MicroKernel package types must point at src/index.ts so workspace consumers can type-check against the formal package surface before prebuilding dist.',
   );
   assert.equal(
     publishConfig['access'],
     'public',
-    'Kernel package must declare publishConfig.access=public for scoped npm publishing.',
+    'MicroKernel package must declare publishConfig.access=public for scoped npm publishing.',
   );
   assert.deepEqual(
     Object.keys(exportsField).sort(),
@@ -79,54 +79,54 @@ async function main(): Promise<void> {
       './utils/id',
       './utils/time',
     ].sort(),
-    'Kernel package must expose the first formal contract set used by apps and WebUI.',
+    'MicroKernel package must expose the first formal contract set used by apps and WebUI.',
   );
-  const typesExport = expectRecord(exportsField['./types'], 'kernel ./types export');
+  const typesExport = expectRecord(exportsField['./types'], 'MicroKernel ./types export');
   assert.equal(
     typesExport['types'],
     './src/types.ts',
-    'Kernel ./types export must point type consumers at src/types.ts.',
+    'MicroKernel ./types export must point type consumers at src/types.ts.',
   );
   assert.equal(
     typesExport['require'],
     './dist/types.js',
-    'Kernel ./types export must resolve to kernel-owned dist/types.js.',
+    'MicroKernel ./types export must resolve to MicroKernel-owned dist/types.js.',
   );
-  const typesStarExport = expectRecord(exportsField['./types/*'], 'kernel ./types/* export');
+  const typesStarExport = expectRecord(exportsField['./types/*'], 'MicroKernel ./types/* export');
   assert.equal(
     typesStarExport['types'],
     './src/types/*.ts',
-    'Kernel ./types/* export must point type consumers at src/types/*.ts.',
+    'MicroKernel ./types/* export must point type consumers at src/types/*.ts.',
   );
   assert.equal(
     typesStarExport['require'],
     './dist/types/*.js',
-    'Kernel ./types/* export must resolve to kernel-owned dist/types/*.js.',
+    'MicroKernel ./types/* export must resolve to MicroKernel-owned dist/types/*.js.',
   );
-  const appJsonExport = expectRecord(exportsField['./app-json'], 'kernel ./app-json export');
+  const appJsonExport = expectRecord(exportsField['./app-json'], 'MicroKernel ./app-json export');
   assert.equal(
     appJsonExport['types'],
     './src/app-json.ts',
-    'Kernel ./app-json export must point type consumers at src/app-json.ts.',
+    'MicroKernel ./app-json export must point type consumers at src/app-json.ts.',
   );
   assert.equal(
     appJsonExport['require'],
     './dist/app-json.js',
-    'Kernel ./app-json export must resolve to kernel-owned dist/app-json.js.',
+    'MicroKernel ./app-json export must resolve to MicroKernel-owned dist/app-json.js.',
   );
   const appHostExport = expectRecord(
     exportsField['./app-host-contract'],
-    'kernel ./app-host-contract export',
+    'MicroKernel ./app-host-contract export',
   );
   assert.equal(
     appHostExport['types'],
     './src/app-host-contract.ts',
-    'Kernel ./app-host-contract export must point type consumers at src/app-host-contract.ts.',
+    'MicroKernel ./app-host-contract export must point type consumers at src/app-host-contract.ts.',
   );
   assert.equal(
     appHostExport['require'],
     './dist/app-host-contract.js',
-    'Kernel ./app-host-contract export must resolve to kernel-owned dist/app-host-contract.js.',
+    'MicroKernel ./app-host-contract export must resolve to MicroKernel-owned dist/app-host-contract.js.',
   );
 
   const installJsonInput = {
@@ -145,7 +145,7 @@ async function main(): Promise<void> {
   };
 
   const parsed = parseDomindsAppInstallJson(installJsonInput);
-  assert.equal(parsed.ok, true, 'Kernel root export must parse valid app install json.');
+  assert.equal(parsed.ok, true, 'MicroKernel root export must parse valid app install json.');
   const canonicalized = parseDomindsAppInstallJson({
     ...installJsonInput,
     displayName: undefined,
@@ -590,27 +590,27 @@ async function main(): Promise<void> {
   assert.deepEqual(
     TEAM_MGMT_GUIDE_UI_TOPIC_ORDER.slice(0, 3),
     ['topics', 'team', 'member-properties'],
-    'Kernel root export must keep team manual UI ordering stable.',
+    'MicroKernel root export must keep team manual UI ordering stable.',
   );
   assert.equal(
     getTeamMgmtGuideTopicTitle('en', 'topics'),
     'Index',
-    'Kernel root export must expose team manual titles.',
+    'MicroKernel root export must expose team manual titles.',
   );
   assert.equal(
     isTeamMgmtGuideTopicKey('topics'),
     true,
-    'Kernel root export must expose topic guard.',
+    'MicroKernel root export must expose topic guard.',
   );
   assert.deepEqual(
     supportedLanguageCodes,
     ['en', 'zh'],
-    'Kernel language contract must stay explicit.',
+    'MicroKernel language contract must stay explicit.',
   );
   assert.equal(
     typeof DILIGENCE_FALLBACK_TEXT.zh,
     'string',
-    'Kernel diligence contract must be consumable by WebUI.',
+    'MicroKernel diligence contract must be consumable by WebUI.',
   );
 
   const chan = createPubChan<string>();
@@ -619,32 +619,32 @@ async function main(): Promise<void> {
   assert.equal(
     await sub.read(),
     'ok',
-    'Kernel evt contract must remain consumable outside main private runtime sources.',
+    'MicroKernel evt contract must remain consumable outside main private runtime sources.',
   );
   assert.equal(
     formatUnifiedTimestamp(new Date('2026-03-13T01:02:03Z')).length,
     19,
-    'Kernel shared util export must remain callable.',
+    'MicroKernel shared util export must remain callable.',
   );
   assert.equal(
     escapeHtml('<tag>'),
     '&lt;tag&gt;',
-    'Kernel html util export must be part of the public contract.',
+    'MicroKernel html util export must be part of the public contract.',
   );
   assert.equal(
     escapeHtmlAttr('x"y'),
     'x&quot;y',
-    'Kernel html-attr util export must be part of the public contract.',
+    'MicroKernel html-attr util export must be part of the public contract.',
   );
   assert.equal(
     generateShortId().length,
     6,
-    'Kernel id util export must be part of the public contract.',
+    'MicroKernel id util export must be part of the public contract.',
   );
   assert.deepEqual(
     toolSuccess('ok'),
     { content: 'ok', outcome: 'success' },
-    'Kernel tool helpers must omit absent optional fields instead of relying on JSON IPC to erase undefined values.',
+    'MicroKernel tool helpers must omit absent optional fields instead of relying on JSON IPC to erase undefined values.',
   );
   assert.deepEqual(
     appToolSuccess('ok'),
@@ -659,7 +659,7 @@ async function main(): Promise<void> {
     taskDocPath: 'demo.tsk',
     questions: [],
   };
-  assert.equal(q4hContext.questions.length, 0, 'Kernel root export must carry Q4H typing.');
+  assert.equal(q4hContext.questions.length, 0, 'MicroKernel root export must carry Q4H typing.');
 
   const createApp: CreateDomindsAppFn = async () => ({
     tools: {},
@@ -667,7 +667,7 @@ async function main(): Promise<void> {
   assert.equal(
     typeof createApp,
     'function',
-    'Kernel app host contract export must stay callable by consumers.',
+    'MicroKernel app host contract export must stay callable by consumers.',
   );
 }
 

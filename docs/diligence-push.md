@@ -167,7 +167,7 @@ Rules:
 
 ### Where
 
-Implemented in the kernel driver loop (`dominds/main/llm/kernel-driver/drive.ts`) as a small
+Implemented in the MicroKernel driver loop (`dominds/main/llm/kernel-driver/drive.ts`) as a small
 post-iteration check:
 
 1. If the dialog is waiting for Q4H or still has a pending active callee dispatch, stop. Active

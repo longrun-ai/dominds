@@ -1,6 +1,6 @@
 # Tool Availability Protocol
 
-Status: implemented for the kernel snapshot, WebUI tools widget, and update events.
+Status: implemented for the MicroKernel snapshot, WebUI tools widget, and update events.
 
 ## Purpose
 
@@ -48,7 +48,7 @@ runtime instance; it does not decide whether the corresponding toolset is regist
 
 ## Composition
 
-For a concrete member and dialog context, the kernel:
+For a concrete member and dialog context, the MicroKernel:
 
 1. reads the current registry catalog
 2. resolves the member's declared toolsets and tools
@@ -66,7 +66,7 @@ REST endpoint:
 
 - `GET /api/tool-availability`
 
-Kernel type:
+MicroKernel type:
 
 - `ToolAvailabilitySnapshot` in `packages/kernel/src/types/tools-registry.ts`
 

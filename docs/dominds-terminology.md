@@ -285,6 +285,14 @@ Example / 示例（概念）:
 - EN: Wording rule: when the meaning is **rtws**, prefer writing “rtws (runtime workspace)” (or just “rtws” after the first mention) rather than the ambiguous generic “workspace”.
 - ZH: 用词规则：当语义指向 **rtws** 时，优先写“rtws（运行时工作区）”（或在已定义后只写“rtws”），避免在对外提示/文档中只写“工作区”从而与其他语境的 workspace/workdir 混淆。
 
+### MicroKernel（微内核）
+
+- EN: The **MicroKernel** is Dominds' App-agnostic runtime core. It owns only the generic mechanisms that every App must share, such as dialog driving, protocols, persistence, isolation, composition loading, and non-bypassable execution boundaries. **MicroKernel** is the canonical architecture term; do not omit the `Micro` prefix in prose.
+- ZH: **MicroKernel（微内核）**是 Dominds 与具体 App 业务无关的运行核心，只拥有所有 App 必须共享的通用机制，例如对话驱动、协议、持久化、隔离、组合装载和不可绕过的执行边界。`MicroKernel` 是唯一规范的英文架构称谓；正文中不得省略 `Micro` 前缀。
+
+- EN: Existing machine identifiers such as `@longrun-ai/kernel`, `packages/kernel/**`, `main/llm/kernel-driver/**`, and `DomindsKernelEndpoint` keep their exact spelling until a separate holistic contract migration renames them. They are implementation identifiers, not a second architecture term.
+- ZH: `@longrun-ai/kernel`、`packages/kernel/**`、`main/llm/kernel-driver/**`、`DomindsKernelEndpoint` 等现行机器标识，在另一次完整契约迁移真正重命名它们之前必须保持精确拼写。它们是实现标识，不构成第二套架构称谓。
+
 ### Application Component（应用组件）
 
 - EN: An **Application Component** is a stable, versioned App-side software building block. It may define toolsets, configuration, a state namespace, business handlers, and UI contributions, but it has no independent application identity or global runtime authority. It is an architecture concept, not a synonym for a business concern or business feature; the mapping between them is many-to-many.
@@ -306,8 +314,8 @@ Example / 示例（概念）:
 - EN: An **App Composition Revision** is an atomically resolved snapshot of one App's selected component versions, configuration, requirement bindings, and policies. Every in-flight action belongs to exactly one revision.
 - ZH: **App 组合修订（App Composition Revision）**是某个 App 所选组件版本、配置、依赖绑定与策略经过原子解析后形成的快照。每个进行中的动作必须且只能归属于一个 revision。
 
-- EN: Recomposition creates a new revision. Activating it is a Kernel-controlled operation that must complete validation, state migration, draining, and rollback preparation before the current-revision pointer changes.
-- ZH: App 重组会产生新的 revision。激活新 revision 是 Kernel 受控动作；只有校验、状态迁移、drain 与失败回滚准备全部完成后，当前 revision 指针才能切换。
+- EN: Recomposition creates a new revision. Activating it is a MicroKernel-controlled operation that must complete validation, state migration, draining, and rollback preparation before the current-revision pointer changes.
+- ZH: App 重组会产生新的 revision。激活新 revision 是 MicroKernel 受控动作；只有校验、状态迁移、drain 与失败回滚准备全部完成后，当前 revision 指针才能切换。
 
 ### Skill（技能文档）
 
@@ -335,8 +343,8 @@ Example / 示例（概念）:
 
 ### App Host（App 宿主）
 
-- EN: The **App Host** is the runtime-side process boundary that executes handlers and tools belonging to an App's active composition revision and speaks the Kernel↔App IPC contract.
-- ZH: **App 宿主（App Host）**是运行时侧的进程边界，负责执行 App 当前 composition revision 所含的处理器与工具，并承载 Kernel ↔ App 之间的 IPC 契约。
+- EN: The **App Host** is the runtime-side process boundary that executes handlers and tools belonging to an App's active composition revision and speaks the MicroKernel↔App IPC contract.
+- ZH: **App 宿主（App Host）**是运行时侧的进程边界，负责执行 App 当前 composition revision 所含的处理器与工具，并承载 MicroKernel ↔ App 之间的 IPC 契约。
 
 - EN: Use “App Host” when you mean the runtime component. When you mean the capability surface, prefer “component-provided tools exposed by the App composition” rather than “app-host tools”.
 - ZH: 当语义指向运行时组件时，用“App 宿主”；当语义指向能力面时，优先写“由组件提供、经 App composition 暴露的工具”，不要写“app-host tools”。

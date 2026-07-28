@@ -124,7 +124,7 @@ export type ProviderConfig = {
   // Transport-level cap for a single tool result text payload before provider projection.
   // Different providers / gateways may enforce different per-item string limits.
   tool_result_max_chars?: number;
-  // LLM retry policy knobs for kernel dialog driving.
+  // LLM retry policy knobs for MicroKernel dialog driving.
   // aggressive_max_retries limits only the front-loaded fast retry burst. Once exhausted,
   // provider/runtime failures still keep retrying automatically after downgrading to conservative.
   llm_retry_aggressive_max_retries?: number;

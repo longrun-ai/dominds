@@ -127,7 +127,7 @@ npx -y dominds@latest
 - `npx -y dominds@latest`：无需全局安装，直接运行 Dominds CLI。
 - `dominds install <package>`：通过当前 Stage 0 的 `DomindsApp` 引导信封登记软件包。
 
-这个信封早于最终的 Kernel–Component–App 模型。特别是，`@longrun-ai/web-dev`
+这个信封早于最终的 MicroKernel–Component–App 模型。特别是，`@longrun-ai/web-dev`
 是经由该引导通道装载的应用组件，不是独立业务 App。未来将由 App composition revision
 显式选择并绑定这类组件。
 
@@ -144,7 +144,7 @@ dominds install ./dominds-apps/@longrun-ai/web-dev --local --enable
 几个关键区别：
 
 - `npm install` / `pnpm add` 只负责下载包；它们**不会**自动把能力登记到当前 rtws。
-- `npx` 在这里主要是 Kernel/CLI 的包执行后端。Stage 0 装载器可能会在底层执行
+- `npx` 在这里主要是 MicroKernel/CLI 的包执行后端。Stage 0 装载器可能会在底层执行
   `npx -y <pkg> --dominds-app` 来做握手。
 - `--dominds-app` 是旧的底层软件包握手参数，不是最终的组件激活语义，也不是普通用户的常规操作入口。
 

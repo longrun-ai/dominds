@@ -2759,7 +2759,7 @@ export interface Questions4Human {
   updatedAt: string;
 }
 
-// Remove old type definitions - now using kernel/types/storage.ts
+// Remove old type definitions; now using MicroKernel storage contracts from @longrun-ai/kernel/types/storage.
 import { generateDialogID } from './utils/id';
 
 type ReplayTellaskCall =

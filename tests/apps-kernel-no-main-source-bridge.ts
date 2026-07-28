@@ -61,7 +61,7 @@ async function main(): Promise<void> {
     violations,
     [],
     [
-      'Kernel source must be self-contained and must not bridge back into main/**.',
+      'MicroKernel source must be self-contained and must not bridge back into main/**.',
       ...violations,
     ].join('\n'),
   );

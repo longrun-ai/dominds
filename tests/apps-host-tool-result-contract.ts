@@ -453,7 +453,7 @@ async function main(): Promise<void> {
     assert.equal(
       fractionalReminderPositionResult.reminderRequests?.[0]?.position,
       -1.5,
-      'Finite tool-result reminder positions remain lossless until Kernel insertion normalization.',
+      'Finite tool-result reminder positions remain lossless until MicroKernel insertion normalization.',
     );
 
     const ownerCtx = { dialogId: 'dlg_1', ownedReminders: [] } as const;
@@ -560,7 +560,7 @@ async function main(): Promise<void> {
         position: -1.5,
         reminder: { content: 'position probe' },
       },
-      'Finite reminder positions remain valid; the Kernel owns insertion normalization.',
+      'Finite reminder positions remain valid; the MicroKernel owns insertion normalization.',
     );
     await assert.rejects(
       async () =>

@@ -177,7 +177,7 @@ are two different operations:
 - `dominds install <package>`: register a package through the current Stage 0 `DomindsApp`
   bootstrap envelope.
 
-This envelope predates the final Kernel–Component–App model. In particular,
+This envelope predates the final MicroKernel–Component–App model. In particular,
 `@longrun-ai/web-dev` is an Application Component carried through that bootstrap channel, not an
 independent business App. A future App composition revision will explicitly select and bind such
 components.
@@ -196,7 +196,7 @@ Important distinctions:
 
 - `npm install` / `pnpm add` only download packages; they do **not** register capabilities into the
   current rtws.
-- `npx` is used by the Kernel/CLI as a package-execution backend. The Stage 0 loader may execute
+- `npx` is used by the MicroKernel/CLI as a package-execution backend. The Stage 0 loader may execute
   `npx -y <pkg> --dominds-app` under the hood.
 - `--dominds-app` is the legacy low-level package handshake flag. It is not the final component
   activation semantic or the normal end-user interface.

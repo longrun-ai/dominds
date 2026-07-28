@@ -12,7 +12,7 @@ The persistence layer is fully implemented and active with modern TypeScript typ
 
 ### Current State
 
-- **✅ Fully Implemented**: Modern storage system with kernel-owned TypeScript contracts exposed via `@longrun-ai/kernel/types/storage` (source: `packages/kernel/src/types/storage.ts`)
+- **✅ Fully Implemented**: Modern storage system with MicroKernel-owned TypeScript contracts exposed via `@longrun-ai/kernel/types/storage` (source: `packages/kernel/src/types/storage.ts`)
 - **✅ latest.yaml Support**: Current course and lastModified tracking for accurate UI timestamps
 - **✅ Append-Only Events**: JSONL-based event streaming with atomic operations
 - **✅ Strong Type Safety**: Discriminated unions and type guards for compile-time verification
@@ -206,7 +206,7 @@ This design balances the need for clear hierarchical relationships with efficien
 **Key Features**:
 
 - **latest.yaml**: Modern tracking file with current course, lastModified, and status
-- **Strong Typing**: All files use the kernel-owned storage contracts exposed via `@longrun-ai/kernel/types/storage`
+- **Strong Typing**: All files use the MicroKernel-owned storage contracts exposed via `@longrun-ai/kernel/types/storage`
 - **Atomic Updates**: latest.yaml updated atomically on all dialog modifications
 - **UI Integration**: Timestamps from latest.yaml display correctly in dialog list
 
@@ -618,7 +618,7 @@ The persistence layer has been **completely modernized** with no backward compat
 **Breaking Changes**: This refactoring intentionally removed all backward compatibility:
 
 - Old interfaces removed from `main/persistence.ts`
-- Kernel-owned `@longrun-ai/kernel/types/storage` now provides the storage type definitions (source: `packages/kernel/src/types/storage.ts`)
+- MicroKernel-owned `@longrun-ai/kernel/types/storage` now provides the storage type definitions (source: `packages/kernel/src/types/storage.ts`)
 - All dialog creation now includes `latest.yaml` initialization
 - API responses include `lastModified` field for UI timestamps
 

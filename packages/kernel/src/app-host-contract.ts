@@ -43,7 +43,7 @@ export type DomindsAppReminderOwnerHandler = Readonly<{
   updateReminder: (
     ctx: DomindsAppReminderOwnerUpdateContext,
   ) => Promise<DomindsAppHostReminderUpdateResult>;
-  // Kernel wraps rendered reminder content as an environment reminder before LLM injection.
+  // MicroKernel wraps rendered reminder content as an environment reminder before LLM injection.
   // Return reminder text only; do not use this hook for dialog actions.
   renderReminder: (
     ctx: DomindsAppReminderOwnerRenderContext,

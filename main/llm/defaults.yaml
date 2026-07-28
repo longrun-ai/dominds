@@ -1,4 +1,4 @@
-# Optional provider-level retry controls for kernel dialog driving:
+# Optional provider-level retry controls for MicroKernel dialog driving:
 # - llm_retry_aggressive_max_retries: front-loaded fast retries before Dominds automatically downgrades
 #   to conservative slow retry (default 3). Automatic retries no longer stop just because a retry
 #   count budget was exhausted.
