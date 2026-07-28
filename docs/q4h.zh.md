@@ -29,7 +29,7 @@ Q4H 是 Dominds 的运行时机制：在任何对话中通过向 `askHuman({ tel
 
 ## 非目标
 
-- 为 deep link 设计“可分享的权限模型”（鉴权独立处理，见 `docs/auth.md`）。
+- 为 deep link 设计“可分享的权限模型”（鉴权独立处理，见 [docs/auth.zh.md](auth.zh.md)）。
 - 引入前端路由框架；WebUI 仍保持简单 SPA（无路由库）。
 - 改写 Q4H 语义或挂起/恢复规则（本文档只覆盖导航 + UX）。
 

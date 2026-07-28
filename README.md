@@ -88,7 +88,7 @@ npm run setup:pm
 
 If the current Node installation does not include Corepack, first run
 `npm install --global corepack@<exact-latest-stable-version>`. In an integrated
-development checkout, follow the outer
+development checkout, follow the workspace-local
 `../docs/toolchain-maintenance-sop.md` for the complete Windows/macOS/Linux
 maintenance flow.
 
@@ -385,7 +385,7 @@ Result: fewer bad side effects, higher plan fidelity, and more first‑try succe
 - **[Context Health](docs/context-health.md)** — Measuring/maintaining context quality
 - **[Diligence Push](docs/diligence-push.md)** — Auto-continue (diligence) mechanism
 - **[Idle Reminder Wake](docs/idle-reminder-wake.md)** — Runtime wakeups from owner-managed reminder events
-- **[Showing-by-Doing](docs/showing-by-doing.md)** — A dialog-creation prelude that makes Tellask feel real
+- **[Agent Priming](docs/agent-priming.md)** — Startup-script priming that lets a new dialog experience collaboration directly
 - **[Design](docs/design.md)** — Architecture and key abstractions
 - **[Roadmap](docs/roadmap.md)** — Major-version plan and evolution
 - **[OEC Philosophy](docs/OEC-philosophy.md)** — Philosophy and safety stance

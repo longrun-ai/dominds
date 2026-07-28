@@ -40,7 +40,7 @@ npm run setup:pm
 
 若当前 Node 安装不含 Corepack，先执行
 `npm install --global corepack@<精确最新稳定版本>`。集成开发 checkout
-的完整 Windows/macOS/Linux 维护流程以外层
+的完整 Windows/macOS/Linux 维护流程以工作区本地的
 `../docs/toolchain-maintenance-sop.md` 为准。
 
 ### 代理支持
@@ -287,7 +287,7 @@ Dominds 面向“长期开发运作（DevOps）”场景设计，基于社会化
 - **[FBR](docs/fbr.zh.md)** — 扪心自问（`freshBootsReasoning`）机制设计与增强
 - **[Context Health](docs/context-health.zh.md)** — 上下文健康维护
 - **[Diligence Push](docs/diligence-push.zh.md)** — 鞭策机制
-- **[Showing-by-Doing](docs/showing-by-doing.zh.md)** — “做给祂看”：对话创建时建立诉请机制体感
+- **[智能体 Priming](docs/agent-priming.zh.md)** — 通过启动脚本让新对话直接形成协作体感
 - **[Design](docs/design.zh.md)** — Dominds 架构设计与核心抽象
 - **[Roadmap](docs/roadmap.zh.md)** — 发展规划与版本演进方向
 - **[OEC Philosophy](docs/OEC-philosophy.zh.md)** — 全方位优化管理法

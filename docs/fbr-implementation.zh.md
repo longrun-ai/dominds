@@ -2,7 +2,7 @@
 
 英文版：[English](./fbr-implementation.md)
 
-本文描述当前实现结构与约束。规范以 `fbr.zh.md` 为准。
+本文描述当前实现结构与约束。规范以 [fbr.zh.md](fbr.zh.md) 为准。
 
 ## 实现原则
 

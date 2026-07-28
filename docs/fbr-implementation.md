@@ -2,7 +2,7 @@
 
 Chinese version: [中文版](./fbr-implementation.zh.md)
 
-This doc records the implemented structure and constraints. The normative spec is `fbr.md`.
+This doc records the implemented structure and constraints. The normative spec is [fbr.md](fbr.md).
 
 ## Implementation principles
 

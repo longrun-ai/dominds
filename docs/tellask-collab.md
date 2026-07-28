@@ -24,8 +24,8 @@ This document has three goals:
 
 ## 2. Current runtime contract (already implemented)
 
-These points reflect current behavior in `dialog-system.md`, `fbr.md`, and `diligence-push.md`.
-`agent-priming.md` now documents the startup-script priming design and maintenance workflow.
+These points reflect current behavior in [dialog-system.md](dialog-system.md), [fbr.md](fbr.md), and [diligence-push.md](diligence-push.md).
+[agent-priming.md](agent-priming.md) now documents the startup-script priming design and maintenance workflow.
 
 ### 2.1 Three Tellask modes
 

@@ -24,8 +24,8 @@
 
 ## 2. 当前机制现状（已实现）
 
-以下内容是**当前代码与文档已实现**的行为约束（见 `dialog-system.zh.md`、`fbr.zh.md`、`diligence-push.zh.md`）。
-`agent-priming.zh.md` 说明当前启动脚本 priming 方案与维护方式。
+以下内容是**当前代码与文档已实现**的行为约束（见 [dialog-system.zh.md](dialog-system.zh.md)、[fbr.zh.md](fbr.zh.md)、[diligence-push.zh.md](diligence-push.zh.md)）。
+[agent-priming.zh.md](agent-priming.zh.md) 说明当前启动脚本 priming 方案与维护方式。
 
 ### 2.1 诉请三形态
 

@@ -10,16 +10,16 @@
 2. [后端驱动架构](#后端驱动架构)
 3. [三类队友诉请分类](#三类队友诉请分类)
 4. [核心机制](#核心机制)
-5. [Q4H：向人请示](#q4h向人请示)
+5. [Q4H：向人请示](#q4h向人类提问)
 6. [对话关系与支线对话](#对话关系与支线对话)
-7. [思维清晰工具](#思维清晰工具)
+7. [思维清晰工具](#对话控制工具)
 8. [提醒管理](#提醒管理)
 9. [支线对话注册表](#支线对话注册表)
 10. [技术架构](#技术架构)
 11. [对话管理](#对话管理)
 12. [内存管理](#内存管理)
 13. [系统集成](#系统集成)
-14. [状态图](#状态图)
+14. [状态图](#对话状态机)
 15. [完整流程参考](#完整流程参考)
 
 ---
@@ -358,7 +358,7 @@ LLM 再次发出：tellask({ targetAgentId: "researcher", sessionSlug: "market-a
 2. 使用指定的 agentId 创建**新的支线对话**
 3. 驱动新的支线对话：
    - 一般 TYPE C 支线对话是“完整能力”的（可回问诉请者、队友诉请、按配置使用工具）。
-   - `freshBootsReasoning({ tellaskContent: "..." })` 属于 FBR 特例：无工具、禁止任何诉请（见 `fbr.zh.md`）。
+   - `freshBootsReasoning({ tellaskContent: "..." })` 属于 FBR 特例：无工具、禁止任何诉请（见 [fbr.zh.md](fbr.zh.md)）。
 4. 支线对话的响应作为结果到达事实流回诉请者
 5. 诉请者可因结果到达、queued prompt、用户输入、无 pending active callee 时的 Diligence Push 或其它显式驱动源继续
 
@@ -369,7 +369,7 @@ LLM 再次发出：tellask({ targetAgentId: "researcher", sessionSlug: "market-a
 - 不能像 TYPE B 那样接着同一件事说、更新同一件正在做的事
 - 再次发起 `tellaskSessionless` 是另一件独立任务，不会更新、更不会要求先前那条 TYPE C 任务停止
 - 若你后续可能需要改要求、纠偏或提前收口，应该从一开始就选择带 `sessionSlug` 的 TYPE B `tellask`
-- 支线对话本身一般是“完整能力”的；但 `freshBootsReasoning({ tellaskContent: "..." })` FBR 是特例：无工具且禁止任何诉请（见 `fbr.zh.md`）。
+- 支线对话本身一般是“完整能力”的；但 `freshBootsReasoning({ tellaskContent: "..." })` FBR 是特例：无工具且禁止任何诉请（见 [fbr.zh.md](fbr.zh.md)）。
 - 与 TYPE B 的唯一区别：无注册表查找/恢复能力
 - 用于一次性的、独立的任务
 

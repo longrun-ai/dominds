@@ -32,7 +32,7 @@ The persistence layer is fully implemented and active with modern TypeScript typ
 
 1. [Storage Architecture](#storage-architecture) _(Design Reference Only)_
 2. [rtws Conventions](#rtws-conventions) _(Design Reference Only)_
-3. [Dialog Storage Structure](#dialog-storage-structure) _(Design Reference Only)_
+3. [Dialog Storage Structure](#dialog-storage-structure-design-reference-only) _(Design Reference Only)_
 4. [Memory Persistence](#memory-persistence) _(Design Reference Only)_
 5. [Data Formats](#data-formats) _(Design Reference Only)_
 6. [Error Persistence Policy](#error-persistence-policy) _(Design Reference Only)_

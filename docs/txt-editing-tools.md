@@ -69,8 +69,8 @@ updated: 2026-06-12
 - `ToolsetMeta` 支持 toolset 级 prompt（`I18nText`，目前 `en|zh`），用于 **man\_<toolset> 手册** 的按需读取（不自动注入 system prompt）。
 - 当前实现使用 `promptFilesI18n`：把综合指南放到 markdown 文件中，**仅在调用 man\_<toolset> 时读取**（no cache）。
   - `ws_mod`：
-    - `dominds/main/tools/prompts/ws_mod.zh.md`
-    - `dominds/main/tools/prompts/ws_mod.en.md`
+    - [dominds/main/tools/prompts/ws_mod.zh.md](../main/tools/prompts/ws_mod.zh.md)
+    - [dominds/main/tools/prompts/ws_mod.en.md](../main/tools/prompts/ws_mod.en.md)
 
 ## 4. 工具面（ws_mod 内与文本编辑相关）
 

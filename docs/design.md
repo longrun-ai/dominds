@@ -20,8 +20,8 @@ Dominds implements **Social Division of Labor** for AI agents - a systematic app
 2. [Social Division of Labor Solution](#social-division-of-labor-solution)
 3. [Fresh Boots Reasoning Framework](#fresh-boots-reasoning-framework)
 4. [Architectural Patterns](#architectural-patterns)
-5. [Implementation Details](#implementation-details)
-6. [Best Practices](#best-practices)
+5. [Implementation Details](#implementation)
+6. [Best Practices](#best-practices-and-guidelines)
 7. [Future Directions](#future-directions)
 
 ---

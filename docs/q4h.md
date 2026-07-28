@@ -26,7 +26,7 @@ This document specifies a WebUI enhancement:
 
 ## Non-goals
 
-- A stable, shareable permission model for deep links (auth is handled separately; see `docs/auth.md`).
+- A stable, shareable permission model for deep links (auth is handled separately; see [docs/auth.md](auth.md)).
 - Creating a new routing framework; the WebUI remains a simple SPA without client-side routing libraries.
 - Reworking Q4H semantics or the suspension/resumption rules (this doc only covers navigation + UX).
 

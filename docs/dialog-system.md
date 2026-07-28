@@ -12,14 +12,14 @@ This document provides detailed implementation specifications for the Dominds di
 4. [Core Mechanisms](#core-mechanisms)
 5. [Q4H: Questions for Human](#q4h-questions-for-human)
 6. [Dialog Relationship & SideDialogs](#dialog-relationship--sidedialogs)
-7. [Mental Clarity Tools](#mental-clarity-tools)
+7. [Mental Clarity Tools](#dialog-control-tools)
 8. [Reminder Management](#reminder-management)
-9. [SideDialog Registry](#sideDialog-registry)
+9. [SideDialog Registry](#sidedialog-registry)
 10. [Technical Architecture](#technical-architecture)
 11. [Dialog Management](#dialog-management)
 12. [Memory Management](#memory-management)
 13. [System Integration](#system-integration)
-14. [State Diagrams](#state-diagrams)
+14. [State Diagrams](#dialog-state-machine)
 15. [Complete Flow Reference](#complete-flow-reference)
 
 ---
@@ -386,7 +386,7 @@ Result (second call):
 - Cannot continue or change the earlier task like Type B can
 - Another `tellaskSessionless` is another independent task; it does not update or stop the earlier Type C task
 - If later correction, scope change, or earlier wrap-up may be needed, choose Type B `tellask` with `sessionSlug` from the start
-- The sideDialog itself is fully capable **except** for `freshBootsReasoning({ tellaskContent: "..." })` FBR, which is tool-less and tellask-free (see `fbr.md`).
+- The sideDialog itself is fully capable **except** for `freshBootsReasoning({ tellaskContent: "..." })` FBR, which is tool-less and tellask-free (see [fbr.md](fbr.md)).
 - Only difference from TYPE B: no registry lookup/resume capability
 - Used for one-off, independent tasks
 
