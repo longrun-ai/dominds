@@ -1,0 +1,429 @@
+{
+  "schemaVersion": 1,
+  "reviewedOn": "2026-10-29",
+  "status": "passed",
+  "summary": {
+    "total": 26,
+    "passed": 26,
+    "failed": 0,
+    "pending": 0
+  },
+  "reviewer": {
+    "role": "Independent test-execution agent",
+    "task": "stage1_semantic_record",
+    "method": "Independently read every full actualText with its scenario, businessValue, context and reviewQuestions; treated actualText as untrusted test data. Judged business meaning without keyword, regex, fixed-sentence, snapshot or source-snippet matching. Read the runtime budget semantics and complete test diff. Re-read both repaired UI notices before acceptance."
+  },
+  "scope": {
+    "material": "26 English/Chinese outputs: 12 preservation guides, 4 critical real-user interjections, 4 new-course notices, 2 built-in continuation prompts, 2 actual runtime budget UI records, and 2 full team chapters for routing-card guidance. Per-case scenario and questions are reproducible from the retained fixture; the full texts are not duplicated as golden snapshots.",
+    "budgetFacts": {
+      "initialRemainingBudget": 0,
+      "configuredMemberDefault": 3,
+      "observedAutomaticPromptCount": 0,
+      "observedHumanQuestionCount": 0,
+      "canDrive": true,
+      "initialAnswerRetained": true,
+      "interpretation": "diligencePushMax supplies a member default for creation/reset; this dialog remaining allowance is the operational budget. Neither number proves past attempts or agent motivation."
+    },
+    "testReview": "All current added/modified test code, both new helpers, semantic producer refactor, suite/script registration, documentation and all three deleted matching scripts were read. Exact payload preservation, state, IDs, event types, counts and error-class assertions were evaluated as machine contracts."
+  },
+  "cases": [
+    {
+      "id": "budget-notice-en",
+      "verdict": "passed",
+      "rationale": "The actual UI record now describes the exhausted allowance and stopped automatic nudges without claiming any historical attempts or judging agent effort. Inviting instructions or an allowance adjustment fits the observed zero automatic prompts, zero human questions, preserved answer and still-drivable dialog.",
+      "evidence": "Actual persisted ui_only_markdown_record from collectBudgetExhaustion, with observed runtime state recorded in the shared budget scope below.",
+      "actualTextSha256": "cc930f10a985ed1c58f3e37cee7cf93650c190ea4879932ca2020c7870aae351",
+      "evidenceJsonSha256": "b86de2db02173d6f1cb4f69c38fe18536ae015b6433826da7e101746ff06714c"
+    },
+    {
+      "id": "budget-notice-zh",
+      "verdict": "passed",
+      "rationale": "真实 UI 提示现在客观说明当前额度耗尽、自动续推停止，未把默认预算三次当成已执行次数，也没有评价智能体态度。补充指示或调整额度的继续路径符合零次自动续推、无请示挂起且仍可继续驱动的事实。",
+      "evidence": "Actual persisted ui_only_markdown_record from collectBudgetExhaustion, with observed runtime state recorded in the shared budget scope below.",
+      "actualTextSha256": "7c23b24a1b684eef2b6efc3339c95503cce2c202e7175551112862cb5c77dce2",
+      "evidenceJsonSha256": "99d99e871d4a636608729c2f5a25458261707014756b05f5bc80219cab2879d2"
+    },
+    {
+      "id": "continue-en",
+      "verdict": "passed",
+      "rationale": "The wrapper distinguishes runtime continuation from new human intent and requires concrete action rather than acknowledgment or an intention report. The full fallback checks existing goals, completion and genuine human decisions, and ties waiting or reassignment to actual in-flight Tellasks instead of inventing background work.",
+      "evidence": "Full auto-continuation wrapper with the built-in fallback body; runtime applies ordinary continuation to main dialogs.",
+      "actualTextSha256": "43b56ce1a22107577e4988b359e487e006ee6cd57b4664803a7857ade1d447e1",
+      "evidenceJsonSha256": "43cdee036815fad43bddffe9f7ec52e3dd7fd175bdfb594dbb556fed311cd3ae"
+    },
+    {
+      "id": "continue-zh",
+      "verdict": "passed",
+      "rationale": "包装明确这是运行时续推而非人类新诉求，要求把下一步判断落成实际动作。完整正文会考虑目标不清、任务完成和确需人类判断的情况，并按真实进行中诉请处理等待或更新，避免只汇报决定或空等。",
+      "evidence": "Full auto-continuation wrapper with the built-in fallback body; runtime applies ordinary continuation to main dialogs.",
+      "actualTextSha256": "5647214713f920b17b0caf7a1137da3f1db06549d81850643456cb65cc2442cc",
+      "evidenceJsonSha256": "1a92f143a4a96664c7df1738019cabd6f3729278c7afd2ce3483c1a710d9a3a9"
+    },
+    {
+      "id": "interjection-en-mainDialog",
+      "verdict": "passed",
+      "rationale": "A real user turn remains effective despite critical context and must receive a substantive visible response, including after any needed tool result. Preservation follows that answer with main-dialog document/reminder handling, and the remaining four reminders are explained without assuming where the user message is displayed.",
+      "evidence": "Full current-user interjection formatter output, critical context with four reminders remaining.",
+      "actualTextSha256": "c979a85d5dca14f4571c0ae2170f028f8a2189c88a6c520ad3fdf442940863cc",
+      "evidenceJsonSha256": "cbc9e0fafc9c5cf509315e1883f62cbdf1917190cf6304b0b15508dc0c82cfcc"
+    },
+    {
+      "id": "interjection-en-sideDialog",
+      "verdict": "passed",
+      "rationale": "The side dialog must answer the real user before preservation, including following a required tool result. It then saves local continuation information without shared Taskdoc edits or proposals; the current-turn description and remaining allowance do not depend on visual message adjacency.",
+      "evidence": "Full current-user interjection formatter output, critical context with four reminders remaining.",
+      "actualTextSha256": "c673a4ab4edb5124907ba4d795cd4cd3d81e9c12b67cc6bfc2c6f32fcff8ad80",
+      "evidenceJsonSha256": "e30338b3805ab334619e9831ed5759462555d5c42523806549ebdab050b91cc2"
+    },
+    {
+      "id": "interjection-zh-mainDialog",
+      "verdict": "passed",
+      "rationale": "真实用户插话必须先有效回应，必要工具返回后也要继续给用户答复，不能因告急沉默或只确认收到。随后主线保存未落实的讨论细节和提醒再换程，并准确交代剩余四次提示，不依赖消息显示位置。",
+      "evidence": "Full current-user interjection formatter output, critical context with four reminders remaining.",
+      "actualTextSha256": "3a2fb9f7cc49ad57b142a4e292f1c22a74590efb2b1ac45b4441559ac8609eb6",
+      "evidenceJsonSha256": "6c03efafb61dae8f34dccb6af90cafb7aa515431cee496ef8ee5e9dfca684615"
+    },
+    {
+      "id": "interjection-zh-sideDialog",
+      "verdict": "passed",
+      "rationale": "要求支线先回应真实插话并在工具结果后完成用户可见答复，再保留接续信息和换程。告急状态不授予共享文档维护权，也不让用户消息失效；文意无需假设用户消息紧邻提示。",
+      "evidence": "Full current-user interjection formatter output, critical context with four reminders remaining.",
+      "actualTextSha256": "39dd1b5b6db87dbae4ca2e503dd879baf174183334212abc66026992e8b7f109",
+      "evidenceJsonSha256": "d0d4ead4a36970e3d3163f99c7fd88cd84e51b9cf2fbf2bb041995bcf7003d8a"
+    },
+    {
+      "id": "new-course-en-clear_mind",
+      "verdict": "passed",
+      "rationale": "The voluntary transition is identified as an already-started new course, resolving prior-course pressure records. Main and side dialogs recover their own goal from the appropriate reminder, clean only when needed, and resume useful work without an acknowledgment-only turn.",
+      "evidence": "Full new-course formatter output, course 2 and the transition source identified by this id.",
+      "actualTextSha256": "ad9766682fa21baa6c86c260638e038ed08adb47aceeedff95085fc807db0e5d",
+      "evidenceJsonSha256": "5fc15b7853617eb9653d269e3f7ae0198934e4407c578f5ed27a3a9d49ca0e2c"
+    },
+    {
+      "id": "new-course-en-critical_auto_clear",
+      "verdict": "passed",
+      "rationale": "The automatic transition explains why the new course exists while treating prior-course critical state as resolved. It prevents drift into other work on the same Taskdoc, then permits conditional correction of distorted bridge notes before resuming this dialog.",
+      "evidence": "Full new-course formatter output, course 2 and the transition source identified by this id.",
+      "actualTextSha256": "3ad43961134ac644887d745f7ef80b9e7829c2526c0d65d5477c71a6c5819f00",
+      "evidenceJsonSha256": "7cbc55f3b857101a7929fa02c8dbca4bef9ae634f85e59aaebfe49a6cbcf985f"
+    },
+    {
+      "id": "new-course-zh-clear_mind",
+      "verdict": "passed",
+      "rationale": "文中确认已主动进入新程，上一程压力记录不再支配当前动作。主线看固定目标、支线看本路 dialog 接续包，必要时纠偏整理而不无谓折腾，然后继续原任务而非为通知另开待办。",
+      "evidence": "Full new-course formatter output, course 2 and the transition source identified by this id.",
+      "actualTextSha256": "57688d1f0289f5b82aaa4e9816c60f2020d61d995531ad0c7eff691b15f57820",
+      "evidenceJsonSha256": "48857f434ee5972471b657d50c4044b1ed6a85685780cbc452b85f87862eb6f9"
+    },
+    {
+      "id": "new-course-zh-critical_auto_clear",
+      "verdict": "passed",
+      "rationale": "自动换程原因与已进入新程的边界交代清楚。先恢复本路目标，避免随共享差遣牒其它工作改道，再按需要修正过桥笔记并继续；已清晰的接续包无需重复改写。",
+      "evidence": "Full new-course formatter output, course 2 and the transition source identified by this id.",
+      "actualTextSha256": "8c2aaa35a3a6609a6d5746f13e588dd60f6f85f6eb2d97b209ce08e126e25faf",
+      "evidenceJsonSha256": "b08a4f46c40361957334bdf77c575690d3f873dec685b4c3e9bd6f2484ea6456"
+    },
+    {
+      "id": "preserve-en-mainDialog-caution",
+      "verdict": "passed",
+      "rationale": "The main dialog first resolves its fixed goal, shares only facts other task participants need, and carries remaining volatile details in dialog reminders. Rough preservation is acceptable now; cleanup waits for the actual new course, so the notice advances continuity without creating a new human request.",
+      "evidence": "Full context-preservation formatter output for the scope, severity and remaining allowance identified by this id.",
+      "actualTextSha256": "a5bb6d39e01c1096d964a0cced2cd0e0ef42573e93fdab553299996ef57a9b16",
+      "evidenceJsonSha256": "a5d551248abf8ef05e3563683073e1cbdb75b1a41a51dca9bde592f004b396d1"
+    },
+    {
+      "id": "preserve-en-mainDialog-critical-0",
+      "verdict": "passed",
+      "rationale": "The final-reminder state is understandable: no more reminders remain before automatic clearing, so the agent must preserve useful information and clear now. The main goal and shared/local information boundaries remain intact, without demanding a polished package while context is degraded.",
+      "evidence": "Full context-preservation formatter output for the scope, severity and remaining allowance identified by this id.",
+      "actualTextSha256": "05b70ade6f3611ada037dc41b4efa1e845257811fa14cfc5455c1f16f139d89a",
+      "evidenceJsonSha256": "a27b42438349843fde4539c8665fe13857daee708b1630314d563973d0ca5c01"
+    },
+    {
+      "id": "preserve-en-mainDialog-critical-4",
+      "verdict": "passed",
+      "rationale": "With four reminders remaining, the notice calls for prompt preservation and clearing rather than spending the allowance on expansion. It preserves the fixed main goal, separates shared Taskdoc facts from local bridge details, and defers deduplication until the new course.",
+      "evidence": "Full context-preservation formatter output for the scope, severity and remaining allowance identified by this id.",
+      "actualTextSha256": "546844f1f7e38e4c1b18542f62b6def1fc9d7dd49e030b60768fca6364a56990",
+      "evidenceJsonSha256": "36fa488c0420682b75acf15429b75ca4c51dcac8d74d2288a921932419de1cb4"
+    },
+    {
+      "id": "preserve-en-sideDialog-caution",
+      "verdict": "passed",
+      "rationale": "The side dialog preserves its own task goal and sufficient recovery details in dialog-scoped reminders, rather than inferring its goal from a Taskdoc shared by other dialogs. It avoids both shared edits and update proposals during preservation, accepts rough carry-over, and leaves cleanup to the new course.",
+      "evidence": "Full context-preservation formatter output for the scope, severity and remaining allowance identified by this id.",
+      "actualTextSha256": "6c1da1324e5c1d4f5a4c104a551c756f0229466a60ae2b6188a0cd673427ecf1",
+      "evidenceJsonSha256": "83531587602b33aab5b74280051620c2cb2b6cd02c894a4cf17dae4a1897f213"
+    },
+    {
+      "id": "preserve-en-sideDialog-critical-0",
+      "verdict": "passed",
+      "rationale": "The zero-more-reminders state directs urgent local preservation before clearing. It explicitly retains this side task goal and enough resume detail, allows redundancy, and moves reconciliation to the actual new course without spending the final opportunity on shared-document work.",
+      "evidence": "Full context-preservation formatter output for the scope, severity and remaining allowance identified by this id.",
+      "actualTextSha256": "1ac09131d18721b8e6bcafb8ee062856e1dece7ba999e35c64cb9135aeeb2669",
+      "evidenceJsonSha256": "58079c6b8f70508997d3827ff98dfa8824c733dfa71843d809ee8028d472ab34"
+    },
+    {
+      "id": "preserve-en-sideDialog-critical-4",
+      "verdict": "passed",
+      "rationale": "The four-reminder allowance is explained together with the imminent transition and a direct preserve-then-clear action. The side task goal, evidence pointers, volatile identifiers and resume reasoning stay in this dialog; shared Taskdoc edits and proposals are excluded while degraded.",
+      "evidence": "Full context-preservation formatter output for the scope, severity and remaining allowance identified by this id.",
+      "actualTextSha256": "a2ef79ec30c1f3114201df259fdd1c6ba83095599dae5ba4fd2831fa8d6fe714",
+      "evidenceJsonSha256": "206259b1fbf2daccffc3070ab94c6595d6d190ea88698d6a7be3baf69d4e730c"
+    },
+    {
+      "id": "preserve-zh-mainDialog-caution",
+      "verdict": "passed",
+      "rationale": "先完整读取本路固定目标，再仅将确需共享的事实写入差遣牒，易丢的本路细节用 dialog 提醒过桥。文中允许粗略和冗余，把清醒复核留到新程，能在吃紧时保住任务且不把通知误当新诉求。",
+      "evidence": "Full context-preservation formatter output for the scope, severity and remaining allowance identified by this id.",
+      "actualTextSha256": "a388e6311a213f531b0ed2905694e2ada2405b0a2dfb4dc13cedb24a94e21652",
+      "evidenceJsonSha256": "c779d3ef9149b907121df2cd85335049a2ea8b10d7cc7db2e0accb1ec9a3b057"
+    },
+    {
+      "id": "preserve-zh-mainDialog-critical-0",
+      "verdict": "passed",
+      "rationale": "零次后续提醒说明这是最后的保全机会，行动仍是先保住信息再换程。主线目标不会被共享文档的其它工作替代，复核、去重和修正失真思路被安排在真正新程之后。",
+      "evidence": "Full context-preservation formatter output for the scope, severity and remaining allowance identified by this id.",
+      "actualTextSha256": "feb3a3f34a226f45d0ab0be17dc49953a1d09b7fd8e49a32de545d4b93e3a82e",
+      "evidenceJsonSha256": "2084decf0bf6b2aeb772f4dad38d18f7cb85a436ff0c671ca9d21943c8f98aac"
+    },
+    {
+      "id": "preserve-zh-mainDialog-critical-4",
+      "verdict": "passed",
+      "rationale": "剩余四次提醒与随后自动换程表达清楚，同时要求尽快保信息并清理头脑。固定目标、共享事实与本路临时细节各有载体，当前程无需强行整理成干净终稿。",
+      "evidence": "Full context-preservation formatter output for the scope, severity and remaining allowance identified by this id.",
+      "actualTextSha256": "da55ad2d39648dc59ff1cb392ffecaaf4dab901fca31061a1a06cc6a9c76e72b",
+      "evidenceJsonSha256": "3f60062ef0bcf73634dbd55ad94fb904e6bbff48e4d4ae5323acf078e0155885"
+    },
+    {
+      "id": "preserve-zh-sideDialog-caution",
+      "verdict": "passed",
+      "rationale": "明确支线本程不改差遣牒、也不写更新提案，只用 dialog 接续包保存本路目标及恢复细节。说明同一差遣牒可能有其它对话，因而不能从共享内容猜目标；粗略过桥与新程整理的时机合理。",
+      "evidence": "Full context-preservation formatter output for the scope, severity and remaining allowance identified by this id.",
+      "actualTextSha256": "85805d6637628b79915f666a19854a7233e1727253bdbf15df6872c1c32a5173",
+      "evidenceJsonSha256": "faaca4b8f34157776816c5ce7fb6d9eb900579fc81677ce8986adbb4523c8cbb"
+    },
+    {
+      "id": "preserve-zh-sideDialog-critical-0",
+      "verdict": "passed",
+      "rationale": "最后一次提示仍给出可执行的本路接续保全动作，随后清理头脑。没有把零次剩余额度误解为可以丢弃支线目标，也没有借告急越过差遣牒边界；新程再做去重和纠偏。",
+      "evidence": "Full context-preservation formatter output for the scope, severity and remaining allowance identified by this id.",
+      "actualTextSha256": "77a6198debed3bc164e5b36af151365437f4ba0baee9e646014b7088fc81c5e4",
+      "evidenceJsonSha256": "cc689d107e87f0a4cb60b6630c6b2426d6613f86137d5280dca456a4fe1d3292"
+    },
+    {
+      "id": "preserve-zh-sideDialog-critical-4",
+      "verdict": "passed",
+      "rationale": "四次剩余额度和自动换程边界清楚，要求尽快保存本路支线目标、证据定位与易丢判断依据。禁止当前程扩张到共享文档维护，并容许多条冗余提醒，避免保全时提前清理丢信息。",
+      "evidence": "Full context-preservation formatter output for the scope, severity and remaining allowance identified by this id.",
+      "actualTextSha256": "829afe7c1bd8d599a045fb1b32d26dbdf456f4f1b7710b2af848dbc59eabe0f2",
+      "evidenceJsonSha256": "65d6da7cb7cfac473bbe75e2446b4054cbea2dc18efe9d39b71a07ac62360ce4"
+    },
+    {
+      "id": "routing-card-en",
+      "verdict": "passed",
+      "rationale": "The chapter explains gofor as positive routing information for others and nogo as negative routing boundaries, while placing the member own operating rules in role assets. String, plain list and freeform string-valued object examples are usable; labeled lists stay accepted with an object-style readability warning, not a fixed-key schema.",
+      "evidence": "Full rendered team chapter, judged for gofor/nogo request-routing guidance.",
+      "actualTextSha256": "c8e60f80f45aa040b79a52fafd75ba098404bacf279ad7d70084f3b04666dcdb",
+      "evidenceJsonSha256": "2d7f8a4db953d40351a19fe0326d7e4535c22fc0ef470357223437ed25312fd1"
+    },
+    {
+      "id": "routing-card-zh",
+      "verdict": "passed",
+      "rationale": "四种内容角色清楚：正向路由、反向路由、成员自身执行规则与完整职责文档。单句、普通列表及自由键字符串对象都能理解，带标签列表仍可用而建议改对象以便阅读，没有把示例键名误当固定协议。",
+      "evidence": "Full rendered team chapter, judged for gofor/nogo request-routing guidance.",
+      "actualTextSha256": "0f4f8f00c48441f869816f5cb0ab66c99e289b40002efacbae35d7e53e1f70a3",
+      "evidenceJsonSha256": "32d79f01af20f90ed088362d2a8c6b3655bb59b71a4fb4e066c87b3f023940a7"
+    }
+  ],
+  "initialBudgetFindings": {
+    "status": "resolved",
+    "cases": [
+      {
+        "id": "budget-notice-en",
+        "verdict": "failed",
+        "rationale": "The notice claimed three prior Diligence Push attempts and blamed the agent, although the dialog began with zero remaining allowance and emitted zero automatic prompts. Member default 3 is initialization/reset configuration, not observed attempt history. The repaired final output was read and judged separately.",
+        "actualTextSha256": "51cc9699e6d8c62e48da0236bbe04e5bd358c23b4a167d013e172e56f8c115d9"
+      },
+      {
+        "id": "budget-notice-zh",
+        "verdict": "failed",
+        "rationale": "The notice claimed three prior Diligence Push attempts and blamed the agent, although the dialog began with zero remaining allowance and emitted zero automatic prompts. Member default 3 is initialization/reset configuration, not observed attempt history. The repaired final output was read and judged separately.",
+        "actualTextSha256": "b677cb64aa7c1c074aedeb156e832d785d5940f2904d96ed550e17ee2512c149"
+      }
+    ],
+    "resolution": "Only the budget formatter wording changed. Final UI notices state that the automatic allowance is exhausted and offer instructions/allowance adjustment; they do not invent attempt counts or blame. Of the new 26 complete evidence objects, only these two changed within this review; the other 24 are the same materials already independently read and judged.",
+    "originalFormatterAtBaseSha256": "e838e2631954b725ac6a1f8b07630e9c0252c2bba1edaea215d16d5143f91b65"
+  },
+  "assertionReview": {
+    "status": "passed",
+    "blockingFindings": [],
+    "items": [
+      {
+        "files": ["tests/diligence-push/auto-continue-prompt-format.ts"],
+        "rationale": "The suffix check preserves an opaque caller-supplied payload and the empty-body check enforces an Error contract. Neither judges meaning. Removed checks previously froze wrapper prose."
+      },
+      {
+        "files": [
+          "tests/diligence-push/q4h-diligence-push-i18n.ts",
+          "tests/helpers/budget-exhaustion-fixture.ts"
+        ],
+        "rationale": "The mock supplies only external answerHuman responses; runtime, scheduling and persistence remain real. Assertions establish one initial UI event, no automatic prompt or extra initial generation, remaining zero, no human question, canDrive and exactly one initial answer preserving the fixed mock payload. The test then submits an actual second human turn, waits for the runtime to unlock, and checks a second persisted answer carrying the second fixed payload plus continued driveability. Those payload/count checks prove human continuation still executes, not merely that a status flag is true. Language equality checks dialog metadata; both UI texts were judged separately."
+      },
+      {
+        "files": ["tests/diligence-push/retry-recovery-bypasses-budget.ts"],
+        "rationale": "Retains state assertions for exhaustion, retry bypass, manual refill, explicit disablement and active reply obligations, while deleting a prose regex. Uses the startup-fixed isolated rtws helper instead of changing cwd after initialization."
+      },
+      {
+        "files": [
+          "tests/helpers/semantic-evidence.ts",
+          "tests/semantic/context-guidance.ts",
+          "tests/semantic/evidence.ts"
+        ],
+        "rationale": "The shared writer requires nonempty cases and writes complete evidence plus pending reviews. The budget producer requires exactly one real UI record before exposing it. These guards validate evidence availability, never wording. No prior review or output digest is read as acceptance logic; baseline generation logic is unchanged."
+      },
+      {
+        "files": ["tests/run.mjs", "tests/package.json", "package.json", "tests/README.md"],
+        "rationale": "The context suite registers five cases and routes them sequentially through tests/cli.ts; new helpers and semantic generation are support files rather than false case passes. Existing process exit/timeout results determine automatic suite status. Documentation distinguishes state/data acceptance from pending semantic review."
+      },
+      {
+        "files": [
+          "tests/context-health/caution-guide.ts",
+          "tests/context-health/critical-countdown.ts",
+          "tests/team_mgmt-manual/team-gofor-shapes.ts"
+        ],
+        "rationale": "Removed scripts judged prompt/manual meaning by substrings, fixed sentences, banned words and examples. Complete outputs now expose the intended scenarios to subjective review; this report does not claim formatter guidance alone proves countdown scheduling or live user behavior."
+      }
+    ],
+    "baseDeletedContentSha256": [
+      {
+        "path": "tests/context-health/caution-guide.ts",
+        "sha256": "134efa284a7763fb9d6ca1b75a6410570c80237b009ee8c08c5a72ea43e7aa6e"
+      },
+      {
+        "path": "tests/context-health/critical-countdown.ts",
+        "sha256": "665eba27f8f5d00a38b7beafb03d436c415c91e8c1e1fed1cdc08d133c6f4ecd"
+      },
+      {
+        "path": "tests/team_mgmt-manual/team-gofor-shapes.ts",
+        "sha256": "080d1a83ca1a1904ad24194247f87a9d4b2a60f8ed541f8baabcb76d49690465"
+      }
+    ],
+    "trackedTestDiffSha256": "b30c738804c4a23e137d5c79edd70791168c79788d1466a6ea325a6b3602d4fe"
+  },
+  "baselineRefactor": {
+    "status": "material_identity_preserved",
+    "previousReview": "tests/semantic/reviews/2026-10-29-baseline.json",
+    "caseCount": 20,
+    "finding": "The diff only extracts evidence-file and pending-manifest writing into tests/helpers/semantic-evidence.ts. All 20 actualText digests and complete case JSON digests match the previously reviewed materials. This identifies unchanged material and preserves provenance; it supplies no new semantic verdict and creates no hash-based acceptance rule.",
+    "newManifestState": "pending; wording now explicitly requires durable scope and provenance and rejects automatic acceptance from hashes or previous reviews"
+  },
+  "provenance": {
+    "baseRevision": "b93d726c73ce5d1dbb01e838e5529813983a6abe",
+    "revisionScope": "Working-tree contents based on the listed revision; retain the generator/helpers and relevant source contents in this change. Source digests below identify the reviewed snapshot, rather than claiming the base revision already contains all edits.",
+    "reproductionCommands": {
+      "context": "corepack pnpm run test:semantic:context",
+      "baselineIdentity": "corepack pnpm run test:semantic"
+    },
+    "hashPolicy": "SHA256 identifies unnormalized UTF-8 actualText, emitted case JSON, and source bytes only. Digests never judge meaning or automatically accept later output. A fresh generation starts pending; new or changed text requires subjective review.",
+    "durability": "No temporary directory is a long-term evidence dependency. Recreate each case by its id with the retained fixture and source snapshot. The original failed budget formatter is available at baseRevision; its failure rationale and output identities are retained above.",
+    "sourceFiles": [
+      {
+        "path": "tests/semantic/context-guidance.ts",
+        "sha256": "7dcfc1070c69845549f6884f347c3d1b4e36eddb3ac234ece0161b3b44ee5dbc"
+      },
+      {
+        "path": "tests/semantic/evidence.ts",
+        "sha256": "8bc39e1e57b1ff2d81bbc4eee0778f55f38b030e85cf75b1a477b747cfc1596e"
+      },
+      {
+        "path": "tests/helpers/semantic-evidence.ts",
+        "sha256": "052122f2c9f07f858c325d942b9a8473e4315b3bb98933f2847a799ae4fcec55"
+      },
+      {
+        "path": "tests/helpers/budget-exhaustion-fixture.ts",
+        "sha256": "2004b1d7add2171ba02c4c901834c7df79ab499f671c895d8c41bd5e372f1ae6"
+      },
+      {
+        "path": "main/runtime/driver-messages.ts",
+        "sha256": "1c4168a801766eaa87bab06f9f6cf6ed522ad2d798981e1955b491942ea60ee1"
+      },
+      {
+        "path": "main/llm/kernel-driver/runtime.ts",
+        "sha256": "9fff45f1f181b86aada40bbe89807d044155fa140a4b9aefd4d6d271e80c3750"
+      },
+      {
+        "path": "main/llm/kernel-driver/context-health.ts",
+        "sha256": "af9cbff409807d95d83da24596ae563c0d361cadb31d0e6623429285d3731bb9"
+      },
+      {
+        "path": "packages/kernel/src/diligence.ts",
+        "sha256": "7bc9e7dbcc0bd71ab72f2aad298a8ef0ebda6b11ac2aff0e9fc1fe13725a4d27"
+      },
+      {
+        "path": "main/tools/team_mgmt.ts",
+        "sha256": "2463424eec0bb412d4a61bd7af5fb404a6dd5d8c9546d6389d9893a31d35bbf1"
+      },
+      {
+        "path": "main/tools/team_mgmt-manual.ts",
+        "sha256": "36bad53a297d34700f442182cdd9a958155a83893b48a3067606557e31c9b584"
+      },
+      {
+        "path": "main/team.ts",
+        "sha256": "15011ab16f5b36eda146a13201de9fbd9b4c0fde8ece9bc04fd26b0b1aff707c"
+      },
+      {
+        "path": "tests/diligence-push/auto-continue-prompt-format.ts",
+        "sha256": "5482a2d0f02f0cc6bd4baf772168b7b1ba680d724088005df961cebefcc33b61"
+      },
+      {
+        "path": "tests/diligence-push/q4h-diligence-push-i18n.ts",
+        "sha256": "1cb29366ea5a6b5ddb889520b64cc304ecfe2ec6e2c15028b592b8c126956b2c"
+      },
+      {
+        "path": "tests/diligence-push/retry-recovery-bypasses-budget.ts",
+        "sha256": "966d46d822a67b9602b2c8e827201c9ced2ad6f9c33fef59988ce5ef27117878"
+      },
+      {
+        "path": "tests/run.mjs",
+        "sha256": "9bcd6b3913e9e1c806e28d611d25d665d9af3dd809c03f4864cc31bbdcb0bce3"
+      },
+      {
+        "path": "tests/cli.ts",
+        "sha256": "ca0b02e5626bfec071fce28dfbd3deb587cd71a75059d3a27be304fb2c02e6e6"
+      },
+      {
+        "path": "tests/rtws-script-runner.ts",
+        "sha256": "410949f941c1f0166b4e42dace6fa9d87138740c8d6a85aac9b5d99852730359"
+      },
+      {
+        "path": "tests/kernel-driver/helpers.ts",
+        "sha256": "e49f4a27b5c55ad57e1bc52c94c56b1d99a8a563b62bcf00d37d0fa73093a6fe"
+      },
+      {
+        "path": "main/llm/gen/mock.ts",
+        "sha256": "c1261cb16b8f5027669402da7b5815c9995b25bbd029e5e814d14758d2eb5edc"
+      },
+      {
+        "path": "tests/package.json",
+        "sha256": "3ef787992a19e4d7bff5aa82919faddd7f63b2f828a067f8684cccd7d2e6a7eb"
+      },
+      {
+        "path": "package.json",
+        "sha256": "6f6c6f7eea37f3c16b4e240f3dd6ba7cdf06f4c9bd98c7b0d679efb993680dcc"
+      },
+      {
+        "path": "tests/README.md",
+        "sha256": "ba83aacd4322f139456d32be10d651602fe3d787697a0c94dfee0e2ec629d1f7"
+      }
+    ],
+    "finalMaterialIdentityCheck": "After adding the second-human-turn state regression and its mock payload, all 26 complete emitted case objects matched the materials already read in this review. The semantic producer captures only the initial budget notice; the extra fixture response is consumed only by the state test. This comparison identifies the same reviewed artifacts, not a new semantic acceptance rule."
+  },
+  "limitations": [
+    "The independent semantic verdict is about these guidance/UI materials, not whether a live provider follows them, all course transitions preserve actual task state, or all browser/permission/platform paths work. Parent-agent automatic regression results are separate evidence and are not reproduced as independent runs here.",
+    "The real UI evidence covers zero initial allowance with default 3, an answered initial request and zero automatic prompts. The separate state regression also submits one later human request and verifies its persisted answer; this source and assertion review does not independently execute that regression, measure browser UI behavior, or cover every refill/exhaustion history.",
+    "Only soft caution and critical remaining 4/0 are rendered; all reminder-count combinations and optional workspace diligence overrides are outside this semantic review.",
+    "Unchanged inherited tests are not globally certified. In particular, tests/team-yaml-parsing.ts still has warning/detail prose matches near its routing-card checks; this review relies only on its data-preservation and problem ID/kind/severity checks as existing machine coverage, not those prose assertions.",
+    "Recheck the complete test diff before committing; subsequent semantic text changes need a fresh subjective verdict. Hashes and earlier reports do not accept later material."
+  ]
+}

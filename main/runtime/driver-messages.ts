@@ -934,17 +934,17 @@ ${content}`;
 
 export function formatQ4HDiligencePushBudgetExhausted(
   language: LanguageCode,
-  args: { maxInjectCount: number },
+  _args: { maxInjectCount: number },
 ): string {
-  const maxInjectCount = args.maxInjectCount;
+  // The supplied member default is not a historical attempt count, especially after a refill.
   if (language === 'zh') {
     return [
-      `${formatSystemNoticePrefix(language)} 已经鞭策了 ${maxInjectCount} 次，智能体仍不听劝。`,
+      `${formatSystemNoticePrefix(language)} 自动续推额度已用尽，已停止自动续推。如需继续推进，可补充指示或调整本对话的续推额度。`,
     ].join('\n');
   }
 
   return [
-    `${formatSystemNoticePrefix(language)} After ${maxInjectCount} Diligence Push attempts, the agent is still not moved.`,
+    `${formatSystemNoticePrefix(language)} The automatic continuation allowance is exhausted. Automatic nudges have stopped; add instructions or adjust this dialog's allowance if more work is needed.`,
   ].join('\n');
 }
 

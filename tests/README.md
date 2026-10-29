@@ -9,16 +9,20 @@ From the repository root:
 ```bash
 pnpm test
 pnpm run test:kernel
+pnpm run test:context
 pnpm run test:inventory
 pnpm run test:runner
 pnpm run test:semantic
+pnpm run test:semantic:context
 ```
 
 - `test`: a small local smoke suite; not full product, browser, packaging, or provider coverage.
 - `test:kernel`: discovers TypeScript cases under `kernel-driver/`, excluding its helper. Each runs in an isolated rtws. Failures do not prevent subsequent cases. `kernel-driver:integration` delegates here.
+- `test:context`: runs five isolated state/data regressions for preservation cadence, user interjections, continuation-body fidelity, retry budgets, and exhaustion notices. It does not judge wording.
 - `test:inventory`: sources, support files, discovered suites, outside-suite candidates, and candidates without package scripts. These counts are not behavior coverage. Unknown candidates can be live probes or external integrations; inspect prerequisites before executing them.
 - `test:runner`: verifies failure continuation, timeouts, evidence retention, cleanup, and discovery.
 - `test:semantic`: emits actual natural-language output, context, business value, and review questions. Evidence is **pending subjective review by a test-execution agent**, not automatically passed.
+- `test:semantic:context`: emits preservation, interjection, new-course, continuation, and routing guidance. Its budget notices come from real isolated runtime executions with observed state, not a synthetic expected sentence. All cases remain pending subjective review.
 
 Place new shared helper modules in `tests/helpers/`; the remaining files in the discovered kernel directory are executable cases, not helper-only modules that can exit without assertions.
 

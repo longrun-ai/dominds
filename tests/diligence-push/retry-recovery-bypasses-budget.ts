@@ -1,23 +1,10 @@
 import assert from 'node:assert/strict';
-import fs from 'node:fs/promises';
-import os from 'node:os';
-import path from 'node:path';
 
 import { DialogID, MainDialog } from '../../main/dialog';
 import { maybePrepareDiligenceAutoContinuePrompt } from '../../main/llm/kernel-driver/runtime';
 import { DialogPersistence, DiskFileDialogStore } from '../../main/persistence';
 
-async function withTempRtws(fn: () => Promise<void>): Promise<void> {
-  const previousCwd = process.cwd();
-  const tmpRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'dominds-diligence-retry-budget-'));
-  try {
-    process.chdir(tmpRoot);
-    await fn();
-  } finally {
-    process.chdir(previousCwd);
-    await fs.rm(tmpRoot, { recursive: true, force: true });
-  }
-}
+import { withTempRtws } from '../kernel-driver/helpers';
 
 async function main(): Promise<void> {
   await withTempRtws(async () => {
@@ -49,7 +36,6 @@ async function main(): Promise<void> {
     }
     assert.equal(recovery.nextRemainingBudget, 0);
     assert.equal(recovery.prompt.origin, 'diligence_push');
-    assert.match(recovery.prompt.content, /不是新的用户诉求|not a new user request/u);
 
     dlg.disableDiligencePush = true;
     const disabled = await maybePrepareDiligenceAutoContinuePrompt({

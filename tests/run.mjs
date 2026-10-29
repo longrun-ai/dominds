@@ -20,6 +20,13 @@ const smoke = [
   'webapp/create-dialog-flow-selection.ts',
   'webapp/generation-model-presentation.ts',
 ];
+const context = [
+  'context-health/caution-cadence.ts',
+  'context-health/critical-user-interjection.ts',
+  'diligence-push/auto-continue-prompt-format.ts',
+  'diligence-push/retry-recovery-bypasses-budget.ts',
+  'diligence-push/q4h-diligence-push-i18n.ts',
+];
 
 async function sourceFiles(directory = testsRoot) {
   const entries = await fs.readdir(directory, { withFileTypes: true });
@@ -52,15 +59,18 @@ export async function inventory() {
       'kernel-driver/helpers.ts',
       'reminders/daemon-test-utils.ts',
       'semantic/evidence.ts',
+      'semantic/context-guidance.ts',
     ].includes(file);
   const candidates = files.filter((file) => !support(file));
   const kernel = candidates.filter((file) => file.startsWith('kernel-driver/'));
+  const suites = { smoke, kernel, context };
+  const included = new Set(Object.values(suites).flat());
   return {
     typescriptFiles: files.length,
     supportFiles: files.filter(support),
     candidates: candidates.length,
-    suites: { smoke, kernel },
-    outsideSuites: candidates.filter((file) => !smoke.includes(file) && !kernel.includes(file)),
+    suites,
+    outsideSuites: candidates.filter((file) => !included.has(file)),
     withoutPackageScript: candidates.filter((file) => !registered.has(file)),
     note: 'Discovery and script registration are not measurements of behavior or line coverage. Outside-suite candidates include live probes and external integrations; audit prerequisites before running them.',
   };
@@ -145,8 +155,14 @@ async function main() {
     console.log(JSON.stringify(await inventory(), null, 2));
     return;
   }
-  if (args.length !== 2 || args[0] !== '--suite' || !['smoke', 'kernel'].includes(args[1])) {
-    throw new Error('Usage: node tests/run.mjs --list | --suite smoke | --suite kernel');
+  if (
+    args.length !== 2 ||
+    args[0] !== '--suite' ||
+    !['smoke', 'kernel', 'context'].includes(args[1])
+  ) {
+    throw new Error(
+      'Usage: node tests/run.mjs --list | --suite smoke | --suite kernel | --suite context',
+    );
   }
   const suite = args[1];
   const files = (await inventory()).suites[suite];
@@ -154,9 +170,10 @@ async function main() {
   const tsx = require.resolve('tsx/cli');
   const cases = files.map((file) => ({
     id: file,
-    args: file.startsWith('kernel-driver/')
-      ? [tsx, path.join(testsRoot, 'cli.ts'), '--', file]
-      : [tsx, '--tsconfig', path.join(testsRoot, 'tsconfig.json'), path.join(testsRoot, file)],
+    args:
+      suite === 'kernel' || suite === 'context'
+        ? [tsx, path.join(testsRoot, 'cli.ts'), '--', file]
+        : [tsx, '--tsconfig', path.join(testsRoot, 'tsconfig.json'), path.join(testsRoot, file)],
   }));
   const logDir = await fs.mkdtemp(path.join(os.tmpdir(), `dominds-tests-${suite}-`));
   console.log(`Suite: ${suite}; cases: ${cases.length}; evidence: ${logDir}`);

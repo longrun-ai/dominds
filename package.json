@@ -51,7 +51,9 @@
     "test:kernel": "node tests/run.mjs --suite kernel",
     "test:inventory": "node tests/run.mjs --list",
     "test:runner": "node --test tests/runner.test.mjs",
-    "test:semantic": "node ./scripts/run-pnpm.mjs -C tests run test:semantic"
+    "test:semantic": "node ./scripts/run-pnpm.mjs -C tests run test:semantic",
+    "test:context": "node tests/run.mjs --suite context",
+    "test:semantic:context": "node ./scripts/run-pnpm.mjs -C tests run test:semantic:context"
   },
   "repository": {
     "type": "git",
