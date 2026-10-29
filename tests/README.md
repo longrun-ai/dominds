@@ -1,70 +1,51 @@
-# Dominds Tests
+# Dominds tests
 
-`tests/` is a workspace package (`@dominds/tests`). When you run scripts from this package, `tsx` automatically picks up `tests/tsconfig.json`.
+Tests protect business outcomes: execution and collaboration, recovery, human intent, capability boundaries, and inspectable state. See the [test design and remediation plan](../docs/testing-strategy.md).
 
-## Running Tests
+## Executable entry points
 
-From the `dominds` project root (recommended):
-
-```bash
-pnpm -C tests run tellask:parsing
-```
-
-Or directly from `tests/`:
+From the repository root:
 
 ```bash
-pnpm run tellask:parsing
+pnpm test
+pnpm run test:kernel
+pnpm run test:inventory
+pnpm run test:runner
+pnpm run test:semantic
 ```
 
-General form:
+- `test`: a small local smoke suite; not full product, browser, packaging, or provider coverage.
+- `test:kernel`: discovers TypeScript cases under `kernel-driver/`, excluding its helper. Each runs in an isolated rtws. Failures do not prevent subsequent cases. `kernel-driver:integration` delegates here.
+- `test:inventory`: sources, support files, discovered suites, outside-suite candidates, and candidates without package scripts. These counts are not behavior coverage. Unknown candidates can be live probes or external integrations; inspect prerequisites before executing them.
+- `test:runner`: verifies failure continuation, timeouts, evidence retention, cleanup, and discovery.
+- `test:semantic`: emits actual natural-language output, context, business value, and review questions. Evidence is **pending subjective review by a test-execution agent**, not automatically passed.
+
+Place new shared helper modules in `tests/helpers/`; the remaining files in the discovered kernel directory are executable cases, not helper-only modules that can exit without assertions.
+
+Suites execute sequentially with a 60-second limit per case. Logs and `summary.json` live in the printed evidence directory. Failed and timed-out cases retain temporary state; successful cases clean it. Failures and timeouts make the suite return nonzero. Increasing a timeout is not a fix for a failed business assertion.
+
+## Individual cases and rtws isolation
 
 ```bash
-pnpm -C tests run <script>
+pnpm -C tests run
+pnpm -C tests run auth
+pnpm -C tests run llm-generation-metadata
+pnpm -C tests run webapp-create-dialog-flow-ime
+pnpm -C tests run rtws -- kernel-driver/context-assembly-order.ts
 ```
 
-## Why the tests tsconfig?
+The rtws CLI copies `tests/script-rtws` into an independent temporary directory. Set `DOMINDS_TEST_RTWS_KEEP_TMP=1` to retain single-case evidence. `--shared-rtws` is for debugging and must not run concurrently.
 
-Scripts run with `tests/` as CWD, so `tsx` picks up `tests/tsconfig.json` automatically.
+Scripts resolve repository-internal contracts through `tests/tsconfig.json`. Direct `tsx` invocation from the root needs `--tsconfig tests/tsconfig.json`. Relative imports resolve from the source file; the runtime's rtws is fixed at startup, so changing `process.cwd()` afterward does not relocate an initialized runtime.
 
-If a script takes arguments, pass them after `--`:
+## Acceptance rules, including future tests
 
-```bash
-pnpm -C tests run func-call -- --provider minimaxi.com-coding-plan --model MiniMax-M2
-```
+Literal matching is never a semantic oracle. Do not use keywords, regexes, fixed sentences, snapshots, or source snippets to judge the meaning of prompts, manuals, guidance, or explanations. Delete low-value checks; valuable semantic requirements emit full actual output and context for subjective agent review. Keep the verdict, reasons, and evidence. Unreviewed output stays pending. Exact assertions are for real machine contracts, identifiers, state, counts, and effects, not disguised natural-language judgments.
 
-If you run `tsx` directly from the repo root, pass `--tsconfig tests/tsconfig.json` to pick up the aliases.
+Review added and changed assertions before accepting tests and again before committing. A semantic literal-match assertion blocks acceptance. Do not replace that review with a keyword-based detector. The inherited tests still require the staged audit described in the remediation plan; rediscovery does not certify their design.
 
-Path aliases in `tests/tsconfig.json` (repo-internal contract tests intentionally resolve the workspace source trees directly, while product packages should consume published package surfaces):
+Keep accepted semantic review records under `tests/semantic/reviews/`, including per-case rationale, scope, and evidence/source provenance. Generated text can be recreated from the reviewed revision; hashes only identify that material. These records are review evidence, never golden snapshots or an oracle for accepting future wording. A fresh generation starts pending review even when an older record passed.
 
-```json
-"paths": {
-  "@longrun-ai/kernel": ["../packages/kernel/src/index.ts"],
-  "@longrun-ai/kernel/*": ["../packages/kernel/src/*"],
-  "@longrun-ai/shell": ["../packages/shell/src/index.ts"],
-  "@longrun-ai/shell/*": ["../packages/shell/src/*"]
-}
-```
+## Separate verification scopes
 
-## Available scripts
-
-| Script                            | Runs                                                      |
-| --------------------------------- | --------------------------------------------------------- |
-| auth                              | `auth.ts` (auth key/env/header parsing)                   |
-| mindset-i18n                      | `minds/mindset-i18n.ts` (mindset i18n checks)             |
-| persistence-latest-writeback      | `persistence/latest-writeback.ts`                         |
-| persistence-reminders-owner-meta  | `persistence/reminders-owner-meta.ts`                     |
-| persistence-priming-reminders     | `persistence/priming-reminders.ts`                        |
-| tellask:parsing                   | `tellask/parsing.ts` (tellask parser)                     |
-| tellask:realtime                  | `tellask/realtime.ts` (streaming boundaries)              |
-| task-package                      | `task-package.ts`                                         |
-| taskdoc-search                    | `taskdoc-search.ts`                                       |
-| team-yaml-parsing                 | `team-yaml-parsing.ts`                                    |
-| func-call                         | `provider/func-call.ts` (non-streaming function calls)    |
-| stream-func-call                  | `provider/stream-func-call.ts` (streaming function calls) |
-| anthropic-streaming               | `provider/anthropic-streaming.ts` (streaming smoke test)  |
-| codex-streaming                   | `provider/codex-streaming.ts` (streaming smoke test)      |
-| toolset-registry                  | `toolsets/registry.ts` (tool registry checks)             |
-| diag-tool                         | `toolsets/diag.ts`                                        |
-| memory-access                     | `toolsets/memory-access.ts`                               |
-| kernel-unified-timestamp-ordering | `kernel/unified-timestamp-ordering.ts`                    |
-| webapp-run-control-visual         | `webapp/run-control-visual.ts`                            |
+Local deterministic behavior, distribution contracts, necessary structure checks, external component integration, browser interaction, live providers, and platform-specific verification have different prerequisites. Missing prerequisites and unexecuted scenarios must not count as passes. Source-string checks and UI helper tests do not establish end-to-end behavior. Live probes make real API calls and are not automatically selected by smoke or kernel suites.

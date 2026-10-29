@@ -400,7 +400,9 @@ export namespace Team {
   };
 
   type AnthropicThinkingConfig =
-    { type: 'adaptive' } | { type: 'disabled' } | { type: 'enabled'; budget_tokens: number };
+    | { type: 'adaptive' }
+    | { type: 'disabled' }
+    | { type: 'enabled'; budget_tokens: number };
 
   type AnthropicModelParams = {
     temperature?: number; // 0-1, controls randomness

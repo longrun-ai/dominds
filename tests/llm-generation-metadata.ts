@@ -126,4 +126,21 @@ assert.equal(
   'structured prominent values should use stable valid JSON',
 );
 
+const extensionMetadata = buildLlmGenerationMetadata({
+  providerId: 'extension-provider',
+  configuredModelId: 'default',
+  reportedModelId: 'default',
+  providerConfig: {
+    ...providerConfig,
+    // Registered generators can supply API types beyond the built-in parameter namespaces.
+    apiType: 'test-empty-recovery',
+  } as unknown as ProviderConfig,
+  modelParams: undefined,
+});
+assert.deepEqual(extensionMetadata, {
+  providerId: 'extension-provider',
+  modelId: 'default',
+  fields: [{ kind: 'set', key: 'configured-model-id', prominent: false, value: 'default' }],
+});
+
 console.log('LLM generation metadata: PASS');

@@ -97,6 +97,8 @@ The `personal_memory` toolset uses a **path key-value storage** model:
 
 ## Limitations and Notes
 
-1. Memory content has size limit (max 1MB per memory)
-2. Memory path cannot exceed 255 characters
-3. `clear_personal_memory` will delete all memory, **irrecoverable**
+1. Paths must be relative and must not contain `..`. Personal paths must not repeat the current member id; Dominds adds the private namespace automatically.
+2. Memory content must not be empty.
+3. `clear_personal_memory` deletes the current agent's personal memory; the tool provides no undo.
+
+Dominds does not impose a fixed per-memory size limit or a 255-character path limit. Filesystem limits can still apply. Keep memory concise to control context cost and stale information.

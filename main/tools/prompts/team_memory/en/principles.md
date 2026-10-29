@@ -74,7 +74,7 @@ The team_memory toolset uses a **path key-value storage** model, similar to pers
 
 ### 3. Usage Scenarios
 
-- **Team conventions**: Coding standards, commit message format, review process
+- **Project-bound conventions**: References to the adopted coding standard and commit format, and the current review ownership or authoritative policy location. Put reusable review procedures and checklists in a shared skill.
 - **Project knowledge**: Architecture decisions, technology choices, long-lived API or entry-point indexes
 - **Shared invariants**: Terminology, collaboration rules, and boundary conditions every member should follow
 

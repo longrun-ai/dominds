@@ -16,10 +16,18 @@ import { setWorkLanguage } from '../../main/runtime/work-language';
 import type { Team } from '../../main/team';
 import type { FuncTool } from '../../main/tool';
 
-import { createMainDialog, makeUserPrompt, withTempRtws, writeStandardMinds } from './helpers';
+import {
+  createMainDialog,
+  makeUserPrompt,
+  waitFor,
+  waitForAllDialogsUnlocked,
+  withTempRtws,
+  writeStandardMinds,
+} from './helpers';
 
 const API_TYPE = 'test-empty-recovery';
 const RECOVERED_TEXT = 'Recovered after the retry-stop diligence push.';
+const TRIGGER_ID = 'kernel-driver-retry-recovery-diligence-push-with-keep-going-disabled';
 
 class EmptyThenRecoverGen implements LlmGenerator {
   public readonly apiType = API_TYPE;
@@ -49,10 +57,18 @@ class EmptyThenRecoverGen implements LlmGenerator {
       .find((msg): msg is Extract<ChatMessage, { type: 'prompting_msg' }> => {
         return msg.type === 'prompting_msg';
       });
-    if (lastPrompt?.content.includes('runtime auto-continue instruction')) {
+    // The provider boundary observes a new input identity, not English prompt wording
+    // or the runtime's uncommitted persistence buffers. Origin is checked after execution.
+    if (lastPrompt && lastPrompt.msgId !== TRIGGER_ID) {
       await receiver.sayingStart();
       await receiver.sayingChunk(RECOVERED_TEXT);
       await receiver.sayingFinish();
+      // Complete through the runtime's protocol instead of leaving a required-tool round open.
+      await receiver.funcCall(
+        'retry-recovery-answer',
+        'answerHuman',
+        JSON.stringify({ answerContent: RECOVERED_TEXT }),
+      );
       return { usage: this.usage, llmGenModel: 'default' };
     }
 
@@ -82,35 +98,33 @@ async function main(): Promise<void> {
       dlg.disableDiligencePush = false;
       dlg.diligencePushRemainingBudget = 0;
 
-      await driveDialogStream(
-        dlg,
-        makeUserPrompt(
-          trigger,
-          'kernel-driver-retry-recovery-diligence-push-with-keep-going-disabled',
-        ),
-        true,
-      );
+      await driveDialogStream(dlg, makeUserPrompt(trigger, TRIGGER_ID), true);
 
       assert.equal(gen.emptyAttempts, 5, 'expected same-context empty retry stop threshold');
 
-      const diligencePrompt = dlg.msgs.find(
-        (msg) =>
-          msg.type === 'prompting_msg' &&
-          msg.role === 'user' &&
-          msg.content.includes('runtime auto-continue instruction'),
+      await waitFor(
+        async () =>
+          (await DialogPersistence.readCourseEvents(dlg.id, 1, dlg.status)).some(
+            (event) => event.type === 'human_text_record' && event.origin === 'diligence_push',
+          ),
+        2_000,
+        'the scheduled recovery round to persist its prompt',
       );
-      assert.ok(diligencePrompt, 'expected retry recovery to insert the diligence push prompt');
+      await waitForAllDialogsUnlocked(dlg, 2_000);
 
       const events = await DialogPersistence.readCourseEvents(dlg.id, 1, dlg.status);
       const persistedDiligencePrompt = events.find(
-        (event) =>
-          event.type === 'human_text_record' &&
-          event.origin === 'diligence_push' &&
-          event.content.includes('runtime auto-continue instruction'),
+        (event) => event.type === 'human_text_record' && event.origin === 'diligence_push',
       );
       assert.ok(
         persistedDiligencePrompt,
         'expected retry recovery prompt to persist with diligence_push origin',
+      );
+      assert.ok(
+        dlg.msgs.some(
+          (msg) => msg.type === 'prompting_msg' && msg.msgId === persistedDiligencePrompt.msgId,
+        ),
+        'the persisted recovery prompt must be supplied to the generator',
       );
 
       const recovered = dlg.msgs.find(
@@ -118,6 +132,9 @@ async function main(): Promise<void> {
           msg.type === 'saying_msg' && msg.role === 'assistant' && msg.content === RECOVERED_TEXT,
       );
       assert.ok(recovered, 'expected the recovery prompt to drive a successful follow-up round');
+      const answers = await DialogPersistence.loadAnswersToHumanState(dlg.id, dlg.status);
+      assert.equal(answers.length, 1, 'the recovered round should deliver one answer to the human');
+      assert.equal(answers[0]?.content, RECOVERED_TEXT);
     } finally {
       unregisterLlmGenerator(API_TYPE);
     }

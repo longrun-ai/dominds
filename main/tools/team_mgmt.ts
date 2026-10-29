@@ -442,7 +442,9 @@ function isFsErrWithCode(err: unknown): err is FsErrWithCode {
 }
 
 type MindsDirState =
-  { kind: 'present' } | { kind: 'missing' } | { kind: 'not_directory'; abs: string };
+  | { kind: 'present' }
+  | { kind: 'missing' }
+  | { kind: 'not_directory'; abs: string };
 
 async function getMindsDirState(): Promise<MindsDirState> {
   const cwd = domindsRtwsRootAbs();
@@ -4301,17 +4303,17 @@ export function renderSkillsManual(language: LanguageCode): string {
         '去向与口吻（按当前实现）：`name` 会成为 skills 小节里的标题，`description` 会作为说明文字显示，正文由 `read_skill` 按需读取。因此三者都属于写给“当前成员智能体”的提示内容。推荐把 `name` 写成稳定技能名，把 `description` 写成“何时用/何时不用”，把正文写成简洁的操作指引（多用祈使句/第二人称），不要写成 marketplace 营销文案、第三人称人物介绍，或对团队管理者的旁白说明。',
         '标题层级约束：Skills 索引会显示 skill 标题，`read_skill` 输出也会用 `# <name>` 包装正文。SKILL 正文通常应从普通 bullet、步骤列表，或至多 `#####` 小节开始；不要在正文里再写 `# <skill-name>` / `## ...` 来重复外层标题结构。',
         '为兼容公开来源，可保留 `allowed-tools` / `user-invocable` / `disable-model-invocation` 字段；但在 Dominds 中：这些字段目前只用于迁移/文档语义，不会自动授予工具权限，也不会改变运行时调度逻辑。',
-        '最重要的边界：skill 不是权限系统。真正的工具能力由 `.minds/team.yaml` 的 `toolsets` / `tools` 绑定与当前装载的能力软件包共同决定；目标架构中，这些能力由应用组件定义、消费 App 选择并绑定。',
+        '最重要的边界：skill 不是权限系统。当前工具访问取决于 `.minds/team.yaml` 的 `toolsets` / `tools` 绑定和已装载能力。目标转为 Software Defined Harness：微内核保持，运行环境由 DSL 定义，扩展组件提供 DSL 可用能力；原 Dominds App 组合设计已取消，DSL 尚未实现。',
         '普通成员自管：授予 `skills` toolset 后，成员可用 `add_personal_skill` / `import_personal_skill_from_file` / `replace_personal_skill` / `move_personal_skill` / `drop_personal_skill` 管理自己的个人 skill；这些工具不会写入团队共享目录，也不能替别人写。',
         'linkable 分发：`.minds/skills/linkable/**` 是团队管理池，不会自动注入任何成员。团队管理智能体可以调用 `team_mgmt_link_skill` 把某个 `<skill-id>` 链接到 `.minds/skills/individual/<member-id>/<skill-id>`，也可以用 `team_mgmt_create_symlink` 创建更通用的 `.minds/**` symlink；撤销链接时用 `team_mgmt_rm_symlink`，或对 linkable 分发使用 `team_mgmt_unlink_skill`。',
         'symlink 语义：skills 运行时会跟随合法的 skill 文件/目录 symlink；broken symlink 会 loud fail。普通成员使用 `skills` toolset 编辑 linked personal skill 时会先 copy-on-write 物化为个人副本，避免写穿团队目录或其它非个人目录。',
         '团队管理职责的智能体可以联网搜索公开 skill 定义（优先官方文档/官方仓库/官方 marketplace 条目），也可以直接基于团队真实操作经验自行总结编写。迁移前必须核对 license、适用场景、是否依赖脚本/外部工具、是否夹带与本团队冲突的人设/权限假设。',
-        '对于网络公开来源、并且带脚本/工具调用约束的 skills：默认不要只把文案抄进 `.minds/skills/**` 就上线。推荐路径是把执行能力定义为应用组件（专属工具 / toolsets / 工具集手册 / teammates contract），由消费 App 选择并绑定；skill 只保留软性指导与对组件能力的引用说明。Stage 0 期间，组件软件包仍通过 `DomindsApp` 引导信封装载。',
+        '对于带脚本或工具依赖的公开 skill：先确认实际业务需要，复用已有获授权能力；仅当缺少能力且具体场景证明有必要时实现扩展组件。不要只复制文案，也不要因为出现脚本或 MCP 就自动新造组件。当前额外能力包仍可经 `DomindsApp` 兼容信封装载，未来由 Harness DSL 显式使用和授权。',
       ]) +
       fmtHeader('团队协作 SOP 的资产分流最佳实践') +
       fmtList([
         '首选判断：团队协作 SOP 通常应优先做成团队共享 skill，而不是 team_memory。SOP 的主体应描述可迁移的协作程序：角色职责、阶段顺序、输入/输出、同步节奏、升级条件、验收口径、失败恢复。',
-        '抽象优先：如果 SOP 里出现大量当前工作区路径、具体成员名、具体工具名，先问“这些是不是只是绑定信息”。通常可以把它们抽象成“任务契约”“验收材料”“实现负责人”“验证负责人”“运行入口”“证据包”等概念。',
+        '先看实际协作结果：流程确实需要的路径、成员和工具应保留具体信息。只有存在具体复用需要时才提炼可移植指导，不为了形式整齐把有用事实改成抽象概念。',
         '绑定外置：当前 rtws 的事实绑定再放到合适资产：路径/入口索引放 `personal_memory` 或 `team_memory`，运行环境约束放 `.minds/env*.md`，成员职责与工具权限放 `.minds/team.yaml` / persona / knowhow / pitfalls。',
         'skill 里只写如何使用绑定：例如“先读取本 rtws 的运行入口索引”“向具备验证职责的成员发起诉请”“把验收证据写入 Taskdoc progress”，而不是把某个仓库的真实路径硬编码成 SOP 主体。',
         '例 1：代码评审协作。skill 写“变更面梳理 -> 风险分级 -> 验证计划 -> 诉请回复格式 -> 需要升级给架构/测试的条件”；team_memory 写当前仓库的长期模块边界索引；personal_memory 写某成员常负责模块的入口路径；team.yaml 绑定谁有测试/浏览器/toolset 权限。',
@@ -4346,9 +4348,9 @@ export function renderSkillsManual(language: LanguageCode): string {
         '`name` → 直接保留。建议继续使用短 hyphen-case 标识，并与目录名 `<skill-id>` 保持一致。',
         '`description` → 直接保留，但要补足“何时触发/何时不该触发”。这在 GitHub/Codex/skills.sh 生态中本来就是关键触发字段。',
         'SKILL 正文 → 直接作为 Dominds skill 正文；如果正文包含平台专有命令（如 `/skill-name`、`Bash(git add:*)`、Claude 的 `!command` 注入等），迁移时必须改写为 Dominds 可执行语义。',
-        '`allowed-tools` → 仅保留为迁移提示。然后把真正需要的能力映射到应用组件所定义、由消费 App 选用的 toolset，并在 `.minds/team.yaml members.<id>.toolsets|tools` 中显式绑定。不要把它当运行时授权。',
+        '`allowed-tools` → 仅保留为迁移提示。核实真实需要，优先映射现有 toolset，并在 `.minds/team.yaml members.<id>.toolsets|tools` 中显式绑定；目标由 Harness DSL 在微内核权限边界内绑定扩展能力。元数据本身不授权。',
         '`user-invocable` / `disable-model-invocation` → 目前仅保留为兼容元数据，Dominds 尚未把这两个字段做成调度开关。',
-        'Anthropic subagent 的 `tools` / `model` / 子代理身份字段 → 不应直接塞进 Dominds skill。可复用的“指导正文”抽出来做 skill；工具能力定义到应用组件的 toolset / 工具集手册中，再由消费 App 选择绑定；人设与职责边界改写到 `.minds/team/<id>/persona.*.md`。',
+        'Anthropic subagent 的 `tools` / `model` / 身份字段不直接塞进 skill。把可复用指导提炼为 skill；工具能力优先复用现有实现，只有实际缺口才扩展；当前人设与职责写入 `.minds/team/<id>/persona.*.md`，未来由 Harness DSL 编排执行者。',
         'GitHub `copilot-instructions.md` / `*.instructions.md` / `AGENTS.md` / `.prompt.md` 这类“纯 markdown 指令文件” → 通常没有完整 skill frontmatter。迁移时要补写 `name` 与 `description`，再把正文整理成真正可复用的操作说明；如果它本质是仓库全局约束而不是技能，应优先放回 persona/knowhow/pitfalls/env/AGENTS，而不是硬转 skill。',
       ]) +
       fmtHeader('团队管理智能体的落地操作步骤') +
@@ -4356,7 +4358,7 @@ export function renderSkillsManual(language: LanguageCode): string {
         '1. 联网搜索：优先找官方文档、官方仓库、官方 marketplace/listing（例如 GitHub Copilot Agent Skills、Claude Code skills/subagents、skills.sh 条目）。',
         '2. 识别类型：判断来源到底是标准 SKILL、slash command、subagent、仓库级 custom instructions，还是脚本集合。不是所有 prompt 文件都适合落到 Dominds skills。',
         '3. 提取可移植公共子集：至少提炼出 `name`、`description`、正文操作指引；删掉平台专有 shell 注入、命令占位符、隐式工具假设。',
-        '4. 判断是否需要组件化：只要来源 skill 依赖脚本、外部二进制、MCP、专有工具权限、工具集手册，或希望供多个 App/team 复用，优先开发应用组件，再由消费 App 选择并绑定其 toolset；Stage 0 使用现有 `DomindsApp` 软件包信封装载组件。',
+        '4. 核实执行依赖：先复用现有获授权工具、脚本或 MCP。仅当具体场景存在未满足的能力需要时开发扩展组件，不按依赖名称自动组件化。当前需要装载的包可沿用 `DomindsApp` 兼容入口，目标由 Harness DSL 编排使用。',
         '5. 写入 rtws：团队长期共享技能放到 `.minds/skills/team_shared/<skill-id>/SKILL.cn.md`；成员自用技能应让成员用 `skills` toolset 写入个人目录；需要团队管理者定向分发的技能放到 `.minds/skills/linkable/<skill-id>/SKILL.cn.md` 并用 `team_mgmt_link_skill` 发给目标成员。若团队工作语言需要英文对齐，再补 `SKILL.en.md`。',
         '6. 配置权限：根据 skill 真实需要，更新 `.minds/team.yaml` 的成员 `toolsets` / `tools`；Stage 0 必要时装载并启用承载对应组件的能力软件包。不要只写 `allowed-tools` 就结束。',
         '7. 本地化：`cn` 文件作为中文语义基准；`en` 追随 `cn`。若公开来源只有英文，先提炼成符合本团队语义的中文基准，再回写英文对齐版。',
@@ -4366,7 +4368,7 @@ export function renderSkillsManual(language: LanguageCode): string {
       fmtList([
         '“只有 `name/description/body` 的标准 SKILL” → 最容易迁移，优先原样改写后落盘。',
         '“带 `allowed-tools` 但无脚本” → 可先作为纯提示 skill 引入，再人工配置 Dominds toolsets。',
-        '“带脚本 / Bash allowlist / MCP / 动态注入命令” → 默认走应用组件定义、App 选择绑定的路径，不要只复制 Markdown。',
+        '“带脚本 / Bash allowlist / MCP / 动态注入命令” → 核实真实依赖和授权，优先复用；不要只复制 Markdown，也不要机械新建组件。',
         '“其实是全局仓库约束” → 更可能属于 persona / knowhow / pitfalls / env / AGENTS，不一定应该做成 skill。',
       ])
     );
@@ -4382,17 +4384,17 @@ export function renderSkillsManual(language: LanguageCode): string {
       'Destination and tone (current implementation): `name` is rendered as the skill heading, `description` appears as visible description text, and the body is read on demand through `read_skill`. Write all three for the current member agent. Use a stable skill name, trigger-oriented description, and concise operating guidance in the body; avoid marketplace sales copy, third-person biographies, or operator-facing narration.',
       'Heading rule: the Skills index shows the skill title, and `read_skill` also wraps the body with `# <name>`. Bodies should usually start with plain bullets, numbered steps, or at most `#####` subsections; do not repeat the outer structure with another `# <skill-name>` / `## ...` inside the body.',
       'For compatibility with public skill sources, Dominds accepts `allowed-tools`, `user-invocable`, and `disable-model-invocation`; however, in Dominds these fields are currently informational only. They do not grant tools and do not change runtime dispatch yet.',
-      'The hard boundary: a skill is not a permission system. Real tool access comes from `.minds/team.yaml` (`toolsets` / `tools`) bindings and currently loaded capability packages; in the target architecture, Application Components define those capabilities and a consuming App selects and binds them.',
+      'The hard boundary: skills do not grant permission. Current access comes from `.minds/team.yaml` tool bindings and loaded capabilities. The target is Software Defined Harness: retain the MicroKernel, define the environment in a DSL, and let extensions provide DSL-usable capabilities. The former Dominds App composition design is superseded; the DSL is not implemented yet.',
       'Ordinary member self-management: once a member has the `skills` toolset, it may use `add_personal_skill` / `import_personal_skill_from_file` / `replace_personal_skill` / `move_personal_skill` / `drop_personal_skill` for its own personal skills only; these tools do not write team-shared directories and cannot write for other members.',
       'Linkable distribution: `.minds/skills/linkable/**` is a team-managed pool and is not injected into anyone by itself. A team-management agent may call `team_mgmt_link_skill` to link one `<skill-id>` into `.minds/skills/individual/<member-id>/<skill-id>`, or use `team_mgmt_create_symlink` for more general `.minds/**` symlinks. Revoke links with `team_mgmt_rm_symlink`, or use `team_mgmt_unlink_skill` for linkable distribution links.',
       'Symlink semantics: the skills runtime follows valid skill file/directory symlinks; broken symlinks fail loudly. When an ordinary member uses the `skills` toolset to edit a linked personal skill, Dominds materializes a copy-on-write personal package first, so team directories or other non-personal targets are not modified through the link.',
       'A team-management agent may browse the web for public skill definitions (prefer official docs/repos/marketplace listings), or write skills directly by summarizing the team’s own repeatable operating guidance. Before importing, verify license, applicability, script/tool dependencies, and any hidden persona/permission assumptions.',
-      'For public-network skills that rely on scripts or explicit tool contracts: do not ship them by copying Markdown alone. Define execution capability in an Application Component (dedicated tools / toolsets / toolset manual / teammate contract), let a consuming App select and bind it, and keep the skill focused on soft guidance and component-capability references. During Stage 0, load the component package through the `DomindsApp` bootstrap envelope.',
+      'For skills with scripts or tool dependencies, establish the actual business need and reuse existing authorized capabilities first. Implement an extension only for a demonstrated capability gap. Neither copying Markdown alone nor automatically creating a component for every script or MCP dependency is sufficient. Current packages may use the `DomindsApp` compatibility envelope; the target Harness DSL explicitly uses and binds extension capabilities.',
     ]) +
     fmtHeader('Best Practices: Splitting Team Collaboration SOP Assets') +
     fmtList([
       'Default choice: team collaboration SOPs usually belong in team-shared skills, not team_memory. The SOP body should describe a portable collaboration procedure: roles, phases, inputs/outputs, synchronization cadence, escalation conditions, acceptance policy, and failure recovery.',
-      'Abstract first: if an SOP contains many current-workspace paths, concrete member names, or concrete tool names, ask whether those are only bindings. They can usually become concepts such as “task contract”, “acceptance evidence”, “implementation owner”, “verification owner”, “run entrypoint”, or “evidence package”.',
+      'Start from the actual collaboration outcome: retain concrete paths, members, and tools when the procedure needs them. Extract portable guidance only when concrete reuse warrants it; do not replace useful facts with abstractions for symmetry.',
       'Keep bindings outside the SOP: current-rtws facts belong in the right asset. Put path/entrypoint indexes in `personal_memory` or `team_memory`, runtime-environment constraints in `.minds/env*.md`, and member responsibilities/tool permissions in `.minds/team.yaml` / persona / knowhow / pitfalls.',
       'Inside the skill, describe how to use bindings: for example, “read the rtws run-entry index first”, “tellask the member with verification responsibility”, or “write acceptance evidence into Taskdoc progress”, instead of hard-coding this repo’s real paths as the SOP body.',
       'Example 1: code-review collaboration. The skill owns “change-surface scan -> risk classification -> verification plan -> reply format -> escalation conditions for architecture/testing”. team_memory owns the repo’s long-lived module-boundary index. personal_memory owns one member’s usual entrypoints. team.yaml binds who has test/browser/toolset access.',
@@ -4428,9 +4430,9 @@ export function renderSkillsManual(language: LanguageCode): string {
       '`name` -> keep as-is. Continue using a short hyphen-case identifier and keep it aligned with the directory name `<skill-id>`.',
       '`description` -> keep as-is, but strengthen the “when to use / when not to use” trigger guidance. This is already the critical discovery field in GitHub/Codex/skills.sh ecosystems.',
       'SKILL body -> keep as the Dominds skill body. If it contains platform-specific commands (`/skill-name`, `Bash(git add:*)`, Claude `!command` injection, etc.), rewrite those parts into Dominds-executable semantics.',
-      '`allowed-tools` -> informational only in Dominds. Map actual capability needs into a component-provided toolset selected by the consuming App, then bind it explicitly through `.minds/team.yaml members.<id>.toolsets|tools`.',
+      '`allowed-tools` -> migration information only. Map actual needs to existing toolsets and bind them explicitly in `.minds/team.yaml members.<id>.toolsets|tools`. The target Harness DSL binds extension capabilities under MicroKernel authority. Metadata itself never grants access.',
       '`user-invocable` / `disable-model-invocation` -> preserved only as compatibility metadata for now; Dominds does not yet use them as dispatch switches.',
-      'Anthropic subagent fields such as `tools`, `model`, or subagent identity -> do not import directly into a Dominds skill. Extract the reusable guidance body into a skill; define tool capability in an Application Component toolset/manual and let the consuming App select it; move persona/responsibility boundaries into `.minds/team/<id>/persona.*.md`.',
+      'Anthropic subagent tools, model, and identity fields do not belong directly in a skill. Extract reusable guidance; reuse existing execution capabilities and extend only a demonstrated gap. Current personas and responsibilities live in `.minds/team/<id>/persona.*.md`; future Harness DSL scripts orchestrate workers.',
       'GitHub `copilot-instructions.md`, `*.instructions.md`, `AGENTS.md`, and `.prompt.md` files are usually plain Markdown instructions, not complete skills. When converting them, add `name` and `description`, then turn the body into reusable operating guidance. If the content is actually repo-wide policy rather than a skill, keep it in persona/knowhow/pitfalls/env/AGENTS instead of forcing it into `skills`.',
     ]) +
     fmtHeader('Operational Steps for a Team-Management Agent') +
@@ -4438,7 +4440,7 @@ export function renderSkillsManual(language: LanguageCode): string {
       '1. Search official sources first: GitHub Copilot Agent Skills docs, Claude Code skills/subagents docs, official repos, and marketplace/listing entries such as skills.sh.',
       '2. Classify the source: is it a standard SKILL, slash command, subagent, repo-wide custom instructions file, or a script bundle? Not every prompt file should become a Dominds skill.',
       '3. Extract the portable core: at minimum keep `name`, `description`, and the operating-guidance body. Remove platform-specific shell injection, command placeholders, and hidden tool assumptions.',
-      '4. Decide whether it must become a component: if the source relies on scripts, external binaries, MCP, privileged tools, toolset manuals, or should be reused across multiple Apps/teams, define an Application Component first and let each consuming App select and bind it. During Stage 0, use the existing `DomindsApp` package envelope to load it.',
+      '4. Check execution dependencies: reuse existing authorized tools, scripts, or MCP integrations first. Create an extension only for a concrete unmet need, rather than inferring a component from a dependency name. Current packages may use the `DomindsApp` compatibility entry; the target Harness DSL orchestrates their capabilities.',
       '5. Write into the rtws: put long-lived team-shared skills under `.minds/skills/team_shared/<skill-id>/SKILL.cn.md`; let members use the `skills` toolset for self-owned personal skills; put team-managed targeted distributions under `.minds/skills/linkable/<skill-id>/SKILL.cn.md` and assign them with `team_mgmt_link_skill`. Add `SKILL.en.md` when an English counterpart is needed.',
       '6. Configure permissions explicitly: update `.minds/team.yaml` member `toolsets` / `tools`; during Stage 0, load and enable the capability package carrying the required component. Do not stop at `allowed-tools` metadata.',
       '7. Localize deliberately: use the `cn` file as the Chinese semantic baseline, then align `en` to it. If the public source is English-only, distill it into your team’s Chinese baseline first.',
@@ -4448,7 +4450,7 @@ export function renderSkillsManual(language: LanguageCode): string {
     fmtList([
       '“Standard SKILL with `name/description/body` only” -> easiest path; usually port directly with light rewriting.',
       '“Has `allowed-tools` but no scripts” -> may enter as a pure prompt skill first, then map real Dominds toolsets manually.',
-      '“Has scripts / Bash allowlists / MCP / dynamic command injection” -> default to an Application Component selected and bound by a consuming App; do not just copy the Markdown.',
+      '“Has scripts / Bash allowlists / MCP / dynamic command injection” -> establish dependencies and authority, then reuse existing capabilities first; neither copy Markdown blindly nor automatically create a component.',
       '“Actually repo-global policy” -> more likely belongs in persona / knowhow / pitfalls / env / AGENTS than in a skill.',
     ])
   );

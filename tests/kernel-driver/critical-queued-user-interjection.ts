@@ -3,6 +3,7 @@ import fs from 'node:fs/promises';
 import path from 'node:path';
 
 import { driveDialogStream } from '../../main/llm/kernel-driver';
+import { DialogPersistence } from '../../main/persistence';
 import { formatAgentFacingCriticalUserInterjectionRemediationGuide } from '../../main/runtime/driver-messages';
 import { setWorkLanguage } from '../../main/runtime/work-language';
 
@@ -10,6 +11,8 @@ import {
   createMainDialog,
   makeDriveOptions,
   makeUserPrompt,
+  waitFor,
+  waitForAllDialogsUnlocked,
   withTempRtws,
   writeMockDb,
   writeStandardMinds,
@@ -73,9 +76,14 @@ async function main(): Promise<void> {
       makeDriveOptions({ suppressDiligencePush: true }),
     );
 
-    await new Promise<void>((resolve) => {
-      setTimeout(resolve, 10);
-    });
+    await waitFor(
+      async () =>
+        (await DialogPersistence.readCourseEvents(dlg.id, 1, dlg.status)).some(
+          (event) => event.type === 'gen_start_record',
+        ),
+      2_000,
+      'seed generation to start before queuing the interjection',
+    );
     dlg.queueUserPromptAtGenerationBoundary({
       prompt: wrappedQueuedPrompt,
       msgId: 'kernel-driver-critical-queued-user-interjection',
@@ -84,6 +92,18 @@ async function main(): Promise<void> {
     });
 
     await seedDrive;
+    // The seed drive schedules the queued user round; its promise does not await that round.
+    await waitFor(
+      async () =>
+        (await DialogPersistence.readCourseEvents(dlg.id, 1, dlg.status)).some(
+          (event) =>
+            event.type === 'human_text_record' &&
+            event.msgId === 'kernel-driver-critical-queued-user-interjection',
+        ),
+      2_000,
+      'queued user round to persist its input',
+    );
+    await waitForAllDialogsUnlocked(dlg, 2_000);
     assert.equal(
       dlg.hasQueuedPrompt(),
       false,
@@ -118,12 +138,9 @@ async function main(): Promise<void> {
       true,
       'queued user interjection should be prompted after the seed user message',
     );
-    const courseJsonl = await fs.readFile(
-      path.join(tmpRoot, '.dialogs', 'run', dlg.id.rootId, 'course-001.jsonl'),
-      'utf-8',
-    );
+    const courseEvents = await DialogPersistence.readCourseEvents(dlg.id, 1, dlg.status);
     assert.equal(
-      courseJsonl.includes('"type":"runtime_guide_record"'),
+      courseEvents.some((event) => event.type === 'runtime_guide_record'),
       false,
       'queued critical user interjection guide should not be persisted as a standalone runtime guide record',
     );

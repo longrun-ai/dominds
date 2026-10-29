@@ -30,7 +30,7 @@
   "scripts": {
     "start": "echo 'Dominds backend runs via outer rtws dev-server.' && echo 'Dev: cd .. && ./dev-server.sh'",
     "dev": "echo 'Dominds backend runs via outer rtws dev-server.' && echo 'Dev: cd .. && ./dev-server.sh'",
-    "test": "echo 'Dominds backend: Use lint:types for type checking.'",
+    "test": "node tests/run.mjs --suite smoke",
     "serve": "echo 'Dominds backend runs via outer rtws dev-server.' && echo 'Dev: cd .. && ./dev-server.sh'",
     "setup:pm": "corepack enable pnpm && corepack install",
     "man": "pnpm exec tsx main/cli/manual.ts",
@@ -45,9 +45,13 @@
     "clean": "node ./scripts/rm-dir.mjs ./dist && node ./scripts/run-pnpm.mjs -r --filter \"./packages/*\" --filter ./codex-auth --filter ./webapp run clean",
     "lint": "node ./scripts/run-pnpm.mjs run lint:types && node ./scripts/run-pnpm.mjs run format:check",
     "lint:types": "node ./scripts/run-pnpm.mjs -r --filter \"./packages/*\" --filter ./webapp run lint:types && tsc -p main/tsconfig.dev.json --noEmit",
-    "format": "prettier --write \"{main,webapp/src,docs,tests}/**/*.{js,jsx,ts,tsx}\" && prettier --write \"{main,webapp/src,docs,tests}/**/*.{css,md,json,html}\"",
-    "format:check": "prettier --check \"{main,webapp/src,docs,tests}/**/*.{js,jsx,ts,tsx}\" && prettier --check \"{main,webapp/src,docs,tests}/**/*.{css,md,json,html}\"",
-    "build:backend": "node ./scripts/build-backend.mjs"
+    "format": "prettier --write \"{main,webapp/src,docs,tests}/**/*.{js,mjs,jsx,ts,tsx}\" && prettier --write \"{main,webapp/src,docs,tests}/**/*.{css,md,json,html}\"",
+    "format:check": "prettier --check \"{main,webapp/src,docs,tests}/**/*.{js,mjs,jsx,ts,tsx}\" && prettier --check \"{main,webapp/src,docs,tests}/**/*.{css,md,json,html}\"",
+    "build:backend": "node ./scripts/build-backend.mjs",
+    "test:kernel": "node tests/run.mjs --suite kernel",
+    "test:inventory": "node tests/run.mjs --list",
+    "test:runner": "node --test tests/runner.test.mjs",
+    "test:semantic": "node ./scripts/run-pnpm.mjs -C tests run test:semantic"
   },
   "repository": {
     "type": "git",

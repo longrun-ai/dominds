@@ -19,6 +19,10 @@ Dominds 是一款面向开发运作（DevOps）场景的智能体框架，它将
 
 其核心定位并非一次性完成产品开发，而是聚焦“持续交付”的全周期流程，涵盖任务拆分、职责分工、决策可追溯、工具使用管控及上下文健康度维护等关键环节。
 
+## 架构方向
+
+目标转为 [Software Defined Harness](./docs/software-defined-harness.zh.md)：保留微内核，编排智能体以 DSL 脚本演进整个运行环境，扩展组件提供 DSL 可用能力。原 Dominds App 组合设计已取消；DSL 尚待分步实现。见[路线图](./docs/roadmap.zh.md)与[测试整改计划](./docs/testing-strategy.md)。
+
 ## 安装指南
 
 ### 环境要求
@@ -127,9 +131,9 @@ npx -y dominds@latest
 - `npx -y dominds@latest`：无需全局安装，直接运行 Dominds CLI。
 - `dominds install <package>`：通过当前 Stage 0 的 `DomindsApp` 引导信封登记软件包。
 
-这个信封早于最终的微内核–应用组件–App 模型。特别是，`@longrun-ai/web-dev`
-是经由该引导通道装载的应用组件，不是独立业务 App。未来将由 App composition revision
-显式选择并绑定这类组件。
+这是当前的兼容装载信封。新的目标是 [Software Defined Harness](./docs/software-defined-harness.zh.md)：
+保留微内核，以 DSL 定义运行环境，扩展组件提供 DSL 可用能力。原 Dominds App
+组合设计已取消；现有装载接口将按业务场景迁移。
 
 示例：
 

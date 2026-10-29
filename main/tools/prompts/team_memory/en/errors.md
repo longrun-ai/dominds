@@ -1,110 +1,19 @@
-# team_memory Error Handling
+# team_memory: handling failures
 
-## Template (Errors)
+The memory tools return a structured failure outcome with explanatory content. They do not expose a fixed catalog of MEMORY\_\* error codes. Inspect the actual result before deciding how to recover.
 
-### Error Chain (required)
+## Existing or missing memory
 
-1. Trigger Condition
-2. Detection Signal
-3. Recovery Steps
-4. Success Criteria
-5. Escalation Path (optional)
+An add fails if its path already exists. Read the existing memory and use the corresponding replace tool when updating it; do not create another path just to bypass that check. Replace and delete require an existing path. If the intended memory is absent, confirm the intended operation before adding it.
 
-## Error Codes
+## Invalid input
 
-### SHARED_MEMORY_ALREADY_EXISTS
+Provide a nonempty relative path without `..`, and nonempty content for add/replace. There is no letters-only path rule, fixed 255-character path limit, or fixed 1 MB content limit in Dominds. The underlying filesystem may still reject a name or path.
 
-**Description:** Path already exists, cannot use `add_team_memory` to create new memory.
+## Storage failures
 
-**Cause:**
+Inspect the reported filesystem error and the relevant path, available storage, and permissions. Correct the cause before retrying. After an uncertain write, inspect the current file before repeating an operation. Keep memories concise because they contribute to future context, rather than relying on an invented size limit.
 
-- The path you're trying to add is already occupied by another shared memory
+## Ownership and deletion
 
-**Solution:**
-
-- Use `replace_team_memory` to update existing memory
-- Or use a different path to create new memory
-
-### SHARED_MEMORY_NOT_FOUND
-
-**Description:** Path does not exist, cannot perform operation.
-
-**Cause:**
-
-- The shared memory path you're trying to access doesn't exist
-- The path was deleted or never created
-
-**Solution:**
-
-- For update/delete operations, first use `add_team_memory` to create
-- Check if the path is correct
-
-### SHARED_MEMORY_PATH_INVALID
-
-**Description:** Path format is invalid.
-
-**Cause:**
-
-- Path contains illegal characters
-- Path length exceeds limit
-
-**Solution:**
-
-- Ensure path only contains letters, numbers, underscores, slashes
-- Path length should not exceed 255 characters
-
-### SHARED_MEMORY_CONTENT_TOO_LARGE
-
-**Description:** Memory content is too large.
-
-**Cause:**
-
-- Single memory content exceeds 1MB limit
-
-**Solution:**
-
-- Compress content
-- Split into multiple memories
-- Use external storage (e.g., files)
-
-### SHARED_MEMORY_STORAGE_ERROR
-
-**Description:** Storage error.
-
-**Cause:**
-
-- Insufficient disk space
-- Permission issues
-- File system error
-
-**Solution:**
-
-- Check disk space
-- Check file permissions
-- Retry operation
-
-## Frequently Asked Questions
-
-### Q: What's the difference between shared memory and personal memory?
-
-A: Shared memory (team_memory) is visible to all team members, while personal memory (memory) is only visible to the current agent.
-
-### Q: Who can modify shared memory?
-
-A: All team members can read and modify shared memory. Please operate with caution to avoid overwriting important information from others.
-
-### Q: How to avoid conflicts?
-
-A: It's recommended to read existing content first before modifying, confirm there are no conflicts, then update. You can also include version numbers or dates in the path to distinguish.
-
-### Q: Will clear_team_memory affect other members?
-
-A: Yes, `clear_team_memory` will delete all shared memory, affecting all team members. This operation is irreversible, please use with caution.
-
-### Q: Is there a limit on the number of shared memories?
-
-A: There's no strict limit, but it's recommended to keep the number of memories reasonable (less than 100 recommended).
-
-### Q: How do I view all team shared memories?
-
-A: The agent can access all shared memories during response generation. You can directly ask the agent what shared memories the team currently has.
+Team memory is shared among members granted the relevant tools. Coordinate edits to avoid overwriting another member's facts. Clearing the shared store affects the team, and the tools do not provide undo.

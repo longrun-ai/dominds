@@ -2,6 +2,8 @@
 
 Chinese version: [中文版](./design.zh.md)
 
+> Architecture direction: [Software Defined Harness](./software-defined-harness.md) supersedes the former App composition design. This document retains the existing collaboration rationale and mechanisms whose business value must survive migration.
+
 ## Overview
 
 Dominds implements **Social Division of Labor** for AI agents - a systematic approach to managing cognitive overload through strategic mental clarity practices. This document outlines our comprehensive framework for preventing agentic disorientation and maintaining productive focus in AI-human collaborative environments.

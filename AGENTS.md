@@ -1,3 +1,44 @@
+# Working on Dominds
+
+## Engineering principles
+
+- Start from first principles: identify the person or agent being served, the business outcome, and the failure being prevented before choosing a technical solution.
+- Preserve the value of existing behavior through change. Trace the original need, the useful behavior it produced, and the evidence that the replacement preserves or improves that value. Existing names, classes, package boundaries, and tests are evidence to examine, not requirements to preserve automatically.
+- Keep that reasoning proportional to the change: a small fix needs a short explanation and a focused regression; a boundary change needs concrete stories, migration consequences, and acceptance evidence. Do not create a new process framework for routine work.
+- Introduce abstractions only when concrete uses need them. A business concern is not automatically a component, toolset, runtime type, or DSL primitive. Prefer a direct implementation until a reusable boundary earns its cost.
+- Optimize measured constraints that affect a business outcome. Speculative performance work, generic frameworks, extra indirection, and architectural symmetry do not justify themselves.
+- Review changes by asking what becomes better for a user or an executing agent, what existing value could be lost, and which observable result establishes success.
+
+## Architecture direction
+
+- The target is **Software Defined Harness**: retain the **MicroKernel**, define the runtime environment in a DSL, and let extension components add capabilities usable by that DSL.
+- An orchestration agent should be able to design and evolve how execution agents work and interact by changing harness scripts. The DSL defines runtime behavior, not just a static tool list or workflow graph.
+- The previous **Dominds App / App composition root** design is superseded. Do not extend it as the destination architecture. Existing `DomindsApp`, `main/apps/**`, App Host IPC, and install commands remain current implementation contracts until an explicit migration replaces them.
+- Preserve working collaboration, durable execution, human interaction, capability boundaries, and rtws isolation during migration. Do not rename or delete those mechanisms merely to align terminology.
+- Design decisions, illustrative DSL examples, implemented contracts, and unresolved questions must be distinguished clearly. See [Software Defined Harness](docs/software-defined-harness.zh.md) and the [roadmap](docs/roadmap.zh.md).
+
+## Repository and development
+
+- `main/`: CLI, integrated backend, dialog driving, persistence, tools, and component hosting.
+- `packages/kernel/`: public MicroKernel/shared contracts; `packages/shell/`: shell contracts; `webapp/`: WebUI; `codex-auth/`: authentication/provider support; `tests/`: regression scripts and runners.
+- Use the root `packageManager` pin through Corepack. Do not add repository dependencies, change the package manager, or introduce a new test framework merely to perform a local check.
+- Standard checks: `pnpm run build`, `pnpm run lint:types`, `pnpm run format:check`, and the relevant behavior tests. Do not run overlapping top-level builds against the same output directories.
+
+## Tests and acceptance
+
+- Test observable business behavior and public effects. Important scenarios include collaboration delivery, interruption and restart, human replies, permissions, and preserved state. Package-layout checks may protect concrete distribution contracts; they cannot substitute for behavior tests.
+- Literal text matching to enforce semantic requirements is a test-design counterexample. Do not use keywords, regular expressions, fixed sentences, snapshots, or source snippets to judge the meaning of prompts, guidance, explanations, or other natural-language output. Delete low-value checks of this kind. For valuable semantic requirements, emit the actual semantic text with its scenario and necessary context for a test-execution agent to judge subjectively; retain its verdict, rationale, and evidence. An unreviewed semantic case is pending, never an automatic pass.
+- Exact comparisons remain appropriate for actual machine contracts and data: protocol fields, identifiers, persisted state, counts, and observable effects. A machine-contract label must not be used to disguise a natural-language meaning test.
+- This is a blocking rule for future tests as well as existing ones. Before accepting any added or changed test, review what each assertion actually proves. Reject literal matching used as a semantic oracle; require a concrete machine-contract justification for text equality. Valuable semantic cases require test-execution-agent review of the emitted evidence and an explicit verdict with rationale. Do not replace this review with a keyword-based semantic-test detector. Check the complete test diff again before committing; pending or rejected semantic review cannot be reported as passing acceptance.
+- Preserve semantic review verdicts, rationale, scope, and evidence provenance with the change; a temporary directory alone is not durable acceptance evidence. Output hashes may identify the reviewed material, but cannot judge meaning or automatically accept later output.
+- A regression should reproduce a concrete failure before the fix and assert the outcome that matters afterward. Avoid tests that merely repeat the implementation, freeze incidental wording, or enforce the retired App architecture without a remaining compatibility need.
+- Use `pnpm test` for the small local smoke suite, `pnpm run test:kernel` for discovered dialog-driver regressions, and `pnpm run test:inventory` to expose tests outside those suites. A green smoke run is not a claim of full coverage.
+- Put new shared test helpers under `tests/helpers/`, rather than alongside discovered kernel entry points; helper-only modules must not be counted as passing tests. Semantic evidence generation reports pending review and is separate from automatic behavior acceptance.
+- Mock provider behavior at the external boundary; keep runtime, persistence, and scheduling real when those are under test. Live-provider probes, external-component integration, packaging, browser interaction, and platform-specific checks need separate, explicit test lanes.
+- Run script-rtws cases through `tests/cli.ts`; default to isolated rtws. Never run shared rtws cases concurrently. Preserve failing evidence when investigating. Synchronize on relevant events or state instead of sleeps; do not hide a failure by raising timeouts or retrying until green.
+- A suite must report all attempted cases and return a failure status for failed or timed-out cases. Report skipped prerequisites and unexecuted scenarios explicitly; do not count them as passes.
+- Use the [test strategy and remediation plan](docs/testing-strategy.md) to guide broader changes. Fix nearby defects when understood, with scope and regression evidence; keep unrelated rewrites separate.
+
 ## Markdown Link Pre-commit Lint
 
 - Before committing any change that can affect Markdown navigation, lint the complete set of documentation Markdown tracked by this repository, not only the changed files. Use the repository's own `git ls-files -- '*.md'` results as the candidate source set; never scan a parent workspace, sibling repository, dependency tree, or generated output as source documentation.

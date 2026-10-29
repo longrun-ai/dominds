@@ -89,8 +89,9 @@ function resolveProminentParamSource(
     case 'mock':
       return null;
     default: {
-      const _exhaustive: never = providerConfig.apiType;
-      return _exhaustive;
+      // Registered generators may have no built-in prominent-parameter namespace.
+      // Their provider/model identity is still valid metadata.
+      return null;
     }
   }
 }

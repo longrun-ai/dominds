@@ -65,6 +65,10 @@ Dominds is an AI-powered DevOps framework that creates autonomous agentic teams 
 
 - **Task-Focused Architecture**: Clear, bounded contexts prevent cognitive overload while maintaining rich inter-agent communication and knowledge sharing through the local rtws knowledge base.
 
+## Architecture direction
+
+The target is [Software Defined Harness](./docs/software-defined-harness.md): an orchestration agent evolves the environment in a DSL, using capabilities supplied by extension components around the MicroKernel. The former Dominds App composition design is superseded. This is a migration direction, not a shipped DSL. See the [roadmap](./docs/roadmap.md) and [test remediation plan](./docs/testing-strategy.md).
+
 ## Installation
 
 ### Prerequisites
@@ -177,10 +181,10 @@ are two different operations:
 - `dominds install <package>`: register a package through the current Stage 0 `DomindsApp`
   bootstrap envelope.
 
-This envelope predates the final MicroKernel–Component–App model. In particular,
-`@longrun-ai/web-dev` is an Application Component carried through that bootstrap channel, not an
-independent business App. A future App composition revision will explicitly select and bind such
-components.
+This is the current compatibility envelope. The target direction is now
+[Software Defined Harness](./docs/software-defined-harness.md): keep the MicroKernel, define the
+runtime in a DSL, and let extensions provide DSL-usable capabilities. The former Dominds App
+composition design is superseded; current loading interfaces will migrate by business scenario.
 
 Examples:
 

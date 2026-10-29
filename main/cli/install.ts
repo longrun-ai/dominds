@@ -116,7 +116,8 @@ async function pathIsDirectory(pathAbs: string): Promise<boolean> {
 }
 
 type InstallSource =
-  Readonly<{ kind: 'local'; packageRootAbs: string }> | Readonly<{ kind: 'npx'; spec: string }>;
+  | Readonly<{ kind: 'local'; packageRootAbs: string }>
+  | Readonly<{ kind: 'npx'; spec: string }>;
 
 async function resolveInstallSource(params: {
   rtwsRootAbs: string;

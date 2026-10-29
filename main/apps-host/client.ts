@@ -160,7 +160,8 @@ type PendingReminderRenderCall = Readonly<{
 }>;
 
 function resolveAppsHostEntrypointAbs():
-  { ok: true; scriptAbs: string; execArgv: string[] } | { ok: false; errorText: string } {
+  | { ok: true; scriptAbs: string; execArgv: string[] }
+  | { ok: false; errorText: string } {
   // Prefer compiled JS in dist/ when available.
   // When running via tsx in dev-server, fall back to main/apps-host/host.ts with tsx loader.
   const distCandidate = path.resolve(__dirname, 'host.js');

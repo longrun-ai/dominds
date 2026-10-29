@@ -2,6 +2,8 @@
 
 英文版：[English](./design.md)
 
+> 架构方向已转为 [Software Defined Harness](./software-defined-harness.zh.md)，原 App 组合设计被取消。本文保留已有协作理念与机制，迁移时沿袭其业务价值。
+
 ## 概述
 
 Dominds 为 AI 智能体实现了**社会分工**——一种通过战略性心理清晰实践来管理认知过载的系统性方法。本文档概述了我们防止智能体迷失方向和在 AI-人协作环境中保持高效专注的综合框架。

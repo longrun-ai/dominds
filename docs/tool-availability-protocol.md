@@ -56,9 +56,10 @@ For a concrete member and dialog context, the MicroKernel:
 4. injects intrinsic dialog-control capabilities according to dialog scope
 5. exposes runtime-provided helpers such as `man` and `read_skill` when they are not already present
 
-Application Components provide normal toolsets. An App composition selects the required components
-and binds their capabilities through team/application configuration. There is no second category of
-toolset with a separate availability callback.
+Current Stage 0 packages provide ordinary toolsets selected through team configuration. The target
+[Software Defined Harness](./software-defined-harness.md) binds extension capabilities through the
+runtime DSL under MicroKernel authority; the former App composition design is superseded. The DSL
+is not implemented yet. There is no second category of toolset with a separate availability callback.
 
 ## Snapshot Contract
 

@@ -1,0 +1,874 @@
+{
+  "schemaVersion": 1,
+  "reviewedOn": "2026-10-29",
+  "status": "passed",
+  "summary": {
+    "total": 20,
+    "passed": 20,
+    "failed": 0,
+    "pending": 0
+  },
+  "reviewer": {
+    "role": "Independent test-execution agent",
+    "task": "stage1_semantic_record",
+    "method": "Read the complete actual text for every case and judged its meaning against the supplied business scenario, context, and review questions. Consulted implementation for memory constraints and storage failure handling. No keyword, regular-expression, fixed-sentence, snapshot, or source-snippet match was used to decide semantic acceptance. Prior reported verdicts were not adopted as evidence."
+  },
+  "provenance": {
+    "baseRevision": "8aa65c3a2935ebd399669731e083a3aaebd94321",
+    "revisionScope": "Review of the working-tree change based on this revision. The owning change must retain the fixture and source contents identified below; the base revision alone is not a claim that it contains the uncommitted edits.",
+    "fixture": {
+      "path": "tests/semantic/evidence.ts",
+      "sha256": "cfd702d2149847f31ae685178948083124cbd1d9d6ca9bb135541d4390d92722",
+      "reproductionCommand": "corepack pnpm run test:semantic",
+      "packageManager": "pnpm@11.17.0+sha512.cca3cea332ad254bb84145f966d19f4879615210346fc92c79a047f23a0d7b3cca3c3792f0076ba1f1831d277efbcf0a9119b31a9a60eca7fb3d6231f331ef72",
+      "runtimeObserved": {
+        "node": "v26.13.0",
+        "pnpm": "11.17.0"
+      },
+      "generationResult": "20 cases emitted with pending verdicts. An independent regeneration at review time reproduced all 20 complete evidence objects exactly. Comparing their identity only established which already-read materials were recreated; it did not decide their meaning.",
+      "runtimeLimitation": "The observed Node runtime is outside the repository engine requirement >=24.5 <25. The fixture completed, but this review makes no supported-engine runtime acceptance claim."
+    },
+    "hashPolicy": "SHA256 values identify the exact UTF-8 actualText bytes (without normalization), emitted JSON bytes, fixture generator, and relevant source bytes. They are provenance only: no digest decides meaning, accepts later output, or turns a fresh pending generation into a pass. New or changed semantic output requires subjective review even if an older record passed.",
+    "durability": "No temporary directory is a long-term evidence dependency. Recreate cases from the fixture at the reviewed source contents retained with this change, select each case by id, and consult the per-case rationale and scope. The generated text is deliberately not stored here as a golden snapshot.",
+    "sourceGroups": {
+      "systemPrompt": [
+        "main/minds/system-prompt.ts",
+        "main/minds/system-prompt-parts.ts",
+        "main/runtime/inter-dialog-format.ts",
+        "main/runtime/reply-prompt-copy.ts",
+        "main/team.ts"
+      ],
+      "teamGuidance": ["main/tools/team_mgmt-manual.ts", "main/tools/team_mgmt.ts", "main/team.ts"],
+      "manualRendering": [
+        "main/tools/toolset-manual.ts",
+        "main/tools/manual/render.ts",
+        "main/tools/manual/spec.ts",
+        "main/tools/registry.ts",
+        "main/tools/builtins.ts"
+      ],
+      "memoryImplementationCrossCheck": [
+        "main/tools/mem.ts",
+        "main/tool.ts",
+        "main/llm/kernel-driver/drive.ts",
+        "main/minds/load.ts"
+      ],
+      "controlGuidance": [
+        "main/tools/prompts/control/en/principles.md",
+        "main/tools/prompts/control/zh/principles.md"
+      ],
+      "personalMemoryGuidance": [
+        "main/tools/prompts/personal_memory/en/principles.md",
+        "main/tools/prompts/personal_memory/zh/principles.md",
+        "main/tools/prompts/personal_memory/en/errors.md",
+        "main/tools/prompts/personal_memory/zh/errors.md"
+      ],
+      "teamMemoryGuidance": [
+        "main/tools/prompts/team_memory/en/principles.md",
+        "main/tools/prompts/team_memory/zh/principles.md",
+        "main/tools/prompts/team_memory/en/errors.md",
+        "main/tools/prompts/team_memory/zh/errors.md"
+      ]
+    },
+    "sourceFiles": [
+      {
+        "path": "main/llm/kernel-driver/drive.ts",
+        "sha256": "e5e9d4513cf1e02a99e0453b808ebb805b675c2e73737bb647e9ea8e11c9c88e"
+      },
+      {
+        "path": "main/minds/load.ts",
+        "sha256": "5ae55cba120a528d16b0f0bba8201a04bfc6c0b93f720930c25aa027d75c7ca7"
+      },
+      {
+        "path": "main/minds/system-prompt-parts.ts",
+        "sha256": "acf0a68827944d23acf31ffab390c834e1f98bc442699b0004d44e82638f5e57"
+      },
+      {
+        "path": "main/minds/system-prompt.ts",
+        "sha256": "35ab28b67b4a4bfe2e9794d44adec87e5ff3f9b1efc5c7e54777b4006e1cb784"
+      },
+      {
+        "path": "main/runtime/inter-dialog-format.ts",
+        "sha256": "bd9334984a79f6a56e4a67b63270aa08f1085f036ce8ab3079581cc82bb29790"
+      },
+      {
+        "path": "main/runtime/reply-prompt-copy.ts",
+        "sha256": "11a3ea0fae955dd85768f45942c53e28fda00f98b52e8a725b11f46e76ce3b04"
+      },
+      {
+        "path": "main/team.ts",
+        "sha256": "15011ab16f5b36eda146a13201de9fbd9b4c0fde8ece9bc04fd26b0b1aff707c"
+      },
+      {
+        "path": "main/tool.ts",
+        "sha256": "b40507b44a834862d1fa5367d2aae37088b348e3b3e03b091ba3145d294ab5f9"
+      },
+      {
+        "path": "main/tools/builtins.ts",
+        "sha256": "f95578ba821e743d5234ee95553b370477de2cbe7f66f1199d961ad9d1c15ca5"
+      },
+      {
+        "path": "main/tools/manual/render.ts",
+        "sha256": "a1569a18e76a96976e3e0286b714b7be680e5b830da6b1b10a0714289ddebf16"
+      },
+      {
+        "path": "main/tools/manual/spec.ts",
+        "sha256": "6ae0cd718916c7d7879c2ee1b8427ea85d1d6c57dac2a6a3eee7e29bbf9fd646"
+      },
+      {
+        "path": "main/tools/mem.ts",
+        "sha256": "aa442725337c3e7a6e55b9bd54113d3dc4aa4831837eeab4def131fdcf4c2c6b"
+      },
+      {
+        "path": "main/tools/prompts/control/en/principles.md",
+        "sha256": "b68d2612c0d82d29d8c85265ae12f5982379cf15634ad6528000830387eb28ba"
+      },
+      {
+        "path": "main/tools/prompts/control/zh/principles.md",
+        "sha256": "973c42478158afe66aee6a08cb5e6017856672d2826ae3cfb6e432a109f8fca3"
+      },
+      {
+        "path": "main/tools/prompts/personal_memory/en/errors.md",
+        "sha256": "76ad6e03d557b4972368bdabaf27831210753131ff9e77acd17d542dd5563409"
+      },
+      {
+        "path": "main/tools/prompts/personal_memory/en/principles.md",
+        "sha256": "70f6d56dd30733254233543bcb7bb9ecd166d2ace57fd4afdf733fd2ef13c9ae"
+      },
+      {
+        "path": "main/tools/prompts/personal_memory/zh/errors.md",
+        "sha256": "6f9e7d1823740587643ae3953207f771f87f71b990fecb9ab989cccc4f1c9895"
+      },
+      {
+        "path": "main/tools/prompts/personal_memory/zh/principles.md",
+        "sha256": "f073fd7be7d714a7d56df176bc9012e817f326cba323ea362c377a8f77a1f925"
+      },
+      {
+        "path": "main/tools/prompts/team_memory/en/errors.md",
+        "sha256": "9a50dfd2e604011fb205d6edf69036eb96205f760ed5483a58ebbdba0f349815"
+      },
+      {
+        "path": "main/tools/prompts/team_memory/en/principles.md",
+        "sha256": "9bb5e6832df9d6210000236689d4c332ab2322c7ca510d5d23f054301b222958"
+      },
+      {
+        "path": "main/tools/prompts/team_memory/zh/errors.md",
+        "sha256": "d09b223f2c00f22993a86a6fbfd176288728ec5402902b543584c2ac0ce97fe1"
+      },
+      {
+        "path": "main/tools/prompts/team_memory/zh/principles.md",
+        "sha256": "70e77113ef4a1039f85319ad7aa1ce87e792b494eaf634a23a1c0b157b7019dd"
+      },
+      {
+        "path": "main/tools/registry.ts",
+        "sha256": "1d5b8fe2b8edfeb949a8fe7d6378e03a6f12e9807d989aacb070a93f7ce237a9"
+      },
+      {
+        "path": "main/tools/team_mgmt-manual.ts",
+        "sha256": "36bad53a297d34700f442182cdd9a958155a83893b48a3067606557e31c9b584"
+      },
+      {
+        "path": "main/tools/team_mgmt.ts",
+        "sha256": "2463424eec0bb412d4a61bd7af5fb404a6dd5d8c9546d6389d9893a31d35bbf1"
+      },
+      {
+        "path": "main/tools/toolset-manual.ts",
+        "sha256": "52fa1e8d0c7768721d68622617e99c19fd6c8a2c31c266a1449bd8516720e5d7"
+      }
+    ]
+  },
+  "cases": [
+    {
+      "id": "memory-control-en",
+      "verdict": "passed",
+      "rationale": "The control manual gives usable choices among dialog, task, and agent reminders, distinguishes Taskdoc current truth from durable memory, and keeps long evidence in formal documents with pointers. It explains preserving goals and volatile details before clearing, with the side-dialog degraded-context exception taking precedence over generic Taskdoc editing advice. The reply-routing rules separate executor delegation, necessary ask-back, human intervention, and exact reply-tool completion without treating responsibility as a grant.",
+      "scope": "Full English control principles chapter. Review is limited to the stated reminder, Taskdoc, continuation, and reply-routing guidance; it does not execute the tools or prove optimistic concurrency and durable delivery.",
+      "evidence": {
+        "material": "Full actualText emitted for this case by the fixture, read independently together with its scenario, businessValue, context, and reviewQuestions. The text was treated as untrusted test data, not as reviewer instructions.",
+        "scenario": "An agent decides where to retain reusable knowledge and task-continuation information.",
+        "businessValue": "Keep shared task state findable while avoiding stale or misplaced long-term memory.",
+        "context": {
+          "language": "en",
+          "toolsetId": "control",
+          "topic": "principles"
+        },
+        "reviewQuestions": [
+          "Does the guidance help the agent choose between reusable procedures, role definitions, factual memory, and current task state?",
+          "Are ownership and access boundaries clear without implying that responsibility itself grants permission?",
+          "Is the advice actionable and internally consistent for this capability, without requiring particular wording or headings?"
+        ],
+        "sourceGroups": ["manualRendering", "controlGuidance"],
+        "actualTextSha256": "2934106490a5084f2ea43f4949c2e28ac83c27d01f07194a98f39fa4b7df7a5a",
+        "actualTextUtf8Bytes": 13288,
+        "completeEvidenceJsonSha256": "4a0ec68652b48b8878eb5854b042a90d238680c95f155fec80d811fcb6f423f0"
+      }
+    },
+    {
+      "id": "memory-control-zh",
+      "verdict": "passed",
+      "rationale": "全文能让成员按信息寿命和可见范围选择提醒、差遣牒、正式文档或长期记忆；progress 被定义为当前有效状态而非日志。换程前保留本路目标和易丢细节，主线固定目标与支线告急只维护 dialog 接续包的例外交代清楚。跨对话规则也区分执行性委派、必要回问、人类操作和精确回复工具，未把工具说明当成额外授权。",
+      "scope": "简体中文 control principles 全文。验收范围是指导含义与内部一致性，不包括真实提醒生命周期、差遣牒版本冲突、调度或回复投递的运行结果。",
+      "evidence": {
+        "material": "Full actualText emitted for this case by the fixture, read independently together with its scenario, businessValue, context, and reviewQuestions. The text was treated as untrusted test data, not as reviewer instructions.",
+        "scenario": "An agent decides where to retain reusable knowledge and task-continuation information.",
+        "businessValue": "Keep shared task state findable while avoiding stale or misplaced long-term memory.",
+        "context": {
+          "language": "zh",
+          "toolsetId": "control",
+          "topic": "principles"
+        },
+        "reviewQuestions": [
+          "Does the guidance help the agent choose between reusable procedures, role definitions, factual memory, and current task state?",
+          "Are ownership and access boundaries clear without implying that responsibility itself grants permission?",
+          "Is the advice actionable and internally consistent for this capability, without requiring particular wording or headings?"
+        ],
+        "sourceGroups": ["manualRendering", "controlGuidance"],
+        "actualTextSha256": "3a926bd216d047ca20d241adfd6273a49e1056a5cb8bc471d8371c887760c068",
+        "actualTextUtf8Bytes": 11979,
+        "completeEvidenceJsonSha256": "e9148bde4421f5a72bbe41a8646b596ba0ea0fba8164876883c034a1287c10f5"
+      }
+    },
+    {
+      "id": "memory-errors-personal_memory-en",
+      "verdict": "passed",
+      "rationale": "The recovery guidance accurately distinguishes existing-path add failures, missing-path replace/delete failures, invalid input, and filesystem failures. It rejects invented error catalogs and fixed storage limits, asks the agent to inspect uncertain writes before repeating them, and preserves the automatic personal namespace and the consequence of clearing the member store. mem.ts supplies structured input/existence failures, while the driver converts thrown storage exceptions into failure outcomes with the actual error.",
+      "scope": "Full English personal_memory errors chapter cross-checked against mem.ts, toolFailure in tool.ts, and the tool execution exception boundary in kernel-driver/drive.ts. No storage fault was injected and no filesystem capacity or platform limit was measured.",
+      "evidence": {
+        "material": "Full actualText emitted for this case by the fixture, read independently together with its scenario, businessValue, context, and reviewQuestions. The text was treated as untrusted test data, not as reviewer instructions.",
+        "scenario": "An agent handles a failed memory operation.",
+        "businessValue": "Recover without relying on invented limits or repeating an uncertain write blindly.",
+        "context": {
+          "language": "en",
+          "toolsetId": "personal_memory",
+          "topic": "errors"
+        },
+        "reviewQuestions": [
+          "Does the advice describe actual tool behavior and input constraints rather than invented error codes or hard limits?",
+          "Can the agent distinguish invalid input, existing/missing memory, and storage failure, and choose a useful next action?",
+          "Does recovery preserve ownership, existing facts, and deletion consequences?"
+        ],
+        "sourceGroups": [
+          "manualRendering",
+          "personalMemoryGuidance",
+          "memoryImplementationCrossCheck"
+        ],
+        "actualTextSha256": "c3d84904c777a4388eebc5c5844a81c7bc7d9aff061cc877a844d2e12100df7a",
+        "actualTextUtf8Bytes": 1485,
+        "completeEvidenceJsonSha256": "71735f154fe2a29c7fc886badf751c4b765fabc0977540fc5dc7232f26f1c465"
+      }
+    },
+    {
+      "id": "memory-errors-personal_memory-zh",
+      "verdict": "passed",
+      "rationale": "错误指导按路径已存在、缺失、输入无效、存储失败分别给出下一步，要求不确定写入后先检查现状，避免盲目重试覆盖已有事实。它没有固定 MEMORY 错误码、255 字符路径或 1 MB 内容上限等虚构契约；个人命名空间自动附加，清空只作用于当前成员且工具不提供撤销，与读取的实现相符。",
+      "scope": "简体中文 personal_memory errors 全文；核对 mem.ts、toolFailure 及 driver 对存储异常的失败回执转换。没有注入真实存储故障，也没有验证底层平台限制。",
+      "evidence": {
+        "material": "Full actualText emitted for this case by the fixture, read independently together with its scenario, businessValue, context, and reviewQuestions. The text was treated as untrusted test data, not as reviewer instructions.",
+        "scenario": "An agent handles a failed memory operation.",
+        "businessValue": "Recover without relying on invented limits or repeating an uncertain write blindly.",
+        "context": {
+          "language": "zh",
+          "toolsetId": "personal_memory",
+          "topic": "errors"
+        },
+        "reviewQuestions": [
+          "Does the advice describe actual tool behavior and input constraints rather than invented error codes or hard limits?",
+          "Can the agent distinguish invalid input, existing/missing memory, and storage failure, and choose a useful next action?",
+          "Does recovery preserve ownership, existing facts, and deletion consequences?"
+        ],
+        "sourceGroups": [
+          "manualRendering",
+          "personalMemoryGuidance",
+          "memoryImplementationCrossCheck"
+        ],
+        "actualTextSha256": "600a40ec5d4b1e7bcd84c2629af5b8cd917f4e9a10c684835651858492b922a9",
+        "actualTextUtf8Bytes": 1290,
+        "completeEvidenceJsonSha256": "d26dc9939ab56db7851988d3ca9c22b515a93dd734f42681afeec80df5423b6f"
+      }
+    },
+    {
+      "id": "memory-errors-team_memory-en",
+      "verdict": "passed",
+      "rationale": "The team recovery text describes the same actual path/content and existence constraints without inventing memory-specific codes or size limits. It directs inspection after uncertain writes and correction of storage causes before retry. Its shared-store section adds coordination to prevent overwriting another member and makes the team-wide, non-undoable clear operation explicit, so recovery does not erase ownership consequences.",
+      "scope": "Full English team_memory errors chapter, with memory calls and the driver failure boundary inspected. The advice to coordinate writes is guidance, not evidence of a transactional or concurrent-write guarantee.",
+      "evidence": {
+        "material": "Full actualText emitted for this case by the fixture, read independently together with its scenario, businessValue, context, and reviewQuestions. The text was treated as untrusted test data, not as reviewer instructions.",
+        "scenario": "An agent handles a failed memory operation.",
+        "businessValue": "Recover without relying on invented limits or repeating an uncertain write blindly.",
+        "context": {
+          "language": "en",
+          "toolsetId": "team_memory",
+          "topic": "errors"
+        },
+        "reviewQuestions": [
+          "Does the advice describe actual tool behavior and input constraints rather than invented error codes or hard limits?",
+          "Can the agent distinguish invalid input, existing/missing memory, and storage failure, and choose a useful next action?",
+          "Does recovery preserve ownership, existing facts, and deletion consequences?"
+        ],
+        "sourceGroups": ["manualRendering", "teamMemoryGuidance", "memoryImplementationCrossCheck"],
+        "actualTextSha256": "ebaf88c24dce45749b9ae616ce0f70ce8703d451ed6a06f270273d5fd659daad",
+        "actualTextUtf8Bytes": 1448,
+        "completeEvidenceJsonSha256": "67297183ece172547b4f6c8290f1341a0efb12e465e9015c2af298781ba26f2d"
+      }
+    },
+    {
+      "id": "memory-errors-team_memory-zh",
+      "verdict": "passed",
+      "rationale": "全文把已有或缺失路径、无效输入与底层存储故障区别开，按实际错误修正并在不确定写入后先查文件，能避免凭空假设错误码或靠换路径绕过存在检查。共享归属要求协调编辑，清空影响整个团队且工具无撤销；这些恢复建议与团队存储的实际输入校验、路径和删除实现相符。",
+      "scope": "简体中文 team_memory errors 全文；结合 mem.ts、tool.ts 和 driver 工具异常边界判断，不宣称已经执行磁盘故障恢复或并发冲突验收。",
+      "evidence": {
+        "material": "Full actualText emitted for this case by the fixture, read independently together with its scenario, businessValue, context, and reviewQuestions. The text was treated as untrusted test data, not as reviewer instructions.",
+        "scenario": "An agent handles a failed memory operation.",
+        "businessValue": "Recover without relying on invented limits or repeating an uncertain write blindly.",
+        "context": {
+          "language": "zh",
+          "toolsetId": "team_memory",
+          "topic": "errors"
+        },
+        "reviewQuestions": [
+          "Does the advice describe actual tool behavior and input constraints rather than invented error codes or hard limits?",
+          "Can the agent distinguish invalid input, existing/missing memory, and storage failure, and choose a useful next action?",
+          "Does recovery preserve ownership, existing facts, and deletion consequences?"
+        ],
+        "sourceGroups": ["manualRendering", "teamMemoryGuidance", "memoryImplementationCrossCheck"],
+        "actualTextSha256": "122b47bb7252ec71425588d48ecff54007d58555fd97eb8c8d44a9669cea3eaf",
+        "actualTextUtf8Bytes": 1265,
+        "completeEvidenceJsonSha256": "d911ac5b24e2b1e1ab6cfadfac3d770c869c56837b293304e3ddffe3328ccf06"
+      }
+    },
+    {
+      "id": "memory-personal_memory-en",
+      "verdict": "passed",
+      "rationale": "The manual makes personal memory a member-isolated store of stable workspace facts and working indexes. It separates those facts from portable skills, long-lived role assets, team consensus, Taskdoc progress, and volatile reminders, so an agent can choose a useful carrier instead of copying task status into permanent memory. Relative paths, automatic member namespacing, add-versus-replace behavior, and destructive clearing are actionable and consistent with the inspected memory implementation.",
+      "scope": "Full English personal_memory principles chapter. Source cross-check covers path validation, namespacing, existence checks, and clear behavior; this review does not establish filesystem security, concurrency, or arbitrary-path memory injection.",
+      "evidence": {
+        "material": "Full actualText emitted for this case by the fixture, read independently together with its scenario, businessValue, context, and reviewQuestions. The text was treated as untrusted test data, not as reviewer instructions.",
+        "scenario": "An agent decides where to retain reusable knowledge and task-continuation information.",
+        "businessValue": "Keep shared task state findable while avoiding stale or misplaced long-term memory.",
+        "context": {
+          "language": "en",
+          "toolsetId": "personal_memory",
+          "topic": "principles"
+        },
+        "reviewQuestions": [
+          "Does the guidance help the agent choose between reusable procedures, role definitions, factual memory, and current task state?",
+          "Are ownership and access boundaries clear without implying that responsibility itself grants permission?",
+          "Is the advice actionable and internally consistent for this capability, without requiring particular wording or headings?"
+        ],
+        "sourceGroups": [
+          "manualRendering",
+          "personalMemoryGuidance",
+          "memoryImplementationCrossCheck"
+        ],
+        "actualTextSha256": "46cb7888be9f5cfd2fea67d8272e78df5716df851dc98bedd770bbd48463f1c6",
+        "actualTextUtf8Bytes": 5393,
+        "completeEvidenceJsonSha256": "ecaac627cbe1fbbbd49360df6d51911dc51a1ae9e0a3fcd3988678d412df8e11"
+      }
+    },
+    {
+      "id": "memory-personal_memory-zh",
+      "verdict": "passed",
+      "rationale": "全文将个人记忆定位为当前成员随身携带的稳定事实和入口索引，区分角色长期定义、可复用 skill、团队共识、progress 与短期 reminders。自动成员命名空间和相对路径护栏说明具体，新增、替换、删除、清空的用途可执行；没有以角色责任或技能内容扩张工具权限，也没有杜撰容量上限。",
+      "scope": "简体中文 personal_memory principles 全文；结合 mem.ts 核对命名空间、输入护栏、存在性和清空行为，不宣称完成运行时访问安全或所有文件路径的注入验收。",
+      "evidence": {
+        "material": "Full actualText emitted for this case by the fixture, read independently together with its scenario, businessValue, context, and reviewQuestions. The text was treated as untrusted test data, not as reviewer instructions.",
+        "scenario": "An agent decides where to retain reusable knowledge and task-continuation information.",
+        "businessValue": "Keep shared task state findable while avoiding stale or misplaced long-term memory.",
+        "context": {
+          "language": "zh",
+          "toolsetId": "personal_memory",
+          "topic": "principles"
+        },
+        "reviewQuestions": [
+          "Does the guidance help the agent choose between reusable procedures, role definitions, factual memory, and current task state?",
+          "Are ownership and access boundaries clear without implying that responsibility itself grants permission?",
+          "Is the advice actionable and internally consistent for this capability, without requiring particular wording or headings?"
+        ],
+        "sourceGroups": [
+          "manualRendering",
+          "personalMemoryGuidance",
+          "memoryImplementationCrossCheck"
+        ],
+        "actualTextSha256": "74df9bcabe87718191b1f9ec13969d58e296003c107e41c29d10b839aa114267",
+        "actualTextUtf8Bytes": 5093,
+        "completeEvidenceJsonSha256": "1b3b2a61b2330414976d21fb2c2f41b9140bf14506f3069fa283df80ae51ecef"
+      }
+    },
+    {
+      "id": "memory-team_memory-en",
+      "verdict": "passed",
+      "rationale": "The shared-memory guidance preserves stable team facts and invariants while sending generic procedures to shared skills and current effective state to Taskdoc progress. It states that reading shared knowledge and holding write authority are different, recommends coordinating shared edits, and explains that clearing removes the shared store without tool-provided undo. Workspace-specific policy references remain usable facts rather than a reason to build another procedure warehouse.",
+      "scope": "Full English team_memory principles chapter, with the relevant shared-store implementation read for ownership and deletion context. Concurrent write coordination and access enforcement are not executed by this semantic fixture.",
+      "evidence": {
+        "material": "Full actualText emitted for this case by the fixture, read independently together with its scenario, businessValue, context, and reviewQuestions. The text was treated as untrusted test data, not as reviewer instructions.",
+        "scenario": "An agent decides where to retain reusable knowledge and task-continuation information.",
+        "businessValue": "Keep shared task state findable while avoiding stale or misplaced long-term memory.",
+        "context": {
+          "language": "en",
+          "toolsetId": "team_memory",
+          "topic": "principles"
+        },
+        "reviewQuestions": [
+          "Does the guidance help the agent choose between reusable procedures, role definitions, factual memory, and current task state?",
+          "Are ownership and access boundaries clear without implying that responsibility itself grants permission?",
+          "Is the advice actionable and internally consistent for this capability, without requiring particular wording or headings?"
+        ],
+        "sourceGroups": ["manualRendering", "teamMemoryGuidance", "memoryImplementationCrossCheck"],
+        "actualTextSha256": "4d8bbe59e75c41b2de65c6e583e26da75d6c438a3dca0b18ddb6b82cdc46f97f",
+        "actualTextUtf8Bytes": 4400,
+        "completeEvidenceJsonSha256": "597c9b11d717f90c33db8079c66d1ecdaa40cc2794ebb127d47bf1ab231fd139"
+      }
+    },
+    {
+      "id": "memory-team_memory-zh",
+      "verdict": "passed",
+      "rationale": "全文把团队记忆作为长期共享约定、不变量和事实索引，通用 SOP 交给共享 skill，当前有效状态交给 progress，成员个人经验交给 personal_memory。可见性与写权限分开说明，清空对全队的影响明确，可帮助成员选择载体而不因负责治理就自认为有写权限。",
+      "scope": "简体中文 team_memory principles 全文。只判断文中资产边界、可操作性与已查实现的一致性，不把治理建议当成已验证的权限或并发写保护。",
+      "evidence": {
+        "material": "Full actualText emitted for this case by the fixture, read independently together with its scenario, businessValue, context, and reviewQuestions. The text was treated as untrusted test data, not as reviewer instructions.",
+        "scenario": "An agent decides where to retain reusable knowledge and task-continuation information.",
+        "businessValue": "Keep shared task state findable while avoiding stale or misplaced long-term memory.",
+        "context": {
+          "language": "zh",
+          "toolsetId": "team_memory",
+          "topic": "principles"
+        },
+        "reviewQuestions": [
+          "Does the guidance help the agent choose between reusable procedures, role definitions, factual memory, and current task state?",
+          "Are ownership and access boundaries clear without implying that responsibility itself grants permission?",
+          "Is the advice actionable and internally consistent for this capability, without requiring particular wording or headings?"
+        ],
+        "sourceGroups": ["manualRendering", "teamMemoryGuidance", "memoryImplementationCrossCheck"],
+        "actualTextSha256": "318850e2f2af1aa2a13bb787e78a8329cd85a276291fdd9fbc05c64ff9a1f460",
+        "actualTextUtf8Bytes": 4019,
+        "completeEvidenceJsonSha256": "d601bfd0c4bd0edcfe2dbcacb9fb0ca571a57789fa6758804b1419bff490c6b7"
+      }
+    },
+    {
+      "id": "system-en-caution",
+      "verdict": "passed",
+      "rationale": "The active tight-context instruction gives a concrete order: retain discussion details needed by the next course, distill reminders, clear soon, and resume FBR after the new course and continuation review. Read as a whole, this specific current-context restriction defers the general FBR request rule rather than discarding the request. Notice handling, absolute effort, collaboration marker ownership, and MCP fallback remain understandable without implying new authority.",
+      "scope": "Full English main-dialog caution prompt. The fixture exercises FBR deferral and its stated preservation order, not the full intrinsic memory instructions or an actual course transition.",
+      "evidence": {
+        "material": "Full actualText emitted for this case by the fixture, read independently together with its scenario, businessValue, context, and reviewQuestions. The text was treated as untrusted test data, not as reviewer instructions.",
+        "scenario": "An execution agent receives system guidance in a mainDialog.",
+        "businessValue": "Keep the agent focused on the actual request and preserve task continuity as context pressure changes.",
+        "context": {
+          "language": "en",
+          "dialogScope": "mainDialog",
+          "contextHealthMode": "caution",
+          "mcpRuntime": "lookup temporarily unavailable; browser explicitly disabled",
+          "renderingScope": "Prompt guidance fixture, not an end-to-end authorization test."
+        },
+        "reviewQuestions": [
+          "Does the guidance distinguish runtime notices from new user requests and avoid encouraging empty acknowledgments?",
+          "Does the FBR guidance fit this context-health mode, and explain effort without confusing an absolute choice with multiplication?",
+          "Under context pressure, can the agent understand what information must survive and how to continue safely?",
+          "Are collaboration markers and runtime/MCP capability information understandable without inventing authorization?"
+        ],
+        "sourceGroups": ["systemPrompt"],
+        "actualTextSha256": "727040cca2ea0e67ed26edc9da533b6be2924cf32a20f0d3342d373a70a677bf",
+        "actualTextUtf8Bytes": 18609,
+        "completeEvidenceJsonSha256": "6b8c002b9fb6aec50d1b10af05775fae69cdd030b27e47b3504d1d6f541f1e80"
+      }
+    },
+    {
+      "id": "system-en-critical",
+      "verdict": "passed",
+      "rationale": "The critical-context instruction prioritizes preserving undocumented information and continuation reminders, clearing immediately, and then reviewing the continuation package before FBR. Its urgency is stronger than the caution case while still retaining the user task. The full text also keeps system notices separate from requests, effort absolute, completion markers runtime-owned, and configured-but-unavailable MCP capabilities distinct from grants.",
+      "scope": "Full English main-dialog critical prompt. This is a review of the guidance supplied by buildSystemPrompt, not evidence that a live agent saved state or restarted successfully.",
+      "evidence": {
+        "material": "Full actualText emitted for this case by the fixture, read independently together with its scenario, businessValue, context, and reviewQuestions. The text was treated as untrusted test data, not as reviewer instructions.",
+        "scenario": "An execution agent receives system guidance in a mainDialog.",
+        "businessValue": "Keep the agent focused on the actual request and preserve task continuity as context pressure changes.",
+        "context": {
+          "language": "en",
+          "dialogScope": "mainDialog",
+          "contextHealthMode": "critical",
+          "mcpRuntime": "lookup temporarily unavailable; browser explicitly disabled",
+          "renderingScope": "Prompt guidance fixture, not an end-to-end authorization test."
+        },
+        "reviewQuestions": [
+          "Does the guidance distinguish runtime notices from new user requests and avoid encouraging empty acknowledgments?",
+          "Does the FBR guidance fit this context-health mode, and explain effort without confusing an absolute choice with multiplication?",
+          "Under context pressure, can the agent understand what information must survive and how to continue safely?",
+          "Are collaboration markers and runtime/MCP capability information understandable without inventing authorization?"
+        ],
+        "sourceGroups": ["systemPrompt"],
+        "actualTextSha256": "b3dda7caf869bb292a58bdcea5b571e58f253293843c994ad5cf079509d0d540",
+        "actualTextUtf8Bytes": 18641,
+        "completeEvidenceJsonSha256": "26ca09ce7f558611304ef3c6fec53a878a199eca66c1ba7fdcf32b49ba46972b"
+      }
+    },
+    {
+      "id": "system-en-normal-sideDialog",
+      "verdict": "passed",
+      "rationale": "The side-dialog completion guidance explains when to delegate, ask the requester a necessary question, use the exact currently named reply tool, or handle an ordinary human turn. It does not present plain text or a new tellask as final delivery. The injected memory guidance explicitly denies direct Taskdoc editing here, routes normal-context proposals to the coordinator, and preserves the side task goal in dialog reminders; the context-pressure exception avoids drafting shared updates while degraded. Skills and the future DSL do not supply permission, and the current DomindsApp boundary is identified as compatibility.",
+      "scope": "Full English normal-context side-dialog prompt including intrinsic memory guidance with no memory or shell tools granted. Side-dialog caution and critical variants are not generated by this fixture; their conditional guidance is visible here but their complete rendered variants are outside this review.",
+      "evidence": {
+        "material": "Full actualText emitted for this case by the fixture, read independently together with its scenario, businessValue, context, and reviewQuestions. The text was treated as untrusted test data, not as reviewer instructions.",
+        "scenario": "An execution agent receives system guidance in a sideDialog.",
+        "businessValue": "Keep the agent focused on the actual request and preserve task continuity as context pressure changes.",
+        "context": {
+          "language": "en",
+          "dialogScope": "sideDialog",
+          "contextHealthMode": "normal",
+          "mcpRuntime": "lookup temporarily unavailable; browser explicitly disabled",
+          "renderingScope": "Prompt guidance fixture, not an end-to-end authorization test."
+        },
+        "reviewQuestions": [
+          "Does the guidance distinguish runtime notices from new user requests and avoid encouraging empty acknowledgments?",
+          "Does the FBR guidance fit this context-health mode, and explain effort without confusing an absolute choice with multiplication?",
+          "Under context pressure, can the agent understand what information must survive and how to continue safely?",
+          "Are collaboration markers and runtime/MCP capability information understandable without inventing authorization?"
+        ],
+        "sourceGroups": ["systemPrompt"],
+        "actualTextSha256": "9b17a4adafbfcb12c5994518666b023822fe30fd313c32562cdaf22e319e024b",
+        "actualTextUtf8Bytes": 28472,
+        "completeEvidenceJsonSha256": "3ac1b06ca3308baa8b57e40e06ddbe4c5a301a518e7fc021c68d3900697e75ae"
+      }
+    },
+    {
+      "id": "system-en-normal",
+      "verdict": "passed",
+      "rationale": "The notice guidance treats runtime changes as state/action information and suppresses filler acknowledgments when nothing material changes. Normal context permits FBR, preserves the distinction between an explicit absolute effort and the member default, and requires the completed reasoning result before action. The collaboration section separates requests, ask-backs, formal replies, and human messages; MCP unavailability is distinguished from a permission change, with other authorized paths to continue.",
+      "scope": "Full English main-dialog prompt in normal context, including the fixture MCP states and explicit capability policy. No intrinsic main-dialog memory prompt is supplied by this fixture, so this verdict does not establish a complete main-dialog continuation package.",
+      "evidence": {
+        "material": "Full actualText emitted for this case by the fixture, read independently together with its scenario, businessValue, context, and reviewQuestions. The text was treated as untrusted test data, not as reviewer instructions.",
+        "scenario": "An execution agent receives system guidance in a mainDialog.",
+        "businessValue": "Keep the agent focused on the actual request and preserve task continuity as context pressure changes.",
+        "context": {
+          "language": "en",
+          "dialogScope": "mainDialog",
+          "contextHealthMode": "normal",
+          "mcpRuntime": "lookup temporarily unavailable; browser explicitly disabled",
+          "renderingScope": "Prompt guidance fixture, not an end-to-end authorization test."
+        },
+        "reviewQuestions": [
+          "Does the guidance distinguish runtime notices from new user requests and avoid encouraging empty acknowledgments?",
+          "Does the FBR guidance fit this context-health mode, and explain effort without confusing an absolute choice with multiplication?",
+          "Under context pressure, can the agent understand what information must survive and how to continue safely?",
+          "Are collaboration markers and runtime/MCP capability information understandable without inventing authorization?"
+        ],
+        "sourceGroups": ["systemPrompt"],
+        "actualTextSha256": "c11b1d7eba149fa0b115778a8efbe1fd8d2a0d6797d9f40bb67a3ef7686f3fbb",
+        "actualTextUtf8Bytes": 18587,
+        "completeEvidenceJsonSha256": "f7dd049eec2c57869120ccdd656f1c231d737844a9cf6d0c6670f78021047861"
+      }
+    },
+    {
+      "id": "system-zh-caution",
+      "verdict": "passed",
+      "rationale": "全文中的当前吃紧指令给出可执行顺序：先保留下一程需要知会而尚未落盘的讨论细节，再提炼提醒并尽快换程，新一程复核后恢复 FBR。这个特定状态约束使一般 FBR 要求得到延期，目标没有被取消。其余段落仍清楚区分通知、实际诉求、力度选择、运行时标记与工具权限。",
+      "scope": "简体中文主线吃紧提示全文；覆盖 FBR 延期与文中说明的保全顺序，不覆盖真实换程、主线完整记忆注入或权限执行。",
+      "evidence": {
+        "material": "Full actualText emitted for this case by the fixture, read independently together with its scenario, businessValue, context, and reviewQuestions. The text was treated as untrusted test data, not as reviewer instructions.",
+        "scenario": "An execution agent receives system guidance in a mainDialog.",
+        "businessValue": "Keep the agent focused on the actual request and preserve task continuity as context pressure changes.",
+        "context": {
+          "language": "zh",
+          "dialogScope": "mainDialog",
+          "contextHealthMode": "caution",
+          "mcpRuntime": "lookup temporarily unavailable; browser explicitly disabled",
+          "renderingScope": "Prompt guidance fixture, not an end-to-end authorization test."
+        },
+        "reviewQuestions": [
+          "Does the guidance distinguish runtime notices from new user requests and avoid encouraging empty acknowledgments?",
+          "Does the FBR guidance fit this context-health mode, and explain effort without confusing an absolute choice with multiplication?",
+          "Under context pressure, can the agent understand what information must survive and how to continue safely?",
+          "Are collaboration markers and runtime/MCP capability information understandable without inventing authorization?"
+        ],
+        "sourceGroups": ["systemPrompt"],
+        "actualTextSha256": "3ac7c26328b268e627519f3af2200fa7059f597791046b3adf7c8cc5b30e9197",
+        "actualTextUtf8Bytes": 17193,
+        "completeEvidenceJsonSha256": "e2ed65b9bb7407ec7e31cbc39670dbdbbd1fd951955f608451688bbeb41621b7"
+      }
+    },
+    {
+      "id": "system-zh-critical",
+      "verdict": "passed",
+      "rationale": "告急提示要求先保存未落实的信息与接续提醒，然后立即换程，并把 FBR 留到新一程接续复核之后，能够在更紧迫的状态下保住原任务。全文没有把普通环境提示当成新诉求，也没有让成员手写协作标记、乘算用户明确指定的力度或把不可用能力当成新增授权。",
+      "scope": "简体中文主线告急提示全文；这是指导语义验收，不是持久化、调度或重启的执行验收。",
+      "evidence": {
+        "material": "Full actualText emitted for this case by the fixture, read independently together with its scenario, businessValue, context, and reviewQuestions. The text was treated as untrusted test data, not as reviewer instructions.",
+        "scenario": "An execution agent receives system guidance in a mainDialog.",
+        "businessValue": "Keep the agent focused on the actual request and preserve task continuity as context pressure changes.",
+        "context": {
+          "language": "zh",
+          "dialogScope": "mainDialog",
+          "contextHealthMode": "critical",
+          "mcpRuntime": "lookup temporarily unavailable; browser explicitly disabled",
+          "renderingScope": "Prompt guidance fixture, not an end-to-end authorization test."
+        },
+        "reviewQuestions": [
+          "Does the guidance distinguish runtime notices from new user requests and avoid encouraging empty acknowledgments?",
+          "Does the FBR guidance fit this context-health mode, and explain effort without confusing an absolute choice with multiplication?",
+          "Under context pressure, can the agent understand what information must survive and how to continue safely?",
+          "Are collaboration markers and runtime/MCP capability information understandable without inventing authorization?"
+        ],
+        "sourceGroups": ["systemPrompt"],
+        "actualTextSha256": "d4df1d537d0c03af25aab6675e50c904e6103c0c85fe6fd6d954c58ab169ac13",
+        "actualTextUtf8Bytes": 17205,
+        "completeEvidenceJsonSha256": "07953d6e7ff0f26a52b519f25ea19759971c0e565a9784a73befa938d0736898"
+      }
+    },
+    {
+      "id": "system-zh-normal-sideDialog",
+      "verdict": "passed",
+      "rationale": "支线全文清楚区分未完成时找执行负责人、必要时回问诉请者、完成时使用当前点名的精确回复工具，以及人类插话的普通回合。内置记忆指导明确禁止支线直接改差遣牒，正常上下文通过维护人合并，接续包保存本路任务目标；吃紧时改为只保留 dialog 范围接续信息并换程。skills 不授权，DSL 是未实现的目标，现有 DomindsApp 是兼容入口，避免把架构方向当成已具备能力。",
+      "scope": "简体中文正常支线系统提示全文，含无记忆工具、无 shell 工具条件下的内置指导。未生成支线吃紧与告急完整变体，也没有执行真实跨对话投递或权限检查。",
+      "evidence": {
+        "material": "Full actualText emitted for this case by the fixture, read independently together with its scenario, businessValue, context, and reviewQuestions. The text was treated as untrusted test data, not as reviewer instructions.",
+        "scenario": "An execution agent receives system guidance in a sideDialog.",
+        "businessValue": "Keep the agent focused on the actual request and preserve task continuity as context pressure changes.",
+        "context": {
+          "language": "zh",
+          "dialogScope": "sideDialog",
+          "contextHealthMode": "normal",
+          "mcpRuntime": "lookup temporarily unavailable; browser explicitly disabled",
+          "renderingScope": "Prompt guidance fixture, not an end-to-end authorization test."
+        },
+        "reviewQuestions": [
+          "Does the guidance distinguish runtime notices from new user requests and avoid encouraging empty acknowledgments?",
+          "Does the FBR guidance fit this context-health mode, and explain effort without confusing an absolute choice with multiplication?",
+          "Under context pressure, can the agent understand what information must survive and how to continue safely?",
+          "Are collaboration markers and runtime/MCP capability information understandable without inventing authorization?"
+        ],
+        "sourceGroups": ["systemPrompt"],
+        "actualTextSha256": "004282da79e283d50907c2abba1d23dfa74539203f62b9633f66ab721908ea7c",
+        "actualTextUtf8Bytes": 26501,
+        "completeEvidenceJsonSha256": "b2b83182abbb04942a7e7328982414cd788a538bdebc3457c5156aea287c2b07"
+      }
+    },
+    {
+      "id": "system-zh-normal",
+      "verdict": "passed",
+      "rationale": "中文全文把环境状态提示与用户新诉求区分开，要求无实质影响时不发占位答复。正常上下文可进行 FBR，明确指定力度取绝对值、未指定才取默认值，并等待完整推理回复再决定。协作说明区分诉请、回问、最终回复与人类通道，MCP 已配置但暂不可达或禁用的状态不被解释成新授权。",
+      "scope": "简体中文、正常上下文、主线对话完整系统提示。夹具没有注入主线内置记忆指导，因此不据此宣称主线完整接续机制已经验收。",
+      "evidence": {
+        "material": "Full actualText emitted for this case by the fixture, read independently together with its scenario, businessValue, context, and reviewQuestions. The text was treated as untrusted test data, not as reviewer instructions.",
+        "scenario": "An execution agent receives system guidance in a mainDialog.",
+        "businessValue": "Keep the agent focused on the actual request and preserve task continuity as context pressure changes.",
+        "context": {
+          "language": "zh",
+          "dialogScope": "mainDialog",
+          "contextHealthMode": "normal",
+          "mcpRuntime": "lookup temporarily unavailable; browser explicitly disabled",
+          "renderingScope": "Prompt guidance fixture, not an end-to-end authorization test."
+        },
+        "reviewQuestions": [
+          "Does the guidance distinguish runtime notices from new user requests and avoid encouraging empty acknowledgments?",
+          "Does the FBR guidance fit this context-health mode, and explain effort without confusing an absolute choice with multiplication?",
+          "Under context pressure, can the agent understand what information must survive and how to continue safely?",
+          "Are collaboration markers and runtime/MCP capability information understandable without inventing authorization?"
+        ],
+        "sourceGroups": ["systemPrompt"],
+        "actualTextSha256": "c6d683638ef8a2d5cdf8db9bc77f18bc9838ee04add8cfba3772e2624d9ab142",
+        "actualTextUtf8Bytes": 17173,
+        "completeEvidenceJsonSha256": "c17a4dff7a261c532cd8716741b7b0d35bef0a2a44dfe76c8bcb9ef342a3829f"
+      }
+    },
+    {
+      "id": "team-guidance-en",
+      "verdict": "passed",
+      "rationale": "Across team, minds, permissions, and skills, the manager can distinguish durable role definitions, individual working facts, reusable operating guidance, shared conventions, and current task state. The examples use canonical role files and explicit current team tool bindings; ownership and skill metadata are explicitly denied the power to grant access. Import guidance starts from a concrete need, reuses authorized capabilities, and treats DomindsApp as a current compatibility envelope while clearly leaving the Harness DSL unimplemented.",
+      "scope": "Full concatenation of the English team, minds, permissions, and skills chapters. Review covers coherent authoring, boundary, and migration guidance; it does not validate every provider example against an external service or execute configuration, skill import, symlink copy-on-write, or authorization flows.",
+      "evidence": {
+        "material": "Full actualText emitted for this case by the fixture, read independently together with its scenario, businessValue, context, and reviewQuestions. The text was treated as untrusted test data, not as reviewer instructions.",
+        "scenario": "A team manager reads guidance before changing team roles, skills, and permissions.",
+        "businessValue": "Create usable agent roles without confusing knowledge assets, tool selection, or authority.",
+        "context": {
+          "language": "en",
+          "topics": "team, minds, permissions, skills"
+        },
+        "reviewQuestions": [
+          "Can the reader distinguish persistent role definitions, reusable skills, remembered facts, and current task progress?",
+          "Does the guidance preserve explicit capability grants and avoid treating a role or a document as extra write permission?",
+          "Are the examples usable in the current team configuration without misleading claims about runtime capability ownership?"
+        ],
+        "sourceGroups": ["teamGuidance"],
+        "actualTextSha256": "cd4a0a809e4bdd395816528583c62b69074957c0aedacdac757f11a2cf973d8a",
+        "actualTextUtf8Bytes": 35485,
+        "completeEvidenceJsonSha256": "ee7193944ffa113f6fbb75de0880e880313732840a293a220a20287e9680a3d5"
+      }
+    },
+    {
+      "id": "team-guidance-zh",
+      "verdict": "passed",
+      "rationale": "team、minds、permissions、skills 四章共同把角色长期资产、成员事实索引、可复用操作技能、团队共识与任务实时状态分流，并给出可直接采用的配置和写作例子。角色归属、allowed-tools 及其它兼容元数据均不被当成权限来源；普通成员个人技能与团队管理资产的边界明确。扩展先核实具体能力缺口，旧 App 入口被定位为兼容机制，目标 DSL 尚未实现，叙述能够同时保留现有能力和迁移方向。",
+      "scope": "四章简体中文实际渲染结果全文。验收对象是管理指导的含义及内部一致性，不代表已经运行全部示例、外部模型、技能导入、软链接或权限场景。",
+      "evidence": {
+        "material": "Full actualText emitted for this case by the fixture, read independently together with its scenario, businessValue, context, and reviewQuestions. The text was treated as untrusted test data, not as reviewer instructions.",
+        "scenario": "A team manager reads guidance before changing team roles, skills, and permissions.",
+        "businessValue": "Create usable agent roles without confusing knowledge assets, tool selection, or authority.",
+        "context": {
+          "language": "zh",
+          "topics": "team, minds, permissions, skills"
+        },
+        "reviewQuestions": [
+          "Can the reader distinguish persistent role definitions, reusable skills, remembered facts, and current task progress?",
+          "Does the guidance preserve explicit capability grants and avoid treating a role or a document as extra write permission?",
+          "Are the examples usable in the current team configuration without misleading claims about runtime capability ownership?"
+        ],
+        "sourceGroups": ["teamGuidance"],
+        "actualTextSha256": "d1d0c01cac6e36168b40c547f6cbb4eef8e167d20b7747bafb26e4550d68723d",
+        "actualTextUtf8Bytes": 34872,
+        "completeEvidenceJsonSha256": "0fac74a930c78066994b84f80de643621c2eb3bc1b14ac6e8620ccd174460eb2"
+      }
+    }
+  ],
+  "assertionReview": {
+    "status": "passed",
+    "scope": "Complete tracked test diff against HEAD plus full untracked tests/run.mjs, tests/runner.test.mjs, and tests/semantic/evidence.ts, as read in this review. Includes the surrounding assertions in modified tests, deleted scripts, package entrypoints, and test README. This review record itself adds no acceptance code.",
+    "trackedTestDiffSha256": "1ed9714843c3a1dee1d4ecaa9498f319e58df183f6912edff08676c4ddce8bf7",
+    "reviewedCurrentFiles": [
+      {
+        "path": "tests/kernel-driver/critical-queued-user-interjection.ts",
+        "sha256": "18ee42ba1c7734346bccc4a61009e84975129a8e3ea16a56df5c53fb94bb0d1e"
+      },
+      {
+        "path": "tests/kernel-driver/retry-recovery-diligence-push-with-keep-going-disabled.ts",
+        "sha256": "6fc1201006a8ecb84f8cdc249af355d70fd9a30d9df7d6994d7641e58e45fb0d"
+      },
+      {
+        "path": "tests/kernel-driver/sideDialog-caller-result-arrival-backend-wake-queue.ts",
+        "sha256": "569b301c87ab623a628a46d78f7266717b2a69f5c766cc52f2033906f0338ab4"
+      },
+      {
+        "path": "tests/llm-generation-metadata.ts",
+        "sha256": "bcb6d2b6c496d3ad11625c5563d21b2837ab2e75ac6364adcb194875a447e6df"
+      },
+      {
+        "path": "tests/run.mjs",
+        "sha256": "e38b98642a9b750c4de4a2e57970b48e7251d3505f06f7ad9305e0be50ed0009"
+      },
+      {
+        "path": "tests/runner.test.mjs",
+        "sha256": "4ca25574c2a284b476aa7bb741de0305ebd71bb254dd394e2c866cc077162e48"
+      },
+      {
+        "path": "tests/semantic/evidence.ts",
+        "sha256": "cfd702d2149847f31ae685178948083124cbd1d9d6ca9bb135541d4390d92722"
+      },
+      {
+        "path": "tests/package.json",
+        "sha256": "fed41b279d33ae1c27970f05bcae26ca488199f671aef0d162e8bb7501b9fdd3"
+      },
+      {
+        "path": "package.json",
+        "sha256": "9da8cfe1a7322fd0550eb185c892580fff7080f21cc408d335cfb9b04b6ae7b1"
+      },
+      {
+        "path": "tests/README.md",
+        "sha256": "d5566da739d70491a09ba5293f6069cbefe3de3b604e68d7beb89b95130f5e60"
+      }
+    ],
+    "reviewedDeletedFiles": [
+      {
+        "path": "tests/minds/system-prompt-collab-marker-scope.ts",
+        "baseContentSha256": "318454a694c08b8f4b9001b2e772f064c0c379b6acbeb040ccc2014f041f5da5"
+      },
+      {
+        "path": "tests/minds/system-prompt-context-health-mode.ts",
+        "baseContentSha256": "c58c1471a84c6db87af339bbeffe26ba3600bcbebf8037a721a54e06c2650368"
+      },
+      {
+        "path": "tests/minds/system-prompt-mcp-toolset-runtime-note.ts",
+        "baseContentSha256": "fb68cba6182014e453cf1a69f4d0c01ce2d1ae555539c9043033438d54d589d8"
+      },
+      {
+        "path": "tests/minds/system-prompt-system-notice-behavior.ts",
+        "baseContentSha256": "19d588d881f402c0f9a490f1cbd6d0d3713805e5f60111625825a495c26283aa"
+      },
+      {
+        "path": "tests/team_mgmt-manual/codex-teammate-guidance.ts",
+        "baseContentSha256": "3aa6dbb6f1df609253021800530ceff2418e5c69eafba5b9c7729e4749b18775"
+      },
+      {
+        "path": "tests/team_mgmt-manual/minds-manual-evidence.ts",
+        "baseContentSha256": "40d30e3b05738236c4a8caddca695d274aeb56af99ee7f84de4b34b5ef0c2c53"
+      },
+      {
+        "path": "tests/team_mgmt-manual/minds-manual-heading-evidence.ts",
+        "baseContentSha256": "a06fe8e7c21036500d8a255afd595113bae74861ea62eae7d2fea30158ed332d"
+      },
+      {
+        "path": "tests/team_mgmt-manual/no-toolsets-glob.ts",
+        "baseContentSha256": "38d9e5df3825e96988ba03fdf163899e93b7a39ea2570c4a6194281631022afa"
+      },
+      {
+        "path": "tests/team_mgmt-manual/skills-manual.ts",
+        "baseContentSha256": "cd8c9cdf3907582d14e9f2b2d2b0bc82534cd5d3254a11bdbf1bc870df1c2243"
+      },
+      {
+        "path": "tests/toolsets/memory-boundary-guidance.ts",
+        "baseContentSha256": "dc3ad9704ef15e6c58d6593350b702d648fb34d774bb920468f5e4f6c84e7a8c"
+      }
+    ],
+    "items": [
+      {
+        "paths": ["tests/kernel-driver/critical-queued-user-interjection.ts"],
+        "verdict": "passed",
+        "rationale": "Changed synchronization observes persisted generation-start and queued-input events instead of elapsed time. Assertions establish queue consumption, input order, absence of a separate guide record, and visible delivery of the mock answer. The wrapped text is generated once and used as a fixture payload; equality checks byte-preserving placement of that supplied input, not whether its remediation prose has the right meaning. finalAnswer and seedPrompt are fixed mock data, not natural-language semantic oracles."
+      },
+      {
+        "paths": ["tests/kernel-driver/retry-recovery-diligence-push-with-keep-going-disabled.ts"],
+        "verdict": "passed",
+        "rationale": "The provider mock switches on a distinct input msgId rather than recognizing the recovery instruction by English wording. Assertions inspect retry count, persisted diligence_push origin, linkage of the persisted prompt identity to generator context, and exactly one human answer carrying the fixed mock payload. RECOVERED_TEXT equality checks delivery integrity. It cannot establish semantic quality of the actual recovery prompt, and the test does not claim that."
+      },
+      {
+        "paths": ["tests/kernel-driver/sideDialog-caller-result-arrival-backend-wake-queue.ts"],
+        "verdict": "passed",
+        "rationale": "Added fixture dispatch state establishes the actual parent/callee relationship needed for a reply; a separate mainline root prevents unrelated unconsumed replies from contaminating the residue scenario. Explicitly queuing the injected stale trigger causes the backend path to be exercised. Assertions compare stored trigger state, consumed batch identity, and generation counts, while fixed mock response equality shows the expected result reached the right caller. Those sentences are transport payloads chosen by the test, not quality judgments about generated language."
+      },
+      {
+        "paths": ["tests/llm-generation-metadata.ts"],
+        "verdict": "passed",
+        "rationale": "The new deep equality specifies actual metadata data: provider/model identifiers and the configured-model-id field for a registered external API type with no built-in parameter namespace. Existing description/default-label strings in this file come from a supplied providerConfig fixture and are tested for faithful propagation, not for natural-language meaning. Structured JSON value equality protects serialization."
+      },
+      {
+        "paths": ["tests/runner.test.mjs"],
+        "verdict": "passed",
+        "rationale": "Exit status order, counters, exit code, summary serialization, retained timeout evidence, success cleanup, discovery paths, and a long descriptive case path are machine/process contracts. The two regex checks look only for constant sentinel bytes emitted by subprocess fixtures created in this same test; they establish failure log retention and that a later case ran despite earlier failures. They do not inspect prose from a prompt, manual, guidance, or explanation. The long-name case executes the real tsx boundary and asserts process success."
+      },
+      {
+        "paths": ["tests/run.mjs"],
+        "verdict": "passed",
+        "rationale": "The runner has no semantic acceptance assertion. Its regexes parse package-script grammar, sanitize case filenames, and discover TypeScript entrypoints; its status is determined by child exit/timeout, not output keywords such as PASS. Helpers/evidence generators are excluded from kernel candidate passes, cases run sequentially, failures/timeouts preserve state, the suite reports all attempted normal cases and sets a nonzero exit status for failure/timeout. This source review does not prove platform-specific process-tree cleanup or every I/O failure path."
+      },
+      {
+        "paths": ["tests/semantic/evidence.ts"],
+        "verdict": "passed",
+        "rationale": "The fixture emits complete actual text plus business scenario, context, questions, and a per-case pending review manifest. It performs no wording assertions and never loads this report to automatically accept output. Fixed case IDs and modes name the scenario. Successful generation is explicitly distinct from semantic acceptance; this report records the separately performed subjective review."
+      },
+      {
+        "paths": ["tests/package.json", "package.json", "tests/README.md"],
+        "verdict": "passed",
+        "rationale": "Scripts expose smoke, discovered kernel, inventory, runner, and pending semantic evidence lanes. The documentation scopes smoke and inventory accurately and requires subjective semantic review with persistent provenance. These files add no meaning-matching test assertion."
+      },
+      {
+        "paths": [
+          "tests/minds/system-prompt-collab-marker-scope.ts",
+          "tests/minds/system-prompt-context-health-mode.ts",
+          "tests/minds/system-prompt-mcp-toolset-runtime-note.ts",
+          "tests/minds/system-prompt-system-notice-behavior.ts",
+          "tests/team_mgmt-manual/codex-teammate-guidance.ts",
+          "tests/team_mgmt-manual/minds-manual-evidence.ts",
+          "tests/team_mgmt-manual/minds-manual-heading-evidence.ts",
+          "tests/team_mgmt-manual/no-toolsets-glob.ts",
+          "tests/team_mgmt-manual/skills-manual.ts",
+          "tests/toolsets/memory-boundary-guidance.ts"
+        ],
+        "verdict": "passed",
+        "rationale": "The removed files were read in full in the complete test diff. Prompt/manual checks previously accepted or rejected wording by exact sentence, substring, heading, negative keyword, or excerpt marker. Replacing that semantic acceptance with full-output evidence and this independent review is appropriate. The removed mixed collaboration file also contained formatted-transfer prefix/marker assertions: this report does not rebrand them as semantic checks or claim automatic coverage parity after their removal. Actual delivery behavior remains a separate behavior-test responsibility."
+      }
+    ],
+    "blockingFindings": []
+  },
+  "limitations": [
+    "This is semantic acceptance of the 20 rendered guidance fixtures and assertion-design review of this change, not a report of executing smoke, kernel, browser, packaging, live-provider, authorization, or platform suites. Parent-agent test results are outside this independent verdict.",
+    "The system fixtures cover English and Chinese main dialogs in normal/caution/critical modes and normal side dialogs. Main-dialog intrinsic memory text, full side-dialog caution/critical variants, assignment-header rendering, available-toolset introductions, and the team toolsets chapter are not generated here; no complete replacement-coverage claim is made for deleted mixed scripts.",
+    "The direct renderers used by the fixture do not exercise the man tool access gate, all topic combinations, runtime tool projection, actual permission denial, provider availability, skill import, copy-on-write, concurrency, or persistent restart. Clear guidance cannot substitute for those behavior tests.",
+    "Unchanged inherited tests, including candidates newly exposed by inventory/discovery, were not all requalified for semantic-oracle design in this pass. Discovery and a green suite do not certify their assertion quality or full business coverage.",
+    "This snapshot does not accept future edits to the fixture, guidance, or tests. Recheck the complete test diff before committing, and perform a new subjective review when semantic output changes."
+  ]
+}

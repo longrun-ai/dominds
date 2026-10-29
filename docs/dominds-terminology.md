@@ -287,38 +287,41 @@ Example / 示例（概念）:
 
 ### MicroKernel（微内核）
 
-- EN: The **MicroKernel** is Dominds' App-agnostic runtime core. It owns only the generic mechanisms that every App must share, such as dialog driving, protocols, persistence, isolation, composition loading, and non-bypassable execution boundaries. **MicroKernel** and **微内核** are the canonical English and Chinese architecture terms; do not omit the `Micro` or `微` prefix in prose.
-- ZH: **微内核（MicroKernel）**是 Dominds 与具体 App 业务无关的运行核心，只拥有所有 App 必须共享的通用机制，例如对话驱动、协议、持久化、隔离、组合装载和不可绕过的执行边界。`MicroKernel` 和“微内核”分别是唯一规范的英文、中文架构称谓；正文中不得省略 `Micro` 或“微”字前缀。
+- EN: The **MicroKernel** is the generic runtime core for Software Defined Harness. It maintains dialog driving, controlled capability invocation, persistence, isolation, event delivery, recovery, and non-bypassable execution boundaries. **MicroKernel** and **微内核** are the canonical terms.
+- ZH: **微内核（MicroKernel）**是 Software Defined Harness 的通用运行核心，维护对话驱动、受控能力调用、持久化、隔离、事件投递、恢复及不可绕过的执行边界。正文不省略 Micro 或“微”字前缀。
 
-- EN: In Chinese architecture prose, write the compound boundaries as **微内核–App** and **微内核–应用组件–App**. Keep `App` as the formal domain term for the business runtime identity and composition root; do not translate it to the generic “应用”.
-- ZH: 中文架构正文中的复合边界写作“微内核–App”和“微内核–应用组件–App”。`App` 是业务运行身份与组合根的正式领域概念，不改成容易与应用侧、应用组件或应用能力混淆的泛称“应用”。
+- EN: Existing identifiers such as `@longrun-ai/kernel`, `main/llm/kernel-driver/**`, and `DomindsKernelEndpoint` keep their exact spelling until their implementation contracts migrate.
+- ZH: 现有机器标识保持精确拼写，直到相关实现契约完成迁移；不为术语统一做无业务收益的批量改名。
 
-- EN: Existing machine identifiers such as `@longrun-ai/kernel`, `packages/kernel/**`, `main/llm/kernel-driver/**`, and `DomindsKernelEndpoint` keep their exact spelling until a separate holistic contract migration renames them. They are implementation identifiers, not a second architecture term.
-- ZH: `@longrun-ai/kernel`、`packages/kernel/**`、`main/llm/kernel-driver/**`、`DomindsKernelEndpoint` 等现行机器标识，在另一次完整契约迁移真正重命名它们之前必须保持精确拼写。它们是实现标识，不构成第二套架构称谓。
+### Software Defined Harness
+
+- EN: A runtime environment defined by DSL scripts and evolved by an orchestration agent to organize execution-agent behavior and interaction. Extension components provide capabilities usable by the DSL. This supersedes the Dominds App composition design; see the [design direction](./software-defined-harness.md).
+- ZH: 由 DSL 脚本定义、由编排智能体演进的运行环境，用于组织执行智能体的行为与交互。扩展组件提供 DSL 可用能力。该方向取代 Dominds App 组合设计；见[设计方向](./software-defined-harness.zh.md)。
+
+### Harness DSL（运行环境 DSL）
+
+- EN: The program defining runtime responsibilities, context, capability binding, interaction, waiting, failure handling, and evolution. It is not merely a static tool list. Final syntax and implementation are not decided or shipped.
+- ZH: 定义运行职责、上下文、能力绑定、交互、等待、失败处理与演进的程序，不只是静态工具清单。最终语法与实现尚未确定或交付。
+
+### Extension Component（扩展组件）
+
+- EN: A software building block supplying DSL-usable capabilities under MicroKernel authority. It has no independent runtime sovereignty. Component and business-concern boundaries need not coincide.
+- ZH: 在微内核执行边界内提供 DSL 可用能力的软件构建单元，不拥有独立运行主权。组件边界与业务关切不必一一对应。
 
 ### Application Component（应用组件）
 
-- EN: An **Application Component** is a stable, versioned App-side software building block. It may define toolsets, configuration, a state namespace, business handlers, and UI contributions, but it has no independent application identity or global runtime authority. It is an architecture concept, not a synonym for a business concern or business feature; the mapping between them is many-to-many.
-- ZH: **应用组件（Application Component）**是 App 侧稳定、版本化的软件构建单元。它可以定义工具集、配置、状态命名空间、业务处理器与 UI contribution，但不拥有独立应用身份或全局运行主权。它是软件架构概念，不是业务关切或业务功能特性的同义词；二者是多对多关系。
-
-- EN: A component artifact and definition have a relatively static lifecycle. A component instance exists only inside one App composition revision and is activated, drained, or disposed with that revision. Do not use “component” as a synonym for App or mini-App.
-- ZH: 组件制品与定义的生命周期相对静态；组件实例只存在于某个 App composition revision 内，并随该 revision 激活、drain 或释放。不要把“组件”当成 App 或 mini-App 的同义词。
+- EN: A term from the superseded App design. Use **Extension Component** for the target architecture, while preserving existing implementation identifiers and useful behavior during migration.
+- ZH: 原 App 设计中的术语。目标架构使用“扩展组件”，迁移期间保留现行实现标识及其有价值行为。
 
 ### App（应用）
 
-- EN: An **App** is the stable business runtime identity and the sole composition root. Its lifecycle is comparatively dynamic: it may explicitly add, remove, or replace Application Components as business needs change.
-- ZH: **App（应用）**是稳定的业务运行身份，也是唯一组合根。它的生命周期相对动态，可以按业务需要显式增加、移除或替换应用组件。
-
-- EN: Use **App** for the composed business application, not for a component artifact, skill, workflow, package, or App Host.
-- ZH: “App” 只用于指代组合后的具体业务应用，不是组件制品、skill、流程定义、软件包或 App 宿主的同义词。
+- EN: The former business identity/composition-root design, now retired as the target. `DomindsApp` remains a current Stage 0 implementation envelope pending explicit migration.
+- ZH: 原业务身份/组合根设计，已取消作为目标方向。`DomindsApp` 暂时仍是 Stage 0 实现信封，等待显式迁移。
 
 ### App Composition Revision（App 组合修订）
 
-- EN: An **App Composition Revision** is an atomically resolved snapshot of one App's selected component versions, configuration, requirement bindings, and policies. Every in-flight action belongs to exactly one revision.
-- ZH: **App 组合修订（App Composition Revision）**是某个 App 所选组件版本、配置、依赖绑定与策略经过原子解析后形成的快照。每个进行中的动作必须且只能归属于一个 revision。
-
-- EN: Recomposition creates a new revision. Activating it is a MicroKernel-controlled operation that must complete validation, state migration, draining, and rollback preparation before the current-revision pointer changes.
-- ZH: App 重组会产生新的 revision。激活新 revision 是微内核受控动作；只有校验、状态迁移、drain 与失败回滚准备全部完成后，当前 revision 指针才能切换。
+- EN: A superseded design term, not the target execution model. Script versions and in-flight action disposition must be established from Harness scenarios rather than inheriting an App composition object model.
+- ZH: 已废弃的目标设计术语。脚本版本与运行中动作的处置从 Harness 场景推导，不沿用 App 组合对象模型。
 
 ### Skill（技能文档）
 
@@ -330,8 +333,8 @@ Example / 示例（概念）:
 
 ### Toolset（工具集）
 
-- EN: A **toolset** is a stable team-facing software capability and grant boundary defined by an Application Component, selected through an App composition, and bound to an execution principal (for example `playwright_interactive`). It is not, by itself, a business-feature boundary.
-- ZH: **工具集（toolset）**是由应用组件定义、经 App 组合选用、再绑定给执行主体的稳定软件能力面与授予边界（例如 `playwright_interactive`）。它本身不构成业务功能特性的边界。
+- EN: A **toolset** is a team-facing capability surface and grant boundary, currently selected through team configuration and ultimately bound through Harness DSL under MicroKernel authority (for example `playwright_interactive`). It is not, by itself, a business-feature boundary.
+- ZH: **工具集（toolset）**是面向执行者的能力面与授予边界，当前经团队配置选择，目标由 Harness DSL 在微内核授权边界内绑定（例如 `playwright_interactive`）。它本身不构成业务功能特性的边界。
 
 - EN: Use “toolset” when you mean the capability surface or grant boundary. Do not call that concept a “workflow” or a “manual”.
 - ZH: 当语义指向能力面或授予边界时，应使用“工具集”；不要把这个概念写成“流程”或“手册”。
@@ -346,14 +349,8 @@ Example / 示例（概念）:
 
 ### App Host（App 宿主）
 
-- EN: The **App Host** is the runtime-side process boundary that executes handlers and tools belonging to an App's active composition revision and speaks the MicroKernel↔App IPC contract.
-- ZH: **App 宿主（App Host）**是运行时侧的进程边界，负责执行 App 当前 composition revision 所含的处理器与工具，并承载微内核 ↔ App 之间的 IPC 契约。
-
-- EN: Use “App Host” when you mean the runtime component. When you mean the capability surface, prefer “component-provided tools exposed by the App composition” rather than “app-host tools”.
-- ZH: 当语义指向运行时组件时，用“App 宿主”；当语义指向能力面时，优先写“由组件提供、经 App composition 暴露的工具”，不要写“app-host tools”。
-
-- EN: “App Host” is not an entry-file naming contract. For app entry semantics, prefer terms such as `app entry module` and `app factory export`; avoid implying default filenames like `src/app-host.js` or export names like `createDomindsAppHost`.
-- ZH: “App 宿主”不是入口文件命名契约。涉及 app 入口语义时，优先使用 `app entry module` / `app factory export`（可译为“入口模块”/“工厂导出”），避免暗示默认文件名 `src/app-host.js` 或默认导出名 `createDomindsAppHost`。
+- EN: The current Stage 0 hosting process and IPC implementation. This is a compatibility name, not an App composition root in the target architecture. Its isolation and capability-execution value must survive migration to extension hosting.
+- ZH: 当前 Stage 0 宿主进程及 IPC 实现的名称，是兼容术语，不代表目标架构仍保留 App 组合根。迁移到扩展能力承载机制时，要沿袭其隔离及能力执行价值。
 
 ### Workflow（流程定义）
 

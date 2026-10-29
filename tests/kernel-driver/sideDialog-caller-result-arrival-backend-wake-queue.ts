@@ -324,6 +324,22 @@ async function main(): Promise<void> {
         collectiveTargets: ['fullstack'],
       },
     );
+    // A child can deliver a reply only while its parent has the corresponding dispatch.
+    // Creating the dialog alone does not establish that business fact.
+    await DialogPersistence.appendActiveCalleeDispatch(root.id, {
+      batchId: 'dispatch:test:root:c1:g3',
+      calleeDialogId: callerWithoutFinalResponse.id.selfId,
+      callId: 'root-to-caller-without-final',
+      callName: 'tellask',
+      callSiteCourse: toCallSiteCourseNo(1),
+      callSiteGenseq: toCallSiteGenseqNo(3),
+      callType: 'B',
+      createdAt: formatUnifiedTimestamp(new Date()),
+      mentionList: ['@fullstack'],
+      targetAgentId: 'fullstack',
+      tellaskContent: 'Please coordinate another nested work item.',
+      sessionSlug: 'wake-queue-caller-without-final',
+    });
     const calleeWithoutFinalResponse = await callerWithoutFinalResponse.createSideDialog(
       'mentor',
       ['@mentor'],
@@ -456,21 +472,27 @@ async function main(): Promise<void> {
       'late direct requested-work reply after active-callees consumption and no final response must not open an empty generation',
     );
 
-    const mainlineCallee = await root.createSideDialog(
+    // Keep the mainline residue case independent of the earlier parent's unconsumed reply.
+    globalDialogRegistry.unregister(root.id.rootId);
+    const mainlineRoot = await createMainDialog('tester');
+    mainlineRoot.disableDiligencePush = true;
+    globalDialogRegistry.register(mainlineRoot);
+
+    const mainlineCallee = await mainlineRoot.createSideDialog(
       'mentor',
       ['@mentor'],
       'Please finish the mainline task.',
       {
         callName: 'tellaskSessionless',
         originMemberId: 'tester',
-        askerDialogId: root.id.selfId,
+        askerDialogId: mainlineRoot.id.selfId,
         callId: 'root-to-main-callee',
         callSiteCourse: toCallSiteCourseNo(1),
         callSiteGenseq: toCallSiteGenseqNo(5),
         collectiveTargets: ['mentor'],
       },
     );
-    await DialogPersistence.appendActiveCalleeDispatch(root.id, {
+    await DialogPersistence.appendActiveCalleeDispatch(mainlineRoot.id, {
       batchId: 'dispatch:test:root:c1:g5',
       calleeDialogId: mainlineCallee.id.selfId,
       callId: 'root-to-main-callee',
@@ -484,7 +506,7 @@ async function main(): Promise<void> {
       tellaskContent: 'Please finish the mainline task.',
     });
     await supplyResponseToAskerDialog({
-      callerDialog: root,
+      callerDialog: mainlineRoot,
       sideDialogId: mainlineCallee.id,
       responseText: 'mentor finished the mainline task',
       callType: 'C',
@@ -494,29 +516,29 @@ async function main(): Promise<void> {
     });
 
     await driveQueuedDialogsOnce();
-    await waitForAllDialogsUnlocked(root, 3_000);
+    await waitForAllDialogsUnlocked(mainlineRoot, 3_000);
 
     assert.equal(
-      lastMainAssistantSaying(root),
+      lastMainAssistantSaying(mainlineRoot),
       'Mainline resumed from Wake Queue result arrival.',
       'main dialog caller should process the Wake Queue result_arrival once',
     );
     const rootEventsAfterMainlineDrive = await DialogPersistence.loadCourseEvents(
-      root.id,
-      root.currentCourse,
-      root.status,
+      mainlineRoot.id,
+      mainlineRoot.currentCourse,
+      mainlineRoot.status,
     );
     const rootGenStartCountAfterMainlineDrive = rootEventsAfterMainlineDrive.filter(
       (event) => event.type === 'gen_start_record',
     ).length;
 
-    await driveDialogStream(root, undefined, true, {
+    await driveDialogStream(mainlineRoot, undefined, true, {
       source: 'kernel_driver_business_continuation',
       reason: 'late_direct_mainline_continuation_after_consumed_result_arrival',
       suppressDiligencePush: true,
       businessContinuation: {
         kind: 'requested_work_reply',
-        callerDialogId: root.id.selfId,
+        callerDialogId: mainlineRoot.id.selfId,
         batchId: 'dispatch:test:root:c1:g5',
         callSiteCourse: toCallSiteCourseNo(1),
         callSiteGenseq: toCallSiteGenseqNo(5),
@@ -527,12 +549,12 @@ async function main(): Promise<void> {
         triggerCallId: 'root-to-main-callee',
       },
     });
-    await waitForAllDialogsUnlocked(root, 3_000);
+    await waitForAllDialogsUnlocked(mainlineRoot, 3_000);
 
     const rootEventsAfterLateMainlineContinuation = await DialogPersistence.loadCourseEvents(
-      root.id,
-      root.currentCourse,
-      root.status,
+      mainlineRoot.id,
+      mainlineRoot.currentCourse,
+      mainlineRoot.status,
     );
     const rootGenStartCountAfterLateMainlineContinuation =
       rootEventsAfterLateMainlineContinuation.filter(
@@ -545,21 +567,25 @@ async function main(): Promise<void> {
     );
 
     await DialogPersistence.upsertNextStepTrigger(
-      root.id,
+      mainlineRoot.id,
       {
         triggerId: 'result-arrival:dispatch:test:root:c1:g5',
         kind: 'result_arrival',
         batchId: 'dispatch:test:root:c1:g5',
       },
-      root.status,
+      mainlineRoot.status,
     );
+    globalDialogRegistry.queueRootDrive(mainlineRoot.id.rootId, {
+      source: 'test_stale_result_arrival',
+      reason: 'exercise explicit wake after injecting stale residue',
+    });
     await driveQueuedDialogsOnce();
-    await waitForAllDialogsUnlocked(root, 3_000);
+    await waitForAllDialogsUnlocked(mainlineRoot, 3_000);
 
     const rootEventsAfterStaleMainlineBackendResidue = await DialogPersistence.loadCourseEvents(
-      root.id,
-      root.currentCourse,
-      root.status,
+      mainlineRoot.id,
+      mainlineRoot.currentCourse,
+      mainlineRoot.status,
     );
     const rootGenStartCountAfterStaleMainlineBackendResidue =
       rootEventsAfterStaleMainlineBackendResidue.filter(
@@ -571,8 +597,8 @@ async function main(): Promise<void> {
       'backend-loop stale main-dialog result_arrival trigger must not open a generation after active-callees consumption',
     );
     const rootLatestAfterStaleMainlineBackendResidue = await DialogPersistence.loadDialogLatest(
-      root.id,
-      root.status,
+      mainlineRoot.id,
+      mainlineRoot.status,
     );
     assert.equal(
       rootLatestAfterStaleMainlineBackendResidue?.nextStep.triggers.some(

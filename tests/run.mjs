@@ -1,0 +1,175 @@
+import { spawn } from 'node:child_process';
+import fs from 'node:fs/promises';
+import { createRequire } from 'node:module';
+import os from 'node:os';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
+
+const testsRoot = path.dirname(fileURLToPath(import.meta.url));
+const require = createRequire(import.meta.url);
+const smoke = [
+  'auth.ts',
+  'llm-generation-metadata.ts',
+  'persistence/latest-writeback.ts',
+  'interruption-resumption.ts',
+  'access-control/dialogs-root-deny.ts',
+  'access-control/file-ext-names.ts',
+  'apps-host-ipc-contract.ts',
+  'toolsets/tool-availability-snapshot.ts',
+  'webapp/create-dialog-flow-ime.ts',
+  'webapp/create-dialog-flow-selection.ts',
+  'webapp/generation-model-presentation.ts',
+];
+
+async function sourceFiles(directory = testsRoot) {
+  const entries = await fs.readdir(directory, { withFileTypes: true });
+  const groups = await Promise.all(
+    entries.map(async (entry) => {
+      if (['node_modules', 'script-rtws', 'dist'].includes(entry.name)) return [];
+      const absolute = path.join(directory, entry.name);
+      if (entry.isDirectory()) return sourceFiles(absolute);
+      return entry.isFile() && entry.name.endsWith('.ts')
+        ? [path.relative(testsRoot, absolute).split(path.sep).join('/')]
+        : [];
+    }),
+  );
+  return groups.flat().sort();
+}
+
+export async function inventory() {
+  const files = await sourceFiles();
+  const { scripts } = JSON.parse(await fs.readFile(path.join(testsRoot, 'package.json'), 'utf8'));
+  const registered = new Set(
+    Object.values(scripts).flatMap((command) =>
+      [...command.matchAll(/(?:tsx|--)\s+([\w./-]+\.ts)(?:\s|$)/g)].map((match) => match[1]),
+    ),
+  );
+  const support = (file) =>
+    file.startsWith('helpers/') ||
+    [
+      'cli.ts',
+      'rtws-script-runner.ts',
+      'kernel-driver/helpers.ts',
+      'reminders/daemon-test-utils.ts',
+      'semantic/evidence.ts',
+    ].includes(file);
+  const candidates = files.filter((file) => !support(file));
+  const kernel = candidates.filter((file) => file.startsWith('kernel-driver/'));
+  return {
+    typescriptFiles: files.length,
+    supportFiles: files.filter(support),
+    candidates: candidates.length,
+    suites: { smoke, kernel },
+    outsideSuites: candidates.filter((file) => !smoke.includes(file) && !kernel.includes(file)),
+    withoutPackageScript: candidates.filter((file) => !registered.has(file)),
+    note: 'Discovery and script registration are not measurements of behavior or line coverage. Outside-suite candidates include live probes and external integrations; audit prerequisites before running them.',
+  };
+}
+
+function killTree(child) {
+  if (!child.pid) return;
+  if (process.platform === 'win32') {
+    const killer = spawn('taskkill', ['/pid', String(child.pid), '/T', '/F'], { stdio: 'ignore' });
+    killer.on('error', () => child.kill('SIGKILL'));
+  } else {
+    try {
+      process.kill(-child.pid, 'SIGKILL');
+    } catch (error) {
+      if (error.code !== 'ESRCH') throw error;
+    }
+  }
+}
+
+export async function runCases(cases, { logDir, timeoutMs = 60_000, report = console.log }) {
+  await fs.mkdir(logDir, { recursive: true });
+  const results = [];
+  for (const [index, entry] of cases.entries()) {
+    const name = `${String(index + 1).padStart(3, '0')}-${entry.id.replace(/[^\w.-]/g, '_')}`;
+    const logPath = path.join(logDir, `${name}.log`);
+    // tsx opens a Unix-domain socket under TMPDIR, whose path length is limited.
+    const tempDir = path.join(logDir, `${index + 1}.tmp`);
+    await fs.mkdir(tempDir);
+    const output = await fs.open(logPath, 'w');
+    const started = Date.now();
+    let timedOut = false;
+    const outcome = await new Promise((resolve) => {
+      const child = spawn(process.execPath, entry.args, {
+        cwd: entry.cwd ?? testsRoot,
+        detached: process.platform !== 'win32',
+        stdio: ['ignore', output.fd, output.fd],
+        env: {
+          ...process.env,
+          TMPDIR: tempDir,
+          TEMP: tempDir,
+          TMP: tempDir,
+          DOMINDS_TEST_RTWS_KEEP_TMP: '1',
+        },
+      });
+      const timer = setTimeout(() => {
+        timedOut = true;
+        killTree(child);
+      }, timeoutMs);
+      child.once('error', (error) => {
+        clearTimeout(timer);
+        resolve({ error: error.message });
+      });
+      child.once('close', (code, signal) => {
+        clearTimeout(timer);
+        resolve({ code, signal });
+      });
+    });
+    await output.close();
+    const status = timedOut ? 'timeout' : outcome.code === 0 ? 'passed' : 'failed';
+    const result = { id: entry.id, status, durationMs: Date.now() - started, ...outcome, logPath };
+    if (status === 'passed') await fs.rm(tempDir, { recursive: true, force: true });
+    else result.tempDir = tempDir;
+    results.push(result);
+    report(
+      `${status.toUpperCase()} ${entry.id} (${result.durationMs}ms)${status === 'passed' ? '' : ` — ${logPath}`}`,
+    );
+  }
+  const summary = {
+    total: results.length,
+    passed: results.filter((result) => result.status === 'passed').length,
+    failed: results.filter((result) => result.status === 'failed').length,
+    timedOut: results.filter((result) => result.status === 'timeout').length,
+    results,
+  };
+  await fs.writeFile(path.join(logDir, 'summary.json'), `${JSON.stringify(summary, null, 2)}\n`);
+  return summary;
+}
+
+async function main() {
+  const args = process.argv.slice(2).filter((arg) => arg !== '--');
+  if (args.length === 1 && args[0] === '--list') {
+    console.log(JSON.stringify(await inventory(), null, 2));
+    return;
+  }
+  if (args.length !== 2 || args[0] !== '--suite' || !['smoke', 'kernel'].includes(args[1])) {
+    throw new Error('Usage: node tests/run.mjs --list | --suite smoke | --suite kernel');
+  }
+  const suite = args[1];
+  const files = (await inventory()).suites[suite];
+  if (!files.length) throw new Error(`Suite ${suite} discovered no tests`);
+  const tsx = require.resolve('tsx/cli');
+  const cases = files.map((file) => ({
+    id: file,
+    args: file.startsWith('kernel-driver/')
+      ? [tsx, path.join(testsRoot, 'cli.ts'), '--', file]
+      : [tsx, '--tsconfig', path.join(testsRoot, 'tsconfig.json'), path.join(testsRoot, file)],
+  }));
+  const logDir = await fs.mkdtemp(path.join(os.tmpdir(), `dominds-tests-${suite}-`));
+  console.log(`Suite: ${suite}; cases: ${cases.length}; evidence: ${logDir}`);
+  const summary = await runCases(cases, { logDir });
+  console.log(
+    `Total ${summary.total}: ${summary.passed} passed, ${summary.failed} failed, ${summary.timedOut} timed out. Evidence: ${logDir}`,
+  );
+  if (summary.failed || summary.timedOut) process.exitCode = 1;
+}
+
+if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
+  main().catch((error) => {
+    console.error(error);
+    process.exitCode = 1;
+  });
+}
