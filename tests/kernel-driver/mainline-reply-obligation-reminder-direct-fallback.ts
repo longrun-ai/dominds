@@ -8,10 +8,7 @@ import {
 } from '../../main/llm/kernel-driver/types';
 import { DialogPersistence } from '../../main/persistence';
 import { formatTellaskResponseContent } from '../../main/runtime/inter-dialog-format';
-import {
-  buildReplyToolReminderText,
-  isReplyToolReminderPromptContent,
-} from '../../main/runtime/reply-prompt-copy';
+import { buildReplyToolReminderText } from '../../main/runtime/reply-prompt-copy';
 import {
   createMainDialog,
   makeDriveOptions,
@@ -129,11 +126,8 @@ async function main(): Promise<void> {
     assert.ok(queuedReminder, 'reply reminder should be queued durably before fallback');
     assert.equal(queuedReminder.kind, 'new_course_runtime_reply');
     assert.equal(queuedReminder.tellaskReplyDirective?.targetCallId, targetCallId);
-    assert.equal(
-      isReplyToolReminderPromptContent(queuedReminder.prompt),
-      true,
-      'first plain answer should queue a reply-tool reminder, not direct fallback immediately',
-    );
+    assert.equal(queuedReminder.tellaskReplyDirective?.expectedReplyCallName, 'replyTellaskBack');
+    assert.equal(queuedReminder.tellaskReplyDirective?.targetDialogId, root.id.selfId);
     assert.equal(
       findTellaskBackResult(root.msgs, targetCallId),
       undefined,
@@ -181,7 +175,7 @@ async function main(): Promise<void> {
     );
     assert.equal(
       events.some(
-        (event) => event.type === 'prompting_msg_record' && event.origin === 'diligence_push',
+        (event) => event.type === 'human_text_record' && event.origin === 'diligence_push',
       ),
       false,
       'mainline active reply obligation should not insert a Diligence Push prompt',

@@ -1,6 +1,10 @@
 import assert from 'node:assert/strict';
 
-import type { ActiveCalleeDispatchRecord } from '@longrun-ai/kernel/types/storage';
+import {
+  toCallSiteCourseNo,
+  toCallSiteGenseqNo,
+  type ActiveCalleeDispatchRecord,
+} from '@longrun-ai/kernel/types/storage';
 import { formatUnifiedTimestamp } from '@longrun-ai/kernel/utils/time';
 import { driveDialogStream } from '../../main/llm/kernel-driver';
 import { DialogPersistence } from '../../main/persistence';
@@ -103,8 +107,14 @@ async function main(): Promise<void> {
       'answerHuman should receive a paired function result',
     );
     const diligencePromptCountBeforeWait = events.filter(
-      (event) => event.type === 'prompting_msg_record' && event.origin === 'diligence_push',
+      (event) => event.type === 'human_text_record' && event.origin === 'diligence_push',
     ).length;
+
+    assert.equal(
+      diligencePromptCountBeforeWait,
+      1,
+      'the actual automatic continuation must have one persisted prompt before testing suppression',
+    );
 
     root.diligencePushRemainingBudget = 1;
     await DialogPersistence.mutateDialogLatest(root.id, () => ({
@@ -122,8 +132,8 @@ async function main(): Promise<void> {
       tellaskContent: 'Synthetic pending callee used to test wait-boundary behavior.',
       targetAgentId: 'pangu',
       callId: 'synthetic-active-callee-call',
-      callSiteCourse: 1,
-      callSiteGenseq: 1,
+      callSiteCourse: toCallSiteCourseNo(1),
+      callSiteGenseq: toCallSiteGenseqNo(1),
       callType: 'C',
     };
     await DialogPersistence.appendActiveCalleeDispatch(root.id, pendingActiveCallee);
@@ -162,7 +172,7 @@ async function main(): Promise<void> {
     );
     assert.equal(
       eventsAfterWait.filter(
-        (event) => event.type === 'prompting_msg_record' && event.origin === 'diligence_push',
+        (event) => event.type === 'human_text_record' && event.origin === 'diligence_push',
       ).length,
       diligencePromptCountBeforeWait,
       'answerHuman while an active callee is pending must not add a Diligence Push prompt',
