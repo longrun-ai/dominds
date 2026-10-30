@@ -28,6 +28,15 @@ const context = [
   'diligence-push/q4h-diligence-push-i18n.ts',
 ];
 
+const configuration = [
+  'team-yaml-parsing.ts',
+  'team_mgmt-validate-team-manual-guidance.ts',
+  'team_mgmt-manual/mcp-manual-content.ts',
+  'team_mgmt-manual/mcp-validate-manual-errors.ts',
+  'team_mgmt-manual/mcp-hot-reload-manual-problems.ts',
+  'team_mgmt-mcp-runtime-diagnostics.ts',
+];
+
 async function sourceFiles(directory = testsRoot) {
   const entries = await fs.readdir(directory, { withFileTypes: true });
   const groups = await Promise.all(
@@ -63,7 +72,7 @@ export async function inventory() {
     ].includes(file);
   const candidates = files.filter((file) => !support(file));
   const kernel = candidates.filter((file) => file.startsWith('kernel-driver/'));
-  const suites = { smoke, kernel, context };
+  const suites = { smoke, kernel, context, configuration };
   const included = new Set(Object.values(suites).flat());
   return {
     typescriptFiles: files.length,
@@ -90,7 +99,10 @@ function killTree(child) {
   }
 }
 
-export async function runCases(cases, { logDir, timeoutMs = 60_000, report = console.log }) {
+export async function runCases(
+  cases,
+  { logDir, timeoutMs = 60_000, report = console.log, keepSuccessfulState = false },
+) {
   await fs.mkdir(logDir, { recursive: true });
   const results = [];
   for (const [index, entry] of cases.entries()) {
@@ -131,7 +143,8 @@ export async function runCases(cases, { logDir, timeoutMs = 60_000, report = con
     await output.close();
     const status = timedOut ? 'timeout' : outcome.code === 0 ? 'passed' : 'failed';
     const result = { id: entry.id, status, durationMs: Date.now() - started, ...outcome, logPath };
-    if (status === 'passed') await fs.rm(tempDir, { recursive: true, force: true });
+    if (status === 'passed' && !keepSuccessfulState)
+      await fs.rm(tempDir, { recursive: true, force: true });
     else result.tempDir = tempDir;
     results.push(result);
     report(
@@ -155,32 +168,57 @@ async function main() {
     console.log(JSON.stringify(await inventory(), null, 2));
     return;
   }
+  const semantic = args.at(-1) === '--semantic';
+  if (semantic) args.pop();
   if (
     args.length !== 2 ||
     args[0] !== '--suite' ||
-    !['smoke', 'kernel', 'context'].includes(args[1])
+    !['smoke', 'kernel', 'context', 'configuration'].includes(args[1])
   ) {
     throw new Error(
-      'Usage: node tests/run.mjs --list | --suite smoke | --suite kernel | --suite context',
+      'Usage: node tests/run.mjs --list | --suite smoke | --suite kernel | --suite context | --suite configuration [--semantic]',
     );
   }
   const suite = args[1];
-  const files = (await inventory()).suites[suite];
+  if (semantic && suite !== 'configuration') {
+    throw new Error('--semantic is supported only by the configuration evidence producers');
+  }
+  const files = (await inventory()).suites[suite].filter(
+    (file) => !semantic || file !== 'team_mgmt-manual/mcp-hot-reload-manual-problems.ts',
+  );
   if (!files.length) throw new Error(`Suite ${suite} discovered no tests`);
   const tsx = require.resolve('tsx/cli');
   const cases = files.map((file) => ({
     id: file,
     args:
-      suite === 'kernel' || suite === 'context'
-        ? [tsx, path.join(testsRoot, 'cli.ts'), '--', file]
+      suite !== 'smoke'
+        ? [tsx, path.join(testsRoot, 'cli.ts'), '--', file, ...(semantic ? ['--semantic'] : [])]
         : [tsx, '--tsconfig', path.join(testsRoot, 'tsconfig.json'), path.join(testsRoot, file)],
   }));
-  const logDir = await fs.mkdtemp(path.join(os.tmpdir(), `dominds-tests-${suite}-`));
-  console.log(`Suite: ${suite}; cases: ${cases.length}; evidence: ${logDir}`);
-  const summary = await runCases(cases, { logDir });
-  console.log(
-    `Total ${summary.total}: ${summary.passed} passed, ${summary.failed} failed, ${summary.timedOut} timed out. Evidence: ${logDir}`,
+  const logDir = await fs.mkdtemp(
+    path.join(os.tmpdir(), `dominds-tests-${suite}${semantic ? '-semantic' : ''}-`),
   );
+  console.log(
+    `${semantic ? 'Evidence generation processes' : 'Suite'}: ${suite}; cases: ${cases.length}; evidence: ${logDir}`,
+  );
+  const summary = await runCases(cases, {
+    logDir,
+    keepSuccessfulState: semantic,
+    report: semantic ? (line) => console.log(`GENERATION PROCESS ${line}`) : console.log,
+  });
+  if (semantic) {
+    await fs.writeFile(
+      path.join(logDir, 'summary.json'),
+      `${JSON.stringify({ ...summary, scope: 'evidence-generation-processes', semanticAcceptance: 'pending' }, null, 2)}\n`,
+    );
+    console.log(
+      `Generation processes: ${summary.passed} completed, ${summary.failed} failed, ${summary.timedOut} timed out. Semantic acceptance: PENDING subjective review. Evidence: ${logDir}`,
+    );
+  } else {
+    console.log(
+      `Total ${summary.total}: ${summary.passed} passed, ${summary.failed} failed, ${summary.timedOut} timed out. Evidence: ${logDir}`,
+    );
+  }
   if (summary.failed || summary.timedOut) process.exitCode = 1;
 }
 

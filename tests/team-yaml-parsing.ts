@@ -1,11 +1,11 @@
 import assert from 'node:assert/strict';
 import * as fs from 'node:fs/promises';
-import os from 'node:os';
 import path from 'node:path';
 import { loadAgentMinds } from '../main/minds/load';
 import { getProblemsSnapshot, removeProblemsByPrefix } from '../main/problems';
 import { Team } from '../main/team';
 import '../main/tools/builtins';
+import { writeSemanticEvidence, type SemanticEvidence } from './helpers/semantic-evidence';
 
 async function writeText(p: string, content: string): Promise<void> {
   await fs.mkdir(path.dirname(p), { recursive: true });
@@ -13,12 +13,33 @@ async function writeText(p: string, content: string): Promise<void> {
 }
 
 async function main(): Promise<void> {
-  const oldCwd = process.cwd();
-  const tmpRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'dominds-team-yaml-'));
-
-  try {
-    process.chdir(tmpRoot);
-
+  assert.equal(process.env.DOMINDS_TEST_RTWS_MANAGED, '1', 'run through tests/cli.ts');
+  const tmpRoot = process.cwd();
+  const semantic = process.argv.includes('--semantic');
+  const cases: SemanticEvidence[] = [];
+  async function recordDiagnostic(id: string, problem: unknown, scenario: string): Promise<void> {
+    if (!semantic) return;
+    cases.push({
+      id,
+      scenario,
+      businessValue:
+        'Help the team manager repair configuration without losing working members or granting unintended capabilities.',
+      context: {
+        teamYaml: await fs.readFile(path.join(tmpRoot, '.minds/team.yaml'), 'utf8'),
+        llmYaml: await fs
+          .readFile(path.join(tmpRoot, '.minds/llm.yaml'), 'utf8')
+          .catch(() => 'built-in provider catalog'),
+        scope: 'Actual Problems output; state effects are asserted separately by this script.',
+      },
+      reviewQuestions: [
+        'Do the English and Chinese messages explain the actual rejected or ignored configuration and its effect, consistently with the supplied YAML?',
+        'Is the repair advice actionable without invented constraints, changed permissions, or an implication that otherwise valid members must be removed?',
+        'Are examples distinguished from required syntax and are provider namespaces and capability ownership accurate?',
+      ],
+      actualText: JSON.stringify(problem, null, 2),
+    });
+  }
+  {
     removeProblemsByPrefix('team/team_yaml_error/');
 
     await writeText(
@@ -66,13 +87,23 @@ async function main(): Promise<void> {
 
     const bobProblem = snapshot.problems.find((p) => p.id === 'team/team_yaml_error/members/bob');
     assert.ok(bobProblem && bobProblem.kind === 'team_workspace_config_error');
-    assert.ok(bobProblem.detail.errorText.includes('members.bob.provider'));
 
     const charlieProblem = snapshot.problems.find(
       (p) => p.id === 'team/team_yaml_error/members/charlie',
     );
     assert.ok(charlieProblem && charlieProblem.kind === 'team_workspace_config_error');
-    assert.ok(charlieProblem.detail.errorText.includes('members.charlie'));
+
+    await recordDiagnostic(
+      'bobProblem',
+      bobProblem,
+      'Invalid provider type omits Bob while Alice remains usable.',
+    );
+
+    await recordDiagnostic(
+      'charlieProblem',
+      charlieProblem,
+      'A member is a scalar instead of a member configuration.',
+    );
 
     // FBR web-search defaults are provider-namespace specific: OpenAI/Responses uses
     // `openai.web_search_tool`, while Codex uses `codex.web_search`.
@@ -159,15 +190,11 @@ async function main(): Promise<void> {
       (p) => p.id === 'team/team_yaml_error/member_defaults/unknown_fields',
     );
     assert.ok(mdUnknown && mdUnknown.kind === 'team_workspace_config_error');
-    assert.ok(mdUnknown.detail.errorText.includes('member_defaults.reasoning_effort'));
-    assert.ok(
-      mdUnknown.detail.errorText.includes('member_defaults.model_params.codex.reasoning_effort'),
-    );
-    assert.ok(
-      mdUnknown.detail.errorText.includes(
-        '`member_defaults.model_params.openai-compatible.reasoning_effort`',
-      ),
-      'root reasoning_effort hint should include openai-compatible reasoning_effort',
+
+    await recordDiagnostic(
+      'mdUnknown',
+      mdUnknown,
+      'Reasoning effort is misplaced and unknown fields occur in defaults.',
     );
 
     // OpenAI/Codex output-token overrides are intentionally unsupported. Unknown fields should be
@@ -312,37 +339,17 @@ async function main(): Promise<void> {
     assert.ok(
       unsupportedRootProblem && unsupportedRootProblem.kind === 'team_workspace_config_error',
     );
-    assert.ok(
-      unsupportedRootProblem.detail.errorText.includes('model_params.anthropic.max_tokens'),
-      'root max_tokens hint should point to the only supported max_tokens namespace',
-    );
-    assert.ok(
-      unsupportedRootProblem.detail.errorText.includes('model_params.general'),
-      'general namespace should be called out as unsupported',
-    );
     const unsupportedCodexProblem = unsupportedSnapshot.problems.find(
       (p) => p.id === 'team/team_yaml_error/members/alice/model_params/codex/unknown_fields',
     );
     assert.ok(
       unsupportedCodexProblem && unsupportedCodexProblem.kind === 'team_workspace_config_error',
     );
-    assert.ok(
-      unsupportedCodexProblem.detail.errorText.includes(
-        'Codex output-token overrides are not supported',
-      ),
-      'codex max_tokens hint should be explicit',
-    );
     const unsupportedOpenAiProblem = unsupportedSnapshot.problems.find(
       (p) => p.id === 'team/team_yaml_error/members/alice/model_params/openai/unknown_fields',
     );
     assert.ok(
       unsupportedOpenAiProblem && unsupportedOpenAiProblem.kind === 'team_workspace_config_error',
-    );
-    assert.ok(
-      unsupportedOpenAiProblem.detail.errorText.includes(
-        'OpenAI output-token overrides are not supported',
-      ),
-      'openai max_tokens hint should be explicit',
     );
     const unsupportedOpenAiCompatibleProblem = unsupportedSnapshot.problems.find(
       (p) =>
@@ -352,11 +359,29 @@ async function main(): Promise<void> {
       unsupportedOpenAiCompatibleProblem &&
         unsupportedOpenAiCompatibleProblem.kind === 'team_workspace_config_error',
     );
-    assert.ok(
-      unsupportedOpenAiCompatibleProblem.detail.errorText.includes(
-        'model_params.openai-compatible.web_search_tool',
-      ),
-      'openai-compatible unknown fields should be reported with their full paths',
+
+    await recordDiagnostic(
+      'unsupportedRootProblem',
+      unsupportedRootProblem,
+      'Unsupported root model_params and output-token overrides are stripped; Anthropic max_tokens remains supported.',
+    );
+
+    await recordDiagnostic(
+      'unsupportedCodexProblem',
+      unsupportedCodexProblem,
+      'Codex output-token overrides are unsupported.',
+    );
+
+    await recordDiagnostic(
+      'unsupportedOpenAiProblem',
+      unsupportedOpenAiProblem,
+      'OpenAI output-token overrides are unsupported.',
+    );
+
+    await recordDiagnostic(
+      'unsupportedOpenAiCompatibleProblem',
+      unsupportedOpenAiCompatibleProblem,
+      'Responses-only fields are not accepted in the openai-compatible namespace.',
     );
 
     // Anthropic-compatible providers support a boolean thinking switch under their own namespace.
@@ -553,11 +578,11 @@ async function main(): Promise<void> {
         officialAnthropicBooleanProblem.kind === 'team_workspace_config_error',
       'official anthropic namespace should reject boolean thinking while parsing',
     );
-    assert.ok(
-      officialAnthropicBooleanProblem.detail.errorText.includes(
-        'member_defaults.model_params.anthropic.thinking',
-      ),
-      'official anthropic thinking problem should point at the thinking field',
+
+    await recordDiagnostic(
+      'officialAnthropicBooleanProblem',
+      officialAnthropicBooleanProblem,
+      'An official Anthropic thinking setting is given the incompatible boolean form.',
     );
 
     removeProblemsByPrefix('team/team_yaml_error/');
@@ -589,11 +614,11 @@ async function main(): Promise<void> {
         compatibleAnthropicObjectProblem.kind === 'team_workspace_config_error',
       'anthropic-compatible namespace should reject object thinking while parsing',
     );
-    assert.ok(
-      compatibleAnthropicObjectProblem.detail.errorText.includes(
-        'member_defaults.model_params.anthropic-compatible.thinking',
-      ),
-      'compatible anthropic thinking problem should point at the thinking field',
+
+    await recordDiagnostic(
+      'compatibleAnthropicObjectProblem',
+      compatibleAnthropicObjectProblem,
+      'An Anthropic-compatible thinking setting is given the incompatible object form.',
     );
 
     removeProblemsByPrefix('team/team_yaml_error/');
@@ -629,10 +654,11 @@ async function main(): Promise<void> {
       unsupportedThinkingBudgetProblem &&
         unsupportedThinkingBudgetProblem.kind === 'team_workspace_config_error',
     );
-    assert.ok(
-      unsupportedThinkingBudgetProblem.detail.errorText.includes(
-        'members.alice.model_params.anthropic-compatible.thinking_budget_tokens',
-      ),
+
+    await recordDiagnostic(
+      'unsupportedThinkingBudgetProblem',
+      unsupportedThinkingBudgetProblem,
+      'An unsupported Anthropic-compatible thinking-budget field is ignored.',
     );
 
     removeProblemsByPrefix('team/team_yaml_error/');
@@ -692,8 +718,11 @@ async function main(): Promise<void> {
     );
     assert.ok(aliceProblem && aliceProblem.kind === 'team_workspace_config_error');
     assert.equal(aliceProblem.severity, 'warning');
-    assert.ok(
-      aliceProblem.detail.errorText.includes('members.alice.model_params.codex.web_search'),
+
+    await recordDiagnostic(
+      'aliceProblem',
+      aliceProblem,
+      'Invalid Codex web_search mode is ignored.',
     );
 
     removeProblemsByPrefix('team/team_yaml_error/');
@@ -898,15 +927,11 @@ async function main(): Promise<void> {
     );
     assert.ok(ultraProblem && ultraProblem.kind === 'team_workspace_config_error');
     assert.equal(ultraProblem.severity, 'warning');
-    assert.ok(
-      ultraProblem.detail.errorText.includes(
-        'ultra is a Codex client orchestration preset, not an inference effort supported by Dominds',
-      ),
-    );
-    assert.ok(
-      ultraProblem.detail.errorText.includes(
-        'Dominds teammate coordination is independent of this provider parameter',
-      ),
+
+    await recordDiagnostic(
+      'ultraProblem',
+      ultraProblem,
+      'An unsupported reasoning effort is ignored; provider inference effort must not promise teammate orchestration.',
     );
 
     // shell_specialists policy:
@@ -964,13 +989,10 @@ async function main(): Promise<void> {
       );
       assert.ok(problem, 'shell-specialist policy problem should be present for alice');
       assert.equal(problem.severity, 'warning');
-      assert.equal(
-        problem.messageI18n?.zh,
-        '.minds/team.yaml 警告：有成员不是 shell 专员，但在已有其他 shell 专员时也配置了 shell 工具。',
-      );
-      assert.ok(
-        problem.detailTextI18n?.zh?.includes('团队里已经配置了其他 shell 专员（cmdr）'),
-        'shell-specialist problem detail should be localized in zh',
+      await recordDiagnostic(
+        'shell-specialist-warning',
+        problem,
+        'Alice has shell tools configured but cmdr alone is the shell specialist; Alice must retain non-shell work and delegate shell execution.',
       );
     }
 
@@ -987,18 +1009,25 @@ async function main(): Promise<void> {
         !toolNames.includes('get_daemon_output'),
         'alice should not receive get_daemon_output',
       );
-      const hasShellSpecialistLine =
-        systemPrompt.includes('Shell specialists in this team: @cmdr') ||
-        systemPrompt.includes('Shell specialists you can tellask: @cmdr') ||
-        systemPrompt.includes('Shell specialist teammates: @cmdr');
-      assert.ok(
-        hasShellSpecialistLine,
-        'system prompt should point to the configured shell specialist',
-      );
-      assert.ok(
-        systemPrompt.includes('### Memory System (Important)'),
-        'system prompt should include the memory system guidance',
-      );
+      if (semantic) {
+        cases.push({
+          id: 'shell-specialist-system-prompt',
+          scenario:
+            'Alice requests os tools but only cmdr is a shell specialist. Alice must delegate shell work.',
+          businessValue:
+            'Keep shell authority restricted while giving the non-specialist a useful collaboration path.',
+          context: {
+            language: 'en',
+            teamYaml: await fs.readFile(path.join(tmpRoot, '.minds/team.yaml'), 'utf8'),
+            actualToolNames: JSON.stringify(toolNames),
+          },
+          reviewQuestions: [
+            'Does the full prompt make the configured shell specialist discoverable without implying Alice has shell execution authority?',
+            'Is the collaboration and memory guidance coherent with this actual capability set?',
+          ],
+          actualText: systemPrompt,
+        });
+      }
     }
 
     {
@@ -1039,13 +1068,11 @@ async function main(): Promise<void> {
     );
     assert.ok(noSpecialistProblem, 'missing shell_specialists should remain an error');
     assert.equal(noSpecialistProblem.severity, 'error');
-    assert.equal(
-      noSpecialistProblem.messageI18n?.zh,
-      '无效的 .minds/team.yaml：已经配置了 shell 工具，但没有配置任何 shell 专员。',
-    );
-    assert.ok(
-      noSpecialistProblem.detailTextI18n?.zh?.includes('但团队里没有其他 shell 专员'),
-      'missing shell_specialists detail should explain there is no other shell specialist',
+
+    await recordDiagnostic(
+      'noSpecialistProblem',
+      noSpecialistProblem,
+      'A member requests shell tools but no shell specialist is configured.',
     );
 
     // gofor should preserve string/object forms, and structured list form should remain allowed
@@ -1129,23 +1156,6 @@ async function main(): Promise<void> {
       'structured gofor list should surface a warning problem',
     );
     assert.equal(structuredListWarning.severity, 'warning');
-    assert.equal(
-      structuredListWarning.messageI18n?.en,
-      'Warning in .minds/team.yaml: members.listed.gofor uses a YAML list for labeled entries.',
-    );
-    assert.equal(
-      structuredListWarning.messageI18n?.zh,
-      '.minds/team.yaml 警告：members.listed.gofor 使用了带标签项的 YAML 列表。',
-    );
-    assert.ok(
-      structuredListWarning.detailTextI18n?.zh?.includes('对象键名可以自由填写'),
-      'team problem should carry zh localized detail text from backend',
-    );
-    assert.ok(
-      structuredListWarning.detailTextI18n?.zh?.includes('YAML 对象写法'),
-      'structured list guidance should read naturally in zh',
-    );
-    assert.ok(structuredListWarning.detail.errorText.includes('Object keys are freeform'));
     const nogoStructuredListWarning = goforSnapshot.problems.find(
       (p) => p.id === 'team/team_yaml_error/members/listed/nogo/prefer_object_for_labeled_entries',
     );
@@ -1154,16 +1164,24 @@ async function main(): Promise<void> {
       'structured nogo list should surface a warning problem',
     );
     assert.equal(nogoStructuredListWarning.severity, 'warning');
-    assert.equal(
-      nogoStructuredListWarning.messageI18n?.en,
-      'Warning in .minds/team.yaml: members.listed.nogo uses a YAML list for labeled entries.',
-    );
     assert.ok(
       goforSnapshot.problems.every(
         (p) =>
           p.id !== 'team/team_yaml_error/members/bullety/gofor/prefer_object_for_labeled_entries',
       ),
       'plain gofor bullet lists should not warn',
+    );
+
+    await recordDiagnostic(
+      'structuredListWarning',
+      structuredListWarning,
+      'Labeled gofor list entries are accepted, with advice to prefer a mapping.',
+    );
+
+    await recordDiagnostic(
+      'nogoStructuredListWarning',
+      nogoStructuredListWarning,
+      'Labeled nogo list entries are accepted, with advice to prefer a mapping.',
     );
 
     // Optional routing-card fields set to YAML null should warn but must not drop the member.
@@ -1202,23 +1220,11 @@ async function main(): Promise<void> {
       'null nogo should surface a warning problem',
     );
     assert.equal(nullRoutingWarning.severity, 'warning');
-    assert.equal(
-      nullRoutingWarning.messageI18n?.en,
-      'Warning in .minds/team.yaml: members.mentor.nogo is null and will be ignored.',
-    );
-    assert.equal(
-      nullRoutingWarning.messageI18n?.zh,
-      '.minds/team.yaml 警告：members.mentor.nogo 写成了 null，这一项会被忽略。',
-    );
-    assert.ok(
-      nullRoutingWarning.detail.errorText.includes(
-        'members.mentor.nogo uses YAML null. Dominds treats this as "unset" and ignores it;',
-      ),
-      'warning detail should explain the ignore-as-unset behavior',
-    );
-    assert.equal(
-      nullRoutingWarning.detailTextI18n?.zh,
-      'members.mentor.nogo 这里写成了 YAML null。Dominds 会把它当作“没设置”，所以不会生效；请删除这个字段，或改成合法值。',
+
+    await recordDiagnostic(
+      'nullRoutingWarning',
+      nullRoutingWarning,
+      'YAML null is ignored for the optional nogo routing card without dropping the member.',
     );
 
     // Optional display/tuning/tooling fields with bad values should warn and be ignored rather
@@ -1323,13 +1329,12 @@ async function main(): Promise<void> {
     );
     assert.ok(intrinsicToolsetProblem, 'control toolset assignment should surface a problem');
     assert.equal(intrinsicToolsetProblem?.severity, 'error');
-    assert.ok(
-      intrinsicToolsetProblem?.detail.errorText.includes(
-        "but 'control' is injected by Dominds at runtime according to dialog scope",
-      ),
-    );
 
-    console.log('✅ team-yaml-parsing tests passed');
+    await recordDiagnostic(
+      'intrinsicToolsetProblem',
+      intrinsicToolsetProblem,
+      'The intrinsic control toolset is not assignable through member toolsets.',
+    );
 
     // Provider/model bindings:
     // - member_defaults.model must exist under the selected provider's models list.
@@ -1379,7 +1384,11 @@ async function main(): Promise<void> {
       );
       assert.ok(p && p.kind === 'team_workspace_config_error');
       assert.equal(p.detail.filePath, '.minds/team.yaml');
-      assert.ok(p.detail.errorText.includes('providers.my_provider.models.bad_model'));
+      await recordDiagnostic(
+        p.id.replaceAll('/', '-'),
+        p,
+        'The configured model is absent from its provider catalog; the otherwise valid member remains loaded.',
+      );
     }
 
     // Model binding issues should be detected for member overrides, too.
@@ -1414,14 +1423,10 @@ async function main(): Promise<void> {
       );
       assert.ok(p && p.kind === 'team_workspace_config_error');
       assert.equal(p.detail.filePath, '.minds/team.yaml');
-      assert.ok(p.detail.errorText.includes('providers.my_provider.models.bad_model'));
-      assert.equal(
-        p.messageI18n?.zh,
-        "无效的 .minds/team.yaml：members.alice.model 不在 provider 'my_provider' 的模型列表里。",
-      );
-      assert.ok(
-        p.detailTextI18n?.zh?.includes('已知模型 key（预览）'),
-        'provider/model problem detail should be localized in zh',
+      await recordDiagnostic(
+        'member-model-unknown',
+        p,
+        'A member model override is absent from its provider catalog; the otherwise valid member remains loaded.',
       );
     }
 
@@ -1471,12 +1476,15 @@ async function main(): Promise<void> {
       );
       assert.ok(p && p.kind === 'team_workspace_config_error');
       assert.equal(p.detail.filePath, '.minds/llm.yaml');
-      assert.ok(p.detail.errorText.includes('providers.broken_provider.models'));
+      await recordDiagnostic(
+        'invalid-provider-models',
+        p,
+        'A provider models value is a list rather than a mapping; the team member remains loaded.',
+      );
     }
-  } finally {
-    process.chdir(oldCwd);
-    await fs.rm(tmpRoot, { recursive: true, force: true });
   }
+  if (semantic) await writeSemanticEvidence(cases, 'dominds-team-guidance-');
+  else console.log('team-yaml-parsing behavior tests passed');
 }
 
 void main();

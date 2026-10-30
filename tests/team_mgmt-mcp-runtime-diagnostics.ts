@@ -4,32 +4,33 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs/promises';
 import http, { type IncomingMessage, type ServerResponse } from 'node:http';
 import type { AddressInfo } from 'node:net';
-import os from 'node:os';
 import path from 'node:path';
 
 import type { Dialog } from '../main/dialog';
 import { clearProblems, getProblemsSnapshot } from '../main/problems';
 import { Team } from '../main/team';
 import { teamMgmtValidateMcpCfgTool } from '../main/tools/team_mgmt';
+import { writeSemanticEvidence, type SemanticEvidence } from './helpers/semantic-evidence';
 
 const AUTH_ENV = 'DOMINDS_TEST_MCP_VALIDATE_AUTH_TOKEN';
 const AUTH_TOKEN = 'validate-token';
 const EXPECTED_AUTH_HEADER = `Bearer ${AUTH_TOKEN}`;
 
-async function withTempRtws(run: (tmpDir: string) => Promise<void>): Promise<void> {
-  const tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), 'dominds-team-mgmt-mcp-runtime-'));
-  const oldCwd = process.cwd();
-  try {
-    await fs.mkdir(path.join(tmpDir, '.minds'), { recursive: true });
-    process.chdir(tmpDir);
-    await run(tmpDir);
-  } finally {
-    process.chdir(oldCwd);
-    await fs.rm(tmpDir, { recursive: true, force: true });
-  }
-}
-
+const requests: Array<{
+  method: string | undefined;
+  url: string | undefined;
+  authorization: string | undefined;
+  status: number;
+}> = [];
 function handleFixtureRequest(req: IncomingMessage, res: ServerResponse): void {
+  res.once('finish', () =>
+    requests.push({
+      method: req.method,
+      url: req.url,
+      authorization: req.headers.authorization,
+      status: res.statusCode,
+    }),
+  );
   if (req.method === 'GET' && req.url === '/health') {
     const body = JSON.stringify({ ok: true, phase: 'shell' });
     res.writeHead(200, {
@@ -92,11 +93,47 @@ async function closeServer(server: http.Server): Promise<void> {
 }
 
 async function main(): Promise<void> {
+  assert.equal(process.env.DOMINDS_TEST_RTWS_MANAGED, '1', 'run through tests/cli.ts');
+  const semantic = process.argv.includes('--semantic');
+  const cases: SemanticEvidence[] = [];
+  async function validate(id: string, dlg: Dialog, caller: Team.Member): Promise<void> {
+    for (const language of ['en', 'zh'] as const) {
+      const result = await teamMgmtValidateMcpCfgTool.call(
+        { ...dlg, getLastUserLanguageCode: () => language } as Dialog,
+        caller,
+        {},
+      );
+      assert.equal(result.outcome, 'failure');
+      if (semantic)
+        cases.push({
+          id: id + '-' + language,
+          scenario:
+            id === 'runtime-unavailable'
+              ? 'An authenticated MCP POST returns HTTP 500 while the same process health endpoint returns 200.'
+              : 'The configured Authorization header prefix is a number rather than a string.',
+          businessValue:
+            'Diagnose the failing protocol boundary without blaming credentials or claiming the whole process is down when the evidence says otherwise.',
+          context: {
+            language,
+            mcpYaml: await fs.readFile('.minds/mcp.yaml', 'utf8'),
+            observedRequests: JSON.stringify(requests),
+            problems: JSON.stringify(getProblemsSnapshot().problems),
+          },
+          reviewQuestions: [
+            'Does the complete output accurately identify the endpoint or invalid field and the supplied observations?',
+            'Is the likely-cause statement qualified and does the repair advice follow the evidence rather than invent a diagnosis?',
+            'Are static header errors distinguished from a reachable process whose MCP handler fails?',
+          ],
+          actualText: result.content,
+        });
+    }
+  }
   clearProblems({ source: 'mcp' });
   const previousAuthEnv = process.env[AUTH_ENV];
   process.env[AUTH_ENV] = AUTH_TOKEN;
   try {
-    await withTempRtws(async (tmpDir) => {
+    {
+      const tmpDir = process.cwd();
       const fixture = await startFixtureServer();
       try {
         await fs.writeFile(
@@ -123,97 +160,89 @@ async function main(): Promise<void> {
           getLastUserLanguageCode: () => 'en' as const,
         } as unknown as Dialog;
         const caller = new Team.Member({ id: 'tester', name: 'Tester' });
-        const out = (await teamMgmtValidateMcpCfgTool.call(dlg, caller, {})).content;
-
+        await validate('runtime-unavailable', dlg, caller);
         assert.ok(
-          out.includes('mcp.yaml Validation Failed'),
-          'validate tool should fail when runtime MCP server is unavailable',
-        );
-        assert.ok(
-          out.includes('endpoint: http://127.0.0.1:'),
-          'validate tool should surface the failing MCP endpoint URL',
-        );
-        assert.ok(
-          out.includes('Probe summary: POST http://127.0.0.1:') &&
-            out.includes('-> 500 Internal Server Error'),
-          'validate tool should surface the POST probe result',
-        );
-        assert.ok(
-          out.includes('GET http://127.0.0.1:') && out.includes('-> 200 OK'),
-          'validate tool should surface the health probe result',
-        );
-        assert.ok(
-          out.includes(
-            'Likely cause: the target process is up, but its MCP handler is failing server-side before returning a valid MCP response',
+          requests.some(
+            (request) =>
+              request.method === 'POST' &&
+              request.url === '/mcp' &&
+              request.authorization === EXPECTED_AUTH_HEADER &&
+              request.status === 500,
           ),
-          'validate tool should surface the likely cause in plain language',
         );
         assert.ok(
-          out.includes(
-            'Suggested next step: inspect the target app logs/stderr around the failing POST',
+          requests.some(
+            (request) =>
+              request.method === 'GET' && request.url === '/health' && request.status === 200,
           ),
-          'validate tool should surface the next repair step in plain language',
         );
 
         const problem = getProblemsSnapshot().problems.find(
           (entry) => entry.kind === 'mcp_server_error' && entry.detail.serverId === 'broken_http',
         );
         assert.ok(problem, 'runtime MCP failure should be written into Problems');
+        assert.equal(problem.severity, 'info');
+        await fs.writeFile('.minds/mcp.yaml', 'version: 1\nservers: {}\n');
+        const repaired = await teamMgmtValidateMcpCfgTool.call(dlg, caller, {});
+        assert.equal(repaired.outcome, 'success');
+        const resolved = getProblemsSnapshot().problems.find((entry) => entry.id === problem.id);
         assert.equal(
-          problem.detailTextI18n?.zh?.includes('MCP streamable_http 连接失败'),
+          resolved?.resolved,
           true,
-          'runtime MCP problem should include a real zh detail text',
-        );
-        assert.equal(
-          problem.detailTextI18n?.en?.includes(
-            "MCP streamable_http connect failed for server 'broken_http'",
-          ),
-          true,
-          'runtime MCP problem should include the matching en detail text',
+          'removing a never-loaded server resolves its runtime failure',
         );
       } finally {
         await closeServer(fixture.server);
       }
-    });
+    }
 
     clearProblems({ source: 'mcp' });
 
-    await withTempRtws(async (tmpDir) => {
-      await fs.writeFile(
-        path.join(tmpDir, '.minds', 'mcp.yaml'),
-        [
-          'version: 1',
-          'servers:',
-          '  invalid_header:',
-          '    truely-stateless: true',
-          '    transport: streamable_http',
-          '    url: http://127.0.0.1:3000/mcp',
-          '    headers:',
-          '      Authorization:',
-          '        prefix: 42',
-          `        env: ${AUTH_ENV}`,
-          '    tools: { whitelist: [], blacklist: [] }',
-          '    transform: []',
-          '',
-        ].join('\n'),
-        'utf8',
-      );
+    {
+      const tmpDir = process.cwd();
+      const fixture = await startFixtureServer();
+      try {
+        await fs.writeFile(
+          path.join(tmpDir, '.minds', 'mcp.yaml'),
+          [
+            'version: 1',
+            'servers:',
+            '  invalid_header:',
+            '    truely-stateless: true',
+            '    transport: streamable_http',
+            `    url: ${fixture.endpointUrl}`,
+            '    headers:',
+            '      Authorization:',
+            '        prefix: 42',
+            `        env: ${AUTH_ENV}`,
+            '    tools: { whitelist: [], blacklist: [] }',
+            '    transform: []',
+            '',
+          ].join('\n'),
+          'utf8',
+        );
 
-      const dlg = {
-        getLastUserLanguageCode: () => 'en' as const,
-      } as unknown as Dialog;
-      const caller = new Team.Member({ id: 'tester', name: 'Tester' });
-      const out = (await teamMgmtValidateMcpCfgTool.call(dlg, caller, {})).content;
-
-      assert.ok(
-        out.includes('mcp.yaml Validation Failed'),
-        'validate tool should fail when prefixed header config is invalid',
-      );
-      assert.ok(
-        out.includes('servers.invalid_header.headers.Authorization.prefix must be a string'),
-        'validate tool should report the precise invalid prefixed header path',
-      );
-    });
+        const dlg = {
+          getLastUserLanguageCode: () => 'en' as const,
+        } as unknown as Dialog;
+        const caller = new Team.Member({ id: 'tester', name: 'Tester' });
+        const requestCount = requests.length;
+        await validate('invalid-header', dlg, caller);
+        assert.equal(
+          requests.length,
+          requestCount,
+          'invalid headers are rejected before connecting',
+        );
+        const problem = getProblemsSnapshot().problems.find(
+          (entry) =>
+            entry.kind === 'mcp_server_error' && entry.detail.serverId === 'invalid_header',
+        );
+        assert.ok(problem);
+        assert.equal(problem.severity, 'error');
+      } finally {
+        await closeServer(fixture.server);
+      }
+    }
   } finally {
     if (previousAuthEnv === undefined) {
       delete process.env[AUTH_ENV];
@@ -222,7 +251,8 @@ async function main(): Promise<void> {
     }
   }
 
-  console.log('team_mgmt mcp runtime diagnostics tests: ok');
+  if (semantic) await writeSemanticEvidence(cases, 'dominds-mcp-runtime-guidance-');
+  else console.log('MCP runtime diagnostics behavior tests passed');
 }
 
 main().catch((err: unknown) => {

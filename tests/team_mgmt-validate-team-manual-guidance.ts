@@ -2,34 +2,26 @@
 
 import assert from 'node:assert/strict';
 import fs from 'node:fs/promises';
-import os from 'node:os';
 import path from 'node:path';
 
 import type { Dialog } from '../main/dialog';
+import { getProblemsSnapshot } from '../main/problems';
 import { Team } from '../main/team';
 import '../main/tools/builtins';
 import { teamMgmtValidateTeamCfgTool } from '../main/tools/team_mgmt';
 import { buildToolsetManualTools } from '../main/tools/toolset-manual';
+import { writeSemanticEvidence, type SemanticEvidence } from './helpers/semantic-evidence';
 
 async function writeText(filePathAbs: string, content: string): Promise<void> {
   await fs.mkdir(path.dirname(filePathAbs), { recursive: true });
   await fs.writeFile(filePathAbs, content, 'utf8');
 }
 
-async function withTempRtws(run: () => Promise<void>): Promise<void> {
-  const tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), 'dominds-team-mgmt-guidance-'));
-  const oldCwd = process.cwd();
-  try {
-    process.chdir(tmpDir);
-    await run();
-  } finally {
-    process.chdir(oldCwd);
-    await fs.rm(tmpDir, { recursive: true, force: true });
-  }
-}
-
 async function main(): Promise<void> {
-  await withTempRtws(async () => {
+  assert.equal(process.env.DOMINDS_TEST_RTWS_MANAGED, '1', 'run through tests/cli.ts');
+  const semantic = process.argv.includes('--semantic');
+  const cases: SemanticEvidence[] = [];
+  {
     await writeText(
       path.join(process.cwd(), '.minds', 'llm.yaml'),
       [
@@ -69,49 +61,56 @@ async function main(): Promise<void> {
     const manTool = built.tools.find((entry) => entry.name === 'man');
     assert.ok(manTool, 'man tool should be available');
 
-    const validateOut = (await teamMgmtValidateTeamCfgTool.call(dlg, caller, {})).content;
-    assert.ok(
-      validateOut.includes(
-        'team-management validation tools such as `team_mgmt_validate_team_cfg({})`, `team_mgmt_validate_mcp_cfg({})`, and `man({ "toolsetId": "team_mgmt" })` should remain usable',
-      ),
-      'validate_team_cfg should remind that validation/manual tools remain available during component-toolset failures',
-    );
-    assert.ok(
-      validateOut.includes(
-        'inspect Stage 0 package dependencies in `.minds/app.yaml` via `team_mgmt_read_file({ path: "app.yaml" })`',
-      ),
-      `validate_team_cfg should guide the team manager to inspect app.yaml when component toolset bindings fail.\nOutput:\n${validateOut}`,
-    );
-    assert.ok(
-      validateOut.includes(
-        '`man({ "toolsetId": "team_mgmt", "topics": ["toolsets","troubleshooting"] })`',
-      ),
-      'validate_team_cfg should guide the team manager to the relevant manual topics',
-    );
-
-    const manualOut = (
-      await manTool.call(dlg as never, manualCaller, {
+    for (const language of ['en', 'zh'] as const) {
+      const localizedDialog = { ...dlg, getLastUserLanguageCode: () => language } as Dialog;
+      const validation = await teamMgmtValidateTeamCfgTool.call(localizedDialog, caller, {});
+      assert.equal(validation.outcome, 'failure');
+      const missingCapability = getProblemsSnapshot().problems.find(
+        (problem) =>
+          problem.id ===
+          'team/team_yaml_error/members/team_admin/toolsets/playwright_interactive/missing',
+      );
+      assert.ok(missingCapability);
+      assert.equal(missingCapability.kind, 'team_workspace_config_error');
+      assert.equal(missingCapability.severity, 'error');
+      assert.equal(missingCapability.resolved, false);
+      const manual = await manTool.call(localizedDialog, manualCaller, {
         toolsetId: 'team_mgmt',
-        topics: ['troubleshooting'],
-      })
-    ).content;
-    assert.ok(
-      manualOut.includes(
-        'a Stage 0 package toolset referenced from `team.yaml` is missing / component capability is unavailable',
-      ),
-      'troubleshooting manual should include the component toolset failure symptom',
-    );
-    assert.ok(
-      manualOut.includes('`team_mgmt_validate_team_cfg({})` remains available'),
-      'troubleshooting manual should explicitly say validate_team_cfg remains available',
-    );
-  });
-
-  console.log('team_mgmt validate/manual guidance tests: ok');
+        topic: 'troubleshooting',
+      });
+      assert.equal(
+        manual.outcome,
+        'success',
+        'manual remains callable while referenced component toolset is missing',
+      );
+      if (semantic)
+        cases.push({
+          id: 'missing-component-' + language,
+          scenario:
+            'team_admin references playwright_interactive but the capability package is not installed in this isolated workspace.',
+          businessValue:
+            'Keep investigation possible when an optional component is unavailable, and guide repair of the current compatible implementation.',
+          context: {
+            language,
+            teamYaml: await fs.readFile('.minds/team.yaml', 'utf8'),
+            appYamlExists: false,
+            problems: JSON.stringify(getProblemsSnapshot().problems),
+            availableManual: manual.content,
+          },
+          reviewQuestions: [
+            'Does validation explain the missing capability and a useful investigation path through still-available team-management tools?',
+            'Is current app.yaml / App Host troubleshooting framed as compatibility with the existing implementation rather than the target architecture?',
+            'Does the advice avoid granting tools through descriptive text or claiming all team members are unusable?',
+          ],
+          actualText: validation.content,
+        });
+    }
+  }
+  if (semantic) await writeSemanticEvidence(cases, 'dominds-team-validation-guidance-');
+  else console.log('Team validation/manual availability behavior tests passed');
 }
 
-main().catch((err: unknown) => {
-  const message = err instanceof Error ? err.message : String(err);
-  console.error(`team_mgmt validate/manual guidance tests: failed: ${message}`);
-  process.exit(1);
+main().catch((error: unknown) => {
+  console.error(error);
+  process.exitCode = 1;
 });

@@ -8,7 +8,12 @@ import YAML, { isMap, isScalar } from 'yaml';
 import { type Dialog } from '../dialog';
 import { createLogger } from '../log';
 import { DialogPersistence } from '../persistence';
-import { reconcileProblemsByPrefix, removeProblemsByPrefix, upsertProblem } from '../problems';
+import {
+  listProblems,
+  reconcileProblemsByPrefix,
+  removeProblemsByPrefix,
+  upsertProblem,
+} from '../problems';
 import { domindsRtwsRootAbs } from '../rtws';
 import { getWorkLanguage } from '../runtime/work-language';
 import { toolSuccess, type Tool, type ToolArguments, type ToolCallOutput } from '../tool';
@@ -1186,6 +1191,14 @@ async function applyWorkspaceConfig(
     runtimeLeaseChanged = true;
     serverStateById.delete(serverId);
     reconcileProblemsByPrefix(problemPrefixForServer(serverId), []);
+  }
+
+  // A rejected configuration or failed connection may never have created a runtime.
+  // Removing that declaration still resolves its Problems, preserving their history.
+  for (const problem of listProblems({ source: 'mcp', resolved: false })) {
+    if ('serverId' in problem.detail && !declaredIds.has(problem.detail.serverId)) {
+      reconcileProblemsByPrefix(problemPrefixForServer(problem.detail.serverId), []);
+    }
   }
 
   // Remove disabled/deleted MCP placeholders that are no longer declared.

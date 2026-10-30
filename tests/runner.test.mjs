@@ -76,3 +76,28 @@ test('a descriptive case id does not overflow the tsx Unix socket path', async (
     await fs.rm(logDir, { recursive: true, force: true });
   }
 });
+
+test('evidence generation retains successful process material for subjective review', async () => {
+  const logDir = await fs.mkdtemp(path.join(os.tmpdir(), 'dominds-runner-evidence-'));
+  try {
+    const summary = await runCases(
+      [
+        {
+          id: 'generate-evidence',
+          args: [
+            '-e',
+            'require("node:fs").writeFileSync(require("node:path").join(require("node:os").tmpdir(), "review.json"), JSON.stringify({status:"pending"}))',
+          ],
+        },
+      ],
+      { logDir, keepSuccessfulState: true, report: () => {} },
+    );
+    assert.equal(summary.passed, 1, 'the process completed; this is not a semantic verdict');
+    assert.deepEqual(
+      JSON.parse(await fs.readFile(path.join(summary.results[0].tempDir, 'review.json'), 'utf8')),
+      { status: 'pending' },
+    );
+  } finally {
+    await fs.rm(logDir, { recursive: true, force: true });
+  }
+});

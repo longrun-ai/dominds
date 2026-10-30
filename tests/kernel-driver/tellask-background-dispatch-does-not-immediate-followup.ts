@@ -2,7 +2,10 @@ import assert from 'node:assert/strict';
 
 import { type SetDiligencePushRequest } from '@longrun-ai/kernel/types/wire';
 import { DialogID } from '../../main/dialog';
+import { requestInterruptDialog } from '../../main/dialog-display-state';
+import { getLlmGenerator, registerLlmGenerator } from '../../main/llm/gen/registry';
 import { driveDialogStream } from '../../main/llm/kernel-driver';
+import { evaluateDiligenceAutoContinueGate } from '../../main/llm/kernel-driver/runtime';
 import { supplyResponseToAskerDialog } from '../../main/llm/kernel-driver/sideDialog';
 import { DialogPersistence } from '../../main/persistence';
 import { handleWebSocketMessage } from '../../main/server/websocket-handler';
@@ -11,6 +14,7 @@ import {
   makeDriveOptions,
   makeUserPrompt,
   waitFor,
+  waitForAllDialogsUnlocked,
   withTempRtws,
   writeMockDb,
   writeStandardMinds,
@@ -61,232 +65,288 @@ async function main(): Promise<void> {
     ]);
 
     const root = await createMainDialog('tester');
-    root.disableDiligencePush = false;
-    root.diligencePushRemainingBudget = 1;
-
-    await driveDialogStream(
-      root,
-      makeUserPrompt(prompt, 'kernel-driver-tellask-background-dispatch'),
-      true,
-      makeDriveOptions(),
-    );
-
-    await waitFor(
-      async () => {
-        const pending = await DialogPersistence.loadActiveCalleeDispatches(root.id, root.status);
-        return pending.length === 1;
+    const originalGenerator = getLlmGenerator('mock');
+    assert.ok(originalGenerator);
+    let releaseCallee = false;
+    let calleeGenerationCount = 0;
+    const blockedGenerations = new Set<() => void>();
+    registerLlmGenerator({
+      apiType: 'mock',
+      genMoreMessages: originalGenerator.genMoreMessages.bind(originalGenerator),
+      async genToReceiver(...args) {
+        const agent = args[1];
+        const signal = args[8];
+        if (agent.id !== 'pangu') return originalGenerator.genToReceiver(...args);
+        calleeGenerationCount += 1;
+        // Control only the provider response. Real scheduling, replacement, disk and UI stay active.
+        if (!releaseCallee && !signal?.aborted) {
+          await new Promise<void>((resolve) => {
+            const release = () => {
+              signal?.removeEventListener('abort', release);
+              blockedGenerations.delete(release);
+              resolve();
+            };
+            blockedGenerations.add(release);
+            signal?.addEventListener('abort', release, { once: true });
+          });
+        }
+        return { usage: { kind: 'unavailable' }, llmGenModel: 'default' };
       },
-      3_000,
-      'background tellask pending record to be persisted',
-    );
-    const activeCallees = await DialogPersistence.loadActiveCallees(root.id, root.status);
-    assert.equal(
-      activeCallees.batches.length,
-      1,
-      'background tellask should create one active batch',
-    );
-    assert.equal(
-      activeCallees.batches[0]?.callees.length,
-      1,
-      'single tellask dispatch batch should contain one callee',
-    );
-    assert.equal(
-      activeCallees.batches[0]?.callees[0]?.callId,
-      'background-dispatch-only',
-      'active callee batch should preserve the dispatched call id',
-    );
+    });
+    try {
+      root.disableDiligencePush = false;
+      root.diligencePushRemainingBudget = 1;
 
-    const events = await DialogPersistence.loadCourseEvents(
-      root.id,
-      root.currentCourse,
-      root.status,
-    );
-    const genStartCount = events.filter((event) => event.type === 'gen_start_record').length;
-    assert.equal(
-      genStartCount,
-      1,
-      'single pending tellask dispatch ack must not start an immediate follow-up or Diligence Push generation',
-    );
-    assert.equal(
-      root.diligencePushRemainingBudget,
-      1,
-      'pending active callee dispatch must not consume Diligence Push budget',
-    );
-    assert.ok(
-      events.some(
-        (event) =>
-          event.type === 'func_result_record' &&
-          event.name === 'tellask' &&
-          event.id === 'background-dispatch-only',
-      ),
-      'pending tellask dispatch ack should still be persisted as a function result',
-    );
-    assert.equal(
-      events.some(
-        (event) => event.type === 'prompting_msg_record' && event.origin === 'diligence_push',
-      ),
-      false,
-      'pending active callee dispatch must not insert a Diligence Push prompt',
-    );
+      await driveDialogStream(
+        root,
+        makeUserPrompt(prompt, 'kernel-driver-tellask-background-dispatch'),
+        true,
+        makeDriveOptions(),
+      );
 
-    const firstCalleeId = activeCallees.batches[0]?.callees[0]?.calleeDialogId;
-    assert.ok(firstCalleeId, 'expected the initial tellask to register a callee dialog id');
-    await DialogPersistence.removeActiveCalleeDispatch(
-      root.id,
-      firstCalleeId,
-      'background-dispatch-only',
-      undefined,
-      root.status,
-    );
-    root.diligencePushRemainingBudget = 1;
-    await DialogPersistence.mutateDialogLatest(root.id, () => ({
-      kind: 'patch',
-      patch: {
-        diligencePushRemainingBudget: 1,
-      },
-    }));
+      await waitFor(
+        async () => {
+          const pending = await DialogPersistence.loadActiveCalleeDispatches(root.id, root.status);
+          return pending.length === 1;
+        },
+        3_000,
+        'background tellask pending record to be persisted',
+      );
+      const activeCallees = await DialogPersistence.loadActiveCallees(root.id, root.status);
+      assert.equal(
+        activeCallees.batches.length,
+        1,
+        'background tellask should create one active batch',
+      );
+      assert.equal(
+        activeCallees.batches[0]?.callees.length,
+        1,
+        'single tellask dispatch batch should contain one callee',
+      );
+      assert.equal(
+        activeCallees.batches[0]?.callees[0]?.callId,
+        'background-dispatch-only',
+        'active callee batch should preserve the dispatched call id',
+      );
 
-    await driveDialogStream(
-      root,
-      makeUserPrompt(
-        registeredUpdatePrompt,
-        'kernel-driver-tellask-background-dispatch-registered-update',
-      ),
-      true,
-      makeDriveOptions(),
-    );
+      const events = await DialogPersistence.loadCourseEvents(
+        root.id,
+        root.currentCourse,
+        root.status,
+      );
+      assert.equal(
+        events.filter((event) => event.type === 'human_text_record' && event.origin === 'user')
+          .length,
+        1,
+        'the initial real user input is durably present',
+      );
+      const genStartCount = events.filter((event) => event.type === 'gen_start_record').length;
+      assert.equal(
+        genStartCount,
+        1,
+        'single pending tellask dispatch ack must not start an immediate follow-up or Diligence Push generation',
+      );
+      assert.equal(
+        root.diligencePushRemainingBudget,
+        1,
+        'pending active callee dispatch must not consume Diligence Push budget',
+      );
+      assert.ok(
+        events.some(
+          (event) =>
+            event.type === 'func_result_record' &&
+            event.name === 'tellask' &&
+            event.id === 'background-dispatch-only',
+        ),
+        'pending tellask dispatch ack should still be persisted as a function result',
+      );
+      assert.equal(
+        events.some(
+          (event) => event.type === 'human_text_record' && event.origin === 'diligence_push',
+        ),
+        false,
+        'pending active callee dispatch must not insert a Diligence Push prompt',
+      );
 
-    const activeAfterRegisteredUpdate = await DialogPersistence.loadActiveCallees(
-      root.id,
-      root.status,
-    );
-    assert.equal(
-      activeAfterRegisteredUpdate.batches.length,
-      1,
-      'registered tellask update should create one active batch',
-    );
-    assert.equal(
-      activeAfterRegisteredUpdate.batches[0]?.callees[0]?.callId,
-      'registered-background-update-only',
-      'registered tellask update should preserve the new call id',
-    );
+      await waitFor(
+        async () => calleeGenerationCount >= 1 && blockedGenerations.size > 0,
+        3_000,
+        'the provider to hold the initial callee response',
+      );
+      const firstCalleeId = activeCallees.batches[0]?.callees[0]?.calleeDialogId;
+      assert.ok(firstCalleeId, 'expected the initial tellask to register a callee dialog id');
+      await DialogPersistence.removeActiveCalleeDispatch(
+        root.id,
+        firstCalleeId,
+        'background-dispatch-only',
+        undefined,
+        root.status,
+      );
+      root.diligencePushRemainingBudget = 1;
+      await DialogPersistence.mutateDialogLatest(root.id, () => ({
+        kind: 'patch',
+        patch: {
+          diligencePushRemainingBudget: 1,
+        },
+      }));
 
-    const missingCallIdSupplyArgs = {
-      callerDialog: root,
-      sideDialogId: new DialogID(firstCalleeId, root.id.rootId),
-      responseText: 'Late stale response without a callId must not consume the new round.',
-      callType: 'B',
-      scheduleDrive: async () => {},
-    } as unknown as Parameters<typeof supplyResponseToAskerDialog>[0];
-    await assert.rejects(
-      async () => {
+      await driveDialogStream(
+        root,
+        makeUserPrompt(
+          registeredUpdatePrompt,
+          'kernel-driver-tellask-background-dispatch-registered-update',
+        ),
+        true,
+        makeDriveOptions(),
+      );
+
+      const activeAfterRegisteredUpdate = await DialogPersistence.loadActiveCallees(
+        root.id,
+        root.status,
+      );
+      assert.equal(
+        activeAfterRegisteredUpdate.batches.length,
+        1,
+        'registered tellask update should create one active batch',
+      );
+      assert.equal(
+        activeAfterRegisteredUpdate.batches[0]?.callees[0]?.callId,
+        'registered-background-update-only',
+        'registered tellask update should preserve the new call id',
+      );
+
+      const missingCallIdSupplyArgs = {
+        callerDialog: root,
+        sideDialogId: new DialogID(firstCalleeId, root.id.rootId),
+        responseText: 'Late stale response without a callId must not consume the new round.',
+        callType: 'B',
+        scheduleDrive: async () => {},
+      } as unknown as Parameters<typeof supplyResponseToAskerDialog>[0];
+      await assert.rejects(async () => {
         await supplyResponseToAskerDialog(missingCallIdSupplyArgs);
-      },
-      /callId is required/,
-      'callId-less sideDialog response supply must be rejected as an invariant violation',
-    );
-    const activeAfterLateStaleReply = await DialogPersistence.loadActiveCallees(
-      root.id,
-      root.status,
-    );
-    assert.equal(
-      activeAfterLateStaleReply.batches.length,
-      1,
-      'late stale callId-less reply must not remove the newly appended registered tellask batch',
-    );
-    assert.equal(
-      activeAfterLateStaleReply.batches[0]?.callees[0]?.callId,
-      'registered-background-update-only',
-      'late stale callId-less reply must not resolve the new registered tellask pending record',
-    );
+      }, 'callId-less sideDialog response supply must be rejected as an invariant violation');
+      const activeAfterLateStaleReply = await DialogPersistence.loadActiveCallees(
+        root.id,
+        root.status,
+      );
+      assert.equal(
+        activeAfterLateStaleReply.batches.length,
+        1,
+        'late stale callId-less reply must not remove the newly appended registered tellask batch',
+      );
+      assert.equal(
+        activeAfterLateStaleReply.batches[0]?.callees[0]?.callId,
+        'registered-background-update-only',
+        'late stale callId-less reply must not resolve the new registered tellask pending record',
+      );
 
-    const eventsAfterRegisteredUpdate = await DialogPersistence.loadCourseEvents(
-      root.id,
-      root.currentCourse,
-      root.status,
-    );
-    assert.equal(
-      eventsAfterRegisteredUpdate.filter((event) => event.type === 'gen_start_record').length,
-      2,
-      'registered pending tellask update must not start an immediate follow-up or Diligence Push generation',
-    );
-    assert.equal(
-      root.diligencePushRemainingBudget,
-      1,
-      'registered pending active callee update must not consume Diligence Push budget',
-    );
-    assert.equal(
-      eventsAfterRegisteredUpdate.filter(
-        (event) => event.type === 'prompting_msg_record' && event.origin === 'diligence_push',
-      ).length,
-      0,
-      'registered pending active callee update must not insert a Diligence Push prompt',
-    );
+      const eventsAfterRegisteredUpdate = await DialogPersistence.loadCourseEvents(
+        root.id,
+        root.currentCourse,
+        root.status,
+      );
+      assert.equal(
+        eventsAfterRegisteredUpdate.filter((event) => event.type === 'gen_start_record').length,
+        2,
+        'registered pending tellask update must not start an immediate follow-up or Diligence Push generation',
+      );
+      assert.equal(
+        root.diligencePushRemainingBudget,
+        1,
+        'registered pending active callee update must not consume Diligence Push budget',
+      );
+      assert.equal(
+        eventsAfterRegisteredUpdate.filter(
+          (event) => event.type === 'human_text_record' && event.origin === 'diligence_push',
+        ).length,
+        0,
+        'registered pending active callee update must not insert a Diligence Push prompt',
+      );
 
-    await DialogPersistence.mutateDialogLatest(root.id, () => ({
-      kind: 'patch',
-      patch: {
-        disableDiligencePush: true,
-        diligencePushRemainingBudget: 1,
-      },
-    }));
-    root.disableDiligencePush = true;
-    root.diligencePushRemainingBudget = 1;
+      await DialogPersistence.mutateDialogLatest(root.id, () => ({
+        kind: 'patch',
+        patch: {
+          disableDiligencePush: true,
+          diligencePushRemainingBudget: 1,
+        },
+      }));
+      root.disableDiligencePush = true;
+      root.diligencePushRemainingBudget = 1;
 
-    const wsMessages: string[] = [];
-    const ws = {
-      send(data: string) {
-        wsMessages.push(data);
-      },
-    } as unknown as import('ws').WebSocket;
-    const enableDiligencePacket: SetDiligencePushRequest = {
-      type: 'set_diligence_push',
-      dialog: { selfId: root.id.selfId, rootId: root.id.rootId, status: root.status },
-      disableDiligencePush: false,
-    };
-    await handleWebSocketMessage(ws, enableDiligencePacket);
-    await new Promise((resolve) => setTimeout(resolve, 50));
+      const wsMessages: string[] = [];
+      const ws = {
+        send(data: string) {
+          wsMessages.push(data);
+        },
+      } as unknown as import('ws').WebSocket;
+      const enableDiligencePacket: SetDiligencePushRequest = {
+        type: 'set_diligence_push',
+        dialog: { selfId: root.id.selfId, rootId: root.id.rootId, status: root.status },
+        disableDiligencePush: false,
+      };
+      await handleWebSocketMessage(ws, enableDiligencePacket);
+      assert.deepEqual(
+        await evaluateDiligenceAutoContinueGate({ dlg: root, requireIdleRunSlot: true }),
+        { kind: 'blocked', reason: 'active_callee_dispatches' },
+      );
 
-    assert.equal(
-      wsMessages.some((raw) => raw.includes('"type":"diligence_push_updated"')),
-      true,
-      'UI enable toggle should still acknowledge the setting update',
-    );
-    assert.equal(
-      root.diligencePushRemainingBudget,
-      1,
-      'UI enable toggle must not consume Diligence Push budget while active callee dispatch remains pending',
-    );
-    const latestAfterToggle = await DialogPersistence.loadDialogLatest(root.id, root.status);
-    assert.equal(
-      latestAfterToggle?.disableDiligencePush,
-      false,
-      'UI enable toggle should persist Diligence Push as enabled',
-    );
-    assert.equal(
-      latestAfterToggle?.diligencePushRemainingBudget,
-      1,
-      'UI enable toggle must not persist budget consumption while active callee dispatch remains pending',
-    );
-    const eventsAfterToggle = await DialogPersistence.loadCourseEvents(
-      root.id,
-      root.currentCourse,
-      root.status,
-    );
-    assert.equal(
-      eventsAfterToggle.filter(
-        (event) => event.type === 'prompting_msg_record' && event.origin === 'diligence_push',
-      ).length,
-      0,
-      'UI enable toggle must not insert a Diligence Push prompt while active callee dispatch remains pending',
-    );
+      assert.equal(
+        wsMessages.some((raw) => JSON.parse(raw).type === 'diligence_push_updated'),
+        true,
+        'UI enable toggle should still acknowledge the setting update',
+      );
+      assert.equal(
+        root.diligencePushRemainingBudget,
+        1,
+        'UI enable toggle must not consume Diligence Push budget while active callee dispatch remains pending',
+      );
+      const latestAfterToggle = await DialogPersistence.loadDialogLatest(root.id, root.status);
+      assert.equal(
+        latestAfterToggle?.disableDiligencePush,
+        false,
+        'UI enable toggle should persist Diligence Push as enabled',
+      );
+      assert.equal(
+        latestAfterToggle?.diligencePushRemainingBudget,
+        1,
+        'UI enable toggle must not persist budget consumption while active callee dispatch remains pending',
+      );
+      const eventsAfterToggle = await DialogPersistence.loadCourseEvents(
+        root.id,
+        root.currentCourse,
+        root.status,
+      );
+      assert.equal(
+        eventsAfterToggle.filter(
+          (event) => event.type === 'human_text_record' && event.origin === 'diligence_push',
+        ).length,
+        0,
+        'UI enable toggle must not insert a Diligence Push prompt while active callee dispatch remains pending',
+      );
 
-    const latest = await DialogPersistence.loadDialogLatest(root.id, root.status);
-    assert.notEqual(
-      latest?.displayState?.kind,
-      'waiting_side_dialog',
-      'pending tellask must not project caller dialog into waiting_side_dialog',
-    );
+      const latest = await DialogPersistence.loadDialogLatest(root.id, root.status);
+      assert.notEqual(
+        latest?.displayState?.kind,
+        'waiting_side_dialog',
+        'pending tellask must not project caller dialog into waiting_side_dialog',
+      );
+    } finally {
+      root.disableDiligencePush = true;
+      await DialogPersistence.mutateDialogLatest(root.id, () => ({
+        kind: 'patch',
+        patch: { disableDiligencePush: true },
+      }));
+      for (const dialog of root.getLoadedDialogTreeSnapshot()) {
+        await requestInterruptDialog(dialog.id, 'user_stop');
+      }
+      releaseCallee = true;
+      for (const release of blockedGenerations) release();
+      try {
+        await waitForAllDialogsUnlocked(root, 3_000);
+      } finally {
+        registerLlmGenerator(originalGenerator);
+      }
+    }
   });
 
   console.log('kernel-driver tellask-background-dispatch-does-not-immediate-followup: PASS');
