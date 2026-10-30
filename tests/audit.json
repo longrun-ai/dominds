@@ -107,7 +107,7 @@
       "status": "reviewed",
       "lane": "kernel",
       "value": "错误工具不消耗义务、跨对话重复拒绝、真实正式交付一次、持久化陈旧提醒不复活已完成义务",
-      "evidence": "Reply/runtime batch; complete assertion diff reviewed; real isolated runtime and persisted state. Semantic scope and independent verdicts: tests/semantic/reviews/2026-10-30-reply-runtime.json. This design ledger does not accept generated output."
+      "evidence": "Reply/runtime batch; complete assertion diff reviewed; real isolated runtime and persisted state. Semantic scope and independent verdicts: tests/semantic/reviews/2026-10-30-reply-runtime.json. This design ledger does not accept generated output. Provider/failure batch re-review: every live provider generation is explicit, with caller consumption/worker delivery checked; fixture errors no longer act as normal answers. Current subjective evidence: tests/semantic/reviews/2026-10-30-provider-failure.json."
     },
     "kernel-driver/answering-a2h-side-reply-reminder.ts": {
       "status": "reviewed",
@@ -185,7 +185,7 @@
       "status": "reviewed",
       "lane": "kernel",
       "value": "已消费输入遭残留pending、stop和wake污染后重建实例；不重放、不多生成，清除过期阻断",
-      "evidence": "Renewal/assignment batch; complete assertion design review, real isolated runtime/persistence/scheduling and controlled provider responses. Subjective semantics and failure history: tests/semantic/reviews/2026-10-30-renewal.json. Prior reports never accept fresh output."
+      "evidence": "Renewal/assignment batch; complete assertion design review, real isolated runtime/persistence/scheduling and controlled provider responses. Subjective semantics and failure history: tests/semantic/reviews/2026-10-30-renewal.json. Prior reports never accept fresh output. Provider/failure batch re-review: every live provider generation is explicit, with caller consumption/worker delivery checked; fixture errors no longer act as normal answers. Current subjective evidence: tests/semantic/reviews/2026-10-30-provider-failure.json."
     },
     "kernel-driver/stale-pending-runtime-prompt-queue-claim.ts": {
       "status": "reviewed",
@@ -240,6 +240,78 @@
       "lane": "kernel",
       "value": "注册诉请自动启动真实执行者，显式回复工具交付已知payload一次，正确响应深链且主线实际消费",
       "evidence": "Renewal/assignment batch follow-up; complete assertion review, real scheduler/persistence and phase-controlled provider. Prior implicit MockGen prose parsing caused full-kernel failures; preserved evidence and corrected fixtures: tests/semantic/reviews/2026-10-30-renewal.json."
+    },
+    "kernel-driver/backend-loop-persists-drive-error-stall.ts": {
+      "status": "reviewed",
+      "lane": "kernel",
+      "value": "后台失败落盘并阻止同一工作事实无效重试；待办仍保留，责任与中断事实改变指纹",
+      "evidence": "Provider/failure batch: complete assertion-design review; real isolated runtime and persisted effects. Semantic outputs remain pending until the independent verdicts in tests/semantic/reviews/2026-10-30-provider-failure.json. This ledger is not an outcome or a future-output oracle."
+    },
+    "kernel-driver/context-health-model-limit-usage.ts": {
+      "status": "reviewed",
+      "lane": "kernel",
+      "value": "未知模型容量仍保留供应商用量、reasoning tokens和真实生成元数据",
+      "evidence": "Provider/failure batch: complete assertion-design review; real isolated runtime and persisted effects. Semantic outputs remain pending until the independent verdicts in tests/semantic/reviews/2026-10-30-provider-failure.json. This ledger is not an outcome or a future-output oracle."
+    },
+    "kernel-driver/immediate-followup-trigger-repair.ts": {
+      "status": "reviewed",
+      "lane": "kernel",
+      "value": "真实落盘后删除即时后续触发，运行时修复并消费，不以调试栈措辞作证",
+      "evidence": "Provider/failure batch: complete assertion-design review; real isolated runtime and persisted effects. Semantic outputs remain pending until the independent verdicts in tests/semantic/reviews/2026-10-30-provider-failure.json. This ledger is not an outcome or a future-output oracle."
+    },
+    "kernel-driver/invalid-json-tool-call-feedback.ts": {
+      "status": "reviewed",
+      "lane": "kernel",
+      "value": "原始非法参数持久化/恢复，缺名provider载荷有序恢复，重复和混合reply拒绝且不交付",
+      "evidence": "Provider/failure batch: complete assertion-design review; real isolated runtime and persisted effects. Semantic outputs remain pending until the independent verdicts in tests/semantic/reviews/2026-10-30-provider-failure.json. This ledger is not an outcome or a future-output oracle."
+    },
+    "kernel-driver/llm-request-failure-single-stream-error.ts": {
+      "status": "reviewed",
+      "lane": "kernel",
+      "value": "已发出stream_error后抛错仍只发一次，停止状态与中断原因保真；中英说明独立评审",
+      "evidence": "Provider/failure batch: complete assertion-design review; real isolated runtime and persisted effects. Semantic outputs remain pending until the independent verdicts in tests/semantic/reviews/2026-10-30-provider-failure.json. This ledger is not an outcome or a future-output oracle."
+    },
+    "kernel-driver/mock-provider-contract.ts": {
+      "status": "reviewed",
+      "lane": "kernel",
+      "value": "缺失和无效夹具在输出前fatal，禁止指导推断工具；stream/batch错误与取消传播，真实ask-back责任不误交付",
+      "evidence": "Provider/failure batch: complete assertion-design review; real isolated runtime and persisted effects. Semantic outputs remain pending until the independent verdicts in tests/semantic/reviews/2026-10-30-provider-failure.json. This ledger is not an outcome or a future-output oracle."
+    },
+    "kernel-driver/multi-iter-tool-round-context-continuity.ts": {
+      "status": "reviewed",
+      "lane": "kernel",
+      "value": "工具专用及带叙述的stream/batch回合保持用户输入身份、调用/结果配对与最终受控输出",
+      "evidence": "Provider/failure batch: complete assertion-design review; real isolated runtime and persisted effects. Semantic outputs remain pending until the independent verdicts in tests/semantic/reviews/2026-10-30-provider-failure.json. This ledger is not an outcome or a future-output oracle."
+    },
+    "kernel-driver/multiple-askhuman-invalid.ts": {
+      "status": "reviewed",
+      "lane": "kernel",
+      "value": "多个/混合非法人类问题整轮拒绝，不建Q4H或callee；明确恢复生成，历史与重放顺序和参数保真",
+      "evidence": "Provider/failure batch: complete assertion-design review; real isolated runtime and persisted effects. Semantic outputs remain pending until the independent verdicts in tests/semantic/reviews/2026-10-30-provider-failure.json. This ledger is not an outcome or a future-output oracle."
+    },
+    "kernel-driver/pre-drive-latest-load-failure-stops.ts": {
+      "status": "reviewed",
+      "lane": "kernel",
+      "value": "损坏latest前置加载拒绝并保留malformed现场，供应商调用计数必须为零",
+      "evidence": "Provider/failure batch: complete assertion-design review; real isolated runtime and persisted effects. Semantic outputs remain pending until the independent verdicts in tests/semantic/reviews/2026-10-30-provider-failure.json. This ledger is not an outcome or a future-output oracle."
+    },
+    "kernel-driver/sideDialog-askback-reply-tool-no-double-delivery.ts": {
+      "status": "reviewed",
+      "lane": "kernel",
+      "value": "真实ask-back自动接续，两层各交付一次；同步镜像与后台pending回执分别按真实契约验收，恢复不重复",
+      "evidence": "Provider/failure batch: complete assertion-design review; real isolated runtime and persisted effects. Semantic outputs remain pending until the independent verdicts in tests/semantic/reviews/2026-10-30-provider-failure.json. This ledger is not an outcome or a future-output oracle."
+    },
+    "kernel-driver/sideDialog-direct-fallback-thinking.ts": {
+      "status": "reviewed",
+      "lane": "kernel",
+      "value": "一次提醒后兼容fallback的载荷选择与来源披露、工具后重置资格、等待下游不得早交付、从磁盘重建责任与续办",
+      "evidence": "Provider/failure batch: complete assertion-design review; real isolated runtime and persisted effects. Semantic outputs remain pending until the independent verdicts in tests/semantic/reviews/2026-10-30-provider-failure.json. This ledger is not an outcome or a future-output oracle."
+    },
+    "kernel-driver/unexpected-idle-after-tool-round-debug-dump.ts": {
+      "status": "reviewed",
+      "lane": "kernel",
+      "value": "业务接续意外空闲有可归属的结构化诊断，普通deferred停止不误报；不冻结栈说明措辞",
+      "evidence": "Provider/failure batch: complete assertion-design review; real isolated runtime and persisted effects. Semantic outputs remain pending until the independent verdicts in tests/semantic/reviews/2026-10-30-provider-failure.json. This ledger is not an outcome or a future-output oracle."
     }
   },
   "retired": {
@@ -305,6 +377,16 @@
       "decision": "merge",
       "replacement": "kernel-driver/sideDialog-registered-update-clear-mind-rebinds-reply-target.ts",
       "reason": "当前义务选择的结构化检查并入真实交付回归，保留新旧call/body与B目标，不再用运行时启动后的process.chdir伪装隔离。"
+    },
+    "kernel-driver/function-call-only-round-is-not-empty-response.ts": {
+      "decision": "merge",
+      "replacement": "kernel-driver/multi-iter-tool-round-context-continuity.ts",
+      "reason": "保留tool-only不被误判为空响应的业务价值，纳入stream/batch、有无叙述的真实工具回合；不再用命令成功说明的固定文字作执行成功证据。"
+    },
+    "kernel-driver/sideDialog-askback-auto-resume.ts": {
+      "decision": "merge",
+      "replacement": "kernel-driver/sideDialog-askback-reply-tool-no-double-delivery.ts",
+      "reason": "同一ask-back回路的自动接续、原任务response anchor与完成清理并入真实两层各交付一次回归，供应商每回合显式输出，退出缺响应/隐式推断工具夹具。"
     }
   }
 }

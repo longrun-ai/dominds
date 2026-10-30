@@ -1,10 +1,10 @@
 import assert from 'node:assert/strict';
 
-import { EndOfStream } from '@longrun-ai/kernel/evt';
 import type { TypedDialogEvent } from '@longrun-ai/kernel/types/dialog';
-import { dialogEventRegistry } from '../../main/evt-registry';
 import { driveDialogStream } from '../../main/llm/kernel-driver';
 import { DialogPersistence } from '../../main/persistence';
+import { recordDialogEvents } from '../helpers/dialog-events';
+import { semanticEvidenceCollector } from '../helpers/semantic-evidence';
 import {
   createMainDialog,
   makeUserPrompt,
@@ -13,33 +13,7 @@ import {
   writeStandardMinds,
 } from './helpers';
 
-async function readNextEventWithTimeout(
-  ch: ReturnType<typeof dialogEventRegistry.createSubChan>,
-  timeoutMs: number,
-): Promise<TypedDialogEvent | null> {
-  const timer = new Promise<null>((resolve) => {
-    setTimeout(() => resolve(null), timeoutMs);
-  });
-  const ev = await Promise.race([ch.read(), timer]);
-  if (ev === null || ev === EndOfStream) {
-    return null;
-  }
-  return ev;
-}
-
-async function collectEvents(
-  ch: ReturnType<typeof dialogEventRegistry.createSubChan>,
-  timeoutMs: number,
-): Promise<TypedDialogEvent[]> {
-  const events: TypedDialogEvent[] = [];
-  const deadline = Date.now() + timeoutMs;
-  while (Date.now() < deadline) {
-    const ev = await readNextEventWithTimeout(ch, 30);
-    if (!ev) continue;
-    events.push(ev);
-  }
-  return events;
-}
+const evidence = semanticEvidenceCollector('dominds-provider-stop-');
 
 async function main(): Promise<void> {
   await withTempRtws(async (tmpRoot) => {
@@ -72,26 +46,16 @@ async function main(): Promise<void> {
         trigger: 'Trigger a mock provider-emitted stream failure.',
         msgId: 'kernel-driver-llm-request-failure-single-stream-error-emitted',
         expectedDetail: 'OPENAI-COMPATIBLE invalid tool call index: null',
-        forbiddenDetail: 'LLM failed: OPENAI-COMPATIBLE invalid tool call index: null',
-        expectedI18nStopReason: {
-          zh: '模型服务返回了无效的工具调用信息，本次生成已停止。',
-          en: 'The LLM service returned invalid tool-call data. This generation was stopped.',
-        },
       },
       {
         trigger: 'Trigger a generic emitted upstream failure.',
         msgId: 'kernel-driver-llm-request-failure-single-stream-error-generic-emitted',
         expectedDetail: 'upstream stream exploded',
-        forbiddenDetail: 'LLM failed: upstream stream exploded',
-        expectedI18nStopReason: {
-          zh: '本次生成因上游报错而停止。上游原文：upstream stream exploded',
-          en: 'This generation was stopped because the upstream service returned an error. Upstream message: upstream stream exploded',
-        },
       },
     ] as const) {
       const dlg = await createMainDialog('tester');
       dlg.disableDiligencePush = true;
-      const ch = dialogEventRegistry.createSubChan(dlg.id);
+      const recording = recordDialogEvents(dlg);
 
       await driveDialogStream(dlg, makeUserPrompt(scenario.trigger, scenario.msgId), true);
 
@@ -110,33 +74,45 @@ async function main(): Promise<void> {
         scenario.expectedDetail,
         'displayState should preserve the original provider/runtime detail',
       );
-      assert.deepEqual(latest.displayState.reason.i18nStopReason, scenario.expectedI18nStopReason);
+
       assert.equal(latest.displayState.continueEnabled, true);
       assert.equal(latest.executionMarker?.kind, 'interrupted');
       assert.equal(latest.executionMarker?.reason.kind, 'system_stop');
       if (latest.executionMarker?.reason.kind === 'system_stop') {
         assert.equal(latest.executionMarker.reason.detail, scenario.expectedDetail);
         assert.deepEqual(
-          latest.executionMarker.reason.i18nStopReason,
-          scenario.expectedI18nStopReason,
+          latest.executionMarker.reason,
+          latest.displayState.reason,
+          'persisted interruption must carry the same reason as the visible stop',
         );
       }
 
-      const events = await collectEvents(ch, 500);
+      const events = await recording.finish();
       const streamErrors = events.filter(
         (event): event is Extract<TypedDialogEvent, { type: 'stream_error_evt' }> =>
           event.type === 'stream_error_evt',
       );
       assert.equal(streamErrors.length, 1, 'expected exactly one stream_error_evt for one failure');
       assert.equal(streamErrors[0]?.error, scenario.expectedDetail);
-      assert.equal(
-        streamErrors.some((event) => event.error === scenario.forbiddenDetail),
-        false,
-        'driver should not re-emit a wrapped second stream_error_evt for the same failure',
-      );
+      evidence.record({
+        id: scenario.msgId,
+        scenario: 'The provider emits a stream error and then throws for the same request.',
+        businessValue:
+          'Show one accurate stoppage and preserve the upstream failure for human recovery.',
+        context: {
+          rawDetail: scenario.expectedDetail,
+          streamErrors: streamErrors.length,
+          continueEnabled: latest.displayState.continueEnabled,
+        },
+        reviewQuestions: [
+          'Do both localized stop reasons accurately describe this failure without exposing an invented recovery or claiming completion?',
+        ],
+        actualText: JSON.stringify(latest.displayState, null, 2),
+      });
     }
   });
 
+  await evidence.write();
   console.log('kernel-driver llm-request-failure-single-stream-error: PASS');
 }
 

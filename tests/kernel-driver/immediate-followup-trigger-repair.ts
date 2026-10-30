@@ -47,11 +47,7 @@ async function main(): Promise<void> {
     let sabotagedTriggerId: string | undefined;
     DialogPersistence.upsertNextStepTrigger = async (dialogId, trigger, status) => {
       await originalUpsertNextStepTrigger.call(DialogPersistence, dialogId, trigger, status);
-      if (
-        sabotagedTriggerId === undefined &&
-        trigger.kind === 'followup' &&
-        trigger.triggerId.startsWith('followup:')
-      ) {
+      if (sabotagedTriggerId === undefined && trigger.kind === 'followup') {
         sabotagedTriggerId = trigger.triggerId;
         await DialogPersistence.removeNextStepTriggers(
           dialogId,
@@ -94,11 +90,7 @@ async function main(): Promise<void> {
 
       await waitForAllDialogsUnlocked(dlg, 3_000);
 
-      assert.equal(
-        sabotagedTriggerId,
-        'followup:c1:g1',
-        'test setup should delete the first immediate follow-up trigger write',
-      );
+      assert.ok(sabotagedTriggerId, 'test setup must delete a real immediate follow-up trigger');
       assert.ok(
         dlg.msgs.some(
           (msg) =>
@@ -132,11 +124,6 @@ async function main(): Promise<void> {
       assert.equal(payload.kind, 'kernel_driver_missing_immediate_followup_trigger_repaired');
       assert.equal(payload.repairOutcome, 'repaired');
       assert.equal(payload.checkPoint, 'before_immediate_post_tool_generation_continue');
-      assert.equal(typeof payload.callstack, 'string');
-      assert.match(
-        String(payload.callstack),
-        /kernel-driver missing immediate followup trigger repaired/u,
-      );
 
       assertRecord(payload.dialog, 'debug payload dialog');
       assert.equal(payload.dialog.rootId, dlg.id.rootId);

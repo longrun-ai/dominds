@@ -30,7 +30,6 @@ import {
   makeUserPrompt,
   waitForAllDialogsUnlocked,
   withTempRtws,
-  writeMockDb,
   writeStandardMinds,
 } from './helpers';
 
@@ -60,21 +59,6 @@ async function main(): Promise<void> {
   await withTempRtws(async (tmpRoot) => {
     setWorkLanguage('en');
     await writeStandardMinds(tmpRoot, { includePangu: true });
-    await writeMockDb(tmpRoot, [
-      {
-        message: 'Please finalize the tellasker reply now.',
-        role: 'user',
-        response: 'Closing the side dialog with the requested reply tool.',
-        funcCalls: [
-          {
-            name: 'replyTellask',
-            arguments: {
-              replyContent: liveReplyPayload,
-            },
-          },
-        ],
-      },
-    ]);
 
     const root = await createMainDialog('tester');
     root.disableDiligencePush = true;
@@ -557,12 +541,47 @@ async function main(): Promise<void> {
       sessionSlug: 'live-reply-guidance',
     });
     const liveRecorder = recordDialogEvents(liveSideDialog);
-    await driveDialogStream(
-      liveSideDialog,
-      makeUserPrompt('Please finalize the tellasker reply now.', 'live-reply-user-msg'),
-      true,
-    );
-    await waitForAllDialogsUnlocked(root, 2000);
+    const originalLiveGenerator = getLlmGenerator('mock');
+    assert.ok(originalLiveGenerator);
+    let liveRootRounds = 0;
+    let liveSideRounds = 0;
+    registerLlmGenerator({
+      apiType: 'mock',
+      async genToReceiver(_provider, _agent, _system, _tools, request, _context, receiver) {
+        if (request.dialogSelfId === liveSideDialog.id.selfId) {
+          liveSideRounds += 1;
+          assert.equal(liveSideRounds, 1);
+          await receiver.funcCall(
+            'explicit-live-reply',
+            'replyTellask',
+            JSON.stringify({ replyContent: liveReplyPayload }),
+          );
+        } else {
+          assert.equal(request.dialogSelfId, root.id.selfId);
+          liveRootRounds += 1;
+          assert.equal(liveRootRounds, 1);
+          await receiver.sayingStart();
+          await receiver.sayingChunk('caller-consumed-data-916b');
+          await receiver.sayingFinish();
+        }
+        return { usage: { kind: 'unavailable' }, llmGenModel: 'default' };
+      },
+      async genMoreMessages() {
+        throw new Error('streaming fixture only');
+      },
+    });
+    try {
+      await driveDialogStream(
+        liveSideDialog,
+        makeUserPrompt('live-reply-input-data', 'live-reply-user-msg'),
+        true,
+      );
+      await waitForAllDialogsUnlocked(root, 2000);
+      assert.equal(liveSideRounds, 1);
+      assert.equal(liveRootRounds, 1);
+    } finally {
+      registerLlmGenerator(originalLiveGenerator);
+    }
     const liveEvents = await liveRecorder.finish();
 
     const funcCallEvt = liveEvents.find(

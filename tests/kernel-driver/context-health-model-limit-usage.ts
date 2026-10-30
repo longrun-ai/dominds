@@ -40,7 +40,7 @@ async function main(): Promise<void> {
     );
 
     const snapshot = dlg.getLastContextHealth();
-    assert.equal(snapshot?.kind, 'unavailable');
+    assert.ok(snapshot?.kind === 'unavailable');
     assert.equal(snapshot.reason, 'model_limit_unavailable');
     assert.equal(snapshot.promptTokens, 42_000);
     assert.equal(snapshot.completionTokens, 7);
@@ -50,7 +50,7 @@ async function main(): Promise<void> {
     const events = await DialogPersistence.loadCourseEvents(dlg.id, 1, dlg.status);
     const finishRecord = events.find((event) => event.type === 'gen_finish_record');
     assert.ok(finishRecord, 'expected persisted gen_finish_record');
-    assert.equal(finishRecord.contextHealth?.kind, 'unavailable');
+    assert.ok(finishRecord.contextHealth?.kind === 'unavailable');
     assert.equal(finishRecord.contextHealth.reason, 'model_limit_unavailable');
     assert.equal(finishRecord.contextHealth.promptTokens, 42_000);
     assert.equal(finishRecord.contextHealth.completionTokens, 7);

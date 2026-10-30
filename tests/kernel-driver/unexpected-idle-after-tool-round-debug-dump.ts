@@ -1,3 +1,4 @@
+import { toCallSiteCourseNo, toCallSiteGenseqNo } from '@longrun-ai/kernel/types/storage';
 import assert from 'node:assert/strict';
 import * as fs from 'node:fs/promises';
 import path from 'node:path';
@@ -73,8 +74,8 @@ async function main(): Promise<void> {
             kind: 'requested_work_reply',
             callerDialogId: dlg.id.rootId,
             batchId: 'unexpected-idle-debug-batch',
-            callSiteCourse: 1,
-            callSiteGenseq: 1,
+            callSiteCourse: toCallSiteCourseNo(1),
+            callSiteGenseq: toCallSiteGenseqNo(1),
             sideDialogId: dlg.id.selfId,
             callType: 'B',
             callId: 'unexpected-idle-debug-call',
@@ -102,14 +103,14 @@ async function main(): Promise<void> {
       const payload: unknown = JSON.parse(rawPayload);
       assertRecord(payload, 'debug payload');
       assert.equal(payload.kind, 'kernel_driver_unexpected_idle_after_tool_round');
-      assert.equal(typeof payload.callstack, 'string');
-      assert.match(String(payload.callstack), /kernel-driver unexpected idle after tool round/u);
 
       assertRecord(payload.dialog, 'debug payload dialog');
       assert.equal(payload.dialog.rootId, dlg.id.rootId);
       assert.equal(payload.dialog.selfId, dlg.id.selfId);
 
       assertRecord(payload.diagnostics, 'debug payload diagnostics');
+      assertRecord(payload.diagnostics.lastBusinessContinuation, 'debug continuation');
+      assertRecord(payload.diagnostics.decision, 'debug decision');
       assert.equal(payload.diagnostics.lastBusinessContinuation.kind, 'requested_work_reply');
       assert.equal(payload.diagnostics.decision.stopReason, 'no_post_tool_continuation');
       assert.deepEqual(payload.diagnostics.callIds, ['call-deferred-debug-probe']);

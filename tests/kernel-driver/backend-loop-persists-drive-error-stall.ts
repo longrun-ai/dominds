@@ -65,9 +65,9 @@ async function main(): Promise<void> {
       'backend_drive_error',
       'backend drive error should be persisted as a stall marker',
     );
-    assert.match(
-      latestAfterFirst?.backendDriveStall?.errorMessage ?? '',
-      /synthetic backend canDrive failure/u,
+    assert.equal(
+      latestAfterFirst?.backendDriveStall?.errorMessage,
+      'synthetic backend canDrive failure',
       'stall marker should retain the failed drive reason',
     );
 
@@ -156,8 +156,7 @@ async function main(): Promise<void> {
         ...baseLatest,
         executionMarker: {
           kind: 'interrupted',
-          reason: 'user_paused',
-          interruptedAt: '2026-01-01T00:00:00.000Z',
+          reason: { kind: 'user_stop' },
         },
       }),
       DialogPersistence.buildBackendDriveDurableWorkFingerprint({

@@ -47,6 +47,12 @@ const manual = [
 ];
 const semanticSuites = {
   kernel: [
+    'kernel-driver/sideDialog-askback-reply-tool-no-double-delivery.ts',
+    'kernel-driver/multiple-askhuman-invalid.ts',
+    'kernel-driver/mock-provider-contract.ts',
+    'kernel-driver/invalid-json-tool-call-feedback.ts',
+    'kernel-driver/llm-request-failure-single-stream-error.ts',
+    'kernel-driver/sideDialog-direct-fallback-thinking.ts',
     'kernel-driver/runtime-reminder-context.ts',
     'kernel-driver/repeated-tool-call-reminder.ts',
     'kernel-driver/reply-tool-dynamic-guidance.ts',

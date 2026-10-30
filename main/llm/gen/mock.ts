@@ -19,7 +19,7 @@
  *     response: "corrected response"
  * ```
  *
- * === ROLE-BASED MATCHING (EXACT ONLY) ===
+ * === EXPLICIT ROLE-BASED MATCHING ===
  *
  * The mock looks at the last *input-like* message in context (no fallback):
  * - role='user' from prompting_msg → matches entries with role='user'
@@ -28,10 +28,12 @@
  * Notes:
  * - Context tails may include reminders / transient guides; these are ignored for matching.
  *
- * Matching rules (strict exact matching, NO fallback):
+ * Matching rules (configured entries only, NO inferred responses):
  * 1. Exact: "tool:error text" matches response with message="error text" AND role="tool"
  * 2. Exact: "user:hello" matches response with message="hello" AND role="user"
- * 3. No match: returns fallback response explaining how to add mocks
+ * 3. Input matching ignores case and surrounding whitespace; known runtime wrappers/status are stripped.
+ * 4. No match or invalid database: throws a fatal fixture error with repair context.
+ *    Diagnostics are never emitted as assistant content or inferred tool calls.
  *
  * === BENEFITS OF YAML FORMAT ===
  *
@@ -59,7 +61,6 @@ import path from 'path';
 import yaml from 'yaml';
 
 import type { LlmUsageStats } from '@longrun-ai/kernel/types/context-health';
-import { log } from '../../log';
 import {
   ACTIVE_REPLY_TOOL_PREFIX_EN,
   ACTIVE_REPLY_TOOL_PREFIX_ZH,
@@ -69,7 +70,6 @@ import {
   NO_ACTIVE_REPLY_PREFIX_ZH,
   REPLY_SUPPRESSION_PREFIX_EN,
   REPLY_SUPPRESSION_PREFIX_ZH,
-  isReplyToolReminderPromptContent,
 } from '../../runtime/reply-prompt-copy';
 import type { Team } from '../../team';
 import type { FuncTool } from '../../tool';
@@ -78,6 +78,7 @@ import {
   LlmStreamErrorEmittedError,
   type LlmBatchOutput,
   type LlmBatchResult,
+  type LlmFailureDisposition,
   type LlmGenerator,
   type LlmInvalidFuncCall,
   type LlmRequestContext,
@@ -91,7 +92,7 @@ interface MockResponse {
   message: string;
 
   /** Expected role of input: 'user', 'tool', 'assistant' */
-  role?: string;
+  role: string;
 
   /** Mock LLM response */
   response: string;
@@ -162,19 +163,19 @@ interface MockResponse {
   chunkDelayMs?: number;
 }
 
-interface MockDatabase {
-  responses: MockResponse[];
+interface ResponseDatabase {
+  lookupMap: Map<string, MockResponse[]>;
 }
 
-interface CachedDatabase {
-  filePath: string;
-  lastModified: number;
-  /**
-   * Key format: "role:message" for exact matching only (no fallback).
-   * Multiple entries can share the same key; matching is resolved from latest to oldest
-   * to preserve "last one wins" semantics.
-   */
-  lookupMap: Map<string, MockResponse[]>;
+class MockFixtureError extends Error {
+  constructor(
+    readonly code: 'mock_database_unavailable' | 'mock_database_invalid' | 'mock_response_missing',
+    message: string,
+    cause?: unknown,
+  ) {
+    super(message, { cause });
+    this.name = 'MockFixtureError';
+  }
 }
 
 const RUNTIME_PROMPT_WRAPPER_PREFIXES = [
@@ -230,7 +231,11 @@ export class MockGen implements LlmGenerator {
     return 'mock';
   }
 
-  private databaseCache = new Map<string, CachedDatabase>();
+  classifyFailure(error: unknown): LlmFailureDisposition | undefined {
+    return error instanceof MockFixtureError
+      ? { kind: 'fatal', code: error.code, message: error.message }
+      : undefined;
+  }
 
   private resolveInputForMatching(context: ReadonlyArray<ChatMessage>): {
     content: string;
@@ -286,70 +291,143 @@ export class MockGen implements LlmGenerator {
     return { content, role: lastMsg.role };
   }
 
-  private async loadResponseDatabase(dbPath: string, modelName: string): Promise<CachedDatabase> {
-    const cacheKey = `${dbPath}:${modelName}`;
+  private async loadResponseDatabase(dbPath: string, modelName: string): Promise<ResponseDatabase> {
     const dbFilePath = path.join(dbPath, `${modelName}.yaml`);
-
-    const cached = this.databaseCache.get(cacheKey);
-    if (cached) {
-      try {
-        const stats = await fs.stat(dbFilePath);
-        if (stats.mtimeMs === cached.lastModified) {
-          return cached;
-        }
-      } catch {
-        // Continue to reload
-      }
-    }
-
+    let content: string;
     try {
-      const content = await fs.readFile(dbFilePath, 'utf-8');
-      const rawDatabase = yaml.parse(content) as MockDatabase;
-
-      // EXACT MATCHING ONLY: Store entries with role prefix
-      // No fallback to message-only entries
-      const lookupMap = new Map<string, MockResponse[]>();
-      for (const resp of rawDatabase.responses) {
-        if (typeof resp.message !== 'string') {
-          throw new Error('message is required for mock response matching');
-        }
-        if (!resp.role) {
-          log.warn(`⚠️  Mock response without role: "${resp.message.substring(0, 50)}..."`);
-          log.warn('💡 All mock responses should have a "role" field (e.g., "user" or "tool")');
-        }
-        const key = resp.role
-          ? `${resp.role}:${resp.message.trim().toLowerCase()}`
-          : resp.message.trim().toLowerCase();
-        const existing = lookupMap.get(key);
-        if (existing) {
-          existing.push(resp);
-        } else {
-          lookupMap.set(key, [resp]);
-        }
-      }
-
-      const stats = await fs.stat(dbFilePath);
-      const cachedDb: CachedDatabase = {
-        filePath: dbFilePath,
-        lastModified: stats.mtimeMs,
-        lookupMap,
-      };
-
-      this.databaseCache.set(cacheKey, cachedDb);
-      return cachedDb;
-    } catch {
-      log.warn(`⚠️  Mock database not found: ${dbFilePath}`);
-      log.warn(
-        '💡 Create the file with: responses: [{ message: "...", role: "...", response: "..." }]',
+      content = await fs.readFile(dbFilePath, 'utf-8');
+    } catch (cause) {
+      throw new MockFixtureError(
+        'mock_database_unavailable',
+        `Cannot read mock response database ${JSON.stringify(dbFilePath)}. Configure an accessible YAML database before running this scenario. No assistant response or tool call was generated.`,
+        cause,
       );
-
-      const emptyDb: CachedDatabase = {
-        filePath: dbFilePath,
-        lastModified: Date.now(),
-        lookupMap: new Map<string, MockResponse[]>(),
-      };
-      this.databaseCache.set(cacheKey, emptyDb);
-      return emptyDb;
+    }
+    try {
+      const database: unknown = yaml.parse(content);
+      if (
+        !database ||
+        typeof database !== 'object' ||
+        !('responses' in database) ||
+        !Array.isArray(database.responses)
+      ) {
+        throw new Error('Expected a responses array');
+      }
+      const lookupMap = new Map<string, MockResponse[]>();
+      for (const [index, entry] of database.responses.entries()) {
+        if (
+          !entry ||
+          typeof entry !== 'object' ||
+          typeof entry.message !== 'string' ||
+          typeof entry.role !== 'string' ||
+          entry.role.trim() === '' ||
+          typeof entry.response !== 'string'
+        ) {
+          throw new Error(
+            `responses[${index}] requires string message, non-empty role, and string response`,
+          );
+        }
+        for (const field of ['thinkingResponse', 'answeringResponse', 'streamError'] as const) {
+          if (entry[field] !== undefined && typeof entry[field] !== 'string')
+            throw new Error(`responses[${index}].${field} must be a string`);
+        }
+        if (
+          entry.contextContains !== undefined &&
+          (!Array.isArray(entry.contextContains) ||
+            !entry.contextContains.every((value: unknown) => typeof value === 'string'))
+        ) {
+          throw new Error(`responses[${index}].contextContains must be an array of strings`);
+        }
+        if (
+          entry.funcCalls !== undefined &&
+          (!Array.isArray(entry.funcCalls) ||
+            !entry.funcCalls.every(
+              (call: unknown) =>
+                call &&
+                typeof call === 'object' &&
+                'name' in call &&
+                typeof call.name === 'string' &&
+                call.name.trim() !== '',
+            ))
+        ) {
+          throw new Error(`responses[${index}].funcCalls requires a non-empty name for each call`);
+        }
+        for (const field of [
+          'omitDefaultThinking',
+          'emitStreamErrorBeforeThrow',
+          'usageUnavailable',
+        ] as const) {
+          if (entry[field] !== undefined && typeof entry[field] !== 'boolean')
+            throw new Error(`responses[${index}].${field} must be a boolean`);
+        }
+        for (const field of ['delayMs', 'chunkDelayMs'] as const) {
+          if (
+            entry[field] !== undefined &&
+            (typeof entry[field] !== 'number' || !Number.isFinite(entry[field]) || entry[field] < 0)
+          )
+            throw new Error(`responses[${index}].${field} must be a finite non-negative number`);
+        }
+        if (entry.usage !== undefined) {
+          if (
+            !entry.usage ||
+            typeof entry.usage !== 'object' ||
+            typeof entry.usage.promptTokens !== 'number'
+          )
+            throw new Error(`responses[${index}].usage requires numeric promptTokens`);
+          for (const field of [
+            'promptTokens',
+            'completionTokens',
+            'reasoningTokens',
+            'totalTokens',
+          ] as const) {
+            const value: unknown = entry.usage[field];
+            if (
+              value !== undefined &&
+              (typeof value !== 'number' || !Number.isFinite(value) || value < 0)
+            )
+              throw new Error(
+                `responses[${index}].usage.${field} must be a finite non-negative number`,
+              );
+          }
+        }
+        if (
+          entry.invalidFuncCalls !== undefined &&
+          (!Array.isArray(entry.invalidFuncCalls) ||
+            !entry.invalidFuncCalls.every(
+              (call: unknown) =>
+                call &&
+                typeof call === 'object' &&
+                'provider' in call &&
+                typeof call.provider === 'string' &&
+                'detail' in call &&
+                typeof call.detail === 'string',
+            ))
+        ) {
+          throw new Error(
+            `responses[${index}].invalidFuncCalls must be an array of provider/detail payloads`,
+          );
+        }
+        // Raw argument strings may intentionally contain invalid JSON for recovery scenarios.
+        // Other values must serialize before any provider content is emitted.
+        for (const call of entry.funcCalls ?? []) {
+          if (call.id !== undefined && typeof call.id !== 'string')
+            throw new Error(`responses[${index}].funcCalls.id must be a string`);
+          this.normalizeFuncCallArgs(call.arguments);
+        }
+        const response = entry as MockResponse;
+        const key = `${response.role}:${response.message.trim().toLowerCase()}`;
+        const existing = lookupMap.get(key);
+        if (existing) existing.push(response);
+        else lookupMap.set(key, [response]);
+      }
+      return { lookupMap };
+    } catch (cause) {
+      const detail = cause instanceof Error ? cause.message : String(cause);
+      throw new MockFixtureError(
+        'mock_database_invalid',
+        `Invalid mock response database ${JSON.stringify(dbFilePath)}: ${detail}. Repair the fixture before running this scenario. No assistant response or tool call was generated.`,
+        cause,
+      );
     }
   }
 
@@ -393,74 +471,15 @@ export class MockGen implements LlmGenerator {
     return JSON.stringify(args);
   }
 
-  private extractLastAssistantSaying(context: ReadonlyArray<ChatMessage>): string | null {
-    for (let i = context.length - 1; i >= 0; i -= 1) {
-      const msg = context[i];
-      if (msg?.type !== 'saying_msg') {
-        continue;
-      }
-      const trimmed = msg.content.trim();
-      if (trimmed !== '') {
-        return trimmed;
-      }
-    }
-    return null;
-  }
-
-  private extractCurrentPromptMsgId(context: ReadonlyArray<ChatMessage>): string | undefined {
-    for (let index = context.length - 1; index >= 0; index -= 1) {
-      const msg = context[index];
-      if (msg?.type === 'prompting_msg') {
-        const trimmed = msg.msgId.trim();
-        return trimmed === '' ? undefined : trimmed;
-      }
-    }
-    return undefined;
-  }
-
-  private buildReplyToolReminderAutoResponse(
-    input: string,
-    role: string,
-    context: ReadonlyArray<ChatMessage>,
-  ): MockResponse | null {
-    if (role !== 'user' || !isReplyToolReminderPromptContent(input)) {
-      return null;
-    }
-    const toolMatch = input.match(/`(replyTellask(?:Sessionless|Back)?)`/);
-    if (!toolMatch) {
-      return null;
-    }
-    const replyContent = this.extractLastAssistantSaying(context);
-    if (!replyContent) {
-      return null;
-    }
-    const promptMsgId = this.extractCurrentPromptMsgId(context);
-    return {
-      message: input,
-      role,
-      response: '',
-      funcCalls: [
-        {
-          id: promptMsgId ? `mock_reply_${promptMsgId}` : undefined,
-          name: toolMatch[1]!,
-          arguments: { replyContent },
-        },
-      ],
-    };
-  }
-
-  /**
-   * Find matching response using EXACT last message only.
-   * NO fallback to message-only matching - if exact match fails, return null.
-   */
+  /** Match only configured entries; never infer provider behavior from guidance. */
   private findMatchingResponse(
-    database: CachedDatabase,
+    database: ResponseDatabase,
     input: string,
     role: string,
     context: ReadonlyArray<ChatMessage>,
   ): MockResponse | null {
     if (!role) {
-      throw new Error('role is required for mock response matching');
+      return null;
     }
 
     const normalizedInputs = (() => {
@@ -523,15 +542,18 @@ export class MockGen implements LlmGenerator {
     return null;
   }
 
-  private makeFallbackResponse(
+  private missingResponseError(
     dbPath: string,
     input: string,
     role: string,
     modelName: string,
-  ): string {
-    return `🤖 **Mock Response Not Found**
+  ): MockFixtureError {
+    return new MockFixtureError(
+      'mock_response_missing',
+      `Mock scenario has no configured response.
 
-No mock response for the specified message with role=${JSON.stringify(role)} !!
+Input role: ${JSON.stringify(role)}
+No assistant response or tool call was generated. Configure an explicit response for this input.
 
 Database: \`${path.join(dbPath, `${modelName}.yaml`)}\`
 
@@ -541,7 +563,8 @@ responses:
   - message: ${JSON.stringify(input.trim())}
     role: ${JSON.stringify(role)}
     response: "Your response here"
-\`\`\``;
+\`\`\``,
+    );
   }
 
   async genToReceiver(
@@ -568,9 +591,8 @@ responses:
     }
 
     const db = await this.loadResponseDatabase(dbPath, modelName);
-    const matched =
-      this.findMatchingResponse(db, content, role, context) ??
-      this.buildReplyToolReminderAutoResponse(content, role, context);
+    const matched = this.findMatchingResponse(db, content, role, context);
+    if (!matched) throw this.missingResponseError(dbPath, content, role, modelName);
     await delayWithAbort(matched?.delayMs ?? 0, abortSignal);
 
     const thinkingText =
@@ -597,8 +619,7 @@ responses:
       throw new Error(matched.streamError);
     }
 
-    const responseText =
-      matched?.response ?? this.makeFallbackResponse(dbPath, content, role, modelName);
+    const responseText = matched.response;
 
     let usage: LlmUsageStats = { kind: 'unavailable' };
     if (matched && matched.usageUnavailable === true) {
@@ -715,165 +736,140 @@ responses:
     const modelName = agent.model;
     const { content, role } = this.resolveInputForMatching(context);
 
-    try {
-      const db = await this.loadResponseDatabase(dbPath, modelName);
-      const matched =
-        this.findMatchingResponse(db, content, role, context) ??
-        this.buildReplyToolReminderAutoResponse(content, role, context);
-      await delayWithAbort(matched?.delayMs ?? 0, abortSignal);
+    const db = await this.loadResponseDatabase(dbPath, modelName);
+    const matched = this.findMatchingResponse(db, content, role, context);
+    if (!matched) throw this.missingResponseError(dbPath, content, role, modelName);
+    await delayWithAbort(matched?.delayMs ?? 0, abortSignal);
 
-      const responseText =
-        matched?.response ?? this.makeFallbackResponse(dbPath, content, role, modelName);
+    if (matched.streamError) throw new Error(matched.streamError);
+    const responseText = matched.response;
 
-      const thinkingText =
-        matched?.omitDefaultThinking === true
-          ? (matched.thinkingResponse ?? '')
-          : (matched?.thinkingResponse ?? `[${modelName}] ${content.substring(0, 100)}`);
-      const thinking: ChatMessage | undefined =
-        thinkingText === ''
-          ? undefined
-          : {
-              type: 'thinking_msg',
-              role: 'assistant',
-              genseq,
-              content: thinkingText,
-            };
-
-      const saying: SayingMsg | undefined =
-        matched?.streamError || responseText !== ''
-          ? {
-              type: 'saying_msg',
-              role: 'assistant',
-              genseq,
-              content: matched?.streamError
-                ? `❌ Mock Error: ${matched.streamError}`
-                : responseText,
-            }
-          : undefined;
-
-      let usage: LlmUsageStats = { kind: 'unavailable' };
-      if (matched && matched.usageUnavailable === true) {
-        usage = { kind: 'unavailable' };
-      } else if (matched && matched.usage) {
-        const promptTokens = matched.usage.promptTokens;
-        const completionTokens =
-          typeof matched.usage.completionTokens === 'number' ? matched.usage.completionTokens : 0;
-        const reasoningTokens =
-          typeof matched.usage.reasoningTokens === 'number'
-            ? matched.usage.reasoningTokens
-            : undefined;
-        const totalTokens =
-          typeof matched.usage.totalTokens === 'number'
-            ? matched.usage.totalTokens
-            : promptTokens + completionTokens;
-        usage = {
-          kind: 'available',
-          promptTokens,
-          completionTokens,
-          ...(reasoningTokens === undefined ? {} : { reasoningTokens }),
-          totalTokens,
-        };
-      } else {
-        const promptChars =
-          systemPrompt.length +
-          context.reduce((acc, msg) => {
-            switch (msg.type) {
-              case 'environment_msg':
-              case 'transient_guide_msg':
-              case 'prompting_msg':
-              case 'saying_msg':
-              case 'thinking_msg':
-              case 'func_result_msg':
-              case 'tellask_result_msg':
-              case 'tellask_carryover_msg':
-                return acc + msg.content.length;
-              case 'func_call_msg':
-                return acc + msg.name.length + msg.arguments.length;
-              default: {
-                const _exhaustive: never = msg;
-                throw new Error(`Unsupported chat message: ${_exhaustive}`);
-              }
-            }
-          }, 0);
-        const promptTokens = Math.ceil(promptChars / 4);
-        const completionTokens = Math.ceil(responseText.length / 4);
-        usage = {
-          kind: 'available',
-          promptTokens,
-          completionTokens,
-          totalTokens: promptTokens + completionTokens,
-        };
-      }
-
-      const funcMsgs: FuncCallMsg[] =
-        matched?.funcCalls?.map((call, idx) => {
-          if (!call || typeof call.name !== 'string' || call.name.trim() === '') {
-            throw new Error(`Invalid mock funcCalls[${String(idx)}].name`);
-          }
-          return {
-            type: 'func_call_msg',
+    const thinkingText =
+      matched?.omitDefaultThinking === true
+        ? (matched.thinkingResponse ?? '')
+        : (matched?.thinkingResponse ?? `[${modelName}] ${content.substring(0, 100)}`);
+    const thinking: ChatMessage | undefined =
+      thinkingText === ''
+        ? undefined
+        : {
+            type: 'thinking_msg',
             role: 'assistant',
             genseq,
-            id:
-              typeof call.id === 'string' && call.id.trim() !== ''
-                ? call.id
-                : `mock_func_${String(idx + 1)}_${call.name}`,
-            name: call.name,
-            arguments: this.normalizeFuncCallArgs(call.arguments),
+            content: thinkingText,
           };
-        }) ?? [];
-      const invalidFuncCalls = matched?.invalidFuncCalls ?? [];
-      const invalidFuncCallOutputs: LlmBatchOutput[] = invalidFuncCalls.map((call) => ({
-        kind: 'invalid_func_call',
-        call,
-      }));
-      const answeringOutputs: LlmBatchOutput[] =
-        matched?.answeringResponse !== undefined && matched.answeringResponse.trim() !== ''
-          ? [{ kind: 'answering', content: matched.answeringResponse }]
-          : [];
-      const messages =
-        thinking !== undefined
-          ? saying
-            ? [thinking, saying, ...funcMsgs]
-            : [thinking, ...funcMsgs]
-          : saying
-            ? [saying, ...funcMsgs]
-            : [...funcMsgs];
 
-      return {
-        messages,
-        ...(invalidFuncCallOutputs.length > 0 || answeringOutputs.length > 0
-          ? {
-              outputs: [
-                ...messages.map((message): LlmBatchOutput => ({ kind: 'message', message })),
-                ...answeringOutputs,
-                ...invalidFuncCallOutputs,
-              ],
+    const saying: SayingMsg | undefined =
+      responseText !== ''
+        ? {
+            type: 'saying_msg',
+            role: 'assistant',
+            genseq,
+            content: responseText,
+          }
+        : undefined;
+
+    let usage: LlmUsageStats = { kind: 'unavailable' };
+    if (matched && matched.usageUnavailable === true) {
+      usage = { kind: 'unavailable' };
+    } else if (matched && matched.usage) {
+      const promptTokens = matched.usage.promptTokens;
+      const completionTokens =
+        typeof matched.usage.completionTokens === 'number' ? matched.usage.completionTokens : 0;
+      const reasoningTokens =
+        typeof matched.usage.reasoningTokens === 'number'
+          ? matched.usage.reasoningTokens
+          : undefined;
+      const totalTokens =
+        typeof matched.usage.totalTokens === 'number'
+          ? matched.usage.totalTokens
+          : promptTokens + completionTokens;
+      usage = {
+        kind: 'available',
+        promptTokens,
+        completionTokens,
+        ...(reasoningTokens === undefined ? {} : { reasoningTokens }),
+        totalTokens,
+      };
+    } else {
+      const promptChars =
+        systemPrompt.length +
+        context.reduce((acc, msg) => {
+          switch (msg.type) {
+            case 'environment_msg':
+            case 'transient_guide_msg':
+            case 'prompting_msg':
+            case 'saying_msg':
+            case 'thinking_msg':
+            case 'func_result_msg':
+            case 'tellask_result_msg':
+            case 'tellask_carryover_msg':
+              return acc + msg.content.length;
+            case 'func_call_msg':
+              return acc + msg.name.length + msg.arguments.length;
+            default: {
+              const _exhaustive: never = msg;
+              throw new Error(`Unsupported chat message: ${_exhaustive}`);
             }
-          : {}),
-        usage,
-        llmGenModel: modelName,
-      };
-    } catch (err) {
-      const errMsg = err instanceof Error ? err.message : String(err);
-      const saying: SayingMsg = {
-        type: 'saying_msg',
-        role: 'assistant',
-        genseq,
-        content: `❌ Mock Error: ${errMsg}`,
-      };
-
-      const thinking: ChatMessage = {
-        type: 'thinking_msg',
-        role: 'assistant',
-        content: `[${modelName}] error: ${errMsg}`,
-        genseq,
-      };
-      return {
-        messages: [thinking, saying],
-        usage: { kind: 'unavailable' },
-        llmGenModel: modelName,
+          }
+        }, 0);
+      const promptTokens = Math.ceil(promptChars / 4);
+      const completionTokens = Math.ceil(responseText.length / 4);
+      usage = {
+        kind: 'available',
+        promptTokens,
+        completionTokens,
+        totalTokens: promptTokens + completionTokens,
       };
     }
+
+    const funcMsgs: FuncCallMsg[] =
+      matched?.funcCalls?.map((call, idx) => {
+        if (!call || typeof call.name !== 'string' || call.name.trim() === '') {
+          throw new Error(`Invalid mock funcCalls[${String(idx)}].name`);
+        }
+        return {
+          type: 'func_call_msg',
+          role: 'assistant',
+          genseq,
+          id:
+            typeof call.id === 'string' && call.id.trim() !== ''
+              ? call.id
+              : `mock_func_${String(idx + 1)}_${call.name}`,
+          name: call.name,
+          arguments: this.normalizeFuncCallArgs(call.arguments),
+        };
+      }) ?? [];
+    const invalidFuncCalls = matched?.invalidFuncCalls ?? [];
+    const invalidFuncCallOutputs: LlmBatchOutput[] = invalidFuncCalls.map((call) => ({
+      kind: 'invalid_func_call',
+      call,
+    }));
+    const answeringOutputs: LlmBatchOutput[] =
+      matched?.answeringResponse !== undefined && matched.answeringResponse.trim() !== ''
+        ? [{ kind: 'answering', content: matched.answeringResponse }]
+        : [];
+    const messages =
+      thinking !== undefined
+        ? saying
+          ? [thinking, saying, ...funcMsgs]
+          : [thinking, ...funcMsgs]
+        : saying
+          ? [saying, ...funcMsgs]
+          : [...funcMsgs];
+
+    return {
+      messages,
+      ...(invalidFuncCallOutputs.length > 0 || answeringOutputs.length > 0
+        ? {
+            outputs: [
+              ...messages.map((message): LlmBatchOutput => ({ kind: 'message', message })),
+              ...answeringOutputs,
+              ...invalidFuncCallOutputs,
+            ],
+          }
+        : {}),
+      usage,
+      llmGenModel: modelName,
+    };
   }
 }

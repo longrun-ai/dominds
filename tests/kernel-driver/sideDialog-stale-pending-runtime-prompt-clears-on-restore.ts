@@ -8,6 +8,8 @@ import assert from 'node:assert/strict';
 import { DialogID, SideDialog } from '../../main/dialog';
 import { globalDialogRegistry } from '../../main/dialog-global-registry';
 import { ensureDialogLoaded, getOrRestoreMainDialog } from '../../main/dialog-instance-registry';
+import type { LlmGenerator } from '../../main/llm/gen';
+import { registerLlmGenerator, unregisterLlmGenerator } from '../../main/llm/gen/registry';
 import { driveDialogStream } from '../../main/llm/kernel-driver';
 import { DialogPersistence } from '../../main/persistence';
 import { formatNewCourseStartPrompt } from '../../main/runtime/driver-messages';
@@ -19,14 +21,16 @@ import {
   makeDriveOptions,
   waitForAllDialogsUnlocked,
   withTempRtws,
-  writeMockDb,
   writeStandardMinds,
 } from './helpers';
 
 async function main(): Promise<void> {
   await withTempRtws(async (tmpRoot) => {
     setWorkLanguage('en');
-    await writeStandardMinds(tmpRoot, { includePangu: true });
+    await writeStandardMinds(tmpRoot, {
+      providerApiType: 'controlled-stale-runtime',
+      includePangu: true,
+    });
 
     const root = await createMainDialog('tester');
     root.disableDiligencePush = true;
@@ -70,15 +74,46 @@ async function main(): Promise<void> {
     const queuedPrompt = sideDialog.peekQueuedPrompt();
     assert.ok(queuedPrompt?.kind === 'new_course_runtime_sideDialog');
 
-    await writeMockDb(tmpRoot, [
-      {
-        message: queuedPrompt.prompt,
-        role: 'user',
-        response: 'Prompt persisted before simulated crash window.',
+    let workerRounds = 0;
+    let callerRounds = 0;
+    const generator: LlmGenerator = {
+      apiType: 'controlled-stale-runtime',
+      async genMoreMessages() {
+        throw new Error('streaming fixture only');
       },
-    ]);
-    await driveDialogStream(sideDialog, undefined, true, makeDriveOptions());
-    await waitForAllDialogsUnlocked(root, 3_000);
+      async genToReceiver(_provider, _agent, _system, _tools, request, _context, receiver) {
+        if (request.dialogSelfId === sideDialog.id.selfId) {
+          workerRounds += 1;
+          assert.equal(workerRounds, 1);
+          await receiver.funcCall(
+            'explicit-stale-runtime-reply',
+            'replyTellask',
+            JSON.stringify({ replyContent: 'completed-task-data-c45a' }),
+          );
+        } else {
+          assert.equal(request.dialogSelfId, root.id.selfId);
+          callerRounds += 1;
+          assert.equal(callerRounds, 1);
+          await receiver.sayingStart();
+          await receiver.sayingChunk('caller-consumed-data-d56b');
+          await receiver.sayingFinish();
+        }
+        return { usage: { kind: 'unavailable' } };
+      },
+    };
+    registerLlmGenerator(generator);
+    try {
+      await driveDialogStream(sideDialog, undefined, true, makeDriveOptions());
+      await waitForAllDialogsUnlocked(root, 3_000);
+      assert.equal(workerRounds, 1);
+      assert.equal(callerRounds, 1);
+      assert.equal(
+        await DialogPersistence.loadActiveTellaskReplyObligation(sideDialog.id, sideDialog.status),
+        undefined,
+      );
+    } finally {
+      unregisterLlmGenerator(generator.apiType);
+    }
 
     const persistedBeforeRestore = await DialogPersistence.loadCourseEvents(
       sideDialog.id,
