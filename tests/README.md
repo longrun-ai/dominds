@@ -11,22 +11,31 @@ pnpm test
 pnpm run test:kernel
 pnpm run test:context
 pnpm run test:configuration
+pnpm run test:manual
+pnpm run test:types
 pnpm run test:inventory
 pnpm run test:runner
 pnpm run test:semantic
 pnpm run test:semantic:context
 pnpm run test:semantic:configuration
+pnpm run test:semantic:manual
 ```
 
 - `test`: a small local smoke suite; not full product, browser, packaging, or provider coverage.
 - `test:kernel`: discovers TypeScript cases under `kernel-driver/`, excluding its helper. Each runs in an isolated rtws. Failures do not prevent subsequent cases. `kernel-driver:integration` delegates here.
 - `test:context`: runs five isolated state/data regressions for preservation cadence, user interjections, continuation-body fidelity, retry budgets, and exhaustion notices. It does not judge wording.
 - `test:configuration`: six isolated regressions for team configuration, capability boundaries, manual payload fidelity, MCP reload and Problems lifecycle. Only external MCP peers are replaced; no live providers or installed components are required.
+- `test:manual`: six isolated cases for language normalization, actual mind assets and skill scope/permissions, snippet paths, manual visibility and the original prose budget.
+- `test:types`: the full test-directory type check. During remediation it still reports inherited contract drift; that failure is tracked separately and is not a pass.
 - `test:inventory`: sources, support files, discovered suites, outside-suite candidates, and candidates without package scripts. These counts are not behavior coverage. Unknown candidates can be live probes or external integrations; inspect prerequisites before executing them.
 - `test:runner`: verifies failure continuation, timeouts, evidence retention, cleanup, and discovery.
 - `test:semantic`: emits actual natural-language output, context, business value, and review questions. Evidence is **pending subjective review by a test-execution agent**, not automatically passed.
 - `test:semantic:context`: emits preservation, interjection, new-course, continuation, and routing guidance. Its budget notices come from real isolated runtime executions with observed state, not a synthetic expected sentence. All cases remain pending subjective review.
 - `test:semantic:configuration`: reruns the configuration scenarios with `--semantic` and emits full diagnostics, manual guidance and supplied configuration. It reports pending review, including when its machine assertions pass.
+
+- `test:semantic:manual`: emits actual handbooks, capability-list and refusal guidance, Taskdoc/skills guidance, collaboration result wrappers and the built-in manager prompt. All cases start pending subjective review.
+
+The [assertion audit ledger](./audit.json) records which candidate tests have actually been reviewed, their business value, lane and evidence. Inventory exposes unaudited candidates and stale ledger paths. Neither suite membership nor a prior ledger entry decides the meaning of freshly generated output.
 
 Place new shared helper modules in `tests/helpers/`; the remaining files in the discovered kernel directory are executable cases, not helper-only modules that can exit without assertions.
 

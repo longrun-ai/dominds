@@ -79,17 +79,13 @@ function renderManualResult(language: LanguageCode, toolsetId: string, content: 
         '# Tool Manual',
         '',
         `当前请求的 \`${toolsetId}\` 手册内容过长（${content.length} chars），本次不直接截断正文，以免说明语义残缺。`,
-        '请按业务章节缩小范围后再读，例如只请求一个 topic，或改用更少的 topics。',
-        `示例：\`man({ "toolsetId": "${toolsetId}", "topic": "tools" })\``,
-        `示例：\`man({ "toolsetId": "${toolsetId}", "topics": ["principles","errors"] })\``,
+        '可选择实际已提供的较小章节，或减少请求的 topics。如果当前已经只选一个 topic，仍然超过预算，请由有权维护该源文件的成员拆分或精简章节后再读；不要为缩小手册而越权改文件。',
       ].join('\n')
     : [
         '# Tool Manual',
         '',
         `The requested manual content for \`${toolsetId}\` is too large (${content.length} chars). This tool does not hard-cut the prose body because that would damage the manual's meaning.`,
-        'Narrow the request by business section instead: ask for one topic, or a smaller set of topics.',
-        `Example: \`man({ "toolsetId": "${toolsetId}", "topic": "tools" })\``,
-        `Example: \`man({ "toolsetId": "${toolsetId}", "topics": ["principles","errors"] })\``,
+        'Select a smaller available section or fewer supported topics. If the request already selects one topic and it is still too large, ask a maintainer authorized for that source to split or shorten the chapter, then retry. Do not edit files beyond your authority to reduce the manual.',
       ].join('\n');
 }
 

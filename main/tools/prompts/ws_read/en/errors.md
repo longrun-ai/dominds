@@ -1,133 +1,27 @@
-### Error Codes
+### Failure Handling
 
-### FILE_NOT_FOUND
+Use the actual tool outcome and returned detail. Some tools emit structured `status` / `error` fields; others return an explanation. There is no universal error-code list shared by every read and search tool.
 
-**Description:** File does not exist.
+#### Missing or unreadable file
 
-**Cause:**
+A wrong path, deleted file or OS permission failure can prevent a read. `read_file` returns a failed result with the underlying explanation; do not wait for a particular `FILE_NOT_FOUND` code before handling it. Verify the path with `list_dir`, retain the actual failure, and ask the authorized owner to repair permissions if needed.
 
-- Incorrect file path
-- File has been deleted
-- Insufficient permissions
+#### Invalid input
 
-**Solution:**
+Pass a single structured function call with the documented parameters. Do not paste tool-call text into `path` or `range`. Correct the parameter identified by the returned validation detail, then retry the intended operation.
 
-- Check if file path is correct
-- Use `list_dir` to view directory structure
-- Check file permissions
+#### Reserved-path or permission refusal
 
-### INVALID_FORMAT
+Generic `ws_read` tools cannot bypass these reserved boundaries: `.minds/**`, root `.dialogs/**`, and encapsulated `*.tsk/` packages. For team assets, use an authorized `team_mgmt_*` tool; for Taskdoc content, use Taskdoc tools. For runtime debugging, reproduce in an allowed nested workspace, for example `ux-rtws/.dialogs/**`. Keep within your authority when handling a refusal.
 
-**Description:** The `read_file` input looks like mixed tool-call text or another unsupported format.
+#### Search execution failure or incomplete scope
 
-**Cause:**
+A malformed pattern, missing search path or failed ripgrep process can cause a failed result. Ripgrep execution failures can include `error: FAILED`; inspect the actual summary and diagnostics rather than assuming a `SEARCH_FAILED` code. An empty match set can be a successful search, while a partial-path failure means some requested scope was not inspected. Correct the specific path, pattern or permission problem and report any remaining incomplete scope.
 
-- Function tool call text was pasted into `path` or `range`
-- Multiple tool calls were combined into one `read_file` invocation
+#### Unsupported raw argument
 
-**Solution:**
+When a ripgrep wrapper rejects a raw argument, remove it and use supported structured parameters such as `pattern`, `globs` and `path`. Do not bypass the wrapper's safety policy.
 
-- Split each tool call into its own function call
-- Pass only structured `read_file({ path, range, max_lines, show_linenos })` arguments
+#### Repeated failure
 
-### ACCESS_DENIED
-
-**Description:** Access to a reserved rtws path is hard-denied.
-
-**Cause:**
-
-- `.minds/**` is reserved for team configuration, memory, and assets
-- `.dialogs/**` at the rtws root is reserved dialog/runtime persistence
-- `*.tsk/` is an encapsulated Taskdoc path
-
-**Solution:**
-
-- For `.minds/**`, use `team_mgmt_*` tools when that toolset is configured
-- For Dominds dialog debugging, reproduce under a nested rtws such as `ux-rtws/.dialogs/**`
-- Do not read or search `*.tsk/` packages through generic ws_read tools
-
-### SEARCH_FAILED
-
-**Description:** Search failed.
-
-**Cause:**
-
-- Search pattern syntax error
-- Search path doesn't exist
-
-**Solution:**
-
-- Check if search pattern is correct
-- Check if search path exists
-
-### DISALLOWED_ARG
-
-**Description:** A raw ripgrep argument is not allowed.
-
-**Cause:**
-
-- The argument would bypass the tool's safety policy
-- The argument is not supported by the wrapped `ripgrep_*` tool
-
-**Solution:**
-
-- Remove the disallowed raw argument
-- Use the structured tool parameters (`pattern`, `globs`, `path`, etc.) instead
-
-### FAILED
-
-**Description:** The read/search operation failed after validation.
-
-**Cause:**
-
-- Underlying filesystem or ripgrep execution failed
-- OS-level permissions blocked the read/search operation
-- The path or search configuration became invalid at runtime
-
-**Solution:**
-
-- Re-read or re-list the target path
-- Retry with a narrower path/pattern
-- Fix filesystem permissions when the error text points to permission failure
-- If the failure repeats, report the exact tool output and path/pattern
-
-### Frequently Asked Questions
-
-### Q: Why can't I read the file?
-
-A: Possible reasons:
-
-1. Incorrect file path
-2. File doesn't exist
-3. Filesystem permissions or another runtime failure
-
-### Q: Why can't I find any results?
-
-A: Possible reasons:
-
-1. Incorrect search pattern
-2. Incorrect search path
-3. No matching content
-
-### Q: Can I read files outside rtws?
-
-A: No, ws_read can only read files within rtws (runtime workspace).
-
-### Q: Why does list_dir return empty?
-
-A: Possible reasons:
-
-1. Directory is empty
-2. Directory doesn't exist
-3. Filesystem permissions or another runtime failure
-
-### Q: How to search specific types of files?
-
-A: Use `globs` parameter to specify file types, for example:
-
-```typescript
-ripgrep_files({
-  pattern: 'TODO',
-  globs: ['*.ts', '*.tsx'],
-});
-```
+Preserve the precise tool result, path, pattern and relevant limits. Ask the appropriate authorized teammate for help when the cause cannot be repaired within your authority. Do not repeat an unchanged failing operation until it happens to succeed or claim an unread file was inspected.

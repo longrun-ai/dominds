@@ -1,0 +1,130 @@
+{
+  "note": "Human assertion-design audit ledger for TypeScript candidate cases, not test outcomes or a semantic oracle. Absence/pending means unreviewed; a green suite never updates this record. Source changes still require complete-diff assertion review. Semantic generation always starts pending, regardless of this ledger. runner.test.mjs remains an independently executed runner regression lane.",
+  "cases": {
+    "kernel-driver/answer-human-a2h-deferred.ts": {
+      "status": "reviewed",
+      "lane": "kernel",
+      "value": "人类回答落盘；自动续推记录与等待协作的预算边界",
+      "evidence": "58233858 / bbc5f12c; actual persisted events, routes and budget; no semantic wording assertions"
+    },
+    "kernel-driver/mainline-reply-obligation-reminder-direct-fallback.ts": {
+      "status": "reviewed",
+      "lane": "kernel",
+      "value": "回复义务、真实队列路由、补提醒后直接返回结果",
+      "evidence": "58233858 / bbc5f12c; actual persisted events, routes and budget; no semantic wording assertions"
+    },
+    "kernel-driver/tellask-background-dispatch-does-not-immediate-followup.ts": {
+      "status": "reviewed",
+      "lane": "kernel",
+      "value": "callee响应受控时不得即时续推或消耗预算",
+      "evidence": "58233858 / bbc5f12c; actual persisted events, routes and budget; no semantic wording assertions"
+    },
+    "language.ts": {
+      "status": "reviewed",
+      "lane": "manual",
+      "value": "语言代码和操作系统locale的标准化",
+      "evidence": "Current manual batch; tests/semantic/reviews/2026-10-30-manual.json; isolated machine regressions and complete assertion review. Prior verdicts do not accept new output."
+    },
+    "minds/mindset-i18n.ts": {
+      "status": "reviewed",
+      "lane": "manual",
+      "value": "真实角色资产语言选择、fallback与主支线Taskdoc能力",
+      "evidence": "Current manual batch; tests/semantic/reviews/2026-10-30-manual.json; isolated machine regressions and complete assertion review. Prior verdicts do not accept new output."
+    },
+    "minds/skills-i18n.ts": {
+      "status": "reviewed",
+      "lane": "manual",
+      "value": "skill语言选择、按需披露、成员隔离与权限边界",
+      "evidence": "Current manual batch; tests/semantic/reviews/2026-10-30-manual.json; isolated machine regressions and complete assertion review. Prior verdicts do not accept new output."
+    },
+    "snippets/catalog-i18n.ts": {
+      "status": "reviewed",
+      "lane": "manual",
+      "value": "模板目录按语言返回可读资产路径",
+      "evidence": "Current manual batch; tests/semantic/reviews/2026-10-30-manual.json; isolated machine regressions and complete assertion review. Prior verdicts do not accept new output."
+    },
+    "team-yaml-parsing.ts": {
+      "status": "reviewed",
+      "lane": "configuration",
+      "value": "成员、模型参数、路由数据与shell工具授权",
+      "evidence": "58233858; tests/semantic/reviews/2026-10-30-configuration.json"
+    },
+    "team_mgmt-manual/mcp-hot-reload-manual-problems.ts": {
+      "status": "reviewed",
+      "lane": "configuration",
+      "value": "真实热重载注册、告警生命周期和撤销工具",
+      "evidence": "58233858; tests/semantic/reviews/2026-10-30-configuration.json"
+    },
+    "team_mgmt-manual/mcp-manual-content.ts": {
+      "status": "reviewed",
+      "lane": "configuration",
+      "value": "MCP手册正文保真、语言选择与有界工具预览",
+      "evidence": "58233858; tests/semantic/reviews/2026-10-30-configuration.json"
+    },
+    "team_mgmt-manual/mcp-validate-manual-errors.ts": {
+      "status": "reviewed",
+      "lane": "configuration",
+      "value": "MCP校验问题出现、修复、保留历史且不误清其他问题",
+      "evidence": "58233858; tests/semantic/reviews/2026-10-30-configuration.json"
+    },
+    "team_mgmt-mcp-runtime-diagnostics.ts": {
+      "status": "reviewed",
+      "lane": "configuration",
+      "value": "受控HTTP故障、鉴权与连接前参数拒绝",
+      "evidence": "58233858; tests/semantic/reviews/2026-10-30-configuration.json"
+    },
+    "team_mgmt-validate-team-manual-guidance.ts": {
+      "status": "reviewed",
+      "lane": "configuration",
+      "value": "缺失组件时校验失败与手册可调用",
+      "evidence": "58233858; tests/semantic/reviews/2026-10-30-configuration.json"
+    },
+    "toolsets/manual-behavior.ts": {
+      "status": "reviewed",
+      "lane": "manual",
+      "value": "手册授权可见性、正文保真及原文预算",
+      "evidence": "Current manual batch; tests/semantic/reviews/2026-10-30-manual.json; isolated machine regressions and complete assertion review. Prior verdicts do not accept new output."
+    },
+    "toolsets/manual-size-guard.ts": {
+      "status": "reviewed",
+      "lane": "manual",
+      "value": "构建阶段真实原始手册预算，不检查被截短替代的提示",
+      "evidence": "Current manual batch; tests/semantic/reviews/2026-10-30-manual.json; isolated machine regressions and complete assertion review. Prior verdicts do not accept new output."
+    }
+  },
+  "retired": {
+    "minds/memory-system-reminder-contract.ts": {
+      "decision": "semantic-evidence",
+      "replacement": "semantic/manual-guidance.ts",
+      "reason": "任务共享事实、主支线职责等有业务价值的含义交给智能体评审，不冻结固定文字。"
+    },
+    "toolsets/man-available-toolsets.ts": {
+      "decision": "merge",
+      "replacement": "toolsets/manual-behavior.ts",
+      "reason": "保留权限、真实正文传递和预算事实；指导含义交给测试执行智能体。"
+    },
+    "toolsets/man-missing-warning.ts": {
+      "decision": "merge",
+      "replacement": "toolsets/manual-behavior.ts",
+      "reason": "保留权限、真实正文传递和预算事实；指导含义交给测试执行智能体。"
+    },
+    "toolsets/man-output-truncation.ts": {
+      "decision": "merge",
+      "replacement": "toolsets/manual-behavior.ts",
+      "reason": "保留权限、真实正文传递和预算事实；指导含义交给测试执行智能体。"
+    },
+    "toolsets/man-prompt-headings.ts": {
+      "decision": "delete",
+      "reason": "低价值标题样式/固定手册措辞检查；不保留样式裁判。实际使用指导另输出完整语义材料。"
+    },
+    "toolsets/man-single-topic-readability.ts": {
+      "decision": "merge",
+      "replacement": "toolsets/manual-size-guard.ts",
+      "reason": "原自然语言正则删除；使用未被运行时替代的实际原文长度检验可读预算。"
+    },
+    "toolsets/man-structure.ts": {
+      "decision": "delete",
+      "reason": "低价值标题样式/固定手册措辞检查；不保留样式裁判。实际使用指导另输出完整语义材料。"
+    }
+  }
+}

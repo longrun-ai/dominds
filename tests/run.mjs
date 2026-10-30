@@ -37,6 +37,21 @@ const configuration = [
   'team_mgmt-mcp-runtime-diagnostics.ts',
 ];
 
+const manual = [
+  'language.ts',
+  'minds/mindset-i18n.ts',
+  'minds/skills-i18n.ts',
+  'snippets/catalog-i18n.ts',
+  'toolsets/manual-behavior.ts',
+  'toolsets/manual-size-guard.ts',
+];
+const semanticSuites = {
+  configuration: configuration.filter(
+    (file) => file !== 'team_mgmt-manual/mcp-hot-reload-manual-problems.ts',
+  ),
+  manual: ['toolsets/manual-behavior.ts', 'semantic/manual-guidance.ts'],
+};
+
 async function sourceFiles(directory = testsRoot) {
   const entries = await fs.readdir(directory, { withFileTypes: true });
   const groups = await Promise.all(
@@ -62,6 +77,7 @@ export async function inventory() {
   );
   const support = (file) =>
     file.startsWith('helpers/') ||
+    file.startsWith('semantic/') ||
     [
       'cli.ts',
       'rtws-script-runner.ts',
@@ -72,8 +88,10 @@ export async function inventory() {
     ].includes(file);
   const candidates = files.filter((file) => !support(file));
   const kernel = candidates.filter((file) => file.startsWith('kernel-driver/'));
-  const suites = { smoke, kernel, context, configuration };
+  const suites = { smoke, kernel, context, configuration, manual };
   const included = new Set(Object.values(suites).flat());
+  const audit = JSON.parse(await fs.readFile(path.join(testsRoot, 'audit.json'), 'utf8'));
+  const unauditedCandidates = candidates.filter((file) => audit.cases[file]?.status !== 'reviewed');
   return {
     typescriptFiles: files.length,
     supportFiles: files.filter(support),
@@ -81,6 +99,8 @@ export async function inventory() {
     suites,
     outsideSuites: candidates.filter((file) => !included.has(file)),
     withoutPackageScript: candidates.filter((file) => !registered.has(file)),
+    unauditedCandidates,
+    missingAuditedFiles: Object.keys(audit.cases).filter((file) => !candidates.includes(file)),
     note: 'Discovery and script registration are not measurements of behavior or line coverage. Outside-suite candidates include live probes and external integrations; audit prerequisites before running them.',
   };
 }
@@ -173,19 +193,17 @@ async function main() {
   if (
     args.length !== 2 ||
     args[0] !== '--suite' ||
-    !['smoke', 'kernel', 'context', 'configuration'].includes(args[1])
+    !['smoke', 'kernel', 'context', 'configuration', 'manual'].includes(args[1])
   ) {
     throw new Error(
-      'Usage: node tests/run.mjs --list | --suite smoke | --suite kernel | --suite context | --suite configuration [--semantic]',
+      'Usage: node tests/run.mjs --list | --suite smoke | --suite kernel | --suite context | --suite configuration [--semantic] | --suite manual [--semantic]',
     );
   }
   const suite = args[1];
-  if (semantic && suite !== 'configuration') {
-    throw new Error('--semantic is supported only by the configuration evidence producers');
+  if (semantic && !Object.hasOwn(semanticSuites, suite)) {
+    throw new Error('--semantic requires a suite with explicit evidence producers');
   }
-  const files = (await inventory()).suites[suite].filter(
-    (file) => !semantic || file !== 'team_mgmt-manual/mcp-hot-reload-manual-problems.ts',
-  );
+  const files = semantic ? semanticSuites[suite] : (await inventory()).suites[suite];
   if (!files.length) throw new Error(`Suite ${suite} discovered no tests`);
   const tsx = require.resolve('tsx/cli');
   const cases = files.map((file) => ({

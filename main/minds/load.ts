@@ -264,7 +264,7 @@ export async function loadAgentMinds(
   // Get base tools from agent; runtime injects allowed intrinsic dialog-control tools afterward.
   // shell_specialists is intended for visible teammates only. Hidden members are exempt from this
   // policy and may carry shell tools.
-  const agentIsShellSpecialist = team.shellSpecialists.includes(agent.id) || agent.hidden === true;
+  const shellToolsAllowed = team.shellSpecialists.includes(agent.id) || agent.hidden === true;
 
   const baseAgentTools: Tool[] = (() => {
     const tools = agent.listTools({
@@ -272,7 +272,7 @@ export async function loadAgentMinds(
       declaredMcpToolsetNames,
       invalidMcpToolsetNames,
     });
-    if (agentIsShellSpecialist) return tools;
+    if (shellToolsAllowed) return tools;
     return tools.filter(
       (t) => !(t.type === 'func' && typeof t.name === 'string' && isShellToolName(t.name)),
     );
@@ -335,7 +335,7 @@ export async function loadAgentMinds(
       invalidMcpToolsetNames,
     })
     .filter((name) => {
-      if (name === 'os') return agentIsShellSpecialist;
+      if (name === 'os') return shellToolsAllowed;
       return true;
     });
   const manualTools = buildToolsetManualTools({
@@ -352,6 +352,9 @@ export async function loadAgentMinds(
   const funcTools = agentTools.filter((t): t is FuncTool => t.type === 'func');
 
   const agentHasShellTools = funcTools.some((t) => isShellToolName(t.name));
+  // Hidden members are exempt from the allow-list; that does not assign them shell duties.
+  const agentIsShellSpecialist =
+    team.shellSpecialists.includes(agent.id) || (agent.hidden === true && agentHasShellTools);
   const agentHasReadonlyShell = funcTools.some((t) => t.name === 'readonly_shell');
   const shellSpecialistMemberIds = listShellSpecialistMemberIds(team);
 

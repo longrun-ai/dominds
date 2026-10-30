@@ -11,7 +11,7 @@ import '../../main/tools/builtins';
 import { MANUAL_SINGLE_REQUEST_CHAR_LIMIT } from '../../main/tools/manual/output-limit';
 import { MANUAL_TOPICS } from '../../main/tools/manual/spec';
 import { listToolsets } from '../../main/tools/registry';
-import { renderToolsetManualContent } from '../../main/tools/toolset-manual';
+import { rawManualForBudget } from '../helpers/manual-budget';
 
 type ManualGuardCase = Readonly<{
   label: string;
@@ -82,12 +82,7 @@ async function main(): Promise<void> {
   const results: ManualGuardResult[] = [];
 
   for (const manualCase of cases) {
-    const content = await renderToolsetManualContent({
-      toolsetId: manualCase.toolsetId,
-      language: manualCase.language,
-      ...(manualCase.topic !== undefined ? { topic: manualCase.topic } : {}),
-      ...(manualCase.topics !== undefined ? { topics: manualCase.topics } : {}),
-    });
+    const content = await rawManualForBudget(manualCase);
     results.push({ label: manualCase.label, length: content.length });
   }
 

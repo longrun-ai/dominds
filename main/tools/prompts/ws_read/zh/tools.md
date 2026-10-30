@@ -8,17 +8,9 @@
 
 - `path`（可选）：目录路径（默认当前目录）
 
-**返回：**
+**返回:**
 
-```yaml
-status: ok|error
-path: <目录路径>
-entries:
-  - name: <文件名>
-    type: <file|dir>
-    size: <大小>
-    modified: <修改时间>
-```
+用便于阅读的 Markdown 表格列出目录项，展示适合该项的文件系统信息及符号链接说明。列目录失败会返回失败说明，不能当作成功读取了一个空目录。
 
 #### 2. read_symlink
 
@@ -28,15 +20,9 @@ entries:
 
 - `path`（必需）：symlink 路径
 
-**返回：**
+**返回:**
 
-```yaml
-status: ok
-mode: read_symlink
-path: <symlink 路径>
-target: <目标字符串>
-summary: <简短摘要>
-```
+报告符号链接路径及其目标，不跟随目标。把路径当作普通文件使用前，应先查看实际结果。
 
 #### 3. read_file
 
@@ -49,16 +35,9 @@ summary: <简短摘要>
 - `range`（可选）：行范围（如 "10~50"）
 - `show_linenos`（可选）：是否显示行号（默认 true）
 
-**返回：**
+**返回:**
 
-```yaml
-status: ok
-path: <文件路径>
-total_lines: <总行数>
-size_bytes: <文件大小>
-content: |
-  <文件内容>
-```
+先返回包含文件信息和已显示行数的 YAML 头部，再提供 Markdown 说明和包含所选文本的独立代码块。文件正文不是 YAML 的 `content` 字段。声称完整读过文件前，应检查范围及截断元数据。
 
 #### 4. read_picture
 
@@ -68,17 +47,9 @@ content: |
 
 - `path`（必需）：图片路径。支持扩展名：`.png`、`.jpg`、`.jpeg`、`.webp`、`.gif`
 
-**返回：**
+**返回:**
 
-```yaml
-status: ok
-action: read_picture
-path: <图片路径>
-mime_type: <图片 MIME>
-byte_length: <图片字节数>
-artifact_rel_path: <对话 artifact 路径>
-llm_context: image_attached
-```
+把图片附加到下一次 LLM 上下文，并返回标识图片或产物的信息。文本回执不是图片内容的文字版；视觉检查须查看实际附带的图片。
 
 #### 5. ripgrep_files
 
@@ -91,15 +62,9 @@ llm_context: image_attached
 - `globs`（可选）：文件过滤模式
 - `case`（可选）：大小写模式
 
-**返回：**
+**返回:**
 
-```yaml
-status: ok
-pattern: <搜索模式>
-files_matched: <匹配文件数>
-matches:
-  - path: <文件路径>
-```
+在 `results` 中返回匹配路径，在 `totals` 中提供计数，并给出上限或范围不完整的诊断。例如 `totals.files_matched` 是匹配文件数；仅没有匹配不代表执行失败。
 
 #### 6. ripgrep_snippets
 
@@ -112,16 +77,9 @@ matches:
 - `context_before`（可选）：显示匹配前的行数
 - `context_after`（可选）：显示匹配后的行数
 
-**返回：**
+**返回:**
 
-```yaml
-status: ok
-pattern: <搜索模式>
-matches:
-  - path: <文件路径>
-    line: <行号>
-    content: <匹配内容>
-```
+在 `results` 中返回文件、行、匹配正文和请求的上下文，并提供上限及诊断。应查看实际匹配和上下文字段，不能把片段当成整个文件。
 
 #### 7. ripgrep_count
 
@@ -132,15 +90,9 @@ matches:
 - `pattern`（必需）：搜索模式
 - `path`（可选）：搜索路径
 
-**返回：**
+**返回:**
 
-```yaml
-status: ok
-pattern: <搜索模式>
-counts:
-  - path: <文件路径>
-    count: <匹配数>
-```
+在 `results` 中返回逐文件计数，并提供汇总、上限及诊断。请求的部分路径未能检查时，应明确报告范围不完整。
 
 #### 8. ripgrep_fixed
 
@@ -151,13 +103,9 @@ counts:
 - `literal`（必需）：搜索字符串
 - `path`（可选）：搜索路径
 
-**返回：**
+**返回:**
 
-```yaml
-status: ok
-literal: <搜索字符串>
-matches: <匹配列表>
-```
+把输入当作字面量查询，并转发到所选结果模式。结果用 `pattern` 表示查询并采用固定字符串匹配，结构跟随 files、snippets 或 count 模式，而不是额外约定一套统一的 `literal`/`matches` schema。
 
 #### 9. ripgrep_search
 
@@ -169,17 +117,15 @@ matches: <匹配列表>
 - `path`（可选）：搜索路径
 - `rg_args`（可选）：rg 额外参数
 
-**返回：**
+**返回:**
 
-```yaml
-status: ok
-pattern: <搜索模式>
-results: <搜索结果>
-```
+返回归一后的 snippets 结果，包括计数、匹配结果、上限及诊断。原始附加参数仍受包装工具的安全策略限制，不能扩大文件系统访问权限。
 
-### YAML 输出契约
+### 如何读取结果
 
-所有工具的输出都使用 YAML 格式，便于程序化处理：
+上面的示例只展示部分字段，不是每个工具的完整输出 schema。
 
-- `status`：操作状态，`ok` 表示成功，`error` 表示失败
-- 其他字段：具体操作的附加信息
+- 使用结果前，先查看工具执行结果及实际返回的 `status`、`error`、上限与诊断。搜索若只检查了部分请求范围，可能报告 `partial_failure`；没有匹配本身不是执行失败。
+- `read_file` 返回结构化 YAML 头部，随后是 Markdown 说明和选中的文件内容。读取失败可能返回解释正文，不能假定总有统一的 YAML 错误记录。
+- ripgrep 工具通常用 YAML 代码块提供计数、结果和诊断。宣称搜索完整前，应检查截断和部分路径失败信息。
+- 保留结果中的路径、范围与计数作为证据。不要把混合正文整体按单个 YAML 文档解析，也不要假定不同工具具有完全相同的字段或错误码。

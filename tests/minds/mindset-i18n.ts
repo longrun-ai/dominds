@@ -1,157 +1,94 @@
 import assert from 'node:assert/strict';
-import * as fs from 'node:fs/promises';
-import os from 'node:os';
+import fs from 'node:fs/promises';
 import path from 'node:path';
+
+import { toCallSiteCourseNo, toCallSiteGenseqNo } from '@longrun-ai/kernel/types/storage';
 import { loadAgentMinds } from '../../main/minds/load';
-import { taskdocCanonicalCopy } from '../../main/minds/minds-i18n';
 import { setWorkLanguage } from '../../main/runtime/work-language';
 import '../../main/tools/builtins';
-
-async function writeText(filePath: string, value: string): Promise<void> {
-  await fs.mkdir(path.dirname(filePath), { recursive: true });
-  await fs.writeFile(filePath, value, 'utf-8');
-}
+import { createMainDialog, writeStandardMinds } from '../kernel-driver/helpers';
 
 async function main(): Promise<void> {
-  const oldCwd = process.cwd();
-  const tmpRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'dominds-mindset-i18n-'));
-
-  try {
-    process.chdir(tmpRoot);
-
-    await writeText(
-      path.join(tmpRoot, '.minds', 'team.yaml'),
-      [
-        'member_defaults:',
-        '  provider: test',
-        '  model: test',
-        'members:',
-        '  alice:',
-        '    name: Alice',
-        '    tools:',
-        '      - do_mind',
-        '      - mind_more',
-        '      - change_mind',
-        '      - never_mind',
-        'default_responder: alice',
-        '',
-      ].join('\n'),
-    );
-
-    await writeText(path.join(tmpRoot, '.minds', 'team', 'alice', 'persona.md'), 'persona-default');
-
-    // Prefer persona.<lang>.md when present.
-    await writeText(path.join(tmpRoot, '.minds', 'team', 'alice', 'persona.en.md'), 'persona-en');
-    setWorkLanguage('en');
-    {
-      const { systemPrompt } = await loadAgentMinds('alice');
-      assert.ok(systemPrompt.includes('persona-en'));
-      assert.ok(!systemPrompt.includes('persona-default'));
+  assert.equal(process.env.DOMINDS_TEST_RTWS_MANAGED, '1', 'run through tests/cli.ts');
+  await writeStandardMinds(process.cwd());
+  const root = await createMainDialog('tester');
+  const sideDialog = await root.createSideDialog('tester', ['@tester'], 'mind-scope-data', {
+    callName: 'tellask',
+    originMemberId: 'tester',
+    askerDialogId: root.id.selfId,
+    callId: 'mind-scope-call',
+    callSiteCourse: toCallSiteCourseNo(1),
+    callSiteGenseq: toCallSiteGenseqNo(1),
+    sessionSlug: 'mind-scope',
+  });
+  const directory = path.resolve('.minds/team/tester');
+  await fs.mkdir(directory, { recursive: true });
+  const payloads = {
+    neutral: 'persona-data-8927',
+    en: 'persona-data-en-27b1',
+    zh: 'persona-data-zh-8fa6',
+    knowhow: 'knowhow-data-f481',
+    pitfalls: 'pitfalls-data-9d2c',
+    legacy: 'ignored-legacy-data-a13d',
+  };
+  await fs.writeFile(path.join(directory, 'persona.md'), payloads.neutral);
+  await fs.writeFile(path.join(directory, 'persona.en.md'), payloads.en);
+  await fs.writeFile(path.join(directory, 'persona.zh.md'), payloads.zh);
+  await fs.writeFile(path.join(directory, 'knowhow.en.md'), payloads.knowhow);
+  await fs.writeFile(path.join(directory, 'pitfalls.en.md'), payloads.pitfalls);
+  await fs.writeFile(path.join(directory, 'knowledge.en.md'), payloads.legacy);
+  await fs.writeFile(path.join(directory, 'lessons.en.md'), payloads.legacy);
+  for (const language of ['en', 'zh'] as const) {
+    setWorkLanguage(language);
+    const loaded = await loadAgentMinds('tester');
+    // Opaque file payload selection/fidelity, not a judgment of persona meaning.
+    assert.ok(loaded.systemPrompt.includes(payloads[language]));
+    assert.equal(loaded.systemPrompt.includes(payloads[language === 'en' ? 'zh' : 'en']), false);
+    assert.equal(loaded.systemPrompt.includes(payloads.neutral), false);
+    assert.equal(loaded.systemPrompt.includes(payloads.legacy), false);
+    if (language === 'en') {
+      assert.ok(loaded.systemPrompt.includes(payloads.knowhow));
+      assert.ok(loaded.systemPrompt.includes(payloads.pitfalls));
     }
-
-    {
-      const { agentTools } = await loadAgentMinds('alice');
-      const toolNames = new Set(agentTools.map((tool) => tool.name));
-      assert.ok(toolNames.has('do_mind'), 'main dialog should expose do_mind');
-      assert.ok(toolNames.has('mind_more'), 'main dialog should expose mind_more');
-      assert.ok(toolNames.has('change_mind'), 'main dialog should expose change_mind');
-      assert.ok(toolNames.has('never_mind'), 'main dialog should expose never_mind');
-    }
-
-    {
-      const fakeSideDialog = {
-        askerDialog: {},
-        getLastContextHealth: () => undefined,
-      };
-      const { agentTools } = await loadAgentMinds('alice', fakeSideDialog as never);
-      const toolNames = new Set(agentTools.map((tool) => tool.name));
-      assert.ok(!toolNames.has('do_mind'), 'side dialog should not expose do_mind');
-      assert.ok(!toolNames.has('mind_more'), 'side dialog should not expose mind_more');
-      assert.ok(!toolNames.has('change_mind'), 'side dialog should not expose change_mind');
-      assert.ok(!toolNames.has('never_mind'), 'side dialog should not expose never_mind');
-      assert.ok(toolNames.has('recall_taskdoc'), 'side dialog should still expose recall_taskdoc');
-    }
-
-    assert.ok(
-      taskdocCanonicalCopy('en').includes('mind_more'),
-      'canonical Taskdoc copy should mention mind_more in English',
-    );
-    assert.ok(
-      taskdocCanonicalCopy('zh').includes('mind_more'),
-      'canonical Taskdoc copy should mention mind_more in Chinese',
-    );
-
-    // Fall back to persona.md when persona.<lang>.md is absent.
-    await fs.rm(path.join(tmpRoot, '.minds', 'team', 'alice', 'persona.en.md'));
-    setWorkLanguage('en');
-    {
-      const { systemPrompt } = await loadAgentMinds('alice');
-      assert.ok(systemPrompt.includes('persona-default'));
-    }
-
-    await writeText(
-      path.join(tmpRoot, '.minds', 'team', 'alice', 'knowledge.en.md'),
-      'legacy-knowledge',
-    );
-    await writeText(
-      path.join(tmpRoot, '.minds', 'team', 'alice', 'lessons.en.md'),
-      'legacy-lessons',
-    );
-    setWorkLanguage('en');
-    {
-      const { systemPrompt } = await loadAgentMinds('alice');
-      assert.ok(
-        !systemPrompt.includes('legacy-knowledge'),
-        'legacy knowledge.* files should no longer be injected',
-      );
-      assert.ok(
-        !systemPrompt.includes('legacy-lessons'),
-        'legacy lessons.* files should no longer be injected',
-      );
-    }
-
-    await writeText(path.join(tmpRoot, '.minds', 'team', 'alice', 'knowhow.en.md'), 'knowhow-en');
-    await writeText(path.join(tmpRoot, '.minds', 'team', 'alice', 'pitfalls.en.md'), 'pitfalls-en');
-    {
-      const { systemPrompt } = await loadAgentMinds('alice');
-      assert.ok(systemPrompt.includes('knowhow-en'));
-      assert.ok(systemPrompt.includes('pitfalls-en'));
-    }
-
-    // Work-language-specific loading is independent per language.
-    await writeText(path.join(tmpRoot, '.minds', 'team', 'alice', 'persona.zh.md'), 'persona-zh');
-    setWorkLanguage('zh');
-    {
-      const { systemPrompt } = await loadAgentMinds('alice');
-      assert.ok(systemPrompt.includes('persona-zh'));
-      assert.ok(!systemPrompt.includes('persona-default'));
-    }
-
-    // Builtin minds are also language-specific (no .minds/team/<id> overrides required).
-    setWorkLanguage('en');
-    {
-      const { systemPrompt } = await loadAgentMinds('fuxi');
-      assert.ok(systemPrompt.includes('Fuxi @fuxi'));
-      assert.ok(systemPrompt.includes('team management'));
-      assert.ok(systemPrompt.includes('team_mgmt'));
-    }
-
-    setWorkLanguage('zh');
-    {
-      const { systemPrompt } = await loadAgentMinds('fuxi');
-      assert.ok(systemPrompt.includes('伏羲'));
-      assert.ok(systemPrompt.includes('team_mgmt'));
-      assert.ok(systemPrompt.includes('团队管理'));
-    }
-
-    console.log('✅ mindset-i18n tests: ok');
-  } finally {
-    process.chdir(oldCwd);
-    await fs.rm(tmpRoot, { recursive: true, force: true });
+    const tools = new Set(loaded.agentTools.map((tool) => tool.name));
+    for (const name of ['do_mind', 'mind_more', 'change_mind', 'never_mind'])
+      assert.ok(tools.has(name));
+    const side = await loadAgentMinds('tester', sideDialog);
+    const sideTools = new Set(side.agentTools.map((tool) => tool.name));
+    for (const name of ['do_mind', 'mind_more', 'change_mind', 'never_mind'])
+      assert.equal(sideTools.has(name), false);
+    assert.ok(sideTools.has('recall_taskdoc'));
   }
+  await fs.rm(path.join(directory, 'persona.en.md'));
+  setWorkLanguage('en');
+  assert.ok((await loadAgentMinds('tester')).systemPrompt.includes(payloads.neutral));
+  for (const language of ['en', 'zh'] as const) {
+    setWorkLanguage(language);
+    const builtin = await loadAgentMinds('fuxi');
+    assert.equal(builtin.agent.id, 'fuxi');
+    assert.equal(
+      builtin.agentTools.some((tool) => tool.name === 'shell_cmd'),
+      false,
+      'the manager remains a valid hidden member without shell execution',
+    );
+    assert.ok(builtin.agentTools.some((tool) => tool.name === 'team_mgmt_validate_team_cfg'));
+    const source = await fs.readFile(
+      path.resolve(__dirname, '../../main/minds/builtin/fuxi', `persona.${language}.md`),
+      'utf8',
+    );
+    assert.ok(
+      builtin.systemPrompt.includes(source.trim()),
+      'the selected built-in persona asset is actually delivered',
+    );
+  }
+  const operator = await loadAgentMinds('pangu');
+  assert.ok(
+    operator.agentTools.some((tool) => tool.name === 'shell_cmd'),
+    'hidden operator retains its existing shell authority',
+  );
+  console.log('mind asset selection and Taskdoc authority: passed');
 }
-
-main().catch((err: unknown) => {
-  console.error('❌ mindset-i18n test failed', err);
-  process.exit(1);
+main().catch((error: unknown) => {
+  console.error(error);
+  process.exitCode = 1;
 });
