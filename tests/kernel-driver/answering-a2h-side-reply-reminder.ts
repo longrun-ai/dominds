@@ -1,6 +1,7 @@
+import { toCallSiteCourseNo, toCallSiteGenseqNo } from '@longrun-ai/kernel/types/storage';
 import assert from 'node:assert/strict';
 
-import type { SideDialog } from '../../main/dialog';
+import { SideDialog } from '../../main/dialog';
 import { executeDriveRound } from '../../main/llm/kernel-driver/flow';
 import {
   createKernelDriverRuntimeState,
@@ -9,7 +10,7 @@ import {
 } from '../../main/llm/kernel-driver/types';
 import { DialogPersistence } from '../../main/persistence';
 import { buildUserInterjectionPauseStopReason } from '../../main/runtime/interjection-pause-stop';
-import { isReplyToolReminderPromptContent } from '../../main/runtime/reply-prompt-copy';
+import { semanticEvidenceCollector } from '../helpers/semantic-evidence';
 import {
   createMainDialog,
   makeDriveOptions,
@@ -41,8 +42,8 @@ async function runAnsweringReminderScenario(args: {
     originMemberId: 'tester',
     askerDialogId: root.id.selfId,
     callId,
-    callSiteCourse: 1,
-    callSiteGenseq: 1,
+    callSiteCourse: toCallSiteCourseNo(1),
+    callSiteGenseq: toCallSiteGenseqNo(1),
     collectiveTargets: ['pangu'],
   });
 
@@ -66,8 +67,8 @@ async function runAnsweringReminderScenario(args: {
           callerDialogId: root.id.selfId,
           callType: 'C',
           callId,
-          callSiteCourse: 1,
-          callSiteGenseq: 1,
+          callSiteCourse: toCallSiteCourseNo(1),
+          callSiteGenseq: toCallSiteGenseqNo(1),
         },
       } satisfies KernelDriverRuntimeSideDialogPrompt,
       true,
@@ -78,6 +79,7 @@ async function runAnsweringReminderScenario(args: {
       }),
     ],
     scheduleDrive: (dialog, options) => {
+      assert.ok(dialog instanceof SideDialog);
       assert.equal(dialog.id.selfId, sideDialog.id.selfId);
       scheduledDrives.push({ dialog, options });
     },
@@ -117,14 +119,19 @@ async function runAnsweringReminderScenario(args: {
     'queued reminder should target the original pending tellask call',
   );
   assert.equal(
-    isReplyToolReminderPromptContent(queuedReplyReminder.prompt),
-    true,
-    'answering-only reminder should keep reply-reminder/direct-fallback semantics',
+    queuedReplyReminder.tellaskReplyDirective.expectedReplyCallName,
+    'replyTellaskSessionless',
   );
-  assert.match(
+  assert.equal(queuedReplyReminder.calleeDialogReplyTarget.callerDialogId, root.id.selfId);
+  recordGuidance(
+    args.variant,
     queuedReplyReminder.prompt,
-    /answering.*answerHuman|answerHuman.*answering/,
-    'custom reminder should explicitly distinguish answering/answerHuman from requester reply',
+    'A side dialog produced only a human-visible answer and still owes the requester its own reply.',
+    {
+      answerPayload: args.answeringContent,
+      targetCallId: callId,
+      expectedTool: 'replyTellaskSessionless',
+    },
   );
 }
 
@@ -139,8 +146,8 @@ async function runUserInterjectionAnswerHumanResumesSuppressedReplyObligation():
     originMemberId: 'tester',
     askerDialogId: root.id.selfId,
     callId,
-    callSiteCourse: 1,
-    callSiteGenseq: 1,
+    callSiteCourse: toCallSiteCourseNo(1),
+    callSiteGenseq: toCallSiteGenseqNo(1),
     sessionSlug: 'suppressed-user-interjection-session',
     collectiveTargets: ['pangu'],
   });
@@ -198,6 +205,7 @@ async function runUserInterjectionAnswerHumanResumesSuppressedReplyObligation():
       makeDriveOptions({ suppressDiligencePush: true }),
     ],
     scheduleDrive: (dialog, options) => {
+      assert.ok(dialog instanceof SideDialog);
       assert.equal(dialog.id.selfId, sideDialog.id.selfId);
       scheduledDrives.push({ dialog, options });
     },
@@ -264,11 +272,6 @@ async function runUserInterjectionAnswerHumanResumesSuppressedReplyObligation():
     callId,
     'suppressed-interjection continuation should preserve the requester reply target',
   );
-  assert.equal(
-    isReplyToolReminderPromptContent(queuedReplyReminder.prompt),
-    true,
-    'suppressed-interjection continuation should use the reply reminder prompt',
-  );
 
   const latest = await DialogPersistence.loadDialogLatest(sideDialog.id, sideDialog.status);
   assert.equal(
@@ -291,6 +294,33 @@ async function runUserInterjectionAnswerHumanResumesSuppressedReplyObligation():
     callId,
     'suppressed-interjection reply target must be durable for backend/restart recovery',
   );
+  recordGuidance(
+    'after-interjection',
+    queuedReplyReminder.prompt,
+    'The local human interjection has been answered; the original requester reply remains pending and must resume.',
+    { targetCallId: callId, humanAnswer: answerHumanContent, expectedTool: 'replyTellask' },
+  );
+}
+
+const evidence = semanticEvidenceCollector('dominds-answering-reply-');
+function recordGuidance(
+  id: string,
+  actualText: string,
+  scenario: string,
+  context: Record<string, string | number>,
+) {
+  evidence.record({
+    id,
+    scenario,
+    businessValue:
+      'Deliver the correct requester reply without confusing human answers, stale requests or another dialog obligation.',
+    context: { language: 'en', ...context },
+    reviewQuestions: [
+      'Does the full guidance describe the actual current reply obligation and the exact tool appropriate for this state?',
+      'Can the executor recover without resending an already delivered result or mistaking answerHuman output for requester delivery?',
+    ],
+    actualText,
+  });
 }
 
 async function main(): Promise<void> {
@@ -339,6 +369,7 @@ async function main(): Promise<void> {
     await runUserInterjectionAnswerHumanResumesSuppressedReplyObligation();
   });
 
+  await evidence.write();
   console.log('kernel-driver answering A2H side reply reminder: PASS');
 }
 

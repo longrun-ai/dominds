@@ -90,6 +90,60 @@
       "lane": "manual",
       "value": "构建阶段真实原始手册预算，不检查被截短替代的提示",
       "evidence": "Current manual batch; tests/semantic/reviews/2026-10-30-manual.json; isolated machine regressions and complete assertion review. Prior verdicts do not accept new output."
+    },
+    "kernel-driver/runtime-reminder-context.ts": {
+      "status": "reviewed",
+      "lane": "kernel",
+      "value": "真实driver上下文中历史、维护指导、提醒及当前人类输入的角色与顺序；A2H实际落盘",
+      "evidence": "Reply/runtime batch; complete assertion diff reviewed; real isolated runtime and persisted state. Semantic scope and independent verdicts: tests/semantic/reviews/2026-10-30-reply-runtime.json. This design ledger does not accept generated output."
+    },
+    "kernel-driver/repeated-tool-call-reminder.ts": {
+      "status": "reviewed",
+      "lane": "kernel",
+      "value": "真实成功工具结果、跨代/同轮重复、纠正后停止及过期窗口；纠正和停止含义另由智能体评审",
+      "evidence": "Reply/runtime batch; complete assertion diff reviewed; real isolated runtime and persisted state. Semantic scope and independent verdicts: tests/semantic/reviews/2026-10-30-reply-runtime.json. This design ledger does not accept generated output."
+    },
+    "kernel-driver/reply-tool-dynamic-guidance.ts": {
+      "status": "reviewed",
+      "lane": "kernel",
+      "value": "错误工具不消耗义务、跨对话重复拒绝、真实正式交付一次、持久化陈旧提醒不复活已完成义务",
+      "evidence": "Reply/runtime batch; complete assertion diff reviewed; real isolated runtime and persisted state. Semantic scope and independent verdicts: tests/semantic/reviews/2026-10-30-reply-runtime.json. This design ledger does not accept generated output."
+    },
+    "kernel-driver/answering-a2h-side-reply-reminder.ts": {
+      "status": "reviewed",
+      "lane": "kernel",
+      "value": "人类答复与诉请交付分离，真实队列目标、插话后恢复及durable指令",
+      "evidence": "Reply/runtime batch; complete assertion diff reviewed; real isolated runtime and persisted state. Semantic scope and independent verdicts: tests/semantic/reviews/2026-10-30-reply-runtime.json. This design ledger does not accept generated output."
+    },
+    "kernel-driver/duplicate-tool-call-feedback.ts": {
+      "status": "reviewed",
+      "lane": "kernel",
+      "value": "历史/同轮原始工具ID重复仍执行，结果按effective ID对应，实际结果驱动完成恢复",
+      "evidence": "Reply/runtime batch; complete assertion diff reviewed; real isolated runtime and persisted state. Semantic scope and independent verdicts: tests/semantic/reviews/2026-10-30-reply-runtime.json. This design ledger does not accept generated output."
+    },
+    "kernel-driver/idle-with-active-reply-obligation-display-state.ts": {
+      "status": "reviewed",
+      "lane": "kernel",
+      "value": "真实持久化回复义务避免假idle，嵌套callee等待优先且不捏造interruption",
+      "evidence": "Reply/runtime batch; complete assertion diff reviewed; real isolated runtime and persisted state. Semantic scope and independent verdicts: tests/semantic/reviews/2026-10-30-reply-runtime.json. This design ledger does not accept generated output."
+    },
+    "kernel-driver/reminder-context-footer-state.ts": {
+      "status": "reviewed",
+      "lane": "kernel",
+      "value": "用户输入、人类回答、已完成交接、活跃义务与critical压力选择结构化页脚状态",
+      "evidence": "Reply/runtime batch; complete assertion diff reviewed; real isolated runtime and persisted state. Semantic scope and independent verdicts: tests/semantic/reviews/2026-10-30-reply-runtime.json. This design ledger does not accept generated output."
+    },
+    "kernel-driver/root-tail-error-still-rewakes-root-runtime-wake.ts": {
+      "status": "reviewed",
+      "lane": "kernel",
+      "value": "真实ask-back交付后scheduleDrive尾部故障已触发，正式结果不丢，原有root wake和队列保持可再驱动",
+      "evidence": "Reply/runtime batch; complete assertion diff reviewed. Real requester call and durable obligation, injected-fault positive counter, canonical payload delivery, persisted wake and registry queue; controlled error transport and exact machine trigger identity. tests/semantic/reviews/2026-10-30-reply-runtime.json"
+    },
+    "kernel-driver/root-cross-trigger-does-not-reenter-during-tail.ts": {
+      "status": "reviewed",
+      "lane": "kernel",
+      "value": "真实reply交付尾部到达其他root触发时，本root不重复生成；实际backend消费触发且完成一轮检查后确认",
+      "evidence": "Reply/runtime batch; complete assertion review. Real requester call/durable obligation, callback reason+count and held lock, pass-through trigger-consumption recorder, real backend cycle without fixed sleep, generation/canonical payload/wake effects; tests/semantic/reviews/2026-10-30-reply-runtime.json"
     }
   },
   "retired": {
@@ -125,6 +179,21 @@
     "toolsets/man-structure.ts": {
       "decision": "delete",
       "reason": "低价值标题样式/固定手册措辞检查；不保留样式裁判。实际使用指导另输出完整语义材料。"
+    },
+    "kernel-driver/context-assembly-order.ts": {
+      "decision": "replace",
+      "replacement": "kernel-driver/runtime-reminder-context.ts",
+      "reason": "原测试是手工数组拼接的布局微测试，部分断言有机器顺序价值；替代测试观察真实driver送入供应商的历史/提醒/当前用户顺序。不宣称原微测试全部空尾段或缓存组合均已覆盖。"
+    },
+    "kernel-driver/plain-reminder-role.ts": {
+      "decision": "replace",
+      "replacement": "kernel-driver/runtime-reminder-context.ts",
+      "reason": "删除手工复刻生产拼装和固定中文语义匹配；实际消息角色/位置保留为机器检查，完整实际语义交测试执行智能体。"
+    },
+    "kernel-driver/reply-obligation-copy-scopes-target-thread.ts": {
+      "decision": "semantic-evidence",
+      "replacement": "semantic/reply-guidance.ts",
+      "reason": "删除低价值标签格式与回复指导固定词句检查；保留实际责任/接收方/工具路径的有价值语义材料并主观评审。"
     }
   }
 }

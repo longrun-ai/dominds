@@ -41,3 +41,17 @@ export async function writeSemanticEvidence(
     'PENDING subjective test-execution-agent review; no semantic cases have automatically passed.',
   );
 }
+
+/** Collect actual runtime text only when explicitly generating subjective-review material. */
+export function semanticEvidenceCollector(prefix: string) {
+  const enabled = process.argv.includes('--semantic');
+  const cases: SemanticEvidence[] = [];
+  return {
+    record(evidence: SemanticEvidence): void {
+      if (enabled) cases.push(evidence);
+    },
+    async write(): Promise<void> {
+      if (enabled) await writeSemanticEvidence(cases, prefix);
+    },
+  };
+}

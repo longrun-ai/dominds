@@ -1983,7 +1983,7 @@ export async function executeDriveRound(args: {
 
     const promptForCore = healthPrompt ?? humanPrompt;
     const resolvedPrompt = await resolveEffectivePrompt(dialog, promptForCore);
-    const effectivePrompt = resolvedPrompt.prompt;
+    let effectivePrompt = resolvedPrompt.prompt;
     const latestBeforeCore = await DialogPersistence.loadDialogLatest(dialog.id, dialog.status);
     if (dialog.id.selfId === dialog.id.rootId) {
       hadRootRuntimeWakeBeforeCore ||= await DialogPersistence.hasRootRuntimeWake(
@@ -2028,6 +2028,27 @@ export async function executeDriveRound(args: {
       dlg: dialog,
       prompt: effectivePrompt,
     });
+    let optionsForCore = driveOptions;
+    if (
+      effectivePrompt?.origin === 'runtime' &&
+      effectivePrompt.tellaskReplyDirective !== undefined &&
+      replyGuidance.activeReplyDirective === undefined
+    ) {
+      // Expiration must reach execution state too: neither the old prompt nor its queued
+      // continuation may restore a completed obligation after guidance has rejected it.
+      replyContinuationScope.refresh({ kind: 'none' });
+      calleeDialogReplyTarget = undefined;
+      effectivePrompt = {
+        ...effectivePrompt,
+        content: replyGuidance.promptContent ?? effectivePrompt.content,
+        tellaskReplyDirective: undefined,
+        calleeDialogReplyTarget: undefined,
+      };
+      optionsForCore =
+        driveOptions === undefined
+          ? undefined
+          : { ...driveOptions, businessContinuation: { kind: 'none' } };
+    }
     // Q4H answers are explicitly outside this branch even though they also come from the human.
     // They belong to the askHuman reply channel and must continue the suspended askHuman round,
     // never be mistaken for ad hoc interjection chat.
@@ -2061,7 +2082,7 @@ export async function executeDriveRound(args: {
         driveDialog: args.driveDialog,
       },
       effectivePrompt,
-      driveOptions,
+      optionsForCore,
     );
     const latestAfterCore = await DialogPersistence.loadDialogLatest(dialog.id, dialog.status);
     coreEndedInterrupted = latestAfterCore?.executionMarker?.kind === 'interrupted';

@@ -74,6 +74,19 @@ function buildPromptContentWithExactReplyToolName(args: {
     // names remain in transcript history, so the model may otherwise "finish" the old request
     // again. Dominds has already checked durable reply state here; the prompt says the current
     // business expectation directly: answer/continue this conversation normally.
+    if (args.prompt.origin === 'runtime' && args.prompt.tellaskReplyDirective !== undefined) {
+      return args.language === 'zh'
+        ? [
+            noActivePrefix,
+            '这条运行时回复提醒已经失效：Dominds 未发现本轮仍需完成的诉请回复义务。',
+            '不要重发先前的结果。仅继续其他当前工作；若没有剩余工作，就结束本轮。',
+          ].join('\n')
+        : [
+            noActivePrefix,
+            'This runtime reply reminder is obsolete: Dominds found no unfinished reply obligation for this turn.',
+            'Do not resend the earlier result. Continue only with other current work; if none remains, end this turn.',
+          ].join('\n');
+    }
     if (isFbrSideDialog) {
       return args.prompt.content;
     }
@@ -214,6 +227,22 @@ async function resolveFreshPendingAskBackReplyDirective(args: {
     : undefined;
 }
 
+async function resolveUnfinishedReplyDirective(args: {
+  dlg: Dialog;
+  directive: TellaskReplyDirective | undefined;
+}): Promise<TellaskReplyDirective | undefined> {
+  if (!args.directive) return undefined;
+  const directive = args.directive;
+  const target = new DialogID(directive.targetDialogId, args.dlg.id.rootId);
+  const latest = await DialogPersistence.loadDialogLatest(target, args.dlg.status);
+  // A queued reminder or surviving asker-stack frame cannot undo canonical delivery.
+  return latest?.tellaskResults.results.some(
+    (result) => result.callId.trim() === directive.targetCallId.trim(),
+  )
+    ? undefined
+    : args.directive;
+}
+
 function resolveFreshReplyDirective(args: {
   promptDirective: KernelDriverPrompt['tellaskReplyDirective'];
   persistedDirective: TellaskReplyDirective | undefined;
@@ -304,7 +333,6 @@ export async function resolvePromptReplyGuidance(args: {
   const prompt = args.prompt;
   const isQ4HAnswerPrompt =
     typeof prompt?.q4hAnswerCallId === 'string' && prompt.q4hAnswerCallId.trim() !== '';
-  const latest = await DialogPersistence.loadDialogLatest(args.dlg.id, args.dlg.status);
   const persistedCurrentSideDialogAssignmentPromptMeta =
     await resolveFreshCurrentSideDialogAssignmentPromptMeta({
       dlg: args.dlg,
@@ -314,18 +342,14 @@ export async function resolvePromptReplyGuidance(args: {
     dlg: args.dlg,
     prompt,
   });
-  const persistedPendingRuntimePromptDirective =
-    prompt !== undefined &&
-    latest?.pendingRuntimePrompt?.msgId === prompt.msgId &&
-    latest.pendingRuntimePrompt.origin === 'runtime'
-      ? latest.pendingRuntimePrompt.tellaskReplyDirective
-      : undefined;
   const persistedActiveReplyObligation = await loadActiveTellaskReplyDirective(args.dlg);
-  const persistedActiveReplyDirective =
-    persistedCurrentSideDialogAssignmentPromptMeta?.tellaskReplyDirective ??
-    persistedPendingAskBackReplyDirective ??
-    persistedPendingRuntimePromptDirective ??
-    persistedActiveReplyObligation;
+  const persistedActiveReplyDirective = await resolveUnfinishedReplyDirective({
+    dlg: args.dlg,
+    directive:
+      persistedCurrentSideDialogAssignmentPromptMeta?.tellaskReplyDirective ??
+      persistedPendingAskBackReplyDirective ??
+      persistedActiveReplyObligation,
+  });
   const suppressInterDialogReplyGuidance = isQ4HAnswerPrompt
     ? false
     : await shouldSuppressInterDialogReplyGuidanceForUserInterjection({

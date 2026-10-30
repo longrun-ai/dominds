@@ -53,7 +53,6 @@
     "recovery-reply-delivery-recovery-after-restart": "pnpm run rtws -- recovery/reply-delivery-recovery-after-restart.ts",
     "interruption-resumption": "tsx interruption-resumption.ts",
     "tellask:typeb-registered-dedupe": "tsx tellask/typeb-registered-sideDialog-dedupe.ts",
-    "kernel-driver:context-assembly-order": "pnpm run rtws -- kernel-driver/context-assembly-order.ts",
     "kernel-driver:tellask-resolved-result-context-pointer": "pnpm run rtws -- kernel-driver/tellask-resolved-result-context-pointer.ts",
     "kernel-driver:reminder-context-footer-state": "tsx kernel-driver/reminder-context-footer-state.ts",
     "kernel-driver:q4h-runtime-broadcaster-bootstrap": "pnpm run rtws -- kernel-driver/q4h-runtime-broadcaster-bootstrap.ts",
@@ -234,7 +233,9 @@
     "team_mgmt-manual-mcp-content": "pnpm run rtws -- team_mgmt-manual/mcp-manual-content.ts",
     "test:manual": "node run.mjs --suite manual",
     "test:semantic:manual": "node run.mjs --suite manual --semantic",
-    "test:types": "tsc -p tsconfig.json --noEmit"
+    "test:types": "tsc -p tsconfig.json --noEmit",
+    "kernel-driver:runtime-reminder-context": "pnpm run rtws -- kernel-driver/runtime-reminder-context.ts",
+    "test:semantic:kernel": "node run.mjs --suite kernel --semantic"
   },
   "devDependencies": {
     "tsx": "^4.22.4",

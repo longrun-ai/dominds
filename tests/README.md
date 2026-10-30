@@ -19,6 +19,7 @@ pnpm run test:semantic
 pnpm run test:semantic:context
 pnpm run test:semantic:configuration
 pnpm run test:semantic:manual
+pnpm run test:semantic:kernel
 ```
 
 - `test`: a small local smoke suite; not full product, browser, packaging, or provider coverage.
@@ -32,8 +33,9 @@ pnpm run test:semantic:manual
 - `test:semantic`: emits actual natural-language output, context, business value, and review questions. Evidence is **pending subjective review by a test-execution agent**, not automatically passed.
 - `test:semantic:context`: emits preservation, interjection, new-course, continuation, and routing guidance. Its budget notices come from real isolated runtime executions with observed state, not a synthetic expected sentence. All cases remain pending subjective review.
 - `test:semantic:configuration`: reruns the configuration scenarios with `--semantic` and emits full diagnostics, manual guidance and supplied configuration. It reports pending review, including when its machine assertions pass.
-
 - `test:semantic:manual`: emits actual handbooks, capability-list and refusal guidance, Taskdoc/skills guidance, collaboration result wrappers and the built-in manager prompt. All cases start pending subjective review.
+
+- `test:semantic:kernel`: runs five explicit producers for actual provider reminder context, repeated-call guidance and stops, reply-tool errors and expiration, human-answer follow-up queues, and reply/footer renderers. Their complete output remains pending agent review even when runtime assertions pass.
 
 The [assertion audit ledger](./audit.json) records which candidate tests have actually been reviewed, their business value, lane and evidence. Inventory exposes unaudited candidates and stale ledger paths. Neither suite membership nor a prior ledger entry decides the meaning of freshly generated output.
 
@@ -48,7 +50,7 @@ pnpm -C tests run
 pnpm -C tests run auth
 pnpm -C tests run llm-generation-metadata
 pnpm -C tests run webapp-create-dialog-flow-ime
-pnpm -C tests run rtws -- kernel-driver/context-assembly-order.ts
+pnpm -C tests run rtws -- kernel-driver/runtime-reminder-context.ts
 ```
 
 The rtws CLI copies `tests/script-rtws` into an independent temporary directory. Set `DOMINDS_TEST_RTWS_KEEP_TMP=1` to retain single-case evidence. `--shared-rtws` is for debugging and must not run concurrently.

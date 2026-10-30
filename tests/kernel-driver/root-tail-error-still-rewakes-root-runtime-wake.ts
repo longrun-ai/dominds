@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 
+import { toCallSiteCourseNo, toCallSiteGenseqNo } from '@longrun-ai/kernel/types/storage';
 import { formatUnifiedTimestamp } from '@longrun-ai/kernel/utils/time';
 import { globalDialogRegistry } from '../../main/dialog-global-registry';
 import { executeDriveRound } from '../../main/llm/kernel-driver/flow';
@@ -55,8 +56,8 @@ async function main(): Promise<void> {
         originMemberId: 'tester',
         askerDialogId: root.id.selfId,
         callId: 'root-active-callee-call',
-        callSiteCourse: 1,
-        callSiteGenseq: 1,
+        callSiteCourse: toCallSiteCourseNo(1),
+        callSiteGenseq: toCallSiteGenseqNo(1),
         collectiveTargets: ['pangu'],
       },
     );
@@ -69,11 +70,23 @@ async function main(): Promise<void> {
       tellaskContent: 'Background side dialog work remains active.',
       targetAgentId: 'pangu',
       callId: 'root-active-callee-call',
-      callSiteCourse: 1,
-      callSiteGenseq: 1,
+      callSiteCourse: toCallSiteCourseNo(1),
+      callSiteGenseq: toCallSiteGenseqNo(1),
       callType: 'C',
     });
 
+    await activeCalleeDispatch.persistTellaskCall(
+      'reply-back-target',
+      'tellaskBack',
+      JSON.stringify({ tellaskContent: 'Please confirm the side dialog result.' }),
+      1,
+    );
+    await DialogPersistence.setActiveTellaskReplyObligation(root.id, {
+      expectedReplyCallName: 'replyTellaskBack',
+      targetCallId: 'reply-back-target',
+      targetDialogId: activeCalleeDispatch.id.selfId,
+      tellaskContent: 'Please confirm the side dialog result.',
+    });
     await DialogPersistence.upsertRootRuntimeWake(
       root.id,
       'seed_preexisting_root_queue_before_tail_failure',
@@ -85,6 +98,8 @@ async function main(): Promise<void> {
     });
     globalDialogRegistry.noteActiveRunBlockedQueuedDrive(root.id.rootId);
 
+    let injectedFailures = 0;
+    const injectedError = new Error('synthetic tail scheduleDrive failure');
     await executeDriveRound({
       runtime: createKernelDriverRuntimeState(),
       driveArgs: [
@@ -109,23 +124,45 @@ async function main(): Promise<void> {
         }),
       ],
       scheduleDrive: (_dialog, options) => {
-        if (options.driveOptions.reason === 'reply_tellask_back_delivered') {
-          throw new Error('synthetic tail scheduleDrive failure');
+        if (options.driveOptions?.reason === 'reply_tellask_back_delivered') {
+          injectedFailures += 1;
+          throw injectedError;
         }
       },
       driveDialog: async () => {},
     });
 
+    assert.equal(
+      injectedFailures,
+      1,
+      'the intended reply-delivery tail fault was actually reached',
+    );
+    const canonical = (
+      await DialogPersistence.loadCourseEvents(
+        activeCalleeDispatch.id,
+        activeCalleeDispatch.currentCourse,
+        activeCalleeDispatch.status,
+      )
+    )
+      .filter((event) => event.type === 'tellask_result_record')
+      .filter((event) => event.callId === 'reply-back-target');
+    assert.equal(canonical.length, 1);
+    assert.ok(
+      canonical[0].content.includes(plainReply),
+      'the controlled reply payload reached the requester before the injected failure',
+    );
     const latest = await DialogPersistence.loadDialogLatest(root.id, root.status);
     assert.equal(
       latest?.displayState?.kind,
       'stopped',
       'tail scheduleDrive failure should stop the dialog rather than silently continuing',
     );
-    assert.match(
-      latest?.displayState?.kind === 'stopped' ? latest.displayState.reason.detail : '',
-      /synthetic tail scheduleDrive failure/u,
-      'stopped state should retain the surfaced tail failure detail',
+    assert.ok(latest?.displayState?.kind === 'stopped');
+    const stopReason = latest.displayState.reason;
+    assert.ok('detail' in stopReason);
+    assert.ok(
+      stopReason.detail.includes(injectedError.message),
+      'stopped state retains the controlled injected error payload',
     );
     assert.equal(
       await DialogPersistence.hasRootRuntimeWake(root.id, root.status),
@@ -139,11 +176,8 @@ async function main(): Promise<void> {
       'queue_root_drive',
       'tail failure should requeue the deferred root drive',
     );
-    assert.match(
-      lastTrigger?.reason ?? '',
-      /^core_stopped_requeue:/u,
-      'drive event should describe the drive-failure requeue',
-    );
+    assert.equal(lastTrigger?.source, 'kernel_driver_flow_tail');
+    assert.equal(lastTrigger?.reason, 'core_stopped_requeue:reply_tool_reminder');
     assert.equal(
       lastTrigger?.nextDriveQueued,
       true,

@@ -150,11 +150,14 @@ export async function writeMockDb(tmpRoot: string, entries: MockEntry[]): Promis
   );
 }
 
-export async function createMainDialog(agentId: string = 'tester'): Promise<MainDialog> {
+export async function createMainDialog(
+  agentId: string = 'tester',
+  taskDocPath: string = 'task.md',
+): Promise<MainDialog> {
   const rootId = generateDialogID();
   const dialogId = new DialogID(rootId);
   const store = new DiskFileDialogStore(dialogId);
-  const dialog = new MainDialog(store, 'task.md', dialogId, agentId);
+  const dialog = new MainDialog(store, taskDocPath, dialogId, agentId);
 
   // Tests construct dialogs directly (bypassing server routes), so we must persist the same
   // metadata/latest.yaml that the production create-dialog path writes.

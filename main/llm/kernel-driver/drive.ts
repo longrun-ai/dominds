@@ -2353,14 +2353,15 @@ function formatRepeatedToolCallStoppedDetail(args: {
 }): string {
   if (args.language === 'en') {
     return (
-      `Stopped because the LLM ignored Dominds' repeated-tool-call correction notice and again made ` +
-      `the same tool call three times with identical results. This indicates an LLM behavior/personality problem: ` +
-      `it is looping on ${args.toolName} instead of reconsidering the task. callIds=${args.callIds.join(', ')}`
+      `Stopped after three more identical ${args.toolName} calls returned identical results ` +
+      `following Dominds' repeated-tool-call correction notice. Review the task, arguments and prior results ` +
+      `before resuming; choose an action that can provide new information or finish with the available evidence. ` +
+      `callIds=${args.callIds.join(', ')}`
     );
   }
   return (
-    `已停止：LLM 已收到 Dominds 的重复工具调用纠正提醒，但仍然再次连续三次调用同一个工具并得到完全相同的结果。` +
-    `这说明当前 LLM 存在行为/个性问题：它在 ${args.toolName} 上机械循环，而不是重新判断任务。` +
+    `已停止：Dominds 发出重复工具调用纠正提醒后，又有三次相同的 ${args.toolName} 调用返回了相同结果。` +
+    `恢复前请复核任务、参数和已有结果；选择能提供新信息的行动，或根据现有证据完成任务。` +
     `callIds=${args.callIds.join(', ')}`
   );
 }

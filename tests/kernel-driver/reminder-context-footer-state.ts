@@ -115,7 +115,17 @@ function main(): void {
   const criticalHealth = resolveSideReminderContextFooterStateFromSignals({
     prompt: undefined,
     currentTurnDialogMsgsForContext: [],
-    contextHealth: { kind: 'available', level: 'critical', usage: { promptTokens: 1 } },
+    contextHealth: {
+      kind: 'available',
+      level: 'critical',
+      promptTokens: 1,
+      completionTokens: 0,
+      modelContextLimitTokens: 1,
+      effectiveOptimalMaxTokens: 1,
+      effectiveCriticalMaxTokens: 1,
+      hardUtil: 1,
+      optimalUtil: 1,
+    },
     pendingUserInterjectionReply: false,
     hasCompletedHandoffWithoutPendingReply: false,
     hasActiveReplyObligation: false,

@@ -58,7 +58,8 @@
     "test:semantic:configuration": "node ./scripts/run-pnpm.mjs -C tests run test:semantic:configuration",
     "test:manual": "node tests/run.mjs --suite manual",
     "test:semantic:manual": "node ./scripts/run-pnpm.mjs -C tests run test:semantic:manual",
-    "test:types": "tsc -p tests/tsconfig.json --noEmit"
+    "test:types": "tsc -p tests/tsconfig.json --noEmit",
+    "test:semantic:kernel": "node tests/run.mjs --suite kernel --semantic"
   },
   "repository": {
     "type": "git",

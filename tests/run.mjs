@@ -46,6 +46,13 @@ const manual = [
   'toolsets/manual-size-guard.ts',
 ];
 const semanticSuites = {
+  kernel: [
+    'kernel-driver/runtime-reminder-context.ts',
+    'kernel-driver/repeated-tool-call-reminder.ts',
+    'kernel-driver/reply-tool-dynamic-guidance.ts',
+    'kernel-driver/answering-a2h-side-reply-reminder.ts',
+    'semantic/reply-guidance.ts',
+  ],
   configuration: configuration.filter(
     (file) => file !== 'team_mgmt-manual/mcp-hot-reload-manual-problems.ts',
   ),
