@@ -105,6 +105,7 @@ export async function getOrRestoreMainDialog(
       reminders: rootState.reminders,
       currentCourse: rootState.currentCourse,
       contextHealth: rootState.contextHealth,
+      lastAvailableContextHealth: rootState.lastAvailableContextHealth,
       pendingRuntimePrompt,
     },
   );
@@ -226,6 +227,7 @@ export async function ensureDialogLoaded(
       reminders: state.reminders,
       currentCourse: state.currentCourse,
       contextHealth: state.contextHealth,
+      lastAvailableContextHealth: state.lastAvailableContextHealth,
       pendingRuntimePrompt,
     },
   );

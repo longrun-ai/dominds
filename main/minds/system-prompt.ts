@@ -88,12 +88,12 @@ function buildFbrContextHealthScopeRule(
     return pickLocalized(language, {
       zh:
         scope === 'mainDialog'
-          ? '- Dominds 已提醒上下文告急：本程禁止发起 FBR。先按上下文保全要求把尚未落实到差遣牒、且下一程需要知会的讨论细节写入合适章节，再维护接续包提醒项，并立即 `clear_mind`；Dominds 真正开启新一程并完成接续包复核后，再恢复 FBR。'
-          : '- Dominds 已提醒上下文告急：本程禁止发起 FBR。你当前处于支线对话：不要维护差遣牒，也不要整理差遣牒更新提案；先按上下文保全要求维护足够详尽的接续包提醒项，并立即 `clear_mind`；Dominds 真正开启新一程并完成接续包复核后，再恢复 FBR。',
+          ? '- Dominds 已提醒上下文告急：本程禁止发起 FBR。真实用户插话仍须先完成必要的有限取证及回应，再执行以下保全换程步骤。先按上下文保全要求把尚未落实到差遣牒、且下一程需要知会的讨论细节写入合适章节，再维护接续包提醒项，并立即 `clear_mind`；Dominds 真正开启新一程并完成接续包复核后，再恢复 FBR。'
+          : '- Dominds 已提醒上下文告急：本程禁止发起 FBR。真实用户插话仍须先完成必要的有限取证及回应，再执行以下保全换程步骤。你当前处于支线对话：不要维护差遣牒，也不要整理差遣牒更新提案；先按上下文保全要求维护足够详尽的接续包提醒项，并立即 `clear_mind`；Dominds 真正开启新一程并完成接续包复核后，再恢复 FBR。',
       en:
         scope === 'mainDialog'
-          ? '- Dominds has warned that context is critical: do not start FBR in this course. First write discussion details not yet in Taskdoc but needed by the next course into the appropriate sections, then maintain continuation-package reminders and clear immediately; resume FBR only after Dominds starts the new course and the continuation package has been reviewed.'
-          : '- Dominds has warned that context is critical: do not start FBR in this course. You are in a Side Dialog: do not maintain Taskdoc and do not draft Taskdoc update proposals; first maintain sufficiently detailed continuation-package reminders, then clear immediately. Resume FBR only after Dominds starts the new course and the continuation package has been reviewed.',
+          ? '- Dominds has warned that context is critical: do not start FBR in this course. Complete the minimum bounded lookup and response needed for any real user interjection before the preservation and renewal steps below. First write discussion details not yet in Taskdoc but needed by the next course into the appropriate sections, then maintain continuation-package reminders and clear immediately; resume FBR only after Dominds starts the new course and the continuation package has been reviewed.'
+          : '- Dominds has warned that context is critical: do not start FBR in this course. Complete the minimum bounded lookup and response needed for any real user interjection before the preservation and renewal steps below. You are in a Side Dialog: do not maintain Taskdoc and do not draft Taskdoc update proposals; first maintain sufficiently detailed continuation-package reminders, then clear immediately. Resume FBR only after Dominds starts the new course and the continuation package has been reviewed.',
     });
   }
 
@@ -107,6 +107,13 @@ function buildFbrContextHealthScopeRule(
         scope === 'mainDialog'
           ? '- Dominds has warned that context is tight: do not start FBR in this course. First write discussion details not yet in Taskdoc but needed by the next course into the appropriate sections, then distill reminders and clear soon; resume FBR only after Dominds starts the new course and the continuation package has been reviewed.'
           : '- Dominds has warned that context is tight: do not start FBR in this course. You are in a Side Dialog: do not maintain Taskdoc and do not draft Taskdoc update proposals; first maintain sufficiently detailed continuation-package reminders, then clear soon. Resume FBR only after Dominds starts the new course and the continuation package has been reviewed.',
+    });
+  }
+
+  if (contextHealthPromptMode === 'unavailable') {
+    return pickLocalized(language, {
+      zh: '- 本次上下文用量不可用，不能把缺失测量当作上下文已恢复。若当前结果因上次压力而被隐藏，先按该结果提示保全信息、避免新增 FBR；有新的可用健康测量后再评估。',
+      en: '- Current context usage is unavailable; missing measurement does not establish recovery. If a current result is withheld because of previous pressure, follow its preservation guidance and avoid starting FBR; reassess when a new available healthy measurement arrives.',
     });
   }
 

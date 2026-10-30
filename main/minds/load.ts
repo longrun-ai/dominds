@@ -28,6 +28,7 @@ import {
   mindMoreTool,
   neverMindTool,
   recallTaskdocTool,
+  setDialogGoalTool,
   updateReminderTool,
 } from '../tools/ctrl';
 import { isShellToolName, listShellSpecialistMemberIds } from '../tools/shell-tools';
@@ -308,6 +309,7 @@ export async function loadAgentMinds(
   ];
   // Taskdoc mutation tools are only available in main dialogs (not sideDialogs).
   if (dialog === undefined || dialog.askerDialog === undefined) {
+    intrinsicFuncTools.push(setDialogGoalTool);
     intrinsicFuncTools.push(doMindTool);
     intrinsicFuncTools.push(mindMoreTool);
     intrinsicFuncTools.push(changeMindTool);
@@ -396,7 +398,9 @@ export async function loadAgentMinds(
           contextHealthSnapshot.kind === 'available' &&
           contextHealthSnapshot.level === 'caution'
         ? 'caution'
-        : 'normal';
+        : contextHealthSnapshot?.kind === 'unavailable'
+          ? 'unavailable'
+          : 'normal';
   const promptdocContext = {
     language: workingLanguage,
     agentId: agent.id,

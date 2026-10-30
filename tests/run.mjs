@@ -21,6 +21,7 @@ const smoke = [
   'webapp/generation-model-presentation.ts',
 ];
 const context = [
+  'websocket-user-msg-generation-boundary.ts',
   'context-health/caution-cadence.ts',
   'context-health/critical-user-interjection.ts',
   'diligence-push/auto-continue-prompt-format.ts',
@@ -47,6 +48,9 @@ const manual = [
 ];
 const semanticSuites = {
   kernel: [
+    'kernel-driver/context-health-large-tool-output-hidden.ts',
+    'kernel-driver/context-health-multi-iter-gate.ts',
+    'kernel-driver/critical-queued-user-interjection.ts',
     'kernel-driver/func-call-persists-before-result.ts',
     'kernel-driver/root-tellask-background-callee-badge-event.ts',
     'kernel-driver/sideDialog-askback-reply-tool-no-double-delivery.ts',

@@ -1931,26 +1931,7 @@ export async function executeDriveRound(args: {
         });
         healthPrompt = await dialog.startNewCourse(newCoursePrompt);
         resetContextHealthRoundState(dialog.id.key());
-      } else if (healthDecision.reason === 'critical_user_prompt_remediation') {
-        if (
-          userPromptContentForHealth === undefined ||
-          !isAgentFacingCriticalUserInterjectionRemediationGuideContent(userPromptContentForHealth)
-        ) {
-          log.warn(
-            'kernel-driver observed unwrapped critical user prompt; critical user interjection wrapping must happen at ingress',
-            undefined,
-            {
-              dialogId: dialog.id.valueOf(),
-              msgId:
-                humanPrompt?.origin === 'user'
-                  ? humanPrompt.msgId
-                  : queuedPromptBeforeHealth?.origin === 'user'
-                    ? queuedPromptBeforeHealth.msgId
-                    : null,
-            },
-          );
-        }
-      } else if (!hasQueuedPrompt) {
+      } else if (healthDecision.reason !== 'critical_user_prompt_remediation' && !hasQueuedPrompt) {
         const language = getWorkLanguage();
         const dialogScope = dialog instanceof SideDialog ? 'sideDialog' : 'mainDialog';
         const guideText =

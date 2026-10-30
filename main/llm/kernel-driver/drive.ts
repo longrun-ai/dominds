@@ -173,6 +173,7 @@ import type {
   KernelDriverRuntimeGuidePrompt,
   KernelDriverRuntimePrompt,
 } from './types';
+import { wrapCriticalUserInterjectionPromptAtIngress } from './user-interjection';
 
 type KernelDriverRetryPolicy = Readonly<{
   aggressiveMaxRetries: number;
@@ -1097,9 +1098,9 @@ const TELLASK_SPECIAL_VIRTUAL_TOOLS: readonly FuncTool[] = [
 
 const CONTEXT_HEALTH_TOOL_RESULT_VISIBLE_BYTE_LIMIT = 2_000;
 const CONTEXT_HEALTH_LARGE_TOOL_RETURN_UNAVAILABLE_ZH =
-  '这次函数返回内容太大，清理头脑之前不会显示给你。';
+  '当前按上下文压力限制隐藏了这次过大的函数返回内容。';
 const CONTEXT_HEALTH_LARGE_TOOL_RETURN_UNAVAILABLE_EN =
-  'This function returned too much content. It will not be shown to you before you clear your mind.';
+  'This oversized function result was withheld under the context-pressure limit.';
 
 function pickContextHealthForLargeToolResultVisibility(args: {
   previous: ContextHealthSnapshot | undefined;
@@ -1120,55 +1121,37 @@ function formatContextHealthLargeToolReturnUnavailable(args: {
     args.originalBytes,
   );
 
+  const measuredNow = args.dlg.getLastContextHealth()?.kind === 'available';
+  const side = args.dlg instanceof SideDialog;
   if (args.language === 'zh') {
-    if (args.dlg instanceof SideDialog) {
-      return [
-        CONTEXT_HEALTH_LARGE_TOOL_RETURN_UNAVAILABLE_ZH,
-        '',
-        '不要再尝试获取各种大段的输出，都不会显示给你。现在先做两件事：',
-        '1. 把需要回传给主线对话的结论、证据定位和风险整理清楚。',
-        '2. 用当前对话范围（scope=dialog）提醒项写明本路对话任务目标，并把下一程恢复当前支线工作需要的信息带过桥。',
-        '',
-        '然后调用 clear_mind({}) 开启新一程，并尽快完成当前支线回复。',
-        '',
-        `详情：本次返回约 ${approxBytes} 字节。`,
-      ].join('\n');
-    }
     return [
       CONTEXT_HEALTH_LARGE_TOOL_RETURN_UNAVAILABLE_ZH,
+      measuredNow
+        ? '本次生成测量到上下文吃紧或告急。'
+        : '本次用量不可用；运行时依据上次测得的上下文压力保守限制输出，不能据此断言压力已经恢复。',
+      '后续结果会按新的可用测量重新判断；健康测量可在同一程恢复后续大结果的可见性。当前这份被隐藏的结果不会自动重新出现。',
       '',
-      '不要再尝试获取各种大段的输出，都不会显示给你。现在先做两件事：',
-      '1. 把下一程对话需要知道的此程细节信息写入差遣牒合适章节。',
-      '2. 先看固定“本路主线目标”提醒；它要求先问人类就立即问，并用 set_dialog_goal 记录答案。对于不适合差遣牒章节覆盖、但下一程恢复当前对话需要的信息，用当前对话范围（scope=dialog）提醒项带过桥。',
-      '',
-      '然后调用 clear_mind({}) 开启新一程。',
+      '先使用小范围查询、摘要或证据定位，避免重复获取大段内容。不要仅为找回输出而重复有副作用的操作；先核实已经发生的效果。',
+      side
+        ? '保留需要回传主线的结论、证据定位和风险；用当前对话范围（scope=dialog）提醒项写明本路目标及恢复支线所需信息，不要维护差遣牒。'
+        : '按固定主线目标提醒推进；需要人类澄清时先问并用 set_dialog_goal 记录。把全队确需共享的事实写入差遣牒，当前对话恢复所需的其它细节写入 scope=dialog 提醒项。',
+      '压力仍在时，完成必要的有限回应和信息保全，然后用 clear_mind({}) 减少后续历史负载；它不会恢复本次被隐藏的结果，也不会回滚工具效果。',
       '',
       `详情：本次返回约 ${approxBytes} 字节。`,
     ].join('\n');
   }
-
-  if (args.dlg instanceof SideDialog) {
-    return [
-      CONTEXT_HEALTH_LARGE_TOOL_RETURN_UNAVAILABLE_EN,
-      '',
-      'Do not try again to fetch any kind of large output; it still will not be shown. Do two things now:',
-      '1. Organize the conclusions, evidence pointers, and risks that need to go back to the Mainline dialog.',
-      '2. Use current-dialog scoped (scope=dialog) reminders to state this dialog task goal and carry over the details needed to resume this Sideline dialog in the next course.',
-      '',
-      'Then call clear_mind({}) to start a new course, and finish the current Sideline dialog reply as soon as possible.',
-      '',
-      `Detail: this return was about ${approxBytes} bytes.`,
-    ].join('\n');
-  }
-
   return [
     CONTEXT_HEALTH_LARGE_TOOL_RETURN_UNAVAILABLE_EN,
+    measuredNow
+      ? 'This generation measured tight or critical context pressure.'
+      : 'Current usage is unavailable; the runtime conservatively used the previous pressure measurement. Missing usage does not establish recovery.',
+    'Later results are reconsidered using new available measurements; a healthy measurement can restore visibility for later large results in the same course. This withheld result does not automatically reappear.',
     '',
-    'Do not try again to fetch any kind of large output; it still will not be shown. Do two things now:',
-    '1. Write the details from this course that the next course needs into the appropriate Taskdoc sections.',
-    '2. First read the fixed Main Dialog goal reminder. If it says to ask the human, ask and record the answer with set_dialog_goal. For information that does not fit a Taskdoc section but is needed to resume this dialog in the next course, use current-dialog scoped (scope=dialog) reminders to carry it over.',
-    '',
-    'Then call clear_mind({}) to start a new course.',
+    'Use bounded queries, summaries, or evidence pointers first and avoid repeated large fetches. Do not repeat side-effecting operations merely to retrieve output; verify their effects before considering a retry.',
+    side
+      ? 'Preserve conclusions, evidence pointers, and risks for the Mainline dialog. Use current-dialog scoped (scope=dialog) reminders to state this dialog task goal and the details needed to resume this Sideline dialog; do not maintain Taskdoc.'
+      : 'Follow the fixed Main Dialog goal reminder; ask the human when clarification is needed and record it with set_dialog_goal. Put facts teammates truly need to share into Taskdoc and other details needed to resume this dialog into scope=dialog reminders.',
+    'While pressure persists, complete any necessary bounded response and preserve needed information, then use clear_mind({}) to reduce history for future work. It does not restore this withheld result or roll back tool effects.',
     '',
     `Detail: this return was about ${approxBytes} bytes.`,
   ].join('\n');
@@ -4088,6 +4071,14 @@ export async function driveDialogStreamCore(
           }
         }
 
+        // A queued input can precede the usage measurement of the generation it interrupted.
+        // Re-evaluate at execution time; already wrapped ingress is idempotent.
+        if (pendingPrompt?.origin === 'user' && pendingPrompt.q4hAnswerCallId === undefined) {
+          pendingPrompt = wrapCriticalUserInterjectionPromptAtIngress(dlg, pendingPrompt);
+          if (isAgentFacingCriticalUserInterjectionRemediationGuideContent(pendingPrompt.content)) {
+            criticalRemediationAppliedUserPromptMsgId = pendingPrompt.msgId;
+          }
+        }
         const minds = await loadAgentMinds(dlg.agentId, dlg);
         const team = minds.team;
         const policy = buildKernelDriverPolicy({
@@ -5109,7 +5100,6 @@ export async function driveDialogStreamCore(
           };
 
           const previousAssistantSayingGenseq = lastAssistantSayingGenseq;
-          const contextHealthBeforeGen = dlg.getLastContextHealth();
           const llmOutput = await streamOrBatch();
           if (typeof llmOutput.llmGenModel === 'string' && llmOutput.llmGenModel.trim() !== '') {
             llmGenModelForGen = llmOutput.llmGenModel.trim();
@@ -5335,7 +5325,7 @@ export async function driveDialogStreamCore(
             allowTellaskFunctions: policy.allowTellaskFunctions,
             activePromptReplyDirective: currentPrompt?.tellaskReplyDirective,
             contextHealthForToolResultVisibility: pickContextHealthForLargeToolResultVisibility({
-              previous: contextHealthBeforeGen,
+              previous: dlg.getLastAvailableContextHealth(),
               current: contextHealthForGen,
             }),
           });

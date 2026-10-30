@@ -254,6 +254,7 @@ export interface DialogInitParams {
     createdAt?: string;
     updatedAt?: string;
     contextHealth?: ContextHealthSnapshot;
+    lastAvailableContextHealth?: Extract<ContextHealthSnapshot, { kind: 'available' }>;
     pendingRuntimePrompt?: DialogRuntimePrompt;
   };
 }
@@ -404,6 +405,7 @@ export abstract class Dialog {
   protected _uiLanguage: LanguageCode;
   protected _lastUserLanguageCode: LanguageCode;
   protected _lastContextHealth?: ContextHealthSnapshot;
+  protected _lastAvailableContextHealth?: Extract<ContextHealthSnapshot, { kind: 'available' }>;
   protected _lastContextHealthGenseq?: number;
   // Prompts queued for future drives (set by startNewCourse or deferred-resume flows).
   protected _queuedPrompts: DialogQueuedPromptState[] = [];
@@ -477,6 +479,10 @@ export abstract class Dialog {
     this._uiLanguage = getWorkLanguage();
     this._lastUserLanguageCode = getWorkLanguage();
     this._lastContextHealth = initialState?.contextHealth;
+    this._lastAvailableContextHealth =
+      this._lastContextHealth?.kind === 'available'
+        ? this._lastContextHealth
+        : initialState?.lastAvailableContextHealth;
     this._lastContextHealthGenseq = undefined;
     if (initialState?.pendingRuntimePrompt) {
       this.setPendingRuntimePrompt(initialState.pendingRuntimePrompt);
@@ -489,6 +495,7 @@ export abstract class Dialog {
       return;
     }
     this._lastContextHealth = snapshot;
+    if (snapshot.kind === 'available') this._lastAvailableContextHealth = snapshot;
     // Track the generation sequence that produced this snapshot, so reminder owners
     // can distinguish pre-generation updates (previous snapshot) from post-generation
     // updates (current snapshot) without relying on heuristics.
@@ -498,6 +505,12 @@ export abstract class Dialog {
 
   public getLastContextHealth(): ContextHealthSnapshot | undefined {
     return this._lastContextHealth;
+  }
+
+  public getLastAvailableContextHealth():
+    | Extract<ContextHealthSnapshot, { kind: 'available' }>
+    | undefined {
+    return this._lastAvailableContextHealth;
   }
 
   public getLastContextHealthGenseq(): number | undefined {
@@ -1854,6 +1867,7 @@ export abstract class Dialog {
     // Usage measures the context sent in one course. A new course has no measurement yet;
     // continuation metadata can retain the old pressure without treating it as current state.
     this._lastContextHealth = { kind: 'unavailable', reason: 'usage_unavailable' };
+    this._lastAvailableContextHealth = undefined;
     this._lastContextHealthGenseq = undefined;
     this._updatedAt = formatUnifiedTimestamp(new Date());
     this.resetCourseLanguageNotice();

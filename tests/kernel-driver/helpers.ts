@@ -78,6 +78,8 @@ export async function writeStandardMinds(
     providerApiType?: string;
     providerApiQuirks?: ReadonlyArray<string>;
     modelContextLength?: number;
+    modelOptimalMaxTokens?: number;
+    modelCriticalMaxTokens?: number;
   },
 ): Promise<void> {
   const includePangu = options?.includePangu === true;
@@ -99,6 +101,10 @@ export async function writeStandardMinds(
   llmLines.push('    models:', '      default:', '        name: Default');
   if (options?.modelContextLength !== undefined)
     llmLines.push(`        context_length: ${options.modelContextLength}`);
+  if (options?.modelOptimalMaxTokens !== undefined)
+    llmLines.push(`        optimal_max_tokens: ${options.modelOptimalMaxTokens}`);
+  if (options?.modelCriticalMaxTokens !== undefined)
+    llmLines.push(`        critical_max_tokens: ${options.modelCriticalMaxTokens}`);
   llmLines.push('');
   await fs.writeFile(path.join(tmpRoot, '.minds', 'llm.yaml'), llmLines.join('\n'), 'utf-8');
 

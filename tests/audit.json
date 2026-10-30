@@ -366,6 +366,36 @@
       "lane": "kernel",
       "value": "stream/batch同轮本地工具结果触发后续生成，支线实际等待人类时主线仍接受新输入；各自问题、派遣责任和执行次数保持",
       "evidence": "Durable execution batch: complete assertion-design review, real isolated runtime/persistence and external effect receipts; retained machine comparisons are IDs, supplied payloads, counts, state and transport. Subjective output acceptance and initial rejected guidance are recorded in tests/semantic/reviews/2026-10-30-durable-execution.json; no automatic acceptance of later output."
+    },
+    "kernel-driver/context-health-large-tool-output-hidden.ts": {
+      "status": "reviewed",
+      "lane": "kernel",
+      "value": "实际工具结果的UTF8边界、text/image item预算、未知用量保守限制、健康恢复和主支线权限；主目标工具真实调用及状态生效",
+      "evidence": "Context pressure batch: complete assertion review, actual provider requests/persisted effects or explicit Boolean/configuration data contracts. tests/semantic/reviews/2026-10-30-context-pressure.json; fresh semantic output always starts pending."
+    },
+    "kernel-driver/context-health-multi-iter-gate.ts": {
+      "status": "reviewed",
+      "lane": "kernel",
+      "value": "真实两工具链由健康转吃紧时只插一份保全输入，保留两个有效结果并完成回答",
+      "evidence": "Context pressure batch: complete assertion review, actual provider requests/persisted effects or explicit Boolean/configuration data contracts. tests/semantic/reviews/2026-10-30-context-pressure.json; fresh semantic output always starts pending."
+    },
+    "kernel-driver/critical-queued-user-interjection.ts": {
+      "status": "reviewed",
+      "lane": "kernel",
+      "value": "真实WS输入在已知压力及排队后首次发现压力两路均计宽限一次，工具后答复落盘，输入正文/身份/入站语言保真",
+      "evidence": "Context pressure batch: complete assertion review, actual provider requests/persisted effects or explicit Boolean/configuration data contracts. tests/semantic/reviews/2026-10-30-context-pressure.json; fresh semantic output always starts pending."
+    },
+    "websocket-user-msg-generation-boundary.ts": {
+      "status": "reviewed",
+      "lane": "context",
+      "value": "生成状态持久化竞态和锁边界的排队资格，以及目标对话语言fallback；指导含义移至真实driver证据",
+      "evidence": "Context pressure batch: complete assertion review, actual provider requests/persisted effects or explicit Boolean/configuration data contracts. tests/semantic/reviews/2026-10-30-context-pressure.json; fresh semantic output always starts pending."
+    },
+    "kernel-driver/fbr-model-params-merge.ts": {
+      "status": "reviewed",
+      "lane": "kernel",
+      "value": "FBR模型参数覆盖保留各供应商未覆盖字段，覆盖冲突值而不丢失其他供应商命名空间；本项是局部配置契约，不冒充真实供应商执行",
+      "evidence": "Context pressure batch: complete assertion review, actual provider requests/persisted effects or explicit Boolean/configuration data contracts. tests/semantic/reviews/2026-10-30-context-pressure.json; fresh semantic output always starts pending."
     }
   },
   "retired": {
@@ -466,6 +496,11 @@
       "decision": "merge",
       "replacement": "kernel-driver/q4h-preserves-diligence-budget.ts",
       "reason": "保留运行时全局问题广播与预算持久化价值，检查真实全局恰好一次/scoped不重复，并检查实际scoped错误事件；删除从不承载stream_error的global recorder里搜错误文字的恒空否定检查。"
+    },
+    "kernel-driver/critical-user-tool-followup.ts": {
+      "decision": "merge",
+      "replacement": "kernel-driver/critical-queued-user-interjection.ts",
+      "reason": "旧夹具预先拼装指导并以同源formatter裁判措辞，缺少真实压力入口；改用真实WS入站、实际测量、宽限计数和工具后回复，语言切换/正文保真与语义指导分别验收。命名脚本重定向替代入口。"
     }
   }
 }

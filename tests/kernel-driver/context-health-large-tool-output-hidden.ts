@@ -1,623 +1,449 @@
-import type { ContextHealthSnapshot } from '@longrun-ai/kernel/types/context-health';
 import assert from 'node:assert/strict';
 import fs from 'node:fs/promises';
 import path from 'node:path';
 
+import type { LlmUsageStats } from '@longrun-ai/kernel/types/context-health';
+import { globalDialogRegistry } from '../../main/dialog-global-registry';
+import { getOrRestoreMainDialog } from '../../main/dialog-instance-registry';
+import type { ChatMessage } from '../../main/llm/client';
+import type { LlmRequestContext } from '../../main/llm/gen';
+import { registerLlmGenerator, unregisterLlmGenerator } from '../../main/llm/gen/registry';
 import { driveDialogStream } from '../../main/llm/kernel-driver';
+import { DialogPersistence } from '../../main/persistence';
 import { setWorkLanguage } from '../../main/runtime/work-language';
-import type { FuncTool } from '../../main/tool';
+import type { FuncTool, ToolCallOutput } from '../../main/tool';
 import { toolSuccess } from '../../main/tool';
 import { registerTool, unregisterTool } from '../../main/tools/registry';
-
+import { messageProvider } from '../helpers/message-provider';
+import { semanticEvidenceCollector } from '../helpers/semantic-evidence';
 import {
   createMainDialog,
   makeUserPrompt,
+  waitFor,
+  waitForAllDialogsUnlocked,
   withTempRtws,
-  writeMockDb,
   writeStandardMinds,
 } from './helpers';
 
-function byteLength(text: string): number {
-  return Buffer.byteLength(text, 'utf8');
-}
-
-function expectedMainlineReplacement(originalBytes: number): string {
-  return [
-    '这次函数返回内容太大，清理头脑之前不会显示给你。',
-    '',
-    '不要再尝试获取各种大段的输出，都不会显示给你。现在先做两件事：',
-    '1. 把下一程对话需要知道的此程细节信息写入差遣牒合适章节。',
-    '2. 先看固定“本路主线目标”提醒；它要求先问人类就立即问，并用 set_dialog_goal 记录答案。对于不适合差遣牒章节覆盖、但下一程恢复当前对话需要的信息，用当前对话范围（scope=dialog）提醒项带过桥。',
-    '',
-    '然后调用 clear_mind({}) 开启新一程。',
-    '',
-    `详情：本次返回约 ${new Intl.NumberFormat('zh-CN').format(originalBytes)} 字节。`,
-  ].join('\n');
-}
-
-function expectedSidelineReplacement(originalBytes: number): string {
-  return [
-    '这次函数返回内容太大，清理头脑之前不会显示给你。',
-    '',
-    '不要再尝试获取各种大段的输出，都不会显示给你。现在先做两件事：',
-    '1. 把需要回传给主线对话的结论、证据定位和风险整理清楚。',
-    '2. 用当前对话范围（scope=dialog）提醒项写明本路对话任务目标，并把下一程恢复当前支线工作需要的信息带过桥。',
-    '',
-    '然后调用 clear_mind({}) 开启新一程，并尽快完成当前支线回复。',
-    '',
-    `详情：本次返回约 ${new Intl.NumberFormat('zh-CN').format(originalBytes)} 字节。`,
-  ].join('\n');
-}
-
-function expectedEnglishMainlineReplacement(originalBytes: number): string {
-  return [
-    'This function returned too much content. It will not be shown to you before you clear your mind.',
-    '',
-    'Do not try again to fetch any kind of large output; it still will not be shown. Do two things now:',
-    '1. Write the details from this course that the next course needs into the appropriate Taskdoc sections.',
-    '2. First read the fixed Main Dialog goal reminder. If it says to ask the human, ask and record the answer with set_dialog_goal. For information that does not fit a Taskdoc section but is needed to resume this dialog in the next course, use current-dialog scoped (scope=dialog) reminders to carry it over.',
-    '',
-    'Then call clear_mind({}) to start a new course.',
-    '',
-    `Detail: this return was about ${new Intl.NumberFormat('en-US').format(originalBytes)} bytes.`,
-  ].join('\n');
-}
-
-const PREVIOUS_CAUTION_SNAPSHOT: ContextHealthSnapshot = {
-  kind: 'available',
-  promptTokens: 210_000,
-  completionTokens: 100,
-  totalTokens: 210_100,
-  modelContextLimitTokens: 272_000,
-  effectiveOptimalMaxTokens: 200_000,
-  effectiveCriticalMaxTokens: 244_800,
-  hardUtil: 210_000 / 272_000,
-  optimalUtil: 210_000 / 200_000,
-  level: 'caution',
-};
-const CONTENT_ITEMS_TOOL_NAME = 'large_tool_output_content_items_probe';
-const IMAGE_CONTENT_ITEM_TOOL_NAME = 'large_tool_output_image_content_item_probe';
-
+const evidence = semanticEvidenceCollector('dominds-large-output-');
+const toolName = 'context_output_probe';
 async function main(): Promise<void> {
-  await withTempRtws(async (tmpRoot) => {
-    setWorkLanguage('zh');
-    const contentItemsValue = `content-items-start-${'i'.repeat(2_300)}-content-items-end`;
-    const contentItemsTool: FuncTool = {
-      type: 'func',
-      name: CONTENT_ITEMS_TOOL_NAME,
-      description: 'Test-only function tool that returns large model-visible content items.',
-      parameters: {
-        type: 'object',
-        properties: {},
-        additionalProperties: false,
-      },
-      followupMode: 'deferred',
-      argsValidation: 'passthrough',
-      async call() {
-        return toolSuccess('short top-level content', [
-          { type: 'input_text', text: contentItemsValue },
-        ]);
-      },
-    };
-    const imageContentItemByteLength = 2_300;
-    const imageContentItemsTool: FuncTool = {
-      type: 'func',
-      name: IMAGE_CONTENT_ITEM_TOOL_NAME,
-      description: 'Test-only function tool that returns a large image content item.',
-      parameters: {
-        type: 'object',
-        properties: {},
-        additionalProperties: false,
-      },
-      followupMode: 'deferred',
-      argsValidation: 'passthrough',
-      async call(dlg) {
-        return toolSuccess('short image top-level content', [
-          {
-            type: 'input_image',
-            mimeType: 'image/png',
-            byteLength: imageContentItemByteLength,
-            artifact: {
-              rootId: dlg.id.rootId,
-              selfId: dlg.id.selfId,
-              status: dlg.status,
-              relPath: 'tool-results/test-image.png',
+  await withTempRtws(async (rtws) => {
+    const apiType = 'controlled-context-output';
+    for (const language of ['en', 'zh'] as const) {
+      setWorkLanguage(language);
+      for (const streaming of [true, false]) {
+        for (const variant of [
+          'large-text',
+          'exact-byte-limit',
+          'over-byte-limit',
+          'previous-caution',
+          'repeated-unknown',
+          'recovered-current',
+          'text-items',
+          'image-item',
+          'side-large',
+        ] as const) {
+          const id = `${variant}-${language}-${streaming ? 'stream' : 'batch'}`;
+          const sideScope = variant === 'side-large';
+          const seedPrevious = [
+            'previous-caution',
+            'recovered-current',
+            'repeated-unknown',
+          ].includes(variant);
+          const hidden = variant !== 'exact-byte-limit' && variant !== 'recovered-current';
+          const payload =
+            variant === 'exact-byte-limit'
+              ? `${'界'.repeat(666)}ab`
+              : variant === 'over-byte-limit'
+                ? '界'.repeat(667)
+                : `opaque-large-data-${'x'.repeat(2300)}`;
+          const top = 't'.repeat(500);
+          const item = 'i'.repeat(1501);
+          let expectedOutput: ToolCallOutput | undefined;
+          let toolCalls = 0;
+          const probe: FuncTool = {
+            type: 'func',
+            name: toolName,
+            description: 'Controlled model-visible result data.',
+            parameters: { type: 'object', properties: {}, additionalProperties: false },
+            argsValidation: 'passthrough',
+            followupMode:
+              variant === 'text-items' || variant === 'image-item' ? 'deferred' : 'immediate',
+            async call(dialog) {
+              toolCalls += 1;
+              expectedOutput =
+                variant === 'text-items'
+                  ? toolSuccess(top, [{ type: 'input_text', text: item }])
+                  : variant === 'image-item'
+                    ? toolSuccess(top, [
+                        {
+                          type: 'input_image',
+                          mimeType: 'image/png',
+                          byteLength: 1501,
+                          artifact: {
+                            rootId: dialog.id.rootId,
+                            selfId: dialog.id.selfId,
+                            status: dialog.status,
+                            relPath: 'tool-results/withheld-image.png',
+                          },
+                        },
+                      ])
+                    : toolSuccess(payload);
+              return expectedOutput;
             },
-          },
-        ]);
-      },
-    };
-
-    registerTool(contentItemsTool);
-    registerTool(imageContentItemsTool);
-    await writeStandardMinds(tmpRoot, {
-      memberTools: ['env_get', CONTENT_ITEMS_TOOL_NAME, IMAGE_CONTENT_ITEM_TOOL_NAME],
-    });
-    await fs.writeFile(
-      path.join(tmpRoot, '.minds', 'llm.yaml'),
-      [
-        'providers:',
-        '  local-mock:',
-        '    name: Local Mock',
-        '    apiType: mock',
-        '    baseUrl: mock-db',
-        '    apiKeyEnvVar: MOCK_API_KEY',
-        '    models:',
-        '      default:',
-        '        name: Default',
-        '        context_length: 272000',
-        '        optimal_max_tokens: 200000',
-        '        critical_max_tokens: 244800',
-        '',
-      ].join('\n'),
-      'utf-8',
-    );
-
-    const trigger = 'Call env_get while context is already tight.';
-    const previousCautionTrigger =
-      'Call env_get while previous context health is tight and current usage is unavailable.';
-    const recoveredTrigger =
-      'Call env_get after previous context health was tight but current usage recovered.';
-    const sideTrigger = 'Call env_get in a side dialog while context is already tight.';
-    const contentItemsTrigger = 'Call the content-items probe while context is already tight.';
-    const imageContentItemTrigger =
-      'Call the image content-item probe while context is already tight.';
-    const englishTrigger = 'Call env_get in English while context is already tight.';
-    const largeValue = `large-start-${'x'.repeat(2_300)}-large-end`;
-    const previousCautionLargeValue = `previous-caution-start-${'y'.repeat(2_300)}-previous-caution-end`;
-    const recoveredLargeValue = `recovered-start-${'z'.repeat(2_300)}-recovered-end`;
-    const sideLargeValue = `side-start-${'s'.repeat(2_300)}-side-end`;
-    const englishLargeValue = `english-start-${'e'.repeat(2_300)}-english-end`;
-    const envKey = 'DOMINDS_TEST_LARGE_TOOL_OUTPUT';
-    const previousCautionEnvKey = 'DOMINDS_TEST_PREVIOUS_CAUTION_LARGE_TOOL_OUTPUT';
-    const recoveredEnvKey = 'DOMINDS_TEST_RECOVERED_LARGE_TOOL_OUTPUT';
-    const sideEnvKey = 'DOMINDS_TEST_SIDE_LARGE_TOOL_OUTPUT';
-    const englishEnvKey = 'DOMINDS_TEST_ENGLISH_LARGE_TOOL_OUTPUT';
-    const expectedReplacement = expectedMainlineReplacement(byteLength(largeValue));
-    const expectedPreviousCautionReplacement = expectedMainlineReplacement(
-      byteLength(previousCautionLargeValue),
-    );
-    const expectedSideReplacement = expectedSidelineReplacement(byteLength(sideLargeValue));
-    const expectedContentItemsReplacement = expectedMainlineReplacement(
-      byteLength('short top-level content') + byteLength(contentItemsValue),
-    );
-    const expectedImageContentItemReplacement = expectedMainlineReplacement(
-      byteLength('short image top-level content') + imageContentItemByteLength,
-    );
-    const expectedEnglishReplacement = expectedEnglishMainlineReplacement(
-      byteLength(englishLargeValue),
-    );
-    process.env[envKey] = largeValue;
-    process.env[previousCautionEnvKey] = previousCautionLargeValue;
-    process.env[recoveredEnvKey] = recoveredLargeValue;
-    process.env[sideEnvKey] = sideLargeValue;
-    process.env[englishEnvKey] = englishLargeValue;
-
-    try {
-      await writeMockDb(tmpRoot, [
-        {
-          message: trigger,
-          role: 'user',
-          response: '我会读取环境变量。',
-          funcCalls: [
-            {
-              id: 'large-env-get',
-              name: 'env_get',
-              arguments: { key: envKey },
+          };
+          registerTool(probe);
+          await writeStandardMinds(rtws, {
+            providerApiType: apiType,
+            streaming,
+            includePangu: sideScope,
+            memberTools: [toolName],
+            modelContextLength: 272000,
+            modelOptimalMaxTokens: 200000,
+            modelCriticalMaxTokens: 244800,
+          });
+          if (sideScope)
+            await fs.appendFile(
+              path.join(rtws, '.minds', 'team.yaml'),
+              `    tools: [${toolName}]\n`,
+            );
+          let root = await createMainDialog();
+          root.disableDiligencePush = true;
+          let stage: 'seed' | 'probe' = seedPrevious ? 'seed' : 'probe';
+          let rootRounds = 0;
+          let probeRounds = 0;
+          let callId = `output-${id}`;
+          const taskId = `side-task-${id}`;
+          let seenResult: Extract<ChatMessage, { type: 'func_result_msg' }> | undefined;
+          let seenSystem = '';
+          let availableTools: string[] = [];
+          const generate = (
+            request: LlmRequestContext,
+            context: ChatMessage[],
+            genseq: number,
+            system: string,
+            tools: readonly FuncTool[],
+          ): { messages: ChatMessage[]; usage: LlmUsageStats } => {
+            assert.equal(
+              tools.filter((tool) => tool.name === 'set_dialog_goal').length,
+              sideScope && request.dialogSelfId !== root.id.selfId ? 0 : 1,
+              'the fixed main goal is executable only in its owning main dialog',
+            );
+            if (stage === 'seed') {
+              assert.equal(request.dialogSelfId, root.id.selfId);
+              return {
+                messages: [
+                  {
+                    type: 'saying_msg',
+                    role: 'assistant',
+                    genseq,
+                    content: 'caution-seed-output-data',
+                  },
+                ],
+                usage: {
+                  kind: 'available',
+                  promptTokens: 210000,
+                  completionTokens: 10,
+                  totalTokens: 210010,
+                },
+              };
+            }
+            if (sideScope && request.dialogSelfId === root.id.selfId) {
+              rootRounds += 1;
+              assert.ok(rootRounds <= 2);
+              if (rootRounds === 1)
+                return {
+                  messages: [
+                    {
+                      type: 'func_call_msg',
+                      role: 'assistant',
+                      genseq,
+                      id: taskId,
+                      name: 'tellaskSessionless',
+                      arguments: JSON.stringify({
+                        targetAgentId: 'pangu',
+                        tellaskContent: 'side-output-task-data',
+                      }),
+                    },
+                  ],
+                  usage: {
+                    kind: 'available',
+                    promptTokens: 1000,
+                    completionTokens: 10,
+                    totalTokens: 1010,
+                  },
+                };
+              const delivered = context
+                .filter((message) => message.type === 'tellask_result_msg')
+                .filter((message) => message.callId === taskId);
+              assert.equal(delivered.length, 1);
+              assert.equal(delivered[0].status, 'completed');
+              assert.ok(delivered[0].content.includes('side-output-status-data'));
+              return {
+                messages: [
+                  {
+                    type: 'saying_msg',
+                    role: 'assistant',
+                    genseq,
+                    content: 'caller-consumed-output-data',
+                  },
+                ],
+                usage: { kind: 'unavailable' },
+              };
+            }
+            if (!sideScope) assert.equal(request.dialogSelfId, root.id.selfId);
+            probeRounds += 1;
+            assert.ok(
+              probeRounds <= (variant === 'repeated-unknown' ? 3 : 2),
+              'each result resumes once',
+            );
+            if (probeRounds === 1)
+              return {
+                messages: [
+                  ...(variant === 'large-text'
+                    ? [
+                        {
+                          type: 'func_call_msg' as const,
+                          role: 'assistant' as const,
+                          genseq,
+                          id: `goal-${id}`,
+                          name: 'set_dialog_goal',
+                          arguments: JSON.stringify({ mode: 'goal', goal: 'controlled-goal-data' }),
+                        },
+                      ]
+                    : []),
+                  {
+                    type: 'func_call_msg',
+                    role: 'assistant',
+                    genseq,
+                    id: callId,
+                    name: toolName,
+                    arguments: '{}',
+                  },
+                ],
+                usage:
+                  variant === 'previous-caution' || variant === 'repeated-unknown'
+                    ? { kind: 'unavailable' }
+                    : {
+                        kind: 'available',
+                        promptTokens: variant === 'recovered-current' ? 1000 : 210000,
+                        completionTokens: 10,
+                        totalTokens: variant === 'recovered-current' ? 1010 : 210010,
+                      },
+              };
+            const results = context
+              .filter((message) => message.type === 'func_result_msg')
+              .filter((message) => message.id === (probeRounds === 3 ? `${callId}-again` : callId));
+            assert.equal(results.length, 1);
+            seenResult = results[0];
+            seenSystem = system;
+            availableTools = tools.map((tool) => tool.name);
+            assert.ok(expectedOutput);
+            if (hidden) {
+              assert.equal(seenResult.contentItems, undefined);
+              assert.equal(
+                seenResult.content.includes(payload),
+                false,
+                'known withheld data does not leak into the model-visible result',
+              );
+              if (variant === 'text-items') assert.equal(seenResult.content.includes(item), false);
+              assert.notEqual(seenResult.content, expectedOutput.content);
+            } else assert.equal(seenResult.content, payload);
+            if (variant === 'repeated-unknown' && probeRounds === 2) {
+              return {
+                messages: [
+                  {
+                    type: 'func_call_msg',
+                    role: 'assistant',
+                    genseq,
+                    id: `${callId}-again`,
+                    name: toolName,
+                    arguments: '{}',
+                  },
+                ],
+                usage: { kind: 'unavailable' },
+              };
+            }
+            return {
+              messages: sideScope
+                ? [
+                    {
+                      type: 'func_call_msg',
+                      role: 'assistant',
+                      genseq,
+                      id: `reply-${id}`,
+                      name: 'replyTellaskSessionless',
+                      arguments: JSON.stringify({ replyContent: 'side-output-status-data' }),
+                    },
+                  ]
+                : [
+                    {
+                      type: 'saying_msg',
+                      role: 'assistant',
+                      genseq,
+                      content: 'post-tool-output-data',
+                    },
+                  ],
+              usage: { kind: 'unavailable' },
+            };
+          };
+          const generator = messageProvider(
+            apiType,
+            ({ request, context, genseq, systemPrompt, tools, streaming: actualStreaming }) => {
+              assert.equal(actualStreaming, streaming);
+              return generate(request, [...context], genseq, systemPrompt, tools);
             },
-          ],
-          usage: { promptTokens: 210_000, completionTokens: 100 },
-        },
-        {
-          message: expectedReplacement,
-          role: 'tool',
-          response: '我会保存接续信息并清理头脑。',
-          usage: { promptTokens: 210_100, completionTokens: 100 },
-        },
-        {
-          message: previousCautionTrigger,
-          role: 'user',
-          response: '我会读取另一个环境变量。',
-          funcCalls: [
-            {
-              id: 'previous-caution-large-env-get',
-              name: 'env_get',
-              arguments: { key: previousCautionEnvKey },
-            },
-          ],
-          usageUnavailable: true,
-        },
-        {
-          message: expectedPreviousCautionReplacement,
-          role: 'tool',
-          response: '我会按上一轮吃紧状态保存接续信息并清理头脑。',
-          usage: { promptTokens: 210_100, completionTokens: 100 },
-        },
-        {
-          message: recoveredTrigger,
-          role: 'user',
-          response: '我会在当前健康上下文里读取环境变量。',
-          funcCalls: [
-            {
-              id: 'recovered-large-env-get',
-              name: 'env_get',
-              arguments: { key: recoveredEnvKey },
-            },
-          ],
-          usage: { promptTokens: 1_000, completionTokens: 100 },
-        },
-        {
-          message: recoveredLargeValue,
-          role: 'tool',
-          response: '当前上下文已恢复健康，所以我看到了原始输出。',
-          usage: { promptTokens: 1_100, completionTokens: 100 },
-        },
-        {
-          message: sideTrigger,
-          role: 'user',
-          response: '我会在支线对话读取环境变量。',
-          funcCalls: [
-            {
-              id: 'side-large-env-get',
-              name: 'env_get',
-              arguments: { key: sideEnvKey },
-            },
-          ],
-          usage: { promptTokens: 210_000, completionTokens: 100 },
-        },
-        {
-          message: expectedSideReplacement,
-          role: 'tool',
-          response: '我会整理回传结论并完成支线回复。',
-          usage: { promptTokens: 210_100, completionTokens: 100 },
-        },
-        {
-          message: contentItemsTrigger,
-          role: 'user',
-          response: '我会读取一个 contentItems 大返回。',
-          funcCalls: [
-            {
-              id: 'large-content-items-probe',
-              name: CONTENT_ITEMS_TOOL_NAME,
-              arguments: {},
-            },
-          ],
-          usage: { promptTokens: 210_000, completionTokens: 100 },
-        },
-        {
-          message: expectedContentItemsReplacement,
-          role: 'tool',
-          response: '我会按大返回规则处理 contentItems。',
-          usage: { promptTokens: 210_100, completionTokens: 100 },
-        },
-        {
-          message: imageContentItemTrigger,
-          role: 'user',
-          response: '我会读取一个图片 contentItem 大返回。',
-          funcCalls: [
-            {
-              id: 'large-image-content-item-probe',
-              name: IMAGE_CONTENT_ITEM_TOOL_NAME,
-              arguments: {},
-            },
-          ],
-          usage: { promptTokens: 210_000, completionTokens: 100 },
-        },
-        {
-          message: expectedImageContentItemReplacement,
-          role: 'tool',
-          response: '我会按大返回规则处理图片 contentItem。',
-          usage: { promptTokens: 210_100, completionTokens: 100 },
-        },
-        {
-          message: englishTrigger,
-          role: 'user',
-          response: 'I will read the environment variable.',
-          funcCalls: [
-            {
-              id: 'english-large-env-get',
-              name: 'env_get',
-              arguments: { key: englishEnvKey },
-            },
-          ],
-          usage: { promptTokens: 210_000, completionTokens: 100 },
-        },
-        {
-          message: expectedEnglishReplacement,
-          role: 'tool',
-          response: 'I will save the handoff details and clear my mind.',
-          usage: { promptTokens: 210_100, completionTokens: 100 },
-        },
-      ]);
-
-      const dlg = await createMainDialog('tester');
-      dlg.disableDiligencePush = true;
-
-      await driveDialogStream(
-        dlg,
-        makeUserPrompt(trigger, 'kernel-driver-context-health-large-tool-output-hidden'),
-        true,
-      );
-
-      const funcResults = dlg.msgs.filter((msg) => msg.type === 'func_result_msg');
-      assert.equal(funcResults.length, 1, 'expected exactly one function result');
-      const resultContent = funcResults[0]?.content ?? '';
-      assert.equal(resultContent, expectedReplacement);
-      assert.match(resultContent, /这次函数返回内容太大，清理头脑之前不会显示给你/);
-      assert.match(resultContent, /不要再尝试获取各种大段的输出，都不会显示给你/);
-      assert.match(resultContent, /固定“本路主线目标”提醒/);
-      assert.match(resultContent, /set_dialog_goal/);
-      assert.match(resultContent, /恢复当前对话需要的信息/);
-      assert.match(resultContent, /然后调用 clear_mind\(\{\}\) 开启新一程/);
-      assert.match(
-        resultContent,
-        new RegExp(
-          `详情：本次返回约 ${new Intl.NumberFormat('zh-CN').format(byteLength(largeValue))} 字节。`,
-        ),
-      );
-      assert.doesNotMatch(resultContent, /large-start/);
-      assert.doesNotMatch(resultContent, /large-end/);
-
-      const assistantSayings = dlg.msgs.filter(
-        (msg) => msg.type === 'saying_msg' && msg.role === 'assistant',
-      );
-      assert.equal(
-        assistantSayings.some((msg) => msg.content === '我会保存接续信息并清理头脑。'),
-        true,
-        'expected large-output replacement to preserve ordinary immediate model follow-up',
-      );
-
-      const previousCautionDlg = await createMainDialog('tester');
-      previousCautionDlg.disableDiligencePush = true;
-      previousCautionDlg.setLastContextHealth(PREVIOUS_CAUTION_SNAPSHOT);
-
-      await driveDialogStream(
-        previousCautionDlg,
-        makeUserPrompt(
-          previousCautionTrigger,
-          'kernel-driver-context-health-previous-caution-large-tool-output-hidden',
-        ),
-        true,
-      );
-
-      const previousCautionFuncResults = previousCautionDlg.msgs.filter(
-        (msg) => msg.type === 'func_result_msg',
-      );
-      assert.equal(
-        previousCautionFuncResults.length,
-        1,
-        'expected exactly one function result for previous-caution scenario',
-      );
-      const previousCautionResultContent = previousCautionFuncResults[0]?.content ?? '';
-      assert.equal(previousCautionResultContent, expectedPreviousCautionReplacement);
-      assert.doesNotMatch(previousCautionResultContent, /previous-caution-start/);
-      assert.doesNotMatch(previousCautionResultContent, /previous-caution-end/);
-
-      const previousCautionAssistantSayings = previousCautionDlg.msgs.filter(
-        (msg) => msg.type === 'saying_msg' && msg.role === 'assistant',
-      );
-      assert.equal(
-        previousCautionAssistantSayings.some(
-          (msg) => msg.content === '我会按上一轮吃紧状态保存接续信息并清理头脑。',
-        ),
-        true,
-        'expected previous context-health snapshot to hide large output when current usage is unavailable',
-      );
-
-      const recoveredDlg = await createMainDialog('tester');
-      recoveredDlg.disableDiligencePush = true;
-      recoveredDlg.setLastContextHealth(PREVIOUS_CAUTION_SNAPSHOT);
-
-      await driveDialogStream(
-        recoveredDlg,
-        makeUserPrompt(
-          recoveredTrigger,
-          'kernel-driver-context-health-recovered-large-tool-output-visible',
-        ),
-        true,
-      );
-
-      const recoveredFuncResults = recoveredDlg.msgs.filter(
-        (msg) => msg.type === 'func_result_msg',
-      );
-      assert.equal(
-        recoveredFuncResults.length,
-        1,
-        'expected exactly one function result for recovered context scenario',
-      );
-      assert.equal(
-        recoveredFuncResults[0]?.content,
-        recoveredLargeValue,
-        'current healthy usage must make large output visible even when previous snapshot was caution',
-      );
-
-      const recoveredAssistantSayings = recoveredDlg.msgs.filter(
-        (msg) => msg.type === 'saying_msg' && msg.role === 'assistant',
-      );
-      assert.equal(
-        recoveredAssistantSayings.some(
-          (msg) => msg.content === '当前上下文已恢复健康，所以我看到了原始输出。',
-        ),
-        true,
-        'expected healthy current usage to preserve ordinary immediate follow-up from raw tool output',
-      );
-
-      const rootForSideDialog = await createMainDialog('tester');
-      rootForSideDialog.disableDiligencePush = true;
-      const sideDialog = await rootForSideDialog.createSideDialog(
-        'tester',
-        ['@tester'],
-        'Inspect side dialog large output handling.',
-        {
-          callName: 'tellaskSessionless',
-          originMemberId: 'tester',
-          askerDialogId: rootForSideDialog.id.selfId,
-          callId: 'root-to-side-large-output',
-          callSiteCourse: 1,
-          callSiteGenseq: 1,
-          collectiveTargets: ['tester'],
-        },
-      );
-      sideDialog.disableDiligencePush = true;
-
-      await driveDialogStream(
-        sideDialog,
-        makeUserPrompt(sideTrigger, 'kernel-driver-context-health-side-large-tool-output-hidden'),
-        true,
-      );
-
-      const sideFuncResults = sideDialog.msgs.filter((msg) => msg.type === 'func_result_msg');
-      assert.equal(sideFuncResults.length, 1, 'expected exactly one side dialog function result');
-      const sideResultContent = sideFuncResults[0]?.content ?? '';
-      assert.equal(sideResultContent, expectedSideReplacement);
-      assert.match(sideResultContent, /把需要回传给主线对话的结论、证据定位和风险整理清楚/);
-      assert.match(sideResultContent, /当前对话范围（scope=dialog）提醒项写明本路对话任务目标/);
-      assert.match(sideResultContent, /恢复当前支线工作需要的信息带过桥/);
-      assert.match(sideResultContent, /然后调用 clear_mind\(\{\}\) 开启新一程/);
-      assert.doesNotMatch(sideResultContent, /如果/);
-      assert.doesNotMatch(sideResultContent, /写入差遣牒合适章节/);
-      assert.doesNotMatch(sideResultContent, /side-start/);
-      assert.doesNotMatch(sideResultContent, /side-end/);
-
-      const sideAssistantSayings = sideDialog.msgs.filter(
-        (msg) => msg.type === 'saying_msg' && msg.role === 'assistant',
-      );
-      assert.equal(
-        sideAssistantSayings.some((msg) => msg.content === '我会整理回传结论并完成支线回复。'),
-        true,
-        'expected side dialog replacement to trigger immediate model follow-up',
-      );
-
-      const contentItemsDlg = await createMainDialog('tester');
-      contentItemsDlg.disableDiligencePush = true;
-
-      await driveDialogStream(
-        contentItemsDlg,
-        makeUserPrompt(
-          contentItemsTrigger,
-          'kernel-driver-context-health-large-content-items-output-hidden',
-        ),
-        true,
-      );
-
-      const contentItemsFuncResults = contentItemsDlg.msgs.filter(
-        (msg) => msg.type === 'func_result_msg',
-      );
-      assert.equal(
-        contentItemsFuncResults.length,
-        1,
-        'expected exactly one function result for contentItems scenario',
-      );
-      const contentItemsResult = contentItemsFuncResults[0];
-      assert.equal(contentItemsResult?.content, expectedContentItemsReplacement);
-      assert.equal(
-        contentItemsResult?.contentItems,
-        undefined,
-        'replacement must remove original contentItems from model-visible result',
-      );
-      assert.doesNotMatch(contentItemsResult?.content ?? '', /content-items-start/);
-      assert.doesNotMatch(contentItemsResult?.content ?? '', /content-items-end/);
-
-      const contentItemsAssistantSayings = contentItemsDlg.msgs.filter(
-        (msg) => msg.type === 'saying_msg' && msg.role === 'assistant',
-      );
-      assert.equal(
-        contentItemsAssistantSayings.some(
-          (msg) => msg.content === '我会按大返回规则处理 contentItems。',
-        ),
-        true,
-        'large contentItems replacement must trigger immediate remediation follow-up even when the underlying successful tool is deferred',
-      );
-
-      const imageContentItemDlg = await createMainDialog('tester');
-      imageContentItemDlg.disableDiligencePush = true;
-
-      await driveDialogStream(
-        imageContentItemDlg,
-        makeUserPrompt(
-          imageContentItemTrigger,
-          'kernel-driver-context-health-large-image-content-item-output-hidden',
-        ),
-        true,
-      );
-
-      const imageContentItemFuncResults = imageContentItemDlg.msgs.filter(
-        (msg) => msg.type === 'func_result_msg',
-      );
-      assert.equal(
-        imageContentItemFuncResults.length,
-        1,
-        'expected exactly one function result for image contentItem scenario',
-      );
-      const imageContentItemResult = imageContentItemFuncResults[0];
-      assert.equal(imageContentItemResult?.content, expectedImageContentItemReplacement);
-      assert.equal(
-        imageContentItemResult?.contentItems,
-        undefined,
-        'image replacement must remove original contentItems from model-visible result',
-      );
-
-      const imageContentItemAssistantSayings = imageContentItemDlg.msgs.filter(
-        (msg) => msg.type === 'saying_msg' && msg.role === 'assistant',
-      );
-      assert.equal(
-        imageContentItemAssistantSayings.some(
-          (msg) => msg.content === '我会按大返回规则处理图片 contentItem。',
-        ),
-        true,
-        'large image contentItem replacement must trigger immediate remediation follow-up',
-      );
-
-      setWorkLanguage('en');
-      const englishDlg = await createMainDialog('tester');
-      englishDlg.disableDiligencePush = true;
-
-      await driveDialogStream(
-        englishDlg,
-        makeUserPrompt(englishTrigger, 'kernel-driver-context-health-english-large-output-hidden'),
-        true,
-      );
-
-      const englishFuncResults = englishDlg.msgs.filter((msg) => msg.type === 'func_result_msg');
-      assert.equal(englishFuncResults.length, 1, 'expected exactly one English function result');
-      const englishResultContent = englishFuncResults[0]?.content ?? '';
-      assert.equal(englishResultContent, expectedEnglishReplacement);
-      assert.match(englishResultContent, /will not be shown to you before you clear your mind/);
-      assert.match(englishResultContent, /Do not try again to fetch any kind of large output/);
-      assert.match(englishResultContent, /details from this course that the next course needs/);
-      assert.match(englishResultContent, /does not fit a Taskdoc section/);
-      assert.match(englishResultContent, /current-dialog scoped \(scope=dialog\) reminders/);
-      assert.match(englishResultContent, /fixed Main Dialog goal reminder/);
-      assert.doesNotMatch(englishResultContent, /english-start/);
-      assert.doesNotMatch(englishResultContent, /english-end/);
-
-      const englishAssistantSayings = englishDlg.msgs.filter(
-        (msg) => msg.type === 'saying_msg' && msg.role === 'assistant',
-      );
-      assert.equal(
-        englishAssistantSayings.some(
-          (msg) => msg.content === 'I will save the handoff details and clear my mind.',
-        ),
-        true,
-        'English large-output replacement must trigger immediate model follow-up',
-      );
-    } finally {
-      setWorkLanguage('zh');
-      unregisterTool(CONTENT_ITEMS_TOOL_NAME);
-      unregisterTool(IMAGE_CONTENT_ITEM_TOOL_NAME);
-      delete process.env[envKey];
-      delete process.env[previousCautionEnvKey];
-      delete process.env[recoveredEnvKey];
-      delete process.env[sideEnvKey];
-      delete process.env[englishEnvKey];
+          );
+          registerLlmGenerator(generator);
+          try {
+            if (seedPrevious) {
+              await driveDialogStream(
+                root,
+                makeUserPrompt('caution-seed-input-data', `seed-${id}`),
+                true,
+              );
+              const previous = root.getLastContextHealth();
+              assert.ok(previous?.kind === 'available');
+              assert.equal(previous.level, 'caution');
+              stage = 'probe';
+            }
+            await driveDialogStream(root, makeUserPrompt('output-probe-input-data', id), true);
+            if (sideScope)
+              await waitFor(
+                async () =>
+                  (
+                    await DialogPersistence.loadCourseEvents(
+                      root.id,
+                      root.currentCourse,
+                      root.status,
+                    )
+                  ).some(
+                    (event) =>
+                      event.type === 'agent_words_record' &&
+                      event.content === 'caller-consumed-output-data',
+                  ),
+                3000,
+                'caller consume the explicit side result',
+              );
+            await waitForAllDialogsUnlocked(root, 3000);
+            generator.assertNoErrors();
+            assert.equal(toolCalls, variant === 'repeated-unknown' ? 2 : 1);
+            assert.equal(probeRounds, variant === 'repeated-unknown' ? 3 : 2);
+            assert.ok(seenResult);
+            const testedDialog = sideScope
+              ? root
+                  .getLoadedDialogTreeSnapshot()
+                  .find((dialog) => dialog.id.selfId !== root.id.selfId)
+              : root;
+            assert.ok(testedDialog);
+            const events = await DialogPersistence.loadCourseEvents(
+              testedDialog.id,
+              testedDialog.currentCourse,
+              testedDialog.status,
+            );
+            const durable = events
+              .filter((event) => event.type === 'func_result_record')
+              .filter(
+                (event) =>
+                  event.id === (variant === 'repeated-unknown' ? `${callId}-again` : callId),
+              );
+            assert.equal(durable.length, 1);
+            assert.equal(durable[0].content, seenResult.content);
+            assert.equal(durable[0].contentItems, undefined);
+            if (variant === 'large-text') {
+              const goals = events.filter(
+                (event) => event.type === 'func_result_record' && event.id === `goal-${id}`,
+              );
+              assert.equal(goals.length, 1);
+              const goal = root.reminders.find((reminder) => reminder.id === 'mainDialogGoal');
+              assert.ok(goal);
+              const meta = goal.meta;
+              assert.ok(meta && typeof meta === 'object' && !Array.isArray(meta));
+              assert.deepEqual(
+                { mode: meta.mode, goal: meta.goal },
+                { mode: 'specific_goal', goal: 'controlled-goal-data' },
+              );
+            }
+            if (variant === 'exact-byte-limit') assert.equal(Buffer.byteLength(payload), 2000);
+            if (variant === 'over-byte-limit') assert.equal(Buffer.byteLength(payload), 2001);
+            if (variant === 'repeated-unknown') {
+              const previousRoot = root;
+              globalDialogRegistry.unregister(root.id.rootId);
+              const restored = await getOrRestoreMainDialog(root.id.rootId, root.status);
+              assert.ok(restored);
+              assert.notEqual(restored, previousRoot);
+              root = restored;
+              root.disableDiligencePush = true;
+              assert.equal(root.getLastContextHealth()?.kind, 'unavailable');
+              assert.equal(root.getLastAvailableContextHealth()?.level, 'caution');
+              probeRounds = 0;
+              callId = `${callId}-restored`;
+              await driveDialogStream(
+                root,
+                makeUserPrompt('restored-output-input-data', `${id}-restored`),
+                true,
+              );
+              await waitForAllDialogsUnlocked(root, 3000);
+              generator.assertNoErrors();
+              assert.equal(toolCalls, 4);
+              assert.equal(probeRounds, 3);
+              await root.startNewCourse('new-course-input-data');
+              assert.equal(root.getLastContextHealth()?.kind, 'unavailable');
+              assert.equal(root.getLastAvailableContextHealth(), undefined);
+              globalDialogRegistry.unregister(root.id.rootId);
+            }
+            // Meaning depends on scope and known/unknown pressure, not on the transport mode.
+            // Byte/item variants above retain their full machine behavior checks.
+            if (
+              hidden &&
+              streaming &&
+              ['large-text', 'previous-caution', 'side-large'].includes(variant)
+            )
+              evidence.record({
+                id,
+                scenario: `A ${sideScope ? 'side' : 'main'} dialog receives ${variant} at the actual tool boundary while context is tight.`,
+                businessValue:
+                  'Bound model-visible output while preserving an executable, correctly scoped path to continue the task.',
+                context: {
+                  language,
+                  streaming,
+                  scope: sideScope ? 'sideDialog' : 'mainDialog',
+                  originalBytes:
+                    variant === 'text-items' || variant === 'image-item'
+                      ? 2001
+                      : Buffer.byteLength(payload),
+                  currentUsage:
+                    variant === 'previous-caution'
+                      ? 'unavailable; previous real measurement was caution'
+                      : 'available caution',
+                  availableTools: JSON.stringify(availableTools),
+                  currentHealthyUsageCanRestoreVisibility: true,
+                },
+                reviewQuestions: [
+                  'Does the actual replacement accurately describe what was withheld and the conditions under which later output can become visible?',
+                  'Does the guidance preserve needed facts and respect the actual scope/capabilities without inventing task completion or forcing an unsafe continuation?',
+                ],
+                actualText: JSON.stringify(
+                  { replacement: seenResult.content, systemPrompt: seenSystem },
+                  null,
+                  2,
+                ),
+              });
+          } finally {
+            unregisterLlmGenerator(apiType);
+            unregisterTool(toolName);
+          }
+        }
+      }
     }
   });
-
-  console.log('kernel-driver context-health-large-tool-output-hidden: PASS');
+  await evidence.write();
+  console.log(
+    'tight-context output limits, byte boundaries, usage recovery and real side delivery: passed',
+  );
 }
-
-void main().catch((err: unknown) => {
-  const message = err instanceof Error ? err.message : String(err);
-  console.error(`kernel-driver context-health-large-tool-output-hidden: FAIL\n${message}`);
-  process.exit(1);
+main().catch((error: unknown) => {
+  console.error(error);
+  process.exitCode = 1;
 });

@@ -92,14 +92,14 @@ import {
 import { dialogEventRegistry, postDialogEvent, postDialogEventById } from '../evt-registry';
 import { driveDialogStream, supplyResponseToAskerDialog } from '../llm/kernel-driver';
 import {
-  consumeCriticalCountdown,
-  resolveCriticalCountdownRemaining,
-} from '../llm/kernel-driver/context-health';
-import {
   evaluateDiligenceAutoContinueGate,
   maybePrepareDiligenceAutoContinuePrompt,
   suspendForKeepGoingBudgetExhausted,
 } from '../llm/kernel-driver/runtime';
+import {
+  wrapCriticalUserInterjectionPromptAtIngress,
+  type UserMessageIngressPrompt,
+} from '../llm/kernel-driver/user-interjection';
 import { createLogger } from '../log';
 import {
   DialogPersistence,
@@ -120,11 +120,7 @@ import {
   setProblemsBroadcaster,
 } from '../problems';
 import { recoverPendingReplyDeliveryForDialog } from '../recovery/reply-delivery-recovery';
-import {
-  formatAgentFacingCriticalUserInterjectionRemediationGuide,
-  formatSystemNoticePrefix,
-  isAgentFacingCriticalUserInterjectionRemediationGuideContent,
-} from '../runtime/driver-messages';
+import { formatSystemNoticePrefix } from '../runtime/driver-messages';
 import { formatTellaskCarryoverResultContent } from '../runtime/inter-dialog-format';
 import { getWorkLanguage } from '../runtime/work-language';
 import { Team } from '../team';
@@ -152,6 +148,7 @@ import {
   getDomindsRuntimeStatus,
 } from './dominds-runtime-status';
 import { setDomindsSelfUpdateBroadcaster } from './dominds-self-update';
+export { wrapCriticalUserInterjectionPromptAtIngress } from '../llm/kernel-driver/user-interjection';
 
 function resolveMemberDiligencePushMax(team: Team, agentId: string): number {
   const member = team.getMember(agentId);
@@ -600,40 +597,6 @@ async function queueUserSupplementAtGenerationBoundary(
     inMemoryGenerating,
   });
   return true;
-}
-
-type UserMessageIngressPrompt = {
-  content: string;
-  msgId: string;
-  grammar: 'markdown';
-  userLanguageCode?: LanguageCode;
-};
-
-export function wrapCriticalUserInterjectionPromptAtIngress(
-  dialog: Dialog,
-  prompt: UserMessageIngressPrompt,
-): UserMessageIngressPrompt {
-  if (isAgentFacingCriticalUserInterjectionRemediationGuideContent(prompt.content)) {
-    return prompt;
-  }
-  const snapshot = dialog.getLastContextHealth();
-  if (snapshot?.kind !== 'available' || snapshot.level !== 'critical') {
-    return prompt;
-  }
-  const remaining = resolveCriticalCountdownRemaining(dialog.id.key(), snapshot);
-  if (remaining <= 0) {
-    return prompt;
-  }
-  const language = prompt.userLanguageCode ?? dialog.getLastUserLanguageCode();
-  const dialogScope = dialog instanceof MainDialog ? 'mainDialog' : 'sideDialog';
-  const prefix = formatAgentFacingCriticalUserInterjectionRemediationGuide(language, {
-    dialogScope,
-    promptsRemainingAfterThis: consumeCriticalCountdown(dialog.id.key()),
-  });
-  return {
-    ...prompt,
-    content: `${prefix}\n\n${prompt.content}`,
-  };
 }
 
 /**

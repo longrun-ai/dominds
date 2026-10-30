@@ -2750,6 +2750,7 @@ export interface DialogPersistenceState {
   messages: ChatMessage[];
   reminders: Reminder[];
   contextHealth?: ContextHealthSnapshot;
+  lastAvailableContextHealth?: Extract<ContextHealthSnapshot, { kind: 'available' }>;
 }
 
 export interface Questions4Human {
@@ -4736,6 +4737,7 @@ export class DiskFileDialogStore extends DialogStore {
             reminders: sideDialogState.reminders,
             currentCourse: sideDialogState.currentCourse,
             contextHealth: sideDialogState.contextHealth,
+            lastAvailableContextHealth: sideDialogState.lastAvailableContextHealth,
           },
         );
         const latest = await DialogPersistence.loadDialogLatest(sideDialogId, status);
@@ -12097,6 +12099,9 @@ export class DialogPersistence {
     // Events are already in chronological order from JSONL file (append-only pattern)
     const messages: ChatMessage[] = [];
     let contextHealth: ContextHealthSnapshot | undefined;
+    let lastAvailableContextHealth:
+      | Extract<ContextHealthSnapshot, { kind: 'available' }>
+      | undefined;
 
     // Simple, straightforward mapping to reconstruct messages from persisted events
     for (const event of events) {
@@ -12290,6 +12295,7 @@ export class DialogPersistence {
         case 'gen_finish_record':
           if (event.contextHealth) {
             contextHealth = event.contextHealth;
+            if (contextHealth.kind === 'available') lastAvailableContextHealth = contextHealth;
           }
           break;
         case 'sideDialog_request_record':
@@ -12327,6 +12333,7 @@ export class DialogPersistence {
       messages,
       reminders,
       contextHealth,
+      lastAvailableContextHealth,
     };
   }
 

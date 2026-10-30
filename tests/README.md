@@ -24,7 +24,7 @@ pnpm run test:semantic:kernel
 
 - `test`: a small local smoke suite; not full product, browser, packaging, or provider coverage.
 - `test:kernel`: discovers TypeScript cases under `kernel-driver/`, excluding its helper. Each runs in an isolated rtws. Failures do not prevent subsequent cases. `kernel-driver:integration` delegates here.
-- `test:context`: runs five isolated state/data regressions for preservation cadence, user interjections, continuation-body fidelity, retry budgets, and exhaustion notices. It does not judge wording.
+- `test:context`: runs six state/data regressions for generation-boundary eligibility and language fallback, preservation cadence, user interjections, continuation-body fidelity, retry budgets, and exhaustion notices. It does not judge wording.
 - `test:configuration`: six isolated regressions for team configuration, capability boundaries, manual payload fidelity, MCP reload and Problems lifecycle. Only external MCP peers are replaced; no live providers or installed components are required.
 - `test:manual`: six isolated cases for language normalization, actual mind assets and skill scope/permissions, snippet paths, manual visibility and the original prose budget.
 - `test:types`: the full test-directory type check. During remediation it still reports inherited contract drift; that failure is tracked separately and is not a pass.
@@ -35,7 +35,7 @@ pnpm run test:semantic:kernel
 - `test:semantic:configuration`: reruns the configuration scenarios with `--semantic` and emits full diagnostics, manual guidance and supplied configuration. It reports pending review, including when its machine assertions pass.
 - `test:semantic:manual`: emits actual handbooks, capability-list and refusal guidance, Taskdoc/skills guidance, collaboration result wrappers and the built-in manager prompt. All cases start pending subjective review.
 
-- `test:semantic:kernel`: runs explicit producers for actual provider reminder context, repeated-call guidance and stops, reply-tool errors and expiration, human-answer follow-up queues, reply/footer renderers, context renewal, nested delivery and registered-assignment updates. Their complete output remains pending agent review even when runtime assertions pass.
+- `test:semantic:kernel`: runs explicit producers for actual provider reminder context, repeated-call guidance and stops, reply-tool errors and expiration, human-answer follow-up queues, reply/footer renderers, context renewal, nested delivery, registered-assignment updates, tight-context result visibility, real tool-loop transitions and queued user interjections. Their complete output remains pending agent review even when runtime assertions pass.
 
 The [assertion audit ledger](./audit.json) records which candidate tests have actually been reviewed, their business value, lane and evidence. Inventory exposes unaudited candidates and stale ledger paths. Neither suite membership nor a prior ledger entry decides the meaning of freshly generated output.
 

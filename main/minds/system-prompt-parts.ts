@@ -3,7 +3,7 @@ import { getRuntimeTransferMarkers } from '../runtime/inter-dialog-format';
 import type { FuncTool } from '../tool';
 import { funcToolUsageLabels, noneRequiredFieldsText } from './minds-i18n';
 
-export type ContextHealthPromptMode = 'normal' | 'caution' | 'critical';
+export type ContextHealthPromptMode = 'normal' | 'caution' | 'critical' | 'unavailable';
 
 export type PromptdocContext = {
   language: LanguageCode;
@@ -240,16 +240,20 @@ type MemoryPromptCopy = Readonly<{
 
 function getMemoryPromptCopy(ctx: PromptdocContext): MemoryPromptCopy {
   const runtimeMarkers = getRuntimeTransferMarkers(ctx.language);
+  const underContextPressure =
+    ctx.contextHealthPromptMode === 'caution' || ctx.contextHealthPromptMode === 'critical';
   const contextHealthLineZh =
     ctx.contextHealthPromptMode === 'critical'
       ? ctx.isSideDialog
-        ? 'Dominds 已提醒上下文告急：立即停止继续大实现/大阅读。你当前处于支线对话；本程不维护差遣牒，也不整理差遣牒更新提案，只维护足够详尽的当前对话范围（scope=dialog）接续包提醒项并写明本路任务目标，然后 `clear_mind`。提醒项没有固定长度限制。'
-        : 'Dominds 已提醒上下文告急：立即停止继续大实现/大阅读。本程只做保信息：先按固定“本路主线目标”提醒处理目标；它要求先问人类就立即问，并用 `set_dialog_goal` 记录答案。再把确需共享给同一差遣牒其它对话的讨论事实落到差遣牒合适章节，最后提炼恢复本路对话容易丢的接续包提醒项并 `clear_mind`。'
+        ? 'Dominds 已提醒上下文告急：立即停止继续大实现/大阅读。你当前处于支线对话；本程不维护差遣牒，也不整理差遣牒更新提案，先完成真实用户插话所需的有限取证和回应；保全时维护足够详尽的当前对话范围（scope=dialog）接续包提醒项并写明本路任务目标，然后 `clear_mind`。提醒项没有固定长度限制。'
+        : 'Dominds 已提醒上下文告急：立即停止继续大实现/大阅读。完成真实用户插话所需的有限取证和回应后，本程优先保信息：先按固定“本路主线目标”提醒处理目标；它要求先问人类就立即问，并用 `set_dialog_goal` 记录答案。再把确需共享给同一差遣牒其它对话的讨论事实落到差遣牒合适章节，最后提炼恢复本路对话容易丢的接续包提醒项并 `clear_mind`。'
       : ctx.contextHealthPromptMode === 'caution'
         ? ctx.isSideDialog
           ? 'Dominds 已提醒上下文吃紧：不要继续扩张上下文。你当前处于支线对话；本程不维护差遣牒，也不整理差遣牒更新提案，优先维护足够详尽的当前对话范围（scope=dialog）接续包提醒项并写明本路任务目标，然后尽快 `clear_mind`。提醒项没有固定长度限制。'
           : 'Dominds 已提醒上下文吃紧：不要继续扩张上下文。本程先按固定“本路主线目标”提醒处理目标；它要求先问人类就立即问，并用 `set_dialog_goal` 记录答案。再把确需共享给同一差遣牒其它对话的讨论事实落到差遣牒合适章节，最后提炼恢复本路对话容易丢的提醒项并尽快 `clear_mind`，不要继续大实现/大阅读。'
-        : '当前没有生效中的上下文保全提示，按正常工作流推进。';
+        : ctx.contextHealthPromptMode === 'unavailable'
+          ? '本次上下文用量不可用，不能据此判断压力已经恢复。若当前工具结果说明因上次压力记录而保守隐藏内容，按该提示保留必要信息并避免重复的大输出；新的可用测量会重新决定是否限制后续输出。'
+          : '当前没有生效中的上下文保全提示，按正常工作流推进。';
   const taskdocLogLineZh =
     ctx.contextHealthPromptMode === 'critical'
       ? ctx.isSideDialog
@@ -263,13 +267,15 @@ function getMemoryPromptCopy(ctx: PromptdocContext): MemoryPromptCopy {
   const contextHealthLineEn =
     ctx.contextHealthPromptMode === 'critical'
       ? ctx.isSideDialog
-        ? 'Dominds has warned that context is critical: stop large implementations/reads immediately. You are in a Side Dialog; in this course, do not maintain Taskdoc and do not draft Taskdoc update proposals. Only maintain sufficiently detailed current-dialog scoped (scope=dialog) continuation-package reminders, state this dialog task goal, then `clear_mind`. Reminders have no fixed length limit.'
-        : 'Dominds has warned that context is critical: stop large implementations/reads immediately. In this course, only preserve information: first follow the fixed Main Dialog goal reminder; if it says to ask the human, ask and record the answer with `set_dialog_goal`. Then record only discussion facts that other dialogs/teammates sharing the same Taskdoc truly need to know, then distill details easy to lose when resuming this dialog into continuation-package reminders and `clear_mind`.'
+        ? 'Dominds has warned that context is critical: stop large implementations/reads immediately. You are in a Side Dialog; in this course, do not maintain Taskdoc and do not draft Taskdoc update proposals. Complete any bounded lookup and response needed for a real user interjection first. For preservation, maintain sufficiently detailed current-dialog scoped (scope=dialog) continuation-package reminders, state this dialog task goal, then `clear_mind`. Reminders have no fixed length limit.'
+        : 'Dominds has warned that context is critical: stop large implementations/reads immediately. After any bounded lookup and response needed for a real user interjection, prioritize preservation in this course: first follow the fixed Main Dialog goal reminder; if it says to ask the human, ask and record the answer with `set_dialog_goal`. Then record only discussion facts that other dialogs/teammates sharing the same Taskdoc truly need to know, then distill details easy to lose when resuming this dialog into continuation-package reminders and `clear_mind`.'
       : ctx.contextHealthPromptMode === 'caution'
         ? ctx.isSideDialog
           ? 'Dominds has warned that context is tight: do not keep expanding context. You are in a Side Dialog; in this course, do not maintain Taskdoc and do not draft Taskdoc update proposals. Prioritize sufficiently detailed current-dialog scoped (scope=dialog) continuation-package reminders, state this dialog task goal, then `clear_mind`. Reminders have no fixed length limit.'
           : 'Dominds has warned that context is tight: do not keep expanding context. In this course, first follow the fixed Main Dialog goal reminder; if it says to ask the human, ask and record the answer with `set_dialog_goal`. Then record only discussion facts that other dialogs/teammates sharing the same Taskdoc truly need to know, then distill details easy to lose when resuming this dialog into reminders and `clear_mind`; do not continue large implementations/reads.'
-        : 'There is no active context-preservation notice in effect right now; proceed with the normal workflow.';
+        : ctx.contextHealthPromptMode === 'unavailable'
+          ? 'Current context usage is unavailable; this does not establish recovery. If a current tool result reports conservative withholding based on the previous pressure measurement, preserve needed information and avoid repeated large output. A new available measurement determines whether later output remains limited.'
+          : 'There is no active context-preservation notice in effect right now; proceed with the normal workflow.';
   const taskdocLogLineEn =
     ctx.contextHealthPromptMode === 'critical'
       ? ctx.isSideDialog
@@ -292,11 +298,11 @@ function getMemoryPromptCopy(ctx: PromptdocContext): MemoryPromptCopy {
       taskdocSemanticsLine:
         '- 章节语义约定：`progress` 是全队共享、准实时、可扫读的任务公告牌，用来记录当前有效状态、关键决策、下一步与仍成立阻塞；不是流水账，也不是个人工作记录。`goals` / `constraints` 是较稳定的任务契约；每次更新都必须保留仍然有效的他人条目。',
       taskdocSectionReplaceLine:
-        ctx.isSideDialog && ctx.contextHealthPromptMode !== 'normal'
+        ctx.isSideDialog && underContextPressure
           ? '- Dominds 已提醒当前上下文吃紧/告急，且你处于支线对话：本程不要维护差遣牒，也不要整理差遣牒更新提案；把本路任务目标和下一程需要恢复的细节写入足够详尽的当前对话范围（scope=dialog）接续包提醒项。'
           : `- 更新差遣牒时：少量新增条目可用 \`mind_more\` 追加（默认 progress）；缺失章节用 \`do_mind\` 创建；需要删除陈旧项、重排结构或压缩时，先对照上下文中注入的当前内容完成合并，再调用 \`recall_taskdoc\` 取得当前 \`content_hash\`，然后用带 \`previous_content_hash\` 的 \`change_mind\` 整章替换；需要删除整章文件时用 \`never_mind\`；禁止覆盖/抹掉他人条目；自己负责维护的条目必须标注责任人（例如 \`- [owner:@${ctx.agentId}] ...\` 或用 \`### @${ctx.agentId}\` 分块）。`,
       progressLine:
-        ctx.isSideDialog && ctx.contextHealthPromptMode !== 'normal'
+        ctx.isSideDialog && underContextPressure
           ? '- Dominds 已提醒当前上下文吃紧/告急，且你处于支线对话：本程不更新 `progress`；只把本路任务目标和下一程接续所需信息写入当前对话范围（scope=dialog）提醒项。'
           : '- 更新 `progress` 时：它必须始终是可供全队扫读的完整当前快照，而不是只追加自己这一轮的零散笔记。',
       injectedTaskdocLine:
@@ -305,26 +311,24 @@ function getMemoryPromptCopy(ctx: PromptdocContext): MemoryPromptCopy {
         '- 约定：`constraints` 只写任务特有的硬要求，不得写入系统提示/工具文档里已明确且由系统强制执行的通用规则（例如 `*.tsk/` 封装禁止通用文件工具）。一经发现重复，必须删除并告知用户。',
       remindersLine: ctx.isSideDialog
         ? '- 提醒项（以 `reminder_id` 标识，手头工作）：当前对话的高频工作记录/关键细节（偏私有，不作为全队公告）；默认保持少量（常见 1–3 条），优先 `update_reminder` 压缩/合并，不再需要就 `delete_reminder`。准备 `clear_mind` 开启新一程对话时，整理当前对话范围（scope=dialog）的“结构化接续包提醒项”，必须写明本路任务目标，并保留恢复工作容易丢的细节（如第一步、关键定位、运行/验证信息、临时 ids/路径）。若 Dominds 已提醒当前程吃紧/告急，支线对话不要维护差遣牒，也不要整理差遣牒更新提案；只维护足够详尽的 scope=dialog 接续包提醒项，提醒项没有固定长度限制，允许先保留多条粗略提醒项把信息带过桥；当前程只做保信息 + clear_mind；只有 Dominds 实际开启新一程后，第一步才是按 scope=dialog 提醒项里的本路任务目标继续，再复核整理这些接续包/粗略提醒项：删除冗余、纠正偏激或失真的过桥思路、压缩成高质量提醒项。'
-        : '- 提醒项（以 `reminder_id` 标识，手头工作）：当前对话的高频工作记录/关键细节（偏私有，不作为全队公告）；默认保持少量（常见 1–3 条），优先 `update_reminder` 压缩/合并，不再需要就 `delete_reminder`。主线目标看固定“本路主线目标”提醒，并用 `set_dialog_goal` 修改；普通 `dialog` 接续包只保留差遣牒仍未覆盖、但恢复本路对话容易丢的细节（如第一步、关键定位、运行/验证信息、临时 ids/路径）。准备 `clear_mind` 开启新一程对话时，先按固定主线目标提醒处理目标，再把尚未落实到文档、且下一程需要同一差遣牒其它对话/队友知会的讨论细节落到差遣牒合适章节。若 Dominds 已提醒当前程吃紧/告急，则允许先保留多条粗略 scope=dialog 提醒项把信息带过桥；当前程只做落文档、保信息 + clear_mind；只有 Dominds 实际开启新一程后，第一步才是按固定“本路主线目标”提醒继续，再复核整理这些接续包/粗略提醒项：删除冗余、纠正偏激或失真的过桥思路、压缩成高质量提醒项。',
+        : '- 提醒项（以 `reminder_id` 标识，手头工作）：当前对话的高频工作记录/关键细节（偏私有，不作为全队公告）；默认保持少量（常见 1–3 条），优先 `update_reminder` 压缩/合并，不再需要就 `delete_reminder`。主线目标看固定“本路主线目标”提醒，并用 `set_dialog_goal` 修改；普通 `dialog` 接续包只保留差遣牒仍未覆盖、但恢复本路对话容易丢的细节（如第一步、关键定位、运行/验证信息、临时 ids/路径）。准备 `clear_mind` 开启新一程对话时，先按固定主线目标提醒处理目标，再把尚未落实到文档、且下一程需要同一差遣牒其它对话/队友知会的讨论细节落到差遣牒合适章节。若 Dominds 已提醒当前程吃紧/告急，则允许先保留多条粗略 scope=dialog 提醒项把信息带过桥；先完成真实用户插话所需的有限取证和回应，再做落文档、保信息 + clear_mind；只有 Dominds 实际开启新一程后，第一步才是按固定“本路主线目标”提醒继续，再复核整理这些接续包/粗略提醒项：删除冗余、纠正偏激或失真的过桥思路、压缩成高质量提醒项。',
       teamMemoryLine: '- 团队记忆：稳定的团队约定/工程规约（跨任务共享）。',
       personalMemoryLine:
         '- 个人记忆：稳定的个人习惯/偏好与职责域知识；记忆会在每次生成时自动注入上下文，应保持少量且准确（关键文档/代码的精确路径 + 最小必要事实）。不要记录具体任务状态。',
       skillsLine:
         '- Skills：可复用操作指引/检查清单/触发条件与边界。工作区事实、路径和局部契约进 memory/env；可复用的“怎么做”进 skill。skill 不授予权限。需要执行能力时先复用已获授权的工具或组件，仅为具体能力缺口扩展。目标是保留微内核、以 DSL 定义运行环境的 Software Defined Harness，扩展组件提供 DSL 可用能力；DSL 尚未实现，现有 DomindsApp 只是迁移期间的兼容接口。',
-      sideDialogDutyLine:
-        ctx.contextHealthPromptMode === 'normal'
-          ? `你当前处于支线对话：此处不允许 \`do_mind\` / \`mind_more\` / \`change_mind\` / \`never_mind\`。当你判断需要更新差遣牒（尤其是 progress 公告牌）时，请在合适时机直接诉请差遣牒维护人 \`@${ctx.taskdocMaintainerId}\` 执行更新，并给出要新增的章节、要追加的条目、已合并好的“新全文/替换稿”，或要删除的章节。不要声称已更新，除非看到回执。`
-          : '你当前处于支线对话，且 Dominds 已提醒上下文吃紧/告急：本程不要维护差遣牒，也不要整理差遣牒更新提案。请把本路任务目标、下一程需要恢复的讨论细节、定位、验证方式和临时信息写入足够详尽的当前对话范围（scope=dialog）接续包提醒项。',
+      sideDialogDutyLine: !underContextPressure
+        ? `你当前处于支线对话：此处不允许 \`do_mind\` / \`mind_more\` / \`change_mind\` / \`never_mind\`。当你判断需要更新差遣牒（尤其是 progress 公告牌）时，请在合适时机直接诉请差遣牒维护人 \`@${ctx.taskdocMaintainerId}\` 执行更新，并给出要新增的章节、要追加的条目、已合并好的“新全文/替换稿”，或要删除的章节。不要声称已更新，除非看到回执。`
+        : '你当前处于支线对话，且 Dominds 已提醒上下文吃紧/告急：本程不要维护差遣牒，也不要整理差遣牒更新提案。请把本路任务目标、下一程需要恢复的讨论细节、定位、验证方式和临时信息写入足够详尽的当前对话范围（scope=dialog）接续包提醒项。',
       mainDialogDutyLine:
         '你当前处于主线对话：你负责综合维护全队共享差遣牒（尤其是 progress 公告牌）。当队友/支线对话提出更新建议时，及时合并、压缩并保持清晰。',
       teammateTellaskRoundDoneLine: `队友诉请重要语义：当你在诉请者上下文中收到带${runtimeMarkers.finalCompleted}标记的诉请回复，表示该轮诉请已经结束；对方不会继续执行同一轮诉请。此时如果目标未达成，“等待”是错误的：必须显式发起新一轮 tellask 才能继续推进。并行语义：不要把智能体队友当成真人同事；祂不会因为你又发一条诉请而被打扰。同一个队友 + 同一个 sessionSlug = 接着同一件事说，并更新那件正在做的事；tellaskSessionless 或不同 sessionSlug = 另一件独立任务。`,
       teamMemoryHintLine:
         '提示：你具备团队记忆工具（`add_team_memory` / `replace_team_memory` / `drop_team_memory` / `clear_team_memory`），可在必要时维护团队记忆（谨慎、少量、只写稳定约定）。',
       personalMemoryHintLine: `提示：你具备个人记忆工具（\`add_personal_memory\` / \`replace_personal_memory\` / \`drop_personal_memory\` / \`clear_personal_memory\`）。个人记忆仅对当前智能体可见，且系统会自动按成员隔离到 \`.minds/memory/individual/<member-id>/...\`；因此 \`path\` 不应包含你的成员 id（不要写 \`${ctx.agentId}/...\`）。首次创建时直接用 \`add_personal_memory\` 即可，目录会由系统自动创建。记忆会在每次生成时自动注入上下文：保持少量、保持准确、按“未来会一起更新的内容”合并；写稳定事实（关键路径 + 最小必要约定），不要写任务进度/当天状态；一旦你修改了相关文件或发现记忆过期/冲突，立刻用 \`replace_personal_memory\` 更新。`,
-      sideDialogWorkflowLine:
-        ctx.contextHealthPromptMode === 'normal'
-          ? `工作流：先做事 → 再提炼（\`update_reminder\`；必要时整理差遣牒追加条目/更新提案并诉请 \`@${ctx.taskdocMaintainerId}\` 合并写入）→ 然后 \`clear_mind\` 清空噪音。`
-          : '工作流：停止扩张上下文 → 维护足够详尽的当前对话范围（scope=dialog）接续包提醒项（`add_reminder` 或 `update_reminder`，必须写明本路任务目标，没有固定长度限制）→ 然后 `clear_mind` 开启新一程。',
+      sideDialogWorkflowLine: !underContextPressure
+        ? `工作流：先做事 → 再提炼（\`update_reminder\`；必要时整理差遣牒追加条目/更新提案并诉请 \`@${ctx.taskdocMaintainerId}\` 合并写入）→ 然后 \`clear_mind\` 清空噪音。`
+        : '工作流：停止扩张上下文 → 维护足够详尽的当前对话范围（scope=dialog）接续包提醒项（`add_reminder` 或 `update_reminder`，必须写明本路任务目标，没有固定长度限制）→ 然后 `clear_mind` 开启新一程。',
       mainDialogWorkflowLine:
         '工作流：先按固定“本路主线目标”提醒推进（需要时用 `set_dialog_goal` 记录人类确认的目标）-> 再提炼（`update_reminder` + `mind_more(progress)`；需要压缩/删旧时先 `recall_taskdoc` 取得 `content_hash`，再用带 `previous_content_hash` 的 `change_mind`；要删除整章文件时用 `never_mind`）-> 然后 `clear_mind` 清空噪音。',
       ...(ctx.isSideDialog
@@ -349,11 +353,11 @@ function getMemoryPromptCopy(ctx: PromptdocContext): MemoryPromptCopy {
     taskdocSemanticsLine:
       '- Section semantics: `progress` is the team-shared, quasi-real-time, scannable task bulletin board for current effective state, key decisions, next steps, and still-active blockers; it is not a raw log or personal work record. `goals` / `constraints` are the more stable task contract; every update must preserve still-valid entries from others.',
     taskdocSectionReplaceLine:
-      ctx.isSideDialog && ctx.contextHealthPromptMode !== 'normal'
+      ctx.isSideDialog && underContextPressure
         ? '- Dominds has warned that context is tight/critical in this Side Dialog: do not maintain Taskdoc and do not draft Taskdoc update proposals in this course; put this dialog task goal and resume-critical details into sufficiently detailed current-dialog scoped (scope=dialog) continuation-package reminders.'
         : `- When updating Taskdoc: use \`mind_more\` for small append-only additions (defaults to progress); create missing sections with \`do_mind\`; when stale entries must be removed, reordered, or compressed, first merge against the current injected content, then call \`recall_taskdoc\` to get the current \`content_hash\`, then use \`change_mind\` for a full-section replacement with that value as \`previous_content_hash\`; when a whole section file should be removed, use \`never_mind\`; do not overwrite other contributors; add an explicit owner tag for entries you maintain (e.g., \`- [owner:@${ctx.agentId}] ...\` or a \`### @${ctx.agentId}\` block).`,
     progressLine:
-      ctx.isSideDialog && ctx.contextHealthPromptMode !== 'normal'
+      ctx.isSideDialog && underContextPressure
         ? '- Dominds has warned that context is tight/critical in this Side Dialog: do not update `progress` in this course; put this dialog task goal and resume-critical information into current-dialog scoped (scope=dialog) reminders only.'
         : '- When updating `progress`, keep it as a complete, team-scannable current snapshot instead of appending only your own latest notes.',
     injectedTaskdocLine:
@@ -361,27 +365,25 @@ function getMemoryPromptCopy(ctx: PromptdocContext): MemoryPromptCopy {
     constraintsLine:
       '- Convention: Taskdoc `constraints` must contain task-specific requirements only; do not include global, system-enforced rules already stated in system prompt/tool docs (e.g. `.tsk/` encapsulation bans general file tools). If duplication is found, you MUST remove it and notify the user.',
     remindersLine: ctx.isSideDialog
-      ? '- Reminders (addressed by `reminder_id`, current work): your high-frequency per-dialog worklog + critical details (not a team bulletin board); keep it small by default (often 1–3 items), prefer `update_reminder` to compress/merge, and delete when obsolete. When preparing `clear_mind` to start a new course, create a current-dialog scoped (scope=dialog) structured continuation-package reminder, state this dialog task goal, and preserve details easy to lose during resume (first step, key pointers, run/verify info, volatile ids/paths). If Dominds has warned that the current course is tight/critical, you are in a Side Dialog: do not maintain Taskdoc and do not draft Taskdoc update proposals; only maintain sufficiently detailed scope=dialog continuation-package reminders. Reminders have no fixed length limit, rough multi-reminder bridge notes are acceptable, and in the current course you should only preserve volatile information and clear_mind. Only after Dominds actually starts the new course does the mandatory first step become continuing this dialog from the task goal in scope=dialog reminders, then reviewing and rewriting those continuation/rough reminders with a clear head: remove redundancy, correct biased or distorted bridge notes, and compress them into high-quality reminders.'
-      : '- Reminders (addressed by `reminder_id`, current work): your high-frequency per-dialog worklog + critical details (not a team bulletin board); keep it small by default (often 1–3 items), prefer `update_reminder` to compress/merge, and delete when obsolete. Main Dialog goals come from the fixed goal reminder and are changed with `set_dialog_goal`; ordinary `dialog` continuation packages keep only details still not covered by Taskdoc but easy to lose when resuming this dialog (first step, key pointers, run/verify info, volatile ids/paths). When preparing `clear_mind` to start a new course, first follow the fixed goal reminder, then record undocumented discussion details that other dialogs/teammates sharing the same Taskdoc truly need to know into the appropriate Taskdoc sections. If Dominds has warned that the current course is tight/critical, rough multi-reminder scope=dialog bridge notes are acceptable; in the current course, only document missing details, preserve volatile information, and clear_mind. Only after Dominds actually starts the new course does the mandatory first step become continuing this dialog from the fixed Main Dialog goal reminder, then reviewing and rewriting those continuation/rough reminders with a clear head: remove redundancy, correct biased or distorted bridge notes, and compress them into high-quality reminders.',
+      ? '- Reminders (addressed by `reminder_id`, current work): your high-frequency per-dialog worklog + critical details (not a team bulletin board); keep it small by default (often 1–3 items), prefer `update_reminder` to compress/merge, and delete when obsolete. When preparing `clear_mind` to start a new course, create a current-dialog scoped (scope=dialog) structured continuation-package reminder, state this dialog task goal, and preserve details easy to lose during resume (first step, key pointers, run/verify info, volatile ids/paths). If Dominds has warned that the current course is tight/critical, you are in a Side Dialog: do not maintain Taskdoc and do not draft Taskdoc update proposals; only maintain sufficiently detailed scope=dialog continuation-package reminders. Reminders have no fixed length limit, rough multi-reminder bridge notes are acceptable, and after any bounded lookup and response needed for a real user interjection, preserve volatile information and clear_mind. Only after Dominds actually starts the new course does the mandatory first step become continuing this dialog from the task goal in scope=dialog reminders, then reviewing and rewriting those continuation/rough reminders with a clear head: remove redundancy, correct biased or distorted bridge notes, and compress them into high-quality reminders.'
+      : '- Reminders (addressed by `reminder_id`, current work): your high-frequency per-dialog worklog + critical details (not a team bulletin board); keep it small by default (often 1–3 items), prefer `update_reminder` to compress/merge, and delete when obsolete. Main Dialog goals come from the fixed goal reminder and are changed with `set_dialog_goal`; ordinary `dialog` continuation packages keep only details still not covered by Taskdoc but easy to lose when resuming this dialog (first step, key pointers, run/verify info, volatile ids/paths). When preparing `clear_mind` to start a new course, first follow the fixed goal reminder, then record undocumented discussion details that other dialogs/teammates sharing the same Taskdoc truly need to know into the appropriate Taskdoc sections. If Dominds has warned that the current course is tight/critical, rough multi-reminder scope=dialog bridge notes are acceptable; after any bounded lookup and response needed for a real user interjection, document missing details, preserve volatile information, and clear_mind. Only after Dominds actually starts the new course does the mandatory first step become continuing this dialog from the fixed Main Dialog goal reminder, then reviewing and rewriting those continuation/rough reminders with a clear head: remove redundancy, correct biased or distorted bridge notes, and compress them into high-quality reminders.',
     teamMemoryLine: '- Team memory: stable shared conventions (cross-task).',
     personalMemoryLine:
       '- Personal memory: stable personal habits/preferences and responsibility-scope knowledge. Memory is automatically injected into context on each generation: keep it small and accurate (exact key doc/code paths + minimal key facts); do not store per-task state.',
     skillsLine:
       '- Skills: reusable guidance, checklists, triggers, and boundaries. Workspace facts, paths, and local contracts belong in memory/env; reusable procedures belong in skills. Skills do not grant permission. Reuse authorized tools or components first; extend only a concrete capability gap. The target is Software Defined Harness: retain the MicroKernel, define the environment in a DSL, and let extensions provide DSL-usable capabilities. The DSL is not implemented yet; current DomindsApp interfaces are migration compatibility contracts.',
-    sideDialogDutyLine:
-      ctx.contextHealthPromptMode === 'normal'
-        ? `You are currently in a Side Dialog: \`do_mind\` / \`mind_more\` / \`change_mind\` / \`never_mind\` are not allowed here. When Taskdoc should be updated (especially the shared progress bulletin board), tellask the Taskdoc maintainer \`@${ctx.taskdocMaintainerId}\` with the new section to create, entries to append, a fully merged replacement draft, or the section to delete. Do not claim it is updated until you see a receipt.`
-        : 'You are currently in a Side Dialog, and Dominds has warned that context is tight/critical: do not maintain Taskdoc and do not draft Taskdoc update proposals in this course. Put this dialog task goal, discussion details, pointers, verification method, and volatile resume information into sufficiently detailed current-dialog scoped (scope=dialog) continuation-package reminders.',
+    sideDialogDutyLine: !underContextPressure
+      ? `You are currently in a Side Dialog: \`do_mind\` / \`mind_more\` / \`change_mind\` / \`never_mind\` are not allowed here. When Taskdoc should be updated (especially the shared progress bulletin board), tellask the Taskdoc maintainer \`@${ctx.taskdocMaintainerId}\` with the new section to create, entries to append, a fully merged replacement draft, or the section to delete. Do not claim it is updated until you see a receipt.`
+      : 'You are currently in a Side Dialog, and Dominds has warned that context is tight/critical: do not maintain Taskdoc and do not draft Taskdoc update proposals in this course. Put this dialog task goal, discussion details, pointers, verification method, and volatile resume information into sufficiently detailed current-dialog scoped (scope=dialog) continuation-package reminders.',
     mainDialogDutyLine:
       'You are currently in the Main Dialog: you are responsible for keeping the team-shared Taskdoc coherent and up to date (especially the progress bulletin board). Merge proposals from teammates/Side Dialogs promptly and keep it concise.',
     teammateTellaskRoundDoneLine: `Teammate Tellask semantics: when you receive a tellasker reply with the ${runtimeMarkers.finalCompleted} marker, that Tellask round is finished; the tellaskee will not keep executing the same call in the background. If the objective is not met, “waiting” is wrong: you must explicitly start a new Tellask round to continue. Parallel semantics: do not treat an agent teammate like a human coworker who can only handle one conversation at a time. Same teammate + same sessionSlug = continue the same task and update that task; tellaskSessionless or a different sessionSlug = another independent task.`,
     teamMemoryHintLine:
       'Hint: you have team-memory tools (`add_team_memory` / `replace_team_memory` / `drop_team_memory` / `clear_team_memory`) and may maintain team memory when it is truly stable and worth sharing.',
     personalMemoryHintLine: `Hint: you have personal-memory tools (\`add_personal_memory\` / \`replace_personal_memory\` / \`drop_personal_memory\` / \`clear_personal_memory\`). Personal memory is private to the current agent and is automatically isolated under \`.minds/memory/individual/<member-id>/...\`; therefore \`path\` MUST NOT include your member id (do not write \`${ctx.agentId}/...\`). For first-time setup, just call \`add_personal_memory\`—the directory will be created automatically. Memory is automatically injected into context on each generation: keep it small, keep it accurate, and group facts that are updated together. Store stable facts (exact key paths + minimal contracts), not daily state/progress. If you changed those files or detect staleness/conflicts, immediately \`replace_personal_memory\` to keep it accurate.`,
-    sideDialogWorkflowLine:
-      ctx.contextHealthPromptMode === 'normal'
-        ? `Workflow: do work → distill (\`update_reminder\`; when Taskdoc needs updates, draft append entries, a merged replacement, or a section deletion and ask \`@${ctx.taskdocMaintainerId}\`) → then \`clear_mind\` to drop noise.`
-        : 'Workflow: stop expanding context → maintain sufficiently detailed current-dialog scoped (scope=dialog) continuation-package reminders (`add_reminder` or `update_reminder`, must state this dialog task goal, with no fixed length limit) → then `clear_mind` to start a new course.',
+    sideDialogWorkflowLine: !underContextPressure
+      ? `Workflow: do work → distill (\`update_reminder\`; when Taskdoc needs updates, draft append entries, a merged replacement, or a section deletion and ask \`@${ctx.taskdocMaintainerId}\`) → then \`clear_mind\` to drop noise.`
+      : 'Workflow: stop expanding context → maintain sufficiently detailed current-dialog scoped (scope=dialog) continuation-package reminders (`add_reminder` or `update_reminder`, must state this dialog task goal, with no fixed length limit) → then `clear_mind` to start a new course.',
     mainDialogWorkflowLine:
       'Workflow: follow the fixed Main Dialog goal reminder first (use `set_dialog_goal` when a human-confirmed goal must be recorded) -> distill (`update_reminder` + `mind_more(progress)`; when compression/deletion is needed, first use `recall_taskdoc` to get `content_hash`, then use `change_mind` with `previous_content_hash`; use `never_mind` when removing a whole section file) -> then `clear_mind` to drop noise.',
     ...(ctx.isSideDialog

@@ -91,7 +91,7 @@
     "kernel-driver:context-health-multi-iter-gate": "pnpm run rtws -- kernel-driver/context-health-multi-iter-gate.ts",
     "kernel-driver:context-health-model-limit-usage": "pnpm run rtws -- kernel-driver/context-health-model-limit-usage.ts",
     "kernel-driver:context-health-large-tool-output-hidden": "pnpm run rtws -- kernel-driver/context-health-large-tool-output-hidden.ts",
-    "kernel-driver:critical-user-tool-followup": "pnpm run rtws -- kernel-driver/critical-user-tool-followup.ts",
+    "kernel-driver:critical-user-tool-followup": "pnpm run rtws -- kernel-driver/critical-queued-user-interjection.ts",
     "kernel-driver:critical-queued-user-interjection": "pnpm run rtws -- kernel-driver/critical-queued-user-interjection.ts",
     "kernel-driver:clear-mind-critical-auto-course": "pnpm run rtws -- kernel-driver/clear-mind-critical-auto-course.ts",
     "kernel-driver:clear-mind-blocks-on-sibling-tool-failure": "pnpm run rtws -- kernel-driver/clear-mind-blocks-on-sibling-tool-failure.ts",
