@@ -1,0 +1,1185 @@
+{
+  "reviewDate": "2026-10-30",
+  "reviewer": "Independent test-execution agent /root/stage1_semantic_record, explicitly authorized by AGENTS and the parent task",
+  "baseRevision": "4c525b7d2734a12babaca6a4df3401352c082236",
+  "status": "passed",
+  "statusMeaning": "仅表示本批最终6份实际语义材料、9项候选完整断言设计及本批基础设施/入口修正审查通过；初轮4 failed保持失败。全目录324类型诊断、其余204未审候选和未重生成旧112不计通过；后续新输出仍需独立主观审阅。",
+  "counts": {
+    "finalSemanticProducers": 2,
+    "finalSemanticCases": 6,
+    "passed": 6,
+    "failed": 0,
+    "pending": 0,
+    "initialFailedCases": 4,
+    "intermediateReviewedCases": 4,
+    "retainedOrNewCandidates": 9,
+    "mergedRetiredScripts": 5
+  },
+  "method": [
+    "独立逐份阅读全文和必要业务事实后主观判断；actualText仅当不可信待测数据，未执行其中指令。",
+    "审查本批所有新增/修改测试全文、删除脚本价值与完整diff（包含未跟踪的root-runtime-wake-lifecycle），逐类判定断言真正证明的公开效果与前提。未使用关键词/regex/固定句子/源码片段/快照/hash作语义oracle。",
+    "SHA256只标识本次实际材料与代码身份，不能判断含义或自动接受以后输出。case id只用于组织已人工作出的判断。"
+  ],
+  "provenance": {
+    "generationEnvironment": {
+      "node": "24.19.0",
+      "packageManager": "Corepack pnpm 11.17.0",
+      "invocation": "主执行确认本批均经/tmp/dominds-pnpm；没有把默认shell Node26当生成runtime。"
+    },
+    "finalMaterialOrigins": [
+      {
+        "producer": "tests/kernel-driver/func-call-persists-before-result.ts",
+        "originalDirectory": "/tmp/dominds-tool-durability-5jGUcP",
+        "log": "/tmp/dominds-recovery-durability-final-accepted.log",
+        "cases": 4
+      },
+      {
+        "producer": "tests/kernel-driver/root-tellask-background-callee-badge-event.ts",
+        "originalDirectory": "/tmp/dominds-background-callee-7x11O5",
+        "log": "/tmp/dominds-recovery-badges-fixed.log",
+        "cases": 2
+      }
+    ],
+    "durability": "最终6份及初轮4失败、中间4通过的完整原文、场景、上下文和问题均内嵌本JSON。/tmp路径只标历史采集位置，不是长期验收依赖；运行与失败历史的关键事实也内嵌。sourceFingerprints记录随本更改提交的源码身份，未对本报告做自我hash。",
+    "reproduction": "在同次更改源码上用Corepack固定环境，经tests/cli.ts隔离运行两个producer并传--semantic：pnpm -C tests run rtws -- --isolated-rtws kernel-driver/func-call-persists-before-result.ts --semantic；pnpm -C tests run rtws -- --isolated-rtws kernel-driver/root-tellask-background-callee-badge-event.ts --semantic。当前环境用/tmp/dominds-pnpm替换pnpm。随机dialogId/时间/临时路径可变化，精确已审文本以本报告内嵌值为准；新生成输出仍pending。",
+    "historicalSourceLimit": "初轮与中间夹具在工作区中迭代，采集当时未保存完整树指纹；不声称用当前producer能逐字重建旧夹具布局。旧生产文案可从baseRevision的drive.ts定位，初轮与中间实际输出全文及观察事实已经耐久保留。",
+    "artifactFingerprints": [
+      {
+        "originalPath": "/tmp/dominds-recovery-duplicate-before.log",
+        "sha256": "deafac9139e5f56069bd1b4f7fd1ba6e8941050d18900f4d95e7b51f98a8c439",
+        "bytes": 605
+      },
+      {
+        "originalPath": "/tmp/dominds-recovery-durability-before.log",
+        "sha256": "dac75a79df36df3c9066ecd4db619f605585a87c6ad217ac8fc1edea771453ae",
+        "bytes": 12808
+      },
+      {
+        "originalPath": "/tmp/dominds-recovery-durability-before-reviewed.log",
+        "sha256": "2888e074fba07ad501d8c9fcf247eae1b7ccbad6fe9dc4901293608b210dd9eb",
+        "bytes": 22104
+      },
+      {
+        "originalPath": "/tmp/dominds-recovery-durability-fixed.log",
+        "sha256": "b2a60c79485bd6d865c0d80c6ff88edd4b52ff1b1a4d2d234a68becd382be259",
+        "bytes": 17226
+      },
+      {
+        "originalPath": "/tmp/dominds-recovery-durability-accepted.log",
+        "sha256": "e6c702ff915cbebbefd39894a4b227ce958f03c1ac9bdd2ca4bb67a474d5f9a3",
+        "bytes": 17226
+      },
+      {
+        "originalPath": "/tmp/dominds-recovery-durability-final-accepted.log",
+        "sha256": "c3404ca961af966427a6f159f7b36536ad9315eba16d3e08ba6a92335252a12e",
+        "bytes": 17226
+      },
+      {
+        "originalPath": "/tmp/dominds-recovery-q4h.log",
+        "sha256": "08677dcf7dd4f9c26c71c43f61d4192d8bb5789c3bfe919ac54d9c85d421b696",
+        "bytes": 997
+      },
+      {
+        "originalPath": "/tmp/dominds-recovery-siblings.log",
+        "sha256": "2f24d96b7cb65e697abd03acb3c08c13d5ecda46ba83720886b9e93dd27fcfc9",
+        "bytes": 1067
+      },
+      {
+        "originalPath": "/tmp/dominds-recovery-siblings-corrected.log",
+        "sha256": "b96deac356da6b364d5938db72bc2de54aa7472f2bbe97ae6eec0699d2ad3ecf",
+        "bytes": 678
+      },
+      {
+        "originalPath": "/tmp/dominds-recovery-mixed.log",
+        "sha256": "a040b0a99a1f34c111db5583446f39267d43110e8eaa736a3db5d9c0404d5544",
+        "bytes": 3685
+      },
+      {
+        "originalPath": "/tmp/dominds-recovery-badges.log",
+        "sha256": "5b20c13961f7b09803d7a382e3700e1b0403f497d64bf22dbc02dfd13bd4132f",
+        "bytes": 11737
+      },
+      {
+        "originalPath": "/tmp/dominds-recovery-badges-fixed.log",
+        "sha256": "073d3d2511434308424f0ce92c25a6db84a3c159de39977e1e9fd8b4e70362b0",
+        "bytes": 262
+      },
+      {
+        "originalPath": "/tmp/dominds-tests-kernel-nBcRIL/038-kernel-driver_root-tellask-background-callee-badge-event.ts.log",
+        "sha256": "c9cc45b55b6db66828b331792e228d5237c3a10d85bb6b9efd3db64821c1a4f9",
+        "bytes": 10385
+      },
+      {
+        "originalPath": "/tmp/dominds-tests-kernel-9mhYZm/summary.json",
+        "sha256": "ca6be3d1afc0dacc9fa0bf20deee021ccc7250b2dfa69263cd064b85938c8d9a",
+        "bytes": 19130
+      },
+      {
+        "originalPath": "/tmp/dominds-tests-smoke-iOGLT0/summary.json",
+        "sha256": "005ee42c01038cd3442fb482bba2fbbba234d88f8306be3b768246f1c4fa5573",
+        "bytes": 2715
+      },
+      {
+        "originalPath": "/tmp/dominds-recovery-build.log",
+        "sha256": "dc574c667f5563212892142cf72886400b521b77e24ac04381db93d44361061b",
+        "bytes": 714
+      },
+      {
+        "originalPath": "/tmp/dominds-recovery-app-types.log",
+        "sha256": "41aa5be00a3d0c4d2223d9aee1e64fd44a1a074ddc49dbfbb33b30036175e87a",
+        "bytes": 461
+      },
+      {
+        "originalPath": "/tmp/dominds-recovery-focused-types.json",
+        "sha256": "0481cc105a8fa81ad78de55c7eb5c834fdf3d71d99a159c2e2f0ac727926789e",
+        "bytes": 944
+      },
+      {
+        "originalPath": "/tmp/dominds-recovery-focused-types.log",
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "bytes": 0
+      },
+      {
+        "originalPath": "/tmp/dominds-recovery-full-types.log",
+        "sha256": "2694d154dc5cf7f183fc3dc9c0d15504cc3e9732b8b9b42423da7e5d6f557fbb",
+        "bytes": 81223
+      },
+      {
+        "originalPath": "/tmp/dominds-recovery-runner.log",
+        "sha256": "aa572ab3edf05b606229c546d407154d592c86386ea6304565cf13eb5372e494",
+        "bytes": 653
+      },
+      {
+        "originalPath": "/tmp/dominds-recovery-inventory-final.json",
+        "sha256": "88775f3331b2f6f71b6358861369d28c88f7cc6b570b089279d2a866d018976c",
+        "bytes": 25956
+      },
+      {
+        "originalPath": "/tmp/dominds-recovery-focused-types-final.log",
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "bytes": 0
+      },
+      {
+        "originalPath": "/tmp/dominds-recovery-format.log",
+        "sha256": "b1ea3ae2fe62892cb4e7315068d0b5aa27dc325de6426de93c32837cb79bd2f0",
+        "bytes": 282
+      },
+      {
+        "originalPath": "/tmp/dominds-recovery-q4h-alias-before.log",
+        "sha256": "2289fa75384a7ae87d9a71850e3e2b863e9c020c3f0f8ed9db71ef669319deab",
+        "bytes": 331
+      },
+      {
+        "originalPath": "/tmp/dominds-recovery-q4h-alias-after.log",
+        "sha256": "35a7c713970bb5919d599915901705b8f440d95a8d6f5de1a3d7d487b39a2c36",
+        "bytes": 225
+      },
+      {
+        "originalPath": "/tmp/dominds-recovery-askback-alias-after.log",
+        "sha256": "ab2ca7b75fbb6b254a68803b0f42f613bb4872b3850eb4b66eb72bbb45bb2cea",
+        "bytes": 240
+      },
+      {
+        "originalPath": "/tmp/dominds-recovery-inventory-missing-targets.json",
+        "sha256": "29eb6684ad913a7b98b40c53d3ec2fcf2b3fda55238fc5a5d467a2252d5a0a98",
+        "bytes": 26250
+      },
+      {
+        "originalPath": "/tmp/dominds-recovery-runner-final.log",
+        "sha256": "b3da9a9e728a2d1224a654050f320ab087a8decc2a62f666a12b0a4a311d818d",
+        "bytes": 653
+      },
+      {
+        "originalPath": "/tmp/dominds-recovery-doclint.log",
+        "sha256": "59536ef6597a47f515882fa4c992e8d91dfb1ca36aa50717647e0439b6c478a8",
+        "bytes": 191
+      }
+    ]
+  },
+  "initialReview": {
+    "status": "failed",
+    "passed": 0,
+    "failed": 4,
+    "cases": [
+      {
+        "id": "interrupted-after-effect-batch",
+        "scenario": "A user stops a tool while its externally committed effect is already present; the handler later returns a success that the stopped driver cannot use.",
+        "businessValue": "Respect the stop, pair the durable call and preserve uncertainty about external effects for safe recovery.",
+        "context": {
+          "streaming": false,
+          "externalEffects": 1,
+          "providerRounds": 1
+        },
+        "reviewQuestions": [
+          "Does the actual interrupted result avoid implying that interruption undid or prevented an external effect?",
+          "Does it advise effect verification before an unsafe retry?"
+        ],
+        "actualText": "Function 'durability_effect' interrupted before completion: Error: Dialog interrupted",
+        "actualTextSha256": "f0488f3fc128af8da6349f3d55cb695891abff29098ca02941f6bded8c11ae36",
+        "evidenceJsonSha256": "6704221de15308deedd1503f1681fedd6c0816e9f19b873252970b0595f11044",
+        "verdict": "failed",
+        "rationale": "本地调用被中断这一描述本身可以成立，也没有字面承诺回滚；但外部效果实际已提交，全文仅以interrupted before completion呈现失败结果，没有说明停止不撤销外部效果，也没有后续恢复前核验或安全重试条件，无法满足此未知外部结果的安全恢复要求。",
+        "scope": "初轮实际工具结果全文及已提交外部收据事实；不将中断文字臆解为明确回滚承诺。"
+      },
+      {
+        "id": "interrupted-after-effect-stream",
+        "scenario": "A user stops a tool while its externally committed effect is already present; the handler later returns a success that the stopped driver cannot use.",
+        "businessValue": "Respect the stop, pair the durable call and preserve uncertainty about external effects for safe recovery.",
+        "context": {
+          "streaming": true,
+          "externalEffects": 1,
+          "providerRounds": 1
+        },
+        "reviewQuestions": [
+          "Does the actual interrupted result avoid implying that interruption undid or prevented an external effect?",
+          "Does it advise effect verification before an unsafe retry?"
+        ],
+        "actualText": "Function 'durability_effect' interrupted before completion: Error: Dialog interrupted",
+        "actualTextSha256": "f0488f3fc128af8da6349f3d55cb695891abff29098ca02941f6bded8c11ae36",
+        "evidenceJsonSha256": "c646330da48e101c637f60ee3170f3b1be9912440110b28f29cf1a3633172b0f",
+        "verdict": "failed",
+        "rationale": "本地调用被中断这一描述本身可以成立，也没有字面承诺回滚；但外部效果实际已提交，全文仅以interrupted before completion呈现失败结果，没有说明停止不撤销外部效果，也没有后续恢复前核验或安全重试条件，无法满足此未知外部结果的安全恢复要求。",
+        "scope": "初轮实际工具结果全文及已提交外部收据事实；不将中断文字臆解为明确回滚承诺。"
+      },
+      {
+        "id": "unpaired-after-effect-batch",
+        "scenario": "The external tool committed its effect, then writing its result failed; a new dialog object is restored from the durable call without its result.",
+        "businessValue": "Recover a complete call/result protocol without claiming that the effect failed or inviting an unsafe duplicate operation.",
+        "context": {
+          "streaming": false,
+          "durableCallId": "uncertain-effect-batch",
+          "committedExternalEffects": 1,
+          "durableOriginalResults": 0
+        },
+        "reviewQuestions": [
+          "Does the actual recovery text accurately distinguish an unknown/unrecorded outcome from an invocation known to have failed?",
+          "Does it direct the executor to verify effects or safe retry/idempotency before repeating a potentially non-idempotent operation?"
+        ],
+        "actualText": "[kernel_driver_unpaired_tool_call_recovered] A persisted tool call was found without a matching tool result. The previous durability_effect invocation did not produce a durable result record (callId=uncertain-effect-batch). Treat that invocation as failed and retry the tool call if the task still needs it.",
+        "actualTextSha256": "fcc6053e9dd6e4b54ac3481a9e0d6c739a722710639be1f613d71c946c7f73ac",
+        "evidenceJsonSha256": "948e64ab27a8ab675d33e35d396a316cbc462f92f252d551c56249735ece81ce",
+        "verdict": "failed",
+        "rationale": "外部效果已提交、缺失的是持久化结果，全文却把调用判定为失败并要求任务仍需时重试。这把结果未知错误收窄为已知失败，会诱导重复非幂等副作用，属于明确业务阻断。",
+        "scope": "初轮实际工具结果全文及已提交外部收据事实；不将中断文字臆解为明确回滚承诺。"
+      },
+      {
+        "id": "unpaired-after-effect-stream",
+        "scenario": "The external tool committed its effect, then writing its result failed; a new dialog object is restored from the durable call without its result.",
+        "businessValue": "Recover a complete call/result protocol without claiming that the effect failed or inviting an unsafe duplicate operation.",
+        "context": {
+          "streaming": true,
+          "durableCallId": "uncertain-effect-stream",
+          "committedExternalEffects": 1,
+          "durableOriginalResults": 0
+        },
+        "reviewQuestions": [
+          "Does the actual recovery text accurately distinguish an unknown/unrecorded outcome from an invocation known to have failed?",
+          "Does it direct the executor to verify effects or safe retry/idempotency before repeating a potentially non-idempotent operation?"
+        ],
+        "actualText": "[kernel_driver_unpaired_tool_call_recovered] A persisted tool call was found without a matching tool result. The previous durability_effect invocation did not produce a durable result record (callId=uncertain-effect-stream). Treat that invocation as failed and retry the tool call if the task still needs it.",
+        "actualTextSha256": "721f511d395f5d2af11d5aa32daa800bf1a11aa675f01c5727349ee017de8682",
+        "evidenceJsonSha256": "988bbcaf37249eced128ed25a5739f694249aecbb3a3df9389f945a10f53a44a",
+        "verdict": "failed",
+        "rationale": "外部效果已提交、缺失的是持久化结果，全文却把调用判定为失败并要求任务仍需时重试。这把结果未知错误收窄为已知失败，会诱导重复非幂等副作用，属于明确业务阻断。",
+        "scope": "初轮实际工具结果全文及已提交外部收据事实；不将中断文字臆解为明确回滚承诺。"
+      }
+    ]
+  },
+  "intermediateReview": {
+    "status": "passed",
+    "passed": 4,
+    "failed": 0,
+    "cases": [
+      {
+        "id": "interrupted-after-effect-batch",
+        "scenario": "A user stops a tool while its externally committed effect is already present; the handler later returns a success that the stopped driver cannot use.",
+        "businessValue": "Respect the stop, pair the durable call and preserve uncertainty about external effects for safe recovery.",
+        "context": {
+          "streaming": false,
+          "externalEffects": 1,
+          "providerRounds": 1
+        },
+        "reviewQuestions": [
+          "Does the actual interrupted result avoid implying that interruption undid or prevented an external effect?",
+          "Does it advise effect verification before an unsafe retry?"
+        ],
+        "actualText": "Function 'durability_effect' was interrupted; this drive did not accept a completed result. Stopping the dialog does not roll back external effects: the tool may already have changed external state. Respect the stop. If work is later resumed, first verify the effects using read-only checks or external records; retry only after establishing that it is safe, such as a confirmed idempotent operation. If the outcome cannot be verified, seek clarification before repeating the operation. Detail: Error: Dialog interrupted",
+        "actualTextSha256": "21592ea18807c15e59edc1f852a128b5643f3058b7f884ed19261d12f7235045",
+        "evidenceJsonSha256": "d8f7e2e6dee8764e420ac02ded18cff43e4f42a6181dbcf71c099d2325660ab9",
+        "verdict": "passed",
+        "rationale": "通过。batch实际观察到外部效果一次、provider仅一轮、停止归属为user_stop。全文把本地中断与外部状态区分开，不将晚到成功或中断标记当作外部操作已撤销；只在后续恢复时核验并确认安全，符合停止后的恢复边界。",
+        "scope": "修订后中间4份在当轮独立阅读全文通过，仅保留修复审阅历史；最终4份另以5jGUcP材料重新阅读全文判定。"
+      },
+      {
+        "id": "interrupted-after-effect-stream",
+        "scenario": "A user stops a tool while its externally committed effect is already present; the handler later returns a success that the stopped driver cannot use.",
+        "businessValue": "Respect the stop, pair the durable call and preserve uncertainty about external effects for safe recovery.",
+        "context": {
+          "streaming": true,
+          "externalEffects": 1,
+          "providerRounds": 1
+        },
+        "reviewQuestions": [
+          "Does the actual interrupted result avoid implying that interruption undid or prevented an external effect?",
+          "Does it advise effect verification before an unsafe retry?"
+        ],
+        "actualText": "Function 'durability_effect' was interrupted; this drive did not accept a completed result. Stopping the dialog does not roll back external effects: the tool may already have changed external state. Respect the stop. If work is later resumed, first verify the effects using read-only checks or external records; retry only after establishing that it is safe, such as a confirmed idempotent operation. If the outcome cannot be verified, seek clarification before repeating the operation. Detail: Error: Dialog interrupted",
+        "actualTextSha256": "21592ea18807c15e59edc1f852a128b5643f3058b7f884ed19261d12f7235045",
+        "evidenceJsonSha256": "66ea7f6e4d87a4541744827c46e2185fe2478797dbb8a080c22e2bc97e1fb977",
+        "verdict": "passed",
+        "rationale": "通过。外部收据先于user_stop写入，handler在放行后才返回成功，drive未接纳该结果。全文只声称本地调用被中断、当前drive未接纳完成结果，并明确停止不回滚外部效果；要求尊重停止，在后续恢复时先核验，确认安全才重试，没有暗示停止消除了已发生效果。",
+        "scope": "修订后中间4份在当轮独立阅读全文通过，仅保留修复审阅历史；最终4份另以5jGUcP材料重新阅读全文判定。"
+      },
+      {
+        "id": "unpaired-after-effect-batch",
+        "scenario": "The external tool committed its effect, then writing its result failed; a new dialog object is restored from the durable call without its result.",
+        "businessValue": "Recover a complete call/result protocol without claiming that the effect failed or inviting an unsafe duplicate operation.",
+        "context": {
+          "streaming": false,
+          "durableCallId": "uncertain-effect-batch",
+          "committedExternalEffects": 1,
+          "durableOriginalResults": 0
+        },
+        "reviewQuestions": [
+          "Does the actual recovery text accurately distinguish an unknown/unrecorded outcome from an invocation known to have failed?",
+          "Does it direct the executor to verify effects or safe retry/idempotency before repeating a potentially non-idempotent operation?"
+        ],
+        "actualText": "[kernel_driver_unpaired_tool_call_recovered] A persisted tool call was found without a matching tool result. The previous durability_effect invocation did not produce a durable result record (callId=uncertain-effect-batch). Its outcome is unknown: the tool may have completed or changed external state before its result was recorded. Do not infer failure or repeat the operation from the missing record alone. First verify the effects using read-only checks or external records. Retry only after establishing that it is safe, such as a confirmed idempotent operation; if the outcome cannot be verified, seek clarification before repeating it.",
+        "actualTextSha256": "8b19b009b7d59dec1a4f4bcf49e2a6189566b6e900b7cf95d0c5674a7bdc115f",
+        "evidenceJsonSha256": "8cfb49c95f03029bc42b4abd253247aca63116355aefde368ec551917595a24d",
+        "verdict": "passed",
+        "rationale": "通过。batch供应商边界的实际事实同样是外部效果一次、原调用结果未落盘。全文将协议修复与外部执行是否成功分开，明确不能仅凭缺记录重复操作，并提供核验及安全重试条件，符合新对象恢复后只读检查收据的业务需要。",
+        "scope": "修订后中间4份在当轮独立阅读全文通过，仅保留修复审阅历史；最终4份另以5jGUcP材料重新阅读全文判定。"
+      },
+      {
+        "id": "unpaired-after-effect-stream",
+        "scenario": "The external tool committed its effect, then writing its result failed; a new dialog object is restored from the durable call without its result.",
+        "businessValue": "Recover a complete call/result protocol without claiming that the effect failed or inviting an unsafe duplicate operation.",
+        "context": {
+          "streaming": true,
+          "durableCallId": "uncertain-effect-stream",
+          "committedExternalEffects": 1,
+          "durableOriginalResults": 0
+        },
+        "reviewQuestions": [
+          "Does the actual recovery text accurately distinguish an unknown/unrecorded outcome from an invocation known to have failed?",
+          "Does it direct the executor to verify effects or safe retry/idempotency before repeating a potentially non-idempotent operation?"
+        ],
+        "actualText": "[kernel_driver_unpaired_tool_call_recovered] A persisted tool call was found without a matching tool result. The previous durability_effect invocation did not produce a durable result record (callId=uncertain-effect-stream). Its outcome is unknown: the tool may have completed or changed external state before its result was recorded. Do not infer failure or repeat the operation from the missing record alone. First verify the effects using read-only checks or external records. Retry only after establishing that it is safe, such as a confirmed idempotent operation; if the outcome cannot be verified, seek clarification before repeating it.",
+        "actualTextSha256": "bcb47d69b75fe180aeba75d03af86ac8db4b51ae1524f75d3cfe47ad280403ee",
+        "evidenceJsonSha256": "aacbb619cd808a999ba73ecec46a1a267f23e3fd0dfbc079b9cc3f3c1c3659ae",
+        "verdict": "passed",
+        "rationale": "通过。真实stream调用已写外部收据一次，随后只有结果记录写入EIO失败。全文正确描述持久化结果缺失和结果未知，承认工具可能已完成或改变外部状态；没有把缺记录当作已知执行失败。要求先只读核验或查外部记录，仅确认安全（例如确认幂等）才重试，无法核验时先澄清，避免重复已提交效果。",
+        "scope": "修订后中间4份在当轮独立阅读全文通过，仅保留修复审阅历史；最终4份另以5jGUcP材料重新阅读全文判定。"
+      }
+    ]
+  },
+  "cases": [
+    {
+      "id": "interrupted-after-effect-batch",
+      "scenario": "A user stops a tool while its externally committed effect is already present; the handler later returns a success that the stopped driver cannot use.",
+      "businessValue": "Respect the stop, pair the durable call and preserve uncertainty about external effects for safe recovery.",
+      "context": {
+        "streaming": false,
+        "externalEffects": 1,
+        "providerRounds": 1
+      },
+      "reviewQuestions": [
+        "Does the actual interrupted result avoid implying that interruption undid or prevented an external effect?",
+        "Does it advise effect verification before an unsafe retry?"
+      ],
+      "actualText": "Function 'durability_effect' was interrupted; this drive did not accept a completed result. Stopping the dialog does not roll back external effects: the tool may already have changed external state. Respect the stop. If work is later resumed, first verify the effects using read-only checks or external records; retry only after establishing that it is safe, such as a confirmed idempotent operation. If the outcome cannot be verified, seek clarification before repeating the operation. Detail: Error: Dialog interrupted",
+      "actualTextSha256": "21592ea18807c15e59edc1f852a128b5643f3058b7f884ed19261d12f7235045",
+      "evidenceJsonSha256": "d8f7e2e6dee8764e420ac02ded18cff43e4f42a6181dbcf71c099d2325660ab9",
+      "verdict": "passed",
+      "rationale": "通过。batch实际观察到外部效果一次、provider仅一轮、停止归属为user_stop。全文把本地中断与外部状态区分开，不将晚到成功或中断标记当作外部操作已撤销；只在后续恢复时核验并确认安全，符合停止后的恢复边界。",
+      "scope": "真实stream/batch工具调用、落盘/恢复/停止边界的实际工具结果正文；不证明真实模型会遵循指导。",
+      "producer": "tests/kernel-driver/func-call-persists-before-result.ts",
+      "evidence": "全文、场景及必要观察上下文均内嵌本项；源码夹具及相关实现的身份统一保存在sourceFingerprints。"
+    },
+    {
+      "id": "interrupted-after-effect-stream",
+      "scenario": "A user stops a tool while its externally committed effect is already present; the handler later returns a success that the stopped driver cannot use.",
+      "businessValue": "Respect the stop, pair the durable call and preserve uncertainty about external effects for safe recovery.",
+      "context": {
+        "streaming": true,
+        "externalEffects": 1,
+        "providerRounds": 1
+      },
+      "reviewQuestions": [
+        "Does the actual interrupted result avoid implying that interruption undid or prevented an external effect?",
+        "Does it advise effect verification before an unsafe retry?"
+      ],
+      "actualText": "Function 'durability_effect' was interrupted; this drive did not accept a completed result. Stopping the dialog does not roll back external effects: the tool may already have changed external state. Respect the stop. If work is later resumed, first verify the effects using read-only checks or external records; retry only after establishing that it is safe, such as a confirmed idempotent operation. If the outcome cannot be verified, seek clarification before repeating the operation. Detail: Error: Dialog interrupted",
+      "actualTextSha256": "21592ea18807c15e59edc1f852a128b5643f3058b7f884ed19261d12f7235045",
+      "evidenceJsonSha256": "66ea7f6e4d87a4541744827c46e2185fe2478797dbb8a080c22e2bc97e1fb977",
+      "verdict": "passed",
+      "rationale": "通过。外部收据先于user_stop写入，handler在放行后才返回成功，drive未接纳该结果。全文只声称本地调用被中断、当前drive未接纳完成结果，并明确停止不回滚外部效果；要求尊重停止，在后续恢复时先核验，确认安全才重试，没有暗示停止消除了已发生效果。",
+      "scope": "真实stream/batch工具调用、落盘/恢复/停止边界的实际工具结果正文；不证明真实模型会遵循指导。",
+      "producer": "tests/kernel-driver/func-call-persists-before-result.ts",
+      "evidence": "全文、场景及必要观察上下文均内嵌本项；源码夹具及相关实现的身份统一保存在sourceFingerprints。"
+    },
+    {
+      "id": "unpaired-after-effect-batch",
+      "scenario": "The external tool committed its effect, then writing its result failed; a new dialog object is restored from the durable call without its result.",
+      "businessValue": "Recover a complete call/result protocol without claiming that the effect failed or inviting an unsafe duplicate operation.",
+      "context": {
+        "streaming": false,
+        "durableCallId": "uncertain-effect-batch",
+        "committedExternalEffects": 1,
+        "durableOriginalResults": 0
+      },
+      "reviewQuestions": [
+        "Does the actual recovery text accurately distinguish an unknown/unrecorded outcome from an invocation known to have failed?",
+        "Does it direct the executor to verify effects or safe retry/idempotency before repeating a potentially non-idempotent operation?"
+      ],
+      "actualText": "[kernel_driver_unpaired_tool_call_recovered] A persisted tool call was found without a matching tool result. The previous durability_effect invocation did not produce a durable result record (callId=uncertain-effect-batch). Its outcome is unknown: the tool may have completed or changed external state before its result was recorded. Do not infer failure or repeat the operation from the missing record alone. First verify the effects using read-only checks or external records. Retry only after establishing that it is safe, such as a confirmed idempotent operation; if the outcome cannot be verified, seek clarification before repeating it.",
+      "actualTextSha256": "8b19b009b7d59dec1a4f4bcf49e2a6189566b6e900b7cf95d0c5674a7bdc115f",
+      "evidenceJsonSha256": "8cfb49c95f03029bc42b4abd253247aca63116355aefde368ec551917595a24d",
+      "verdict": "passed",
+      "rationale": "通过。batch供应商边界的实际事实同样是外部效果一次、原调用结果未落盘。全文将协议修复与外部执行是否成功分开，明确不能仅凭缺记录重复操作，并提供核验及安全重试条件，符合新对象恢复后只读检查收据的业务需要。",
+      "scope": "真实stream/batch工具调用、落盘/恢复/停止边界的实际工具结果正文；不证明真实模型会遵循指导。",
+      "producer": "tests/kernel-driver/func-call-persists-before-result.ts",
+      "evidence": "全文、场景及必要观察上下文均内嵌本项；源码夹具及相关实现的身份统一保存在sourceFingerprints。"
+    },
+    {
+      "id": "unpaired-after-effect-stream",
+      "scenario": "The external tool committed its effect, then writing its result failed; a new dialog object is restored from the durable call without its result.",
+      "businessValue": "Recover a complete call/result protocol without claiming that the effect failed or inviting an unsafe duplicate operation.",
+      "context": {
+        "streaming": true,
+        "durableCallId": "uncertain-effect-stream",
+        "committedExternalEffects": 1,
+        "durableOriginalResults": 0
+      },
+      "reviewQuestions": [
+        "Does the actual recovery text accurately distinguish an unknown/unrecorded outcome from an invocation known to have failed?",
+        "Does it direct the executor to verify effects or safe retry/idempotency before repeating a potentially non-idempotent operation?"
+      ],
+      "actualText": "[kernel_driver_unpaired_tool_call_recovered] A persisted tool call was found without a matching tool result. The previous durability_effect invocation did not produce a durable result record (callId=uncertain-effect-stream). Its outcome is unknown: the tool may have completed or changed external state before its result was recorded. Do not infer failure or repeat the operation from the missing record alone. First verify the effects using read-only checks or external records. Retry only after establishing that it is safe, such as a confirmed idempotent operation; if the outcome cannot be verified, seek clarification before repeating it.",
+      "actualTextSha256": "bcb47d69b75fe180aeba75d03af86ac8db4b51ae1524f75d3cfe47ad280403ee",
+      "evidenceJsonSha256": "aacbb619cd808a999ba73ecec46a1a267f23e3fd0dfbc079b9cc3f3c1c3659ae",
+      "verdict": "passed",
+      "rationale": "通过。真实stream调用已写外部收据一次，随后只有结果记录写入EIO失败。全文正确描述持久化结果缺失和结果未知，承认工具可能已完成或改变外部状态；没有把缺记录当作已知执行失败。要求先只读核验或查外部记录，仅确认安全（例如确认幂等）才重试，无法核验时先澄清，避免重复已提交效果。",
+      "scope": "真实stream/batch工具调用、落盘/恢复/停止边界的实际工具结果正文；不证明真实模型会遵循指导。",
+      "producer": "tests/kernel-driver/func-call-persists-before-result.ts",
+      "evidence": "全文、场景及必要观察上下文均内嵌本项；源码夹具及相关实现的身份统一保存在sourceFingerprints。"
+    },
+    {
+      "id": "declare-dead-en",
+      "scenario": "A user retries declaring an already-dead child whose caller still has a pending dispatch, then repeats the same UI request once more.",
+      "businessValue": "Close the unavailable task exactly once, clear its pending badge and explain failure without pretending successful task completion.",
+      "context": {
+        "language": "en",
+        "callId": "already-dead-call-en",
+        "durableResults": 1,
+        "status": "failed",
+        "pendingDispatches": 0
+      },
+      "reviewQuestions": [
+        "Does the actual caller result accurately explain that the child was declared dead and its task did not complete?",
+        "Does the full text make this a failed result for the existing request rather than a new request or a successful task answer?"
+      ],
+      "actualText": "[Dominds Tellask result | callId: already-dead-call-en]\n\n@pangu provided a Tellask reply:\n\n> [System notice] Side Dialog 16/79/8d356260#ae/88/8d356261 has been declared dead by the user (irreversible). This was a one-shot Side Dialog; if you still need the work, start a new Side Dialog. Previous context will not carry over, so include the latest complete context in the new tellask body.\n\nregarding the original tellask: @pangu\n\n> declared-dead-task-data\n\n[Dominds Tellask result status]\n- Function: `tellaskSessionless`\n- callId: already-dead-call-en\n- Note: This is a result fact for an earlier Tellask, not a new user request or a newly initiated function call in the current course.\n",
+      "actualTextSha256": "2c307732f37f5870386ad9a654b006a6ce11a640398ea92863e65359f7e82428",
+      "evidenceJsonSha256": "09b11be8c025ffe3a7d6ea047a20a72c649044f3de5e62629ba9f13b53c4e916",
+      "verdict": "passed",
+      "rationale": "通过。完整通知说明用户已不可逆地宣布该一次性支线卡死，若仍需工作必须新建支线并提供完整最新上下文，未宣称原任务完成；原callId、原始任务引用和结果事实footer明确这是既有请求的结果。外层provided a Tellask reply描述结果送达，在系统通知正文和实际failed状态的上下文中不等于任务成功。与重复UI请求只持久交付一次、清除pending并被caller消费一次相符。",
+      "scope": "tellaskSessionless的一次性支线重复declare-dead路径；仅真实WebSocket handler与协议事件，不是真实浏览器。",
+      "producer": "tests/kernel-driver/root-tellask-background-callee-badge-event.ts",
+      "evidence": "全文、场景及必要观察上下文均内嵌本项；源码夹具及相关实现的身份统一保存在sourceFingerprints。"
+    },
+    {
+      "id": "declare-dead-zh",
+      "scenario": "A user retries declaring an already-dead child whose caller still has a pending dispatch, then repeats the same UI request once more.",
+      "businessValue": "Close the unavailable task exactly once, clear its pending badge and explain failure without pretending successful task completion.",
+      "context": {
+        "language": "zh",
+        "callId": "already-dead-call-zh",
+        "durableResults": 1,
+        "status": "failed",
+        "pendingDispatches": 0
+      },
+      "reviewQuestions": [
+        "Does the actual caller result accurately explain that the child was declared dead and its task did not complete?",
+        "Does the full text make this a failed result for the existing request rather than a new request or a successful task answer?"
+      ],
+      "actualText": "【Dominds 诉请结果｜callId: already-dead-call-zh】\n\n@pangu 已回复：\n\n> 【系统提示】 支线对话 af/6c/8d35631c#96/05/8d35631d 已被用户宣布卡死（不可逆）。这是一次性支线对话；后续若仍需继续，请重新发起新的支线对话。由于不会续接此前上下文，新的诉请正文请提供最新的完整上下文信息。\n\n针对原始诉请： @pangu\n\n> declared-dead-task-data\n\n[Dominds 诉请结果状态]\n- 函数: `tellaskSessionless`\n- callId: already-dead-call-zh\n- 说明: 这是前序诉请的结果事实，不是新的用户请求，也不是当前程新发起的函数调用。\n",
+      "actualTextSha256": "515a3d9afd48b8b12e0dbdfd39869c1e0ac81de4fd10fc45be20fcf88db80016",
+      "evidenceJsonSha256": "2b038818c969483eae8378b369d6f38f37809c3961c5752429b1e7a30e18a5f8",
+      "verdict": "passed",
+      "rationale": "通过。全文说明支线已由用户宣布卡死且不可逆、一次性支线不会续接此前上下文，后续工作需另建并补足上下文；没有把死亡通知描述成任务完成。虽然外层使用已回复，但系统通知、原诉请引用、原callId和前序结果说明共同表达对既有请求的失败关闭，与实际failed唯一结果及待办清除一致。",
+      "scope": "tellaskSessionless的一次性支线重复declare-dead路径；仅真实WebSocket handler与协议事件，不是真实浏览器。",
+      "producer": "tests/kernel-driver/root-tellask-background-callee-badge-event.ts",
+      "evidence": "全文、场景及必要观察上下文均内嵌本项；源码夹具及相关实现的身份统一保存在sourceFingerprints。"
+    }
+  ],
+  "assertionReview": {
+    "status": "passed",
+    "reviewedAgainstBase": "4c525b7d2734a12babaca6a4df3401352c082236",
+    "candidates": [
+      {
+        "file": "tests/kernel-driver/func-call-persists-before-result.ts",
+        "verdict": "passed",
+        "businessValue": "工具执行前有可恢复的调用记录，结果写入丢失及停止不能诱导重复外部操作。",
+        "assertionClasses": [
+          "stream/batch供应商入口及目标dialogId精确校验，轮次有上限且夹具错误fatal；脚本按阶段/请求ID输出，不按指导措辞选择动作。",
+          "两个工具各自进入真实执行边界时读取真实course事件，全部调用ID数组已落盘；slow受gate控制且完成前对应result=0。最终call/result各2、调用索引早于首result及UI funcId数组证明顺序、关联和一次性发出，已有正向数量检查保证负向/索引比较不恒真。",
+          "工具真实写外部收据后，仅对该调用的func_result_record注入EIO；failedWrites>0、收据原始字节、effect=1、原call=1/result=0明确建立未知结果现场。恢复先卸载registry，再检查新对象身份，避免把缓存对象视为恢复。",
+          "恢复供应商上下文中匹配原ID的synthetic result恰好1，随后调用真实只读检查工具并在下一轮看到原始收据；effects=1/inspections=1证明没有自动重放效果。第三轮明确输出无副作用数据并检查rounds=3，后续读取同ID result仍1。",
+          "在收据写入完成事件后发user_stop，再释放晚到handler；effect=1、result=1、无assistant后续正文、display stopped/user_stop及execution interrupted/user_stop证明停止归属和协议配对。受控late-success-data不能出现在采用的result中。",
+          "恢复与中断结果的自然语言含义交由本报告逐份主观评审，已删除旧恢复标记regex和interrupted before completion固定措辞断言。"
+        ],
+        "literalComparisonJustification": "ID、事件种类、轮次、状态及索引属于机器合同；收据、工具结果及late-success-data是夹具明确供应的不透明数据，包含/相等只验证载荷传递或未采用该载荷，不推断自然语言含义。",
+        "scopeAndLimits": "真实文件收据及运行时/持久化/恢复；EIO由appendEvent边界注入，不是实际磁盘故障或断电；不证明所有副作用可撤销、任意工具exactly-once或模型会选择只读恢复。"
+      },
+      {
+        "file": "tests/kernel-driver/duplicate-raw-callid-effective-id.ts",
+        "verdict": "passed",
+        "businessValue": "重复供应商原始ID不能串错结果或劫持人类问题关联，历史占用与course作用域恢复正确。",
+        "assertionClasses": [
+          "每一普通调用明确完成2轮并看到指定env结果、原始rawId和对应func_call；每轮持久assistant正文为当前受控输出，能抓住旧相同(unset)索引覆盖导致的错误终结。",
+          "首ID保持原ID，第二次effective ID不同但不冻结后缀；已知effective IDs集合大小与数组长度比较只为检测唯一性，另有完整result ID数组等于call ID数组、rawId及env payload检查，未用去重掩盖顺序或数量。",
+          "手工历史call/result配对先落盘，再卸载并获取不同对象；再次用相同rawId产生不同effective ID，原历史ID不被复用；restore消息的ID数组与持久调用数组原样比较。",
+          "startNewCourse后真实驱动再用旧rawId，检查新course仅1call/1result且ID可复用，验证作用域而非只调用内部映射函数。",
+          "同轮普通env工具与askHuman共享rawId时分别检查ordinary1/special1，普通重映射、人类问题保留原ID、问题唯一及原始payload，证明特殊调用拥有其问题身份。"
+        ],
+        "literalComparisonJustification": "env值、受控assistant答案和问题正文是固定输入数据；raw/effective ID、工具名、事件类型、course与数量是机器合同。没有用这些文本判断提示含义。",
+        "scopeAndLimits": "stream/batch、同course/跨course及真实重建；受控历史记录测试恢复兼容性，不宣称自然语言回答正确或所有并发ID冲突都覆盖。"
+      },
+      {
+        "file": "tests/kernel-driver/pending-user-interjection-recovery.ts",
+        "verdict": "passed",
+        "businessValue": "崩溃后的JSONL事实能恢复插话答复归属，自动接续不覆盖已给人类的答案。",
+        "assertionClasses": [
+          "先注入真实持久事件并设置过期pending标记，比较其在pre-tool/工具后可见答复阶段的存在与清理；hasDurableDriveWork=false保护footer事实不触发额外工作。",
+          "普通可见答复不合成A2H；自动gen_start、prompt-bound runtime guide和自动tool分别形成1个A2H且保留原始首答复数据；后续自动正文不替换首答复。",
+          "prompt-bound尚未落盘的人类消息及带q4hAnswerCallId的人类答复不误算自动驱动；ordinary chat不凭文本自行合成pending/A2H。判断依据是事件结构与顺序，不是这些句子的措辞。",
+          "已有A2H清pending；四类已正向证明answers=1的场景，重复load latest两次及restoreDialog后完整answers数组仍原样相等，包含ID、时间、引用和正文，能抓重复/替换。",
+          "归档后全局running A2H清单不包含该ID，但archived存储仍1并可ack，ack后0，保护归档通知生命周期。"
+        ],
+        "literalComparisonJustification": "看似自然语言的正文均由夹具直接appendEvent/appendAnswer提供；文本相等验证首答复数据保真，不判断其是否真正回答业务问题。数组比较检查完整身份和数量，未以语义标签伪装。",
+        "scopeAndLimits": "基于真实存储接口和精确恢复事件现场，不含本用例中的真实provider生成、WebUI渲染或进程崩溃。restoreDialog返回恢复投影，不声称该用例构造完整运行中Dialog实例。"
+      },
+      {
+        "file": "tests/kernel-driver/q4h-preserves-diligence-budget.ts",
+        "verdict": "passed",
+        "businessValue": "询问人类可靠广播一次并阻断自动驱动，操作员追加的预算在等待与重建中不被默认值覆盖。",
+        "assertionClasses": [
+          "stream/batch明确mock函数调用askHuman，真实question持久化1且callId和原输入正文一致。",
+          "scoped事件在动作前订阅并于动作完成后EOS完整读完：stream_error=0取自能实际承载该事件的通道；new_q4h_asked不应通过scoped重复。global recorder正向获取唯一问题事件，比较持久问题数据加rootId/selfId/agentId/taskDocPath归属的完整wire envelope。",
+          "预算设7、团队默认1，内存与持久均保持7，display blocked；显式排入真实后台驱动后gen_start仍1，证明Q4H实际阻止额外供应商生成。",
+          "卸载registry、恢复不同对象，预算仍7、问题数组完全相等，suspension q4h=true/canDrive=false，验证等待状态与预算保留。"
+        ],
+        "literalComparisonJustification": "问题正文是明确mock输入数据，精确比较只证明传输；全局wire归属字段与裸持久问题有意不同，按真实协议补全归属比较。所有状态/种类/计数为机器合同。",
+        "scopeAndLimits": "通过tests/cli真实bootstrap安装的全局广播器及scoped事件；不等于浏览器已展示问题或覆盖人类回答之后的整个流程。"
+      },
+      {
+        "file": "tests/kernel-driver/root-runtime-wake-lifecycle.ts",
+        "verdict": "passed",
+        "businessValue": "后台只驱动被唤醒的权威工作，前台消费后不重复，旧路由残留不能重做已完成任务。",
+        "assertionClasses": [
+          "每个stream/batch共4场景：显式wake、前台消费、backend已运行时新工作到达、backend启动前积压，共8个组合，供应商请求目标ID/模式与请求数精确受控。",
+          "startNewCourse产生真实queued prompt、持久wake routes与registry hydration；清显式驱动队列后驱动一次，供应商0/gen_start0，随后显式wake得到1次。",
+          "保存真实普通路由记录，消费权威prompt后将这些旧route原样写回，再排队驱动；检查route确实存在、供应商仍1及route最终清空，负向结论有正向现场。取代旧给root伪造sideDialogFinalResponse的无效前提。",
+          "前台先有durable root_runtime_wake且无blocked-drive marker，再真实driveDialogStream消费；随后后台驱动不重复。两种真实backend启动顺序均以持久受控结果及解锁同步。",
+          "最终provider1、gen_start1、人类记录输入1、完整assistant输出数组单值、pendingRuntimePrompt/nextStep/rootRuntimeWake/blocked marker/queued prompt均清；再次后台调度请求数仍1。"
+        ],
+        "literalComparisonJustification": "输入和输出均为测试明确供应的opaque payload；content相等在请求上下文和持久事件中验证一次性传递，不判断消息语义。队列kind/source、msgId和状态字段是实际调度合同。",
+        "scopeAndLimits": "真实loop与持久队列，按事件/状态边界同步；这8组合不是任意调度交错的证明，也不等同实际进程重启或多进程并发。"
+      },
+      {
+        "file": "tests/kernel-driver/root-tellask-background-callee-badge-event.ts",
+        "verdict": "passed",
+        "businessValue": "待办badge随真实责任建立/失败关闭更新，用户重复宣布卡死不能产生重复交付或未消费的供应商失败。",
+        "assertionClasses": [
+          "发布回调在动作前建立，按dialogId与计数接收真实summary；调用processTellaskFunctionRound后有scheduled child与pending1，summary count1/freshBoot count0。",
+          "供给受控failed结果后summary0、active dispatch空、canonical result唯一且status=failed并携带原始payload，保留原badge增减价值。",
+          "实际createSideDialog与active dispatch建立已有卡死且caller未关闭的现场，设置dead marker/display后经真实WebSocket handler顺序重复同一请求；只mock socket传输并JSON解析，不拦截业务处理。",
+          "实际caller供应商入口按dialogId查已知callId，必须收到唯一failed result且只进入1轮，然后发受控消费输出。正向持久输出与真实解锁证明执行完成，避免badge先清零而后provider失败仍假绿。",
+          "socket error字段0、pending空、canonical failed1共同证明幂等关闭；中英实际包裹正文独立留作本报告语义判断，不以dead/failed等关键词当语言裁判。"
+        ],
+        "literalComparisonJustification": "failed-operation-payload-data包含比较只验证传入的原始responseText未丢失；caller-consumed-dead-result-data为供应商受控输出哨兵。status=failed、error类型、ID与summary计数均机器协议；自然语言通知另审。",
+        "scopeAndLimits": "只覆盖顺序重复declare-dead、tellaskSessionless一次性支线及中英；不覆盖并发重复、其他支线类型、真实浏览器或真实模型理解。首个badge场景有意不驱动callee，检查真实派遣/响应公共效应。"
+      },
+      {
+        "file": "tests/kernel-driver/sideDialog-diligence-push-state.ts",
+        "verdict": "passed",
+        "businessValue": "支线续推配置独立持久化，恢复不覆盖主线，当前兼容策略不会给支线误生成主线续推。",
+        "assertionClasses": [
+          "默认及patched disableDiligencePush分别检查root/side存储，避免把改支线写到root。",
+          "显式flush真实writeback并用YAML parser读取磁盘字段，而不是regex匹配序列化格式；值true是持久状态合同。",
+          "registry卸载后root与side均为不同对象，side保持true且restoredRoot保持false；修正原断言读取旧root的问题。",
+          "无active obligation、原任务replyTellask义务、askback replyTellaskBack义务三场景均实际调用maybePrepareDiligenceAutoContinuePrompt，返回kind disabled，保护当前支线兼容边界，不冻结提示措辞。"
+        ],
+        "literalComparisonJustification": "disableDiligencePush布尔、prompt准备结果kind和reply工具名是机器状态；测试中的任务正文是输入且不作含义比较。",
+        "scopeAndLimits": "状态恢复和准备器边界；使用私有writeback方法只为保证文件已刷盘，未在该用例驱动真实供应商，也不宣称设计了未来所有支线自动续推策略。"
+      },
+      {
+        "file": "tests/kernel-driver/sideDialog-multi-pending-registers-before-drive.ts",
+        "verdict": "passed",
+        "businessValue": "同轮所有子请求在任一个子模型真正开始前都可持久恢复，不能凭loaded对象数猜测派遣。",
+        "assertionClasses": [
+          "两次明确tellaskSessionless为同一root生成轮产生；processTellaskFunctionRound真实执行，schedule adapter按原参数立刻调用真实driveDialogStream并保留其Promise。",
+          "每个真实子provider入口都解析实际SideDialog并读取loadActiveCalleeDispatches：完整callId数组必须等于同轮输入数组且course/genseq相同，直接在执行边界证明批次完整。",
+          "两个独立scheduled ID、generated长度2且每个ID只出现1，所有pending记录calleeDialogId为这些字符串；修正旧内存activeIDs/对象字段前提。",
+          "每个实际子驱动向自己askHuman并持久化唯一受控问题，未只以创建/排队两个对象冒充执行。父轮正常finish并在finally等子驱动后撤provider。"
+        ],
+        "literalComparisonJustification": "callId/side ID/agent ID/course/genseq及handledCallIds属于调度与关联合同；每个问题正文是按agentId明确供应的opaque payload。未匹配任何分发指导措辞。",
+        "scopeAndLimits": "真实special handler、子drive和存储；schedule callback由用例直接接到真实drive以观察边界，本项不声称完整后台loop调度或子任务最终完成。"
+      },
+      {
+        "file": "tests/kernel-driver/sideDialog-mixed-tool-round-honors-suspension.ts",
+        "verdict": "passed",
+        "businessValue": "本地工具后续与主线新输入不被后台子任务的人类等待错误阻塞或误完成。",
+        "assertionClasses": [
+          "按实际dialogId和轮次选择供应商输出；stream/batch入口断言使所有成员的模式真正受验，env_get使用已设置的唯一受控值且finally恢复环境。",
+          "root第1轮混合saying/tellask/env_get，第2轮实际收到env结果；独立child正向进入askHuman且问题落盘。等待真实问题和解锁后rootRounds2/childRounds1，call/result各1和完整assistant数组证明本地续接确实完成。",
+          "root suspension为q4h=false/backgroundCallee=true/canDrive=true，child相反等待人类；root display明确idle_waiting_user。",
+          "随后新用户输入驱动root第3轮，其实际context按msgId保留输入1；child不重驱动、问题数组原样保留、派遣仍1/原taskId，没有非pending正式结果，受控新答案已落盘。"
+        ],
+        "literalComparisonJustification": "环境值、问题与assistant正文均为供应商明确输出的数据，字节比较验证保真；prompt msgId、事件名、状态及执行次数是机器合同。删除根据拼装的自然语言指导定位mock的依赖。",
+        "scopeAndLimits": "真实parent/child runtime和持久化的两模式；child始终等待，不包含人类最终回答及其任务关闭。"
+      }
+    ],
+    "supportAndDocumentation": [
+      {
+        "file": "tests/kernel-driver/helpers.ts",
+        "verdict": "passed",
+        "assertionValue": "显式streaming写入member_defaults，现有tester覆盖保持一致，includePangu与extraMembers继承真实相同模式；混合和siblings两模式的provider入口断言可观察该修正。默认未传时不新增字段，不改变未指定调用。合法.tsk默认夹具为既有行为，本批未改。"
+      },
+      {
+        "file": "tests/run.mjs",
+        "verdict": "passed",
+        "assertionValue": "增加两个已审producer至显式语义kernel名单，collector仍生成pending；inventory复用既有命令路径提取，保留script/target，然后对实际目标fs.stat并要求为文件。ENOENT/ENOTDIR或非文件才列为missingPackageScriptTargets，其它I/O错误继续抛出。判断不依赖候选发现集合，因角色排除的真实fixture/其它仓内目标不会被误判文件缺失。修前实际列2个不存在目标，修后为空。regexp仅识别包脚本机器路径，不读语言输出、不判语义；明确不解析任意shell组合、不把文件存在当行为通过。"
+      },
+      {
+        "file": "AGENTS.md",
+        "verdict": "passed",
+        "assertionValue": "准确扩展语义证据lane所包含的工具结果不确定性和卡死结果范围，保留显式evidence lane、非所有kernel语义覆盖的界限。 inventory新增直接TypeScript package-script目标缺失检查的范围说明准确，不是语义检测器。"
+      },
+      {
+        "file": "tests/audit.json",
+        "verdict": "passed",
+        "assertionValue": "9 reviewed项与5 merge退休映射均有可审价值及替代入口；ledger只是人工设计清单，不用其reviewed自动接受新语言输出。计数61 reviewed/204 unaudited与本批9项增量一致。"
+      },
+      {
+        "file": "docs/testing-strategy.md",
+        "verdict": "passed",
+        "assertionValue": "本批节区分初轮4失败、真实外部效果与受控供应商、5合并的价值、夹具失败与产品文案缺陷；保留324类型诊断和204未审范围，不把数量下降等同覆盖率。 末段准确记录两个旧命名入口映射和真实执行、inventory机器路径检查及其限制；未声称全命令解析或所有套件通过。"
+      },
+      {
+        "file": "tests/package.json",
+        "verdict": "passed",
+        "assertionValue": "两个保留旧名字的命令均直接执行各自已合并替代脚本，实际命令前后验证Q4H失败转成功、askback成功。没有新增自然语言oracle、依赖或框架，也不因这两个alias把candidate计数增加2。"
+      }
+    ],
+    "retirements": [
+      {
+        "deletedFile": "tests/kernel-driver/backend-loop-does-not-scan-unwoken-roots.ts",
+        "decision": "merge",
+        "verdict": "passed",
+        "replacement": "tests/kernel-driver/root-runtime-wake-lifecycle.ts",
+        "preservedValue": "原“不扫描未唤醒root”价值由真实未唤醒provider0/gen_start0和随后显式wake的正向1次保存，去掉对拼装new-course指导的mock字面路由。"
+      },
+      {
+        "deletedFile": "tests/kernel-driver/root-manual-round-clears-consumed-root-runtime-wake.ts",
+        "decision": "merge",
+        "verdict": "passed",
+        "replacement": "tests/kernel-driver/root-runtime-wake-lifecycle.ts",
+        "preservedValue": "原前台消费durable wake、无blocked marker、后续不重复的状态价值在新场景保存，删除重复同一marker断言并加入真实provider/输入/输出数量。"
+      },
+      {
+        "deletedFile": "tests/kernel-driver/root-pending-runtime-prompt-backend-loop-drives-without-explicit-resume.ts",
+        "decision": "merge",
+        "verdict": "passed",
+        "replacement": "tests/kernel-driver/root-runtime-wake-lifecycle.ts",
+        "preservedValue": "原已运行backend响应新course价值保存，并加启动积压；以实际受控载荷与队列清理验收。"
+      },
+      {
+        "deletedFile": "tests/kernel-driver/root-wake-queue-entry-is-not-runtime-wake.ts",
+        "decision": "merge",
+        "verdict": "passed",
+        "replacement": "tests/kernel-driver/root-runtime-wake-lifecycle.ts",
+        "preservedValue": "原普通route不能冒充权威runtime工作价值，以真实工作消费后捕获并注入的旧route复现并检查其清理；旧给root伪造sideDialogFinalResponse前提不保留。"
+      },
+      {
+        "deletedFile": "tests/kernel-driver/q4h-runtime-broadcaster-bootstrap.ts",
+        "decision": "merge",
+        "verdict": "passed",
+        "replacement": "tests/kernel-driver/q4h-preserves-diligence-budget.ts",
+        "preservedValue": "原bootstrap的真实Q4H持久和全局广播保留且收紧为唯一完整envelope；删除自然语言错误includes和在不承载stream_error的global recorder中做恒空否定。scoped真实错误类型另有0检查。"
+      }
+    ],
+    "crossCuttingFinding": "保留的字节相等/包含均用于明确输入输出载荷、ID、协议字段或结构化状态；未发现以机器合同标签伪装的自然语言含义断言。负向检查均结合相应正向现场/执行边界；原global错误文字恒空检查、旧根支线伪状态和mock指导文字路由已删除。",
+    "entryPointFinding": {
+      "status": "resolved",
+      "verdict": "passed",
+      "file": "tests/package.json",
+      "observed": "评审复现命令时发现本批已合并删除的Q4H脚本仍被旧命名入口引用，实际旧命令exit1/script not found；inventory还准确列出上一批已合并askback的同类既有遗漏。",
+      "correction": "保留两个旧命名入口，分别转向q4h-preserves-diligence-budget.ts与sideDialog-askback-reply-tool-no-double-delivery.ts；两个命令实际执行均通过，未改变语义producer输出。",
+      "evidence": "failureHistory中保留入口前后真实日志摘要；verification记录两个后续实际命令与runner5。",
+      "scope": "只修这两项直接路径问题，不把alias执行当作新增候选审计或对上一批全部实现重新验收。"
+    }
+  },
+  "failureHistory": [
+    {
+      "kind": "product-guidance-semantic-failure",
+      "evidence": "initialReview.cases内嵌4份实际全文及判断；初轮生产driver来自baseRevision，修复仅两处实际结果指导。",
+      "result": "4 failed；修复后中间4及最终4分别重读通过。"
+    },
+    {
+      "kind": "inherited-fixture-false-green",
+      "originalLog": "/tmp/dominds-recovery-duplicate-before.log",
+      "observed": "新增首轮完成断言实际失败：actual Tool result after shared id remap.，expected First tool result accepted.；旧多个(unset) mock entry被最后一个覆盖。",
+      "correction": "按模式/dialogId/阶段明确供应商响应，检查每轮答案和原始工具数据，不改产品ID语义迎合夹具。"
+    },
+    {
+      "kind": "new-fixture-failure",
+      "originalLog": "/tmp/dominds-recovery-durability-before.log",
+      "observed": "新夹具漏配第三轮，受控provider assert rounds<=2抛错被旧默认归为retriable，日志实际进入30000ms退避；主执行确认具体活PID后SIGTERM结束该已知失败过程（终止操作由主执行报告）。",
+      "correction": "明确第三轮无副作用响应、检查rounds3，provider错误fatal；这不是产品持久化缺陷，也没有通过加超时/重试掩盖。"
+    },
+    {
+      "kind": "new-assertion-contract-error",
+      "originalLog": "/tmp/dominds-recovery-q4h.log",
+      "observed": "比较完整wire question和裸持久question错误地遗漏实际rootId/selfId/agentId/taskDocPath字段；deepEqual失败展示这些附加归属。",
+      "correction": "明确比较持久问题加完整归属字段，没有丢弃字段或改为宽松文字匹配。"
+    },
+    {
+      "kind": "new-assertion-precondition-error",
+      "originalLog": "/tmp/dominds-recovery-siblings.log",
+      "observed": "把未刷新的内存active IDs当作派遣事实，schedule时得到0而非2。",
+      "correction": "改到实际子provider边界读取真实持久pending批次，分别证明每个孩子实际进入执行。"
+    },
+    {
+      "kind": "new-assertion-shape-error",
+      "originalLog": "/tmp/dominds-recovery-siblings-corrected.log",
+      "observed": "把calleeDialogId字符串误当有selfId字段的对象，导致includes检查false。",
+      "correction": "按实际存储类型比较calleeDialogId字符串，保留数量/身份/批次断言。"
+    },
+    {
+      "kind": "shared-fixture-mode-error",
+      "originalLog": "/tmp/dominds-recovery-mixed.log",
+      "observed": "batch场景中pangu实际进入genToReceiver，入口断言false!==true并导致后续childRounds0；helper只给tester设置streaming。",
+      "correction": "显式选项写为member_defaults，两模式由真实供应商入口分别证明；不是调宽断言掩盖错误入口。"
+    },
+    {
+      "kind": "inherited-and-new-fixture-missing-response",
+      "originalLogs": [
+        "/tmp/dominds-tests-kernel-nBcRIL/038-kernel-driver_root-tellask-background-callee-badge-event.ts.log",
+        "/tmp/dominds-recovery-badges.log"
+      ],
+      "observed": "既有base全绿日志确有mock_response_missing，仍以PASS结束；新case也出现同类缺配置，曾生成过时中间2份1ebtMA材料。",
+      "correction": "显式配置caller按dialogId消费唯一failed结果并输出受控哨兵，再验证其持久化和解锁；最终只接受7x11O5新生成全文，不把旧生成成功当语义或行为验收。"
+    },
+    {
+      "kind": "retirement-entry-point-regression",
+      "originalLog": "/tmp/dominds-recovery-q4h-alias-before.log",
+      "observed": "本批删除Q4H脚本后，其原命名命令仍指向旧文件；实际执行exit1，报script not found。新增inventory可见2个悬空直接目标，另一项为上一批askback合并遗留。",
+      "correction": "保留两旧命令名并映射真实替代脚本；两个原命令修后实际执行exit0。missingPackageScriptTargets从两项变为空，runner再次5/5；这是机器路径合同检查，不以regex判断自然语言。"
+    }
+  ],
+  "verification": {
+    "performedBy": "主执行智能体运行，独立评审读取日志/summary核实；本评审没有并行运行构建或改实现。",
+    "kernel": {
+      "status": "passed",
+      "summary": {
+        "total": 65,
+        "passed": 65,
+        "failed": 0,
+        "timedOut": 0
+      },
+      "source": "/tmp/dominds-tests-kernel-9mhYZm/summary.json",
+      "scope": "已读取该完整summary。该次全内核运行早于最后工具脚本三项闭合断言加固；最后该工具脚本有另外的最终定向成功，不能把此summary声称为包含后来断言的全套新运行。"
+    },
+    "finalAffectedProducers": {
+      "status": "passed",
+      "toolCases": 4,
+      "declaredDeadCases": 2,
+      "sources": [
+        "/tmp/dominds-recovery-durability-final-accepted.log",
+        "/tmp/dominds-recovery-badges-fixed.log"
+      ],
+      "semanticGenerationStatus": "pending；本报告的主观结论独立于进程成功。"
+    },
+    "build": {
+      "status": "passed",
+      "log": "/tmp/dominds-recovery-build.log",
+      "evidence": "日志显示包构建和产品build完成；主执行报告exit0。"
+    },
+    "applicationTypes": {
+      "status": "passed",
+      "log": "/tmp/dominds-recovery-app-types.log",
+      "evidence": "工作区packages/webapp与main类型检查完成，主执行确认exit0。"
+    },
+    "focusedTestTypes": {
+      "status": "passed",
+      "modules": 10,
+      "log": "/tmp/dominds-recovery-focused-types-final.log",
+      "configuration": "/tmp/dominds-recovery-focused-types.json",
+      "evidence": "最终版本定向检查空诊断，主执行确认exit0；配置包含9候选与helper。"
+    },
+    "fullTestTypes": {
+      "status": "failed",
+      "diagnostics": 324,
+      "log": "/tmp/dominds-recovery-full-types.log",
+      "evidence": "实际数得324行error TS，日志末尾exit2；没有通过排除未审目录或削弱类型把它算通过。"
+    },
+    "smoke": {
+      "status": "passed",
+      "total": 11,
+      "passed": 11,
+      "failed": 0,
+      "timedOut": 0,
+      "summary": "/tmp/dominds-tests-smoke-iOGLT0/summary.json"
+    },
+    "runner": {
+      "status": "passed",
+      "tests": 5,
+      "passed": 5,
+      "failed": 0,
+      "log": "/tmp/dominds-recovery-runner-final.log",
+      "scope": "包含最终fs.stat实际脚本目标判定修正之后的runner再次5/5；该runner验证其现有5项合同，不声称专门覆盖所有文件I/O分支。"
+    },
+    "markdownLinkLint": {
+      "status": "passed",
+      "log": "/tmp/dominds-recovery-doclint.log",
+      "trackedMarkdown": 201,
+      "newMarkdown": 0,
+      "canonicalDocuments": 69,
+      "excludedRuntimeSources": 131,
+      "localTargetsAndFragments": 331,
+      "networkLinksIgnored": 9,
+      "failures": 0,
+      "scope": "已读取该次完整离线检查结果；之后docs仅追加无链接说明，主执行仍计划提交前最终重跑，不将尚未执行的最终重跑冒称通过。"
+    },
+    "reportFormat": {
+      "status": "passed",
+      "command": "/tmp/dominds-pnpm exec prettier --write tests/semantic/reviews/2026-10-30-durable-execution.json; /tmp/dominds-pnpm exec prettier --check tests/semantic/reviews/2026-10-30-durable-execution.json",
+      "scope": "仅本报告Prettier write/check已执行exit0，最终元数据更新后重新执行；最后全库format由主执行在报告完成后另行检查。"
+    },
+    "repositoryFormatBeforeReport": {
+      "status": "passed",
+      "log": "/tmp/dominds-recovery-format.log",
+      "scope": "主执行全库format:check exit0且实际日志全部匹配文件格式通过；该次报告尚未创建，不声称已检查本报告。"
+    },
+    "namedEntryPoints": {
+      "status": "passed",
+      "q4hBefore": {
+        "exitCode": 1,
+        "log": "/tmp/dominds-recovery-q4h-alias-before.log",
+        "observed": "script not found: tests/kernel-driver/q4h-runtime-broadcaster-bootstrap.ts"
+      },
+      "after": [
+        {
+          "name": "kernel-driver:q4h-runtime-broadcaster-bootstrap",
+          "target": "kernel-driver/q4h-preserves-diligence-budget.ts",
+          "exitCode": 0,
+          "log": "/tmp/dominds-recovery-q4h-alias-after.log"
+        },
+        {
+          "name": "kernel-driver:sideDialog-askback-auto-resume",
+          "target": "kernel-driver/sideDialog-askback-reply-tool-no-double-delivery.ts",
+          "exitCode": 0,
+          "log": "/tmp/dominds-recovery-askback-alias-after.log"
+        }
+      ],
+      "inventoryBeforeMissing": [
+        {
+          "script": "kernel-driver:q4h-runtime-broadcaster-bootstrap",
+          "target": "kernel-driver/q4h-runtime-broadcaster-bootstrap.ts"
+        },
+        {
+          "script": "kernel-driver:sideDialog-askback-auto-resume",
+          "target": "kernel-driver/sideDialog-askback-auto-resume.ts"
+        }
+      ],
+      "inventoryAfterMissing": [],
+      "scope": "命令真实执行；inventory只检查能识别的直接tsx/rtws TypeScript路径，通过fs.stat真实文件目标判断，ENOENT/ENOTDIR及非文件列缺失，其它I/O错误抛出；不依赖被角色排除的候选集合、不解析任意shell。"
+    }
+  },
+  "inventory": {
+    "typescriptFiles": 280,
+    "supportModules": 15,
+    "candidates": 265,
+    "kernel": 65,
+    "outsideSuites": 172,
+    "reviewed": 61,
+    "unaudited": 204,
+    "unauditedKernel": 16,
+    "missingAuditedFiles": 0,
+    "scope": "真实inventory清单与audit计数；本批增加9审，合并退休5不等于增加覆盖率。其余204未审维持未审。",
+    "missingPackageScriptTargets": []
+  },
+  "limits": [
+    "只有本批受影响2个producer的最终6份作为本批语义验收；旧112未重生成、未因同ID或旧hash沿用接受。",
+    "受控供应商在外部边界按真实dialogId/阶段输出，保留runtime/工具/持久化/调度；不能证明真实模型理解、遵循指导或完成任务内容。",
+    "工具receipt是实际文件效果；EIO是针对结果append边界注入，registry卸载后实际新对象恢复，不是断电、真实磁盘故障、跨进程或分布式exactly-once证明。user_stop场景保留已发生效果，但不涵盖所有晚到/取消竞态。",
+    "UI检查是实际WebSocket handler与JSON传输边界/广播事件，未运行浏览器展示或交互；重复declare-dead只测顺序重复、一次性支线，中英不能推广到其余call类型。",
+    "pending-user恢复场景有意使用结构化持久事件和恢复投影；其字节比较仅保真，未判断夹具自然语言答案是否语义充分。部分设置检查使用公开存储和私有flush以确定磁盘状态，不代表新运行时抽象。",
+    "完整内核通过说明所执行用例的机械结果，不能替代每个未审候选的设计审查；smoke和runner通过不构成完整集成/平台/真实供应商覆盖。全目录324类型诊断仍失败。",
+    "原始临时日志可能被清理；本报告保留全部被评语言原文、观察事实、必要错误摘要及源码身份，临时路径仅用于当前排查。报告不是自动接受逻辑，也没有输出语义快照校验器。",
+    "inventory命令路径缺失检查仅针对可直接识别的tsx/rtws TypeScript目标；不解析任意shell，不是语义关键词检测器，也不代表存在的脚本已运行或通过。"
+  ],
+  "sourceFingerprints": {
+    "algorithm": "SHA-256",
+    "purpose": "仅材料身份与追溯，不用于判断语义、缓存通过或接受未来输出。",
+    "currentFiles": [
+      {
+        "path": "AGENTS.md",
+        "sha256": "576f0a921530637d71e9c8a835c0606b7268a29fbf08afea54ae959151e248c3",
+        "scope": "current worktree file bytes"
+      },
+      {
+        "path": "docs/testing-strategy.md",
+        "sha256": "c45386e26a1d1fcfeaeda3247f4c2ca264ca0e10806294bc6839243fed1b0a1c",
+        "scope": "current worktree file bytes"
+      },
+      {
+        "path": "main/bootstrap/global-dialog-event-broadcaster.ts",
+        "sha256": "53a51e466c7cb736266d6b4e6466ce412c7c682afc219d6a5b94ec8197fe0df2",
+        "scope": "current worktree file bytes"
+      },
+      {
+        "path": "main/dialog-display-state.ts",
+        "sha256": "147b51183ab2c4a0589f2c38edcd3f9fb660b2bcc089a738e898e12929a3474e",
+        "scope": "current worktree file bytes"
+      },
+      {
+        "path": "main/dialog-drive-work.ts",
+        "sha256": "deef3ac1267de3579164b2a9d600f77c3f85c397bc948e756718af106ab525ff",
+        "scope": "current worktree file bytes"
+      },
+      {
+        "path": "main/dialog-global-registry.ts",
+        "sha256": "33e331312d402851a1b8678cb532c1044fe9bcfac951be236dfdf22617f01a7f",
+        "scope": "current worktree file bytes"
+      },
+      {
+        "path": "main/dialog-instance-registry.ts",
+        "sha256": "46c7313b6215d4808f9103b0d99b6c1bb32b4b8dd9fcafd3d0e8782417382cda",
+        "scope": "current worktree file bytes"
+      },
+      {
+        "path": "main/dialog.ts",
+        "sha256": "de897151d2cc41ed116a1e009d5e313c0022c2329e1ff0c880f556798d4b4972",
+        "scope": "current worktree file bytes"
+      },
+      {
+        "path": "main/evt-registry.ts",
+        "sha256": "40660656193c21f57698a6819f3707cd281a0e5d631aa8429388e16a82f75415",
+        "scope": "current worktree file bytes"
+      },
+      {
+        "path": "main/llm/gen/mock.ts",
+        "sha256": "9958c0807818108bf0ff9fdcd692cb53af45ff29c5899693ca292d6ffc73553c",
+        "scope": "current worktree file bytes"
+      },
+      {
+        "path": "main/llm/kernel-driver/drive.ts",
+        "sha256": "bd86a5fe84feccfa047903b39cf9a6ee9a75056a3a83a9c446288f17811cc594",
+        "scope": "current worktree file bytes"
+      },
+      {
+        "path": "main/llm/kernel-driver/engine.ts",
+        "sha256": "035bc97d012c2674a0d543c2d395be6ea71a7a5c52955ddaafddcb770cc73c6e",
+        "scope": "current worktree file bytes"
+      },
+      {
+        "path": "main/llm/kernel-driver/flow.ts",
+        "sha256": "5f24fea86863b0f3ba2dadd99d58e0a67fb57893cbbf28b20136f0a73bc10997",
+        "scope": "current worktree file bytes"
+      },
+      {
+        "path": "main/llm/kernel-driver/loop.ts",
+        "sha256": "5d9c39d2557dc9b360cc7b2f986c45e4b8f611408c8b6697ea069fca0412c48d",
+        "scope": "current worktree file bytes"
+      },
+      {
+        "path": "main/llm/kernel-driver/runtime.ts",
+        "sha256": "9fff45f1f181b86aada40bbe89807d044155fa140a4b9aefd4d6d271e80c3750",
+        "scope": "current worktree file bytes"
+      },
+      {
+        "path": "main/llm/kernel-driver/sideDialog.ts",
+        "sha256": "e5b73b7d590dde64af17da453c73853effbd5d7cf9a36cfd3b60d7b54f2c0e7c",
+        "scope": "current worktree file bytes"
+      },
+      {
+        "path": "main/llm/kernel-driver/tellask-special.ts",
+        "sha256": "184ef555e86aa9acff6dc770f1e0dc3bbb02ec6b6c78b11c69708187edc085a4",
+        "scope": "current worktree file bytes"
+      },
+      {
+        "path": "main/persistence.ts",
+        "sha256": "0fa7532146ff9e88357fe6126b0988828f4ab771169772986b37f3577038e827",
+        "scope": "current worktree file bytes"
+      },
+      {
+        "path": "main/runtime/inter-dialog-format.ts",
+        "sha256": "bd9334984a79f6a56e4a67b63270aa08f1085f036ce8ab3079581cc82bb29790",
+        "scope": "current worktree file bytes"
+      },
+      {
+        "path": "main/runtime/work-language.ts",
+        "sha256": "fa5b57a7e8cbaac28001c3bcbfb33f7e049304f804aa672aab489ab6a926e1b1",
+        "scope": "current worktree file bytes"
+      },
+      {
+        "path": "main/server/websocket-handler.ts",
+        "sha256": "9b9dff62282927415418bfc7606a7093ebdc65c7e9d650f2aacedf8422edd6b6",
+        "scope": "current worktree file bytes"
+      },
+      {
+        "path": "main/tool.ts",
+        "sha256": "b40507b44a834862d1fa5367d2aae37088b348e3b3e03b091ba3145d294ab5f9",
+        "scope": "current worktree file bytes"
+      },
+      {
+        "path": "main/tools/registry.ts",
+        "sha256": "1d5b8fe2b8edfeb949a8fe7d6378e03a6f12e9807d989aacb070a93f7ce237a9",
+        "scope": "current worktree file bytes"
+      },
+      {
+        "path": "package.json",
+        "sha256": "1219b3a155101f0265054268c2d94ecab0cb11981b3672b17d92584e931518b7",
+        "scope": "current worktree file bytes"
+      },
+      {
+        "path": "pnpm-lock.yaml",
+        "sha256": "39b09df41afbe38240cc837316680ec0b7a2ceb02372f02f6528168adf21da19",
+        "scope": "current worktree file bytes"
+      },
+      {
+        "path": "tests/audit.json",
+        "sha256": "4e71d981bb9e29a165e7a6ea0c44e859bb7b2c14cee2a7c4aa1840832dea7491",
+        "scope": "current worktree file bytes"
+      },
+      {
+        "path": "tests/cli.ts",
+        "sha256": "b9f9bc1f034a2a70c4b7bfbc2300ae854706f09a9788b7f4ca17b3a263f41598",
+        "scope": "current worktree file bytes"
+      },
+      {
+        "path": "tests/helpers/dialog-events.ts",
+        "sha256": "2bd808d4444f7e02a825b18b0664680240d748ea671a65f7dd385ce2d5eb2592",
+        "scope": "current worktree file bytes"
+      },
+      {
+        "path": "tests/helpers/semantic-evidence.ts",
+        "sha256": "a41efd1058ea6d65394059180dabf987e17ef0d219bae95ca67edd33db7e3777",
+        "scope": "current worktree file bytes"
+      },
+      {
+        "path": "tests/kernel-driver/duplicate-raw-callid-effective-id.ts",
+        "sha256": "b0d77fd1a776c4ef4566b56bcb6fa71a5dabad033938c12188591b3fca201600",
+        "scope": "current worktree file bytes"
+      },
+      {
+        "path": "tests/kernel-driver/func-call-persists-before-result.ts",
+        "sha256": "fdc3842205769462b140967d34453980aa561e9d8300ee216b6f51362939ee68",
+        "scope": "current worktree file bytes"
+      },
+      {
+        "path": "tests/kernel-driver/helpers.ts",
+        "sha256": "d188fdedfc2a4827190d9ff1128f55ed6f9fd7d85fc90c13baaceb5a1155c73a",
+        "scope": "current worktree file bytes"
+      },
+      {
+        "path": "tests/kernel-driver/pending-user-interjection-recovery.ts",
+        "sha256": "53908d159df07d681839758ff9e9214699495f5b5ad426104905ddd2f3ce2a8a",
+        "scope": "current worktree file bytes"
+      },
+      {
+        "path": "tests/kernel-driver/q4h-preserves-diligence-budget.ts",
+        "sha256": "efd6ead56ecbd91d11b5ff53658cbbf99b03cb96650256ebbf07844f35b2918c",
+        "scope": "current worktree file bytes"
+      },
+      {
+        "path": "tests/kernel-driver/root-runtime-wake-lifecycle.ts",
+        "sha256": "79c5f42e8143f1ac0a0df0ab947654382a42f21622207609c51b5ebebf7af480",
+        "scope": "current worktree file bytes"
+      },
+      {
+        "path": "tests/kernel-driver/root-tellask-background-callee-badge-event.ts",
+        "sha256": "040e033db8847780387cf7d02d2457c81bdea76f6864606b3a84563e8986f0a4",
+        "scope": "current worktree file bytes"
+      },
+      {
+        "path": "tests/kernel-driver/sideDialog-diligence-push-state.ts",
+        "sha256": "bca8f45757d5cbbb09a783ba058f4b4cbcced858c6b58e04d6b019cf04221204",
+        "scope": "current worktree file bytes"
+      },
+      {
+        "path": "tests/kernel-driver/sideDialog-mixed-tool-round-honors-suspension.ts",
+        "sha256": "311085becbd728c2fb850a12503b2fe97976a7835e2e9eec818cfe6c6140ca1b",
+        "scope": "current worktree file bytes"
+      },
+      {
+        "path": "tests/kernel-driver/sideDialog-multi-pending-registers-before-drive.ts",
+        "sha256": "107dcc0cc99640e4e95ef1242ad4c2b8b69a2361c69c69c33d26601fadd3d323",
+        "scope": "current worktree file bytes"
+      },
+      {
+        "path": "tests/package.json",
+        "sha256": "94c3c4fbf844015d3278a82227dd3a9690e3872325c7788e8fc3b057d4ccff0b",
+        "scope": "current worktree file bytes"
+      },
+      {
+        "path": "tests/run.mjs",
+        "sha256": "e19e7ba2da0eea8f10c08a3b45ceceb17c537bb28ad5131afa2333218d66c24f",
+        "scope": "current worktree file bytes"
+      },
+      {
+        "path": "tests/runner.test.mjs",
+        "sha256": "47030439386e142d7897fbe03bd3ef095211458f588db5fcb398c47ddce29fea",
+        "scope": "current worktree file bytes"
+      },
+      {
+        "path": "tests/tsconfig.json",
+        "sha256": "b5bcec0fba331b397ee453a8ff2bb1ea1eb1cb0f5f61f1a4e968ffc0a55dc1df",
+        "scope": "current worktree file bytes"
+      }
+    ],
+    "baseFiles": [
+      {
+        "path": "main/llm/kernel-driver/drive.ts",
+        "revision": "4c525b7d2734a12babaca6a4df3401352c082236",
+        "sha256": "43640bc5c38f93d6fe9447020979364b11f0145b435632233a818003c1eaf206",
+        "scope": "base source for rejected guidance or retired case value"
+      },
+      {
+        "path": "tests/kernel-driver/backend-loop-does-not-scan-unwoken-roots.ts",
+        "revision": "4c525b7d2734a12babaca6a4df3401352c082236",
+        "sha256": "73f0345b8d5b960eff3323b6e10a27575ea2a8f079c0483f87665184288aaeff",
+        "scope": "base source for rejected guidance or retired case value"
+      },
+      {
+        "path": "tests/kernel-driver/root-manual-round-clears-consumed-root-runtime-wake.ts",
+        "revision": "4c525b7d2734a12babaca6a4df3401352c082236",
+        "sha256": "996d5206ee6d800efeb5c1012afc0087ca27b0264b8d8f03621d057defc41d8c",
+        "scope": "base source for rejected guidance or retired case value"
+      },
+      {
+        "path": "tests/kernel-driver/root-pending-runtime-prompt-backend-loop-drives-without-explicit-resume.ts",
+        "revision": "4c525b7d2734a12babaca6a4df3401352c082236",
+        "sha256": "92a7aad51afc7ee1a2f454587f516d8525c26db6add597e8d5341e873865ae3b",
+        "scope": "base source for rejected guidance or retired case value"
+      },
+      {
+        "path": "tests/kernel-driver/root-wake-queue-entry-is-not-runtime-wake.ts",
+        "revision": "4c525b7d2734a12babaca6a4df3401352c082236",
+        "sha256": "7314fe9f9b61a4816c3674affd879e3e96666e122527edae9e3c2961467ec04a",
+        "scope": "base source for rejected guidance or retired case value"
+      },
+      {
+        "path": "tests/kernel-driver/q4h-runtime-broadcaster-bootstrap.ts",
+        "revision": "4c525b7d2734a12babaca6a4df3401352c082236",
+        "sha256": "ffddfa219bc20a5fe70cd977cab351b55d8be6010517c79d9d1d683b2bab79d8",
+        "scope": "base source for rejected guidance or retired case value"
+      }
+    ],
+    "currentFileCount": 43
+  }
+}

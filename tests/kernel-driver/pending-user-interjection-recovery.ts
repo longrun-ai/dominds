@@ -633,6 +633,35 @@ async function main(): Promise<void> {
       'recovery should clear pending interjection when A2H was already recorded after the pending user turn',
     );
 
+    const alreadySettled = await DialogPersistence.loadAnswersToHumanState(
+      a2hSettledDlg.id,
+      a2hSettledDlg.status,
+    );
+    assert.equal(alreadySettled.length, 1);
+    for (const checked of [
+      autoContinueDlg,
+      runtimeGuideAutoContinueDlg,
+      toolAutoContinueDlg,
+      a2hSettledDlg,
+    ]) {
+      const answers = await DialogPersistence.loadAnswersToHumanState(checked.id, checked.status);
+      assert.equal(answers.length, 1);
+      for (let read = 0; read < 2; read += 1) {
+        await DialogPersistence.loadDialogLatest(checked.id, checked.status);
+        assert.deepEqual(
+          await DialogPersistence.loadAnswersToHumanState(checked.id, checked.status),
+          answers,
+          'repeated recovery reads must not duplicate or replace an existing A2H',
+        );
+      }
+      const restored = await DialogPersistence.restoreDialog(checked.id, checked.status);
+      assert.ok(restored);
+      assert.deepEqual(
+        await DialogPersistence.loadAnswersToHumanState(checked.id, checked.status),
+        answers,
+      );
+    }
+
     const archivedAnswer: AnswerToHumanItem = {
       id: 'a2h-archived-ack-regression',
       content: 'Archived answer awaiting ack.',

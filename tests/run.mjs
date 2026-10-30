@@ -47,6 +47,8 @@ const manual = [
 ];
 const semanticSuites = {
   kernel: [
+    'kernel-driver/func-call-persists-before-result.ts',
+    'kernel-driver/root-tellask-background-callee-badge-event.ts',
     'kernel-driver/sideDialog-askback-reply-tool-no-double-delivery.ts',
     'kernel-driver/multiple-askhuman-invalid.ts',
     'kernel-driver/mock-provider-contract.ts',
@@ -94,11 +96,23 @@ async function sourceFiles(directory = testsRoot) {
 export async function inventory() {
   const files = await sourceFiles();
   const { scripts } = JSON.parse(await fs.readFile(path.join(testsRoot, 'package.json'), 'utf8'));
-  const registered = new Set(
-    Object.values(scripts).flatMap((command) =>
-      [...command.matchAll(/(?:tsx|--)\s+([\w./-]+\.ts)(?:\s|$)/g)].map((match) => match[1]),
-    ),
+  const registrations = Object.entries(scripts).flatMap(([script, command]) =>
+    [...command.matchAll(/(?:tsx|--)\s+([\w./-]+\.ts)(?:\s|$)/g)].map((match) => ({
+      script,
+      target: match[1],
+    })),
   );
+  const registered = new Set(registrations.map(({ target }) => target));
+  const missingPackageScriptTargets = [];
+  for (const registration of registrations) {
+    try {
+      if (!(await fs.stat(path.resolve(testsRoot, registration.target))).isFile())
+        missingPackageScriptTargets.push(registration);
+    } catch (error) {
+      if (!['ENOENT', 'ENOTDIR'].includes(error.code)) throw error;
+      missingPackageScriptTargets.push(registration);
+    }
+  }
   const support = (file) =>
     file.startsWith('helpers/') ||
     file.startsWith('semantic/') ||
@@ -123,9 +137,10 @@ export async function inventory() {
     suites,
     outsideSuites: candidates.filter((file) => !included.has(file)),
     withoutPackageScript: candidates.filter((file) => !registered.has(file)),
+    missingPackageScriptTargets,
     unauditedCandidates,
     missingAuditedFiles: Object.keys(audit.cases).filter((file) => !candidates.includes(file)),
-    note: 'Discovery and script registration are not measurements of behavior or line coverage. Outside-suite candidates include live probes and external integrations; audit prerequisites before running them.',
+    note: 'Discovery and script registration are not measurements of behavior or line coverage. Missing package-script targets cover direct tsx/rtws TypeScript paths, not arbitrary shell composition. Outside-suite candidates include live probes and external integrations; audit prerequisites before running them.',
   };
 }
 

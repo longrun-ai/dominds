@@ -106,6 +106,7 @@ export async function writeStandardMinds(
     'member_defaults:',
     '  provider: local-mock',
     '  model: default',
+    ...(options?.streaming === undefined ? [] : [`  streaming: ${String(options.streaming)}`]),
     'default_responder: tester',
     'members:',
     '  tester:',

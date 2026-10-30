@@ -1,215 +1,276 @@
 import assert from 'node:assert/strict';
 
+import { globalDialogRegistry } from '../../main/dialog-global-registry';
+import { getOrRestoreMainDialog } from '../../main/dialog-instance-registry';
+import type { ChatMessage } from '../../main/llm/client';
+import type { LlmGenerator } from '../../main/llm/gen';
+import { registerLlmGenerator, unregisterLlmGenerator } from '../../main/llm/gen/registry';
 import { driveDialogStream } from '../../main/llm/kernel-driver';
 import { DialogPersistence } from '../../main/persistence';
 import {
   createMainDialog,
+  makeDriveOptions,
   makeUserPrompt,
   withTempRtws,
-  writeMockDb,
   writeStandardMinds,
 } from './helpers';
 
+const ENV_KEY = 'DOMINDS_DUP_RAW_CALL_ID_EFFECTIVE_ID';
 async function main(): Promise<void> {
-  await withTempRtws(async (tmpRoot) => {
-    await writeStandardMinds(tmpRoot, { memberTools: ['env_get'] });
-
-    const key = 'DOMINDS_DUP_RAW_CALL_ID_EFFECTIVE_ID';
-    delete process.env[key];
-
-    const reusedCallId = 'reused-raw-call-id';
-    const firstPrompt = 'First tool call with a raw id.';
-    const secondPrompt = 'Second tool call reusing the same raw id in the same course.';
-    const manualReusePrompt = 'Reuse a manually persisted raw id in the same course.';
-    const mixedPrompt = 'Use a normal tool and askHuman with the same raw id in one round.';
-    const firstDone = 'First tool result accepted.';
-    const secondDone = 'Second tool result accepted.';
-    const sharedSpecialCallId = 'shared-special-call-id';
-
-    await writeMockDb(tmpRoot, [
-      {
-        message: firstPrompt,
-        role: 'user',
-        response: 'Calling the first tool.',
-        funcCalls: [{ id: reusedCallId, name: 'env_get', arguments: { key } }],
-      },
-      {
-        message: '(unset)',
-        role: 'tool',
-        response: firstDone,
-      },
-      {
-        message: secondPrompt,
-        role: 'user',
-        response: 'Calling the second tool with reused raw id.',
-        funcCalls: [{ id: reusedCallId, name: 'env_get', arguments: { key } }],
-      },
-      {
-        message: '(unset)',
-        role: 'tool',
-        response: secondDone,
-      },
-      {
-        message: manualReusePrompt,
-        role: 'user',
-        response: 'Calling a tool with a manually reused raw id.',
-        funcCalls: [{ id: 'manual-raw-id', name: 'env_get', arguments: { key } }],
-      },
-      {
-        message: '(unset)',
-        role: 'tool',
-        response: 'Manual raw id reuse accepted.',
-      },
-      {
-        message: mixedPrompt,
-        role: 'user',
-        response: 'Calling a normal tool before askHuman with the same id.',
-        funcCalls: [
-          { id: sharedSpecialCallId, name: 'env_get', arguments: { key } },
-          {
-            id: sharedSpecialCallId,
-            name: 'askHuman',
-            arguments: { tellaskContent: 'Please confirm the shared-id behavior.' },
+  const originalValue = process.env[ENV_KEY];
+  process.env[ENV_KEY] = 'controlled-env-value-data';
+  try {
+    await withTempRtws(async (rtws) => {
+      const apiType = 'controlled-duplicate-ids';
+      for (const streaming of [true, false]) {
+        await writeStandardMinds(rtws, {
+          providerApiType: apiType,
+          streaming,
+          memberTools: ['env_get'],
+        });
+        let root = await createMainDialog();
+        root.disableDiligencePush = true;
+        let targetId = root.id.selfId;
+        let rounds = 0;
+        let rawId = 'reused-raw-data';
+        let answer = 'first-output-data';
+        let mixed = false;
+        const generate = (context: ChatMessage[], genseq: number): ChatMessage[] => {
+          rounds += 1;
+          assert.ok(rounds <= (mixed ? 1 : 2));
+          if (rounds === 1)
+            return [
+              {
+                type: 'func_call_msg',
+                role: 'assistant',
+                genseq,
+                id: rawId,
+                name: 'env_get',
+                arguments: JSON.stringify({ key: ENV_KEY }),
+              },
+              ...(mixed
+                ? [
+                    {
+                      type: 'func_call_msg' as const,
+                      role: 'assistant' as const,
+                      genseq,
+                      id: rawId,
+                      name: 'askHuman',
+                      arguments: JSON.stringify({ tellaskContent: 'human-question-payload-data' }),
+                    },
+                  ]
+                : []),
+            ];
+          const results = context.filter((message) => message.type === 'func_result_msg');
+          const result = results.at(-1);
+          assert.ok(result);
+          assert.equal(result.content, process.env[ENV_KEY]);
+          const paired = context.find(
+            (message) => message.type === 'func_call_msg' && message.id === result.id,
+          );
+          assert.ok(paired?.type === 'func_call_msg');
+          assert.equal(paired.rawId, rawId);
+          return [{ type: 'saying_msg', role: 'assistant', genseq, content: answer }];
+        };
+        const generator: LlmGenerator = {
+          apiType,
+          classifyFailure(error) {
+            return {
+              kind: 'fatal',
+              code: 'test_provider_failure',
+              message: error instanceof Error ? error.message : String(error),
+            };
           },
-        ],
-      },
-      {
-        message: '(unset)',
-        role: 'tool',
-        response: 'Tool result after shared id remap.',
-      },
-    ]);
+          async genMoreMessages(_provider, _agent, _system, _tools, request, context, genseq) {
+            assert.equal(streaming, false);
+            assert.equal(request.dialogSelfId, targetId);
+            return { messages: generate(context, genseq), usage: { kind: 'unavailable' } };
+          },
+          async genToReceiver(
+            _provider,
+            _agent,
+            _system,
+            _tools,
+            request,
+            context,
+            receiver,
+            genseq,
+          ) {
+            assert.equal(streaming, true);
+            assert.equal(request.dialogSelfId, targetId);
+            for (const message of generate(context, genseq)) {
+              if (message.type === 'func_call_msg')
+                await receiver.funcCall(message.id, message.name, message.arguments);
+              else if (message.type === 'saying_msg') {
+                await receiver.sayingStart();
+                await receiver.sayingChunk(message.content);
+                await receiver.sayingFinish();
+              } else assert.fail('unexpected controlled output');
+            }
+            return { usage: { kind: 'unavailable' } };
+          },
+        };
+        registerLlmGenerator(generator);
+        try {
+          const effectiveIds: string[] = [];
+          for (const phase of ['first', 'second']) {
+            rounds = 0;
+            answer = `${phase}-output-data`;
+            await driveDialogStream(
+              root,
+              makeUserPrompt(`${phase}-input-data`, `${phase}-${streaming}`),
+              true,
+            );
+            assert.equal(rounds, 2);
+            const events = await DialogPersistence.loadCourseEvents(
+              root.id,
+              root.currentCourse,
+              root.status,
+            );
+            assert.equal(
+              events.filter((event) => event.type === 'agent_words_record').at(-1)?.content,
+              answer,
+            );
+            const calls = events.filter((event) => event.type === 'func_call_record');
+            const current = calls.at(-1);
+            assert.ok(current);
+            assert.equal(current.rawId, rawId);
+            if (phase === 'first') assert.equal(current.id, rawId);
+            else assert.notEqual(current.id, rawId);
+            effectiveIds.push(current.id);
+            assert.equal(new Set(effectiveIds).size, effectiveIds.length);
+            const results = events.filter((event) => event.type === 'func_result_record');
+            assert.deepEqual(
+              results.map((result) => result.id),
+              calls.map((call) => call.id),
+            );
+            assert.ok(
+              results.every(
+                (result) => result.rawId === rawId && result.content === process.env[ENV_KEY],
+              ),
+            );
+          }
+          rawId = 'manual-raw-data';
+          rounds = 0;
+          answer = 'manual-output-data';
+          await root.persistFunctionCall('manual-effective-data', 'env_get', '{}', 9, rawId);
+          await DialogPersistence.appendEvent(
+            root.id,
+            root.currentCourse,
+            {
+              type: 'func_result_record',
+              ts: '2026-10-30T00:00:00.000Z',
+              genseq: 9,
+              id: 'manual-effective-data',
+              rawId,
+              effectiveId: 'manual-effective-data',
+              name: 'env_get',
+              content: 'manual-history-result-data',
+            },
+            root.status,
+          );
+          const previousRoot = root;
+          globalDialogRegistry.unregister(root.id.rootId);
+          const restored = await getOrRestoreMainDialog(root.id.rootId, root.status);
+          assert.ok(restored);
+          assert.notEqual(restored, previousRoot);
+          root = restored;
+          root.disableDiligencePush = true;
+          await driveDialogStream(
+            root,
+            makeUserPrompt('manual-input-data', `manual-${streaming}`),
+            true,
+          );
+          assert.equal(rounds, 2);
+          const manualEvents = await DialogPersistence.loadCourseEvents(
+            root.id,
+            root.currentCourse,
+            root.status,
+          );
+          const manualCalls = manualEvents
+            .filter((event) => event.type === 'func_call_record')
+            .filter((event) => event.rawId === rawId);
+          assert.equal(manualCalls.length, 2);
+          assert.notEqual(manualCalls[1].id, rawId);
+          assert.notEqual(manualCalls[1].id, 'manual-effective-data');
+          const restoredManual = await DialogPersistence.restoreDialog(root.id, root.status);
+          assert.ok(restoredManual);
+          assert.deepEqual(
+            restoredManual.messages
+              .filter((message) => message.type === 'func_call_msg')
+              .map((message) => message.id),
+            manualEvents
+              .filter((event) => event.type === 'func_call_record')
+              .map((event) => event.id),
+          );
 
-    const dlg = await createMainDialog('tester');
-    dlg.disableDiligencePush = true;
+          rawId = 'reused-raw-data';
+          rounds = 0;
+          answer = 'new-course-output-data';
+          await root.startNewCourse('new-course-input-data');
+          await driveDialogStream(root, undefined, true, makeDriveOptions());
+          assert.equal(rounds, 2);
+          const newCourse = await DialogPersistence.loadCourseEvents(
+            root.id,
+            root.currentCourse,
+            root.status,
+          );
+          const newCalls = newCourse.filter((event) => event.type === 'func_call_record');
+          assert.equal(newCalls.length, 1);
+          assert.equal(newCalls[0].id, rawId);
+          assert.equal(newCalls[0].rawId, rawId);
+          assert.equal(newCourse.filter((event) => event.type === 'func_result_record').length, 1);
 
-    await driveDialogStream(
-      dlg,
-      makeUserPrompt(firstPrompt, 'kernel-driver-duplicate-raw-callid-effective-id-1'),
-      true,
-    );
-    await driveDialogStream(
-      dlg,
-      makeUserPrompt(secondPrompt, 'kernel-driver-duplicate-raw-callid-effective-id-2'),
-      true,
-    );
-
-    const funcCalls = dlg.msgs.filter((msg) => msg.type === 'func_call_msg');
-    assert.equal(funcCalls.length, 2, 'expected both duplicate raw-id calls to remain in context');
-    assert.equal(funcCalls[0]?.id, reusedCallId, 'first call should keep raw id as effective id');
-    assert.equal(funcCalls[0]?.rawId, reusedCallId, 'first call should persist raw id');
-    assert.equal(funcCalls[1]?.rawId, reusedCallId, 'second call should preserve duplicate raw id');
-    assert.notEqual(
-      funcCalls[1]?.id,
-      reusedCallId,
-      'second call should receive a unique effective id',
-    );
-    assert.match(
-      funcCalls[1]?.id ?? '',
-      /^reused-raw-call-id__dominds_c1_g\d+_2$/u,
-      'second call should use the course-scoped effective id suffix',
-    );
-
-    const funcResults = dlg.msgs.filter((msg) => msg.type === 'func_result_msg');
-    assert.equal(funcResults.length, 2, 'expected both function results');
-    assert.equal(funcResults[1]?.rawId, reusedCallId, 'second result should keep raw id');
-    assert.equal(
-      funcResults[1]?.id,
-      funcCalls[1]?.id,
-      'second result should correlate by effective id',
-    );
-
-    const events = await DialogPersistence.loadCourseEvents(dlg.id, 1, dlg.status);
-    const callRecords = events.filter((event) => event.type === 'func_call_record');
-    assert.equal(callRecords.length, 2, 'expected two persisted call records');
-    assert.deepEqual(
-      callRecords.map((event) => event.rawId),
-      [reusedCallId, reusedCallId],
-      'persisted records should retain raw ids',
-    );
-    assert.notEqual(
-      callRecords[1]?.id,
-      reusedCallId,
-      'persisted duplicate call should use effective id as record id',
-    );
-    await dlg.persistFunctionCall('manual-effective-id', 'env_get', '{}', 5, 'manual-raw-id');
-    await driveDialogStream(
-      dlg,
-      makeUserPrompt(manualReusePrompt, 'kernel-driver-manual-raw-callid-reuse'),
-      true,
-    );
-    const manualReuseEvents = await DialogPersistence.loadCourseEvents(dlg.id, 1, dlg.status);
-    const manualReuseCall = manualReuseEvents.find(
-      (event) =>
-        event.type === 'func_call_record' &&
-        event.rawId === 'manual-raw-id' &&
-        event.name === 'env_get' &&
-        event.rawArgumentsText === JSON.stringify({ key }),
-    );
-    assert.ok(manualReuseCall, 'expected reuse of manually persisted raw id to be recorded');
-    assert.notEqual(
-      manualReuseCall.id,
-      'manual-raw-id',
-      'history rawId occupancy should force a distinct effective id',
-    );
-
-    await dlg.startNewCourse('new course for raw call id reuse');
-    await dlg.persistFunctionCall(reusedCallId, 'env_get', '{}', 1, reusedCallId);
-    const secondCourseEvents = await DialogPersistence.loadCourseEvents(dlg.id, 2, dlg.status);
-    assert(
-      secondCourseEvents.some(
-        (event) =>
-          event.type === 'func_call_record' &&
-          event.id === reusedCallId &&
-          event.rawId === reusedCallId,
-      ),
-      'cross-course reuse of raw/effective call id should be allowed',
-    );
-
-    const mixedDlg = await createMainDialog('tester');
-    mixedDlg.disableDiligencePush = true;
-    await driveDialogStream(
-      mixedDlg,
-      makeUserPrompt(mixedPrompt, 'kernel-driver-shared-normal-special-callid'),
-      true,
-    );
-    const mixedEvents = await DialogPersistence.loadCourseEvents(
-      mixedDlg.id,
-      mixedDlg.currentCourse,
-      mixedDlg.status,
-    );
-    const mixedEnvGetCall = mixedEvents.find(
-      (event) => event.type === 'func_call_record' && event.name === 'env_get',
-    );
-    assert.ok(mixedEnvGetCall, 'expected normal tool call to persist');
-    assert.equal(mixedEnvGetCall.rawId, sharedSpecialCallId);
-    assert.notEqual(
-      mixedEnvGetCall.id,
-      sharedSpecialCallId,
-      'normal tool should not steal a same-round special business callId',
-    );
-    const mixedAskHumanCall = mixedEvents.find(
-      (event) => event.type === 'tellask_call_record' && event.name === 'askHuman',
-    );
-    assert.ok(mixedAskHumanCall, 'expected askHuman call to persist');
-    assert.equal(
-      mixedAskHumanCall.id,
-      sharedSpecialCallId,
-      'askHuman should keep its raw business callId',
-    );
-    const questions = await DialogPersistence.loadQuestions4HumanState(
-      mixedDlg.id,
-      mixedDlg.status,
-    );
-    assert.equal(questions.length, 1, 'expected askHuman to register one Q4H question');
-    assert.equal(questions[0]?.callId, sharedSpecialCallId);
-  });
-
-  console.log('kernel-driver duplicate-raw-callid-effective-id: PASS');
+          const mixedRoot = await createMainDialog();
+          mixedRoot.disableDiligencePush = true;
+          targetId = mixedRoot.id.selfId;
+          rounds = 0;
+          mixed = true;
+          rawId = 'shared-normal-human-id-data';
+          await driveDialogStream(
+            mixedRoot,
+            makeUserPrompt('mixed-input-data', `mixed-${streaming}`),
+            true,
+          );
+          assert.equal(rounds, 1);
+          const events = await DialogPersistence.loadCourseEvents(
+            mixedRoot.id,
+            mixedRoot.currentCourse,
+            mixedRoot.status,
+          );
+          const ordinary = events.filter((event) => event.type === 'func_call_record');
+          const special = events.filter((event) => event.type === 'tellask_call_record');
+          assert.equal(ordinary.length, 1);
+          assert.equal(special.length, 1);
+          assert.equal(ordinary[0].rawId, rawId);
+          assert.notEqual(ordinary[0].id, rawId);
+          assert.equal(special[0].id, rawId);
+          assert.equal(special[0].name, 'askHuman');
+          const paired = events.filter(
+            (event) => event.type === 'func_result_record' && event.id === ordinary[0].id,
+          );
+          assert.equal(paired.length, 1);
+          const questions = await DialogPersistence.loadQuestions4HumanState(
+            mixedRoot.id,
+            mixedRoot.status,
+          );
+          assert.equal(questions.length, 1);
+          assert.equal(questions[0].callId, rawId);
+          assert.equal(questions[0].tellaskContent, 'human-question-payload-data');
+        } finally {
+          unregisterLlmGenerator(apiType);
+        }
+      }
+    });
+  } finally {
+    if (originalValue === undefined) delete process.env[ENV_KEY];
+    else process.env[ENV_KEY] = originalValue;
+  }
+  console.log(
+    'duplicate raw IDs keep unique course-scoped correlations and human-question ownership: passed',
+  );
 }
-
-void main().catch((err: unknown) => {
-  const message = err instanceof Error ? (err.stack ?? err.message) : String(err);
-  console.error(`kernel-driver duplicate-raw-callid-effective-id: FAIL\n${message}`);
-  process.exit(1);
+main().catch((error: unknown) => {
+  console.error(error);
+  process.exitCode = 1;
 });

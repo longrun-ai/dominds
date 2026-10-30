@@ -312,6 +312,60 @@
       "lane": "kernel",
       "value": "业务接续意外空闲有可归属的结构化诊断，普通deferred停止不误报；不冻结栈说明措辞",
       "evidence": "Provider/failure batch: complete assertion-design review; real isolated runtime and persisted effects. Semantic outputs remain pending until the independent verdicts in tests/semantic/reviews/2026-10-30-provider-failure.json. This ledger is not an outcome or a future-output oracle."
+    },
+    "kernel-driver/func-call-persists-before-result.ts": {
+      "status": "reviewed",
+      "lane": "kernel",
+      "value": "两种供应商模式下调用先于工具边界落盘；真实外部副作用后结果EIO丢失、从磁盘重建并只读核验；停止不重放效果，修复结果唯一，语义准确保留结果未知",
+      "evidence": "Durable execution batch: complete assertion-design review, real isolated runtime/persistence and external effect receipts; retained machine comparisons are IDs, supplied payloads, counts, state and transport. Subjective output acceptance and initial rejected guidance are recorded in tests/semantic/reviews/2026-10-30-durable-execution.json; no automatic acceptance of later output."
+    },
+    "kernel-driver/duplicate-raw-callid-effective-id.ts": {
+      "status": "reviewed",
+      "lane": "kernel",
+      "value": "每轮明确完成并保留原始ID，唯一effective ID配对；真实重建后历史占用、跨course实际复用和同轮普通工具/askHuman身份所有权",
+      "evidence": "Durable execution batch: complete assertion-design review, real isolated runtime/persistence and external effect receipts; retained machine comparisons are IDs, supplied payloads, counts, state and transport. Subjective output acceptance and initial rejected guidance are recorded in tests/semantic/reviews/2026-10-30-durable-execution.json; no automatic acceptance of later output."
+    },
+    "kernel-driver/pending-user-interjection-recovery.ts": {
+      "status": "reviewed",
+      "lane": "kernel",
+      "value": "按实际JSONL恢复直接答复及自动续办A2H，区别手动输入和人类回答；重复恢复不重建/替换A2H，归档后仍可确认且退出全局未读列表",
+      "evidence": "Durable execution batch: complete assertion-design review, real isolated runtime/persistence and external effect receipts; retained machine comparisons are IDs, supplied payloads, counts, state and transport. Subjective output acceptance and initial rejected guidance are recorded in tests/semantic/reviews/2026-10-30-durable-execution.json; no automatic acceptance of later output."
+    },
+    "kernel-driver/q4h-preserves-diligence-budget.ts": {
+      "status": "reviewed",
+      "lane": "kernel",
+      "value": "stream/batch真实问题持久化与全局广播恰好一次，scoped流不重复；等待人类阻断后台生成，超出团队默认的预算和问题状态经重建保持",
+      "evidence": "Durable execution batch: complete assertion-design review, real isolated runtime/persistence and external effect receipts; retained machine comparisons are IDs, supplied payloads, counts, state and transport. Subjective output acceptance and initial rejected guidance are recorded in tests/semantic/reviews/2026-10-30-durable-execution.json; no automatic acceptance of later output."
+    },
+    "kernel-driver/root-runtime-wake-lifecycle.ts": {
+      "status": "reviewed",
+      "lane": "kernel",
+      "value": "八种真实stream/batch唤醒场景：未唤醒不发供应商请求、事件触发及启动积压均接续、前台消费不重复，实际旧路由残留被清理且不重做",
+      "evidence": "Durable execution batch: complete assertion-design review, real isolated runtime/persistence and external effect receipts; retained machine comparisons are IDs, supplied payloads, counts, state and transport. Subjective output acceptance and initial rejected guidance are recorded in tests/semantic/reviews/2026-10-30-durable-execution.json; no automatic acceptance of later output."
+    },
+    "kernel-driver/root-tellask-background-callee-badge-event.ts": {
+      "status": "reviewed",
+      "lane": "kernel",
+      "value": "实际待办新增及失败交付清理badge，重复declare-dead UI动作只关闭一次；调用方明确消费失败结果，真实中英说明另主观评审",
+      "evidence": "Durable execution batch: complete assertion-design review, real isolated runtime/persistence and external effect receipts; retained machine comparisons are IDs, supplied payloads, counts, state and transport. Subjective output acceptance and initial rejected guidance are recorded in tests/semantic/reviews/2026-10-30-durable-execution.json; no automatic acceptance of later output."
+    },
+    "kernel-driver/sideDialog-diligence-push-state.ts": {
+      "status": "reviewed",
+      "lane": "kernel",
+      "value": "当前兼容策略的支线设置独立落盘与对象重建；支线不因原任务或ask-back义务生成主线续推提示，不把缓存对象检查冒充恢复",
+      "evidence": "Durable execution batch: complete assertion-design review, real isolated runtime/persistence and external effect receipts; retained machine comparisons are IDs, supplied payloads, counts, state and transport. Subjective output acceptance and initial rejected guidance are recorded in tests/semantic/reviews/2026-10-30-durable-execution.json; no automatic acceptance of later output."
+    },
+    "kernel-driver/sideDialog-multi-pending-registers-before-drive.ts": {
+      "status": "reviewed",
+      "lane": "kernel",
+      "value": "两个真实子驱动在各自供应商边界读取完整同轮持久派遣批次；各进入自己的人类等待，不以loaded对象数替代派遣事实",
+      "evidence": "Durable execution batch: complete assertion-design review, real isolated runtime/persistence and external effect receipts; retained machine comparisons are IDs, supplied payloads, counts, state and transport. Subjective output acceptance and initial rejected guidance are recorded in tests/semantic/reviews/2026-10-30-durable-execution.json; no automatic acceptance of later output."
+    },
+    "kernel-driver/sideDialog-mixed-tool-round-honors-suspension.ts": {
+      "status": "reviewed",
+      "lane": "kernel",
+      "value": "stream/batch同轮本地工具结果触发后续生成，支线实际等待人类时主线仍接受新输入；各自问题、派遣责任和执行次数保持",
+      "evidence": "Durable execution batch: complete assertion-design review, real isolated runtime/persistence and external effect receipts; retained machine comparisons are IDs, supplied payloads, counts, state and transport. Subjective output acceptance and initial rejected guidance are recorded in tests/semantic/reviews/2026-10-30-durable-execution.json; no automatic acceptance of later output."
     }
   },
   "retired": {
@@ -387,6 +441,31 @@
       "decision": "merge",
       "replacement": "kernel-driver/sideDialog-askback-reply-tool-no-double-delivery.ts",
       "reason": "同一ask-back回路的自动接续、原任务response anchor与完成清理并入真实两层各交付一次回归，供应商每回合显式输出，退出缺响应/隐式推断工具夹具。"
+    },
+    "kernel-driver/backend-loop-does-not-scan-unwoken-roots.ts": {
+      "decision": "merge",
+      "replacement": "kernel-driver/root-runtime-wake-lifecycle.ts",
+      "reason": "保留不重复/不凭路由误生成、显式唤醒及后台接续价值，合并stream/batch真实生命周期。以供应商次数、持久输入和真实旧路由重放验收，删除伪造root支线最终响应与重复空闲断言。"
+    },
+    "kernel-driver/root-manual-round-clears-consumed-root-runtime-wake.ts": {
+      "decision": "merge",
+      "replacement": "kernel-driver/root-runtime-wake-lifecycle.ts",
+      "reason": "保留不重复/不凭路由误生成、显式唤醒及后台接续价值，合并stream/batch真实生命周期。以供应商次数、持久输入和真实旧路由重放验收，删除伪造root支线最终响应与重复空闲断言。"
+    },
+    "kernel-driver/root-pending-runtime-prompt-backend-loop-drives-without-explicit-resume.ts": {
+      "decision": "merge",
+      "replacement": "kernel-driver/root-runtime-wake-lifecycle.ts",
+      "reason": "保留不重复/不凭路由误生成、显式唤醒及后台接续价值，合并stream/batch真实生命周期。以供应商次数、持久输入和真实旧路由重放验收，删除伪造root支线最终响应与重复空闲断言。"
+    },
+    "kernel-driver/root-wake-queue-entry-is-not-runtime-wake.ts": {
+      "decision": "merge",
+      "replacement": "kernel-driver/root-runtime-wake-lifecycle.ts",
+      "reason": "保留不重复/不凭路由误生成、显式唤醒及后台接续价值，合并stream/batch真实生命周期。以供应商次数、持久输入和真实旧路由重放验收，删除伪造root支线最终响应与重复空闲断言。"
+    },
+    "kernel-driver/q4h-runtime-broadcaster-bootstrap.ts": {
+      "decision": "merge",
+      "replacement": "kernel-driver/q4h-preserves-diligence-budget.ts",
+      "reason": "保留运行时全局问题广播与预算持久化价值，检查真实全局恰好一次/scoped不重复，并检查实际scoped错误事件；删除从不承载stream_error的global recorder里搜错误文字的恒空否定检查。"
     }
   }
 }

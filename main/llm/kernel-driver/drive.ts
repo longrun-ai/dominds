@@ -314,8 +314,13 @@ function buildInterruptedFuncResult(args: {
     rawId: args.func.rawId,
     effectiveId: args.func.effectiveId,
     name: args.func.name,
-    content: toolFailure(`Function '${args.func.name}' interrupted before completion: ${errText}`)
-      .content,
+    content: toolFailure(
+      `Function '${args.func.name}' was interrupted; this drive did not accept a completed result. ` +
+        `Stopping the dialog does not roll back external effects: the tool may already have changed external state. ` +
+        `Respect the stop. If work is later resumed, first verify the effects using read-only checks or external records; ` +
+        `retry only after establishing that it is safe, such as a confirmed idempotent operation. ` +
+        `If the outcome cannot be verified, seek clarification before repeating the operation. Detail: ${errText}`,
+    ).content,
     role: 'tool',
     genseq: args.callGenseq,
   };
@@ -1948,7 +1953,10 @@ function formatRecoveredUnresolvedToolCallResult(call: FuncCallMsg): string {
     `[kernel_driver_unpaired_tool_call_recovered] ` +
     `A persisted tool call was found without a matching tool result. ` +
     `The previous ${call.name} invocation did not produce a durable result record ` +
-    `(callId=${call.id}). Treat that invocation as failed and retry the tool call if the task still needs it.`
+    `(callId=${call.id}). Its outcome is unknown: the tool may have completed or changed external state ` +
+    `before its result was recorded. Do not infer failure or repeat the operation from the missing record alone. ` +
+    `First verify the effects using read-only checks or external records. Retry only after establishing that it is safe, ` +
+    `such as a confirmed idempotent operation; if the outcome cannot be verified, seek clarification before repeating it.`
   );
 }
 

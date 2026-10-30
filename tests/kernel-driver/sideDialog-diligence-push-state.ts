@@ -1,6 +1,8 @@
+import { toCallSiteCourseNo, toCallSiteGenseqNo } from '@longrun-ai/kernel/types/storage';
 import assert from 'node:assert/strict';
 import fs from 'node:fs/promises';
 import path from 'node:path';
+import yaml from 'yaml';
 
 import { globalDialogRegistry } from '../../main/dialog-global-registry';
 import { ensureDialogLoaded, getOrRestoreMainDialog } from '../../main/dialog-instance-registry';
@@ -10,7 +12,7 @@ import { setWorkLanguage } from '../../main/runtime/work-language';
 
 import { createMainDialog, withTempRtws, writeStandardMinds } from './helpers';
 
-type DialogPersistencePrivate = typeof DialogPersistence & {
+type DialogPersistencePrivate = {
   getLatestWriteBackKey(dialogId: { selfId: string; rootId: string }, status: 'running'): string;
   flushLatestWriteBack(key: string): Promise<void>;
 };
@@ -32,8 +34,8 @@ async function main(): Promise<void> {
         originMemberId: 'tester',
         askerDialogId: root.id.selfId,
         callId: 'side-diligence-call',
-        callSiteCourse: 1,
-        callSiteGenseq: 1,
+        callSiteCourse: toCallSiteCourseNo(1),
+        callSiteGenseq: toCallSiteGenseqNo(1),
         sessionSlug: 'side-diligence-session',
         collectiveTargets: ['pangu'],
       },
@@ -71,7 +73,7 @@ async function main(): Promise<void> {
       'sideDialog Diligence Push patch must persist on the sideDialog itself',
     );
 
-    const persistenceInternals = DialogPersistence as DialogPersistencePrivate;
+    const persistenceInternals = DialogPersistence as unknown as DialogPersistencePrivate;
     const latestKey = persistenceInternals.getLatestWriteBackKey(sideDialog.id, 'running');
     await persistenceInternals.flushLatestWriteBack(latestKey);
     const sideLatestPath = path.join(
@@ -84,20 +86,24 @@ async function main(): Promise<void> {
       'latest.yaml',
     );
     const latestContent = await fs.readFile(sideLatestPath, 'utf-8');
-    assert.match(latestContent, /disableDiligencePush:\s*true/);
+    const onDisk: unknown = yaml.parse(latestContent);
+    assert.ok(onDisk && typeof onDisk === 'object' && 'disableDiligencePush' in onDisk);
+    assert.equal(onDisk.disableDiligencePush, true);
 
     globalDialogRegistry.unregister(root.id.rootId);
     const restoredRoot = await getOrRestoreMainDialog(root.id.rootId, 'running');
     assert.ok(restoredRoot, 'main dialog should restore through ensureDialogLoaded');
+    assert.notEqual(restoredRoot, root);
     const restoredSideDialog = await ensureDialogLoaded(restoredRoot, sideDialog.id, 'running');
     assert.ok(restoredSideDialog, 'sideDialog should restore through ensureDialogLoaded');
+    assert.notEqual(restoredSideDialog, sideDialog);
     assert.equal(
       restoredSideDialog.disableDiligencePush,
       true,
       'restored sideDialog must read its own persisted Diligence Push state',
     );
     assert.equal(
-      root.disableDiligencePush,
+      restoredRoot.disableDiligencePush,
       false,
       'restoring a sideDialog must not overwrite the root Diligence Push state',
     );
