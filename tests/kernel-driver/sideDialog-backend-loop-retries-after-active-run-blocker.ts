@@ -2,169 +2,169 @@ import assert from 'node:assert/strict';
 
 import { clearActiveRun, createActiveRun } from '../../main/dialog-display-state';
 import { globalDialogRegistry } from '../../main/dialog-global-registry';
+import type { LlmGenerator } from '../../main/llm/gen';
+import { registerLlmGenerator, unregisterLlmGenerator } from '../../main/llm/gen/registry';
 import { driveDialogStream } from '../../main/llm/kernel-driver';
 import { runBackendDriver } from '../../main/llm/kernel-driver/loop';
 import { DialogPersistence } from '../../main/persistence';
 import {
-  formatAssignmentFromAskerDialog,
-  formatTellaskResponseContent,
-} from '../../main/runtime/inter-dialog-format';
-import { getWorkLanguage } from '../../main/runtime/work-language';
-
-import {
   createMainDialog,
   hasPendingNextStepTriggers,
-  lastAssistantSaying,
   makeDriveOptions,
   makeUserPrompt,
   waitFor,
   waitForAllDialogsUnlocked,
   withTempRtws,
-  wrapPromptWithExpectedReplyTool,
-  writeMockDb,
   writeStandardMinds,
 } from './helpers';
 
 async function main(): Promise<void> {
-  await withTempRtws(async (tmpRoot) => {
-    await writeStandardMinds(tmpRoot, { includePangu: true });
-
-    const trigger = 'Start the registered side dialog now.';
-    const mentionList = ['@pangu'];
-    const tellaskBody = 'Please answer 1+1 with exactly `2`.';
-    const sessionSlug = 'backend-loop-active-run-retry';
-    const language = getWorkLanguage();
-
-    const expectedSideDialogPrompt = wrapPromptWithExpectedReplyTool({
-      prompt: formatAssignmentFromAskerDialog({
-        callName: 'tellask',
-        fromAgentId: 'tester',
-        toAgentId: 'pangu',
-        mentionList,
-        tellaskContent: tellaskBody,
-        language,
-        sessionSlug,
-        collectiveTargets: ['pangu'],
-      }),
-      expectedReplyToolName: 'replyTellask',
-      language,
-    });
-    const sideDialogFinalResponse = '2';
-    const mirroredSideDialogResponse = formatTellaskResponseContent({
-      callName: 'tellask',
-      callId: 'root-call-pangu-backend-loop-retry',
-      responderId: 'pangu',
-      tellaskerId: 'tester',
-      mentionList,
-      tellaskContent: tellaskBody,
-      responseBody: sideDialogFinalResponse,
-      status: 'completed',
-      deliveryMode: 'reply_tool',
-      language,
-      sessionSlug,
-    });
-    const rootFinalResponse = 'Ack: backend loop retried after active-run blocker.';
-
-    await writeMockDb(tmpRoot, [
-      {
-        message: trigger,
-        role: 'user',
-        response: 'Starting the side dialog.',
-        funcCalls: [
-          {
-            id: 'root-call-pangu-backend-loop-retry',
-            name: 'tellask',
-            arguments: {
-              targetAgentId: 'pangu',
-              sessionSlug,
-              tellaskContent: tellaskBody,
-            },
-          },
-        ],
-      },
-      {
-        message: expectedSideDialogPrompt,
-        role: 'user',
-        response: sideDialogFinalResponse,
-        delayMs: 300,
-      },
-      {
-        message: mirroredSideDialogResponse,
-        role: 'tool',
-        response: rootFinalResponse,
-      },
-    ]);
-
-    const root = await createMainDialog('tester');
+  await withTempRtws(async (rtws) => {
+    const apiType = 'test-backend-blocked-wake';
+    await writeStandardMinds(rtws, { includePangu: true, providerApiType: apiType });
+    const root = await createMainDialog();
     root.disableDiligencePush = true;
     globalDialogRegistry.register(root);
-    const abortController = new AbortController();
-    const backendDriver = runBackendDriver({ abortSignal: abortController.signal });
-
+    const callId = 'blocked-wake-call-data';
+    const session = 'blocked-wake-session';
+    const replyPayload = 'reply-data-blocked-wake-625a';
+    const finalPayload = 'root-data-blocked-wake-736b';
+    let rootRounds = 0;
+    let sideRounds = 0;
+    let releaseSide: () => void = () => {};
+    const sideRelease = new Promise<void>((resolve) => {
+      releaseSide = resolve;
+    });
+    let noteSideEntered: () => void = () => {};
+    const sideEntered = new Promise<void>((resolve) => {
+      noteSideEntered = resolve;
+    });
+    const generator: LlmGenerator = {
+      apiType,
+      async genToReceiver(_provider, _agent, _system, _tools, request, context, receiver) {
+        if (request.dialogSelfId === root.id.selfId) {
+          if (++rootRounds === 1)
+            await receiver.funcCall(
+              callId,
+              'tellask',
+              JSON.stringify({
+                targetAgentId: 'pangu',
+                sessionSlug: session,
+                tellaskContent: 'request-data-blocked-wake-514f',
+              }),
+            );
+          else {
+            assert.equal(rootRounds, 2);
+            const delivered = context
+              .filter((message) => message.type === 'tellask_result_msg')
+              .filter((message) => message.callId === callId);
+            assert.equal(delivered.length, 1);
+            assert.equal(delivered[0].status, 'completed');
+            assert.ok(delivered[0].content.includes(replyPayload));
+            await receiver.sayingStart();
+            await receiver.sayingChunk(finalPayload);
+            await receiver.sayingFinish();
+          }
+        } else {
+          assert.equal(++sideRounds, 1);
+          noteSideEntered();
+          await sideRelease;
+          await receiver.funcCall(
+            'blocked-wake-reply-data',
+            'replyTellask',
+            JSON.stringify({ replyContent: replyPayload }),
+          );
+        }
+        return {
+          usage: { kind: 'available', promptTokens: 100, completionTokens: 10, totalTokens: 110 },
+          llmGenModel: 'default',
+        };
+      },
+      async genMoreMessages() {
+        throw new Error('streaming fixture only');
+      },
+    };
+    registerLlmGenerator(generator);
+    const abort = new AbortController();
+    const backend = runBackendDriver({ abortSignal: abort.signal });
     try {
       await driveDialogStream(
         root,
-        makeUserPrompt(trigger, 'kernel-driver-sideDialog-backend-loop-active-run-blocker'),
+        makeUserPrompt('input-data-blocked-wake', 'blocked-wake-user'),
         true,
         makeDriveOptions({ suppressDiligencePush: true }),
       );
-
-      await waitFor(
-        async () => root.lookupSideDialog('pangu', sessionSlug) !== undefined,
-        3_000,
-        'registered side dialog to exist before simulating the active-run blocker',
-      );
+      await sideEntered;
+      assert.equal(root.isLocked(), false);
       createActiveRun(root.id);
-
+      releaseSide();
       await waitFor(
         async () => {
-          const latest = await DialogPersistence.loadDialogLatest(root.id, root.status);
-          return hasPendingNextStepTriggers(latest) === true;
+          const events = await DialogPersistence.loadCourseEvents(
+            root.id,
+            root.currentCourse,
+            root.status,
+          );
+          return events.some(
+            (event) => event.type === 'tellask_result_record' && event.callId === callId,
+          );
         },
         3_000,
-        'root drive to queue while the synthetic active run is still present',
+        'formal reply to queue a root wake while the active-run blocker is present',
       );
       await waitFor(
         async () => globalDialogRegistry.hasPendingActiveRunClearedDrive(root.id.rootId),
         3_000,
-        'backend loop to record that the queued root drive was deferred by the synthetic active run',
+        'backend to observe the actual active-run blocker',
       );
+      assert.equal(
+        rootRounds,
+        1,
+        'the backend does not enter another root generation while it is blocked',
+      );
+      const blockedLatest = await DialogPersistence.loadDialogLatest(root.id, root.status);
+      assert.equal(hasPendingNextStepTriggers(blockedLatest), true);
       clearActiveRun(root.id);
-
+      const wake = globalDialogRegistry.getLastDriveTrigger(root.id.rootId);
+      assert.equal(wake?.action, 'active_run_cleared');
+      assert.equal(wake?.nextDriveQueued, true);
       await waitFor(
-        async () =>
-          globalDialogRegistry.getLastDriveTrigger(root.id.rootId)?.action === 'active_run_cleared',
+        async () => rootRounds === 2,
         3_000,
-        'clearing the synthetic blocker to emit an active_run_cleared drive event',
-      );
-
-      await waitFor(
-        async () => lastAssistantSaying(root) === rootFinalResponse,
-        3_000,
-        'backend loop to retry the queued root wake after the active-run blocker clears',
+        'backend to retry after the real blocker-cleared event',
       );
       await waitForAllDialogsUnlocked(root, 3_000);
-
       const latest = await DialogPersistence.loadDialogLatest(root.id, root.status);
+      assert.equal(hasPendingNextStepTriggers(latest), false);
+      const events = await DialogPersistence.loadCourseEvents(
+        root.id,
+        root.currentCourse,
+        root.status,
+      );
+      const words = events.filter((event) => event.type === 'agent_words_record');
+      assert.equal(words.at(-1)?.content, finalPayload);
+      const results = events
+        .filter((event) => event.type === 'tellask_result_record')
+        .filter((event) => event.callId === callId);
+      assert.equal(results.length, 1);
+      assert.equal(results[0].status, 'completed');
       assert.equal(
-        hasPendingNextStepTriggers(latest),
-        false,
-        'queued root wake should be fully consumed after backend-loop retry',
+        (await DialogPersistence.loadActiveCalleeDispatches(root.id, root.status)).length,
+        0,
       );
     } finally {
+      releaseSide();
       clearActiveRun(root.id);
-      abortController.abort();
-      await backendDriver;
+      abort.abort();
+      await backend;
+      unregisterLlmGenerator(apiType);
     }
   });
-
-  console.log('kernel-driver sideDialog-backend-loop-retries-after-active-run-blocker: PASS');
-}
-
-void main().catch((err: unknown) => {
-  const message = err instanceof Error ? err.message : String(err);
-  console.error(
-    `kernel-driver sideDialog-backend-loop-retries-after-active-run-blocker: FAIL\n${message}`,
+  console.log(
+    'backend retries the preserved collaboration wake after its active-run blocker clears: passed',
   );
-  process.exit(1);
+}
+main().catch((error: unknown) => {
+  console.error(error);
+  process.exitCode = 1;
 });

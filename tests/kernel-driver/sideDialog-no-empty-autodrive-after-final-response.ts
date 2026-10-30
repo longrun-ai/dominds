@@ -1,18 +1,26 @@
+import {
+  toAskerCourseNumber,
+  toAssignmentCourseNumber,
+  toAssignmentGenerationSeqNumber,
+  toCallSiteCourseNo,
+  toCallSiteGenseqNo,
+  toCalleeGenerationSeqNumber,
+  toDialogCourseNumber,
+} from '@longrun-ai/kernel/types/storage';
 import assert from 'node:assert/strict';
 
 import { formatUnifiedTimestamp } from '@longrun-ai/kernel/utils/time';
 import { refreshRunControlProjectionFromPersistenceFacts } from '../../main/dialog-display-state';
+import type { LlmGenerator } from '../../main/llm/gen';
+import { registerLlmGenerator, unregisterLlmGenerator } from '../../main/llm/gen/registry';
 import { driveDialogStream } from '../../main/llm/kernel-driver';
 import { executeDriveRound } from '../../main/llm/kernel-driver/flow';
 import type { KernelDriverRuntimeSideDialogPrompt } from '../../main/llm/kernel-driver/types';
 import { createKernelDriverRuntimeState } from '../../main/llm/kernel-driver/types';
 import { DialogPersistence } from '../../main/persistence';
-import {
-  formatAssignmentFromAskerDialog,
-  formatTellaskResponseContent,
-} from '../../main/runtime/inter-dialog-format';
-import { isReplyToolReminderPromptContent } from '../../main/runtime/reply-prompt-copy';
+import { formatAssignmentFromAskerDialog } from '../../main/runtime/inter-dialog-format';
 import { getWorkLanguage } from '../../main/runtime/work-language';
+import { semanticEvidenceCollector } from '../helpers/semantic-evidence';
 
 import {
   createMainDialog,
@@ -24,7 +32,6 @@ import {
   waitForAllDialogsUnlocked,
   withTempRtws,
   wrapPromptWithExpectedReplyTool,
-  writeMockDb,
   writeStandardMinds,
 } from './helpers';
 
@@ -51,94 +58,87 @@ function findLastMeaningfulTailEvent(
   return events[events.length - 1];
 }
 
-async function waitForCapturedDrive(
-  captured: CapturedScheduledDrive[],
-  timeoutMs: number,
-): Promise<CapturedScheduledDrive> {
-  await waitFor(
-    async () => captured.length > 0,
-    timeoutMs,
-    'sideDialog reply-obligation follow-up to be scheduled',
-  );
-  const first = captured[0];
-  if (!first) {
-    throw new Error('captured scheduled drive disappeared after wait');
-  }
-  return first;
-}
+const evidence = semanticEvidenceCollector('dominds-finalized-work-');
+const apiType = 'test-finalized-work';
 
 async function main(): Promise<void> {
   await withTempRtws(async (tmpRoot) => {
-    await writeStandardMinds(tmpRoot, { includePangu: true });
+    await writeStandardMinds(tmpRoot, {
+      includePangu: true,
+      memberTools: ['env_get'],
+      providerApiType: apiType,
+    });
 
     const trigger = 'Trigger a registered side dialog and let it finish cleanly.';
-    const rootFirstResponse = 'Start.';
-    const mentionList = ['@pangu'];
     const tellaskBody = 'Please answer 1+1 with exactly `2`.';
     const sessionSlug = 'sticky-session';
     const language = getWorkLanguage();
 
-    const expectedSideDialogPrompt = wrapPromptWithExpectedReplyTool({
-      prompt: formatAssignmentFromAskerDialog({
-        callName: 'tellask',
-        fromAgentId: 'tester',
-        toAgentId: 'pangu',
-        mentionList,
-        tellaskContent: tellaskBody,
-        language,
-        sessionSlug,
-        collectiveTargets: ['pangu'],
-      }),
-      expectedReplyToolName: 'replyTellask',
-      language,
-    });
-    const sideDialogFinalResponse = '2';
-    const mirroredSideDialogResponse = formatTellaskResponseContent({
-      callName: 'tellask',
-      callId: 'root-call-pangu-sticky',
-      responderId: 'pangu',
-      tellaskerId: 'tester',
-      mentionList,
-      tellaskContent: tellaskBody,
-      responseBody: sideDialogFinalResponse,
-      status: 'completed',
-      deliveryMode: 'reply_tool',
-      language,
-      sessionSlug,
-    });
-    const rootFinalResponse = 'Ack: final registered side dialog result received.';
-
-    await writeMockDb(tmpRoot, [
-      {
-        message: trigger,
-        role: 'user',
-        response: rootFirstResponse,
-        funcCalls: [
-          {
-            id: 'root-call-pangu-sticky',
-            name: 'tellask',
-            arguments: {
-              targetAgentId: 'pangu',
-              sessionSlug,
-              tellaskContent: tellaskBody,
-            },
-          },
-        ],
-      },
-      {
-        message: expectedSideDialogPrompt,
-        role: 'user',
-        response: sideDialogFinalResponse,
-      },
-      {
-        message: mirroredSideDialogResponse,
-        role: 'tool',
-        response: rootFinalResponse,
-      },
-    ]);
-
+    const sideDialogFinalResponse = 'reply-data-finalized-637d';
+    const rootFinalResponse = 'root-data-finalized-748e';
     const dlg = await createMainDialog('tester');
     dlg.disableDiligencePush = true;
+
+    let sessionlessId: string | undefined;
+    const thinkingPayload = 'thinking-data-post-tool-859f';
+    const generations = new Map<string, number>();
+    const generator: LlmGenerator = {
+      apiType,
+      async genToReceiver(_provider, _agent, _system, _tools, request, _context, receiver) {
+        const round = (generations.get(request.dialogSelfId) ?? 0) + 1;
+        generations.set(request.dialogSelfId, round);
+        if (request.dialogSelfId === sessionlessId) {
+          if (round === 1)
+            await receiver.funcCall(
+              'sessionless-invalid-env-get',
+              'env_get',
+              JSON.stringify({ key: 'not-valid-key' }),
+            );
+          else {
+            assert.equal(round, 2);
+            await receiver.thinkingStart();
+            await receiver.thinkingChunk(thinkingPayload);
+            await receiver.thinkingFinish();
+          }
+        } else if (request.dialogSelfId === dlg.id.selfId) {
+          if (round === 1)
+            await receiver.funcCall(
+              'root-call-pangu-sticky',
+              'tellask',
+              JSON.stringify({
+                targetAgentId: 'pangu',
+                sessionSlug,
+                tellaskContent: tellaskBody,
+              }),
+            );
+          else {
+            assert.equal(round, 2);
+            await receiver.sayingStart();
+            await receiver.sayingChunk(rootFinalResponse);
+            await receiver.sayingFinish();
+          }
+        } else if (round === 1) {
+          await receiver.sayingStart();
+          await receiver.sayingChunk(sideDialogFinalResponse);
+          await receiver.sayingFinish();
+        } else {
+          assert.equal(round, 2);
+          await receiver.funcCall(
+            'finalized-reply-tool',
+            'replyTellask',
+            JSON.stringify({ replyContent: sideDialogFinalResponse }),
+          );
+        }
+        return {
+          usage: { kind: 'available', promptTokens: 100, completionTokens: 10, totalTokens: 110 },
+          llmGenModel: 'default',
+        };
+      },
+      async genMoreMessages() {
+        throw new Error('streaming fixture only');
+      },
+    };
+    registerLlmGenerator(generator);
 
     await driveDialogStream(
       dlg,
@@ -147,12 +147,21 @@ async function main(): Promise<void> {
       makeDriveOptions({ suppressDiligencePush: true }),
     );
     await waitFor(
-      async () => lastAssistantSaying(dlg) === rootFinalResponse,
+      async () => generations.get(dlg.id.selfId) === 2,
       3_000,
-      'main dialog to receive final registered side dialog result',
+      'root to receive the formal finalized reply',
     );
     await waitForAllDialogsUnlocked(dlg, 3_000);
+    assert.equal(lastAssistantSaying(dlg), rootFinalResponse);
 
+    const rootResults = (
+      await DialogPersistence.loadCourseEvents(dlg.id, dlg.currentCourse, dlg.status)
+    )
+      .filter((event) => event.type === 'tellask_result_record')
+      .filter((event) => event.callId === 'root-call-pangu-sticky');
+    assert.equal(rootResults.length, 1);
+    assert.equal(rootResults[0].status, 'completed');
+    assert.ok(rootResults[0].content.includes(sideDialogFinalResponse));
     const sideDialog = dlg.lookupSideDialog('pangu', sessionSlug);
     assert.ok(sideDialog, 'expected registered sideDialog to exist after tellask completion');
 
@@ -181,8 +190,8 @@ async function main(): Promise<void> {
               triggerId: 'stale-final-response-followup',
               kind: 'followup',
               sourceGeneration: {
-                course: sideDialog.currentCourse,
-                genseq: 1,
+                course: toDialogCourseNumber(sideDialog.currentCourse),
+                genseq: toCallSiteGenseqNo(1),
               },
               reasons: [{ kind: 'runtime_guidance', msgId: 'stale-final-response-guidance' }],
               createdAt: new Date().toISOString(),
@@ -358,7 +367,7 @@ async function main(): Promise<void> {
       ...sideDialog.assignmentFromAsker,
       tellaskContent: 'Please answer the follow-up with exactly `4`.',
       callId: 'root-call-pangu-sticky-follow-up',
-      callSiteGenseq: 2,
+      callSiteGenseq: toCallSiteGenseqNo(2),
     });
     const latestAfterRegisteredUpdate = await DialogPersistence.loadDialogLatest(
       sideDialog.id,
@@ -384,8 +393,8 @@ async function main(): Promise<void> {
         executionMarker: undefined,
         generationRunState: {
           kind: 'open',
-          course: sideDialog.currentCourse,
-          genseq: 27,
+          course: toDialogCourseNumber(sideDialog.currentCourse),
+          genseq: toCallSiteGenseqNo(27),
           phase: 'streaming',
           acceptedTriggerIds: [],
           openedAt: recoveryOpenedAt,
@@ -396,8 +405,8 @@ async function main(): Promise<void> {
             {
               triggerId: `open-generation-recovery:${sideDialog.id.selfId}:${sideDialog.currentCourse}:27`,
               kind: 'open_generation_recovery',
-              course: sideDialog.currentCourse,
-              genseq: 27,
+              course: toDialogCourseNumber(sideDialog.currentCourse),
+              genseq: toCallSiteGenseqNo(27),
               createdAt: recoveryOpenedAt,
               seq: 27,
             },
@@ -405,15 +414,15 @@ async function main(): Promise<void> {
         },
         latestAssignmentAnchor: {
           callId: 'root-call-pangu-sticky-follow-up',
-          assignmentCourse: sideDialog.currentCourse,
-          assignmentGenseq: 20,
+          assignmentCourse: toAssignmentCourseNumber(sideDialog.currentCourse),
+          assignmentGenseq: toAssignmentGenerationSeqNumber(20),
         },
         sideDialogFinalResponse: {
           callId: 'root-call-pangu-sticky',
-          responseCourse: sideDialog.currentCourse,
-          responseGenseq: 1,
+          responseCourse: toDialogCourseNumber(sideDialog.currentCourse),
+          responseGenseq: toCalleeGenerationSeqNumber(1),
           askerDialogId: dlg.id.selfId,
-          askerCourse: dlg.currentCourse,
+          askerCourse: toAskerCourseNumber(dlg.currentCourse),
         },
       },
     }));
@@ -446,8 +455,8 @@ async function main(): Promise<void> {
         executionMarker: undefined,
         generationRunState: {
           kind: 'open',
-          course: sideDialog.currentCourse,
-          genseq: 28,
+          course: toDialogCourseNumber(sideDialog.currentCourse),
+          genseq: toCallSiteGenseqNo(28),
           phase: 'streaming',
           acceptedTriggerIds: [],
           openedAt: recoveryOpenedAt,
@@ -458,8 +467,8 @@ async function main(): Promise<void> {
             {
               triggerId: `open-generation-recovery:${sideDialog.id.selfId}:${sideDialog.currentCourse}:28`,
               kind: 'open_generation_recovery',
-              course: sideDialog.currentCourse,
-              genseq: 28,
+              course: toDialogCourseNumber(sideDialog.currentCourse),
+              genseq: toCallSiteGenseqNo(28),
               createdAt: recoveryOpenedAt,
               seq: 28,
             },
@@ -467,15 +476,15 @@ async function main(): Promise<void> {
         },
         latestAssignmentAnchor: {
           callId: 'root-call-pangu-sticky',
-          assignmentCourse: sideDialog.currentCourse,
-          assignmentGenseq: 1,
+          assignmentCourse: toAssignmentCourseNumber(sideDialog.currentCourse),
+          assignmentGenseq: toAssignmentGenerationSeqNumber(1),
         },
         sideDialogFinalResponse: {
           callId: 'root-call-pangu-sticky',
-          responseCourse: sideDialog.currentCourse,
-          responseGenseq: 1,
+          responseCourse: toDialogCourseNumber(sideDialog.currentCourse),
+          responseGenseq: toCalleeGenerationSeqNumber(1),
           askerDialogId: dlg.id.selfId,
-          askerCourse: dlg.currentCourse,
+          askerCourse: toAskerCourseNumber(dlg.currentCourse),
         },
       },
     }));
@@ -513,8 +522,8 @@ async function main(): Promise<void> {
         originMemberId: 'tester',
         askerDialogId: sessionlessRoot.id.selfId,
         callId: 'sessionless-cleanup-call',
-        callSiteCourse: 1,
-        callSiteGenseq: 1,
+        callSiteCourse: toCallSiteCourseNo(1),
+        callSiteGenseq: toCallSiteGenseqNo(1),
         collectiveTargets: ['pangu'],
       },
     );
@@ -528,8 +537,8 @@ async function main(): Promise<void> {
         tellaskContent: sessionlessRequest,
         targetAgentId: 'pangu',
         callId: 'sessionless-cleanup-call',
-        callSiteCourse: 1,
-        callSiteGenseq: 1,
+        callSiteCourse: toCallSiteCourseNo(1),
+        callSiteGenseq: toCallSiteGenseqNo(1),
         callType: 'C',
       },
     ]);
@@ -546,28 +555,7 @@ async function main(): Promise<void> {
       expectedReplyToolName: 'replyTellaskSessionless',
       language,
     });
-    await writeMockDb(tmpRoot, [
-      {
-        message: sessionlessPrompt,
-        role: 'user',
-        response: 'Still trying selectors.',
-        funcCalls: [
-          {
-            id: 'sessionless-invalid-env-get',
-            name: 'env_get',
-            arguments: { key: 'not-valid-key' },
-          },
-        ],
-      },
-      {
-        message:
-          'Invalid arguments: Error: env_get.key must be a valid environment variable name matching /^[A-Za-z_][A-Za-z0-9_]*$/',
-        role: 'tool',
-        response: '',
-        thinkingResponse: 'I tried several selectors and still have work to do before replying.',
-      },
-    ]);
-
+    sessionlessId = sessionlessSideDialog.id.selfId;
     const capturedScheduledDrives: CapturedScheduledDrive[] = [];
     await executeDriveRound({
       runtime: createKernelDriverRuntimeState(),
@@ -588,8 +576,8 @@ async function main(): Promise<void> {
             callerDialogId: sessionlessRoot.id.selfId,
             callType: 'C',
             callId: 'sessionless-cleanup-call',
-            callSiteCourse: 1,
-            callSiteGenseq: 1,
+            callSiteCourse: toCallSiteCourseNo(1),
+            callSiteGenseq: toCallSiteGenseqNo(1),
           },
         } satisfies KernelDriverRuntimeSideDialogPrompt,
         true,
@@ -611,7 +599,23 @@ async function main(): Promise<void> {
       },
     });
 
-    const scheduled = await waitForCapturedDrive(capturedScheduledDrives, 3_000);
+    assert.equal(capturedScheduledDrives.length, 1);
+    const scheduled = capturedScheduledDrives[0];
+    assert.ok(scheduled);
+    const controlledEvents = await DialogPersistence.loadCourseEvents(
+      sessionlessSideDialog.id,
+      sessionlessSideDialog.currentCourse,
+      sessionlessSideDialog.status,
+    );
+    const controlledThoughts = controlledEvents.filter(
+      (event) => event.type === 'agent_thought_record',
+    );
+    assert.equal(controlledThoughts.at(-1)?.content, thinkingPayload);
+    const actualInvalidToolResult = controlledEvents
+      .filter((event) => event.type === 'func_result_record')
+      .find((event) => event.id === 'sessionless-invalid-env-get');
+    assert.ok(actualInvalidToolResult);
+    assert.equal(actualInvalidToolResult.name, 'env_get');
     assert.equal(
       scheduled.dialogSelfId,
       sessionlessSideDialog.id.selfId,
@@ -642,11 +646,28 @@ async function main(): Promise<void> {
       'sessionless-cleanup-call',
       'queued reply reminder should target the pending tellask call',
     );
-    assert.equal(
-      isReplyToolReminderPromptContent(queuedReplyReminder?.prompt ?? ''),
-      true,
-      'post-tool thinking-only reply candidate should use the normal reply reminder path',
-    );
+    evidence.record({
+      id: 'thinking-after-failed-tool-keeps-reply',
+      scenario:
+        'A real env_get call with an invalid key returned; the executor then produced only controlled thinking. The runtime queued the still-pending requester reply on this side dialog.',
+      businessValue:
+        'A post-tool thought must not silently complete requester work or become an unnecessary manual Continue.',
+      context: {
+        language,
+        targetCallId: 'sessionless-cleanup-call',
+        expectedReplyTool: 'replyTellaskSessionless',
+        thinkingPayload,
+      },
+      reviewQuestions: [
+        'Does the actual tool diagnostic and queued reminder accurately distinguish a failed tool, local thinking and the formal reply still owed to the requester?',
+        'Does it give the executor a coherent next action without treating the old thought as successful delivery?',
+      ],
+      actualText: JSON.stringify(
+        { failedToolResult: actualInvalidToolResult, queuedReminder: queuedReplyReminder.prompt },
+        null,
+        2,
+      ),
+    });
     assert.equal(
       sessionlessSideDialog.hasQueuedPrompt(),
       true,
@@ -745,8 +766,8 @@ async function main(): Promise<void> {
         callerDialogId: sessionlessRoot.id.selfId,
         callType: 'C',
         callId: 'sessionless-cleanup-call-next',
-        callSiteCourse: 1,
-        callSiteGenseq: 2,
+        callSiteCourse: toCallSiteCourseNo(1),
+        callSiteGenseq: toCallSiteGenseqNo(2),
       },
     });
     await DialogPersistence.mutateDialogLatest(sessionlessSideDialog.id, () => ({
@@ -754,10 +775,10 @@ async function main(): Promise<void> {
       patch: {
         sideDialogFinalResponse: {
           callId: 'sessionless-cleanup-call-next',
-          responseCourse: sessionlessSideDialog.currentCourse,
-          responseGenseq: 1,
+          responseCourse: toDialogCourseNumber(sessionlessSideDialog.currentCourse),
+          responseGenseq: toCalleeGenerationSeqNumber(1),
           askerDialogId: sessionlessRoot.id.selfId,
-          askerCourse: sessionlessRoot.currentCourse,
+          askerCourse: toAskerCourseNumber(sessionlessRoot.currentCourse),
         },
       },
     }));
@@ -812,7 +833,8 @@ async function main(): Promise<void> {
       genStartCountBeforeStaleContinuation,
       'finalized stale reply reminder must not open a generation',
     );
-  });
+  }).finally(() => unregisterLlmGenerator(apiType));
+  await evidence.write();
 
   console.log('kernel-driver sideDialog-no-empty-autodrive-after-final-response: PASS');
 }

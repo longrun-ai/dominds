@@ -6,8 +6,10 @@ export const ACTIVE_REPLY_TOOL_PREFIX_EN = '[Dominds Tellask reply path]';
 export const ACTIVE_REPLY_TOOL_PREFIX_ZH = '[Dominds 诉请回复路径]';
 export const NO_ACTIVE_REPLY_PREFIX_EN = '[Dominds no Tellask reply needed]';
 export const NO_ACTIVE_REPLY_PREFIX_ZH = '[Dominds 无需发送诉请回复]';
-export const REPLY_TOOL_REMINDER_PREFIX_EN = '[Dominds send the Tellask reply now]';
-export const REPLY_TOOL_REMINDER_PREFIX_ZH = '[Dominds 现在发送诉请回复]';
+export const REPLY_TOOL_REMINDER_PREFIX_EN = '[Dominds Tellask reply remains pending]';
+const LEGACY_REPLY_TOOL_REMINDER_PREFIX_EN = '[Dominds send the Tellask reply now]';
+export const REPLY_TOOL_REMINDER_PREFIX_ZH = '[Dominds 诉请回复仍待完成]';
+const LEGACY_REPLY_TOOL_REMINDER_PREFIX_ZH = '[Dominds 现在发送诉请回复]';
 export const ANSWERING_REPLY_REMINDER_PREFIX_EN = '[Dominds Tellask reply still required]';
 export const ANSWERING_REPLY_REMINDER_PREFIX_ZH = '[Dominds 仍需发送诉请回复]';
 export const REPLY_SUPPRESSION_PREFIX_EN = '[Dominds handle this interjection first]';
@@ -35,8 +37,8 @@ function buildReplyToolReminderLine(args: ReplyObligationCopyArgs): string {
     bracketed: true,
   });
   return args.language === 'zh'
-    ? `${replyTarget} 还在等你完成${kindLabel}的诉请回复。请现在调用 \`${toolName}({ replyContent })\` 发送。`
-    : `${replyTarget} is still waiting for your ${kindLabel} Tellask reply. Call \`${toolName}({ replyContent })\` now to send it.`;
+    ? `${replyTarget} 还在等你完成${kindLabel}的诉请回复。最终内容准备好时，调用 \`${toolName}({ replyContent })\` 发送。`
+    : `${replyTarget} is still waiting for your ${kindLabel} Tellask reply. When the final content is ready, call \`${toolName}({ replyContent })\` to send it.`;
 }
 
 // Business scenario: Dominds has a durable record that this dialog still owes a final reply to
@@ -154,11 +156,8 @@ export function buildReplyObligationSuppressionGuideText(language: LanguageCode)
   ].join('\n');
 }
 
-// Business scenario: the model already wrote content that can be sent back to the requester but
-// stopped as plain text instead of using the reply tool Dominds named. In that state Dominds can
-// be precise: this is no longer "keep working", it is "send the already-produced final content
-// through this tool". Avoid fallback/internal terminology here; the model only needs to know that
-// plain text is not the formal delivery path to the other dialog.
+// Local output may be a completed answer, a preliminary candidate or only internal thinking.
+// The durable obligation identifies the recipient/tool; it does not prove that work is ready.
 export function buildReplyToolReminderText(args: {
   language: LanguageCode;
   directive: TellaskReplyDirective;
@@ -170,18 +169,18 @@ export function buildReplyToolReminderText(args: {
     ? [
         prefix,
         '',
-        `你刚才已经写出了可以发回去的内容，但还没调用 \`${args.directive.expectedReplyCallName}\`。`,
+        '你仍欠诉请者一份正式回复。普通文本或内部思考本身不构成向对方交付。',
         '',
         buildReplyToolReminderLine(args),
-        '请现在用这个工具发送；不要只发普通文本，否则对方那边可能收不到正式诉请回复。',
+        '若最终内容尚未准备好，请继续当前任务并先处理未解决的失败。不要把中间候选或内部思考当作最终回复发送。',
       ].join('\n')
     : [
         prefix,
         '',
-        `You already wrote content that can be sent back, but you still have not called \`${args.directive.expectedReplyCallName}\`.`,
+        'A formal reply to the requester remains pending. Local plain text or internal thinking does not itself deliver that reply.',
         '',
         buildReplyToolReminderLine(args),
-        'Use this tool to send it now; do not rely on plain text, because the other dialog may not receive a formal Tellask reply that way.',
+        'If the final content is not ready, continue the current task and handle outstanding failures first. Do not send preliminary work or internal thinking as the final reply.',
       ].join('\n');
 }
 
@@ -222,8 +221,18 @@ export function buildAnsweringReplyReminderText(args: {
       ].join('\n');
 }
 
+// Earlier serialized runtime queues used these tags. Recognize their delivery state while
+// rendering current guidance; old queue data must not create another reminder round on upgrade.
+export function isLegacyReplyToolReminderPromptContent(content: string): boolean {
+  return (
+    content.startsWith(LEGACY_REPLY_TOOL_REMINDER_PREFIX_ZH) ||
+    content.startsWith(LEGACY_REPLY_TOOL_REMINDER_PREFIX_EN)
+  );
+}
+
 export function isReplyToolReminderPromptContent(content: string): boolean {
   return (
+    isLegacyReplyToolReminderPromptContent(content) ||
     content.startsWith(REPLY_TOOL_REMINDER_PREFIX_ZH) ||
     content.startsWith(REPLY_TOOL_REMINDER_PREFIX_EN) ||
     content.startsWith(ANSWERING_REPLY_REMINDER_PREFIX_ZH) ||

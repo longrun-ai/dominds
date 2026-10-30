@@ -1,136 +1,128 @@
 import assert from 'node:assert/strict';
 
+import type { LlmGenerator } from '../../main/llm/gen';
+import { registerLlmGenerator, unregisterLlmGenerator } from '../../main/llm/gen/registry';
 import { driveDialogStream } from '../../main/llm/kernel-driver';
 import { DialogPersistence } from '../../main/persistence';
 import {
-  formatAssignmentFromAskerDialog,
-  formatTellaskResponseContent,
-} from '../../main/runtime/inter-dialog-format';
-import { getWorkLanguage } from '../../main/runtime/work-language';
-
-import {
   createMainDialog,
-  lastAssistantSaying,
-  makeDriveOptions,
   makeUserPrompt,
   waitFor,
   waitForAllDialogsUnlocked,
   withTempRtws,
-  wrapPromptWithExpectedReplyTool,
-  writeMockDb,
   writeStandardMinds,
 } from './helpers';
 
 async function main(): Promise<void> {
-  await withTempRtws(async (tmpRoot) => {
-    await writeStandardMinds(tmpRoot, { includePangu: true });
-
-    const trigger = 'Start the registered side dialog now.';
-    const mentionList = ['@pangu'];
-    const tellaskBody = 'Please answer 1+1 with exactly `2`.';
-    const sessionSlug = 'sticky-session';
-    const language = getWorkLanguage();
-
-    const expectedSideDialogPrompt = wrapPromptWithExpectedReplyTool({
-      prompt: formatAssignmentFromAskerDialog({
-        callName: 'tellask',
-        fromAgentId: 'tester',
-        toAgentId: 'pangu',
-        mentionList,
-        tellaskContent: tellaskBody,
-        language,
-        sessionSlug,
-        collectiveTargets: ['pangu'],
-      }),
-      expectedReplyToolName: 'replyTellask',
-      language,
-    });
-    const sideDialogFinalResponse = '2';
-    const mirroredSideDialogResponse = formatTellaskResponseContent({
-      callName: 'tellask',
-      callId: 'root-call-pangu-sticky',
-      responderId: 'pangu',
-      tellaskerId: 'tester',
-      mentionList,
-      tellaskContent: tellaskBody,
-      responseBody: sideDialogFinalResponse,
-      status: 'completed',
-      deliveryMode: 'reply_tool',
-      language,
-      sessionSlug,
-    });
-    const rootFinalResponse = 'Ack: final registered side dialog result received.';
-
-    await writeMockDb(tmpRoot, [
-      {
-        message: trigger,
-        role: 'user',
-        response: 'Starting the side dialog.',
-        funcCalls: [
-          {
-            id: 'root-call-pangu-sticky',
-            name: 'tellask',
-            arguments: {
-              targetAgentId: 'pangu',
-              sessionSlug,
-              tellaskContent: tellaskBody,
-            },
-          },
-        ],
-      },
-      {
-        message: expectedSideDialogPrompt,
-        role: 'user',
-        response: sideDialogFinalResponse,
-      },
-      {
-        message: mirroredSideDialogResponse,
-        role: 'tool',
-        response: rootFinalResponse,
-      },
-    ]);
-
-    const root = await createMainDialog('tester');
+  await withTempRtws(async (rtws) => {
+    const apiType = 'test-registered-initial';
+    await writeStandardMinds(rtws, { includePangu: true, providerApiType: apiType });
+    const root = await createMainDialog();
     root.disableDiligencePush = true;
-
-    await driveDialogStream(
-      root,
-      makeUserPrompt(trigger, 'kernel-driver-sideDialog-registered-initial-auto-drive'),
-      true,
-      makeDriveOptions({ suppressDiligencePush: true }),
-    );
-    await waitFor(
-      async () => lastAssistantSaying(root) === rootFinalResponse,
-      3_000,
-      'registered sideDialog to auto-drive and deliver its final response',
-    );
-    await waitForAllDialogsUnlocked(root, 3_000);
-
-    const sideDialog = root.lookupSideDialog('pangu', sessionSlug);
-    assert.ok(sideDialog, 'expected registered sideDialog to exist after tellask completion');
-
-    const events = await DialogPersistence.loadCourseEvents(
-      sideDialog.id,
-      sideDialog.currentCourse,
-      sideDialog.status,
-    );
-    assert.ok(
-      events.some((event) => event.type === 'gen_start_record'),
-      'expected registered sideDialog to start a generation automatically',
-    );
-    assert.ok(
-      events.some(
-        (event) => event.type === 'tellask_anchor_record' && event.anchorRole === 'response',
-      ),
-      'expected registered sideDialog to emit a response anchor after auto-drive',
-    );
+    const callId = 'registered-initial-call-data';
+    const session = 'registered-initial-session';
+    const requestPayload = 'request-data-initial-726a';
+    const replyPayload = 'reply-data-initial-837b';
+    const finalPayload = 'root-data-initial-948c';
+    let rootRounds = 0;
+    let sideRounds = 0;
+    const generator: LlmGenerator = {
+      apiType,
+      async genToReceiver(_provider, _agent, _system, _tools, request, context, receiver) {
+        if (request.dialogSelfId === root.id.selfId) {
+          if (++rootRounds === 1)
+            await receiver.funcCall(
+              callId,
+              'tellask',
+              JSON.stringify({
+                targetAgentId: 'pangu',
+                sessionSlug: session,
+                tellaskContent: requestPayload,
+              }),
+            );
+          else {
+            assert.equal(rootRounds, 2);
+            const delivered = context
+              .filter((message) => message.type === 'tellask_result_msg')
+              .filter((message) => message.callId === callId);
+            assert.equal(delivered.length, 1);
+            assert.equal(delivered[0].status, 'completed');
+            assert.ok(delivered[0].content.includes(replyPayload));
+            await receiver.sayingStart();
+            await receiver.sayingChunk(finalPayload);
+            await receiver.sayingFinish();
+          }
+        } else {
+          assert.equal(++sideRounds, 1);
+          await receiver.funcCall(
+            'registered-initial-reply-data',
+            'replyTellask',
+            JSON.stringify({ replyContent: replyPayload }),
+          );
+        }
+        return {
+          usage: { kind: 'available', promptTokens: 100, completionTokens: 10, totalTokens: 110 },
+          llmGenModel: 'default',
+        };
+      },
+      async genMoreMessages() {
+        throw new Error('streaming fixture only');
+      },
+    };
+    registerLlmGenerator(generator);
+    try {
+      await driveDialogStream(
+        root,
+        makeUserPrompt('input-data-initial', 'registered-initial-user'),
+        true,
+      );
+      await waitFor(
+        async () => rootRounds === 2,
+        3_000,
+        'root to consume the automatically driven registered result',
+      );
+      await waitForAllDialogsUnlocked(root, 3_000);
+      assert.equal(sideRounds, 1);
+      const side = root.lookupSideDialog('pangu', session);
+      assert.ok(side);
+      const events = await DialogPersistence.loadCourseEvents(
+        side.id,
+        side.currentCourse,
+        side.status,
+      );
+      assert.equal(events.filter((event) => event.type === 'gen_start_record').length, 1);
+      const response = events
+        .filter((event) => event.type === 'tellask_anchor_record')
+        .find((event) => event.anchorRole === 'response' && event.callId === callId);
+      assert.ok(response);
+      const rootEvents = await DialogPersistence.loadCourseEvents(
+        root.id,
+        root.currentCourse,
+        root.status,
+      );
+      const delivered = rootEvents
+        .filter((event) => event.type === 'tellask_result_record')
+        .filter((event) => event.callId === callId);
+      assert.equal(delivered.length, 1);
+      assert.equal(delivered[0].status, 'completed');
+      assert.ok(delivered[0].content.includes(replyPayload));
+      assert.equal(delivered[0].route?.calleeDialogId, side.id.selfId);
+      assert.equal(delivered[0].route?.calleeGenseq, response.genseq);
+      const rootWords = rootEvents.filter((event) => event.type === 'agent_words_record');
+      assert.equal(rootWords.at(-1)?.content, finalPayload);
+      assert.equal(
+        (await DialogPersistence.loadActiveCalleeDispatches(root.id, root.status)).length,
+        0,
+      );
+    } finally {
+      unregisterLlmGenerator(apiType);
+    }
   });
-
-  console.log('kernel-driver sideDialog-registered-initial-auto-drive: PASS');
+  console.log(
+    'registered assignment automatically executes and returns the controlled result once: passed',
+  );
 }
-
-void main().catch((err: unknown) => {
-  const message = err instanceof Error ? err.message : String(err);
-  console.error(`kernel-driver sideDialog-registered-initial-auto-drive: FAIL\n${message}`);
-  process.exit(1);
+main().catch((error: unknown) => {
+  console.error(error);
+  process.exitCode = 1;
 });

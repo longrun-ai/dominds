@@ -1,337 +1,247 @@
 import assert from 'node:assert/strict';
 
+import type { LlmGenerator } from '../../main/llm/gen';
+import { registerLlmGenerator, unregisterLlmGenerator } from '../../main/llm/gen/registry';
 import { driveDialogStream } from '../../main/llm/kernel-driver';
-import { MAIN_DIALOG_GOAL_REMINDER_ID } from '../../main/main-dialog-goal-reminder';
+import {
+  MAIN_DIALOG_GOAL_REMINDER_ID,
+  setMainDialogGoalReminder,
+} from '../../main/main-dialog-goal-reminder';
 import { DialogPersistence } from '../../main/persistence';
 import { setWorkLanguage } from '../../main/runtime/work-language';
-import type { FuncTool } from '../../main/tool';
-import { toolPartialFailure } from '../../main/tool';
+import { type FuncTool, toolPartialFailure } from '../../main/tool';
 import { registerTool, unregisterTool } from '../../main/tools/registry';
-
+import { semanticEvidenceCollector } from '../helpers/semantic-evidence';
 import {
   createMainDialog,
-  lastAssistantSaying,
+  makeUserPrompt,
+  waitForAllDialogsUnlocked,
   withTempRtws,
-  writeMockDb,
   writeStandardMinds,
 } from './helpers';
 
-const PARTIAL_FAILURE_TOOL_NAME = 'clear_mind_sibling_partial_failure_probe';
-
-function nonGoalReminderCount(dlg: Awaited<ReturnType<typeof createMainDialog>>): number {
-  return dlg.reminders.filter((reminder) => reminder.id !== MAIN_DIALOG_GOAL_REMINDER_ID).length;
-}
-
+const evidence = semanticEvidenceCollector('dominds-clear-mind-siblings-');
+const partialToolName = 'clear_mind_partial_probe';
+const partialPayload = 'partial-data-c23a';
+const continuationPayload = 'continuation-data-94ad';
+type Scenario =
+  | 'failed-update'
+  | 'clear-first'
+  | 'invalid-special'
+  | 'partial-failure'
+  | 'successful-update';
 async function main(): Promise<void> {
-  await withTempRtws(async (tmpRoot) => {
-    setWorkLanguage('zh');
-    const partialFailureTool: FuncTool = {
+  await withTempRtws(async (rtws) => {
+    const apiType = 'test-clear-mind-siblings';
+    let partialCalls = 0;
+    const partialTool: FuncTool = {
       type: 'func',
-      name: PARTIAL_FAILURE_TOOL_NAME,
-      description: 'Test-only tool that returns partial_failure.',
-      parameters: {
-        type: 'object',
-        properties: {},
-        additionalProperties: false,
-      },
+      name: partialToolName,
+      description: 'Controlled partial-failure boundary.',
+      parameters: { type: 'object', properties: {}, additionalProperties: false },
       argsValidation: 'passthrough',
       async call() {
-        return toolPartialFailure('局部失败探针结果');
+        partialCalls += 1;
+        return toolPartialFailure(partialPayload);
       },
     };
-    registerTool(partialFailureTool);
+    registerTool(partialTool);
     try {
-      await writeStandardMinds(tmpRoot, { memberTools: [PARTIAL_FAILURE_TOOL_NAME] });
-
-      const trigger = '请同轮更新不存在的提醒项，然后 clear_mind。';
-      const clearFirstTrigger = '请同轮先 clear_mind，然后更新不存在的提醒项。';
-      const invalidSpecialTrigger = '请同轮 askHuman 参数错误，然后 clear_mind。';
-      const partialFailureTrigger = '请同轮触发 partial_failure 工具，然后 clear_mind。';
-      const failedUpdateCallId = 'clear-mind-sibling-update-missing';
-      const clearMindCallId = 'clear-mind-sibling-blocked';
-      const clearFirstCallId = 'clear-mind-first-sibling-blocked';
-      const clearFirstFailedUpdateCallId = 'clear-mind-first-sibling-update-missing';
-      const invalidAskHumanCallId = 'clear-mind-invalid-ask-human';
-      const invalidSpecialClearMindCallId = 'clear-mind-invalid-special-blocked';
-      const partialFailureCallId = 'clear-mind-partial-failure-probe';
-      const partialFailureClearMindCallId = 'clear-mind-partial-failure-blocked';
-      const blockedClearMindResult = [
-        '错误：本轮 clear_mind 与其它工具一起调用，但其它工具返回了失败结果。',
-        '',
-        `- update_reminder (callId=${failedUpdateCallId}, outcome=failure)`,
-        '',
-        'clear_mind 已拒绝开启新一程。请先确保其它工具调用正常完成（必要时修正参数、重试或处理失败），然后再次调用 clear_mind。',
-      ].join('\n');
-      const clearFirstBlockedClearMindResult = [
-        '错误：本轮 clear_mind 与其它工具一起调用，但其它工具返回了失败结果。',
-        '',
-        `- update_reminder (callId=${clearFirstFailedUpdateCallId}, outcome=failure)`,
-        '',
-        'clear_mind 已拒绝开启新一程。请先确保其它工具调用正常完成（必要时修正参数、重试或处理失败），然后再次调用 clear_mind。',
-      ].join('\n');
-      const invalidSpecialBlockedClearMindResult = [
-        '错误：本轮 clear_mind 与其它工具一起调用，但其它工具返回了失败结果。',
-        '',
-        `- askHuman (callId=${invalidAskHumanCallId}, outcome=failure)`,
-        '',
-        'clear_mind 已拒绝开启新一程。请先确保其它工具调用正常完成（必要时修正参数、重试或处理失败），然后再次调用 clear_mind。',
-      ].join('\n');
-      const partialFailureBlockedClearMindResult = [
-        '错误：本轮 clear_mind 与其它工具一起调用，但其它工具返回了失败结果。',
-        '',
-        `- ${PARTIAL_FAILURE_TOOL_NAME} (callId=${partialFailureCallId}, outcome=partial_failure)`,
-        '',
-        'clear_mind 已拒绝开启新一程。请先确保其它工具调用正常完成（必要时修正参数、重试或处理失败），然后再次调用 clear_mind。',
-      ].join('\n');
-      const finalAnswer = '我会先修正失败的提醒项操作，再重新考虑 clear_mind。';
-      const clearFirstFinalAnswer = '即使 clear_mind 在前，也会先处理失败工具。';
-      const invalidSpecialFinalAnswer = 'askHuman 参数失败时也不会换程。';
-      const partialFailureFinalAnswer = 'partial_failure 也会阻止 clear_mind 换程。';
-
-      await writeMockDb(tmpRoot, [
-        {
-          message: trigger,
-          role: 'user',
-          response: '我先尝试这两个工具。',
-          funcCalls: [
-            {
-              id: failedUpdateCallId,
-              name: 'update_reminder',
-              arguments: { reminder_id: 'missing-reminder', content: '新的接续信息' },
+      // The provider follows a controlled call schedule; tool-result prose never selects its response.
+      await writeStandardMinds(rtws, { memberTools: [partialToolName], providerApiType: apiType });
+      for (const language of ['en', 'zh'] as const) {
+        setWorkLanguage(language);
+        for (const scenario of [
+          'failed-update',
+          'clear-first',
+          'invalid-special',
+          'partial-failure',
+          'successful-update',
+        ] as const) {
+          const root = await createMainDialog();
+          root.disableDiligencePush = true;
+          await setMainDialogGoalReminder(root, {
+            mode: 'goal',
+            goal: 'Preserve failed tool work before starting a new course.',
+          });
+          const existing =
+            scenario === 'successful-update'
+              ? root.addReminder('reminder-original-data', undefined, undefined, undefined, {
+                  scope: 'dialog',
+                  renderMode: 'markdown',
+                })
+              : undefined;
+          const clearId = `${scenario}-clear`;
+          const siblingId = `${scenario}-sibling`;
+          const siblingName =
+            scenario === 'invalid-special'
+              ? 'askHuman'
+              : scenario === 'partial-failure'
+                ? partialToolName
+                : 'update_reminder';
+          const siblingArgs =
+            scenario === 'invalid-special' || scenario === 'partial-failure'
+              ? {}
+              : {
+                  reminder_id: existing?.id ?? 'missing-reminder-data',
+                  content: 'reminder-updated-data',
+                };
+          let round = 0;
+          const finalPayload = `finished-data-${scenario}-${language}`;
+          const generator: LlmGenerator = {
+            apiType,
+            async genToReceiver(_provider, _agent, _system, _tools, _request, context, receiver) {
+              if (++round === 1) {
+                const clear = () =>
+                  receiver.funcCall(
+                    clearId,
+                    'clear_mind',
+                    JSON.stringify({ reminder_content: continuationPayload }),
+                  );
+                const sibling = () =>
+                  receiver.funcCall(siblingId, siblingName, JSON.stringify(siblingArgs));
+                if (scenario === 'clear-first') {
+                  await clear();
+                  await sibling();
+                } else {
+                  await sibling();
+                  await clear();
+                }
+              } else {
+                assert.equal(
+                  round,
+                  2,
+                  'the controlled scenario finishes in one post-tool generation',
+                );
+                const received = context.filter((message) => message.type === 'func_result_msg');
+                if (scenario !== 'successful-update') {
+                  assert.ok(
+                    received.some(
+                      (result) => result.id === clearId && result.name === 'clear_mind',
+                    ),
+                  );
+                  assert.ok(
+                    received.some(
+                      (result) => result.id === siblingId && result.name === siblingName,
+                    ),
+                  );
+                }
+                await receiver.sayingStart();
+                await receiver.sayingChunk(finalPayload);
+                await receiver.sayingFinish();
+              }
+              return {
+                usage: {
+                  kind: 'available',
+                  promptTokens: 100,
+                  completionTokens: 10,
+                  totalTokens: 110,
+                },
+                llmGenModel: 'default',
+              };
             },
-            {
-              id: clearMindCallId,
-              name: 'clear_mind',
-              arguments: { reminder_content: '如果换程成功，这条提醒会出现。' },
+            async genMoreMessages() {
+              throw new Error('streaming fixture only');
             },
-          ],
-        },
-        {
-          message: blockedClearMindResult,
-          role: 'tool',
-          response: finalAnswer,
-        },
-        {
-          message: clearFirstTrigger,
-          role: 'user',
-          response: '我先写 clear_mind，再写另一个工具。',
-          funcCalls: [
-            {
-              id: clearFirstCallId,
-              name: 'clear_mind',
-              arguments: { reminder_content: '如果前置 clear_mind 换程成功，这条提醒会出现。' },
-            },
-            {
-              id: clearFirstFailedUpdateCallId,
-              name: 'update_reminder',
-              arguments: { reminder_id: 'missing-reminder', content: '新的接续信息' },
-            },
-          ],
-        },
-        {
-          message: "提醒项 'missing-reminder' 不存在。",
-          role: 'tool',
-          contextContains: [clearFirstBlockedClearMindResult],
-          response: clearFirstFinalAnswer,
-        },
-        {
-          message: invalidSpecialTrigger,
-          role: 'user',
-          response: '我会错误调用 askHuman，再调用 clear_mind。',
-          funcCalls: [
-            {
-              id: invalidAskHumanCallId,
-              name: 'askHuman',
-              arguments: {},
-            },
-            {
-              id: invalidSpecialClearMindCallId,
-              name: 'clear_mind',
-              arguments: { reminder_content: '如果 special 失败后仍换程，这条提醒会出现。' },
-            },
-          ],
-        },
-        {
-          message: invalidSpecialBlockedClearMindResult,
-          role: 'tool',
-          response: invalidSpecialFinalAnswer,
-        },
-        {
-          message: partialFailureTrigger,
-          role: 'user',
-          response: '我会调用局部失败探针，再调用 clear_mind。',
-          funcCalls: [
-            {
-              id: partialFailureCallId,
-              name: PARTIAL_FAILURE_TOOL_NAME,
-              arguments: {},
-            },
-            {
-              id: partialFailureClearMindCallId,
-              name: 'clear_mind',
-              arguments: { reminder_content: '如果 partial_failure 后仍换程，这条提醒会出现。' },
-            },
-          ],
-        },
-        {
-          message: partialFailureBlockedClearMindResult,
-          role: 'tool',
-          response: partialFailureFinalAnswer,
-        },
-      ]);
-
-      const dlg = await createMainDialog('tester');
-      dlg.disableDiligencePush = true;
-
-      await driveDialogStream(
-        dlg,
-        {
-          content: trigger,
-          msgId: 'kernel-driver-clear-mind-blocks-on-sibling-tool-failure',
-          grammar: 'markdown',
-          origin: 'user',
-        },
-        true,
-      );
-
-      assert.equal(dlg.currentCourse, 1, 'blocked clear_mind must not switch to a new course');
-      assert.equal(lastAssistantSaying(dlg), finalAnswer);
+          };
+          registerLlmGenerator(generator);
+          try {
+            await driveDialogStream(
+              root,
+              makeUserPrompt(`input-data-${scenario}`, `${scenario}-${language}`),
+              true,
+            );
+            await waitForAllDialogsUnlocked(root, 3_000);
+            assert.equal(round, 2);
+            assert.equal(root.currentCourse, scenario === 'successful-update' ? 2 : 1);
+            const firstCourse = await DialogPersistence.loadCourseEvents(root.id, 1, root.status);
+            const results = firstCourse.filter((event) => event.type === 'func_result_record');
+            assert.equal(
+              results.filter((result) => result.id === siblingId && result.name === siblingName)
+                .length,
+              1,
+            );
+            const clearResults = results.filter(
+              (result) => result.id === clearId && result.name === 'clear_mind',
+            );
+            assert.equal(clearResults.length, 1);
+            const currentEvents = await DialogPersistence.loadCourseEvents(
+              root.id,
+              root.currentCourse,
+              root.status,
+            );
+            const words = currentEvents.filter((event) => event.type === 'agent_words_record');
+            assert.equal(words.at(-1)?.content, finalPayload);
+            const latest = await DialogPersistence.loadDialogLatest(root.id, root.status);
+            assert.ok(latest);
+            assert.equal(latest.pendingRuntimePrompt, undefined);
+            assert.equal(
+              latest.nextStep.triggers.some((trigger) => trigger.kind === 'queued_prompt'),
+              false,
+            );
+            if (scenario === 'successful-update') {
+              assert.ok(
+                root.reminders.some((reminder) => reminder.content === continuationPayload),
+              );
+              assert.equal(
+                root.reminders.find((reminder) => reminder.id === existing?.id)?.content,
+                'reminder-updated-data',
+              );
+            } else {
+              assert.equal(
+                root.reminders.filter((reminder) => reminder.id !== MAIN_DIALOG_GOAL_REMINDER_ID)
+                  .length,
+                0,
+              );
+              assert.equal(latest.currentCourse, 1);
+            }
+            const siblingResult = results.find((result) => result.id === siblingId);
+            assert.ok(siblingResult);
+            if (scenario === 'partial-failure') assert.equal(siblingResult.content, partialPayload);
+            evidence.record({
+              id: `${scenario}-${language}`,
+              scenario: `Real same-round ${siblingName} and clear_mind in ${scenario}; observed course ${root.currentCourse}.`,
+              businessValue:
+                'Do not discard unresolved failed work during context renewal; successful sibling work must still allow renewal.',
+              context: {
+                language,
+                scenario,
+                siblingId,
+                clearId,
+                siblingName,
+                siblingArguments: JSON.stringify(siblingArgs),
+                observedCourse: root.currentCourse,
+                continuationPayload,
+              },
+              reviewQuestions: [
+                'Does the actual result explain the observed acceptance or refusal with the correct sibling and outcome?',
+                'Can the executor recover without treating a failed or partial sibling as successful, or being instructed to repeat an invalid operation unchanged?',
+              ],
+              actualText: JSON.stringify(
+                { sibling: siblingResult, clearMind: clearResults[0] },
+                null,
+                2,
+              ),
+            });
+          } finally {
+            unregisterLlmGenerator(apiType);
+          }
+        }
+      }
       assert.equal(
-        nonGoalReminderCount(dlg),
-        0,
-        'blocked clear_mind must not create its continuation reminder',
+        partialCalls,
+        2,
+        'the partial-failure sibling actually executes in both languages',
       );
-
-      const clearMindResult = dlg.msgs.find(
-        (msg) =>
-          msg.type === 'func_result_msg' && msg.id === clearMindCallId && msg.name === 'clear_mind',
-      );
-      assert.ok(clearMindResult, 'expected clear_mind to receive a tool result');
-      assert.equal(clearMindResult.content, blockedClearMindResult);
-
-      const latest = await DialogPersistence.loadDialogLatest(dlg.id, dlg.status);
-      assert.equal(
-        latest?.pendingRuntimePrompt,
-        undefined,
-        'blocked clear_mind must not queue a new-course runtime prompt',
-      );
-      assert.equal(
-        latest?.nextStep.triggers.some((trigger) => trigger.kind === 'queued_prompt'),
-        false,
-        'blocked clear_mind must not leave a queued-prompt trigger',
-      );
-
-      await driveDialogStream(
-        dlg,
-        {
-          content: clearFirstTrigger,
-          msgId: 'kernel-driver-clear-mind-first-blocks-on-later-sibling-tool-failure',
-          grammar: 'markdown',
-          origin: 'user',
-        },
-        true,
-      );
-
-      assert.equal(
-        dlg.currentCourse,
-        1,
-        'clear_mind must not switch course even when it appears before the failed sibling tool',
-      );
-      assert.equal(lastAssistantSaying(dlg), clearFirstFinalAnswer);
-      assert.equal(
-        nonGoalReminderCount(dlg),
-        0,
-        'front-position blocked clear_mind must not create its continuation reminder',
-      );
-
-      const clearFirstResult = dlg.msgs.find(
-        (msg) =>
-          msg.type === 'func_result_msg' &&
-          msg.id === clearFirstCallId &&
-          msg.name === 'clear_mind',
-      );
-      assert.ok(clearFirstResult, 'expected front-position clear_mind to receive a tool result');
-      assert.equal(clearFirstResult.content, clearFirstBlockedClearMindResult);
-
-      await driveDialogStream(
-        dlg,
-        {
-          content: invalidSpecialTrigger,
-          msgId: 'kernel-driver-clear-mind-blocks-on-invalid-special-tool-failure',
-          grammar: 'markdown',
-          origin: 'user',
-        },
-        true,
-      );
-
-      assert.equal(
-        dlg.currentCourse,
-        1,
-        'clear_mind must not switch course when an invalid special tool fails in the same round',
-      );
-      assert.equal(lastAssistantSaying(dlg), invalidSpecialFinalAnswer);
-      assert.equal(
-        nonGoalReminderCount(dlg),
-        0,
-        'special-failure blocked clear_mind must not create its continuation reminder',
-      );
-
-      const invalidSpecialClearMindResult = dlg.msgs.find(
-        (msg) =>
-          msg.type === 'func_result_msg' &&
-          msg.id === invalidSpecialClearMindCallId &&
-          msg.name === 'clear_mind',
-      );
-      assert.ok(
-        invalidSpecialClearMindResult,
-        'expected clear_mind to receive a tool result after invalid special failure',
-      );
-      assert.equal(invalidSpecialClearMindResult.content, invalidSpecialBlockedClearMindResult);
-
-      await driveDialogStream(
-        dlg,
-        {
-          content: partialFailureTrigger,
-          msgId: 'kernel-driver-clear-mind-blocks-on-partial-failure',
-          grammar: 'markdown',
-          origin: 'user',
-        },
-        true,
-      );
-
-      assert.equal(
-        dlg.currentCourse,
-        1,
-        'clear_mind must not switch course when another tool returns partial_failure',
-      );
-      assert.equal(lastAssistantSaying(dlg), partialFailureFinalAnswer);
-      assert.equal(
-        nonGoalReminderCount(dlg),
-        0,
-        'partial-failure blocked clear_mind must not create its continuation reminder',
-      );
-
-      const partialFailureClearMindResult = dlg.msgs.find(
-        (msg) =>
-          msg.type === 'func_result_msg' &&
-          msg.id === partialFailureClearMindCallId &&
-          msg.name === 'clear_mind',
-      );
-      assert.ok(
-        partialFailureClearMindResult,
-        'expected clear_mind to receive a tool result after partial_failure',
-      );
-      assert.equal(partialFailureClearMindResult.content, partialFailureBlockedClearMindResult);
     } finally {
-      unregisterTool(PARTIAL_FAILURE_TOOL_NAME);
+      unregisterTool(partialToolName);
+      unregisterLlmGenerator(apiType);
     }
   });
-
-  console.log('kernel-driver clear-mind-blocks-on-sibling-tool-failure: PASS');
+  await evidence.write();
+  console.log('clear_mind preserves failed siblings and accepts completed siblings: passed');
 }
-
-void main().catch((err: unknown) => {
-  const message = err instanceof Error ? err.message : String(err);
-  console.error(`kernel-driver clear-mind-blocks-on-sibling-tool-failure: FAIL\n${message}`);
-  process.exit(1);
+main().catch((error: unknown) => {
+  console.error(error);
+  process.exitCode = 1;
 });

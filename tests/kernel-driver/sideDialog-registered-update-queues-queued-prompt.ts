@@ -1,232 +1,219 @@
 import assert from 'node:assert/strict';
 
-import type { TellaskResultRecord } from '@longrun-ai/kernel/types/storage';
+import type { ChatMessage } from '../../main/llm/client';
+import type { LlmGenerator } from '../../main/llm/gen';
+import { registerLlmGenerator, unregisterLlmGenerator } from '../../main/llm/gen/registry';
 import { driveDialogStream } from '../../main/llm/kernel-driver';
 import { DialogPersistence } from '../../main/persistence';
-import {
-  formatAssignmentFromAskerDialog,
-  formatTellaskResponseContent,
-  formatUpdatedAssignmentFromAskerDialog,
-} from '../../main/runtime/inter-dialog-format';
-import { getWorkLanguage } from '../../main/runtime/work-language';
-
+import { setWorkLanguage } from '../../main/runtime/work-language';
+import { semanticEvidenceCollector } from '../helpers/semantic-evidence';
 import {
   createMainDialog,
-  listTellaskResultContents,
+  makeUserPrompt,
   waitFor,
   waitForAllDialogsUnlocked,
   withTempRtws,
-  wrapPromptWithExpectedReplyTool,
-  writeMockDb,
   writeStandardMinds,
 } from './helpers';
 
+const evidence = semanticEvidenceCollector('dominds-running-assignment-update-');
 async function main(): Promise<void> {
-  await withTempRtws(async (tmpRoot) => {
-    await writeStandardMinds(tmpRoot, { includePangu: true });
-
-    const root = await createMainDialog('tester');
+  await withTempRtws(async (rtws) => {
+    setWorkLanguage('en');
+    const apiType = 'test-running-assignment-update';
+    await writeStandardMinds(rtws, { includePangu: true, providerApiType: apiType });
+    const root = await createMainDialog();
     root.disableDiligencePush = true;
-    const language = getWorkLanguage();
-    const sessionSlug = 'sticky-session';
-    const initialTrigger = 'Start the registered side dialog.';
-    const initialBody = 'Initial assignment';
-    const updatedTrigger = 'Update the registered side dialog while it is still running.';
-    const updatedBody = 'Updated assignment';
-
-    const initialAssignmentPrompt = wrapPromptWithExpectedReplyTool({
-      prompt: formatAssignmentFromAskerDialog({
-        callName: 'tellask',
-        fromAgentId: 'tester',
-        toAgentId: 'pangu',
-        mentionList: ['@pangu'],
-        tellaskContent: initialBody,
-        language,
-        sessionSlug,
-        collectiveTargets: ['pangu'],
-      }),
-      expectedReplyToolName: 'replyTellask',
-      language,
+    const session = 'registered-update-data';
+    const oldCall = 'assignment-old-data';
+    const newCall = 'assignment-new-data';
+    const oldBody = 'request-data-old-726a';
+    const newBody = 'request-data-new-837b';
+    const replyPayload = 'reply-data-new-948c';
+    let releaseOld: () => void = () => {};
+    const oldRelease = new Promise<void>((resolve) => {
+      releaseOld = resolve;
     });
-    const updatedAssignmentPrompt = wrapPromptWithExpectedReplyTool({
-      prompt: formatUpdatedAssignmentFromAskerDialog({
-        callName: 'tellask',
-        fromAgentId: 'tester',
-        toAgentId: 'pangu',
-        mentionList: ['@pangu'],
-        tellaskContent: updatedBody,
-        language,
-        sessionSlug,
-        collectiveTargets: ['pangu'],
-      }),
-      expectedReplyToolName: 'replyTellask',
-      language,
+    let noteOldEntered: () => void = () => {};
+    const oldEntered = new Promise<void>((resolve) => {
+      noteOldEntered = resolve;
     });
-    const expectedUpdatedResult = formatTellaskResponseContent({
-      callName: 'tellask',
-      callId: 'call-updated-round',
-      responderId: 'pangu',
-      tellaskerId: 'tester',
-      mentionList: ['@pangu'],
-      tellaskContent: updatedBody,
-      responseBody: 'Updated assignment adopted.',
-      status: 'completed',
-      deliveryMode: 'reply_tool',
-      language,
-      sessionSlug,
-    });
-
-    await writeMockDb(tmpRoot, [
-      {
-        message: initialTrigger,
-        role: 'user',
-        response: 'Starting the side dialog.',
-        funcCalls: [
-          {
-            id: 'call-initial-round',
-            name: 'tellask',
-            arguments: {
-              targetAgentId: 'pangu',
-              sessionSlug,
-              tellaskContent: initialBody,
-            },
-          },
-        ],
+    let rootRounds = 0;
+    let sideRounds = 0;
+    let updatedContext: ChatMessage[] | undefined;
+    const generator: LlmGenerator = {
+      apiType,
+      async genToReceiver(_provider, _agent, _system, _tools, request, context, receiver) {
+        if (request.dialogSelfId === root.id.selfId) {
+          rootRounds += 1;
+          if (rootRounds <= 2) {
+            const initial = rootRounds === 1;
+            await receiver.funcCall(
+              initial ? oldCall : newCall,
+              'tellask',
+              JSON.stringify({
+                targetAgentId: 'pangu',
+                sessionSlug: session,
+                tellaskContent: initial ? oldBody : newBody,
+              }),
+            );
+          } else {
+            assert.equal(rootRounds, 3);
+            const results = context
+              .filter((message) => message.type === 'tellask_result_msg')
+              .filter((message) => message.callId === newCall);
+            assert.equal(results.length, 1);
+            assert.equal(results[0].status, 'completed');
+            assert.ok(results[0].content.includes(replyPayload));
+            await receiver.sayingStart();
+            await receiver.sayingChunk('root-finished-data-update');
+            await receiver.sayingFinish();
+          }
+        } else if (++sideRounds === 1) {
+          noteOldEntered();
+          await oldRelease;
+          await receiver.sayingStart();
+          await receiver.sayingChunk('old-local-candidate-data');
+          await receiver.sayingFinish();
+        } else {
+          assert.equal(sideRounds, 2);
+          updatedContext = structuredClone(context);
+          await receiver.funcCall(
+            'reply-new-assignment-data',
+            'replyTellask',
+            JSON.stringify({ replyContent: replyPayload }),
+          );
+        }
+        return {
+          usage: { kind: 'available', promptTokens: 100, completionTokens: 10, totalTokens: 110 },
+          llmGenModel: 'default',
+        };
       },
-      {
-        message: initialAssignmentPrompt,
-        role: 'user',
-        response: 'Still working through the initial assignment.',
-        delayMs: 1_500,
+      async genMoreMessages() {
+        throw new Error('streaming fixture only');
       },
-      {
-        message: updatedTrigger,
-        role: 'user',
-        response: 'Updating the side dialog now.',
-        funcCalls: [
-          {
-            id: 'call-updated-round',
-            name: 'tellask',
-            arguments: {
-              targetAgentId: 'pangu',
-              sessionSlug,
-              tellaskContent: updatedBody,
-            },
-          },
-        ],
-      },
-      {
-        message: updatedAssignmentPrompt,
-        role: 'user',
-        response: 'Updated assignment adopted.',
-      },
-      {
-        message: expectedUpdatedResult,
-        role: 'tool',
-        response: 'Ack: updated result received.',
-      },
-    ]);
-
-    await driveDialogStream(
-      root,
-      {
-        content: initialTrigger,
-        msgId: 'kernel-driver-registered-update-queued-prompt-initial',
-        grammar: 'markdown',
-        origin: 'user',
-      },
-      true,
-    );
-
-    await waitFor(
-      async () => {
-        const sideDialog = root.lookupSideDialog('pangu', sessionSlug);
-        return sideDialog !== undefined && sideDialog.isLocked();
-      },
-      3_000,
-      'registered sideDialog to start running the initial assignment',
-    );
-
-    const sideDialog = root.lookupSideDialog('pangu', sessionSlug);
-    assert.ok(sideDialog, 'expected registered sideDialog after the first tellask');
-
-    await driveDialogStream(
-      root,
-      {
-        content: updatedTrigger,
-        msgId: 'kernel-driver-registered-update-queued-prompt-second',
-        grammar: 'markdown',
-        origin: 'user',
-      },
-      true,
-    );
-
-    const pendingAfterUpdate = await DialogPersistence.loadActiveCalleeDispatches(
-      root.id,
-      root.status,
-    );
-    assert.equal(pendingAfterUpdate.length, 1, 'expected updated tellask to replace pending');
-    assert.deepEqual(
-      pendingAfterUpdate.map((record) => record.callId),
-      ['call-updated-round'],
-    );
-
-    await waitFor(
-      async () => {
-        const sideDialogEvents = await DialogPersistence.loadCourseEvents(
-          sideDialog.id,
-          sideDialog.currentCourse,
-          sideDialog.status,
-        );
-        return sideDialogEvents.some(
+    };
+    registerLlmGenerator(generator);
+    try {
+      await driveDialogStream(
+        root,
+        makeUserPrompt('initial-input-data', 'registered-user-old'),
+        true,
+      );
+      await oldEntered;
+      const side = root.lookupSideDialog('pangu', session);
+      assert.ok(side);
+      assert.equal(side.isLocked(), true);
+      await driveDialogStream(
+        root,
+        makeUserPrompt('updated-input-data', 'registered-user-new'),
+        true,
+      );
+      assert.equal(
+        sideRounds,
+        1,
+        'the new assignment waits at the actual running generation boundary',
+      );
+      const pending = await DialogPersistence.loadActiveCalleeDispatches(root.id, root.status);
+      assert.deepEqual(
+        pending.map((record) => record.callId),
+        [newCall],
+      );
+      const queued = side.peekQueuedPrompt();
+      assert.ok(queued?.kind === 'registered_assignment_update');
+      assert.equal(queued.tellaskReplyDirective.targetCallId, newCall);
+      assert.equal(queued.tellaskReplyDirective.tellaskContent, newBody);
+      releaseOld();
+      await waitFor(async () => rootRounds === 3, 3_000, 'root to consume the replacement result');
+      await waitForAllDialogsUnlocked(root, 3_000);
+      assert.equal(sideRounds, 2);
+      const sideEvents = await DialogPersistence.loadCourseEvents(
+        side.id,
+        side.currentCourse,
+        side.status,
+      );
+      const updatedInputs = sideEvents
+        .filter((event) => event.type === 'human_text_record')
+        .filter((event) => event.tellaskReplyDirective?.targetCallId === newCall);
+      assert.equal(updatedInputs.length, 1);
+      assert.ok(updatedInputs[0].content.includes(newBody));
+      assert.equal(
+        sideEvents.filter(
           (event) =>
-            event.type === 'human_text_record' &&
-            event.content.trim() === updatedAssignmentPrompt.trim(),
-        );
-      },
-      4_000,
-      'updated assignment to be rendered after the active turn boundary',
-    );
-    await waitFor(
-      async () => listTellaskResultContents(root.msgs).includes(expectedUpdatedResult),
-      4_000,
-      'updated assignment result to flow back to tellasker',
-    );
-    await waitForAllDialogsUnlocked(root, 6_000);
-
-    const rootEvents = await DialogPersistence.loadCourseEvents(
-      root.id,
-      root.currentCourse,
-      root.status,
-    );
-    const updatedRoundResponse = rootEvents.find(
-      (event): event is TellaskResultRecord =>
-        event.type === 'tellask_result_record' && event.callId === 'call-updated-round',
-    );
-    assert.ok(updatedRoundResponse, 'expected updated round to receive the completed result');
-    const pendingAfterUpdatedReply = await DialogPersistence.loadActiveCalleeDispatches(
-      root.id,
-      root.status,
-    );
-    assert.deepEqual(
-      pendingAfterUpdatedReply.map((record) => record.callId),
-      [],
-      'after replying to the replacement round, no earlier pending round should be restored',
-    );
-    assert.equal(
-      sideDialog.assignmentFromAsker.callId,
-      'call-updated-round',
-      'after replacement delivery, the sideDialog should keep the latest assignment frame',
-    );
+            event.type === 'tellask_anchor_record' &&
+            event.anchorRole === 'assignment' &&
+            event.callId === newCall,
+        ).length,
+        1,
+      );
+      const rootEvents = await DialogPersistence.loadCourseEvents(
+        root.id,
+        root.currentCourse,
+        root.status,
+      );
+      const results = rootEvents.filter((event) => event.type === 'tellask_result_record');
+      const replaced = results.filter((event) => event.callId === oldCall);
+      const completed = results.filter((event) => event.callId === newCall);
+      assert.equal(replaced.length, 1);
+      assert.equal(replaced[0].status, 'failed');
+      assert.equal(completed.length, 1);
+      assert.equal(completed[0].status, 'completed');
+      assert.ok(completed[0].content.includes(replyPayload));
+      assert.equal(
+        (await DialogPersistence.loadActiveCalleeDispatches(root.id, root.status)).length,
+        0,
+      );
+      assert.equal(side.assignmentFromAsker.callId, newCall);
+      assert.equal(side.hasQueuedPrompt(), false);
+      assert.ok(updatedContext);
+      evidence.record({
+        id: 'running-assignment-replacement-notice',
+        scenario:
+          'A registered request is replaced while its worker is inside generation. The old call receives this canonical failed result; the new call later completes.',
+        businessValue:
+          'Make the old call’s disposition understandable without treating the replacement as a second independent task or a successful old delivery.',
+        context: {
+          language: 'en',
+          oldCallId: oldCall,
+          newCallId: newCall,
+          oldRequestPayload: oldBody,
+          newRequestPayload: newBody,
+        },
+        reviewQuestions: [
+          'Does the actual notice explain supersession and where the current work continues, without inviting a duplicate old reply?',
+        ],
+        actualText: replaced[0].content,
+      });
+      evidence.record({
+        id: 'running-assignment-updated-context',
+        scenario:
+          'After the controlled old generation finishes locally, the reused worker receives its queued replacement. This is its actual provider context.',
+        businessValue:
+          'Adopt the current requirement at the generation boundary while preserving the correct requester and avoiding stale work delivery.',
+        context: {
+          language: 'en',
+          oldCallId: oldCall,
+          newCallId: newCall,
+          oldRequestPayload: oldBody,
+          newRequestPayload: newBody,
+        },
+        reviewQuestions: [
+          'Does the context clearly distinguish historical assignment/candidate text from the current replacement requirement?',
+          'Can the worker deliver the new result with the correct reply tool without redoing or delivering the superseded task?',
+        ],
+        actualText: JSON.stringify(updatedContext, null, 2),
+      });
+    } finally {
+      releaseOld();
+      unregisterLlmGenerator(apiType);
+    }
   });
-
-  console.log('kernel-driver sideDialog-registered-update-queues-queued-prompt: PASS');
-}
-
-void main().catch((err: unknown) => {
-  const message = err instanceof Error ? err.message : String(err);
-  console.error(
-    `kernel-driver sideDialog-registered-update-queues-queued-prompt: FAIL\n${message}`,
+  await evidence.write();
+  console.log(
+    'running registered assignment adopts the queued replacement at the generation boundary: passed',
   );
-  process.exit(1);
+}
+main().catch((error: unknown) => {
+  console.error(error);
+  process.exitCode = 1;
 });

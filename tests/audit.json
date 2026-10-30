@@ -10,8 +10,8 @@
     "kernel-driver/mainline-reply-obligation-reminder-direct-fallback.ts": {
       "status": "reviewed",
       "lane": "kernel",
-      "value": "回复义务、真实队列路由、补提醒后直接返回结果",
-      "evidence": "58233858 / bbc5f12c; actual persisted events, routes and budget; no semantic wording assertions"
+      "value": "真实跨对话ask-back义务在current及旧版持久化提醒重建后只交付一次，不消耗续推预算；旧runtime指导更新，用户同字节原样保留",
+      "evidence": "Renewal/assignment batch re-review: current two-round and legacy en/zh reconstructed queues; canonical one-result/payload, input identity, active obligation and diligence budget. tests/semantic/reviews/2026-10-30-renewal.json; previous review does not accept fresh output."
     },
     "kernel-driver/tellask-background-dispatch-does-not-immediate-followup.ts": {
       "status": "reviewed",
@@ -144,6 +144,102 @@
       "lane": "kernel",
       "value": "真实reply交付尾部到达其他root触发时，本root不重复生成；实际backend消费触发且完成一轮检查后确认",
       "evidence": "Reply/runtime batch; complete assertion review. Real requester call/durable obligation, callback reason+count and held lock, pass-through trigger-consumption recorder, real backend cycle without fixed sleep, generation/canonical payload/wake effects; tests/semantic/reviews/2026-10-30-reply-runtime.json"
+    },
+    "kernel-driver/clear-mind-blocks-on-sibling-tool-failure.ts": {
+      "status": "reviewed",
+      "lane": "kernel",
+      "value": "同轮失败/部分失败及两种调用顺序不丢未解决工作，成功的同轮更新仍允许换程；真实工具结果和中英语义另审",
+      "evidence": "Renewal/assignment batch; complete assertion design review, real isolated runtime/persistence/scheduling and controlled provider responses. Subjective semantics and failure history: tests/semantic/reviews/2026-10-30-renewal.json. Prior reports never accept fresh output."
+    },
+    "kernel-driver/clear-mind-critical-auto-course.ts": {
+      "status": "reviewed",
+      "lane": "kernel",
+      "value": "配置真实模型容量并观测critical快照、换程元数据与自动继续；保留continuation正文并只消费一次新程输入",
+      "evidence": "Renewal/assignment batch; complete assertion design review, real isolated runtime/persistence/scheduling and controlled provider responses. Subjective semantics and failure history: tests/semantic/reviews/2026-10-30-renewal.json. Prior reports never accept fresh output."
+    },
+    "kernel-driver/sideDialog-clear-mind-keeps-pending-round.ts": {
+      "status": "reviewed",
+      "lane": "kernel",
+      "value": "真实执行智能体换程后向同一调用方正式交付一次，路由指向新course且保留接续包",
+      "evidence": "Renewal/assignment batch; complete assertion design review, real isolated runtime/persistence/scheduling and controlled provider responses. Subjective semantics and failure history: tests/semantic/reviews/2026-10-30-renewal.json. Prior reports never accept fresh output."
+    },
+    "kernel-driver/sideDialog-new-course-prompt-survives-restore.ts": {
+      "status": "reviewed",
+      "lane": "kernel",
+      "value": "从磁盘重建根和支线实例，durable输入身份/义务恢复，消费及正式交付恰好一次",
+      "evidence": "Renewal/assignment batch; complete assertion design review, real isolated runtime/persistence/scheduling and controlled provider responses. Subjective semantics and failure history: tests/semantic/reviews/2026-10-30-renewal.json. Prior reports never accept fresh output."
+    },
+    "kernel-driver/sideDialog-new-course-update-reminder-followup.ts": {
+      "status": "reviewed",
+      "lane": "kernel",
+      "value": "新程真实reminder更新成功后立即进入post-tool generation，保留正文及原调用方交付",
+      "evidence": "Renewal/assignment batch; complete assertion design review, real isolated runtime/persistence/scheduling and controlled provider responses. Subjective semantics and failure history: tests/semantic/reviews/2026-10-30-renewal.json. Prior reports never accept fresh output."
+    },
+    "kernel-driver/sideDialog-pending-runtime-prompt-counts-as-resumable.ts": {
+      "status": "reviewed",
+      "lane": "kernel",
+      "value": "durable排队输入在运行控制快照中可恢复，真实stop/interrupt投影和计数",
+      "evidence": "Renewal/assignment batch; complete assertion design review, real isolated runtime/persistence/scheduling and controlled provider responses. Subjective semantics and failure history: tests/semantic/reviews/2026-10-30-renewal.json. Prior reports never accept fresh output."
+    },
+    "kernel-driver/sideDialog-stale-pending-runtime-prompt-clears-on-restore.ts": {
+      "status": "reviewed",
+      "lane": "kernel",
+      "value": "已消费输入遭残留pending、stop和wake污染后重建实例；不重放、不多生成，清除过期阻断",
+      "evidence": "Renewal/assignment batch; complete assertion design review, real isolated runtime/persistence/scheduling and controlled provider responses. Subjective semantics and failure history: tests/semantic/reviews/2026-10-30-renewal.json. Prior reports never accept fresh output."
+    },
+    "kernel-driver/stale-pending-runtime-prompt-queue-claim.ts": {
+      "status": "reviewed",
+      "lane": "kernel",
+      "value": "内存队列没有durable authority时不得生成；同一真实运行时正向接收仍有效的新输入一次",
+      "evidence": "Renewal/assignment batch; complete assertion design review, real isolated runtime/persistence/scheduling and controlled provider responses. Subjective semantics and failure history: tests/semantic/reviews/2026-10-30-renewal.json. Prior reports never accept fresh output."
+    },
+    "kernel-driver/sideDialog-no-empty-autodrive-after-final-response.ts": {
+      "status": "reviewed",
+      "lane": "kernel",
+      "value": "完成锚点拒绝过期自动驱动、恢复投影不吞其他义务、复用会话恢复边界；真实工具失败后的思考保持待回复",
+      "evidence": "Renewal/assignment batch; complete assertion design review, real isolated runtime/persistence/scheduling and controlled provider responses. Subjective semantics and failure history: tests/semantic/reviews/2026-10-30-renewal.json. Prior reports never accept fresh output."
+    },
+    "kernel-driver/sideDialog-queue-commit-mirror.ts": {
+      "status": "reviewed",
+      "lane": "kernel",
+      "value": "两项顺序协作结果分别先到实际供应商与UI再生成；两个独立响应深链，重建后正文、数量、顺序和路由原样一致",
+      "evidence": "Renewal/assignment batch; complete assertion design review, real isolated runtime/persistence/scheduling and controlled provider responses. Subjective semantics and failure history: tests/semantic/reviews/2026-10-30-renewal.json. Prior reports never accept fresh output."
+    },
+    "kernel-driver/sideDialog-queue-interrupt-rollback.ts": {
+      "status": "reviewed",
+      "lane": "kernel",
+      "value": "受控阻塞嵌套执行者，证明实际中间候选存在且未正式交付；依赖结束后各层一次交付",
+      "evidence": "Renewal/assignment batch; complete assertion design review, real isolated runtime/persistence/scheduling and controlled provider responses. Subjective semantics and failure history: tests/semantic/reviews/2026-10-30-renewal.json. Prior reports never accept fresh output."
+    },
+    "kernel-driver/sideDialog-registered-update-clear-mind-rebinds-reply-target.ts": {
+      "status": "reviewed",
+      "lane": "kernel",
+      "value": "历史赋值被新需求替代后新程用当前call/body/B目标，旧历史不重获正式结果",
+      "evidence": "Renewal/assignment batch; complete assertion design review, real isolated runtime/persistence/scheduling and controlled provider responses. Subjective semantics and failure history: tests/semantic/reviews/2026-10-30-renewal.json. Prior reports never accept fresh output."
+    },
+    "kernel-driver/sideDialog-registered-update-queues-queued-prompt.ts": {
+      "status": "reviewed",
+      "lane": "kernel",
+      "value": "在真实生成边界排入更新；旧call失败、新call一次完成，不依赖固定等待或指导词句路由",
+      "evidence": "Renewal/assignment batch; complete assertion design review, real isolated runtime/persistence/scheduling and controlled provider responses. Subjective semantics and failure history: tests/semantic/reviews/2026-10-30-renewal.json. Prior reports never accept fresh output."
+    },
+    "kernel-driver/sideDialog-registered-update-replaces-pending-round.ts": {
+      "status": "reviewed",
+      "lane": "kernel",
+      "value": "人类等待期间更新注册任务，旧call处置、实时/落盘callee深链、pending事实更新，拒绝上一代候选",
+      "evidence": "Renewal/assignment batch; complete assertion design review, real isolated runtime/persistence/scheduling and controlled provider responses. Subjective semantics and failure history: tests/semantic/reviews/2026-10-30-renewal.json. Prior reports never accept fresh output."
+    },
+    "kernel-driver/sideDialog-backend-loop-retries-after-active-run-blocker.ts": {
+      "status": "reviewed",
+      "lane": "kernel",
+      "value": "受控provider放行前建立active-run blocker；真实后台观察延期后，清阻塞事件唤醒，正式结果消费一次且不丢durable wake",
+      "evidence": "Renewal/assignment batch follow-up; complete assertion review, real scheduler/persistence and phase-controlled provider. Prior implicit MockGen prose parsing caused full-kernel failures; preserved evidence and corrected fixtures: tests/semantic/reviews/2026-10-30-renewal.json."
+    },
+    "kernel-driver/sideDialog-registered-initial-auto-drive.ts": {
+      "status": "reviewed",
+      "lane": "kernel",
+      "value": "注册诉请自动启动真实执行者，显式回复工具交付已知payload一次，正确响应深链且主线实际消费",
+      "evidence": "Renewal/assignment batch follow-up; complete assertion review, real scheduler/persistence and phase-controlled provider. Prior implicit MockGen prose parsing caused full-kernel failures; preserved evidence and corrected fixtures: tests/semantic/reviews/2026-10-30-renewal.json."
     }
   },
   "retired": {
@@ -194,6 +290,21 @@
       "decision": "semantic-evidence",
       "replacement": "semantic/reply-guidance.ts",
       "reason": "删除低价值标签格式与回复指导固定词句检查；保留实际责任/接收方/工具路径的有价值语义材料并主观评审。"
+    },
+    "kernel-driver/sideDialog-queue-order-before-gen.ts": {
+      "decision": "merge",
+      "replacement": "kernel-driver/sideDialog-queue-commit-mirror.ts",
+      "reason": "重复同一协作夹具；保留实际供应商收到正式结果和UI先结果后生成，删除内部旧queue必须为空的实现布局约束。"
+    },
+    "kernel-driver/sideDialog-restore-live-equivalence.ts": {
+      "decision": "merge",
+      "replacement": "kernel-driver/sideDialog-queue-commit-mirror.ts",
+      "reason": "恢复价值保留；原uniq/set比较会隐藏重复与顺序问题，改为实际结果数组的正文、身份、数量、顺序及路由直接比对。"
+    },
+    "kernel-driver/sideDialog-new-course-uses-current-assignment-directive.ts": {
+      "decision": "merge",
+      "replacement": "kernel-driver/sideDialog-registered-update-clear-mind-rebinds-reply-target.ts",
+      "reason": "当前义务选择的结构化检查并入真实交付回归，保留新旧call/body与B目标，不再用运行时启动后的process.chdir伪装隔离。"
     }
   }
 }

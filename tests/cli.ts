@@ -19,10 +19,11 @@ Notes:
   - This avoids cross-test pollution and allows safe parallel runs.
   - Use --shared-rtws only for debugging (runs directly in tests/script-rtws).
   - -C is parsed for parity with dominds CLI, but only tests/script-rtws is accepted after path resolution.
-  - Set DOMINDS_TEST_RTWS_KEEP_TMP=1 to keep isolated temp rtws after run.
+  - Failed isolated runs keep their workspace for investigation.
+  - Set DOMINDS_TEST_RTWS_KEEP_TMP=1 to also keep successful isolated runs.
 
 	  Examples:
-	  pnpm -C tests run rtws -- kernel-driver/context-assembly-order.ts
+	  pnpm -C tests run rtws -- kernel-driver/runtime-reminder-context.ts
 	  pnpm -C tests run rtws -- --shared-rtws kernel-driver/sideDialog-queue-commit-mirror.ts
 	`);
 }
@@ -139,10 +140,10 @@ async function main(): Promise<void> {
     },
   );
 
-  const cleanupTempRtws = (): boolean => {
+  const cleanupTempRtws = (preserveFailure: boolean): boolean => {
     if (mode !== 'isolated') return true;
     if (!tempRoot) return true;
-    if (process.env.DOMINDS_TEST_RTWS_KEEP_TMP === '1') {
+    if (preserveFailure || process.env.DOMINDS_TEST_RTWS_KEEP_TMP === '1') {
       console.error(`[tests/cli] Keeping isolated rtws at ${tempRoot}`);
       return true;
     }
@@ -158,7 +159,7 @@ async function main(): Promise<void> {
 
   child.on('error', (err) => {
     console.error(`Test runner failed to start: ${err.message}`);
-    const cleaned = cleanupTempRtws();
+    const cleaned = cleanupTempRtws(true);
     process.exit(cleaned ? 1 : 2);
   });
 
@@ -169,7 +170,7 @@ async function main(): Promise<void> {
       finalExitCode = 1;
     }
 
-    const cleaned = cleanupTempRtws();
+    const cleaned = cleanupTempRtws(finalExitCode !== 0);
     if (!cleaned && finalExitCode === 0) {
       finalExitCode = 1;
     }

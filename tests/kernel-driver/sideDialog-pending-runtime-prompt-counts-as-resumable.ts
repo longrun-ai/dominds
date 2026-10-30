@@ -1,3 +1,4 @@
+import { toCallSiteCourseNo, toCallSiteGenseqNo } from '@longrun-ai/kernel/types/storage';
 import assert from 'node:assert/strict';
 
 import {
@@ -25,8 +26,8 @@ async function main(): Promise<void> {
         originMemberId: 'tester',
         askerDialogId: root.id.selfId,
         callId: 'call-pending-runtime-prompt-resume-all',
-        callSiteCourse: 1,
-        callSiteGenseq: 1,
+        callSiteCourse: toCallSiteCourseNo(1),
+        callSiteGenseq: toCallSiteGenseqNo(1),
         sessionSlug: 'pending-runtime-prompt-resume-all',
         collectiveTargets: ['pangu'],
       },
@@ -42,8 +43,8 @@ async function main(): Promise<void> {
         tellaskContent: 'Resume me after restart.',
         targetAgentId: 'pangu',
         callId: 'call-pending-runtime-prompt-resume-all',
-        callSiteCourse: 1,
-        callSiteGenseq: 1,
+        callSiteCourse: toCallSiteCourseNo(1),
+        callSiteGenseq: toCallSiteGenseqNo(1),
         callType: 'B',
         sessionSlug: 'pending-runtime-prompt-resume-all',
       },

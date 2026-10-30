@@ -3456,7 +3456,7 @@ export class DiskFileDialogStore extends DialogStore {
     };
     postDialogEvent(dialog, genFinishEvt);
 
-    if (contextHealth) {
+    if (contextHealth && course === dialog.currentCourse) {
       const ctxEvt: ContextHealthEvent = {
         type: 'context_health_evt',
         course,
@@ -4088,6 +4088,13 @@ export class DiskFileDialogStore extends DialogStore {
       totalCourses: newCourse,
     };
     postDialogEvent(dialog, courseUpdateEvt);
+    // Clear the live toolbar state immediately; an old generation may finish after this boundary.
+    postDialogEvent(dialog, {
+      type: 'context_health_evt',
+      course: newCourse,
+      genseq: 0,
+      contextHealth: { kind: 'unavailable', reason: 'usage_unavailable' },
+    });
   }
 
   public async persistPendingRuntimePrompt(

@@ -77,6 +77,7 @@ export async function writeStandardMinds(
     streaming?: boolean;
     providerApiType?: string;
     providerApiQuirks?: ReadonlyArray<string>;
+    modelContextLength?: number;
   },
 ): Promise<void> {
   const includePangu = options?.includePangu === true;
@@ -95,7 +96,10 @@ export async function writeStandardMinds(
     const quoted = options.providerApiQuirks.map((v) => JSON.stringify(v)).join(', ');
     llmLines.push(`    apiQuirks: [${quoted}]`);
   }
-  llmLines.push('    models:', '      default:', '        name: Default', '');
+  llmLines.push('    models:', '      default:', '        name: Default');
+  if (options?.modelContextLength !== undefined)
+    llmLines.push(`        context_length: ${options.modelContextLength}`);
+  llmLines.push('');
   await fs.writeFile(path.join(tmpRoot, '.minds', 'llm.yaml'), llmLines.join('\n'), 'utf-8');
 
   const teamLines = [
@@ -152,8 +156,18 @@ export async function writeMockDb(tmpRoot: string, entries: MockEntry[]): Promis
 
 export async function createMainDialog(
   agentId: string = 'tester',
-  taskDocPath: string = 'task.md',
+  taskDocPath: string = 'test-scenario.tsk',
 ): Promise<MainDialog> {
+  if (taskDocPath === 'test-scenario.tsk') {
+    const directory = path.join(process.cwd(), taskDocPath);
+    await fs.mkdir(directory, { recursive: true });
+    for (const [file, content] of Object.entries({
+      'goals.md': 'Execute the controlled test scenario and preserve its observable result.\n',
+      'constraints.md': 'Use only the capabilities and data supplied by this isolated fixture.\n',
+      'progress.md': 'The scenario is ready to execute.\n',
+    }))
+      await fs.writeFile(path.join(directory, file), content);
+  }
   const rootId = generateDialogID();
   const dialogId = new DialogID(rootId);
   const store = new DiskFileDialogStore(dialogId);

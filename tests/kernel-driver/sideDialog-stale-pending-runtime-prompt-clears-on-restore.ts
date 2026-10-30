@@ -1,6 +1,12 @@
+import {
+  toCallSiteCourseNo,
+  toCallSiteGenseqNo,
+  toDialogCourseNumber,
+} from '@longrun-ai/kernel/types/storage';
 import assert from 'node:assert/strict';
 
-import { DialogID } from '../../main/dialog';
+import { DialogID, SideDialog } from '../../main/dialog';
+import { globalDialogRegistry } from '../../main/dialog-global-registry';
 import { ensureDialogLoaded, getOrRestoreMainDialog } from '../../main/dialog-instance-registry';
 import { driveDialogStream } from '../../main/llm/kernel-driver';
 import { DialogPersistence } from '../../main/persistence';
@@ -10,6 +16,7 @@ import { setWorkLanguage } from '../../main/runtime/work-language';
 import {
   createMainDialog,
   hasPendingNextStepTriggers,
+  makeDriveOptions,
   waitForAllDialogsUnlocked,
   withTempRtws,
   writeMockDb,
@@ -31,8 +38,8 @@ async function main(): Promise<void> {
       originMemberId: 'tester',
       askerDialogId: root.id.selfId,
       callId,
-      callSiteCourse: 1,
-      callSiteGenseq: 1,
+      callSiteCourse: toCallSiteCourseNo(1),
+      callSiteGenseq: toCallSiteGenseqNo(1),
       sessionSlug: 'stale-pending-runtime-prompt',
       collectiveTargets: ['pangu'],
     });
@@ -47,8 +54,8 @@ async function main(): Promise<void> {
         tellaskContent,
         targetAgentId: 'pangu',
         callId,
-        callSiteCourse: 1,
-        callSiteGenseq: 1,
+        callSiteCourse: toCallSiteCourseNo(1),
+        callSiteGenseq: toCallSiteGenseqNo(1),
         callType: 'B',
         sessionSlug: 'stale-pending-runtime-prompt',
       },
@@ -61,7 +68,7 @@ async function main(): Promise<void> {
       }),
     );
     const queuedPrompt = sideDialog.peekQueuedPrompt();
-    assert.ok(queuedPrompt, 'expected clear_mind to queue a pending runtime prompt');
+    assert.ok(queuedPrompt?.kind === 'new_course_runtime_sideDialog');
 
     await writeMockDb(tmpRoot, [
       {
@@ -70,9 +77,23 @@ async function main(): Promise<void> {
         response: 'Prompt persisted before simulated crash window.',
       },
     ]);
-    await driveDialogStream(sideDialog, undefined, true);
+    await driveDialogStream(sideDialog, undefined, true, makeDriveOptions());
     await waitForAllDialogsUnlocked(root, 3_000);
 
+    const persistedBeforeRestore = await DialogPersistence.loadCourseEvents(
+      sideDialog.id,
+      sideDialog.currentCourse,
+      sideDialog.status,
+    );
+    assert.equal(
+      persistedBeforeRestore.filter(
+        (event) => event.type === 'human_text_record' && event.msgId === queuedPrompt.msgId,
+      ).length,
+      1,
+    );
+    const generationsBeforeRestore = persistedBeforeRestore.filter(
+      (event) => event.type === 'gen_start_record',
+    ).length;
     await DialogPersistence.mutateDialogLatest(sideDialog.id, (previous) => ({
       kind: 'patch',
       patch: {
@@ -83,7 +104,7 @@ async function main(): Promise<void> {
               triggerId: `queued-prompt:${queuedPrompt.msgId}`,
               kind: 'queued_prompt',
               promptId: queuedPrompt.msgId,
-              course: sideDialog.currentCourse,
+              course: toDialogCourseNumber(sideDialog.currentCourse),
               createdAt: new Date().toISOString(),
               seq: 1,
             },
@@ -94,19 +115,17 @@ async function main(): Promise<void> {
           msgId: queuedPrompt.msgId,
           grammar: 'markdown',
           origin: 'runtime',
-          ...(queuedPrompt.userLanguageCode === undefined
-            ? {}
-            : { userLanguageCode: queuedPrompt.userLanguageCode }),
-          ...(queuedPrompt.tellaskReplyDirective === undefined
-            ? {}
-            : { tellaskReplyDirective: queuedPrompt.tellaskReplyDirective }),
-          ...(queuedPrompt.skipTaskdoc === undefined
-            ? {}
-            : { skipTaskdoc: queuedPrompt.skipTaskdoc }),
-          ...(queuedPrompt.calleeDialogReplyTarget === undefined
-            ? {}
-            : { calleeDialogReplyTarget: queuedPrompt.calleeDialogReplyTarget }),
+          userLanguageCode: queuedPrompt.userLanguageCode,
+          tellaskReplyDirective: queuedPrompt.tellaskReplyDirective,
+          skipTaskdoc: queuedPrompt.skipTaskdoc,
+          calleeDialogReplyTarget: queuedPrompt.calleeDialogReplyTarget,
         },
+        displayState: {
+          kind: 'stopped',
+          reason: { kind: 'pending_runtime_prompt' },
+          continueEnabled: true,
+        },
+        executionMarker: { kind: 'interrupted', reason: { kind: 'pending_runtime_prompt' } },
         lastModified: previous.lastModified,
       },
     }));
@@ -115,6 +134,8 @@ async function main(): Promise<void> {
       sideDialog.status,
     );
     assert.ok(latestBeforeRestore, 'expected sideDialog latest before restore');
+    assert.equal(latestBeforeRestore.executionMarker?.kind, 'interrupted');
+    assert.equal(latestBeforeRestore.displayState?.kind, 'stopped');
     await DialogPersistence.syncWakeQueueForDialogLatest(
       sideDialog.id,
       latestBeforeRestore,
@@ -129,14 +150,21 @@ async function main(): Promise<void> {
       'test precondition: stale pending runtime prompt should be represented in root Wake Queue before restore',
     );
 
+    globalDialogRegistry.unregister(root.id.rootId);
     const restoredRoot = await getOrRestoreMainDialog(root.id.rootId, 'running');
     assert.ok(restoredRoot, 'expected main dialog restore to succeed');
+    assert.notEqual(restoredRoot, root, 'restore must construct a new root from durable state');
     const restoredSideDialog = await ensureDialogLoaded(
       restoredRoot,
       new DialogID(sideDialog.id.selfId, sideDialog.id.rootId),
       'running',
     );
-    assert.ok(restoredSideDialog, 'expected sideDialog restore to succeed');
+    assert.ok(restoredSideDialog instanceof SideDialog);
+    assert.notEqual(
+      restoredSideDialog,
+      sideDialog,
+      'restore must construct a new worker from durable state',
+    );
     assert.equal(
       restoredSideDialog.peekQueuedPrompt(),
       undefined,
@@ -163,6 +191,21 @@ async function main(): Promise<void> {
       latestAfterRestore?.displayState,
       { kind: 'idle_waiting_user' },
       'restore should clear the stale stopped projection once the pending prompt is already persisted',
+    );
+    const eventsAfterRestore = await DialogPersistence.loadCourseEvents(
+      sideDialog.id,
+      sideDialog.currentCourse,
+      'running',
+    );
+    assert.equal(
+      eventsAfterRestore.filter(
+        (event) => event.type === 'human_text_record' && event.msgId === queuedPrompt.msgId,
+      ).length,
+      1,
+    );
+    assert.equal(
+      eventsAfterRestore.filter((event) => event.type === 'gen_start_record').length,
+      generationsBeforeRestore,
     );
     const wakeQueueTargetsAfterRestore = await DialogPersistence.loadWakeQueueTargetDialogIds(
       root.id,

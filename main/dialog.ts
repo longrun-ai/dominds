@@ -485,11 +485,15 @@ export abstract class Dialog {
   }
 
   public setLastContextHealth(snapshot: ContextHealthSnapshot): void {
+    if (this._activeGenCourse !== undefined && this._activeGenCourse !== this._currentCourse) {
+      return;
+    }
     this._lastContextHealth = snapshot;
     // Track the generation sequence that produced this snapshot, so reminder owners
     // can distinguish pre-generation updates (previous snapshot) from post-generation
     // updates (current snapshot) without relying on heuristics.
-    this._lastContextHealthGenseq = this._activeGenSeq;
+    this._lastContextHealthGenseq =
+      this._activeGenCourse === this._currentCourse ? this._activeGenSeq : undefined;
   }
 
   public getLastContextHealth(): ContextHealthSnapshot | undefined {
@@ -1847,6 +1851,10 @@ export abstract class Dialog {
       ? await this.dlgStore.loadCurrentCourse(this.id)
       : this._currentCourse + 1;
     this._currentCourse = storeCourse;
+    // Usage measures the context sent in one course. A new course has no measurement yet;
+    // continuation metadata can retain the old pressure without treating it as current state.
+    this._lastContextHealth = { kind: 'unavailable', reason: 'usage_unavailable' };
+    this._lastContextHealthGenseq = undefined;
     this._updatedAt = formatUnifiedTimestamp(new Date());
     this.resetCourseLanguageNotice();
 
@@ -2172,9 +2180,14 @@ export abstract class Dialog {
     contextHealth?: ContextHealthSnapshot,
     llmGeneration?: LlmGenerationMetadata,
   ): Promise<void> {
-    if (contextHealth) {
+    if (
+      contextHealth &&
+      (this.activeGenCourseOrUndefined ?? this.currentCourse) === this.currentCourse
+    ) {
       this.setLastContextHealth(contextHealth);
     }
+    // A clear_mind tool can switch courses before its producing generation finishes.
+    // Keep that generation's historical measurement in its course, not in the new cache.
     try {
       await this.dlgStore.notifyGeneratingFinish(this, contextHealth, llmGeneration);
     } finally {

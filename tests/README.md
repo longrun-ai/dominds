@@ -35,7 +35,7 @@ pnpm run test:semantic:kernel
 - `test:semantic:configuration`: reruns the configuration scenarios with `--semantic` and emits full diagnostics, manual guidance and supplied configuration. It reports pending review, including when its machine assertions pass.
 - `test:semantic:manual`: emits actual handbooks, capability-list and refusal guidance, Taskdoc/skills guidance, collaboration result wrappers and the built-in manager prompt. All cases start pending subjective review.
 
-- `test:semantic:kernel`: runs five explicit producers for actual provider reminder context, repeated-call guidance and stops, reply-tool errors and expiration, human-answer follow-up queues, and reply/footer renderers. Their complete output remains pending agent review even when runtime assertions pass.
+- `test:semantic:kernel`: runs explicit producers for actual provider reminder context, repeated-call guidance and stops, reply-tool errors and expiration, human-answer follow-up queues, reply/footer renderers, context renewal, nested delivery and registered-assignment updates. Their complete output remains pending agent review even when runtime assertions pass.
 
 The [assertion audit ledger](./audit.json) records which candidate tests have actually been reviewed, their business value, lane and evidence. Inventory exposes unaudited candidates and stale ledger paths. Neither suite membership nor a prior ledger entry decides the meaning of freshly generated output.
 
@@ -53,7 +53,7 @@ pnpm -C tests run webapp-create-dialog-flow-ime
 pnpm -C tests run rtws -- kernel-driver/runtime-reminder-context.ts
 ```
 
-The rtws CLI copies `tests/script-rtws` into an independent temporary directory. Set `DOMINDS_TEST_RTWS_KEEP_TMP=1` to retain single-case evidence. `--shared-rtws` is for debugging and must not run concurrently.
+The rtws CLI copies `tests/script-rtws` into an independent temporary directory. Failed isolated CLI runs retain their workspace automatically. Set `DOMINDS_TEST_RTWS_KEEP_TMP=1` to also retain successful single-case evidence. `--shared-rtws` is for debugging and must not run concurrently.
 
 Scripts resolve repository-internal contracts through `tests/tsconfig.json`. Direct `tsx` invocation from the root needs `--tsconfig tests/tsconfig.json`. Relative imports resolve from the source file; the runtime's rtws is fixed at startup, so changing `process.cwd()` afterward does not relocate an initialized runtime.
 

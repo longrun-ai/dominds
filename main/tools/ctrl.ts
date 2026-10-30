@@ -1142,10 +1142,6 @@ export const clearMindTool: FuncTool = {
     }
     await dlg.startNewCourse(t.clearedCoursePrompt(dlg.currentCourse + 1));
 
-    // Context health snapshot is inherently tied to the previous prompt/context.
-    // After clearing, invalidate it so the next generation can recompute without
-    // stale remediation based on the old (large) context.
-    dlg.setLastContextHealth({ kind: 'unavailable', reason: 'usage_unavailable' });
     return formatToolActionResult(language, 'mindCleared');
   },
 };

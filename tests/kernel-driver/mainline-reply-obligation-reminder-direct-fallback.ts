@@ -1,194 +1,261 @@
 import assert from 'node:assert/strict';
 
+import { toCallSiteCourseNo, toCallSiteGenseqNo } from '@longrun-ai/kernel/types/storage';
+import type { Dialog } from '../../main/dialog';
+import { globalDialogRegistry } from '../../main/dialog-global-registry';
+import { getOrRestoreMainDialog } from '../../main/dialog-instance-registry';
 import type { ChatMessage } from '../../main/llm/client';
+import type { LlmGenerator } from '../../main/llm/gen';
+import { registerLlmGenerator, unregisterLlmGenerator } from '../../main/llm/gen/registry';
 import { executeDriveRound } from '../../main/llm/kernel-driver/flow';
+import { resolvePromptReplyGuidance } from '../../main/llm/kernel-driver/reply-guidance';
 import {
   createKernelDriverRuntimeState,
   type KernelDriverDriveCallOptions,
 } from '../../main/llm/kernel-driver/types';
 import { DialogPersistence } from '../../main/persistence';
-import { formatTellaskResponseContent } from '../../main/runtime/inter-dialog-format';
-import { buildReplyToolReminderText } from '../../main/runtime/reply-prompt-copy';
+import { setWorkLanguage } from '../../main/runtime/work-language';
+import { semanticEvidenceCollector } from '../helpers/semantic-evidence';
 import {
   createMainDialog,
   makeDriveOptions,
-  waitFor,
+  makeUserPrompt,
   withTempRtws,
-  writeMockDb,
   writeStandardMinds,
 } from './helpers';
 
-function findTellaskBackResult(
-  msgs: readonly ChatMessage[],
-  callId: string,
-): Extract<ChatMessage, { type: 'tellask_result_msg' }> | undefined {
-  return msgs.find(
-    (msg): msg is Extract<ChatMessage, { type: 'tellask_result_msg' }> =>
-      msg.type === 'tellask_result_msg' && msg.callName === 'tellaskBack' && msg.callId === callId,
-  );
-}
-
+const evidence = semanticEvidenceCollector('dominds-mainline-reply-compat-');
 async function main(): Promise<void> {
-  await withTempRtws(async (tmpRoot) => {
-    await writeStandardMinds(tmpRoot, { diligencePushMax: 1 });
-
-    const plainReplyPrompt = 'Continue the ask-back answer without calling replyTellaskBack.';
-    const firstPlainAnswer = 'The answer is ready, but I am still not calling the reply tool.';
-    const secondPlainAnswer = 'Repeating the same answer without the reply tool.';
-    const targetCallId = 'mainline-askback-call';
-    const tellaskContent = 'Please answer the ask-back request.';
-    const root = await createMainDialog('tester');
-    root.disableDiligencePush = false;
-    root.diligencePushRemainingBudget = 1;
-    const replyDirective = {
-      expectedReplyCallName: 'replyTellaskBack' as const,
-      targetDialogId: root.id.selfId,
-      targetCallId,
-      tellaskContent,
-    };
-    const replyReminderPrompt = buildReplyToolReminderText({
-      language: 'en',
-      directive: replyDirective,
-      replyTargetAgentId: 'tester',
+  await withTempRtws(async (rtws) => {
+    const apiType = 'test-mainline-reply-compat';
+    await writeStandardMinds(rtws, {
+      includePangu: true,
+      providerApiType: apiType,
+      diligencePushMax: 1,
     });
-    const expectedDirectFallbackResult = formatTellaskResponseContent({
-      callName: 'tellaskBack',
-      callId: targetCallId,
-      responderId: 'tester',
-      tellaskerId: 'tester',
-      tellaskContent,
-      responseBody: secondPlainAnswer,
-      status: 'completed',
-      deliveryMode: 'direct_fallback',
-      directFallbackSource: 'saying',
-      language: 'en',
-    });
-
-    await writeMockDb(tmpRoot, [
-      {
-        message: plainReplyPrompt,
-        role: 'user',
-        response: firstPlainAnswer,
-      },
-      {
-        message: replyReminderPrompt,
-        role: 'user',
-        response: secondPlainAnswer,
-      },
-    ]);
-
-    await DialogPersistence.setActiveTellaskReplyObligation(root.id, replyDirective, root.status);
-    await root.persistFunctionCall(
-      targetCallId,
-      'tellaskBack',
-      JSON.stringify({ tellaskContent }),
-      1,
-    );
-
-    const scheduled: KernelDriverDriveCallOptions[] = [];
-    await executeDriveRound({
-      runtime: createKernelDriverRuntimeState(),
-      driveArgs: [
-        root,
-        {
-          content: plainReplyPrompt,
-          msgId: 'mainline-reply-obligation-first-plain-answer',
-          grammar: 'markdown',
-          origin: 'runtime',
-          tellaskReplyDirective: replyDirective,
+    for (const variant of ['current', 'legacy-en', 'legacy-zh'] as const) {
+      const language = variant === 'legacy-zh' ? 'zh' : 'en';
+      setWorkLanguage(language);
+      const root = await createMainDialog();
+      root.disableDiligencePush = false;
+      root.diligencePushRemainingBudget = 1;
+      let drivenRoot = root;
+      const requester = await root.createSideDialog('pangu', ['@pangu'], 'worker-task-data-849a', {
+        callName: 'tellaskSessionless',
+        originMemberId: root.agentId,
+        askerDialogId: root.id.selfId,
+        callId: `worker-task-${variant}`,
+        callSiteCourse: toCallSiteCourseNo(1),
+        callSiteGenseq: toCallSiteGenseqNo(1),
+        collectiveTargets: ['pangu'],
+      });
+      const callId = `askback-${variant}`;
+      const requestPayload = 'askback-request-data-95ab';
+      const answerPayload = 'ready-answer-data-a6bc';
+      const directive = {
+        expectedReplyCallName: 'replyTellaskBack' as const,
+        targetDialogId: requester.id.selfId,
+        targetCallId: callId,
+        tellaskContent: requestPayload,
+      };
+      await requester.persistTellaskCall(
+        callId,
+        'tellaskBack',
+        JSON.stringify({ tellaskContent: requestPayload }),
+        1,
+      );
+      await DialogPersistence.setActiveTellaskReplyObligation(root.id, directive, root.status);
+      let rounds = 0;
+      const contexts: ChatMessage[][] = [];
+      const generator: LlmGenerator = {
+        apiType,
+        async genToReceiver(_provider, _agent, _system, _tools, request, context, receiver) {
+          assert.equal(request.dialogSelfId, root.id.selfId);
+          rounds += 1;
+          contexts.push(structuredClone(context));
+          assert.ok(rounds <= (variant === 'current' ? 2 : 1));
+          await receiver.sayingStart();
+          await receiver.sayingChunk(answerPayload);
+          await receiver.sayingFinish();
+          return {
+            usage: { kind: 'available', promptTokens: 100, completionTokens: 10, totalTokens: 110 },
+            llmGenModel: 'default',
+          };
         },
-        true,
-        makeDriveOptions(),
-      ],
-      scheduleDrive: (scheduledDialog, options) => {
-        assert.equal(scheduledDialog, root);
-        scheduled.push(options);
-      },
-      driveDialog: async () => {},
-    });
-
-    assert.equal(
-      root.diligencePushRemainingBudget,
-      1,
-      'active reply obligation must not consume mainline Diligence Push budget',
-    );
-    assert.equal(
-      scheduled.length,
-      1,
-      'plain answer with reply obligation should schedule reminder',
-    );
-    assert.equal(
-      scheduled[0]?.driveOptions?.businessContinuation?.kind,
-      'inter_dialog_reply',
-      'reply reminder follow-up should carry the reply obligation continuation',
-    );
-    const queuedReminder = root.peekQueuedPrompt();
-    assert.ok(queuedReminder, 'reply reminder should be queued durably before fallback');
-    assert.equal(queuedReminder.kind, 'new_course_runtime_reply');
-    assert.equal(queuedReminder.tellaskReplyDirective?.targetCallId, targetCallId);
-    assert.equal(queuedReminder.tellaskReplyDirective?.expectedReplyCallName, 'replyTellaskBack');
-    assert.equal(queuedReminder.tellaskReplyDirective?.targetDialogId, root.id.selfId);
-    assert.equal(
-      findTellaskBackResult(root.msgs, targetCallId),
-      undefined,
-      'first plain answer must not direct-fallback before the reminder generation',
-    );
-
-    await executeDriveRound({
-      runtime: createKernelDriverRuntimeState(),
-      driveArgs: [
-        root,
-        scheduled[0]?.humanPrompt,
-        scheduled[0]?.waitInQue ?? true,
-        scheduled[0]?.driveOptions ??
-          makeDriveOptions({ source: 'kernel_driver_follow_up', reason: 'follow_up_prompt' }),
-      ],
-      scheduleDrive: (_scheduledDialog, options) => {
-        assert.notEqual(
-          options.driveOptions?.businessContinuation?.kind,
-          'inter_dialog_reply',
-          'direct fallback should not schedule another reply reminder',
+        async genMoreMessages() {
+          throw new Error('streaming fixture only');
+        },
+      };
+      registerLlmGenerator(generator);
+      const scheduled: KernelDriverDriveCallOptions[] = [];
+      const callbacks = {
+        scheduleDrive: (_dialog: Dialog, options: KernelDriverDriveCallOptions) => {
+          scheduled.push(options);
+        },
+        driveDialog: async () => {},
+      };
+      try {
+        let pendingId: string;
+        if (variant === 'current') {
+          await executeDriveRound({
+            runtime: createKernelDriverRuntimeState(),
+            driveArgs: [
+              root,
+              {
+                content: 'runtime-answer-input-data',
+                msgId: 'mainline-first-input',
+                grammar: 'markdown',
+                origin: 'runtime',
+                tellaskReplyDirective: directive,
+              },
+              true,
+              makeDriveOptions(),
+            ],
+            ...callbacks,
+          });
+          assert.equal(rounds, 1);
+          assert.equal(scheduled.length, 1);
+          assert.equal(scheduled[0].driveOptions?.businessContinuation?.kind, 'inter_dialog_reply');
+          const queued = root.peekQueuedPrompt();
+          assert.ok(queued?.kind === 'new_course_runtime_reply');
+          assert.deepEqual(queued.tellaskReplyDirective, directive);
+          pendingId = queued.msgId;
+          assert.equal(
+            (
+              await DialogPersistence.loadCourseEvents(
+                requester.id,
+                requester.currentCourse,
+                requester.status,
+              )
+            ).filter((event) => event.type === 'tellask_result_record' && event.callId === callId)
+              .length,
+            0,
+          );
+        } else {
+          // These are stored queue tags from before the guidance change, not a meaning oracle.
+          const legacyTag =
+            language === 'zh'
+              ? '[Dominds 现在发送诉请回复]'
+              : '[Dominds send the Tellask reply now]';
+          const legacyBody = `${legacyTag}\n\nlegacy-runtime-instruction-data-07cd`;
+          const userSource = await resolvePromptReplyGuidance({
+            dlg: root,
+            prompt: makeUserPrompt(legacyBody, `user-same-bytes-${variant}`),
+            language,
+          });
+          assert.equal(
+            userSource.promptContent,
+            legacyBody,
+            'real user payload survives byte-for-byte even when it carries an old runtime tag',
+          );
+          assert.deepEqual(
+            await DialogPersistence.loadActiveTellaskReplyObligation(root.id, root.status),
+            directive,
+          );
+          pendingId = `stored-reminder-${variant}`;
+          await root.queueRuntimeReplyPrompt({
+            prompt: legacyBody,
+            msgId: pendingId,
+            grammar: 'markdown',
+            userLanguageCode: language,
+            tellaskReplyDirective: directive,
+          });
+          const persisted = await DialogPersistence.loadDialogLatest(root.id, root.status);
+          assert.equal(persisted?.pendingRuntimePrompt?.content, legacyBody);
+          await DialogPersistence.mutateDialogLatest(root.id, () => ({
+            kind: 'patch',
+            patch: { disableDiligencePush: false, diligencePushRemainingBudget: 1 },
+          }));
+          globalDialogRegistry.unregister(root.id.rootId);
+          const restored = await getOrRestoreMainDialog(root.id.rootId, root.status);
+          assert.ok(restored);
+          assert.notEqual(restored, root);
+          drivenRoot = restored;
+          assert.equal(drivenRoot.peekQueuedPrompt()?.msgId, pendingId);
+        }
+        await executeDriveRound({
+          runtime: createKernelDriverRuntimeState(),
+          driveArgs: [
+            drivenRoot,
+            undefined,
+            true,
+            scheduled[0]?.driveOptions ??
+              makeDriveOptions({ source: 'kernel_driver_follow_up', reason: 'follow_up_prompt' }),
+          ],
+          ...callbacks,
+        });
+        assert.equal(
+          rounds,
+          variant === 'current' ? 2 : 1,
+          'old stored queues do not introduce an extra reminder generation',
         );
-      },
-      driveDialog: async () => {},
-    });
-
-    await waitFor(
-      async () => findTellaskBackResult(root.msgs, targetCallId) !== undefined,
-      3_000,
-      'mainline ask-back direct fallback result',
-    );
-    assert.equal(
-      findTellaskBackResult(root.msgs, targetCallId)?.content,
-      expectedDirectFallbackResult,
-      'after the reminder, a second plain answer should use direct fallback',
-    );
-    assert.equal(
-      await DialogPersistence.loadActiveTellaskReplyObligation(root.id, root.status),
-      undefined,
-      'direct fallback should clear the active reply obligation',
-    );
-    const events = await DialogPersistence.loadCourseEvents(
-      root.id,
-      root.currentCourse,
-      root.status,
-    );
-    assert.equal(
-      events.some(
-        (event) => event.type === 'human_text_record' && event.origin === 'diligence_push',
-      ),
-      false,
-      'mainline active reply obligation should not insert a Diligence Push prompt',
-    );
+        assert.equal(drivenRoot.hasQueuedPrompt(), false);
+        assert.equal(
+          scheduled.filter(
+            (options) => options.driveOptions?.businessContinuation?.kind === 'inter_dialog_reply',
+          ).length,
+          variant === 'current' ? 1 : 0,
+        );
+        assert.equal(drivenRoot.diligencePushRemainingBudget, 1);
+        const delivered = (
+          await DialogPersistence.loadCourseEvents(
+            requester.id,
+            requester.currentCourse,
+            requester.status,
+          )
+        )
+          .filter((event) => event.type === 'tellask_result_record')
+          .filter((event) => event.callId === callId);
+        assert.equal(delivered.length, 1);
+        assert.equal(delivered[0].status, 'completed');
+        assert.ok(delivered[0].content.includes(answerPayload));
+        assert.equal(
+          await DialogPersistence.loadActiveTellaskReplyObligation(root.id, root.status),
+          undefined,
+        );
+        const events = await DialogPersistence.loadCourseEvents(
+          root.id,
+          root.currentCourse,
+          root.status,
+        );
+        const humanRecords = events.filter((event) => event.type === 'human_text_record');
+        assert.equal(humanRecords.filter((event) => event.origin === 'diligence_push').length, 0);
+        assert.equal(humanRecords.filter((event) => event.msgId === pendingId).length, 1);
+        const actualPrompt = contexts
+          .at(-1)
+          ?.find((message) => message.type === 'prompting_msg' && message.msgId === pendingId);
+        assert.ok(actualPrompt && 'content' in actualPrompt);
+        if (variant !== 'current')
+          evidence.record({
+            id: `legacy-queued-reply-${language}`,
+            scenario:
+              'A durable runtime reply queue from an older version carries the old reminder tag and an active cross-dialog ask-back obligation. The current driver renders its guidance and delivers a controlled ready answer once without another reminder round.',
+            businessValue:
+              'An upgrade must preserve queued collaboration while replacing outdated readiness assumptions in runtime guidance.',
+            context: {
+              language,
+              callId,
+              expectedReplyTool: 'replyTellaskBack',
+              actualRequesterAgent: requester.agentId,
+              readyAnswerPayload: answerPayload,
+            },
+            reviewQuestions: [
+              'Does the actual normalized guidance state the pending delivery path without falsely claiming every prior thought was a ready final answer?',
+              'Does it allow necessary task work and require the exact reply tool only when the result is ready?',
+            ],
+            actualText: actualPrompt.content,
+          });
+      } finally {
+        unregisterLlmGenerator(apiType);
+      }
+    }
   });
-
-  console.log('kernel-driver mainline-reply-obligation-reminder-direct-fallback: PASS');
-}
-
-void main().catch((err: unknown) => {
-  const message = err instanceof Error ? (err.stack ?? err.message) : String(err);
-  console.error(
-    `kernel-driver mainline-reply-obligation-reminder-direct-fallback: FAIL\n${message}`,
+  await evidence.write();
+  console.log(
+    'current and legacy queued ask-back reminders deliver once without spending diligence budget: passed',
   );
-  process.exit(1);
+}
+main().catch((error: unknown) => {
+  console.error(error);
+  process.exitCode = 1;
 });

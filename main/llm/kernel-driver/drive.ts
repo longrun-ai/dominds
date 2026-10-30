@@ -3917,7 +3917,6 @@ async function maybeContinueWithHealthPromptBeforeDiligence(args: {
       source: 'critical_auto_clear',
     });
     const normalizedNewCoursePrompt = await dlg.startNewCourse(newCoursePrompt);
-    dlg.setLastContextHealth({ kind: 'unavailable', reason: 'usage_unavailable' });
     resetContextHealthRoundState(dlg.id.key());
     return {
       kind: 'health_continue',
@@ -4226,7 +4225,6 @@ export async function driveDialogStreamCore(
                 source: 'critical_auto_clear',
               });
               const normalizedNewCoursePrompt = await dlg.startNewCourse(newCoursePrompt);
-              dlg.setLastContextHealth({ kind: 'unavailable', reason: 'usage_unavailable' });
               resetContextHealthRoundState(dlg.id.key());
               pendingPrompt = normalizedNewCoursePrompt;
               skipTaskdocForThisDrive = false;

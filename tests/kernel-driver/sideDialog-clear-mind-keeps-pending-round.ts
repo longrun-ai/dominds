@@ -1,159 +1,167 @@
 import assert from 'node:assert/strict';
 
+import type { ChatMessage } from '../../main/llm/client';
+import type { LlmGenerator } from '../../main/llm/gen';
+import { registerLlmGenerator, unregisterLlmGenerator } from '../../main/llm/gen/registry';
 import { driveDialogStream } from '../../main/llm/kernel-driver';
+import { setMainDialogGoalReminder } from '../../main/main-dialog-goal-reminder';
 import { DialogPersistence } from '../../main/persistence';
-import { formatNewCourseStartPrompt } from '../../main/runtime/driver-messages';
-import {
-  formatAssignmentFromAskerDialog,
-  formatTellaskResponseContent,
-} from '../../main/runtime/inter-dialog-format';
-import { getWorkLanguage, setWorkLanguage } from '../../main/runtime/work-language';
-
+import { setWorkLanguage } from '../../main/runtime/work-language';
+import { semanticEvidenceCollector } from '../helpers/semantic-evidence';
 import {
   createMainDialog,
-  lastAssistantSaying,
-  listTellaskResultContents,
   makeUserPrompt,
   waitFor,
   waitForAllDialogsUnlocked,
   withTempRtws,
-  wrapPromptWithExpectedReplyTool,
-  writeMockDb,
   writeStandardMinds,
 } from './helpers';
 
+const evidence = semanticEvidenceCollector('dominds-side-renewal-');
 async function main(): Promise<void> {
-  await withTempRtws(async (tmpRoot) => {
+  await withTempRtws(async (rtws) => {
     setWorkLanguage('en');
-    await writeStandardMinds(tmpRoot, { includePangu: true });
-
-    const trigger = 'Ask @pangu and let the tellaskee continue after clearing mind.';
-    const rootFirstResponse = 'Starting tellask.';
-    const mentionList = ['@pangu'];
-    const tellaskContent = 'Please inspect the problem and come back with the answer.';
-    const language = getWorkLanguage();
-    const finalSideDialogReply = 'I cleared context, rebuilt the thread, and the answer is 42.';
-
-    const sideDialogPrompt = wrapPromptWithExpectedReplyTool({
-      prompt: formatAssignmentFromAskerDialog({
-        callName: 'tellaskSessionless',
-        fromAgentId: 'tester',
-        toAgentId: 'pangu',
-        mentionList,
-        tellaskContent,
-        language,
-        collectiveTargets: ['pangu'],
-      }),
-      expectedReplyToolName: 'replyTellaskSessionless',
-      language,
+    const apiType = 'test-side-renewal';
+    await writeStandardMinds(rtws, { includePangu: true, providerApiType: apiType });
+    const root = await createMainDialog();
+    root.disableDiligencePush = true;
+    await setMainDialogGoalReminder(root, {
+      mode: 'goal',
+      goal: 'Receive the assigned result after the worker renews context.',
     });
-    const sideDialogCourse2Prompt = `${sideDialogPrompt}\n---\n${formatNewCourseStartPrompt('en', {
-      nextCourse: 2,
-      source: 'clear_mind',
-    })}`;
-    const completedResponseContent = formatTellaskResponseContent({
-      callName: 'tellaskSessionless',
-      callId: 'root-call-clear-mind-keeps-pending-round',
-      responderId: 'pangu',
-      tellaskerId: 'tester',
-      mentionList,
-      tellaskContent,
-      responseBody: finalSideDialogReply,
-      status: 'completed',
-      deliveryMode: 'reply_tool',
-      language,
-    });
-    const rootAfterReply = 'Received the continued answer from @pangu.';
-
-    await writeMockDb(tmpRoot, [
-      {
-        message: trigger,
-        role: 'user',
-        response: rootFirstResponse,
-        funcCalls: [
-          {
-            id: 'root-call-clear-mind-keeps-pending-round',
-            name: 'tellaskSessionless',
-            arguments: {
-              targetAgentId: 'pangu',
-              tellaskContent,
-            },
-          },
+    const callId = 'root-side-renew-data';
+    const requestPayload = 'request-data-side-renew-765a';
+    const continuation = 'continuation-data-side-renew-876b';
+    const replyPayload = 'reply-data-side-renew-987c';
+    const finalPayload = 'root-data-side-renew-098d';
+    const rounds = new Map<string, number>();
+    let renewedContext: ChatMessage[] | undefined;
+    const generator: LlmGenerator = {
+      apiType,
+      async genToReceiver(_provider, _agent, _system, _tools, request, context, receiver) {
+        const round = (rounds.get(request.dialogSelfId) ?? 0) + 1;
+        rounds.set(request.dialogSelfId, round);
+        if (request.dialogSelfId === root.id.selfId) {
+          if (round === 1)
+            await receiver.funcCall(
+              callId,
+              'tellaskSessionless',
+              JSON.stringify({ targetAgentId: 'pangu', tellaskContent: requestPayload }),
+            );
+          else {
+            assert.equal(round, 2);
+            const results = context
+              .filter((message) => message.type === 'tellask_result_msg')
+              .filter((message) => message.callId === callId);
+            assert.equal(results.length, 1);
+            assert.equal(results[0].status, 'completed');
+            assert.ok(results[0].content.includes(replyPayload));
+            await receiver.sayingStart();
+            await receiver.sayingChunk(finalPayload);
+            await receiver.sayingFinish();
+          }
+        } else if (round === 1) {
+          await receiver.funcCall(
+            'side-renew-clear',
+            'clear_mind',
+            JSON.stringify({ reminder_content: continuation }),
+          );
+        } else {
+          assert.equal(round, 2);
+          const side = root.lookupDialog(request.dialogSelfId);
+          assert.ok(side);
+          assert.equal(side.currentCourse, 2);
+          assert.ok(
+            context.some(
+              (message) =>
+                message.type === 'environment_msg' && message.content.includes(continuation),
+            ),
+          );
+          renewedContext = structuredClone(context);
+          await receiver.funcCall(
+            'side-renew-reply',
+            'replyTellaskSessionless',
+            JSON.stringify({ replyContent: replyPayload }),
+          );
+        }
+        return {
+          usage: { kind: 'available', promptTokens: 100, completionTokens: 10, totalTokens: 110 },
+          llmGenModel: 'default',
+        };
+      },
+      async genMoreMessages() {
+        throw new Error('streaming fixture only');
+      },
+    };
+    registerLlmGenerator(generator);
+    try {
+      await driveDialogStream(
+        root,
+        makeUserPrompt('input-data-side-renew', 'side-renew-user'),
+        true,
+      );
+      await waitFor(
+        async () => rounds.get(root.id.selfId) === 2,
+        3_000,
+        'root to receive the reply from course two',
+      );
+      await waitForAllDialogsUnlocked(root, 3_000);
+      const side = root.getLoadedDialogTreeSnapshot().find((dialog) => dialog.agentId === 'pangu');
+      assert.ok(side);
+      assert.equal(side.currentCourse, 2);
+      assert.equal(
+        (await DialogPersistence.loadActiveCalleeDispatches(root.id, root.status)).length,
+        0,
+      );
+      const results = (
+        await DialogPersistence.loadCourseEvents(root.id, root.currentCourse, root.status)
+      )
+        .filter((event) => event.type === 'tellask_result_record')
+        .filter((event) => event.callId === callId);
+      assert.equal(results.length, 1);
+      assert.equal(results[0].status, 'completed');
+      assert.ok(results[0].content.includes(replyPayload));
+      assert.equal(results[0].route?.calleeDialogId, side.id.selfId);
+      assert.equal(results[0].route?.calleeCourse, 2);
+      assert.equal(
+        side.reminders.filter((reminder) => reminder.content === continuation).length,
+        1,
+      );
+      const words = (
+        await DialogPersistence.loadCourseEvents(root.id, root.currentCourse, root.status)
+      ).filter((event) => event.type === 'agent_words_record');
+      assert.equal(words.at(-1)?.content, finalPayload);
+      assert.ok(renewedContext);
+      evidence.record({
+        id: 'side-new-course-keeps-requester',
+        scenario:
+          'A real sessionless worker clears context, receives its continuation package in course 2 and formally replies to the same root request once.',
+        businessValue:
+          'Context renewal must preserve collaboration responsibility and delivery to the original requester.',
+        context: {
+          language: 'en',
+          callId,
+          requestPayload,
+          continuationPayload: continuation,
+          observedCourse: side.currentCourse,
+          canonicalResultCount: results.length,
+        },
+        reviewQuestions: [
+          'Does the actual resumed worker context preserve the assigned task and the correct reply path without treating renewal as assignment cancellation?',
+          'Are continuation data, task state and requester responsibility coherent enough to resume work rather than restart completed work or ask the human unnecessarily?',
         ],
-      },
-      {
-        message: sideDialogPrompt,
-        role: 'user',
-        response: 'Clearing mind now.',
-        funcCalls: [
-          {
-            id: 'sideDialog-clear-mind',
-            name: 'clear_mind',
-            arguments: {
-              reminder_content: 'Rebuild context from a fresh tellask only.',
-            },
-          },
-        ],
-      },
-      {
-        message: sideDialogCourse2Prompt,
-        role: 'user',
-        response: finalSideDialogReply,
-      },
-      {
-        message: completedResponseContent,
-        role: 'tool',
-        response: rootAfterReply,
-      },
-    ]);
-
-    const mainDialog = await createMainDialog('tester');
-    mainDialog.disableDiligencePush = true;
-
-    await driveDialogStream(
-      mainDialog,
-      makeUserPrompt(trigger, 'kernel-driver-sideDialog-clear-mind-keeps-pending-round'),
-      true,
-    );
-
-    await waitFor(
-      async () => lastAssistantSaying(mainDialog) === rootAfterReply,
-      3_000,
-      'main dialog to resume after the tellaskee replies from the new course',
-    );
-    await waitForAllDialogsUnlocked(mainDialog, 3_000);
-
-    const pending = await DialogPersistence.loadActiveCalleeDispatches(
-      mainDialog.id,
-      mainDialog.status,
-    );
-    assert.equal(
-      pending.length,
-      0,
-      'asker active-callees should clear only after the continued reply arrives',
-    );
-
-    const tellaskResults = listTellaskResultContents(mainDialog.msgs);
-    assert.ok(
-      tellaskResults.includes(completedResponseContent),
-      'asker should receive the final tellask_result_msg produced after the tellaskee switches course',
-    );
-    assert.ok(
-      !tellaskResults.some((content) => content.includes('this tellask round is no longer valid')),
-      'asker should not receive the old cleared-mind invalidation failure notice',
-    );
-
-    const loadedDialogs = mainDialog.getLoadedDialogTreeSnapshot();
-    const sideDialog = loadedDialogs.find((dialog) => dialog.id.selfId !== mainDialog.id.selfId);
-    assert.ok(sideDialog, 'expected a sideDialog to exist');
-    assert.equal(sideDialog.currentCourse, 2, 'tellaskee sideDialog should advance to course #2');
+        actualText: JSON.stringify(renewedContext, null, 2),
+      });
+    } finally {
+      unregisterLlmGenerator(apiType);
+    }
   });
-
-  console.log('kernel-driver sideDialog-clear-mind-keeps-pending-round: PASS');
+  await evidence.write();
+  console.log(
+    'worker renewal preserves its pending caller and delivers from course two once: passed',
+  );
 }
-
-void main().catch((err: unknown) => {
-  const message = err instanceof Error ? err.message : String(err);
-  console.error(`kernel-driver sideDialog-clear-mind-keeps-pending-round: FAIL\n${message}`);
-  process.exit(1);
+main().catch((error: unknown) => {
+  console.error(error);
+  process.exitCode = 1;
 });

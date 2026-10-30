@@ -1930,7 +1930,6 @@ export async function executeDriveRound(args: {
           source: 'critical_auto_clear',
         });
         healthPrompt = await dialog.startNewCourse(newCoursePrompt);
-        dialog.setLastContextHealth({ kind: 'unavailable', reason: 'usage_unavailable' });
         resetContextHealthRoundState(dialog.id.key());
       } else if (healthDecision.reason === 'critical_user_prompt_remediation') {
         if (

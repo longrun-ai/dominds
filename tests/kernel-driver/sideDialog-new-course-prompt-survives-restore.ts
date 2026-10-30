@@ -1,24 +1,28 @@
+import { toCallSiteCourseNo, toCallSiteGenseqNo } from '@longrun-ai/kernel/types/storage';
 import assert from 'node:assert/strict';
 
-import { DialogID } from '../../main/dialog';
+import { DialogID, SideDialog } from '../../main/dialog';
+import { globalDialogRegistry } from '../../main/dialog-global-registry';
 import { ensureDialogLoaded, getOrRestoreMainDialog } from '../../main/dialog-instance-registry';
 import { driveDialogStream } from '../../main/llm/kernel-driver';
 import { DialogPersistence } from '../../main/persistence';
 import { formatNewCourseStartPrompt } from '../../main/runtime/driver-messages';
-import { formatTellaskResponseContent } from '../../main/runtime/inter-dialog-format';
-import { getWorkLanguage, setWorkLanguage } from '../../main/runtime/work-language';
+import { setWorkLanguage } from '../../main/runtime/work-language';
+import { semanticEvidenceCollector } from '../helpers/semantic-evidence';
 
 import {
   createMainDialog,
   hasPendingNextStepTriggers,
-  listTellaskResultContents,
-  waitFor,
+  makeDriveOptions,
   waitForAllDialogsUnlocked,
   withTempRtws,
   writeMockDb,
   writeStandardMinds,
 } from './helpers';
 
+const evidence = semanticEvidenceCollector(
+  'dominds-sideDialog-new-course-prompt-survives-restore-',
+);
 async function main(): Promise<void> {
   await withTempRtws(async (tmpRoot) => {
     setWorkLanguage('en');
@@ -26,7 +30,6 @@ async function main(): Promise<void> {
 
     const root = await createMainDialog('tester');
     root.disableDiligencePush = true;
-    const language = getWorkLanguage();
     const tellaskContent = 'Restore-safe assignment after clear mind.';
     const callId = 'call-restore-safe-clear-mind';
     const replyContent = 'Recovered reply after restore.';
@@ -36,8 +39,8 @@ async function main(): Promise<void> {
       originMemberId: 'tester',
       askerDialogId: root.id.selfId,
       callId,
-      callSiteCourse: 1,
-      callSiteGenseq: 1,
+      callSiteCourse: toCallSiteCourseNo(1),
+      callSiteGenseq: toCallSiteGenseqNo(1),
       sessionSlug: 'restore-safe-session',
       collectiveTargets: ['pangu'],
     });
@@ -52,8 +55,8 @@ async function main(): Promise<void> {
         tellaskContent,
         targetAgentId: 'pangu',
         callId,
-        callSiteCourse: 1,
-        callSiteGenseq: 1,
+        callSiteCourse: toCallSiteCourseNo(1),
+        callSiteGenseq: toCallSiteGenseqNo(1),
         callType: 'B',
         sessionSlug: 'restore-safe-session',
       },
@@ -96,24 +99,31 @@ async function main(): Promise<void> {
       'startNewCourse should persist an interrupted marker for the durable pending prompt',
     );
 
+    globalDialogRegistry.unregister(root.id.rootId);
     const restoredRoot = await getOrRestoreMainDialog(root.id.rootId, 'running');
     assert.ok(restoredRoot, 'expected main dialog restore to succeed');
+    assert.notEqual(restoredRoot, root, 'restore must construct a new root from durable state');
     const restoredSideDialog = await ensureDialogLoaded(
       restoredRoot,
       new DialogID(sideDialog.id.selfId, sideDialog.id.rootId),
       'running',
     );
-    assert.ok(restoredSideDialog, 'expected sideDialog restore to succeed');
+    assert.ok(restoredSideDialog instanceof SideDialog);
+    assert.notEqual(
+      restoredSideDialog,
+      sideDialog,
+      'restore must construct a new worker from durable state',
+    );
 
     const restoredQueuedPrompt = restoredSideDialog.peekQueuedPrompt();
-    assert.ok(restoredQueuedPrompt, 'restore should rehydrate the pending new-course prompt');
+    assert.ok(restoredQueuedPrompt?.kind === 'new_course_runtime_sideDialog');
     assert.equal(
       restoredQueuedPrompt.msgId,
       latestBeforeRestore.pendingRuntimePrompt?.msgId,
       'restored queue should reuse the durable msgId so the round stays idempotent across restart',
     );
     assert.equal(
-      restoredQueuedPrompt.tellaskReplyDirective?.targetCallId,
+      restoredQueuedPrompt.tellaskReplyDirective.targetCallId,
       callId,
       'restore should preserve the rebound reply directive on the queued prompt',
     );
@@ -135,26 +145,23 @@ async function main(): Promise<void> {
       },
     ]);
 
-    await driveDialogStream(restoredSideDialog, undefined, true);
+    await driveDialogStream(restoredSideDialog, undefined, true, makeDriveOptions());
     await waitForAllDialogsUnlocked(restoredRoot, 3_000);
 
-    const expectedDeliveredContent = formatTellaskResponseContent({
-      callName: 'tellask',
-      callId,
-      responderId: 'pangu',
-      tellaskerId: 'tester',
-      mentionList: ['@pangu'],
-      tellaskContent,
-      responseBody: replyContent,
-      status: 'completed',
-      deliveryMode: 'reply_tool',
-      language,
-      sessionSlug: 'restore-safe-session',
-    });
-    await waitFor(
-      async () => listTellaskResultContents(restoredRoot.msgs).includes(expectedDeliveredContent),
-      3_000,
-      'restored rebound prompt reply to land on the tellasker',
+    const delivered = (
+      await DialogPersistence.loadCourseEvents(
+        restoredRoot.id,
+        restoredRoot.currentCourse,
+        restoredRoot.status,
+      )
+    )
+      .filter((event) => event.type === 'tellask_result_record')
+      .filter((event) => event.callId === callId);
+    assert.equal(delivered.length, 1);
+    assert.equal(delivered[0].status, 'completed');
+    assert.ok(
+      delivered[0].content.includes(replyContent),
+      'canonical delivery preserves the controlled reply payload',
     );
 
     const latestAfterDrive = await DialogPersistence.loadDialogLatest(sideDialog.id, 'running');
@@ -175,18 +182,39 @@ async function main(): Promise<void> {
       'sideDialog latest.yaml should clear the pending-runtime-prompt interruption marker after drive resumes',
     );
 
+    evidence.record({
+      id: 'restored-worker-new-course',
+      scenario:
+        'A new worker and root are reconstructed from disk with one durable unconsumed course-2 runtime prompt. The restored worker formally replies to the original call exactly once.',
+      businessValue:
+        'Restart must preserve the current task, continuation input identity and correct requester reply path.',
+      context: {
+        language: 'en',
+        targetCallId: callId,
+        requesterDialogId: restoredRoot.id.selfId,
+        runtimePromptId: restoredQueuedPrompt.msgId,
+        restoredCourse: restoredSideDialog.currentCourse,
+      },
+      reviewQuestions: [
+        'Does the actual restored queued prompt explain continuation in the existing task rather than a fresh independent request?',
+        'Is the requester reply responsibility clear and consistent with the preserved target and call?',
+      ],
+      actualText: restoredQueuedPrompt.prompt,
+    });
     const courseTwoEvents = await DialogPersistence.loadCourseEvents(sideDialog.id, 2, 'running');
-    assert.ok(
-      courseTwoEvents.some(
+    assert.equal(
+      courseTwoEvents.filter(
         (event) =>
           event.type === 'human_text_record' &&
           event.msgId === restoredQueuedPrompt.msgId &&
           event.tellaskReplyDirective?.targetCallId === callId,
-      ),
+      ).length,
+      1,
       'restored drive should persist the durable new-course prompt exactly once into course two',
     );
   });
 
+  await evidence.write();
   console.log('kernel-driver sideDialog-new-course-prompt-survives-restore: PASS');
 }
 

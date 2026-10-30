@@ -1,177 +1,196 @@
 import assert from 'node:assert/strict';
 
-import { DialogID } from '../../main/dialog';
+import { DialogID, SideDialog } from '../../main/dialog';
+import { globalDialogRegistry } from '../../main/dialog-global-registry';
 import type { ChatMessage } from '../../main/llm/client';
-import { driveDialogStream } from '../../main/llm/kernel-driver';
+import type { LlmGenerator } from '../../main/llm/gen';
+import { registerLlmGenerator, unregisterLlmGenerator } from '../../main/llm/gen/registry';
+import { driveDialogStream, restoreDialogHierarchy } from '../../main/llm/kernel-driver';
 import { DialogPersistence } from '../../main/persistence';
 import {
-  formatAssignmentFromAskerDialog,
-  formatTeammateResponseContent,
-} from '../../main/runtime/inter-dialog-format';
-import { getWorkLanguage } from '../../main/runtime/work-language';
-
-import {
   createMainDialog,
-  lastAssistantSaying,
   makeUserPrompt,
   waitFor,
   waitForAllDialogsUnlocked,
   withTempRtws,
-  wrapPromptWithExpectedReplyTool,
-  writeMockDb,
   writeStandardMinds,
 } from './helpers';
 
-async function main(): Promise<void> {
-  await withTempRtws(async (tmpRoot) => {
-    await writeStandardMinds(tmpRoot, { includePangu: true });
-
-    const trigger = 'Trigger root sideDialog and verify live mirror ordering.';
-    const rootFirstResponse = 'Start.';
-    const mentionList = ['@pangu'];
-    const tellaskBody = 'Please compute 1+1.\nReturn only the number.';
-    const language = getWorkLanguage();
-
-    const expectedSideDialogPrompt = wrapPromptWithExpectedReplyTool({
-      prompt: formatAssignmentFromAskerDialog({
-        callName: 'tellaskSessionless',
-        fromAgentId: 'tester',
-        toAgentId: 'pangu',
-        mentionList,
-        tellaskContent: tellaskBody,
-        language,
-        collectiveTargets: ['pangu'],
-      }),
-      expectedReplyToolName: 'replyTellaskSessionless',
-      language,
-    });
-
-    const sideDialogResponseText = '2';
-    const mirroredSideDialogResponse = formatTeammateResponseContent({
-      callName: 'tellaskSessionless',
-      callId: 'root-call-pangu',
-      responderId: 'pangu',
-      tellaskerId: 'tester',
-      mentionList,
-      tellaskContent: tellaskBody,
-      responseBody: sideDialogResponseText,
-      status: 'completed',
-      deliveryMode: 'reply_tool',
-      language,
-    });
-    const rootResumeResponse =
-      'Ack: mirrored sideDialog response is live before follow-up generation.';
-
-    await writeMockDb(tmpRoot, [
-      {
-        message: trigger,
-        role: 'user',
-        response: rootFirstResponse,
-        funcCalls: [
-          {
-            id: 'root-call-pangu',
-            name: 'tellaskSessionless',
-            arguments: {
-              targetAgentId: 'pangu',
-              tellaskContent: tellaskBody,
-            },
-          },
-        ],
-      },
-      { message: expectedSideDialogPrompt, role: 'user', response: sideDialogResponseText },
-      { message: mirroredSideDialogResponse, role: 'tool', response: rootResumeResponse },
-    ]);
-
-    const dlg = await createMainDialog('tester');
-    dlg.disableDiligencePush = true;
-
-    await driveDialogStream(
-      dlg,
-      makeUserPrompt(trigger, 'kernel-driver-sideDialog-commit-mirror'),
-      true,
-    );
-
-    await waitFor(
-      async () => lastAssistantSaying(dlg) === rootResumeResponse,
-      3_000,
-      'main dialog to generate after sideDialog response',
-    );
-
-    await waitForAllDialogsUnlocked(dlg, 3_000);
-
-    const tellaskResultMsgs = dlg.msgs.filter(
-      (msg): msg is Extract<ChatMessage, { type: 'tellask_result_msg' }> =>
-        msg.type === 'tellask_result_msg',
-    );
-    const isCanonicalMirroredResult = (
-      msg: Extract<ChatMessage, { type: 'tellask_result_msg' }>,
-    ): boolean =>
-      msg.role === 'tool' &&
-      (msg.responder?.responderId ?? msg.responderId) === 'pangu' &&
-      (msg.call?.tellaskContent ?? msg.tellaskContent) === tellaskBody &&
-      msg.content === mirroredSideDialogResponse;
-    assert.ok(tellaskResultMsgs.length > 0, 'expected mirrored tellask_result_msg after commit');
-    assert.ok(
-      tellaskResultMsgs.some(isCanonicalMirroredResult),
-      'expected mirrored tellask_result_msg with canonical transfer payload and structured tellask fields',
-    );
-    const mirroredResult = tellaskResultMsgs.find(isCanonicalMirroredResult);
-    assert.ok(mirroredResult, 'expected canonical mirrored teammate-response message');
-    const responseRoute = mirroredResult.route;
-    assert.ok(responseRoute, 'mirrored teammate-response should carry callee response route');
-    assert.equal(responseRoute.calleeDialogId !== undefined, true);
-    assert.equal(responseRoute.calleeCourse !== undefined, true);
-    assert.equal(responseRoute.calleeGenseq !== undefined, true);
-    const calleeDialogId = new DialogID(responseRoute.calleeDialogId!, dlg.id.rootId);
-    const calleeEvents = await DialogPersistence.loadCourseEvents(
-      calleeDialogId,
-      responseRoute.calleeCourse!,
-    );
-    const assignmentAnchor = calleeEvents.find(
-      (event) =>
-        event.type === 'tellask_anchor_record' &&
-        event.anchorRole === 'assignment' &&
-        event.callId === 'root-call-pangu',
-    );
-    const responseAnchor = calleeEvents.find(
-      (event) =>
-        event.type === 'tellask_anchor_record' &&
-        event.anchorRole === 'response' &&
-        event.callId === 'root-call-pangu',
-    );
-    assert.ok(assignmentAnchor, 'expected callee assignment anchor');
-    assert.ok(responseAnchor, 'expected callee response anchor');
-    assert.equal(
-      responseRoute.calleeGenseq,
-      responseAnchor.genseq,
-      'teammate-response route should deep-link to the callee reply bubble',
-    );
-    assert.notEqual(
-      responseRoute.calleeGenseq,
-      assignmentAnchor.genseq,
-      'teammate-response route must not reuse the original callee assignment anchor',
-    );
-
-    const mirrorIndex = dlg.msgs.findIndex(
-      (msg) => msg.type === 'tellask_result_msg' && isCanonicalMirroredResult(msg),
-    );
-    const sayingIndex = dlg.msgs.findIndex(
-      (msg) =>
-        msg.type === 'saying_msg' && msg.role === 'assistant' && msg.content === rootResumeResponse,
-    );
-    assert.ok(mirrorIndex >= 0, 'expected mirrored teammate-response bubble');
-    assert.ok(sayingIndex >= 0, 'expected root assistant follow-up response');
-    assert.ok(
-      mirrorIndex < sayingIndex,
-      'mirrored teammate-response must be visible before assistant follow-up generation',
-    );
-  });
-
-  console.log('kernel-driver sideDialog-live-mirror-order: PASS');
+function resultProjection(messages: readonly ChatMessage[]) {
+  return messages
+    .filter((message) => message.type === 'tellask_result_msg')
+    .map((message) => ({
+      callId: message.callId,
+      callName: message.callName,
+      status: message.status,
+      role: message.role,
+      content: message.content,
+      responder: message.responder,
+      call: message.call,
+      route: message.route,
+    }));
 }
+async function main(): Promise<void> {
+  await withTempRtws(async (rtws) => {
+    const apiType = 'test-mirror-commit';
+    await writeStandardMinds(rtws, { includePangu: true, providerApiType: apiType });
+    const root = await createMainDialog();
+    root.disableDiligencePush = true;
+    const callIds = ['mirror-call-one-data', 'mirror-call-two-data'];
+    const requestPayloads = ['request-data-one-c37a', 'request-data-two-d48b'];
+    const replyPayloads = ['reply-data-one-49ae', 'reply-data-two-5abf'];
+    const finalPayload = 'root-data-mirror-f43b';
+    const contexts = new Map<string, ChatMessage[][]>();
+    const generator: LlmGenerator = {
+      apiType,
+      async genToReceiver(_provider, _agent, _system, _tools, request, context, receiver) {
+        const rounds = contexts.get(request.dialogSelfId) ?? [];
+        rounds.push(structuredClone(context));
+        contexts.set(request.dialogSelfId, rounds);
+        if (request.dialogSelfId === root.id.selfId) {
+          assert.ok(rounds.length <= 3);
+          if (rounds.length > 1) {
+            const previous = rounds.length - 2;
+            const delivered = context
+              .filter((message) => message.type === 'tellask_result_msg')
+              .filter((message) => message.callId === callIds[previous]);
+            assert.equal(
+              delivered.length,
+              1,
+              'each new reply reaches the provider before its follow-up action',
+            );
+            assert.equal(delivered[0].status, 'completed');
+            assert.ok(delivered[0].content.includes(replyPayloads[previous]));
+          }
+          if (rounds.length < 3) {
+            const next = rounds.length - 1;
+            await receiver.funcCall(
+              callIds[next],
+              'tellaskSessionless',
+              JSON.stringify({ targetAgentId: 'pangu', tellaskContent: requestPayloads[next] }),
+            );
+          } else {
+            await receiver.sayingStart();
+            await receiver.sayingChunk(finalPayload);
+            await receiver.sayingFinish();
+          }
+        } else {
+          const side = root.lookupDialog(request.dialogSelfId);
+          assert.ok(side instanceof SideDialog);
+          const slot = callIds.indexOf(side.assignmentFromAsker.callId);
+          assert.ok(slot >= 0);
+          if (rounds.length === 1) {
+            await receiver.sayingStart();
+            await receiver.sayingChunk(replyPayloads[slot]);
+            await receiver.sayingFinish();
+          } else {
+            assert.equal(rounds.length, 2, 'plain output receives one requester-reply follow-up');
+            await receiver.funcCall(
+              `mirror-reply-tool-${slot}`,
+              'replyTellaskSessionless',
+              JSON.stringify({ replyContent: replyPayloads[slot] }),
+            );
+          }
+        }
+        return {
+          usage: { kind: 'available', promptTokens: 100, completionTokens: 10, totalTokens: 110 },
+          llmGenModel: 'default',
+        };
+      },
+      async genMoreMessages() {
+        throw new Error('streaming fixture only');
+      },
+    };
+    registerLlmGenerator(generator);
+    try {
+      await driveDialogStream(root, makeUserPrompt('input-data-mirror', 'user-mirror-data'), true);
+      await waitFor(
+        async () => contexts.get(root.id.selfId)?.length === 3,
+        3_000,
+        'root to consume the canonical reply',
+      );
+      await waitForAllDialogsUnlocked(root, 3_000);
+      const live = resultProjection(root.msgs);
+      assert.equal(live.length, 2, 'two distinct results make restored order observable');
+      assert.deepEqual(
+        live.map((result) => result.callId),
+        callIds,
+      );
+      assert.equal(new Set(live.map((result) => result.route?.calleeDialogId)).size, 2);
+      const rootEvents = await DialogPersistence.loadCourseEvents(
+        root.id,
+        root.currentCourse,
+        root.status,
+      );
+      let previousMirrorIndex = -1;
+      for (const [index, result] of live.entries()) {
+        const callId = callIds[index];
+        assert.equal(result.call?.tellaskContent, requestPayloads[index]);
+        assert.equal(result.responder?.responderId, 'pangu');
+        assert.equal(result.status, 'completed');
+        assert.ok(result.content.includes(replyPayloads[index]));
+        const route = result.route;
+        assert.ok(
+          route?.calleeDialogId &&
+            route.calleeCourse !== undefined &&
+            route.calleeGenseq !== undefined,
+        );
+        const callee = new DialogID(route.calleeDialogId, root.id.rootId);
+        const events = await DialogPersistence.loadCourseEvents(
+          callee,
+          route.calleeCourse,
+          root.status,
+        );
+        const anchors = events
+          .filter((event) => event.type === 'tellask_anchor_record')
+          .filter((event) => event.callId === callId);
+        const assignment = anchors.find((event) => event.anchorRole === 'assignment');
+        const response = anchors.find((event) => event.anchorRole === 'response');
+        assert.ok(assignment && response);
+        assert.equal(route.calleeGenseq, response.genseq);
+        assert.notEqual(
+          route.calleeGenseq,
+          assignment.genseq,
+          'UI deep link points to delivery rather than assignment',
+        );
+        const mirrorIndex = root.msgs.findIndex(
+          (message) => message.type === 'tellask_result_msg' && message.callId === callId,
+        );
+        assert.ok(mirrorIndex > previousMirrorIndex);
+        previousMirrorIndex = mirrorIndex;
+        assert.equal(
+          rootEvents.filter(
+            (event) => event.type === 'tellask_result_record' && event.callId === callId,
+          ).length,
+          1,
+        );
+      }
+      const finalIndex = root.msgs.findIndex(
+        (message) => message.type === 'saying_msg' && message.content === finalPayload,
+      );
+      assert.ok(finalIndex > previousMirrorIndex);
+      assert.equal(
+        (await DialogPersistence.loadActiveCalleeDispatches(root.id, root.status)).length,
+        0,
+      );
 
-void main().catch((err: unknown) => {
-  const message = err instanceof Error ? err.message : String(err);
-  console.error(`kernel-driver sideDialog-live-mirror-order: FAIL\n${message}`);
-  process.exit(1);
+      await DialogPersistence.moveDialogStatus(root.id, 'running', 'completed');
+      globalDialogRegistry.unregister(root.id.rootId);
+      const restored = await restoreDialogHierarchy(root.id.rootId, 'completed');
+      assert.deepEqual(
+        resultProjection(restored.mainDialog.msgs),
+        live,
+        'restart preserves payload, route, multiplicity and order, without deduplicating the evidence',
+      );
+    } finally {
+      unregisterLlmGenerator(apiType);
+    }
+  });
+  console.log(
+    'requester mirror precedes provider/UI follow-up and survives restore exactly once: passed',
+  );
+}
+main().catch((error: unknown) => {
+  console.error(error);
+  process.exitCode = 1;
 });

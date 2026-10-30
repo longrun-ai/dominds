@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { execFile } from 'node:child_process';
 import fs from 'node:fs/promises';
 import { createRequire } from 'node:module';
 import os from 'node:os';
@@ -12,9 +13,9 @@ test('a failure and a timeout retain evidence and do not prevent later cases fro
   try {
     const summary = await runCases(
       [
-        { id: 'fails', args: ['-e', 'console.error("failure evidence"); process.exit(7)'] },
+        { id: 'fails', args: ['-e', 'console.error("failure-data-48ae"); process.exit(7)'] },
         { id: 'hangs', args: ['-e', 'setInterval(() => {}, 1000)'] },
-        { id: 'continues', args: ['-e', 'console.log("later case executed")'] },
+        { id: 'continues', args: ['-e', 'console.log("continued-data-59bf")'] },
       ],
       { logDir, timeoutMs: 1000, report: () => {} },
     );
@@ -26,9 +27,9 @@ test('a failure and a timeout retain evidence and do not prevent later cases fro
     assert.equal(summary.failed, 1);
     assert.equal(summary.timedOut, 1);
     assert.equal(summary.results[0].code, 7);
-    assert.match(await fs.readFile(summary.results[0].logPath, 'utf8'), /failure evidence/);
+    assert.equal(await fs.readFile(summary.results[0].logPath, 'utf8'), 'failure-data-48ae\n');
     await fs.access(summary.results[1].tempDir);
-    assert.match(await fs.readFile(summary.results[2].logPath, 'utf8'), /later case executed/);
+    assert.equal(await fs.readFile(summary.results[2].logPath, 'utf8'), 'continued-data-59bf\n');
     assert.deepEqual(
       JSON.parse(await fs.readFile(path.join(logDir, 'summary.json'), 'utf8')),
       summary,
@@ -99,5 +100,72 @@ test('evidence generation retains successful process material for subjective rev
     );
   } finally {
     await fs.rm(logDir, { recursive: true, force: true });
+  }
+});
+
+test('isolated CLI preserves a failed workspace and cleans a successful workspace by default', async () => {
+  const sandbox = await fs.mkdtemp(path.join(os.tmpdir(), 'dominds-cli-artifacts-'));
+  try {
+    const fixture = path.join(sandbox, 'exit-code.ts');
+    await fs.writeFile(
+      fixture,
+      [
+        'import fs from "node:fs";',
+        'console.log(JSON.stringify({runRtws: process.cwd()}));',
+        'fs.writeFileSync("failure-proof.json", JSON.stringify({payload:"artifact-data-638a"}));',
+        'process.exitCode = Number(process.argv[2]);',
+      ].join('\n'),
+    );
+    const invoke = (exitCode) =>
+      new Promise((resolve) => {
+        execFile(
+          process.execPath,
+          [
+            createRequire(import.meta.url).resolve('tsx/cli'),
+            path.join(import.meta.dirname, 'cli.ts'),
+            '--',
+            fixture,
+            String(exitCode),
+          ],
+          {
+            env: {
+              ...process.env,
+              TMPDIR: sandbox,
+              TEMP: sandbox,
+              TMP: sandbox,
+              DOMINDS_TEST_RTWS_KEEP_TMP: '0',
+              DOMINDS_TEST_RTWS_MODE: 'isolated',
+            },
+            timeout: 10_000,
+          },
+          (error, stdout, stderr) => resolve({ code: error?.code ?? 0, stdout, stderr }),
+        );
+      });
+    const failed = await invoke(7);
+    assert.equal(failed.code, 7);
+    const failedLine = failed.stdout
+      .trim()
+      .split('\n')
+      .find((line) => line.startsWith('{"runRtws":'));
+    assert.ok(failedLine);
+    const failedRtws = JSON.parse(failedLine).runRtws;
+    assert.ok(
+      path.relative(sandbox, failedRtws) && !path.relative(sandbox, failedRtws).startsWith('..'),
+    );
+    assert.deepEqual(
+      JSON.parse(await fs.readFile(path.join(failedRtws, 'failure-proof.json'), 'utf8')),
+      { payload: 'artifact-data-638a' },
+    );
+    const succeeded = await invoke(0);
+    assert.equal(succeeded.code, 0);
+    const succeededLine = succeeded.stdout
+      .trim()
+      .split('\n')
+      .find((line) => line.startsWith('{"runRtws":'));
+    assert.ok(succeededLine);
+    const successfulRtws = JSON.parse(succeededLine).runRtws;
+    await assert.rejects(fs.access(successfulRtws), { code: 'ENOENT' });
+  } finally {
+    await fs.rm(sandbox, { recursive: true, force: true });
   }
 });

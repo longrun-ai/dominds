@@ -12,14 +12,13 @@ import { isUserInterjectionPauseStopReason } from '../../runtime/interjection-pa
 import {
   ACTIVE_REPLY_TOOL_PREFIX_EN,
   ACTIVE_REPLY_TOOL_PREFIX_ZH,
-  ANSWERING_REPLY_REMINDER_PREFIX_EN,
-  ANSWERING_REPLY_REMINDER_PREFIX_ZH,
   NO_ACTIVE_REPLY_PREFIX_EN,
   NO_ACTIVE_REPLY_PREFIX_ZH,
-  REPLY_TOOL_REMINDER_PREFIX_EN,
-  REPLY_TOOL_REMINDER_PREFIX_ZH,
   buildActiveReplyToolNote,
   buildReplyObligationSuppressionGuideText,
+  buildReplyToolReminderText,
+  isLegacyReplyToolReminderPromptContent,
+  isReplyToolReminderPromptContent,
 } from '../../runtime/reply-prompt-copy';
 import { getWorkLanguage } from '../../runtime/work-language';
 import { loadActiveTellaskReplyDirective } from './tellask-special';
@@ -60,12 +59,6 @@ function buildPromptContentWithExactReplyToolName(args: {
     args.language === 'zh' ? NO_ACTIVE_REPLY_PREFIX_ZH : NO_ACTIVE_REPLY_PREFIX_EN;
   const activePrefix =
     args.language === 'zh' ? ACTIVE_REPLY_TOOL_PREFIX_ZH : ACTIVE_REPLY_TOOL_PREFIX_EN;
-  const reminderPrefixes = [
-    REPLY_TOOL_REMINDER_PREFIX_EN,
-    REPLY_TOOL_REMINDER_PREFIX_ZH,
-    ANSWERING_REPLY_REMINDER_PREFIX_EN,
-    ANSWERING_REPLY_REMINDER_PREFIX_ZH,
-  ];
   const directive = args.activeReplyDirective;
   if (!directive) {
     // Business scenario: a user can come back to a Side Dialog after its final reply has already
@@ -110,10 +103,16 @@ function buildPromptContentWithExactReplyToolName(args: {
           ].join('\n');
     return `${note}\n\n${args.prompt.content}`;
   }
+  if (
+    args.prompt.origin === 'runtime' &&
+    isLegacyReplyToolReminderPromptContent(args.prompt.content)
+  ) {
+    return buildReplyToolReminderText({ language: args.language, directive });
+  }
   if (args.prompt.content.startsWith(activePrefix)) {
     return args.prompt.content;
   }
-  if (reminderPrefixes.some((prefix) => args.prompt.content.startsWith(prefix))) {
+  if (isReplyToolReminderPromptContent(args.prompt.content)) {
     return args.prompt.content;
   }
   const note = buildActiveReplyToolNote({
