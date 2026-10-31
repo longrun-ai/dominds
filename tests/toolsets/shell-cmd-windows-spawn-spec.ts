@@ -5,10 +5,12 @@ import {
   detectReadonlyShellForbiddenHiddenDirAccessForTests,
   detectWindowsShellUsageWarningForTests,
   formatShellExecutionErrorForTests,
+  readonlyShellTool,
   resolveReadonlyShellSpawnSpecForTests,
   resolveShellCmdSpawnSpecForTests,
   validateReadonlyShellCommandForTests,
 } from '../../main/tools/os';
+import { semanticEvidenceCollector } from '../helpers/semantic-evidence';
 
 const command = 'Test-Path D:/AiWorks/chatgpt-workstation/dist/app.exe';
 
@@ -117,61 +119,108 @@ const pwshSpec = resolveShellCmdSpawnSpecForTests(command, 'pwsh', 'win32');
 assert.equal(pwshSpec.command, 'pwsh');
 assert.deepEqual(pwshSpec.args, ['-NoLogo', '-NoProfile', '-Command', command]);
 
-assert.match(
-  detectWindowsShellUsageWarningForTests(
-    'cmd /c "if exist D:/AiWorks/chatgpt-workstation/dist/app.exe echo yes"',
+// Supplied command/argv/platform decisions above and below are machine contracts.
+// Warning and error meaning is reviewed from the complete actual formatter output.
+const evidence = semanticEvidenceCollector('dominds-shell-windows-guidance-');
+for (const language of ['en', 'zh'] as const) {
+  for (const [id, input] of [
+    ['nested-cmd', 'cmd /c "if exist D:/AiWorks/chatgpt-workstation/dist/app.exe echo yes"'],
+    ['nested-powershell-double', 'powershell -Command "Write-Host test"'],
+    ['nested-powershell-single', "powershell -Command 'Write-Host test'"],
+  ]) {
+    const warning = detectWindowsShellUsageWarningForTests(input!, undefined, language, 'win32');
+    assert.equal(typeof warning, 'string');
+    evidence.record({
+      id: id + '-' + language,
+      scenario:
+        'A supplied Windows command explicitly nests another shell under the default cmd.exe.',
+      businessValue:
+        'An agent can avoid accidental quoting layers while selecting the intended shell.',
+      context: {
+        language,
+        command: input!,
+        selectedShell: 'default cmd.exe',
+        platformInput: 'win32',
+        scope:
+          'Actual pure formatter with supplied platform; no native Windows process was executed.',
+      },
+      reviewQuestions: [
+        'Does the actual warning accurately explain the nested-shell choice and give usable guidance?',
+      ],
+      actualText: warning!,
+    });
+  }
+  assert.equal(
+    detectWindowsShellUsageWarningForTests(
+      'if exist D:/AiWorks/app.exe echo yes',
+      undefined,
+      language,
+      'win32',
+    ),
     undefined,
-    'en',
-    'win32',
-  ) ?? '',
-  /Nested shell syntax detected: cmd \/c/,
-);
-assert.match(
-  detectWindowsShellUsageWarningForTests(
-    'powershell -Command "Write-Host test"',
-    undefined,
-    'en',
-    'win32',
-  ) ?? '',
-  /Nested shell syntax detected: powershell -Command/,
-);
-assert.match(
-  detectWindowsShellUsageWarningForTests(
-    "powershell -Command 'Write-Host test'",
-    undefined,
-    'en',
-    'win32',
-  ) ?? '',
-  /Nested shell syntax detected: powershell -Command/,
-);
-assert.equal(
-  detectWindowsShellUsageWarningForTests(
-    'if exist D:/AiWorks/app.exe echo yes',
-    undefined,
-    'en',
-    'win32',
-  ),
-  undefined,
-);
-
-const pwshMissingMessage = formatShellExecutionErrorForTests(
-  'pwsh',
-  'cmd_runner failed to spawn daemon command: missing pid',
-  'zh',
-  'win32',
-);
-assert.match(pwshMissingMessage, /指定的 shell 为 pwsh \(PowerShell 7\+\)/);
-assert.match(pwshMissingMessage, /系统未找到 pwsh 可执行文件/);
-assert.match(pwshMissingMessage, /powershell\.exe 是 Windows PowerShell 5\.1/);
-assert.equal(
-  formatShellExecutionErrorForTests(
-    'powershell.exe',
-    'cmd_runner failed to spawn daemon command: missing pid',
-    'zh',
-    'win32',
-  ),
-  'cmd_runner failed to spawn daemon command: missing pid',
-);
+  );
+  for (const [id, rawError] of [
+    ['missing-pid', 'cmd_runner failed to spawn daemon command: missing pid'],
+    ['enoent', 'spawn pwsh ENOENT'],
+  ]) {
+    const actualText = formatShellExecutionErrorForTests('pwsh', rawError!, language, 'win32');
+    evidence.record({
+      id: 'pwsh-' + id + '-' + language,
+      scenario: 'The selected pwsh shell failed to start; only the supplied raw error is known.',
+      businessValue:
+        'An agent can investigate the actual spawn failure without an invented causal diagnosis.',
+      context: {
+        language,
+        selectedShell: 'pwsh',
+        platformInput: 'win32',
+        rawError: rawError!,
+        installationState: 'Unknown; no executable lookup or PowerShell process was attempted.',
+        scope: 'Actual error formatter; no Windows host, native shell or installation detection.',
+      },
+      reviewQuestions: [
+        'Does the diagnostic preserve the observed failure, distinguish pwsh from powershell.exe where useful, and avoid claiming an unverified installation cause?',
+      ],
+      actualText,
+    });
+  }
+  for (const [id, readonlyCommand] of [
+    ['cmd', 'cmd /c "echo readonly-data-7c31"'],
+    ['powershell', 'powershell -Command "Write-Host readonly-data-7c31"'],
+  ]) {
+    const warning = detectWindowsShellUsageWarningForTests(
+      readonlyCommand!,
+      undefined,
+      language,
+      'win32',
+    );
+    const validation = validateReadonlyShellCommandForTests(readonlyCommand!, 'win32');
+    assert.equal(typeof warning, 'string');
+    assert.equal(validation.ok, false);
+    evidence.record({
+      id: 'readonly-nested-' + id + '-' + language,
+      scenario:
+        'A readonly_shell caller submits a nested shell prefix; its actual Windows validator refuses it.',
+      businessValue:
+        'Recovery advice must respect the capabilities of the tool that the agent actually has.',
+      context: {
+        language,
+        tool: 'readonly_shell',
+        command: readonlyCommand!,
+        platformInput: 'win32',
+        actualToolSchema: JSON.stringify(readonlyShellTool.parameters),
+        selectedShell: 'Fixed cmd.exe; readonly_shell has no shell argument.',
+        scope:
+          'Actual shared warning formatter, public tool schema and Windows validation component; no native Windows process or full tool invocation.',
+      },
+      reviewQuestions: [
+        'Given the actual schema and refusal, is the warning executable advice for a readonly_shell caller, without proposing an unsupported shell argument or a refused nested prefix?',
+      ],
+      actualText: JSON.stringify({ warning, validation }, null, 2),
+    });
+  }
+  const raw = 'cmd_runner failed to spawn daemon command: missing pid';
+  assert.equal(formatShellExecutionErrorForTests('powershell.exe', raw, language, 'win32'), raw);
+}
 
 const readonlyShellSpec = resolveReadonlyShellSpawnSpecForTests(command, 'win32');
 assert.equal(readonlyShellSpec.command, 'cmd.exe');
@@ -415,4 +464,14 @@ assert.equal(
   '.minds',
 );
 
-console.log('OK');
+void evidence
+  .write()
+  .then(() =>
+    console.log(
+      'Windows spawn/policy component contracts: PASS; native Windows execution unexecuted.',
+    ),
+  )
+  .catch((error) => {
+    console.error(error);
+    process.exitCode = 1;
+  });

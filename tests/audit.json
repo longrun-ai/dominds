@@ -1068,6 +1068,60 @@
       "lane": "components",
       "value": "真实本地Host IPC无损JSON/内容项/跨realm/分数位置通过；35类拒绝保边界路由证据，accessor零执行及五类readiness拒绝有真实factory/start标记，保失败现场",
       "evidence": "Complete original2(1014lines)/final2/runtime/client/host and assertion review: tests/semantic/reviews/2026-10-31-component-boundaries.json. Public protocol/IDs, supplied component payloads, native disk/version/events, entry markers, getter counter and readiness effects are machine/data contracts.35 actual IPC diagnostics and4 bilingual owner-wrapper/invariant cases require independent subjective review; no regex/fixed error sentence is an oracle. Current App host/owner compatibility is preserved, not a destination architecture requirement. External AppsHostClient is controlled only in the kernel owner case; IPC case uses an actual owned host process and package entry. Declared URLs are not frontend listeners, artifacts are payload references not image files, and the one invalid Date cast explicitly exercises data outside JsonValue, without type weakening/exclusions. Initial36 retained33passed/3failed lossy-metadata wording; all39 revised outputs require fresh subjective review. Four diagnostic-only product edits keep lossless validation unchanged and three added actual metadata-return cases exercise those sibling branches."
+    },
+    "toolsets/shell-cmd-capture-env.ts": {
+      "status": "reviewed",
+      "lane": "shell",
+      "value": "给定颜色/进度环境规范、源环境与PATH保全；真实shell_cmd非TTY与readonly已知字段/ANSI控制字节",
+      "evidence": "Original nine-case value and complete assertion diff reviewed; actual local process/data/state/protocol outcomes. tests/semantic/reviews/2026-10-31-shell-execution.json retains actual text and independent subjective verdicts, rejected initial guidance, source provenance and native-rg red. Source hashes identify material only; fresh output always starts pending. Native Windows execution is not established by supplied platform/argv components."
+    },
+    "toolsets/shell-cmd-fast-completion.ts": {
+      "status": "reviewed",
+      "lane": "shell",
+      "value": "真实即时/250ms命令在原前台期限内成功、完整stdout与无新增后台提醒",
+      "evidence": "Original nine-case value and complete assertion diff reviewed; actual local process/data/state/protocol outcomes. tests/semantic/reviews/2026-10-31-shell-execution.json retains actual text and independent subjective verdicts, rejected initial guidance, source provenance and native-rg red. Source hashes identify material only; fresh output always starts pending. Native Windows execution is not established by supplied platform/argv components."
+    },
+    "toolsets/shell-cmd-output-truncation.ts": {
+      "status": "reviewed",
+      "lane": "shell",
+      "value": "真实长stdout首尾/中间遗漏、数字截断协议及字符界限，短输出完整正对照",
+      "evidence": "Original nine-case value and complete assertion diff reviewed; actual local process/data/state/protocol outcomes. tests/semantic/reviews/2026-10-31-shell-execution.json retains actual text and independent subjective verdicts, rejected initial guidance, source provenance and native-rg red. Source hashes identify material only; fresh output always starts pending. Native Windows execution is not established by supplied platform/argv components."
+    },
+    "toolsets/shell-cmd-stdin-ignore.ts": {
+      "status": "reviewed",
+      "lane": "shell",
+      "value": "真实子进程stdin EOF零输入、正常前台完成且无后台提醒",
+      "evidence": "Original nine-case value and complete assertion diff reviewed; actual local process/data/state/protocol outcomes. tests/semantic/reviews/2026-10-31-shell-execution.json retains actual text and independent subjective verdicts, rejected initial guidance, source provenance and native-rg red. Source hashes identify material only; fresh output always starts pending. Native Windows execution is not established by supplied platform/argv components."
+    },
+    "toolsets/shell-cmd-windows-spawn-spec.ts": {
+      "status": "reviewed",
+      "lane": "shell",
+      "value": "Windows给定命令/argv/引号/verbatim及完整只读安全策略组件；实际能力上下文下的共享指导",
+      "evidence": "Original nine-case value and complete assertion diff reviewed; actual local process/data/state/protocol outcomes. tests/semantic/reviews/2026-10-31-shell-execution.json retains actual text and independent subjective verdicts, rejected initial guidance, source provenance and native-rg red. Source hashes identify material only; fresh output always starts pending. Native Windows execution is not established by supplied platform/argv components."
+    },
+    "toolsets/readonly-shell.ts": {
+      "status": "reviewed",
+      "lane": "shell",
+      "value": "真实保留目录拒绝/嵌套读取、遍历/写入禁止、timeout数据规范与自有Git仓库实际结果",
+      "evidence": "Original nine-case value and complete assertion diff reviewed; actual local process/data/state/protocol outcomes. tests/semantic/reviews/2026-10-31-shell-execution.json retains actual text and independent subjective verdicts, rejected initial guidance, source provenance and native-rg red. Source hashes identify material only; fresh output always starts pending. Native Windows execution is not established by supplied platform/argv components."
+    },
+    "stop-daemon-windows-process-tree.ts": {
+      "status": "reviewed",
+      "lane": "shell",
+      "value": "runner stop/output请求字段与等待上限、taskkill树/force参数和无效PID拒绝；不冒充真实Windows进程终止",
+      "evidence": "Original nine-case value and complete assertion diff reviewed; actual local process/data/state/protocol outcomes. tests/semantic/reviews/2026-10-31-shell-execution.json retains actual text and independent subjective verdicts, rejected initial guidance, source provenance and native-rg red. Source hashes identify material only; fresh output always starts pending. Native Windows execution is not established by supplied platform/argv components."
+    },
+    "ripgrep-streaming.ts": {
+      "status": "reviewed",
+      "lane": "shell",
+      "value": "真实500匹配、五份有界结果的准确行列/原始前后文、末尾单结果对照；不约束未测量Buffer实现",
+      "evidence": "Original nine-case value and complete assertion diff reviewed; actual local process/data/state/protocol outcomes. tests/semantic/reviews/2026-10-31-shell-execution.json retains actual text and independent subjective verdicts, rejected initial guidance, source provenance and native-rg red. Source hashes identify material only; fresh output always starts pending. Native Windows execution is not established by supplied platform/argv components."
+    },
+    "ripgrep-windows-compat.ts": {
+      "status": "reviewed",
+      "lane": "shell",
+      "value": "真实过滤/raw globs/路径身份、空成功/缺路径partial/有效匹配partial/参数失败及filesystem sibling；受控Windows stderr范围明确",
+      "evidence": "Original nine-case value and complete assertion diff reviewed; actual local process/data/state/protocol outcomes. tests/semantic/reviews/2026-10-31-shell-execution.json retains actual text and independent subjective verdicts, rejected initial guidance, source provenance and native-rg red. Source hashes identify material only; fresh output always starts pending. Native Windows execution is not established by supplied platform/argv components."
     }
   },
   "retired": {

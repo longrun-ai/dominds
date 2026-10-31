@@ -1243,13 +1243,13 @@ function detectWindowsShellUsageWarning(
   const shellLabel = getWindowsShellLabel(shell);
   if (language === 'zh') {
     return nestedCmd
-      ? `⚠️ 检测到嵌套 shell 写法：${trimmedCommand.startsWith('cmd.exe') ? 'cmd.exe /c' : 'cmd /c'}。shell 参数只负责选择外层执行环境；请直接传入 cmd 原生命令，不要再套一层 cmd /c。当前 shell：${shellLabel}`
-      : `⚠️ 检测到嵌套 shell 写法：${trimmedCommand.startsWith('pwsh') ? 'pwsh -Command' : 'powershell -Command'}。shell 参数只负责选择外层执行环境；请直接传入 PowerShell 原生命令，不要再套一层 -Command。当前 shell：${shellLabel}`;
+      ? `⚠️ 检测到嵌套 shell 写法：${trimmedCommand.startsWith('cmd.exe') ? 'cmd.exe /c' : 'cmd /c'}。当前 shell：${shellLabel}。在 shell_cmd 中若无需嵌套，请先将 shell 显式设为 cmd.exe，再传入 cmd 原生命令并去掉 cmd /c 包装；若有意嵌套，可在 shell_cmd 中保留包装。readonly_shell 固定使用 cmd.exe 且无 shell 参数，请使用其白名单允许的 cmd/PATH 命令。其他 shell 须通过已获授权且支持选择 shell 的工具执行。`
+      : `⚠️ 检测到嵌套 shell 写法：${trimmedCommand.startsWith('pwsh') ? 'pwsh -Command' : 'powershell -Command'}。当前 shell：${shellLabel}。在 shell_cmd 中若无需嵌套，请先将 shell 显式设为 powershell.exe（Windows PowerShell 5.1）或已安装的 pwsh（PowerShell 7+），再传入与所选版本兼容的 PowerShell 原生命令并去掉 -Command 包装；若有意嵌套，可在 shell_cmd 中保留包装。readonly_shell 固定使用 cmd.exe 且无 shell 参数，请使用其白名单允许的 cmd/PATH 命令。其他 shell 须通过已获授权且支持选择 shell 的工具执行。`;
   }
 
   return nestedCmd
-    ? `⚠️ Nested shell syntax detected: ${trimmedCommand.startsWith('cmd.exe') ? 'cmd.exe /c' : 'cmd /c'}. The shell parameter selects the outer execution environment only; pass a native cmd command and do not add another cmd /c layer. Current shell: ${shellLabel}`
-    : `⚠️ Nested shell syntax detected: ${trimmedCommand.startsWith('pwsh') ? 'pwsh -Command' : 'powershell -Command'}. The shell parameter selects the outer execution environment only; pass a native PowerShell command and do not add another -Command wrapper. Current shell: ${shellLabel}`;
+    ? `⚠️ Nested shell syntax detected: ${trimmedCommand.startsWith('cmd.exe') ? 'cmd.exe /c' : 'cmd /c'}. Current shell: ${shellLabel}. For shell_cmd, avoid nesting by first explicitly selecting shell=cmd.exe, then passing a native cmd command without the cmd /c wrapper; keep the wrapper within shell_cmd if nesting is intentional. readonly_shell always uses cmd.exe and has no shell argument: use an allowlisted cmd/PATH command there. A different shell requires an authorized tool that supports shell selection.`
+    : `⚠️ Nested shell syntax detected: ${trimmedCommand.startsWith('pwsh') ? 'pwsh -Command' : 'powershell -Command'}. Current shell: ${shellLabel}. For shell_cmd, avoid nesting by first explicitly selecting shell=powershell.exe (Windows PowerShell 5.1) or an installed pwsh (PowerShell 7+), then passing a PowerShell command compatible with that version without the -Command wrapper; keep the wrapper within shell_cmd if nesting is intentional. readonly_shell always uses cmd.exe and has no shell argument: use an allowlisted cmd/PATH command there. A different shell requires an authorized tool that supports shell selection.`;
 }
 
 function prependShellWarning(content: string, warning: string | undefined): string {
@@ -1277,8 +1277,8 @@ function formatShellExecutionError(
   }
 
   return language === 'zh'
-    ? '指定的 shell 为 pwsh (PowerShell 7+)，但系统未找到 pwsh 可执行文件。powershell.exe 是 Windows PowerShell 5.1，不等同于 pwsh。'
-    : 'The selected shell is pwsh (PowerShell 7+), but the pwsh executable was not found. powershell.exe is Windows PowerShell 5.1 and is not the same shell as pwsh.';
+    ? `指定的 shell 为 pwsh (PowerShell 7+)，本次启动失败。请根据原始错误检查可执行文件是否可用、PATH、执行权限及启动环境；此处未检测安装状态。powershell.exe 是 Windows PowerShell 5.1，不等同于 pwsh。原始错误：${message}`
+    : `The selected shell is pwsh (PowerShell 7+), and startup failed. Use the original error to check executable availability, PATH, permissions and the startup environment; installation state was not checked here. powershell.exe is Windows PowerShell 5.1 and is not the same shell as pwsh. Original error: ${message}`;
 }
 
 function resolveShellCmdSpawnSpec(

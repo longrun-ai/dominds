@@ -83,7 +83,9 @@
     "test:presentation": "node tests/run.mjs --suite presentation",
     "test:semantic:presentation": "node tests/run.mjs --suite presentation --semantic",
     "test:components": "node tests/run.mjs --suite components",
-    "test:semantic:components": "node tests/run.mjs --suite components --semantic"
+    "test:semantic:components": "node tests/run.mjs --suite components --semantic",
+    "test:shell": "node tests/run.mjs --suite shell",
+    "test:semantic:shell": "node tests/run.mjs --suite shell --semantic"
   },
   "repository": {
     "type": "git",

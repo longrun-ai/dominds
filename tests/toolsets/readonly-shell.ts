@@ -1,319 +1,181 @@
-#!/usr/bin/env tsx
-
+import assert from 'node:assert/strict';
+import { execFileSync } from 'node:child_process';
 import fs from 'node:fs/promises';
-import type { Dialog } from '../../main/dialog';
 import { validateFuncToolArguments } from '../../main/llm/kernel-driver/runtime';
-import { setWorkLanguage } from '../../main/runtime/work-language';
-import { Team } from '../../main/team';
 import { readonlyShellTool } from '../../main/tools/os';
+import { semanticEvidenceCollector } from '../helpers/semantic-evidence';
+import { withShellDialog } from '../helpers/shell-fixture';
 
-function assertTrue(condition: boolean, message?: string): void {
-  if (!condition) {
-    throw new Error(message || 'Assertion failed: expected truthy value');
-  }
-}
-
-function assertIncludes(
-  haystack: string | Readonly<{ content: string }>,
-  needle: string,
-  message?: string,
-): void {
-  const text = typeof haystack === 'string' ? haystack : haystack.content;
-  assertTrue(
-    text.includes(needle),
-    message || `Assertion failed: expected output to include '${needle}'`,
-  );
-}
-
-function assertNotIncludes(
-  haystack: string | Readonly<{ content: string }>,
-  needle: string,
-  message?: string,
-): void {
-  const text = typeof haystack === 'string' ? haystack : haystack.content;
-  assertTrue(
-    !text.includes(needle),
-    message || `Assertion failed: expected output NOT to include '${needle}'`,
-  );
-}
-
-async function runTest(name: string, fn: () => Promise<void>): Promise<void> {
-  console.log(`\n=== Testing: ${name} ===`);
-  try {
-    await fn();
-    console.log('✅ PASS');
-  } catch (err: unknown) {
-    const message = err instanceof Error ? err.message : String(err);
-    console.log(`❌ FAIL: ${message}`);
-    process.exit(1);
-  }
-}
-
-async function main(): Promise<void> {
-  // Make tool output deterministic for assertions.
-  setWorkLanguage('en');
-
-  const caller = new Team.Member({
-    id: 'pm',
-    name: 'Product Manager',
-    write_dirs: ['**/*'],
-    no_write_dirs: [],
-  });
-
-  const dlg = {} as unknown as Dialog;
-
-  const tmpRtws = 'tmp-readonly-shell-rtws';
-  await fs.rm(tmpRtws, { recursive: true, force: true });
-  await fs.mkdir(`${tmpRtws}/.minds`, { recursive: true });
-  await fs.mkdir(`${tmpRtws}/.dialogs`, { recursive: true });
-  await fs.writeFile(`${tmpRtws}/.minds/nested.txt`, 'ok\n', 'utf8');
-  await fs.writeFile(`${tmpRtws}/.dialogs/nested.txt`, 'ok\n', 'utf8');
-
-  try {
-    await runTest('rejects .dialogs access at rtws root', async () => {
-      const out = await readonlyShellTool.call(dlg, caller, {
-        command: 'ls .dialogs',
-        timeout_ms: 2_000,
-      });
-      assertIncludes(out, 'ACCESS_DENIED', 'Expected .dialogs to be hard-denied');
-      assertIncludes(out, '.dialogs/', 'Expected .dialogs path to be mentioned');
-    });
-
-    await runTest('rejects .minds access at rtws root', async () => {
-      const out = await readonlyShellTool.call(dlg, caller, {
-        command: 'cat .minds/team.yaml',
-        timeout_ms: 2_000,
-      });
-      assertIncludes(out, 'ACCESS_DENIED', 'Expected .minds to be hard-denied');
-      assertIncludes(out, '.minds/', 'Expected .minds path to be mentioned');
-    });
-
-    await runTest('rejects .minds/.dialogs access via Windows-native readers', async () => {
-      if (process.platform !== 'win32') return;
-
-      const outType = await readonlyShellTool.call(dlg, caller, {
-        command: 'type .minds/nested.txt',
-        timeout_ms: 2_000,
-      });
-      assertIncludes(outType, 'ACCESS_DENIED', 'Expected type .minds to be hard-denied');
-
-      const outDir = await readonlyShellTool.call(dlg, caller, {
-        command: 'dir .dialogs',
-        timeout_ms: 2_000,
-      });
-      assertIncludes(outDir, 'ACCESS_DENIED', 'Expected dir .dialogs to be hard-denied');
-
-      const outFindstr = await readonlyShellTool.call(dlg, caller, {
-        command: 'findstr ok .minds/nested.txt',
-        timeout_ms: 2_000,
-      });
-      assertIncludes(outFindstr, 'ACCESS_DENIED', 'Expected findstr .minds to be hard-denied');
-
-      const outChainedType = await readonlyShellTool.call(dlg, caller, {
-        command: 'echo ok && type .minds/nested.txt',
-        timeout_ms: 2_000,
-      });
-      assertIncludes(
-        outChainedType,
-        'ACCESS_DENIED',
-        'Expected chained type .minds to be hard-denied',
-      );
-    });
-
-    await runTest('allows nested rtws .minds/.dialogs', async () => {
-      const outMinds = await readonlyShellTool.call(dlg, caller, {
-        command: `cd ${tmpRtws} && ls .minds`,
-        timeout_ms: 2_000,
-      });
-      assertNotIncludes(outMinds, 'ACCESS_DENIED', 'Expected nested .minds to be allowed');
-
-      const outDialogs = await readonlyShellTool.call(dlg, caller, {
-        command: `cd ${tmpRtws} && ls .dialogs`,
-        timeout_ms: 2_000,
-      });
-      assertNotIncludes(outDialogs, 'ACCESS_DENIED', 'Expected nested .dialogs to be allowed');
-    });
-
-    await runTest('rejects traversal back into rtws-root .minds', async () => {
-      const out = await readonlyShellTool.call(dlg, caller, {
-        command: `cd ${tmpRtws} && ls ../.minds`,
-        timeout_ms: 2_000,
-      });
-      assertIncludes(out, 'ACCESS_DENIED', 'Expected ../.minds to be hard-denied');
-    });
-
-    await runTest('accepts timeout alias via argument normalization', async () => {
-      const validated = validateFuncToolArguments(readonlyShellTool, {
-        command: 'echo alias-ok',
+async function main() {
+  const evidence = semanticEvidenceCollector('dominds-shell-readonly-');
+  for (const language of ['en', 'zh'] as const) {
+    await withShellDialog(language, async (dialog, caller) => {
+      for (const directory of ['.minds', '.dialogs', 'nested/.minds', 'nested/.dialogs'])
+        await fs.mkdir(directory, { recursive: true });
+      const privateData = 'private-fixture-data:937a';
+      for (const directory of ['.minds', '.dialogs'])
+        await fs.writeFile(directory + '/readonly-secret.txt', privateData);
+      for (const directory of ['nested/.minds', 'nested/.dialogs'])
+        await fs.writeFile(directory + '/nested-data.txt', 'nested-file-data:7d21');
+      execFileSync('git', ['init', '--quiet', 'owned-git'], { stdio: 'pipe' });
+      await fs.writeFile('owned-git/untracked-data.txt', 'given git fixture data');
+      const initialGit = execFileSync('git', ['-C', 'owned-git', 'status', '--porcelain'], {
+        encoding: 'utf8',
+      }).trim();
+      assert.equal(initialGit, '?? untracked-data.txt');
+      const reader = process.platform === 'win32' ? 'type' : 'cat';
+      const lister = process.platform === 'win32' ? 'dir' : 'ls';
+      const refused = [
+        ['reserved-dialogs', reader + ' .dialogs/readonly-secret.txt'],
+        ['reserved-minds', reader + ' .minds/readonly-secret.txt'],
+        ['traverse-to-reserved', 'cd nested && ' + reader + ' ../.minds/readonly-secret.txt'],
+        ['git-absolute', 'git -C / status'],
+        ['git-windows-rooted', 'git -C \\tmp status'],
+        ['cd-parent', 'cd .. && ' + lister],
+        ['prefix-denial', 'ps aux'],
+        ['redirect-denial', 'echo denied-mutation-data > forbidden-write-data.txt'],
+      ];
+      if (process.platform === 'win32')
+        refused.push(
+          ['windows-dir-reserved', 'dir .dialogs'],
+          ['windows-findstr-reserved', 'findstr private .minds/readonly-secret.txt'],
+          ['windows-chained-type', 'echo safe-data && type .minds/readonly-secret.txt'],
+        );
+      else
+        console.log(
+          'UNEXECUTED: native Windows type/dir/findstr/chained-type; current platform ' +
+            process.platform +
+            '.',
+        );
+      for (const [id, command] of refused) {
+        const result = await readonlyShellTool.call(dialog, caller, {
+          command: command!,
+          timeout_ms: 2_000,
+        });
+        assert.equal(result.outcome, 'failure', id);
+        assert.ok(!result.content.includes(privateData), 'Protected fixture content must not leak');
+        assert.equal(await fs.readFile('.minds/readonly-secret.txt', 'utf8'), privateData);
+        assert.equal(await fs.readFile('.dialogs/readonly-secret.txt', 'utf8'), privateData);
+        assert.equal(
+          await fs.stat('forbidden-write-data.txt').then(
+            () => true,
+            (error) => {
+              if (error.code === 'ENOENT') return false;
+              throw error;
+            },
+          ),
+          false,
+        );
+        evidence.record({
+          id: id + '-' + language,
+          scenario:
+            'A readonly shell request is refused before exposing reserved data or performing a forbidden operation.',
+          businessValue:
+            'An agent understands the actual permission/command boundary and can choose an allowed next step.',
+          context: {
+            language,
+            command: command!,
+            platform: process.platform,
+            outcome: result.outcome,
+            observedEffects:
+              'Reserved given data unchanged and absent from receipt; forbidden output file absent.',
+            scope:
+              'Actual validation/tool and owned filesystem; process launch is not independently instrumented.',
+          },
+          reviewQuestions: [
+            'Does the full actual refusal accurately explain this specific restriction and offer useful guidance without suggesting it executed?',
+          ],
+          actualText: result.content,
+        });
+      }
+      for (const directory of ['.minds', '.dialogs']) {
+        const result = await readonlyShellTool.call(dialog, caller, {
+          command: 'cd nested && ' + reader + ' ' + directory + '/nested-data.txt',
+          timeout_ms: 2_000,
+        });
+        assert.equal(result.outcome, 'success');
+        assert.ok(result.content.includes('nested-file-data:7d21'));
+      }
+      const alias = validateFuncToolArguments(readonlyShellTool, {
+        command: 'echo alias-data-218b',
         timeout: 2_000,
       });
-      assertTrue(validated.ok, 'Expected timeout alias to be accepted');
-      if (!validated.ok) return;
-      assertTrue(!('timeout' in validated.args), 'Expected timeout alias to be normalized away');
-      assertTrue(
-        validated.args.timeout_ms === 2_000,
-        'Expected timeout alias to map into timeout_ms',
-      );
-
-      const out = await readonlyShellTool.call(dlg, caller, validated.args);
-      assertNotIncludes(out, '❌ readonly_shell', 'Expected normalized timeout alias to execute');
-    });
-
-    await runTest('prefers timeout_ms over timeout alias when both are provided', async () => {
-      const validated = validateFuncToolArguments(readonlyShellTool, {
-        command: 'echo precedence-ok',
+      assert.equal(alias.ok, true);
+      if (!alias.ok) throw new Error('Alias arguments were not accepted');
+      assert.equal(alias.args.timeout_ms, 2_000);
+      assert.equal('timeout' in alias.args, false);
+      const aliasResult = await readonlyShellTool.call(dialog, caller, alias.args);
+      assert.equal(aliasResult.outcome, 'success');
+      assert.ok(aliasResult.content.includes('alias-data-218b'));
+      evidence.record({
+        id: 'readonly-success-' + language,
+        scenario: 'An allowed echo executes after the timeout alias has normalized to timeout_ms.',
+        businessValue:
+          'The receipt communicates actual successful execution and supplied stdout data.',
+        context: {
+          language,
+          command: 'echo alias-data-218b',
+          timeoutMs: 2_000,
+          scope: 'Real local readonly process; no timeout expiration exercised.',
+        },
+        reviewQuestions: [
+          'Does the actual receipt clearly present successful completion and the supplied data?',
+        ],
+        actualText: aliasResult.content,
+      });
+      const precedence = validateFuncToolArguments(readonlyShellTool, {
+        command: 'echo precedence-data',
         timeout_ms: 1_000,
         timeout: 2_000,
       });
-      assertTrue(validated.ok, 'Expected arguments with both timeout fields to be accepted');
-      if (!validated.ok) return;
-      assertTrue(validated.args.timeout_ms === 1_000, 'Expected timeout_ms to take precedence');
-      assertTrue(!('timeout' in validated.args), 'Expected timeout alias key to be dropped');
-    });
-
-    await runTest('allows find for simple inspection', async () => {
-      const out = await readonlyShellTool.call(dlg, caller, {
-        command: 'find . -maxdepth 1 -type f -print',
-        timeout_ms: 2_000,
-      });
-      assertNotIncludes(out, '❌ readonly_shell', 'Expected find to be accepted');
-    });
-
-    await runTest('allows uname/whoami/id', async () => {
-      const outUname = await readonlyShellTool.call(dlg, caller, {
-        command: 'uname -a',
-        timeout_ms: 2_000,
-      });
-      assertNotIncludes(outUname, '❌ readonly_shell', 'Expected uname to be accepted');
-
-      const outWhoami = await readonlyShellTool.call(dlg, caller, {
-        command: 'whoami',
-        timeout_ms: 2_000,
-      });
-      assertNotIncludes(outWhoami, '❌ readonly_shell', 'Expected whoami to be accepted');
-
-      const outId = await readonlyShellTool.call(dlg, caller, {
-        command: 'id',
-        timeout_ms: 2_000,
-      });
-      assertNotIncludes(outId, '❌ readonly_shell', 'Expected id to be accepted');
-    });
-
-    await runTest('allows echo', async () => {
-      const out = await readonlyShellTool.call(dlg, caller, {
-        command: 'echo hello',
-        timeout_ms: 2_000,
-      });
-      assertNotIncludes(out, '❌ readonly_shell', 'Expected echo to be accepted');
-    });
-
-    await runTest('allows printf/awk', async () => {
-      const outPrintf = await readonlyShellTool.call(dlg, caller, {
-        command: "printf '%s' hello",
-        timeout_ms: 2_000,
-      });
-      assertNotIncludes(outPrintf, '❌ readonly_shell', 'Expected printf to be accepted');
-
-      const outAwk = await readonlyShellTool.call(dlg, caller, {
-        command: "awk 'BEGIN{print 1}'",
-        timeout_ms: 2_000,
-      });
-      assertNotIncludes(outAwk, '❌ readonly_shell', 'Expected awk to be accepted');
-    });
-
-    await runTest('allows git -C relative status', async () => {
-      const out = await readonlyShellTool.call(dlg, caller, {
-        command: 'git -C dominds status --porcelain',
-        timeout_ms: 2_000,
-      });
-      assertNotIncludes(
-        out,
-        '❌ readonly_shell',
-        'Expected git -C <relative> status to be accepted',
+      assert.equal(precedence.ok, true);
+      if (!precedence.ok) throw new Error('Precedence arguments were not accepted');
+      assert.equal(precedence.args.timeout_ms, 1_000);
+      assert.equal('timeout' in precedence.args, false);
+      for (const command of [
+        'git -C owned-git status --porcelain',
+        'cd owned-git && git status --porcelain',
+      ]) {
+        const result = await readonlyShellTool.call(dialog, caller, { command, timeout_ms: 2_000 });
+        assert.equal(result.outcome, 'success');
+        assert.ok(result.content.includes(initialGit));
+      }
+      if (process.platform !== 'win32') {
+        const probes = [
+          ['find owned-git -maxdepth 1 -type f -print', 'owned-git/untracked-data.txt'],
+          ["printf '%s' printf-data-79a1", 'printf-data-79a1'],
+          ["awk 'BEGIN{print 73191}'", '73191'],
+        ];
+        for (const [command, stdout] of probes) {
+          const result = await readonlyShellTool.call(dialog, caller, {
+            command: command!,
+            timeout_ms: 2_000,
+          });
+          assert.equal(result.outcome, 'success');
+          assert.ok(result.content.includes(stdout!));
+        }
+        // Only the outcome is needed; ambient host/user identities are not persisted as semantic evidence.
+        for (const command of ['uname -a', 'whoami', 'id'])
+          assert.equal(
+            (await readonlyShellTool.call(dialog, caller, { command, timeout_ms: 2_000 })).outcome,
+            'success',
+          );
+      } else
+        console.log('UNEXECUTED: native POSIX find/printf/awk/uname/whoami/id probes on Windows.');
+      assert.equal(
+        execFileSync('git', ['-C', 'owned-git', 'status', '--porcelain'], {
+          encoding: 'utf8',
+        }).trim(),
+        initialGit,
       );
     });
-
-    await runTest('rejects git -C absolute path', async () => {
-      const out = await readonlyShellTool.call(dlg, caller, {
-        command: 'git -C / status',
-        timeout_ms: 2_000,
-      });
-      assertIncludes(out, '❌ readonly_shell', 'Expected absolute -C path to be rejected');
-      assertIncludes(out, 'git -C <relative-path>', 'Expected hint about git -C usage');
-    });
-
-    await runTest('rejects git -C Windows rooted path', async () => {
-      const out = await readonlyShellTool.call(dlg, caller, {
-        command: 'git -C \\tmp status',
-        timeout_ms: 2_000,
-      });
-      assertIncludes(out, '❌ readonly_shell', 'Expected rooted Windows -C path to be rejected');
-      assertIncludes(out, 'git -C <relative-path>', 'Expected hint about git -C usage');
-    });
-
-    await runTest('allows cd && chain inside rtws', async () => {
-      const out = await readonlyShellTool.call(dlg, caller, {
-        command: 'cd dominds && git status --porcelain',
-        timeout_ms: 2_000,
-      });
-      assertNotIncludes(out, '❌ readonly_shell', 'Expected cd && chain to be accepted');
-    });
-
-    await runTest('rejects cd with parent traversal', async () => {
-      const out = await readonlyShellTool.call(dlg, caller, {
-        command: 'cd .. && ls',
-        timeout_ms: 2_000,
-      });
-      assertIncludes(out, '❌ readonly_shell', 'Expected cd .. to be rejected');
-    });
-
-    await runTest('deny message allowlist mentions find', async () => {
-      const out = await readonlyShellTool.call(dlg, caller, {
-        command: 'ps aux',
-        timeout_ms: 2_000,
-      });
-      assertIncludes(out, 'only allows these command prefixes', 'Expected prefix deny message');
-      assertIncludes(out, 'find', 'Expected allowlist to mention find');
-      assertIncludes(out, 'git diff', 'Expected allowlist to mention git diff');
-      assertIncludes(out, 'tree', 'Expected allowlist to mention tree');
-      assertIncludes(out, 'jq', 'Expected allowlist to mention jq');
-      assertIncludes(out, 'uname', 'Expected allowlist to mention uname');
-      assertIncludes(out, 'whoami', 'Expected allowlist to mention whoami');
-      assertIncludes(out, 'id', 'Expected allowlist to mention id');
-      assertIncludes(out, 'echo', 'Expected allowlist to mention echo');
-      assertIncludes(out, 'pwd', 'Expected allowlist to mention pwd');
-      assertIncludes(out, 'which', 'Expected allowlist to mention which');
-      assertIncludes(out, 'date', 'Expected allowlist to mention date');
-      assertIncludes(out, 'diff', 'Expected allowlist to mention diff');
-      assertIncludes(out, 'realpath', 'Expected allowlist to mention realpath');
-      assertIncludes(out, 'readlink', 'Expected allowlist to mention readlink');
-      assertIncludes(out, 'printf', 'Expected allowlist to mention printf');
-      assertIncludes(out, 'cut', 'Expected allowlist to mention cut');
-      assertIncludes(out, 'sort', 'Expected allowlist to mention sort');
-      assertIncludes(out, 'uniq', 'Expected allowlist to mention uniq');
-      assertIncludes(out, 'tr', 'Expected allowlist to mention tr');
-      assertIncludes(out, 'awk', 'Expected allowlist to mention awk');
-      assertIncludes(out, 'shasum', 'Expected allowlist to mention shasum');
-      assertIncludes(out, 'sha256sum', 'Expected allowlist to mention sha256sum');
-      assertIncludes(out, 'md5sum', 'Expected allowlist to mention md5sum');
-      assertIncludes(out, 'uuid', 'Expected allowlist to mention uuid');
-      if (process.platform === 'win32') {
-        assertIncludes(out, 'where', 'Expected allowlist to mention where');
-        assertIncludes(out, 'fc', 'Expected allowlist to mention fc');
-        assertIncludes(out, 'findstr', 'Expected allowlist to mention findstr');
-        assertIncludes(out, 'dir', 'Expected allowlist to mention dir');
-        assertIncludes(out, 'type', 'Expected allowlist to mention type');
-        assertIncludes(out, 'more', 'Expected allowlist to mention more');
-        assertIncludes(out, 'ver', 'Expected allowlist to mention ver');
-      }
-    });
-  } finally {
-    await fs.rm(tmpRtws, { recursive: true, force: true });
   }
+  await evidence.write();
+  console.log(
+    'Readonly permission boundaries, native reads and real Git outcomes: PASS for reported current-platform scope.',
+  );
 }
-
-main().catch((err: unknown) => {
-  const message = err instanceof Error ? err.message : String(err);
-  console.error('Unexpected error:', message);
-  process.exit(1);
+main().catch((error) => {
+  console.error(error);
+  process.exitCode = 1;
 });

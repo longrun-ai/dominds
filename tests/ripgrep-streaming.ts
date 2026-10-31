@@ -1,103 +1,104 @@
 import assert from 'node:assert/strict';
-import type { SpawnOptions } from 'node:child_process';
-import { EventEmitter } from 'node:events';
-import * as fs from 'node:fs/promises';
-import os from 'node:os';
-import path from 'node:path';
-import { PassThrough } from 'node:stream';
-import type { Dialog } from '../main/dialog';
-import { Team } from '../main/team';
+import fs from 'node:fs/promises';
+import { ripgrepSnippetsTool } from '../main/tools/ripgrep';
+import { semanticEvidenceCollector } from './helpers/semantic-evidence';
+import { withShellDialog } from './helpers/shell-fixture';
+import { toolOutputData } from './helpers/tool-output';
 
-const childProcess = require('node:child_process') as typeof import('node:child_process');
-
-class FakeRipgrepProcess extends EventEmitter {
-  readonly stdout = new PassThrough();
-  readonly stderr = new PassThrough();
-  killed = false;
-
-  kill(): boolean {
-    this.killed = true;
-    return true;
-  }
-}
-
-type SpawnFn = typeof childProcess.spawn;
-
-async function importRipgrepModuleFresh(): Promise<typeof import('../main/tools/ripgrep')> {
-  const modulePath = require.resolve('../main/tools/ripgrep');
-  delete require.cache[modulePath];
-  return await import('../main/tools/ripgrep');
-}
-
-async function main(): Promise<void> {
-  const oldCwd = process.cwd();
-  const tmpRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'dominds-ripgrep-streaming-'));
-  const originalSpawn = childProcess.spawn;
-  const originalBufferConcat = Buffer.concat;
-  const seenArgs: string[][] = [];
-
-  try {
-    process.chdir(tmpRoot);
-    await fs.writeFile(path.join(tmpRoot, 'sample.txt'), 'before\nneedle line\nafter\n', 'utf8');
-
-    childProcess.spawn = ((command, args?: readonly string[] | SpawnOptions) => {
-      assert.equal(command, 'rg');
-      const child = new FakeRipgrepProcess();
-      const spawnArgs: readonly string[] = Array.isArray(args) ? args : [];
-      seenArgs.push([...spawnArgs]);
-      setImmediate(() => {
-        for (let idx = 0; idx < 500; idx += 1) {
-          child.stdout.write(`sample.txt:2:1:needle hit ${idx}\n`);
-        }
-        child.stdout.end();
-        child.stderr.end();
-        child.emit('close', 0, null);
-      });
-      return child as unknown as ReturnType<SpawnFn>;
-    }) as SpawnFn;
-
-    const { ripgrepSnippetsTool } = await importRipgrepModuleFresh();
-    (Buffer as { concat: typeof Buffer.concat }).concat = (() => {
-      throw new Error('Buffer.concat should not be used by ripgrep streaming');
-    }) as typeof Buffer.concat;
-
-    const dlg = {} as Dialog;
-    const alice = new Team.Member({
-      id: 'alice',
-      name: 'Alice',
-      read_dirs: ['**'],
-      write_dirs: ['**'],
+async function main() {
+  const evidence = semanticEvidenceCollector('dominds-ripgrep-streaming-');
+  await withShellDialog('en', async (dialog, caller) => {
+    const groups = Array.from({ length: 500 }, (_, index) => [
+      'before-data-' + index,
+      'needle hit data-' + index,
+      'after-data-' + index,
+    ]);
+    await fs.writeFile('sample.txt', groups.flat().join('\n') + '\n');
+    const result = await ripgrepSnippetsTool.call(dialog, caller, {
+      pattern: 'needle',
+      path: 'sample.txt',
+      max_results: 5,
+      context_before: 1,
+      context_after: 1,
     });
-
-    const result = (
-      await ripgrepSnippetsTool.call(dlg, alice, {
+    assert.equal(result.outcome, 'success');
+    const data = toolOutputData(result.content);
+    assert.equal(data.status, 'ok');
+    assert.equal(data.mode, 'snippets');
+    assert.deepEqual(data.totals, { files_matched: 1, matches: 500, shown_results: 5 });
+    assert.equal(data.truncated, true);
+    assert.deepEqual(
+      data.results,
+      groups.slice(0, 5).map(([before, match, after], index) => ({
+        path: 'sample.txt',
+        line: index * 3 + 2,
+        col: 1,
+        match,
+        before: [before],
+        after: [after],
+        text_truncated: false,
+        truncation: {
+          applied: false,
+          reasons: [],
+          match_original_chars: match!.length,
+          before_original_chars: [before!.length],
+          after_original_chars: [after!.length],
+        },
+      })),
+    );
+    evidence.record({
+      id: 'real-rg-bounded-snippets',
+      scenario:
+        'A real ripgrep process searches a real 1500-line fixture with 500 matches and returns five snippets.',
+      businessValue:
+        'An agent sees real line/column/context data and knows that the result list is incomplete.',
+      context: {
         pattern: 'needle',
-        path: '.',
-        max_results: 5,
-        context_before: 1,
-        context_after: 1,
-      })
-    ).content;
-
-    assert.ok(result.includes('status: ok'));
-    assert.ok(result.includes('mode: snippets'));
-    assert.ok(result.includes('matches: 500'));
-    assert.ok(result.includes('shown_results: 5'));
-    assert.ok(result.includes('files_matched: 1'));
-    assert.ok(result.includes("summary: 'Showing first 5 of 500 matches (truncated=true).'"));
-    assert.equal(seenArgs.length, 1);
-    assert.ok(seenArgs[0]?.includes('--vimgrep'));
-    assert.ok(seenArgs[0]?.includes('needle'));
-
-    console.log('✅ ripgrep-streaming tests passed');
-  } finally {
-    (Buffer as { concat: typeof Buffer.concat }).concat = originalBufferConcat;
-    childProcess.spawn = originalSpawn;
-    const modulePath = require.resolve('../main/tools/ripgrep');
-    delete require.cache[modulePath];
-    process.chdir(oldCwd);
-    await fs.rm(tmpRoot, { recursive: true, force: true });
-  }
+        maxResults: 5,
+        actualMatches: 500,
+        actualFiles: 1,
+        scope:
+          'Real local rg, filesystem context reads and public YAML; no peak-memory/Buffer allocation benchmark.',
+      },
+      reviewQuestions: [
+        'Does the actual summary/truncation guidance accurately communicate the five shown of 500 and useful next steps?',
+      ],
+      actualText: result.content,
+    });
+    const complete = await ripgrepSnippetsTool.call(dialog, caller, {
+      pattern: 'needle hit data-499',
+      path: 'sample.txt',
+      max_results: 5,
+      context_before: 1,
+      context_after: 1,
+    });
+    assert.equal(complete.outcome, 'success');
+    const completeData = toolOutputData(complete.content);
+    assert.deepEqual(completeData.totals, { files_matched: 1, matches: 1, shown_results: 1 });
+    assert.equal(completeData.truncated, false);
+    assert.deepEqual(completeData.results, [
+      {
+        path: 'sample.txt',
+        line: 1499,
+        col: 1,
+        match: groups[499]![1],
+        before: [groups[499]![0]],
+        after: [groups[499]![2]],
+        text_truncated: false,
+        truncation: {
+          applied: false,
+          reasons: [],
+          match_original_chars: groups[499]![1]!.length,
+          before_original_chars: [groups[499]![0]!.length],
+          after_original_chars: [groups[499]![2]!.length],
+        },
+      },
+    ]);
+  });
+  await evidence.write();
+  console.log('Real ripgrep counts, bounded snippets and source context: PASS');
 }
-
-void main();
+main().catch((error) => {
+  console.error(error);
+  process.exitCode = 1;
+});

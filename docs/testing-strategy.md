@@ -515,3 +515,15 @@ registered owner的等价nested对象key序更新确实被调用一次；完整m
 独立全文审查初三十六份为三十三通过、三拒绝：Date、class与NaN元数据都被称为不可JSON序列化，但实际JSON.stringify可把它们变为字符串、普通对象或null；真正失败是当前无损JSON/plain-data契约。现只修四处同类Host诊断，明确primitives/arrays/plain数据及class/accessor/非有限数/负零限制，不改isJsonValue验证。另用三个真实tool/owner返回反例分别覆盖delete.meta、apply返回state.meta与update.updatedMeta，均有真实handler路由标记且仍拒绝；让四条修正提示都有实际全文材料可评。新三十九份须全新逐份审查，不沿用初三十三的verdict，三份原拒绝全文保留。
 
 两个入口新增test:components及test:semantic:components；语义四份双语提醒wrapper/不变量与三十五份实际IPC/启动诊断，共三十九份，生成不自动接受。完整原值映射、全部断言/作用域审查和独立新输出结论见[本批记录](../tests/semantic/reviews/2026-10-31-component-boundaries.json)。两个原类型错误分别用真实Disk与原生kind窄化修复；仅特意非法Date参数显式越过JsonValue以测JS边界，没有扩大生产类型或排除源码。当前287个TypeScript文件、35个辅助/证据模块、252个候选，审查178项，余74项，套件外71项、无单独脚本43项、失效直接入口及陈旧账本路径均零。全测试仍8条继承错误，继续明确失败；本批只修实际Host诊断措辞，没有改变拒绝边界、类型、依赖、框架或架构。
+
+### Shell 执行、只读边界与真实搜索批次
+
+原九项共1452行完整审阅并执行旧基线9/9；这只是执行历史，不接受其措辞判断或把未运行的Windows分支算作通过。沿袭已知17项颜色/进度环境数据、输入不变性、混合大小写别名清理与PATH保留，真实shell_cmd子进程测非TTY，readonly_shell只测已知环境字段和ANSI控制字节，不虚构其TTY测量。原即时/250ms工作在5秒/1秒边界内真实完成，真实stdin以EOF且长度零结束，均不得新增后台提醒。五次重复不是独立业务价值，改为每类每语言一次明确执行；不靠重试或加timeout制造通过。长输出检查真实给定首尾/遗漏中间、数字截断协议和60000字符界限，补短输出正对照，不冻结内部首尾比例或宣称峰值内存。
+
+只读案例用原生Dialog/成员/隔离磁盘和自己初始化的Git仓库，核成功outcome与真实读取/文件状态。原先仅“不含错误字样”能让不存在的git目录冒充成功；现真实git -C与cd链必须返回给定未跟踪文件。保留根.minds/.dialogs拒绝、嵌套可读、遍历返回根拒绝、绝对/Windows rooted路径和越级cd拒绝、timeout别名优先级，补重定向不得写文件。长allowlist词项清单断言删除，实际中英拒绝全文交独立主观评。现有Windows spawn命令/argv/引号/verbatim及全部安全布尔和保留路径标识契约保留；stop/output请求和taskkill参数是组件证据，补合法等待上限正对照，绝不宣称真实Windows进程树已终止。
+
+搜索移除全局禁止Buffer.concat这一无测量业务依据的实现约束及500行假输出。真实1500行文件产生500个匹配，五份结果必须有准确行列、正文和前后文，单个末尾匹配作完整结果对照。真实.ts/.tsx过滤、混合raw-glob、.\src归一及当前平台反斜杠语义以结果证明，不冻结--type/--glob选择。首轮新夹具漏了实际公开truncation字段及把./前缀当路径身份，两个失败现场保留，修正夹具后继续；不是产品缺陷。真正原生缺路径却只返回generic code2的红证暴露两处--no-messages吞掉stderr，使既有路径错误分类无法发生。仅删除这两处抑制，保留现有分类、权限和有界stderr处理。真实缺路径及broken symlink旁两条有效匹配分别验证partial；零匹配仍success，真实无效flag仍failure，另验证公开filesystem-rg同类缺路径和正常结果。受控Windows stderr只由真实本机子进程提供，明确不代表Windows原生文件系统。
+
+初十份Windows语义材料经逐份独立全文评审4通过6拒绝：两份缺PID错误不能推断pwsh找不到，四份PowerShell指导在默认cmd.exe下遗漏切换外层shell。现仅修中英指导：保留原始错误和未检测的安装状态，说明版本差异；去包装前先选兼容的shell，允许有意嵌套。初拒绝原文与理由保留。随后检查共享调用能力，又以实际readonly schema、真实Windows validator和同一formatter生成四份组件材料并全部独立拒绝：该工具没有shell参数且拒绝嵌套前缀。只修共用文案，明确切换/保留包装仅适用于shell_cmd，readonly须使用其允许的cmd/PATH命令，其他shell需要已授权且支持选择的工具；不增加formatter参数或工具类型。最终评审组合七个未重采producer的40份原实际材料与修正后Windows producer新14份；各来源/产品阶段独立记录，旧Windows10份通过仅属shell_cmd场景并单列中间评审，不接受新输出。新建test:shell九项及test:semantic:shell八个producer，当前POSIX场景生成五十四份实际完整文本，生成成功仍待主观验收。[本批记录](../tests/semantic/reviews/2026-10-31-shell-execution.json)保存原值、全部断言审查、红证、实际全文、独立判定及执行来源。原生Windows shell/reader/taskkill与其他平台搜索明确未执行，不计作通过；现有纯参数契约仍可在当前平台真实执行。
+
+本批最终54份按上述明确混合来源均已独立全文评审通过，初14份的4通过10拒绝及中间10份范围受限的通过均单列保留；不把任何旧verdict用来接受后续新输出。当前288个TypeScript文件、36个辅助/证据模块、252个候选，审查187项、余65项，套件外62项、无单独脚本41项，失效直接入口和陈旧账本路径均零。真实Dialog与静态模块导入消除了本批三条继承类型错误；全测试目录仍五条失败（其他provider三条、task-package两条），不弱化类型或排除源码。构建与应用类型检查、九项本批行为、十项smoke、相关七项结果投影与十三项文件工具以及六项运行器回归通过；这些具体执行范围不是全测试已完成的声明。

@@ -166,7 +166,19 @@ const components = [
   'reminders/app-reminder-render-mode-preserve.ts',
   'apps-host-tool-result-contract.ts',
 ];
+const shell = [
+  'toolsets/shell-cmd-capture-env.ts',
+  'toolsets/shell-cmd-fast-completion.ts',
+  'toolsets/shell-cmd-output-truncation.ts',
+  'toolsets/shell-cmd-stdin-ignore.ts',
+  'toolsets/shell-cmd-windows-spawn-spec.ts',
+  'toolsets/readonly-shell.ts',
+  'stop-daemon-windows-process-tree.ts',
+  'ripgrep-streaming.ts',
+  'ripgrep-windows-compat.ts',
+];
 const semanticSuites = {
+  shell: shell.filter((file) => file !== 'toolsets/shell-cmd-capture-env.ts'),
   components,
   presentation: ['semantic/model-presentation.ts', 'semantic/context-usage-title.ts'],
   daemon,
@@ -324,6 +336,7 @@ export async function inventory() {
     daemon,
     presentation,
     components,
+    shell,
   };
   const included = new Set(Object.values(suites).flat());
   const audit = JSON.parse(await fs.readFile(path.join(testsRoot, 'audit.json'), 'utf8'));
@@ -448,10 +461,11 @@ async function main() {
       'daemon',
       'presentation',
       'components',
+      'shell',
     ].includes(args[1])
   ) {
     throw new Error(
-      'Usage: node tests/run.mjs --list | --suite smoke | --suite kernel | --suite context [--semantic] | --suite configuration [--semantic] | --suite manual [--semantic] | --suite filesystem [--semantic] | --suite persistence [--semantic] | --suite recovery [--semantic] | --suite bootstrap [--semantic] | --suite packaging [--semantic] | --suite retry [--semantic] | --suite projection [--semantic] | --suite compatible [--semantic] | --suite reminders [--semantic] | --suite daemon [--semantic] | --suite presentation [--semantic] | --suite components [--semantic]',
+      'Usage: node tests/run.mjs --list | --suite smoke | --suite kernel | --suite context [--semantic] | --suite configuration [--semantic] | --suite manual [--semantic] | --suite filesystem [--semantic] | --suite persistence [--semantic] | --suite recovery [--semantic] | --suite bootstrap [--semantic] | --suite packaging [--semantic] | --suite retry [--semantic] | --suite projection [--semantic] | --suite compatible [--semantic] | --suite reminders [--semantic] | --suite daemon [--semantic] | --suite presentation [--semantic] | --suite components [--semantic] | --suite shell [--semantic]',
     );
   }
   const suite = args[1];

@@ -711,7 +711,7 @@ function buildFilterPlan(options: RipgrepBaseOptions, member: Team.Member): Ripg
 }
 
 function baseRgArgs(options: RipgrepBaseOptions, member: Team.Member): RipgrepFilterPlan {
-  const args: string[] = ['--no-messages', '--color=never'];
+  const args: string[] = ['--color=never'];
   if (options.includeHidden) args.push('--hidden');
   if (options.followSymlinks) args.push('--follow');
 
@@ -731,7 +731,7 @@ function baseRgArgs(options: RipgrepBaseOptions, member: Team.Member): RipgrepFi
 }
 
 function fsBaseRgArgs(options: RipgrepBaseOptions): RipgrepFilterPlan {
-  const args: string[] = ['--no-messages', '--color=never'];
+  const args: string[] = ['--color=never'];
   if (options.includeHidden) args.push('--hidden');
   if (options.followSymlinks) args.push('--follow');
 
