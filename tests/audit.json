@@ -233,7 +233,7 @@
       "status": "reviewed",
       "lane": "kernel",
       "value": "受控provider放行前建立active-run blocker；真实后台观察延期后，清阻塞事件唤醒，正式结果消费一次且不丢durable wake",
-      "evidence": "Renewal/assignment batch follow-up; complete assertion review, real scheduler/persistence and phase-controlled provider. Prior implicit MockGen prose parsing caused full-kernel failures; preserved evidence and corrected fixtures: tests/semantic/reviews/2026-10-30-renewal.json."
+      "evidence": "Renewal/assignment batch follow-up; complete assertion review, real scheduler/persistence and phase-controlled provider. Prior implicit MockGen prose parsing caused full-kernel failures; preserved evidence and corrected fixtures: tests/semantic/reviews/2026-10-30-renewal.json. 2026-10-31 re-review: request/result assertions moved outside provider callback and after backend termination so production retries cannot hide assertion failures. Requests stay exactly root2/side1; original 62-pass/1-timeout evidence retained; deterministic stale-preflight regression fixes the exposed product race. tests/semantic/reviews/2026-10-31-backend-preflight-revalidation.json."
     },
     "kernel-driver/sideDialog-registered-initial-auto-drive.ts": {
       "status": "reviewed",
@@ -960,6 +960,12 @@
       "lane": "reminders",
       "value": "实际pending1→0保同ID状态窗，已存字段hydrate后公开version/完整memory/disk/meta时间稳定；同步不改已注册HumanQuestion/canDrive=false或其它root pending，组件零计数不得全局禁止等待；中英实际owner消息全文独立评",
       "evidence": "Full original3/final3/native helper/complete assertion diff and actual24 output review: tests/semantic/reviews/2026-10-31-pending-reminder-lifecycle.json. Continuation kind/createdBy/level, scopes/IDs/counts/timestamps, native active-call and HumanQuestion state, visible order, file bytes, full given-data and persisted-state fidelity are machine/data contracts. Generated owner/guide/maintenance/duplicate-refusal meaning requires independent subjective review; initial24 retained20passed/4failed zero guidance, and new24 must be reread. Opaque signature encoding is not frozen. Snapshot input and declared persisted Side history do not establish actual pressure classification, provider execution, an actual human exchange or process restart. Normal reconciliation may still persist/publish snapshots; no zero-I/O/zero-event claim, fake Store/Member, raw YAML, cwd switching, sleep or timeout increase."
+    },
+    "kernel-driver/backend-revalidates-work-after-preflight.ts": {
+      "status": "reviewed",
+      "lane": "kernel",
+      "value": "后台异步预检之后另一真实drive已消费工作时不再空跑模型；后续新输入仍被执行且原结果保留",
+      "evidence": "2026-10-31 backend preflight batch: real canDrive is event-gated after its observed result; real mutex/driver/persistence, finite boundary provider and assertions outside callbacks. Old product deterministically makes two requests instead of one; fixed path makes one, then a later queued source makes exactly one more. Full test/assertion diff and durable failure/effects: tests/semantic/reviews/2026-10-31-backend-preflight-revalidation.json. No semantic wording oracle."
     }
   },
   "retired": {

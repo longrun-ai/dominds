@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 
 import { clearActiveRun, createActiveRun } from '../../main/dialog-display-state';
 import { globalDialogRegistry } from '../../main/dialog-global-registry';
+import type { ChatMessage } from '../../main/llm/client';
 import type { LlmGenerator } from '../../main/llm/gen';
 import { registerLlmGenerator, unregisterLlmGenerator } from '../../main/llm/gen/registry';
 import { driveDialogStream } from '../../main/llm/kernel-driver';
@@ -31,6 +32,7 @@ async function main(): Promise<void> {
     const finalPayload = 'root-data-blocked-wake-736b';
     let rootRounds = 0;
     let sideRounds = 0;
+    const rootContexts: ChatMessage[][] = [];
     let releaseSide: () => void = () => {};
     const sideRelease = new Promise<void>((resolve) => {
       releaseSide = resolve;
@@ -43,6 +45,7 @@ async function main(): Promise<void> {
       apiType,
       async genToReceiver(_provider, _agent, _system, _tools, request, context, receiver) {
         if (request.dialogSelfId === root.id.selfId) {
+          rootContexts.push(context);
           if (++rootRounds === 1)
             await receiver.funcCall(
               callId,
@@ -54,19 +57,12 @@ async function main(): Promise<void> {
               }),
             );
           else {
-            assert.equal(rootRounds, 2);
-            const delivered = context
-              .filter((message) => message.type === 'tellask_result_msg')
-              .filter((message) => message.callId === callId);
-            assert.equal(delivered.length, 1);
-            assert.equal(delivered[0].status, 'completed');
-            assert.ok(delivered[0].content.includes(replyPayload));
             await receiver.sayingStart();
             await receiver.sayingChunk(finalPayload);
             await receiver.sayingFinish();
           }
         } else {
-          assert.equal(++sideRounds, 1);
+          sideRounds += 1;
           noteSideEntered();
           await sideRelease;
           await receiver.funcCall(
@@ -129,7 +125,7 @@ async function main(): Promise<void> {
       assert.equal(wake?.action, 'active_run_cleared');
       assert.equal(wake?.nextDriveQueued, true);
       await waitFor(
-        async () => rootRounds === 2,
+        async () => rootRounds >= 2,
         3_000,
         'backend to retry after the real blocker-cleared event',
       );
@@ -158,7 +154,18 @@ async function main(): Promise<void> {
       abort.abort();
       await backend;
       unregisterLlmGenerator(apiType);
+      globalDialogRegistry.unregister(root.id.rootId);
     }
+    // Verify after the real backend has stopped. Assertion failures thrown inside
+    // a provider callback would instead enter production request-retry policy.
+    assert.equal(rootRounds, 2);
+    assert.equal(sideRounds, 1);
+    const delivered = rootContexts[1]!
+      .filter((message) => message.type === 'tellask_result_msg')
+      .filter((message) => message.callId === callId);
+    assert.equal(delivered.length, 1);
+    assert.equal(delivered[0].status, 'completed');
+    assert.ok(delivered[0].content.includes(replyPayload)); // Full supplied data, not a wording oracle.
   });
   console.log(
     'backend retries the preserved collaboration wake after its active-run blocker clears: passed',

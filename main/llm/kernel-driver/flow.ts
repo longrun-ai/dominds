@@ -1965,23 +1965,26 @@ export async function executeDriveRound(args: {
     const resolvedPrompt = await resolveEffectivePrompt(dialog, promptForCore);
     let effectivePrompt = resolvedPrompt.prompt;
     const latestBeforeCore = await DialogPersistence.loadDialogLatest(dialog.id, dialog.status);
-    if (dialog.id.selfId === dialog.id.rootId) {
-      hadRootRuntimeWakeBeforeCore ||= await DialogPersistence.hasRootRuntimeWake(
-        dialog.id,
-        dialog.status,
-      );
-    }
+    const currentRootRuntimeWakeBeforeCore =
+      dialog.id.selfId === dialog.id.rootId &&
+      (await DialogPersistence.hasRootRuntimeWake(dialog.id, dialog.status));
+    hadRootRuntimeWakeBeforeCore ||= currentRootRuntimeWakeBeforeCore;
+    // Backend eligibility was checked before acquiring this dialog's mutex.
+    // Another drive may have consumed that source while the backend was waiting.
+    // Recheck routing evidence here; present continuations still claim their own facts.
     if (
-      resolvedPrompt.droppedStaleQueuedContinuation &&
+      (resolvedPrompt.droppedStaleQueuedContinuation ||
+        (driveSource === 'kernel_driver_backend_loop' && !currentRootRuntimeWakeBeforeCore)) &&
       effectivePrompt === undefined &&
       !hasDurableDriveWork(latestBeforeCore)
     ) {
-      log.debug('kernel-driver stopped after dropping stale queued continuation', undefined, {
+      log.debug('kernel-driver stopped after continuation work was consumed', undefined, {
         dialogId: dialog.id.valueOf(),
         rootId: dialog.id.rootId,
         selfId: dialog.id.selfId,
         source: driveSource,
         reason: driveOptions?.reason ?? null,
+        droppedStaleQueuedContinuation: resolvedPrompt.droppedStaleQueuedContinuation,
       });
       return;
     }

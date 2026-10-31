@@ -249,7 +249,8 @@
     "test:semantic:compatible": "node run.mjs --suite compatible --semantic",
     "test:reminders": "node run.mjs --suite reminders",
     "test:semantic:reminders": "node run.mjs --suite reminders --semantic",
-    "reminder-guidance": "pnpm run rtws -- --isolated-rtws semantic/reminder-guidance.ts"
+    "reminder-guidance": "pnpm run rtws -- --isolated-rtws semantic/reminder-guidance.ts",
+    "kernel-backend-preflight-revalidation": "pnpm run rtws -- --isolated-rtws kernel-driver/backend-revalidates-work-after-preflight.ts"
   },
   "devDependencies": {
     "tsx": "^4.22.4",

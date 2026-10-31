@@ -469,3 +469,11 @@ registered owner的等价nested对象key序更新确实被调用一次；完整m
 提醒行为入口扩为十四项，完整语义入口可输出一百二十五份。本批只重新生成新增三个producer的二十四份中英实际材料，须逐份新审；历史材料不自动接受新输出。原值映射、原baseline失败、初轮四拒绝全文/理由、最终断言审查及新实际材料见[本批记录](../tests/semantic/reviews/2026-10-31-pending-reminder-lifecycle.json)。当前286个TypeScript文件、32个辅助/证据模块、254个候选，审查160项，余94项，套件外87项，无单独脚本43项，直接失效与陈旧账本路径均零。原14条callsite品牌类型错误修复；新readonly提醒数组赋值改为合法mutable内容hydrate，不弱化只读属性。全测试仍47条继承类型诊断，明确失败，不排除源码或放松类型。
 
 本批十四项提醒行为与二十四份新语义材料已通过，但广义kernel回归六十三项中六十二项通过、一项超时，不能报告全绿。保留的`sideDialog-backend-loop-retries-after-active-run-blocker`现场显示回复驱动的第二轮已完成，随后backend又启动无acceptedTrigger的第三轮；provider夹具里的次数断言被真实重试策略捕获，造成等待并在60秒上限退出。该额外调度将作为独立的协作调度整改继续处理，不能靠放宽次数或延长超时掩盖。完整失败日志和持久事件/最新状态保存在本批记录中。
+
+### 后台预检过期后的重复执行修复
+
+上批保留的62通过、1超时现场不是偶然慢：backend在读到durable来源、通过active-run检查后，await真实canDrive；其间直接回复drive可完成原工作，后台随后取得mutex却仍发起空的第三轮。新增回归用事件门暂停真实canDrive的已观测结果，让另一实际drive消费同一queued prompt，再放行后台；没有伪造eligibility、sleep或断言放进provider。旧产品明确失败为2次请求≠1次，失败日志和实际磁盘事件保留。修复仅在Flow持锁后、进入core前重读当前来源；后台没有有效prompt、持久工作或当前root wake时结束本轮。仍存在的具体接续由各自handler认领，不新增通用去重或业务判定层。
+
+回归同时核原输入在实际provider请求中保真、已完成结果不丢、没有新generation，并以随后真正新到达的queued prompt作为正控：后台必须再次执行，最终恰两次请求/两次generation/两份给定response数据。原active-run blocker用例保留真实后台延期、清阻塞唤醒、结果单次消费的检查，把次数/数据断言移至停止后台后，避免测试断言落入真实provider重试策略；没有放宽最终root两次、Side一次的要求。完整原失败、断言审查、修复范围及验证见[本批记录](../tests/semantic/reviews/2026-10-31-backend-preflight-revalidation.json)。这些是请求数、事件、状态和给定opaque数据合同；不以生成诊断措辞判断语义，也不重用历史语义verdict接受新输出。
+
+当前287个TypeScript文件、32个辅助/证据模块、255个候选，审查161项，余94项；套件外87项、无单独脚本43项，失效直接目标和陈旧账本路径均零。新增案例自动进入kernel发现，并有隔离rtws单独入口。全目录47条继承类型诊断仍明确失败，未弱化类型或排除文件。本批广义内核64项全部通过，build、应用类型、格式、六项runner及375个本地文档目标/fragment均通过；上批超时记录仍作为历史失败证据保留。

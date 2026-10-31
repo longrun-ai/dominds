@@ -1,0 +1,692 @@
+{
+  "schemaVersion": 1,
+  "date": "2026-10-31",
+  "reviewer": "primary test-execution agent /root; complete source and assertion-diff review",
+  "baseRevision": "c39a1c576c96e9f39e4b634956653b6ebd5c33e4",
+  "status": "scoped-machine-regressions-passed",
+  "scope": "Machine behavior and given opaque input/result data only. No natural-language semantic output is accepted by this record. Prior semantic records remain source-bound historical evidence. Whole-repository remediation remains active with94 unaudited candidates and47 inherited test-type diagnostics.",
+  "businessValue": "Do not spend another provider request or alter a completed dialog after another drive has already consumed the work observed by a stale backend preflight. Keep subsequent real work executable.",
+  "failureAnalysis": "The backend awaited real canDrive after reading durable work and active-run eligibility, before acquiring the dialog mutex. A competing real drive consumed and completed that source. Flow then started another generation with no effective prompt, durable source or root wake. The original blocker regression exposed this as an unexpected third request; its in-provider assertion entered production retry policy and timed out.",
+  "historicalBroadFailure": {
+    "record": "tests/semantic/reviews/2026-10-31-pending-reminder-lifecycle.json",
+    "summaryPath": "/tmp/dominds-tests-kernel-rGkkRQ/summary.json",
+    "total": 63,
+    "passed": 62,
+    "failed": 0,
+    "timedOut": 1,
+    "meaning": "Historical failure retained in full in the linked durable report, not relabeled as a pass."
+  },
+  "deterministicBeforeFix": {
+    "status": "failed-as-expected",
+    "productionRevision": "c39a1c576c96e9f39e4b634956653b6ebd5c33e4",
+    "testSourceSha256": "fcbbf6ef06d7ffb6cc8b65dd50f2a629b4297185bdfadd118d337409faee296d",
+    "command": "pnpm -C tests run rtws -- --isolated-rtws kernel-driver/backend-revalidates-work-after-preflight.ts",
+    "exitCode": 1,
+    "actualRequests": 2,
+    "expectedRequests": 1,
+    "fullLog": "$ tsx cli.ts -- --isolated-rtws kernel-driver/backend-revalidates-work-after-preflight.ts\nAssertionError [ERR_ASSERTION]: A stale backend preflight must not start a second provider request with no remaining work\n\n2 !== 1\n\n    at <anonymous> (/ws/AiWorks/dominds/tests/kernel-driver/backend-revalidates-work-after-preflight.ts:105:14)\n    at async withTempRtws (/ws/AiWorks/dominds/tests/kernel-driver/helpers.ts:60:3)\n    at async main (/ws/AiWorks/dominds/tests/kernel-driver/backend-revalidates-work-after-preflight.ts:14:3) {\n  generatedMessage: false,\n  code: 'ERR_ASSERTION',\n  actual: 2,\n  expected: 1,\n  operator: 'strictEqual',\n  diff: 'simple'\n}\n[tests/cli] Keeping isolated rtws at /tmp/dominds-tests-rtws-ETf0mT\n[ELIFECYCLE] Command failed with exit code 1.\n",
+    "actualPersistedEvidence": [
+      {
+        "name": "course-001.jsonl",
+        "observedPath": "/tmp/dominds-tests-rtws-ETf0mT/rtws/.dialogs/run/23/d2/93c1ae41/course-001.jsonl",
+        "sha256": "4110d61e333d0947eacf1716b1edbbee0bd20583b213f53aa425cca73a0ae9c4",
+        "fullText": "{\"ts\":\"2026-10-31 13:58:26\",\"type\":\"gen_start_record\",\"genseq\":1,\"msgId\":\"preflight-first-input\",\"rootCourse\":1,\"rootGenseq\":1}\n{\"ts\":\"2026-10-31 13:58:26\",\"type\":\"human_text_record\",\"genseq\":1,\"content\":\"queued-data:preflight-race-first:4e2c\",\"msgId\":\"preflight-first-input\",\"grammar\":\"markdown\",\"origin\":\"runtime\",\"userLanguageCode\":\"en\",\"rootCourse\":1,\"rootGenseq\":1}\n{\"ts\":\"2026-10-31 13:58:26\",\"type\":\"reminders_reconciled_record\",\"rootCourse\":1,\"rootGenseq\":1,\"reminders\":[{\"id\":\"mainDialogGoal\",\"content\":\"Goal for this Main Dialog:\\nConsume only the supplied queued work and preserve its result.\",\"meta\":{\"kind\":\"main_dialog_goal\",\"updatedAt\":\"2026-10-31 13:58:26\",\"update\":{\"altInstruction\":\"set_dialog_goal({ \\\"mode\\\": \\\"goal\\\", \\\"goal\\\": \\\"...\\\" }) or set_dialog_goal({ \\\"mode\\\": \\\"follow_taskdoc\\\" })\"},\"delete\":{\"altInstruction\":\"set_dialog_goal({ \\\"mode\\\": \\\"goal\\\", \\\"goal\\\": \\\"...\\\" }) or set_dialog_goal({ \\\"mode\\\": \\\"follow_taskdoc\\\" })\"},\"mode\":\"specific_goal\",\"goal\":\"Consume only the supplied queued work and preserve its result.\"},\"echoback\":true,\"scope\":\"dialog\",\"renderMode\":\"markdown\",\"createdAt\":\"2026-10-31 13:58:26\",\"priority\":\"high\"}]}\n{\"ts\":\"2026-10-31 13:58:26\",\"type\":\"agent_words_record\",\"genseq\":1,\"content\":\"response-data-1\",\"rootCourse\":1,\"rootGenseq\":1}\n{\"ts\":\"2026-10-31 13:58:26\",\"type\":\"gen_finish_record\",\"genseq\":1,\"contextHealth\":{\"kind\":\"unavailable\",\"reason\":\"model_limit_unavailable\",\"promptTokens\":100,\"completionTokens\":10,\"totalTokens\":110},\"llmGeneration\":{\"providerId\":\"local-mock\",\"modelId\":\"default\",\"fields\":[{\"kind\":\"set\",\"key\":\"configured-model-id\",\"prominent\":false,\"value\":\"default\"}]},\"rootCourse\":1,\"rootGenseq\":1}\n{\"ts\":\"2026-10-31 13:58:26\",\"type\":\"gen_start_record\",\"genseq\":2,\"rootCourse\":1,\"rootGenseq\":2}\n{\"ts\":\"2026-10-31 13:58:26\",\"type\":\"reminders_reconciled_record\",\"rootCourse\":1,\"rootGenseq\":2,\"reminders\":[{\"id\":\"mainDialogGoal\",\"content\":\"Goal for this Main Dialog:\\nConsume only the supplied queued work and preserve its result.\",\"meta\":{\"kind\":\"main_dialog_goal\",\"updatedAt\":\"2026-10-31 13:58:26\",\"update\":{\"altInstruction\":\"set_dialog_goal({ \\\"mode\\\": \\\"goal\\\", \\\"goal\\\": \\\"...\\\" }) or set_dialog_goal({ \\\"mode\\\": \\\"follow_taskdoc\\\" })\"},\"delete\":{\"altInstruction\":\"set_dialog_goal({ \\\"mode\\\": \\\"goal\\\", \\\"goal\\\": \\\"...\\\" }) or set_dialog_goal({ \\\"mode\\\": \\\"follow_taskdoc\\\" })\"},\"mode\":\"specific_goal\",\"goal\":\"Consume only the supplied queued work and preserve its result.\"},\"echoback\":true,\"scope\":\"dialog\",\"renderMode\":\"markdown\",\"createdAt\":\"2026-10-31 13:58:26\",\"priority\":\"high\"}]}\n{\"ts\":\"2026-10-31 13:58:26\",\"type\":\"agent_words_record\",\"genseq\":2,\"content\":\"response-data-2\",\"rootCourse\":1,\"rootGenseq\":2}\n{\"ts\":\"2026-10-31 13:58:26\",\"type\":\"gen_finish_record\",\"genseq\":2,\"contextHealth\":{\"kind\":\"unavailable\",\"reason\":\"model_limit_unavailable\",\"promptTokens\":100,\"completionTokens\":10,\"totalTokens\":110},\"llmGeneration\":{\"providerId\":\"local-mock\",\"modelId\":\"default\",\"fields\":[{\"kind\":\"set\",\"key\":\"configured-model-id\",\"prominent\":false,\"value\":\"default\"}]},\"rootCourse\":1,\"rootGenseq\":2}\n"
+      },
+      {
+        "name": "latest.yaml",
+        "observedPath": "/tmp/dominds-tests-rtws-ETf0mT/rtws/.dialogs/run/23/d2/93c1ae41/latest.yaml",
+        "sha256": "70f888d3461d90a3046fd87a071036551657140fb653034c20143a8809ce29a4",
+        "fullText": "currentCourse: 1\nlastModified: 2026-10-31 13:58:26\nstatus: active\nmessageCount: 0\nfunctionCallCount: 0\nsideDialogCount: 0\nnextStep:\n  nextSeq: 2\n  triggers: []\ntellaskCalls:\n  calls: []\ntellaskResults:\n  results: []\ndisplayState:\n  kind: idle_waiting_user\ndisableDiligencePush: true\ndiligencePushRemainingBudget: 0\ngenerating: false\ngenerationRunState:\n  kind: closed\n  course: 1\n  genseq: 2\n  closedAt: 2026-10-31 13:58:26\n"
+      }
+    ],
+    "scope": "Same final new regression source against unmodified base product. No sleep, provider assertion, relaxed count, raised timeout or retry until green."
+  },
+  "changeReview": {
+    "product": "Reuse the fresh latest snapshot and always read the current root wake under the dialog mutex before core. For backend source only, no effective prompt, no durable work and no current root wake ends this attempt. Existing stale-queued continuation handling is retained. Present concrete continuation handlers retain their business claims; direct drives and explicit prompts are not newly gated.",
+    "newRegression": "Event-gate the actual canDrive result, let another real drive consume the same queued prompt, release the backend. Require exactly one provider request/gen and preserve the given input. Queue genuinely new work and require exactly one additional request/gen, both given response payloads, and no remaining pending work. Provider fixture always completes; assertions are outside its retry boundary.",
+    "existingBlockerRegression": "Keep real active-run deferred wake, actual blocker-cleared event, single delivered tellask result, cleared active dispatches and final given data. Capture provider contexts/counters without throwing assertions in callbacks. After real backend termination assert exactly root2/side1 and one correctly identified completed result. The >=2 wait merely synchronizes; exact counts remain required after shutdown.",
+    "literalAssertionReview": "Text equality and includes compare entire supplied opaque inputs/results, machine enums/IDs and persisted data; no generated guidance/log wording is an oracle. No new semantic generation is claimed.",
+    "limits": "The deterministic case controls a known awaited preflight boundary in-process. It is not a multiprocess stress test, live-provider check or proof against every possible concurrent change. Standard60s per-case limit unchanged."
+  },
+  "sourceFingerprints": [
+    {
+      "path": "main/llm/kernel-driver/flow.ts",
+      "sha256": "a95b9a4b9174d0cce2c364b4e5d8a23bbdfffbc2257dbdcb96e4a42c0a498f54"
+    },
+    {
+      "path": "main/llm/kernel-driver/loop.ts",
+      "sha256": "5d9c39d2557dc9b360cc7b2f986c45e4b8f611408c8b6697ea069fca0412c48d"
+    },
+    {
+      "path": "main/dialog-drive-work.ts",
+      "sha256": "deef3ac1267de3579164b2a9d600f77c3f85c397bc948e756718af106ab525ff"
+    },
+    {
+      "path": "tests/kernel-driver/backend-revalidates-work-after-preflight.ts",
+      "sha256": "fcbbf6ef06d7ffb6cc8b65dd50f2a629b4297185bdfadd118d337409faee296d"
+    },
+    {
+      "path": "tests/kernel-driver/sideDialog-backend-loop-retries-after-active-run-blocker.ts",
+      "sha256": "daa006d65def546e9426f6525fad04aaac2ea2cb437478bf74e90373d3e909fa"
+    },
+    {
+      "path": "tests/kernel-driver/helpers.ts",
+      "sha256": "520b1288cdb2114cb28cb9dcebdf95c7b0f19b1703fe3837a780ffb2d916f9a1"
+    },
+    {
+      "path": "tests/audit.json",
+      "sha256": "e5a24c4cd199aa6b3579245c4a7868b03693733abeb91333258746d9e84fb5f1"
+    },
+    {
+      "path": "tests/package.json",
+      "sha256": "da4ca97b816d7e148e1f3025bc5fc630d11a0df23c4e1b111f57bd509796e855"
+    },
+    {
+      "path": "docs/testing-strategy.md",
+      "sha256": "8fc9eebb7a1569ffb250a10aa79d62fc6100ed1bc0f2d7fa887e5e12d6540f4b"
+    }
+  ],
+  "verification": [
+    {
+      "check": "build",
+      "status": "passed",
+      "logPath": "/tmp/dominds-backend-preflight-build.log",
+      "exitCode": 0
+    },
+    {
+      "check": "focused new regression",
+      "status": "passed",
+      "logPath": "/tmp/dominds-backend-preflight-after-fix.log",
+      "exitCode": 0,
+      "fullLog": "$ tsx cli.ts -- --isolated-rtws kernel-driver/backend-revalidates-work-after-preflight.ts\nBackend revalidates consumed work after its awaited preflight and drives fresh work: PASS\n"
+    },
+    {
+      "check": "focused blocker regression",
+      "status": "passed",
+      "logPath": "/tmp/dominds-backend-active-blocker-after-fix.log",
+      "exitCode": 0,
+      "fullLog": "$ tsx cli.ts -- --isolated-rtws kernel-driver/sideDialog-backend-loop-retries-after-active-run-blocker.ts\nbackend retries the preserved collaboration wake after its active-run blocker clears: passed\n"
+    },
+    {
+      "check": "kernel",
+      "status": "passed",
+      "exitCode": 0,
+      "summary": {
+        "total": 64,
+        "passed": 64,
+        "failed": 0,
+        "timedOut": 0,
+        "results": [
+          {
+            "id": "kernel-driver/answer-human-a2h-deferred.ts",
+            "status": "passed",
+            "durationMs": 2653,
+            "code": 0,
+            "signal": null,
+            "logPath": "/tmp/dominds-tests-kernel-CsQgPr/001-kernel-driver_answer-human-a2h-deferred.ts.log"
+          },
+          {
+            "id": "kernel-driver/answering-a2h-side-reply-reminder.ts",
+            "status": "passed",
+            "durationMs": 2517,
+            "code": 0,
+            "signal": null,
+            "logPath": "/tmp/dominds-tests-kernel-CsQgPr/002-kernel-driver_answering-a2h-side-reply-reminder.ts.log"
+          },
+          {
+            "id": "kernel-driver/backend-loop-persists-drive-error-stall.ts",
+            "status": "passed",
+            "durationMs": 2260,
+            "code": 0,
+            "signal": null,
+            "logPath": "/tmp/dominds-tests-kernel-CsQgPr/003-kernel-driver_backend-loop-persists-drive-error-stall.ts.log"
+          },
+          {
+            "id": "kernel-driver/backend-revalidates-work-after-preflight.ts",
+            "status": "passed",
+            "durationMs": 2321,
+            "code": 0,
+            "signal": null,
+            "logPath": "/tmp/dominds-tests-kernel-CsQgPr/004-kernel-driver_backend-revalidates-work-after-preflight.ts.log"
+          },
+          {
+            "id": "kernel-driver/clear-mind-blocks-on-sibling-tool-failure.ts",
+            "status": "passed",
+            "durationMs": 3446,
+            "code": 0,
+            "signal": null,
+            "logPath": "/tmp/dominds-tests-kernel-CsQgPr/005-kernel-driver_clear-mind-blocks-on-sibling-tool-failure.ts.log"
+          },
+          {
+            "id": "kernel-driver/clear-mind-critical-auto-course.ts",
+            "status": "passed",
+            "durationMs": 2649,
+            "code": 0,
+            "signal": null,
+            "logPath": "/tmp/dominds-tests-kernel-CsQgPr/006-kernel-driver_clear-mind-critical-auto-course.ts.log"
+          },
+          {
+            "id": "kernel-driver/context-health-large-tool-output-hidden.ts",
+            "status": "passed",
+            "durationMs": 8353,
+            "code": 0,
+            "signal": null,
+            "logPath": "/tmp/dominds-tests-kernel-CsQgPr/007-kernel-driver_context-health-large-tool-output-hidden.ts.log"
+          },
+          {
+            "id": "kernel-driver/context-health-model-limit-usage.ts",
+            "status": "passed",
+            "durationMs": 2298,
+            "code": 0,
+            "signal": null,
+            "logPath": "/tmp/dominds-tests-kernel-CsQgPr/008-kernel-driver_context-health-model-limit-usage.ts.log"
+          },
+          {
+            "id": "kernel-driver/context-health-multi-iter-gate.ts",
+            "status": "passed",
+            "durationMs": 2887,
+            "code": 0,
+            "signal": null,
+            "logPath": "/tmp/dominds-tests-kernel-CsQgPr/009-kernel-driver_context-health-multi-iter-gate.ts.log"
+          },
+          {
+            "id": "kernel-driver/critical-queued-user-interjection.ts",
+            "status": "passed",
+            "durationMs": 3698,
+            "code": 0,
+            "signal": null,
+            "logPath": "/tmp/dominds-tests-kernel-CsQgPr/010-kernel-driver_critical-queued-user-interjection.ts.log"
+          },
+          {
+            "id": "kernel-driver/duplicate-raw-callid-effective-id.ts",
+            "status": "passed",
+            "durationMs": 3443,
+            "code": 0,
+            "signal": null,
+            "logPath": "/tmp/dominds-tests-kernel-CsQgPr/011-kernel-driver_duplicate-raw-callid-effective-id.ts.log"
+          },
+          {
+            "id": "kernel-driver/duplicate-tool-call-feedback.ts",
+            "status": "passed",
+            "durationMs": 2459,
+            "code": 0,
+            "signal": null,
+            "logPath": "/tmp/dominds-tests-kernel-CsQgPr/012-kernel-driver_duplicate-tool-call-feedback.ts.log"
+          },
+          {
+            "id": "kernel-driver/fbr-internal-conclusion-flow.ts",
+            "status": "passed",
+            "durationMs": 12276,
+            "code": 0,
+            "signal": null,
+            "logPath": "/tmp/dominds-tests-kernel-CsQgPr/013-kernel-driver_fbr-internal-conclusion-flow.ts.log"
+          },
+          {
+            "id": "kernel-driver/fbr-model-params-merge.ts",
+            "status": "passed",
+            "durationMs": 515,
+            "code": 0,
+            "signal": null,
+            "logPath": "/tmp/dominds-tests-kernel-CsQgPr/014-kernel-driver_fbr-model-params-merge.ts.log"
+          },
+          {
+            "id": "kernel-driver/func-call-persists-before-result.ts",
+            "status": "passed",
+            "durationMs": 3247,
+            "code": 0,
+            "signal": null,
+            "logPath": "/tmp/dominds-tests-kernel-CsQgPr/015-kernel-driver_func-call-persists-before-result.ts.log"
+          },
+          {
+            "id": "kernel-driver/idle-with-active-reply-obligation-display-state.ts",
+            "status": "passed",
+            "durationMs": 2083,
+            "code": 0,
+            "signal": null,
+            "logPath": "/tmp/dominds-tests-kernel-CsQgPr/016-kernel-driver_idle-with-active-reply-obligation-display-state.ts.log"
+          },
+          {
+            "id": "kernel-driver/immediate-followup-trigger-repair.ts",
+            "status": "passed",
+            "durationMs": 2311,
+            "code": 0,
+            "signal": null,
+            "logPath": "/tmp/dominds-tests-kernel-CsQgPr/017-kernel-driver_immediate-followup-trigger-repair.ts.log"
+          },
+          {
+            "id": "kernel-driver/invalid-json-tool-call-feedback.ts",
+            "status": "passed",
+            "durationMs": 3023,
+            "code": 0,
+            "signal": null,
+            "logPath": "/tmp/dominds-tests-kernel-CsQgPr/018-kernel-driver_invalid-json-tool-call-feedback.ts.log"
+          },
+          {
+            "id": "kernel-driver/llm-request-failure-single-stream-error.ts",
+            "status": "passed",
+            "durationMs": 2447,
+            "code": 0,
+            "signal": null,
+            "logPath": "/tmp/dominds-tests-kernel-CsQgPr/019-kernel-driver_llm-request-failure-single-stream-error.ts.log"
+          },
+          {
+            "id": "kernel-driver/mainline-reply-obligation-reminder-direct-fallback.ts",
+            "status": "passed",
+            "durationMs": 2749,
+            "code": 0,
+            "signal": null,
+            "logPath": "/tmp/dominds-tests-kernel-CsQgPr/020-kernel-driver_mainline-reply-obligation-reminder-direct-fallback.ts.log"
+          },
+          {
+            "id": "kernel-driver/mock-provider-contract.ts",
+            "status": "passed",
+            "durationMs": 2645,
+            "code": 0,
+            "signal": null,
+            "logPath": "/tmp/dominds-tests-kernel-CsQgPr/021-kernel-driver_mock-provider-contract.ts.log"
+          },
+          {
+            "id": "kernel-driver/multi-iter-tool-round-context-continuity.ts",
+            "status": "passed",
+            "durationMs": 2833,
+            "code": 0,
+            "signal": null,
+            "logPath": "/tmp/dominds-tests-kernel-CsQgPr/022-kernel-driver_multi-iter-tool-round-context-continuity.ts.log"
+          },
+          {
+            "id": "kernel-driver/multiple-askhuman-invalid.ts",
+            "status": "passed",
+            "durationMs": 3180,
+            "code": 0,
+            "signal": null,
+            "logPath": "/tmp/dominds-tests-kernel-CsQgPr/023-kernel-driver_multiple-askhuman-invalid.ts.log"
+          },
+          {
+            "id": "kernel-driver/pending-user-interjection-recovery.ts",
+            "status": "passed",
+            "durationMs": 2177,
+            "code": 0,
+            "signal": null,
+            "logPath": "/tmp/dominds-tests-kernel-CsQgPr/024-kernel-driver_pending-user-interjection-recovery.ts.log"
+          },
+          {
+            "id": "kernel-driver/pre-drive-latest-load-failure-stops.ts",
+            "status": "passed",
+            "durationMs": 2057,
+            "code": 0,
+            "signal": null,
+            "logPath": "/tmp/dominds-tests-kernel-CsQgPr/025-kernel-driver_pre-drive-latest-load-failure-stops.ts.log"
+          },
+          {
+            "id": "kernel-driver/q4h-preserves-diligence-budget.ts",
+            "status": "passed",
+            "durationMs": 2679,
+            "code": 0,
+            "signal": null,
+            "logPath": "/tmp/dominds-tests-kernel-CsQgPr/026-kernel-driver_q4h-preserves-diligence-budget.ts.log"
+          },
+          {
+            "id": "kernel-driver/reminder-context-footer-state.ts",
+            "status": "passed",
+            "durationMs": 440,
+            "code": 0,
+            "signal": null,
+            "logPath": "/tmp/dominds-tests-kernel-CsQgPr/027-kernel-driver_reminder-context-footer-state.ts.log"
+          },
+          {
+            "id": "kernel-driver/repeated-tool-call-reminder.ts",
+            "status": "passed",
+            "durationMs": 3471,
+            "code": 0,
+            "signal": null,
+            "logPath": "/tmp/dominds-tests-kernel-CsQgPr/028-kernel-driver_repeated-tool-call-reminder.ts.log"
+          },
+          {
+            "id": "kernel-driver/reply-tool-dynamic-guidance.ts",
+            "status": "passed",
+            "durationMs": 2872,
+            "code": 0,
+            "signal": null,
+            "logPath": "/tmp/dominds-tests-kernel-CsQgPr/029-kernel-driver_reply-tool-dynamic-guidance.ts.log"
+          },
+          {
+            "id": "kernel-driver/retry-recovery-diligence-push-with-keep-going-disabled.ts",
+            "status": "passed",
+            "durationMs": 26760,
+            "code": 0,
+            "signal": null,
+            "logPath": "/tmp/dominds-tests-kernel-CsQgPr/030-kernel-driver_retry-recovery-diligence-push-with-keep-going-disabled.ts.log"
+          },
+          {
+            "id": "kernel-driver/root-cross-trigger-does-not-reenter-during-tail.ts",
+            "status": "passed",
+            "durationMs": 2252,
+            "code": 0,
+            "signal": null,
+            "logPath": "/tmp/dominds-tests-kernel-CsQgPr/031-kernel-driver_root-cross-trigger-does-not-reenter-during-tail.ts.log"
+          },
+          {
+            "id": "kernel-driver/root-runtime-wake-lifecycle.ts",
+            "status": "passed",
+            "durationMs": 2933,
+            "code": 0,
+            "signal": null,
+            "logPath": "/tmp/dominds-tests-kernel-CsQgPr/032-kernel-driver_root-runtime-wake-lifecycle.ts.log"
+          },
+          {
+            "id": "kernel-driver/root-tail-error-still-rewakes-root-runtime-wake.ts",
+            "status": "passed",
+            "durationMs": 2294,
+            "code": 0,
+            "signal": null,
+            "logPath": "/tmp/dominds-tests-kernel-CsQgPr/033-kernel-driver_root-tail-error-still-rewakes-root-runtime-wake.ts.log"
+          },
+          {
+            "id": "kernel-driver/root-tellask-background-callee-badge-event.ts",
+            "status": "passed",
+            "durationMs": 2665,
+            "code": 0,
+            "signal": null,
+            "logPath": "/tmp/dominds-tests-kernel-CsQgPr/034-kernel-driver_root-tellask-background-callee-badge-event.ts.log"
+          },
+          {
+            "id": "kernel-driver/runtime-reminder-context.ts",
+            "status": "passed",
+            "durationMs": 2670,
+            "code": 0,
+            "signal": null,
+            "logPath": "/tmp/dominds-tests-kernel-CsQgPr/035-kernel-driver_runtime-reminder-context.ts.log"
+          },
+          {
+            "id": "kernel-driver/sideDialog-askback-auto-resume-while-pending-registered-sideDialog.ts",
+            "status": "passed",
+            "durationMs": 4236,
+            "code": 0,
+            "signal": null,
+            "logPath": "/tmp/dominds-tests-kernel-CsQgPr/036-kernel-driver_sideDialog-askback-auto-resume-while-pending-registered-sideDialog.ts.log"
+          },
+          {
+            "id": "kernel-driver/sideDialog-askback-reply-tool-no-double-delivery.ts",
+            "status": "passed",
+            "durationMs": 2691,
+            "code": 0,
+            "signal": null,
+            "logPath": "/tmp/dominds-tests-kernel-CsQgPr/037-kernel-driver_sideDialog-askback-reply-tool-no-double-delivery.ts.log"
+          },
+          {
+            "id": "kernel-driver/sideDialog-backend-loop-retries-after-active-run-blocker.ts",
+            "status": "passed",
+            "durationMs": 2578,
+            "code": 0,
+            "signal": null,
+            "logPath": "/tmp/dominds-tests-kernel-CsQgPr/038-kernel-driver_sideDialog-backend-loop-retries-after-active-run-blocker.ts.log"
+          },
+          {
+            "id": "kernel-driver/sideDialog-caller-result-arrival-backend-wake-queue.ts",
+            "status": "passed",
+            "durationMs": 3051,
+            "code": 0,
+            "signal": null,
+            "logPath": "/tmp/dominds-tests-kernel-CsQgPr/039-kernel-driver_sideDialog-caller-result-arrival-backend-wake-queue.ts.log"
+          },
+          {
+            "id": "kernel-driver/sideDialog-clear-mind-keeps-pending-round.ts",
+            "status": "passed",
+            "durationMs": 2674,
+            "code": 0,
+            "signal": null,
+            "logPath": "/tmp/dominds-tests-kernel-CsQgPr/040-kernel-driver_sideDialog-clear-mind-keeps-pending-round.ts.log"
+          },
+          {
+            "id": "kernel-driver/sideDialog-diligence-push-state.ts",
+            "status": "passed",
+            "durationMs": 2066,
+            "code": 0,
+            "signal": null,
+            "logPath": "/tmp/dominds-tests-kernel-CsQgPr/041-kernel-driver_sideDialog-diligence-push-state.ts.log"
+          },
+          {
+            "id": "kernel-driver/sideDialog-direct-fallback-thinking.ts",
+            "status": "passed",
+            "durationMs": 4101,
+            "code": 0,
+            "signal": null,
+            "logPath": "/tmp/dominds-tests-kernel-CsQgPr/042-kernel-driver_sideDialog-direct-fallback-thinking.ts.log"
+          },
+          {
+            "id": "kernel-driver/sideDialog-mixed-tool-round-honors-suspension.ts",
+            "status": "passed",
+            "durationMs": 2973,
+            "code": 0,
+            "signal": null,
+            "logPath": "/tmp/dominds-tests-kernel-CsQgPr/043-kernel-driver_sideDialog-mixed-tool-round-honors-suspension.ts.log"
+          },
+          {
+            "id": "kernel-driver/sideDialog-multi-pending-registers-before-drive.ts",
+            "status": "passed",
+            "durationMs": 3070,
+            "code": 0,
+            "signal": null,
+            "logPath": "/tmp/dominds-tests-kernel-CsQgPr/044-kernel-driver_sideDialog-multi-pending-registers-before-drive.ts.log"
+          },
+          {
+            "id": "kernel-driver/sideDialog-new-course-prompt-survives-restore.ts",
+            "status": "passed",
+            "durationMs": 2706,
+            "code": 0,
+            "signal": null,
+            "logPath": "/tmp/dominds-tests-kernel-CsQgPr/045-kernel-driver_sideDialog-new-course-prompt-survives-restore.ts.log"
+          },
+          {
+            "id": "kernel-driver/sideDialog-new-course-update-reminder-followup.ts",
+            "status": "passed",
+            "durationMs": 2616,
+            "code": 0,
+            "signal": null,
+            "logPath": "/tmp/dominds-tests-kernel-CsQgPr/046-kernel-driver_sideDialog-new-course-update-reminder-followup.ts.log"
+          },
+          {
+            "id": "kernel-driver/sideDialog-no-empty-autodrive-after-final-response.ts",
+            "status": "passed",
+            "durationMs": 2807,
+            "code": 0,
+            "signal": null,
+            "logPath": "/tmp/dominds-tests-kernel-CsQgPr/047-kernel-driver_sideDialog-no-empty-autodrive-after-final-response.ts.log"
+          },
+          {
+            "id": "kernel-driver/sideDialog-pending-runtime-prompt-counts-as-resumable.ts",
+            "status": "passed",
+            "durationMs": 2032,
+            "code": 0,
+            "signal": null,
+            "logPath": "/tmp/dominds-tests-kernel-CsQgPr/048-kernel-driver_sideDialog-pending-runtime-prompt-counts-as-resumable.ts.log"
+          },
+          {
+            "id": "kernel-driver/sideDialog-queue-commit-mirror.ts",
+            "status": "passed",
+            "durationMs": 2818,
+            "code": 0,
+            "signal": null,
+            "logPath": "/tmp/dominds-tests-kernel-CsQgPr/049-kernel-driver_sideDialog-queue-commit-mirror.ts.log"
+          },
+          {
+            "id": "kernel-driver/sideDialog-queue-interrupt-rollback.ts",
+            "status": "passed",
+            "durationMs": 2857,
+            "code": 0,
+            "signal": null,
+            "logPath": "/tmp/dominds-tests-kernel-CsQgPr/050-kernel-driver_sideDialog-queue-interrupt-rollback.ts.log"
+          },
+          {
+            "id": "kernel-driver/sideDialog-registered-initial-auto-drive.ts",
+            "status": "passed",
+            "durationMs": 2579,
+            "code": 0,
+            "signal": null,
+            "logPath": "/tmp/dominds-tests-kernel-CsQgPr/051-kernel-driver_sideDialog-registered-initial-auto-drive.ts.log"
+          },
+          {
+            "id": "kernel-driver/sideDialog-registered-update-clear-mind-rebinds-reply-target.ts",
+            "status": "passed",
+            "durationMs": 2716,
+            "code": 0,
+            "signal": null,
+            "logPath": "/tmp/dominds-tests-kernel-CsQgPr/052-kernel-driver_sideDialog-registered-update-clear-mind-rebinds-reply-target.ts.log"
+          },
+          {
+            "id": "kernel-driver/sideDialog-registered-update-queues-queued-prompt.ts",
+            "status": "passed",
+            "durationMs": 2821,
+            "code": 0,
+            "signal": null,
+            "logPath": "/tmp/dominds-tests-kernel-CsQgPr/053-kernel-driver_sideDialog-registered-update-queues-queued-prompt.ts.log"
+          },
+          {
+            "id": "kernel-driver/sideDialog-registered-update-replaces-pending-round.ts",
+            "status": "passed",
+            "durationMs": 2877,
+            "code": 0,
+            "signal": null,
+            "logPath": "/tmp/dominds-tests-kernel-CsQgPr/054-kernel-driver_sideDialog-registered-update-replaces-pending-round.ts.log"
+          },
+          {
+            "id": "kernel-driver/sideDialog-reply-delivery-marked-delivered.ts",
+            "status": "passed",
+            "durationMs": 2176,
+            "code": 0,
+            "signal": null,
+            "logPath": "/tmp/dominds-tests-kernel-CsQgPr/055-kernel-driver_sideDialog-reply-delivery-marked-delivered.ts.log"
+          },
+          {
+            "id": "kernel-driver/sideDialog-reply-missing-assignment-anchor.ts",
+            "status": "passed",
+            "durationMs": 2132,
+            "code": 0,
+            "signal": null,
+            "logPath": "/tmp/dominds-tests-kernel-CsQgPr/056-kernel-driver_sideDialog-reply-missing-assignment-anchor.ts.log"
+          },
+          {
+            "id": "kernel-driver/sideDialog-stale-pending-runtime-prompt-clears-on-restore.ts",
+            "status": "passed",
+            "durationMs": 2285,
+            "code": 0,
+            "signal": null,
+            "logPath": "/tmp/dominds-tests-kernel-CsQgPr/057-kernel-driver_sideDialog-stale-pending-runtime-prompt-clears-on-restore.ts.log"
+          },
+          {
+            "id": "kernel-driver/stale-pending-runtime-prompt-queue-claim.ts",
+            "status": "passed",
+            "durationMs": 2460,
+            "code": 0,
+            "signal": null,
+            "logPath": "/tmp/dominds-tests-kernel-CsQgPr/058-kernel-driver_stale-pending-runtime-prompt-queue-claim.ts.log"
+          },
+          {
+            "id": "kernel-driver/tellask-background-dispatch-does-not-immediate-followup.ts",
+            "status": "passed",
+            "durationMs": 2680,
+            "code": 0,
+            "signal": null,
+            "logPath": "/tmp/dominds-tests-kernel-CsQgPr/059-kernel-driver_tellask-background-dispatch-does-not-immediate-followup.ts.log"
+          },
+          {
+            "id": "kernel-driver/tellask-resolved-result-context-pointer.ts",
+            "status": "passed",
+            "durationMs": 735,
+            "code": 0,
+            "signal": null,
+            "logPath": "/tmp/dominds-tests-kernel-CsQgPr/060-kernel-driver_tellask-resolved-result-context-pointer.ts.log"
+          },
+          {
+            "id": "kernel-driver/unexpected-idle-after-tool-round-debug-dump.ts",
+            "status": "passed",
+            "durationMs": 2496,
+            "code": 0,
+            "signal": null,
+            "logPath": "/tmp/dominds-tests-kernel-CsQgPr/061-kernel-driver_unexpected-idle-after-tool-round-debug-dump.ts.log"
+          },
+          {
+            "id": "kernel-driver/update-reminder-immediate-followup.ts",
+            "status": "passed",
+            "durationMs": 2798,
+            "code": 0,
+            "signal": null,
+            "logPath": "/tmp/dominds-tests-kernel-CsQgPr/062-kernel-driver_update-reminder-immediate-followup.ts.log"
+          },
+          {
+            "id": "kernel-driver/user-interject-active-callee-suppresses-reply-guidance.ts",
+            "status": "passed",
+            "durationMs": 5349,
+            "code": 0,
+            "signal": null,
+            "logPath": "/tmp/dominds-tests-kernel-CsQgPr/063-kernel-driver_user-interject-active-callee-suppresses-reply-guidance.ts.log"
+          },
+          {
+            "id": "kernel-driver/user-interject-active-callee-tool-followup.ts",
+            "status": "passed",
+            "durationMs": 3775,
+            "code": 0,
+            "signal": null,
+            "logPath": "/tmp/dominds-tests-kernel-CsQgPr/064-kernel-driver_user-interject-active-callee-tool-followup.ts.log"
+          }
+        ]
+      }
+    },
+    {
+      "check": "application types",
+      "status": "passed",
+      "exitCode": 0,
+      "logPath": "/tmp/dominds-backend-preflight-app-types.log"
+    },
+    {
+      "check": "full test types",
+      "status": "failed",
+      "exitCode": 2,
+      "diagnostics": 47,
+      "changedSourceDiagnostics": 0,
+      "fullLog": "$ tsc -p tests/tsconfig.json --noEmit\ntests/apps-host-tool-result-contract.ts(454,63): error TS2339: Property 'position' does not exist on type 'DomindsAppReminderApplyRequest'.\n  Property 'position' does not exist on type 'Readonly<{ kind: \"delete\"; ownerRef: string; meta?: JsonValue | undefined; }>'.\ntests/provider/anthropic-stream-errors.ts(46,7): error TS2345: Argument of type '{ id: string; name: string; model: string; }' is not assignable to parameter of type 'Member'.\n  Type '{ id: string; name: string; model: string; }' is missing the following properties from type 'Member': setName, setProvider, setModel, setGofor, and 20 more.\ntests/provider/tool-choice-requirement.ts(23,7): error TS2322: Type '{ type: \"function\"; name: string; description: string; parameters: { type: string; properties: {}; additionalProperties: boolean; }; }' is not assignable to type 'ChatGptTool'.\n  Property 'strict' is missing in type '{ type: \"function\"; name: string; description: string; parameters: { type: string; properties: {}; additionalProperties: boolean; }; }' but required in type 'ChatGptFunctionTool'.\ntests/provider/volcengine-coding-plan-live-smoke.ts(305,27): error TS2339: Property 'name' does not exist on type 'never'.\ntests/reminders/app-reminder-render-mode-preserve.ts(21,5): error TS2511: Cannot create an instance of an abstract class.\ntests/reminders/daemon-exit-wake-event.ts(9,25): error TS2511: Cannot create an instance of an abstract class.\ntests/reminders/daemon-exit-wake-event.ts(50,22): error TS2339: Property 'reminderId' does not exist on type 'Readonly<{ eventId: string; reminderId: string; content: string; updatedContent?: string | undefined; updatedMeta?: JsonValue | undefined; }> | readonly Readonly<{ eventId: string; reminderId: string; content: string; updatedContent?: string | undefined; updatedMeta?: JsonValue | undefined; }>[]'.\n  Property 'reminderId' does not exist on type 'readonly Readonly<{ eventId: string; reminderId: string; content: string; updatedContent?: string | undefined; updatedMeta?: JsonValue | undefined; }>[]'.\ntests/reminders/daemon-exit-wake-event.ts(51,22): error TS2339: Property 'eventId' does not exist on type 'Readonly<{ eventId: string; reminderId: string; content: string; updatedContent?: string | undefined; updatedMeta?: JsonValue | undefined; }> | readonly Readonly<{ eventId: string; reminderId: string; content: string; updatedContent?: string | undefined; updatedMeta?: JsonValue | undefined; }>[]'.\n  Property 'eventId' does not exist on type 'readonly Readonly<{ eventId: string; reminderId: string; content: string; updatedContent?: string | undefined; updatedMeta?: JsonValue | undefined; }>[]'.\ntests/reminders/daemon-exit-wake-event.ts(52,22): error TS2339: Property 'content' does not exist on type 'Readonly<{ eventId: string; reminderId: string; content: string; updatedContent?: string | undefined; updatedMeta?: JsonValue | undefined; }> | readonly Readonly<{ eventId: string; reminderId: string; content: string; updatedContent?: string | undefined; updatedMeta?: JsonValue | undefined; }>[]'.\n  Property 'content' does not exist on type 'readonly Readonly<{ eventId: string; reminderId: string; content: string; updatedContent?: string | undefined; updatedMeta?: JsonValue | undefined; }>[]'.\ntests/reminders/daemon-exit-wake-event.ts(53,22): error TS2339: Property 'updatedContent' does not exist on type 'Readonly<{ eventId: string; reminderId: string; content: string; updatedContent?: string | undefined; updatedMeta?: JsonValue | undefined; }> | readonly Readonly<{ eventId: string; reminderId: string; content: string; updatedContent?: string | undefined; updatedMeta?: JsonValue | undefined; }>[]'.\n  Property 'updatedContent' does not exist on type 'readonly Readonly<{ eventId: string; reminderId: string; content: string; updatedContent?: string | undefined; updatedMeta?: JsonValue | undefined; }>[]'.\ntests/reminders/daemon-exit-wake-event.ts(54,29): error TS2339: Property 'updatedMeta' does not exist on type 'Readonly<{ eventId: string; reminderId: string; content: string; updatedContent?: string | undefined; updatedMeta?: JsonValue | undefined; }> | readonly Readonly<{ eventId: string; reminderId: string; content: string; updatedContent?: string | undefined; updatedMeta?: JsonValue | undefined; }>[]'.\n  Property 'updatedMeta' does not exist on type 'readonly Readonly<{ eventId: string; reminderId: string; content: string; updatedContent?: string | undefined; updatedMeta?: JsonValue | undefined; }>[]'.\ntests/reminders/daemon-exit-wake-event.ts(55,25): error TS2339: Property 'updatedMeta' does not exist on type 'Readonly<{ eventId: string; reminderId: string; content: string; updatedContent?: string | undefined; updatedMeta?: JsonValue | undefined; }> | readonly Readonly<{ eventId: string; reminderId: string; content: string; updatedContent?: string | undefined; updatedMeta?: JsonValue | undefined; }>[]'.\n  Property 'updatedMeta' does not exist on type 'readonly Readonly<{ eventId: string; reminderId: string; content: string; updatedContent?: string | undefined; updatedMeta?: JsonValue | undefined; }>[]'.\ntests/reminders/daemon-exit-wake-event.ts(56,36): error TS2339: Property 'updatedMeta' does not exist on type 'Readonly<{ eventId: string; reminderId: string; content: string; updatedContent?: string | undefined; updatedMeta?: JsonValue | undefined; }> | readonly Readonly<{ eventId: string; reminderId: string; content: string; updatedContent?: string | undefined; updatedMeta?: JsonValue | undefined; }>[]'.\n  Property 'updatedMeta' does not exist on type 'readonly Readonly<{ eventId: string; reminderId: string; content: string; updatedContent?: string | undefined; updatedMeta?: JsonValue | undefined; }>[]'.\ntests/reminders/daemon-exit-wake-event.ts(58,18): error TS2339: Property 'updatedMeta' does not exist on type 'Readonly<{ eventId: string; reminderId: string; content: string; updatedContent?: string | undefined; updatedMeta?: JsonValue | undefined; }> | readonly Readonly<{ eventId: string; reminderId: string; content: string; updatedContent?: string | undefined; updatedMeta?: JsonValue | undefined; }>[]'.\n  Property 'updatedMeta' does not exist on type 'readonly Readonly<{ eventId: string; reminderId: string; content: string; updatedContent?: string | undefined; updatedMeta?: JsonValue | undefined; }>[]'.\ntests/reminders/daemon-exit-wake-event.ts(59,11): error TS2339: Property 'updatedMeta' does not exist on type 'Readonly<{ eventId: string; reminderId: string; content: string; updatedContent?: string | undefined; updatedMeta?: JsonValue | undefined; }> | readonly Readonly<{ eventId: string; reminderId: string; content: string; updatedContent?: string | undefined; updatedMeta?: JsonValue | undefined; }>[]'.\n  Property 'updatedMeta' does not exist on type 'readonly Readonly<{ eventId: string; reminderId: string; content: string; updatedContent?: string | undefined; updatedMeta?: JsonValue | undefined; }>[]'.\ntests/reminders/daemon-exit-wake-event.ts(60,25): error TS2339: Property 'updatedMeta' does not exist on type 'Readonly<{ eventId: string; reminderId: string; content: string; updatedContent?: string | undefined; updatedMeta?: JsonValue | undefined; }> | readonly Readonly<{ eventId: string; reminderId: string; content: string; updatedContent?: string | undefined; updatedMeta?: JsonValue | undefined; }>[]'.\n  Property 'updatedMeta' does not exist on type 'readonly Readonly<{ eventId: string; reminderId: string; content: string; updatedContent?: string | undefined; updatedMeta?: JsonValue | undefined; }>[]'.\ntests/reminders/daemon-exit-wake-event.ts(64,22): error TS2339: Property 'updatedMeta' does not exist on type 'Readonly<{ eventId: string; reminderId: string; content: string; updatedContent?: string | undefined; updatedMeta?: JsonValue | undefined; }> | readonly Readonly<{ eventId: string; reminderId: string; content: string; updatedContent?: string | undefined; updatedMeta?: JsonValue | undefined; }>[]'.\n  Property 'updatedMeta' does not exist on type 'readonly Readonly<{ eventId: string; reminderId: string; content: string; updatedContent?: string | undefined; updatedMeta?: JsonValue | undefined; }>[]'.\ntests/reminders/daemon-exit-wake-event.ts(65,22): error TS2339: Property 'updatedMeta' does not exist on type 'Readonly<{ eventId: string; reminderId: string; content: string; updatedContent?: string | undefined; updatedMeta?: JsonValue | undefined; }> | readonly Readonly<{ eventId: string; reminderId: string; content: string; updatedContent?: string | undefined; updatedMeta?: JsonValue | undefined; }>[]'.\n  Property 'updatedMeta' does not exist on type 'readonly Readonly<{ eventId: string; reminderId: string; content: string; updatedContent?: string | undefined; updatedMeta?: JsonValue | undefined; }>[]'.\ntests/reminders/daemon-exit-wake-event.ts(65,60): error TS2339: Property 'eventId' does not exist on type 'Readonly<{ eventId: string; reminderId: string; content: string; updatedContent?: string | undefined; updatedMeta?: JsonValue | undefined; }> | readonly Readonly<{ eventId: string; reminderId: string; content: string; updatedContent?: string | undefined; updatedMeta?: JsonValue | undefined; }>[]'.\n  Property 'eventId' does not exist on type 'readonly Readonly<{ eventId: string; reminderId: string; content: string; updatedContent?: string | undefined; updatedMeta?: JsonValue | undefined; }>[]'.\ntests/reminders/daemon-exit-wake-event.ts(66,29): error TS2339: Property 'updatedMeta' does not exist on type 'Readonly<{ eventId: string; reminderId: string; content: string; updatedContent?: string | undefined; updatedMeta?: JsonValue | undefined; }> | readonly Readonly<{ eventId: string; reminderId: string; content: string; updatedContent?: string | undefined; updatedMeta?: JsonValue | undefined; }>[]'.\n  Property 'updatedMeta' does not exist on type 'readonly Readonly<{ eventId: string; reminderId: string; content: string; updatedContent?: string | undefined; updatedMeta?: JsonValue | undefined; }>[]'.\ntests/reminders/daemon-exit-wake-event.ts(67,22): error TS2339: Property 'updatedMeta' does not exist on type 'Readonly<{ eventId: string; reminderId: string; content: string; updatedContent?: string | undefined; updatedMeta?: JsonValue | undefined; }> | readonly Readonly<{ eventId: string; reminderId: string; content: string; updatedContent?: string | undefined; updatedMeta?: JsonValue | undefined; }>[]'.\n  Property 'updatedMeta' does not exist on type 'readonly Readonly<{ eventId: string; reminderId: string; content: string; updatedContent?: string | undefined; updatedMeta?: JsonValue | undefined; }>[]'.\ntests/reminders/daemon-exit-wake-event.ts(71,20): error TS2339: Property 'updatedContent' does not exist on type 'Readonly<{ eventId: string; reminderId: string; content: string; updatedContent?: string | undefined; updatedMeta?: JsonValue | undefined; }> | readonly Readonly<{ eventId: string; reminderId: string; content: string; updatedContent?: string | undefined; updatedMeta?: JsonValue | undefined; }>[]'.\n  Property 'updatedContent' does not exist on type 'readonly Readonly<{ eventId: string; reminderId: string; content: string; updatedContent?: string | undefined; updatedMeta?: JsonValue | undefined; }>[]'.\ntests/reminders/daemon-exit-wake-event.ts(75,17): error TS2339: Property 'updatedMeta' does not exist on type 'Readonly<{ eventId: string; reminderId: string; content: string; updatedContent?: string | undefined; updatedMeta?: JsonValue | undefined; }> | readonly Readonly<{ eventId: string; reminderId: string; content: string; updatedContent?: string | undefined; updatedMeta?: JsonValue | undefined; }>[]'.\n  Property 'updatedMeta' does not exist on type 'readonly Readonly<{ eventId: string; reminderId: string; content: string; updatedContent?: string | undefined; updatedMeta?: JsonValue | undefined; }>[]'.\ntests/reminders/daemon-exit-wake-event.ts(86,20): error TS2339: Property 'updatedContent' does not exist on type 'Readonly<{ eventId: string; reminderId: string; content: string; updatedContent?: string | undefined; updatedMeta?: JsonValue | undefined; }> | readonly Readonly<{ eventId: string; reminderId: string; content: string; updatedContent?: string | undefined; updatedMeta?: JsonValue | undefined; }>[]'.\n  Property 'updatedContent' does not exist on type 'readonly Readonly<{ eventId: string; reminderId: string; content: string; updatedContent?: string | undefined; updatedMeta?: JsonValue | undefined; }>[]'.\ntests/reminders/daemon-reminder-gone-exit-snapshot.ts(10,5): error TS2511: Cannot create an instance of an abstract class.\ntests/reminders/daemon-reminder-no-jitter-without-output-change.ts(17,5): error TS2511: Cannot create an instance of an abstract class.\ntests/reminders/daemon-reminder-no-jitter-without-output-change.ts(50,9): error TS2322: Type 'string | undefined' is not assignable to type 'JsonValue'.\n  Type 'undefined' is not assignable to type 'JsonValue'.\ntests/reminders/daemon-reminder-no-jitter-without-output-change.ts(62,34): error TS2339: Property 'pid' does not exist on type 'string | number | boolean | JsonObject | JsonArray'.\n  Property 'pid' does not exist on type 'string'.\ntests/reminders/daemon-reminder-render.ts(36,25): error TS2511: Cannot create an instance of an abstract class.\ntests/reminders/daemon-reminder-render.ts(72,9): error TS2322: Type 'string | undefined' is not assignable to type 'JsonValue'.\n  Type 'undefined' is not assignable to type 'JsonValue'.\ntests/reminders/daemon-reminder-retained-after-exit.ts(17,5): error TS2511: Cannot create an instance of an abstract class.\ntests/reminders/daemon-reminder-retained-after-exit.ts(59,9): error TS2322: Type 'string | undefined' is not assignable to type 'JsonValue'.\n  Type 'undefined' is not assignable to type 'JsonValue'.\ntests/reminders/daemon-start-receipt-lifecycle-card.ts(11,5): error TS2511: Cannot create an instance of an abstract class.\ntests/reminders/daemon-start-receipt-lifecycle-card.ts(46,9): error TS2322: Type 'string | undefined' is not assignable to type 'JsonValue'.\n  Type 'undefined' is not assignable to type 'JsonValue'.\ntests/reminders/get-daemon-output-stream-selection.ts(16,5): error TS2511: Cannot create an instance of an abstract class.\ntests/reminders/get-daemon-output-stream-selection.ts(50,5): error TS2322: Type 'string | undefined' is not assignable to type 'JsonValue'.\n  Type 'undefined' is not assignable to type 'JsonValue'.\ntests/reminders/get-daemon-output-stream-selection.ts(117,9): error TS2322: Type 'string | undefined' is not assignable to type 'JsonValue'.\n  Type 'undefined' is not assignable to type 'JsonValue'.\ntests/reminders/shared-daemon-reminder-command-mismatch.ts(33,5): error TS2511: Cannot create an instance of an abstract class.\ntests/reminders/shared-daemon-reminder-command-mismatch.ts(85,9): error TS2322: Type 'string | undefined' is not assignable to type 'JsonValue'.\n  Type 'undefined' is not assignable to type 'JsonValue'.\ntests/reminders/shared-daemon-reminder-persistence.ts(34,5): error TS2511: Cannot create an instance of an abstract class.\ntests/reminders/shared-daemon-reminder-persistence.ts(73,9): error TS2322: Type 'string | undefined' is not assignable to type 'JsonValue'.\n  Type 'undefined' is not assignable to type 'JsonValue'.\ntests/reminders/shared-daemon-reminder-wrapper-command-match.ts(28,5): error TS2511: Cannot create an instance of an abstract class.\ntests/ripgrep-streaming.ts(29,23): error TS2835: Relative import paths need explicit file extensions in ECMAScript imports when '--moduleResolution' is 'node16' or 'nodenext'. Did you mean '../main/tools/ripgrep.js'?\ntests/ripgrep-windows-compat.ts(29,23): error TS2835: Relative import paths need explicit file extensions in ECMAScript imports when '--moduleResolution' is 'node16' or 'nodenext'. Did you mean '../main/tools/ripgrep.js'?\ntests/task-package.ts(174,7): error TS2322: Type 'number' is not assignable to type 'CallSiteCourseNo'.\n  Type 'number' is not assignable to type '{ readonly __callSiteCourseBrand: unique symbol; }'.\ntests/task-package.ts(175,7): error TS2322: Type 'number' is not assignable to type 'CallSiteGenseqNo'.\n  Type 'number' is not assignable to type '{ readonly __callSiteGenseqBrand: unique symbol; }'.\ntests/toolsets/shell-cmd-capture-env.ts(73,5): error TS2322: Type 'unknown' is not assignable to type 'boolean'.\n[ELIFECYCLE] Command failed with exit code 2.\n"
+    },
+    {
+      "check": "runner",
+      "status": "passed",
+      "exitCode": 0,
+      "cases": 6,
+      "fullLog": "$ node --test tests/runner.test.mjs\n✔ a failure and a timeout retain evidence and do not prevent later cases from running (1064.878291ms)\n✔ kernel discovery includes regressions omitted from the old hand-maintained integration script (19.45384ms)\n✔ a descriptive case id does not overflow the tsx Unix socket path (171.799726ms)\n✔ evidence generation retains successful process material for subjective review (27.603902ms)\n✔ isolated CLI preserves a failed workspace and cleans a successful workspace by default (664.933717ms)\n✔ inventory recognizes rtws flags and reports their missing script targets (5.108319ms)\nℹ tests 6\nℹ suites 0\nℹ pass 6\nℹ fail 0\nℹ cancelled 0\nℹ skipped 0\nℹ todo 0\nℹ duration_ms 2014.074622\n"
+    },
+    {
+      "check": "format",
+      "status": "passed",
+      "exitCode": 0,
+      "logPath": "/tmp/dominds-backend-preflight-format.log",
+      "note": "New/merged report formatting checked separately after completion."
+    },
+    {
+      "check": "all tracked Markdown navigation",
+      "status": "passed",
+      "exitCode": 0,
+      "result": {
+        "trackedMarkdown": 201,
+        "newMarkdown": 0,
+        "canonicalDocuments": 69,
+        "excludedRuntimeSources": 131,
+        "localTargetsAndFragments": 375,
+        "networkLinksIgnored": 9,
+        "failures": []
+      }
+    },
+    {
+      "check": "inventory",
+      "status": "observed",
+      "typescriptFiles": 287,
+      "supportFiles": 32,
+      "candidates": 255,
+      "reviewed": 161,
+      "unaudited": 94,
+      "outsideSuites": 87,
+      "withoutPackageScript": 43,
+      "missingPackageScriptTargets": 0,
+      "missingAuditedFiles": 0
+    }
+  ],
+  "statusMeaning": "Focused stale-preflight and active-run blocker regressions and all64 discovered kernel cases passed. Build, application types, formatting, runner and offline documentation links passed. Full test types remain FAILED47 diagnostics;94 candidates remain unaudited. This is not whole-repository completion or acceptance of any fresh semantic output."
+}
