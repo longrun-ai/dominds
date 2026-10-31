@@ -1,6 +1,4 @@
-import assert from 'assert/strict';
-import http from 'http';
-import type { AddressInfo } from 'net';
+import assert from 'node:assert/strict';
 
 import type { ChatMessage, ProviderConfig } from '../../main/llm/client';
 import { LlmConfig } from '../../main/llm/client';
@@ -10,12 +8,14 @@ import { DOMINDS_RUNNING_VERSION } from '../../main/server/dominds-running-versi
 import { Team } from '../../main/team';
 import type { FuncTool, ToolArguments, ToolCallOutput } from '../../main/tool';
 
-type CapturedRequest = {
-  method: string | undefined;
-  url: string | undefined;
-  userAgent: string | undefined;
-  body: Record<string, unknown>;
-};
+import {
+  compatiblePeerKey,
+  wireCompletion,
+  withCompatiblePeer,
+  type CapturedRequest,
+} from '../helpers/compatible-peer';
+import { semanticEvidenceCollector } from '../helpers/semantic-evidence';
+const evidence = semanticEvidenceCollector('dominds-compatible-kimi-');
 
 function makePromptContext(): ChatMessage[] {
   return [
@@ -30,20 +30,11 @@ function makePromptContext(): ChatMessage[] {
   ];
 }
 
-function makeProvider(baseUrl: string): ProviderConfig {
-  return {
-    name: 'Kimi Code Test',
-    apiType: 'openai-compatible',
-    apiQuirks: ['kimi-code', 'kimi-cli-cloak'],
-    baseUrl,
-    apiKeyEnvVar: 'KIMI_CODE_API_KEY',
-    models: {
-      'kimi-for-coding': {
-        name: 'Kimi For Coding',
-        supports_tool_choice: false,
-      },
-    },
-  };
+async function makeProvider(baseUrl: string): Promise<ProviderConfig> {
+  const config = await LlmConfig.load();
+  const builtin = config.getProvider('kimi-code');
+  assert.ok(builtin);
+  return { ...builtin, baseUrl, apiKeyEnvVar: compatiblePeerKey };
 }
 
 function makeAgent(
@@ -59,75 +50,17 @@ function makeAgent(
   });
 }
 
-async function withCaptureServer<T>(
-  run: (args: { baseUrl: string; captured: CapturedRequest[] }) => Promise<T>,
-): Promise<T> {
-  const captured: CapturedRequest[] = [];
-  const server = http.createServer((req, res) => {
-    const chunks: Buffer[] = [];
-    req.on('data', (chunk: Buffer) => chunks.push(chunk));
-    req.on('end', () => {
-      const rawBody = Buffer.concat(chunks).toString('utf-8');
-      const body: unknown = rawBody.trim().length > 0 ? JSON.parse(rawBody) : {};
-      assert(typeof body === 'object' && body !== null && !Array.isArray(body));
-      captured.push({
-        method: req.method,
-        url: req.url,
-        userAgent: req.headers['user-agent'],
-        body: body as Record<string, unknown>,
-      });
-      res.setHeader('content-type', 'application/json');
-      res.end(
-        JSON.stringify({
-          id: 'chatcmpl-kimi-code-test',
-          object: 'chat.completion',
-          created: 1,
-          model: 'kimi-for-coding',
-          choices: [
-            {
-              index: 0,
-              finish_reason: 'stop',
-              message: { role: 'assistant', content: 'ok' },
-            },
-          ],
-          usage: {
-            prompt_tokens: 1,
-            completion_tokens: 1,
-            completion_tokens_details: { reasoning_tokens: 1 },
-            total_tokens: 2,
-          },
-        }),
-      );
-    });
-  });
-
-  await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve));
-  const address = server.address();
-  assert(address !== null && typeof address !== 'string');
-  const baseUrl = `http://127.0.0.1:${(address as AddressInfo).port}/coding/v1`;
-
-  try {
-    return await run({ baseUrl, captured });
-  } finally {
-    await new Promise<void>((resolve, reject) => {
-      server.close((error) => (error ? reject(error) : resolve()));
-    });
-  }
-}
-
 async function captureKimiCodeExchange(
   openAiCompatibleParams: NonNullable<Team.ModelParams['openai-compatible']>,
   funcTools: FuncTool[] = [],
 ): Promise<{ request: CapturedRequest; result: LlmBatchResult }> {
-  const previousApiKey = process.env.KIMI_CODE_API_KEY;
-  process.env.KIMI_CODE_API_KEY = 'test-kimi-code-key';
-  try {
-    return await withCaptureServer(async ({ baseUrl, captured }) => {
-      const provider = makeProvider(baseUrl);
-      const agent = makeAgent(openAiCompatibleParams);
+  return await withCompatiblePeer(
+    wireCompletion(),
+    async (peer) => {
+      const provider = await makeProvider(peer.baseUrl);
       const result = await new OpenAiCompatibleGen().genMoreMessages(
         provider,
-        agent,
+        makeAgent(openAiCompatibleParams),
         '',
         funcTools,
         {
@@ -140,16 +73,12 @@ async function captureKimiCodeExchange(
         makePromptContext(),
         1,
       );
-      assert.equal(captured.length, 1);
-      return { request: captured[0], result };
-    });
-  } finally {
-    if (previousApiKey === undefined) {
-      delete process.env.KIMI_CODE_API_KEY;
-    } else {
-      process.env.KIMI_CODE_API_KEY = previousApiKey;
-    }
-  }
+      assert.equal(peer.requestCount, 1);
+      assert.equal(peer.captured.length, 1);
+      return { request: peer.captured[0]!, result };
+    },
+    '/coding/v1',
+  );
 }
 
 async function captureKimiCodeRequest(
@@ -190,13 +119,16 @@ async function testKimiCodeAutoThinkingPayload(): Promise<void> {
   assert.equal(request.method, 'POST');
   assert.equal(request.url, '/coding/v1/chat/completions');
   assert.equal(request.userAgent, `KimiCLI/Dominds/${DOMINDS_RUNNING_VERSION}`);
-  assert.equal(request.userAgent?.startsWith('OpenAI/JS'), false);
   assert.equal(request.body.model, 'kimi-for-coding');
   assert.equal(request.body.prompt_cache_key, 'dialog-self:c3');
   assert.equal(Object.prototype.hasOwnProperty.call(request.body, 'thinking'), false);
   assert.equal(Object.prototype.hasOwnProperty.call(request.body, 'reasoning_effort'), false);
   assert.equal(Object.prototype.hasOwnProperty.call(request.body, 'tool_choice'), false);
   assert.equal(request.body.parallel_tool_calls, true);
+  assert.equal(result.messages.length, 1);
+  assert.ok(result.messages[0]?.type === 'saying_msg');
+  assert.equal(result.messages[0].content, 'ok');
+  assert.equal(result.llmGenModel, 'peer-model');
   assert.deepEqual(result.usage, {
     kind: 'available',
     promptTokens: 1,
@@ -253,6 +185,7 @@ async function testKimiCodeNormalizesToolSchemaPropertyTypes(): Promise<void> {
       },
     },
   } as const;
+  const originalSchema = structuredClone(parameters);
   const tool: FuncTool = {
     type: 'func',
     name: 'read_context',
@@ -270,77 +203,99 @@ async function testKimiCodeNormalizesToolSchemaPropertyTypes(): Promise<void> {
   assert(isRecord(firstFunction), 'expected first tool function object');
   const requestParameters = firstFunction.parameters;
   assert(isRecord(requestParameters), 'expected first tool parameters object');
-  const requestProperties = requestParameters.properties;
-  assert(isRecord(requestProperties), 'expected first tool properties object');
-  const truncateMode = requestProperties.truncateMode;
-  assert(isRecord(truncateMode), 'expected truncateMode property object');
-  assert.equal(truncateMode.type, 'string');
-  const retryCount = requestProperties.retryCount;
-  assert(isRecord(retryCount), 'expected retryCount property object');
-  assert.equal(retryCount.type, 'integer');
-  const nested = requestProperties.nested;
-  assert(isRecord(nested), 'expected nested property object');
-  assert.equal(nested.type, 'object');
-  const nestedProperties = nested.properties;
-  assert(isRecord(nestedProperties), 'expected nested properties object');
-  const nestedMode = nestedProperties.mode;
-  assert(isRecord(nestedMode), 'expected nested mode property object');
-  assert.equal(nestedMode.type, 'string');
-  const either = requestProperties.either;
-  assert(isRecord(either), 'expected either property object');
-  assert.equal(
-    Object.prototype.hasOwnProperty.call(either, 'type'),
-    false,
-    'Kimi Code schema normalization must not add a top-level type to combinator properties',
-  );
-  assert(Array.isArray(either.anyOf), 'expected anyOf branches');
-  assert.equal(either.anyOf.length, 2, 'expected two anyOf branches');
-  const firstBranch = either.anyOf[0];
-  assert(isRecord(firstBranch), 'expected first anyOf branch object');
-  assert.equal(firstBranch.type, 'string');
-  assert.equal(
-    Object.prototype.hasOwnProperty.call(parameters.properties.truncateMode, 'type'),
-    false,
-    'Kimi Code schema normalization must not mutate the source tool schema',
-  );
-  assert.equal(
-    Object.prototype.hasOwnProperty.call(parameters.properties.nested, 'type'),
-    false,
-    'Kimi Code nested schema normalization must not mutate the source tool schema',
-  );
+  assert.equal(request.body.tools.length, 1);
+  assert.equal(firstTool.type, 'function');
+  assert.equal(firstFunction.name, tool.name);
+  assert.equal(firstFunction.description, tool.description);
+  assert.deepEqual(requestParameters, {
+    ...parameters,
+    properties: {
+      truncateMode: { ...parameters.properties.truncateMode, type: 'string' },
+      retryCount: { ...parameters.properties.retryCount, type: 'integer' },
+      nested: {
+        ...parameters.properties.nested,
+        type: 'object',
+        properties: { mode: { ...parameters.properties.nested.properties.mode, type: 'string' } },
+      },
+      either: { anyOf: [{ enum: ['a', 'b'], type: 'string' }, { type: 'integer' }] },
+    },
+  });
+  assert.deepEqual(parameters, originalSchema);
 }
 
 async function expectKimiCodeRequestBuildError(args: {
   openAiCompatibleParams: NonNullable<Team.ModelParams['openai-compatible']>;
-  expected: string;
+  id: string;
 }): Promise<void> {
-  let caught = false;
-  try {
-    await captureKimiCodeRequest(args.openAiCompatibleParams);
-  } catch (error: unknown) {
-    caught = true;
-    const message = error instanceof Error ? error.message : String(error);
-    assert.match(message, new RegExp(args.expected));
-  }
-  assert.equal(caught, true, 'expected Kimi Code request build to fail before network success');
+  await withCompatiblePeer(
+    wireCompletion(),
+    async (peer) => {
+      const provider = await makeProvider(peer.baseUrl);
+      let observed: Error | undefined;
+      await assert.rejects(
+        async () => {
+          await new OpenAiCompatibleGen().genMoreMessages(
+            provider,
+            makeAgent(args.openAiCompatibleParams),
+            '',
+            [],
+            {
+              dialogSelfId: 'kimi-validation',
+              dialogRootId: 'kimi-validation',
+              providerKey: 'kimi-code',
+              modelKey: 'kimi-for-coding',
+            },
+            makePromptContext(),
+            1,
+          );
+        },
+        (error: unknown) => {
+          assert.ok(error instanceof Error);
+          observed = error;
+          return true;
+        },
+      );
+      assert.ok(observed);
+      assert.equal(peer.requestCount, 0);
+      assert.deepEqual(peer.captured, []);
+      evidence.record({
+        id: args.id,
+        scenario:
+          'Kimi request construction rejects conflicting or unsupported supplied reasoning parameters before contacting the local peer.',
+        businessValue:
+          'Reject unusable provider configuration before consuming a request and explain which input needs correction.',
+        context: {
+          parameters: JSON.stringify(args.openAiCompatibleParams),
+          requestsReceived: peer.requestCount,
+          scope:
+            'Real SDK request construction with a controlled local HTTP peer. No vendor service is contacted.',
+        },
+        reviewQuestions: [
+          'Does the actual refusal describe these supplied options accurately and give a useful correction without pretending a provider request ran?',
+        ],
+        actualText: `${observed.name}: ${observed.message}`,
+      });
+    },
+    '/coding/v1',
+  );
 }
 
 async function testKimiCodeValidation(): Promise<void> {
   await expectKimiCodeRequestBuildError({
     openAiCompatibleParams: { thinking: 'medium', reasoning_effort: 'high' },
-    expected: 'thinking=medium conflicts with reasoning_effort=high',
+    id: 'medium-high-conflict',
   });
   await expectKimiCodeRequestBuildError({
     openAiCompatibleParams: { thinking: 'off', reasoning_effort: 'low' },
-    expected: 'thinking=off conflicts with reasoning_effort=low',
+    id: 'off-low-conflict',
   });
   await expectKimiCodeRequestBuildError({
     openAiCompatibleParams: { thinking: 'auto', reasoning_effort: 'low' },
-    expected: 'thinking=auto conflicts with reasoning_effort=low',
+    id: 'auto-low-conflict',
   });
   await expectKimiCodeRequestBuildError({
     openAiCompatibleParams: { reasoning_effort: 'xhigh' },
-    expected: 'reasoning_effort=xhigh is not supported',
+    id: 'unsupported-xhigh',
   });
 }
 
@@ -353,10 +308,20 @@ async function main(): Promise<void> {
   await testKimiCodeExplicitParallelToolCallsPayload();
   await testKimiCodeNormalizesToolSchemaPropertyTypes();
   await testKimiCodeValidation();
-  console.log('✓ OpenAI-compatible Kimi Code tests passed');
+  await evidence.write();
+  console.log('OpenAI-compatible Kimi Code tests: PASS');
 }
 
-main().catch((error: unknown) => {
-  console.error(error);
-  process.exit(1);
-});
+// Preserve the suite's existing60s bound and prevent an unfinished async parser from
+// exiting zero when it has no live handles. Completion includes all evidence writes.
+const watchdog = setTimeout(() => {
+  throw new Error('Compatible case did not complete within60 seconds');
+}, 60_000);
+main().then(
+  () => clearTimeout(watchdog),
+  (error: unknown) => {
+    clearTimeout(watchdog);
+    console.error(error);
+    process.exitCode = 1;
+  },
+);

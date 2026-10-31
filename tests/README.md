@@ -34,6 +34,8 @@ pnpm run test:retry
 pnpm run test:semantic:retry
 pnpm run test:projection
 pnpm run test:semantic:projection
+pnpm run test:compatible
+pnpm run test:semantic:compatible
 ```
 
 - `test`: a small local smoke suite; not full product, browser, packaging, or provider coverage.
@@ -72,6 +74,9 @@ pnpm run test:semantic:projection
 
 - `test:projection`: seven isolated cases for Responses, Chat Completions-compatible and Anthropic sync/async history construction, image selection and result budgets. History cases preserve supplied data, reasoning, raw malformed arguments and reverse-arriving parallel results; incomplete pairs are rejected without mutating their input. Image cases read distinct real GIF artifacts and compare native payloads, with a missing/restored artifact control and a model-disabled/enabled control. The budget cases exercise current local declared-byteLength policy with small GIFs, not actual 60MiB transport. The truncation case checks configured/default result limits, unchanged source data and real ripgrep YAML metadata through an actual Dialog and file.
 - `test:semantic:projection`: seven producers emit twelve actual pairing refusals, six Anthropic history projections, nine image projections and seven truncation outputs (34 total). Generation starts pending. The [history review](./semantic/reviews/2026-10-31-provider-projection.json) and [image/truncation review](./semantic/reviews/2026-10-31-provider-media.json) retain full inputs/text, independent judgments, original values and execution scope. Projection alone does not contact a provider, execute tools, repair history or establish callback/UI routing or visual understanding; only the explicit ripgrep case executes that local tool.
+
+- `test:compatible`: two isolated cases retain the original eight Kimi and eighteen compatible/Volc values. Kimi uses cloned built-in configuration and the real SDK against a local HTTP peer to check headers, options, full normalized schema, source immutability, usage and supplied response data. Deliberately incomplete batch response JSON crosses the same actual SDK boundary; invalid configuration proves zero received requests. Stream components check callback order, supplied chunks/reasoning metadata and invalid-call channels. Debug-capture cases use actual owned files and preserve classification and source cause through a regular-file capture failure. The existing 60-second case bound stays in place.
+- `test:semantic:compatible`: two producers emit twelve actual configuration refusals, parser/invalid-call details and capture diagnostics. Generation starts pending; the [batch review](./semantic/reviews/2026-10-31-compatible-provider-contracts.json) retains full output/context, independent verdicts, original values and execution scope. Component stream parsing does not establish actual SDK streaming; local peers do not establish live vendors, tool execution or backend durability.
 
 The [assertion audit ledger](./audit.json) records which candidate tests have actually been reviewed, their business value, lane and evidence. Inventory exposes unaudited candidates and stale ledger paths. Neither suite membership nor a prior ledger entry decides the meaning of freshly generated output.
 

@@ -73,7 +73,9 @@
     "test:retry": "node tests/run.mjs --suite retry",
     "test:semantic:retry": "node tests/run.mjs --suite retry --semantic",
     "test:projection": "node tests/run.mjs --suite projection",
-    "test:semantic:projection": "node tests/run.mjs --suite projection --semantic"
+    "test:semantic:projection": "node tests/run.mjs --suite projection --semantic",
+    "test:compatible": "node tests/run.mjs --suite compatible",
+    "test:semantic:compatible": "node tests/run.mjs --suite compatible --semantic"
   },
   "repository": {
     "type": "git",

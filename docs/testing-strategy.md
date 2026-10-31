@@ -409,3 +409,15 @@ env 工具用真实 Dialog 替代 `{}` 类型假对象，保留原受限名称�
 截断候选保留三种投影的120字符限制，新增短结果正对照和原输入不变；provider 默认限制及显式配置按实际字符数契约核对。原 fake Dialog/变更进程 cwd/失败删现场的 ripgrep 夹具改为 CLI 管理的隔离 rtws、真实 Dialog 和实际文件。公开 YAML 用既有解析器读取，核对原始长度、应用状态、reason枚举和具体结果，去除按键名片段搜索的弱证明。实际摘要和省略说明共七份单独输出，不以自然语言 marker 存在作为语义验收。
 
 扩展后的 `test:projection` 七项回归通过，`test:semantic:projection` 七个入口输出三十四份实际材料（原历史十八份也按本次新输出重新逐份评审，加新图片九份和截断七份）。完整原值/断言审查、首次材料与强化后的实际评审见[本批记录](../tests/semantic/reviews/2026-10-31-provider-media.json)。累计282个TypeScript文件、27个辅助模块、255个候选；审查144项，余111项，套件外104项，无单独脚本43项，直接失效脚本和陈旧账本路径均零。四项继承类型诊断已通过真实 storage 内容项和调用签名修正；新 helper 一条 ChatMessage 联合字段错误也改为真实 FuncResultContentItem 契约。全目录仍有132条继承诊断，继续明确失败，没有弱化类型或排除源码。
+
+### 兼容供应商请求、流组件与拒绝证据批次
+
+原 Kimi362行、兼容/Volc1033行的两个入口基线均通过，但八项/十八项原值仍需逐项审计。给定 chunk/参数/JSON、回调方法和次序、调用 ID、kind/type、配置字段与路径都是可比对的数据；生成的配置拒绝、streamError、invalid detail 和捕获说明则不能靠固定句子或关键词判含义。现十二份实际诊断单独输出，由执行智能体主观评审，原值及完整断言 diff 见[本批记录](../tests/semantic/reviews/2026-10-31-compatible-provider-contracts.json)。
+
+Kimi 原本已有真实 SDK 到本地 HTTP 的成功请求，保留这条实际边界，并使用 builtin 克隆和独立 fake key。四种无效配置新增收到请求数为零的证明；Volc 旧拒绝夹具会保留真实外部 baseUrl，漏校验时可能实际出网，现也全部改为受控 localhost 对端并核零请求。原 schema 推导类型和不改源的值保留，补齐实际发出的 enum/const/description/组合分支完整数据，使用全量深比较替代冗余字段检查。响应的给定正文、模型标识和 usage 也核实际 SDK 输出。
+
+批次故意缺 id/type 或带 index 的响应不再谎标为 SDK ChatCompletion；它们作为未知 wire JSON 经真实 HTTP/SDK进入实际 generator，按公开输出 kind/message/type 正确窄化，并核给定 arguments/metadata 和 ID 关联。流解析仍直接测试真实 parser 组件，保留给定分块字节和回调次序，强化累计快照与独立 delta 的完整 metadata；缺名有 hook 时只交一次 invalidFuncCall，无 hook 时只报一次 streamError 并抛错。对象引用身份检查改为给定字段保真与输入不变，不冻结可复制实现的偶然性。这些没有被宣传成 SDK 流传输、实际工具执行或重启恢复。
+
+拒绝捕获使用真实 CLI 所有的隔离 rtws 文件，完整读取给定 payload，并核实际结构路径、上游 status/code/cause 和分类；捕获根为普通文件时，I/O失败不能覆盖原上游拒绝。删除诊断字符串中的路径/捕获错误 marker 判断，改为实际结构字段、文件效果与主观诊断评审；失败现场不再在 finally 中无条件删除。两个入口保留现有60秒界限，并增加同界限存活 guard，确保未完成 async 主体不能零退出。
+
+清单为283个TypeScript文件、28个辅助模块、255个候选；审查146项，余109项，套件外102项，无单独脚本43项，直接失效与陈旧账本路径均零。兼容候选原28条类型诊断通过真实联合类型窄化、未知网络 JSON 边界和参数选项判别消除；新 HTTP helper 一条 object/Record 类型错误也由实际 JSON record 校验修正。全目录仍有104条继承诊断，明确失败，没有减弱类型或排除源码。无产品变更或 live-vendor 覆盖声明。

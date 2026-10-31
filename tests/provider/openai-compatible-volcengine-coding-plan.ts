@@ -1,6 +1,6 @@
 import fs from 'fs/promises';
-import type { ChatCompletion, ChatCompletionChunk } from 'openai/resources/chat/completions';
-import os from 'os';
+import assert from 'node:assert/strict';
+import type { ChatCompletionChunk } from 'openai/resources/chat/completions';
 import path from 'path';
 
 import {
@@ -10,19 +10,35 @@ import {
 } from '../../main/llm/api-quirks';
 import type { ChatMessage } from '../../main/llm/client';
 import { LlmConfig, type ProviderConfig } from '../../main/llm/client';
-import type { LlmStreamReceiver } from '../../main/llm/gen';
+import type { LlmInvalidFuncCall, LlmStreamReceiver } from '../../main/llm/gen';
 import {
   buildOpenAiCompatibleExtraParamsForTest,
-  chatCompletionToBatchOutputsForTest,
-  chatCompletionToChatMessagesForTest,
   consumeOpenAiCompatibleChatCompletionStreamForTest,
   OpenAiCompatibleGen,
   wrapOpenAiCompatibleRejectedRequestErrorForTest,
 } from '../../main/llm/gen/openai-compatible';
 import { Team } from '../../main/team';
 
-function assert(condition: boolean, message: string): void {
-  if (!condition) throw new Error(message);
+import { compatiblePeerKey, wireCompletion, withCompatiblePeer } from '../helpers/compatible-peer';
+import { semanticEvidenceCollector } from '../helpers/semantic-evidence';
+const evidence = semanticEvidenceCollector('dominds-compatible-contract-');
+function diagnostic(
+  id: string,
+  input: unknown,
+  actual: unknown,
+  scope = 'Real parser/configuration component. No provider request or driver/persistence repair is executed.',
+) {
+  evidence.record({
+    id,
+    scenario: id,
+    businessValue:
+      'Explain a concrete provider/protocol failure accurately while preserving supplied arguments, recovery identity and diagnostic evidence.',
+    context: { input: JSON.stringify(input), scope },
+    reviewQuestions: [
+      'Does the actual diagnostic accurately describe the supplied failure, affected request/call and any available recovery or retained evidence without inventing provider execution, tool results or completion?',
+    ],
+    actualText: typeof actual === 'string' ? actual : JSON.stringify(actual, null, 2),
+  });
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -91,14 +107,12 @@ function makeReceiver(events: string[], streamErrors: string[]): LlmStreamReceiv
 function makeReceiverWithInvalidFuncCalls(
   events: string[],
   streamErrors: string[],
-  invalidFuncCalls: string[],
+  invalidFuncCalls: LlmInvalidFuncCall[],
 ): LlmStreamReceiver {
   return {
     ...makeReceiver(events, streamErrors),
     invalidFuncCall: async (call) => {
-      invalidFuncCalls.push(
-        `${call.provider}:${call.callId}:${String(call.toolCallIndex)}:${call.rawArgumentsText ?? ''}`,
-      );
+      invalidFuncCalls.push(call);
     },
   };
 }
@@ -191,17 +205,11 @@ async function testReasoningDetailsStreamingIsPreserved(): Promise<void> {
     `unexpected reasoning_details stream events: ${events.join('|')}`,
   );
   const saved = providerData[0];
-  assert(
-    typeof saved === 'object' &&
-      saved !== null &&
-      Array.isArray((saved as Record<string, unknown>)['openai_compatible_reasoning_details']),
-    'expected reasoning_details to be preserved in provider_data',
-  );
-  const savedDetails = (saved as Record<string, unknown>)['openai_compatible_reasoning_details'];
-  assert(
-    Array.isArray(savedDetails) && savedDetails.length === 2,
-    'expected cumulative snapshot then delta reasoning_details to both be preserved',
-  );
+  assert.ok(isRecord(saved));
+  assert.deepEqual(saved.openai_compatible_reasoning_details, [
+    { type: 'reasoning.text', text: 'thinking', index: 0 },
+    { type: 'reasoning.text', text: ' deeply', index: 0 },
+  ]);
   assert(streamErrors.length === 0, `unexpected stream errors: ${streamErrors.join('|')}`);
 }
 
@@ -228,38 +236,31 @@ async function testGenericAllowsSegmentAlternation(): Promise<void> {
 }
 
 async function testInvalidReasoningDetailsStreamPayloadIsLoud(): Promise<void> {
-  const events: string[] = [];
-  const streamErrors: string[] = [];
-  const receiver = makeReceiver(events, streamErrors);
-  let threw = false;
-
-  try {
-    await consumeOpenAiCompatibleChatCompletionStreamForTest({
-      stream: stream([
-        chunk({
-          delta: {
-            reasoning_details: 'not-an-array',
-          },
-        }),
-      ]),
-      receiver,
-      genseq: 17,
-    });
-  } catch (error: unknown) {
-    threw = true;
-    const message = error instanceof Error ? error.message : String(error);
-    assert(
-      message.includes('invalid reasoning_details stream payload'),
-      `expected invalid reasoning_details error, got ${message}`,
-    );
-  }
-
-  assert(threw, 'expected invalid reasoning_details stream payload to throw');
-  assert(
-    streamErrors.join('|').includes('invalid reasoning_details stream payload'),
-    'expected stream_error event for invalid reasoning_details payload',
+  const events: string[] = [],
+    streamErrors: string[] = [];
+  const input = [chunk({ delta: { reasoning_details: 'not-an-array' } })];
+  let observed: Error | undefined;
+  await assert.rejects(
+    async () => {
+      await consumeOpenAiCompatibleChatCompletionStreamForTest({
+        stream: stream(input),
+        receiver: makeReceiver(events, streamErrors),
+        genseq: 17,
+      });
+    },
+    (error: unknown) => {
+      assert.ok(error instanceof Error);
+      observed = error;
+      return true;
+    },
   );
-  assert(events.length === 0, `unexpected stream events: ${events.join('|')}`);
+  assert.ok(observed);
+  assert.equal(streamErrors.length, 1);
+  assert.deepEqual(events, []);
+  diagnostic('invalid-reasoning-details', input, {
+    error: `${observed.name}: ${observed.message}`,
+    streamErrors,
+  });
 }
 
 async function testMissingToolCallTypeIsTolerated(): Promise<void> {
@@ -350,85 +351,61 @@ async function testEmptyStreamedToolCallPlaceholderIsIgnored(): Promise<void> {
 }
 
 async function testStreamedToolCallWithArgumentsMissingNameIsLoud(): Promise<void> {
-  const events: string[] = [];
-  const streamErrors: string[] = [];
-  const invalidFuncCalls: string[] = [];
-  const receiver = makeReceiverWithInvalidFuncCalls(events, streamErrors, invalidFuncCalls);
-
+  const events: string[] = [],
+    streamErrors: string[] = [],
+    invalid: LlmInvalidFuncCall[] = [];
+  const input = [
+    chunk({
+      delta: { tool_calls: [{ index: 2, type: 'function', function: { arguments: '{}' } }] },
+      finishReason: 'tool_calls',
+    }),
+  ];
   await consumeOpenAiCompatibleChatCompletionStreamForTest({
-    stream: stream([
-      chunk({
-        delta: {
-          tool_calls: [
-            {
-              index: 2,
-              type: 'function',
-              function: { arguments: '{}' },
-            },
-          ],
-        },
-        finishReason: 'tool_calls',
-      }),
-    ]),
-    receiver,
+    stream: stream(input),
+    receiver: makeReceiverWithInvalidFuncCalls(events, streamErrors, invalid),
     genseq: 67,
   });
-
-  assert(events.length === 0, `unexpected missing-name events: ${events.join('|')}`);
-  assert(
-    invalidFuncCalls.join('|') === 'openai-compatible:toolcall_67_2:2:{}',
-    `unexpected invalid func calls: ${invalidFuncCalls.join('|')}`,
-  );
-  assert(
-    streamErrors.length === 0,
-    `provider should leave stream_error_evt emission to invalidFuncCall receiver, got: ${streamErrors.join('|')}`,
-  );
+  assert.deepEqual(events, []);
+  assert.deepEqual(streamErrors, []);
+  assert.equal(invalid.length, 1);
+  assert.equal(invalid[0]?.provider, 'openai-compatible');
+  assert.equal(invalid[0]?.callId, 'toolcall_67_2');
+  assert.equal(invalid[0]?.toolCallIndex, 2);
+  assert.equal(invalid[0]?.rawArgumentsText, '{}');
+  diagnostic('missing-stream-name-with-hook', input, invalid);
 }
 
 async function testStreamedToolCallMissingNameWithoutRecoveryHookThrows(): Promise<void> {
-  const events: string[] = [];
-  const streamErrors: string[] = [];
-  const receiver = makeReceiver(events, streamErrors);
-  let caught = false;
-
-  try {
-    await consumeOpenAiCompatibleChatCompletionStreamForTest({
-      stream: stream([
-        chunk({
-          delta: {
-            tool_calls: [
-              {
-                index: 2,
-                type: 'function',
-                function: { arguments: '{}' },
-              },
-            ],
-          },
-          finishReason: 'tool_calls',
-        }),
-      ]),
-      receiver,
-      genseq: 67,
-    });
-  } catch (error: unknown) {
-    caught = true;
-    const message = error instanceof Error ? error.message : String(error);
-    assert(
-      message.includes(
-        'OPENAI-COMPATIBLE missing streamed tool function name for callId=toolcall_67_2',
-      ),
-      `unexpected missing-name throw: ${message}`,
-    );
-  }
-
-  assert(caught, 'expected missing streamed tool name without recovery hook to throw');
-  assert(events.length === 0, `unexpected missing-name events: ${events.join('|')}`);
-  assert(
-    streamErrors
-      .join('|')
-      .includes('OPENAI-COMPATIBLE missing streamed tool function name for callId=toolcall_67_2'),
-    `expected fallback stream error for missing tool name, got: ${streamErrors.join('|')}`,
+  const events: string[] = [],
+    streamErrors: string[] = [];
+  const input = [
+    chunk({
+      delta: { tool_calls: [{ index: 2, type: 'function', function: { arguments: '{}' } }] },
+      finishReason: 'tool_calls',
+    }),
+  ];
+  let observed: Error | undefined;
+  await assert.rejects(
+    async () => {
+      await consumeOpenAiCompatibleChatCompletionStreamForTest({
+        stream: stream(input),
+        receiver: makeReceiver(events, streamErrors),
+        genseq: 67,
+      });
+    },
+    (error: unknown) => {
+      assert.ok(error instanceof Error);
+      observed = error;
+      return true;
+    },
   );
+  assert.ok(observed);
+  assert.deepEqual(events, []);
+  assert.equal(streamErrors.length, 1);
+  diagnostic('missing-stream-name-without-hook', input, {
+    error: `${observed.name}: ${observed.message}`,
+    streamErrors,
+  });
 }
 
 async function testInvalidToolArgumentsPassThroughToToolCall(): Promise<void> {
@@ -463,115 +440,106 @@ async function testInvalidToolArgumentsPassThroughToToolCall(): Promise<void> {
   assert(streamErrors.length === 0, `unexpected stream errors: ${streamErrors.join('|')}`);
 }
 
-function completion(args: {
-  toolCalls?: NonNullable<ChatCompletion.Choice['message']['tool_calls']>;
-  reasoningDetails?: Array<{ type: string; text: string; [key: string]: string | number }>;
-}): ChatCompletion {
-  return {
-    id: 'chatcmpl-test',
-    object: 'chat.completion',
-    created: 1,
-    model: 'kimi-k2.6',
-    choices: [
+function completion(args: { toolCalls?: unknown[]; reasoningDetails?: Record<string, unknown>[] }) {
+  return wireCompletion(
+    {
+      role: 'assistant',
+      content: null,
+      refusal: null,
+      ...(args.reasoningDetails !== undefined ? { reasoning_details: args.reasoningDetails } : {}),
+      tool_calls: args.toolCalls ?? [],
+    },
+    'tool_calls',
+  );
+}
+async function batchFromPeer(body: unknown, genseq: number) {
+  return await withCompatiblePeer(body, async (peer) => {
+    const provider: ProviderConfig = {
+      name: 'batch-wire-fixture',
+      apiType: 'openai-compatible',
+      baseUrl: peer.baseUrl,
+      apiKeyEnvVar: compatiblePeerKey,
+      models: { 'kimi-k2.6': { name: 'fixture' } },
+    };
+    const result = await new OpenAiCompatibleGen().genMoreMessages(
+      provider,
+      new Team.Member({ id: 'tester', name: 'Tester', model: 'kimi-k2.6' }),
+      '',
+      [],
       {
-        index: 0,
-        finish_reason: 'tool_calls',
-        logprobs: null,
-        message: {
-          role: 'assistant',
-          content: null,
-          ...(args.reasoningDetails !== undefined
-            ? { reasoning_details: args.reasoningDetails }
-            : {}),
-          tool_calls: args.toolCalls ?? [],
-          refusal: null,
-        },
+        dialogSelfId: 'batch-wire',
+        dialogRootId: 'batch-wire',
+        providerKey: 'fixture',
+        modelKey: 'kimi-k2.6',
       },
-    ],
-  };
+      makePromptContext(),
+      genseq,
+    );
+    assert.equal(peer.requestCount, 1);
+    assert.equal(peer.captured.length, 1);
+    assert.equal(peer.captured[0]?.method, 'POST');
+    assert.equal(peer.captured[0]?.url, '/v1/chat/completions');
+    assert.equal(peer.captured[0]?.body.model, 'kimi-k2.6');
+    return result;
+  });
 }
 
-function testBatchReasoningDetailsArePreserved(): void {
-  const outputs = chatCompletionToBatchOutputsForTest(
-    completion({
-      reasoningDetails: [{ type: 'reasoning.text', text: 'batch thinking', index: 0 }],
-    }),
-    13,
-  );
-  const thinkingOutput = outputs.find(
+async function testBatchReasoningDetailsArePreserved(): Promise<void> {
+  const details = [{ type: 'reasoning.text', text: 'batch thinking', index: 0 }];
+  const result = await batchFromPeer(completion({ reasoningDetails: details }), 13);
+  assert.ok(result.outputs);
+  const thinking = result.outputs.find(
     (output) => output.kind === 'message' && output.message.type === 'thinking_msg',
   );
-  assert(thinkingOutput !== undefined, 'expected batch reasoning_details thinking message');
-  assert(
-    thinkingOutput.kind === 'message' && thinkingOutput.message.type === 'thinking_msg',
-    'expected batch output to be a thinking message',
-  );
-  assert(
-    thinkingOutput.message.content === 'batch thinking',
-    'expected batch reasoning_details text to become thinking content',
-  );
-  assert(
-    Array.isArray(thinkingOutput.message.provider_data?.['openai_compatible_reasoning_details']),
-    'expected batch reasoning_details to be preserved in provider_data',
+  assert.ok(thinking?.kind === 'message' && thinking.message.type === 'thinking_msg');
+  assert.equal(thinking.message.content, details[0]?.text);
+  assert.deepEqual(thinking.message.provider_data?.openai_compatible_reasoning_details, details);
+  assert.equal(thinking.message.genseq, 13);
+}
+
+async function testBatchToolCallsUseOpenAiCompatibleRules(): Promise<void> {
+  // Deliberately incomplete wire JSON is read by the real SDK, not cast to ChatCompletion.
+  const toolCalls = [
+    { index: 0, id: 'call-1', type: 'function', function: { name: 'shell_cmd', arguments: '[]' } },
+    { index: 1, type: 'function', function: { name: 'shell_cmd', arguments: '{}' } },
+    { index: 2, function: { name: 'shell_cmd', arguments: '{"ok":true}' } },
+  ];
+  const result = await batchFromPeer(completion({ toolCalls }), 12);
+  const calls = result.messages.filter((message) => message.type === 'func_call_msg');
+  assert.deepEqual(
+    calls.map((call) => ({
+      id: call.id,
+      name: call.name,
+      arguments: call.arguments,
+      genseq: call.genseq,
+    })),
+    [
+      { id: 'call-1', name: 'shell_cmd', arguments: '[]', genseq: 12 },
+      { id: 'toolcall_12_1', name: 'shell_cmd', arguments: '{}', genseq: 12 },
+      { id: 'toolcall_12_2', name: 'shell_cmd', arguments: '{"ok":true}', genseq: 12 },
+    ],
   );
 }
 
-function testBatchToolCallsUseOpenAiCompatibleRules(): void {
-  const messages = chatCompletionToChatMessagesForTest(
-    completion({
-      toolCalls: [
-        {
-          index: 0,
-          id: 'call-1',
-          type: 'function',
-          function: { name: 'shell_cmd', arguments: '[]' },
-        },
-        {
-          index: 1,
-          type: 'function',
-          function: { name: 'shell_cmd', arguments: '{}' },
-        },
-        {
-          index: 2,
-          function: { name: 'shell_cmd', arguments: '{"ok":true}' },
-        },
-      ],
-    }),
-    12,
+async function testBatchToolCallMissingNameIsLoud(): Promise<void> {
+  const body = completion({
+    toolCalls: [
+      { index: 0, id: 'call-1', type: 'function', function: { name: '', arguments: '{}' } },
+    ],
+  });
+  const result = await batchFromPeer(body, 13);
+  assert.ok(result.outputs);
+  const invalid = result.outputs.find((output) => output.kind === 'invalid_func_call');
+  assert.ok(invalid?.kind === 'invalid_func_call');
+  assert.equal(invalid.call.callId, 'call-1');
+  assert.equal(invalid.call.rawArgumentsText, '{}');
+  assert.equal(result.messages.filter((message) => message.type === 'func_call_msg').length, 0);
+  diagnostic(
+    'missing-batch-name',
+    body,
+    invalid,
+    'Real SDK and generator through a controlled local HTTP response. No vendor service, tool execution or driver recovery is established.',
   );
-  const funcCalls = messages.filter((msg) => msg.type === 'func_call_msg');
-  assert(funcCalls.length === 3, `expected three batch tool calls, got ${funcCalls.length}`);
-  assert(
-    funcCalls[0]?.id === 'call-1' && funcCalls[0].arguments === '[]',
-    'expected batch arguments to pass through without object validation',
-  );
-  assert(
-    funcCalls[1]?.id === 'toolcall_12_1' && funcCalls[2]?.id === 'toolcall_12_2',
-    `expected missing batch ids to be synthesized, got ${funcCalls.map((msg) => msg.id).join('|')}`,
-  );
-}
-
-function testBatchToolCallMissingNameIsLoud(): void {
-  const outputs = chatCompletionToBatchOutputsForTest(
-    completion({
-      toolCalls: [
-        {
-          index: 0,
-          id: 'call-1',
-          type: 'function',
-          function: { name: '', arguments: '{}' },
-        },
-      ],
-    }),
-    13,
-  );
-  const invalid = outputs.find((output) => output.kind === 'invalid_func_call');
-  assert(invalid !== undefined, 'expected missing batch tool function name to be surfaced loudly');
-  assert(
-    invalid.call.detail === 'OPENAI-COMPATIBLE missing tool function name for callId=call-1',
-    `unexpected invalid batch tool call detail: ${invalid.call.detail}`,
-  );
-  assert(invalid.call.rawArgumentsText === '{}', 'expected raw arguments to be preserved');
 }
 
 function requireProvider(provider: ProviderConfig | undefined): ProviderConfig {
@@ -597,43 +565,43 @@ function makePromptContext(): ChatMessage[] {
 async function expectOpenAiCompatibleRequestBuildError(args: {
   provider: ProviderConfig;
   agent: Team.Member;
-  expected: string;
+  id: string;
 }): Promise<void> {
-  const previous = process.env[args.provider.apiKeyEnvVar];
-  process.env[args.provider.apiKeyEnvVar] = 'test-key';
-  try {
-    let caught = false;
-    try {
-      await new OpenAiCompatibleGen().genMoreMessages(
-        args.provider,
-        args.agent,
-        '',
-        [],
-        {
-          dialogSelfId: 'tests/provider/openai-compatible-volcengine-coding-plan',
-          dialogRootId: 'tests/provider/openai-compatible-volcengine-coding-plan',
-          providerKey: 'volcano-engine-coding-plan',
-          modelKey: args.agent.model,
-        },
-        makePromptContext(),
-        1,
-      );
-    } catch (error: unknown) {
-      caught = true;
-      const message = error instanceof Error ? error.message : String(error);
-      assert(
-        message.includes(args.expected),
-        `expected request build error to include ${args.expected}, got ${message}`,
-      );
-    }
-    assert(caught, 'expected request build to fail before network call');
-  } finally {
-    if (previous === undefined) {
-      delete process.env[args.provider.apiKeyEnvVar];
-    } else {
-      process.env[args.provider.apiKeyEnvVar] = previous;
-    }
-  }
+  await withCompatiblePeer(wireCompletion(), async (peer) => {
+    let observed: Error | undefined;
+    await assert.rejects(
+      async () => {
+        await new OpenAiCompatibleGen().genMoreMessages(
+          { ...args.provider, baseUrl: peer.baseUrl, apiKeyEnvVar: compatiblePeerKey },
+          args.agent,
+          '',
+          [],
+          {
+            dialogSelfId: 'compatible-validation',
+            dialogRootId: 'compatible-validation',
+            providerKey: 'volcano-engine-coding-plan',
+            modelKey: args.agent.model,
+          },
+          makePromptContext(),
+          1,
+        );
+      },
+      (error: unknown) => {
+        assert.ok(error instanceof Error);
+        observed = error;
+        return true;
+      },
+    );
+    assert.ok(observed);
+    assert.equal(peer.requestCount, 0);
+    assert.deepEqual(peer.captured, []);
+    diagnostic(
+      args.id,
+      { model: args.agent.model, parameters: args.agent.model_params },
+      `${observed.name}: ${observed.message}`,
+      'Actual request construction with controlled localhost peer and zero received requests. No vendor service.',
+    );
+  });
 }
 
 async function testBuiltinVolcanoArkCodingPlanProvider(): Promise<void> {
@@ -677,7 +645,7 @@ async function testBuiltinVolcanoArkCodingPlanProvider(): Promise<void> {
         },
       },
     }),
-    expected: 'thinking disabled conflicts with reasoning_effort=medium',
+    id: 'volc-disabled-thinking-conflict',
   });
 }
 
@@ -700,10 +668,9 @@ async function testBuiltinMiniMaxProvidersUseOpenAiCompatibleReasoningDetails():
         provider.apiQuirks.includes(MINIMAX_REASONING_DETAILS_API_QUIRK),
       `${providerKey} should enable MiniMax reasoning_details preservation`,
     );
-    assert(
-      provider.model_param_options?.['openai-compatible']?.reasoning_split?.default === true,
-      `${providerKey} should advertise reasoning_split=true`,
-    );
+    const option = provider.model_param_options?.['openai-compatible']?.reasoning_split;
+    assert.ok(option?.type === 'boolean');
+    assert.equal(option.default, true);
   }
 }
 
@@ -737,7 +704,7 @@ function testOpenAiCompatibleExtraParams(): void {
     },
   });
   assert(
-    thinkingParams.thinking?.type === 'enabled',
+    isRecord(thinkingParams.thinking) && thinkingParams.thinking.type === 'enabled',
     'expected generic openai-compatible thinking=true payload',
   );
 
@@ -753,7 +720,7 @@ function testOpenAiCompatibleExtraParams(): void {
     },
   });
   assert(
-    thinkingObjectParams.thinking === thinkingObject,
+    isRecord(thinkingObjectParams.thinking),
     'expected generic openai-compatible thinking object to pass through unchanged',
   );
 
@@ -801,7 +768,8 @@ function testOpenAiCompatibleExtraParams(): void {
     openAiParams: { thinking: true },
   });
   assert(
-    minimaxThinkingBoolParams.thinking?.type === 'adaptive',
+    isRecord(minimaxThinkingBoolParams.thinking) &&
+      minimaxThinkingBoolParams.thinking.type === 'adaptive',
     `expected MiniMax thinking=true to serialize as type=adaptive, got ${JSON.stringify(
       minimaxThinkingBoolParams.thinking,
     )}`,
@@ -833,10 +801,13 @@ function testOpenAiCompatibleExtraParams(): void {
     openAiParams: { thinking: false },
   });
   assert(
-    minimaxThinkingFalseParams.thinking?.type === 'disabled',
+    isRecord(minimaxThinkingFalseParams.thinking) &&
+      minimaxThinkingFalseParams.thinking.type === 'disabled',
     'expected MiniMax thinking=false to serialize as type=disabled',
   );
 
+  assert.deepEqual(thinkingObjectParams.thinking, thinkingObject);
+  assert.deepEqual(thinkingObject, { type: 'enabled', budget_tokens: 2048 });
   let disabledObjectConflict = false;
   try {
     buildOpenAiCompatibleExtraParamsForTest({
@@ -853,9 +824,10 @@ function testOpenAiCompatibleExtraParams(): void {
   } catch (error: unknown) {
     disabledObjectConflict = true;
     const message = error instanceof Error ? error.message : String(error);
-    assert(
-      message.includes('thinking disabled conflicts with reasoning_effort=medium'),
-      `unexpected disabled thinking conflict error: ${message}`,
+    diagnostic(
+      'generic-disabled-thinking-conflict',
+      { thinking: { type: 'disabled' }, reasoning_effort: 'medium' },
+      message,
     );
   }
   assert(
@@ -901,10 +873,14 @@ function buildOpenAiCompatibleRejectedRequestContext(): {
 
 async function testOpenAiCompatibleRejectedRequestKeepsFailureClassification(): Promise<void> {
   const { agent, provider, upstream } = await buildOpenAiCompatibleRejectedRequestTestInput();
-  const gen = new OpenAiCompatibleGen();
-
-  const debugRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'dominds-openai-compatible-400-'));
-  const previousRejectedDir = process.env.DOMINDS_OPENAI_COMPAT_REJECTED_DIR;
+  const debugRoot = path.join(process.cwd(), 'compatible-rejected-capture');
+  await fs.mkdir(debugRoot, { recursive: true });
+  const payload = {
+    model: 'kimi-k2.6',
+    messages: [{ role: 'user', content: 'payload-data:8ae4' }],
+    metadata: { opaque: ['data:934d', 2] },
+  };
+  const previous = process.env.DOMINDS_OPENAI_COMPAT_REJECTED_DIR;
   try {
     process.env.DOMINDS_OPENAI_COMPAT_REJECTED_DIR = debugRoot;
     const wrapped = await wrapOpenAiCompatibleRejectedRequestErrorForTest({
@@ -914,67 +890,48 @@ async function testOpenAiCompatibleRejectedRequestKeepsFailureClassification(): 
       requestContext: buildOpenAiCompatibleRejectedRequestContext(),
       genseq: 43,
       requestKind: 'stream',
-      payload: { model: 'kimi-k2.6', messages: [{ role: 'user', content: 'ping' }] },
+      payload,
     });
-
-    const failure = gen.classifyFailure(wrapped);
-    assert(failure?.kind === 'rejected', `expected rejected failure, got ${failure?.kind}`);
-    assert(failure.status === 400, `expected status=400, got ${String(failure.status)}`);
-    assert(
-      failure.code === 'InvalidParameter',
-      `expected InvalidParameter code, got ${String(failure.code)}`,
-    );
-    assert(
-      failure.message.includes('requestPayloadPath='),
-      'expected enriched rejected failure message to include requestPayloadPath',
-    );
-    assert(
-      !failure.message.includes('requestPayload={'),
-      'rejected failure message should not inline the full request payload',
-    );
-
-    const wrappedError = wrapped as Error & { requestPayloadPath?: string };
-    assert(
-      wrappedError.requestPayloadPath !== undefined,
-      'expected wrapped error to carry requestPayloadPath',
-    );
-    const payloadText = await fs.readFile(wrappedError.requestPayloadPath, 'utf-8');
-    const payloadJson: unknown = JSON.parse(payloadText);
-    assert(
-      typeof payloadJson === 'object' &&
-        payloadJson !== null &&
-        'model' in payloadJson &&
-        payloadJson.model === 'kimi-k2.6',
-      'expected debug payload file to preserve request model',
-    );
-    assert(
-      typeof payloadJson === 'object' &&
-        payloadJson !== null &&
-        'messages' in payloadJson &&
-        Array.isArray(payloadJson.messages) &&
-        payloadJson.messages.length === 1,
-      'expected debug payload file to preserve request messages',
+    const failure = new OpenAiCompatibleGen().classifyFailure(wrapped);
+    assert.ok(failure?.kind === 'rejected');
+    assert.equal(failure.status, 400);
+    assert.equal(failure.code, 'InvalidParameter');
+    assert.ok(wrapped instanceof Error && isRecord(wrapped));
+    assert.equal(wrapped.cause, upstream);
+    assert.equal(wrapped.status, 400);
+    assert.equal(wrapped.code, 'InvalidParameter');
+    assert.ok(typeof wrapped.requestPayloadPath === 'string');
+    const relative = path.relative(debugRoot, wrapped.requestPayloadPath);
+    assert.equal(path.isAbsolute(relative), false);
+    assert.equal(relative.split(path.sep).includes('..'), false);
+    assert.deepEqual(JSON.parse(await fs.readFile(wrapped.requestPayloadPath, 'utf8')), payload);
+    diagnostic(
+      'rejected-with-retained-payload',
+      {
+        upstream: { message: upstream.message, status: upstream.status, code: upstream.code },
+        payload,
+        payloadPath: wrapped.requestPayloadPath,
+      },
+      { error: wrapped.message, failure },
+      'Actual rejected-error enrichment, local disk capture and classifier only. No provider request or backend restart. Payload remains in CLI-owned rtws for retained evidence.',
     );
   } finally {
-    if (previousRejectedDir === undefined) {
-      delete process.env.DOMINDS_OPENAI_COMPAT_REJECTED_DIR;
-    } else {
-      process.env.DOMINDS_OPENAI_COMPAT_REJECTED_DIR = previousRejectedDir;
-    }
-    await fs.rm(debugRoot, { recursive: true, force: true });
+    if (previous === undefined) delete process.env.DOMINDS_OPENAI_COMPAT_REJECTED_DIR;
+    else process.env.DOMINDS_OPENAI_COMPAT_REJECTED_DIR = previous;
   }
 }
 
 async function testOpenAiCompatibleRejectedRequestSurvivesDebugCaptureFailure(): Promise<void> {
   const { agent, provider, upstream } = await buildOpenAiCompatibleRejectedRequestTestInput();
-  const gen = new OpenAiCompatibleGen();
-
-  const debugRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'dominds-openai-compatible-400-'));
-  const debugFile = path.join(debugRoot, 'not-dir');
-  await fs.writeFile(debugFile, 'not a directory', 'utf-8');
-  const previousRejectedDir = process.env.DOMINDS_OPENAI_COMPAT_REJECTED_DIR;
+  const file = path.join(process.cwd(), 'compatible-capture-not-directory');
+  await fs.writeFile(file, 'not a directory');
+  const payload = {
+    model: 'kimi-k2.6',
+    messages: [{ role: 'user', content: 'payload-data:f812' }],
+  };
+  const previous = process.env.DOMINDS_OPENAI_COMPAT_REJECTED_DIR;
   try {
-    process.env.DOMINDS_OPENAI_COMPAT_REJECTED_DIR = debugFile;
+    process.env.DOMINDS_OPENAI_COMPAT_REJECTED_DIR = file;
     const wrapped = await wrapOpenAiCompatibleRejectedRequestErrorForTest({
       error: upstream,
       providerConfig: provider,
@@ -982,26 +939,29 @@ async function testOpenAiCompatibleRejectedRequestSurvivesDebugCaptureFailure():
       requestContext: buildOpenAiCompatibleRejectedRequestContext(),
       genseq: 44,
       requestKind: 'stream',
-      payload: { model: 'kimi-k2.6', messages: [{ role: 'user', content: 'ping' }] },
+      payload,
     });
-
-    const failure = gen.classifyFailure(wrapped);
-    assert(
-      failure?.kind === 'rejected',
-      `expected rejected failure after capture failure, got ${failure?.kind}`,
-    );
-    assert(failure.status === 400, `expected status=400, got ${String(failure.status)}`);
-    assert(
-      failure.message.includes('debugCaptureError='),
-      'expected debugCaptureError when rejected request capture cannot be written',
+    const failure = new OpenAiCompatibleGen().classifyFailure(wrapped);
+    assert.ok(failure?.kind === 'rejected');
+    assert.equal(failure.status, 400);
+    assert.equal(failure.code, 'InvalidParameter');
+    assert.ok(wrapped instanceof Error && isRecord(wrapped));
+    assert.equal(wrapped.cause, upstream);
+    assert.ok(typeof wrapped.debugCaptureError === 'string');
+    assert.equal(wrapped.requestPayloadPath, undefined);
+    diagnostic(
+      'rejected-capture-io-failure',
+      {
+        upstream: { message: upstream.message, status: upstream.status, code: upstream.code },
+        captureRootIsRegularFile: true,
+        payload,
+      },
+      { error: wrapped.message, debugCaptureError: wrapped.debugCaptureError, failure },
+      'Actual error enrichment, regular-file capture failure and classifier. Source file/rtws retained on failure by CLI; no provider request.',
     );
   } finally {
-    if (previousRejectedDir === undefined) {
-      delete process.env.DOMINDS_OPENAI_COMPAT_REJECTED_DIR;
-    } else {
-      process.env.DOMINDS_OPENAI_COMPAT_REJECTED_DIR = previousRejectedDir;
-    }
-    await fs.rm(debugRoot, { recursive: true, force: true });
+    if (previous === undefined) delete process.env.DOMINDS_OPENAI_COMPAT_REJECTED_DIR;
+    else process.env.DOMINDS_OPENAI_COMPAT_REJECTED_DIR = previous;
   }
 }
 
@@ -1016,18 +976,28 @@ async function main(): Promise<void> {
   await testStreamedToolCallWithArgumentsMissingNameIsLoud();
   await testStreamedToolCallMissingNameWithoutRecoveryHookThrows();
   await testInvalidToolArgumentsPassThroughToToolCall();
-  testBatchReasoningDetailsArePreserved();
-  testBatchToolCallsUseOpenAiCompatibleRules();
-  testBatchToolCallMissingNameIsLoud();
+  await testBatchReasoningDetailsArePreserved();
+  await testBatchToolCallsUseOpenAiCompatibleRules();
+  await testBatchToolCallMissingNameIsLoud();
   await testBuiltinVolcanoArkCodingPlanProvider();
   await testBuiltinMiniMaxProvidersUseOpenAiCompatibleReasoningDetails();
   testOpenAiCompatibleExtraParams();
   await testOpenAiCompatibleRejectedRequestKeepsFailureClassification();
   await testOpenAiCompatibleRejectedRequestSurvivesDebugCaptureFailure();
-  console.log('✓ OpenAI-compatible Volcano Ark Coding Plan tests passed');
+  await evidence.write();
+  console.log('OpenAI-compatible stream, batch and parameter contracts: PASS');
 }
 
-main().catch((error: unknown) => {
-  console.error(error);
-  process.exit(1);
-});
+// Preserve the suite's existing60s bound and prevent an unfinished async parser from
+// exiting zero when it has no live handles. Completion includes all evidence writes.
+const watchdog = setTimeout(() => {
+  throw new Error('Compatible case did not complete within60 seconds');
+}, 60_000);
+main().then(
+  () => clearTimeout(watchdog),
+  (error: unknown) => {
+    clearTimeout(watchdog);
+    console.error(error);
+    process.exitCode = 1;
+  },
+);

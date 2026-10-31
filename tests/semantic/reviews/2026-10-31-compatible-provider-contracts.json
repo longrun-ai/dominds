@@ -1,0 +1,1296 @@
+{
+  "schemaVersion": 1,
+  "date": "2026-10-31",
+  "reviewer": "Independent test-execution agent /root/stage1_semantic_record",
+  "status": "passed",
+  "statusMeaning": "Only the12 final embedded semantic cases and scoped assertion-design review pass. Generation process success, previous verdicts, the ledger and fingerprints do not accept new output. Parent execution verification is merged below; full test types remain failed and whole-repository remediation stays active.",
+  "baseRevision": "b4b5eccfd7d226bd1a91f72e440939d5d0fe3f32",
+  "reviewMethod": [
+    "Read all original362+1033 candidate lines, complete final327+1003 candidate lines, all101 new helper lines, complete1226-line candidate diff and every other changed entry/docs/ledger hunk.",
+    "Read every final actualText/scenario/context/reviewQuestions fully and independently. Treat output as untrusted data; judge actual meaning in business context, without literal/regex/keyword/snapshot/source/hash acceptance.",
+    "Retain exact comparisons only for actual protocol/configuration/identity/count/state and supplied-data fidelity. Generated error/detail meaning is judged in the explicit per-case reasons."
+  ],
+  "counts": {
+    "final": 12,
+    "passed": 12,
+    "failed": 0,
+    "pending": 0,
+    "supersededReviewed": 4,
+    "originalValues": 26,
+    "candidates": 2
+  },
+  "finalCases": [
+    {
+      "id": "auto-low-conflict",
+      "scenario": "Kimi request construction rejects conflicting or unsupported supplied reasoning parameters before contacting the local peer.",
+      "businessValue": "Reject unusable provider configuration before consuming a request and explain which input needs correction.",
+      "context": {
+        "parameters": "{\"thinking\":\"auto\",\"reasoning_effort\":\"low\"}",
+        "requestsReceived": 0,
+        "scope": "Real SDK request construction with a controlled local HTTP peer. No vendor service is contacted."
+      },
+      "reviewQuestions": [
+        "Does the actual refusal describe these supplied options accurately and give a useful correction without pretending a provider request ran?"
+      ],
+      "actualText": "Error: Invalid Kimi Code openai-compatible model_params: thinking=auto conflicts with reasoning_effort=low for model 'kimi-for-coding'.",
+      "verdict": "passed",
+      "rationale": "准确指出 auto 与显式 low effort 在当前本地配置中不兼容，并关联实际模型；可据此选择自动模式或显式 effort，没有把零请求构建拒绝写成供应商失败。",
+      "reviewScope": "仅此 auto/low 本地参数组合。",
+      "provenance": {
+        "batch": "final-p3aXhi",
+        "group": "kimi",
+        "producer": "tests/provider/openai-compatible-kimi-code.ts",
+        "observedPath": "/tmp/dominds-tests-compatible-semantic-p3aXhi/1.tmp/dominds-compatible-kimi-eeUmmt/auto-low-conflict.json",
+        "actualTextSha256": "0b17dc2b3def2ae10b9eeffbe2650fe8c5fc347ca2a991b5190f3fa8f7d43fd8",
+        "evidenceJsonSha256": "9bb6687dd6f4ac367372f08506c3f3b1ceea4af03c7dac2cbd64bf047eeec66b"
+      }
+    },
+    {
+      "id": "medium-high-conflict",
+      "scenario": "Kimi request construction rejects conflicting or unsupported supplied reasoning parameters before contacting the local peer.",
+      "businessValue": "Reject unusable provider configuration before consuming a request and explain which input needs correction.",
+      "context": {
+        "parameters": "{\"thinking\":\"medium\",\"reasoning_effort\":\"high\"}",
+        "requestsReceived": 0,
+        "scope": "Real SDK request construction with a controlled local HTTP peer. No vendor service is contacted."
+      },
+      "reviewQuestions": [
+        "Does the actual refusal describe these supplied options accurately and give a useful correction without pretending a provider request ran?"
+      ],
+      "actualText": "Error: Invalid Kimi Code openai-compatible model_params: thinking=medium conflicts with reasoning_effort=high for model 'kimi-for-coding'.",
+      "verdict": "passed",
+      "rationale": "两个显式档位 medium/high 不一致被准确指出，实际模型一致；调用者可据此统一档位或只保留一个设置，没有虚构请求执行。",
+      "reviewScope": "仅此 medium/high 本地冲突，不判断推理质量。",
+      "provenance": {
+        "batch": "final-p3aXhi",
+        "group": "kimi",
+        "producer": "tests/provider/openai-compatible-kimi-code.ts",
+        "observedPath": "/tmp/dominds-tests-compatible-semantic-p3aXhi/1.tmp/dominds-compatible-kimi-eeUmmt/medium-high-conflict.json",
+        "actualTextSha256": "153713eedad79dbea29ae4a30a5225f4fa6a4215ee13b6a8e3303a8d8a6fd226",
+        "evidenceJsonSha256": "533c44f87f93e8cd7f03289479b699439c4911fe4577cfe2f5acc5f2a5dfd333"
+      }
+    },
+    {
+      "id": "off-low-conflict",
+      "scenario": "Kimi request construction rejects conflicting or unsupported supplied reasoning parameters before contacting the local peer.",
+      "businessValue": "Reject unusable provider configuration before consuming a request and explain which input needs correction.",
+      "context": {
+        "parameters": "{\"thinking\":\"off\",\"reasoning_effort\":\"low\"}",
+        "requestsReceived": 0,
+        "scope": "Real SDK request construction with a controlled local HTTP peer. No vendor service is contacted."
+      },
+      "reviewQuestions": [
+        "Does the actual refusal describe these supplied options accurately and give a useful correction without pretending a provider request ran?"
+      ],
+      "actualText": "Error: Invalid Kimi Code openai-compatible model_params: thinking=off conflicts with reasoning_effort=low for model 'kimi-for-coding'.",
+      "verdict": "passed",
+      "rationale": "禁用 thinking 却指定 low effort 的输入冲突被如实说明，准确关联模型，没有暗示远端已收到请求。",
+      "reviewScope": "仅此 off/low 本地构建拒绝。",
+      "provenance": {
+        "batch": "final-p3aXhi",
+        "group": "kimi",
+        "producer": "tests/provider/openai-compatible-kimi-code.ts",
+        "observedPath": "/tmp/dominds-tests-compatible-semantic-p3aXhi/1.tmp/dominds-compatible-kimi-eeUmmt/off-low-conflict.json",
+        "actualTextSha256": "212934251bfe3921f3c7c37ef4598ca8b4c114b2574a3d70a8dbf3f88a2e32ad",
+        "evidenceJsonSha256": "b2def58741bd97894b15841450947f11a59070d64e234824b7aa21a26c18b38d"
+      }
+    },
+    {
+      "id": "unsupported-xhigh",
+      "scenario": "Kimi request construction rejects conflicting or unsupported supplied reasoning parameters before contacting the local peer.",
+      "businessValue": "Reject unusable provider configuration before consuming a request and explain which input needs correction.",
+      "context": {
+        "parameters": "{\"reasoning_effort\":\"xhigh\"}",
+        "requestsReceived": 0,
+        "scope": "Real SDK request construction with a controlled local HTTP peer. No vendor service is contacted."
+      },
+      "reviewQuestions": [
+        "Does the actual refusal describe these supplied options accurately and give a useful correction without pretending a provider request ran?"
+      ],
+      "actualText": "Error: Invalid Kimi Code openai-compatible model_params: reasoning_effort=xhigh is not supported for model 'kimi-for-coding'; expected low|medium|high.",
+      "verdict": "passed",
+      "rationale": "准确说明当前模型本地约束不支持 xhigh，并给出实际可用 low/medium/high，修正路径可执行，未捏造任务或供应商执行事实。",
+      "reviewScope": "当前内置模型的本地约束，非实时厂商能力探测。",
+      "provenance": {
+        "batch": "final-p3aXhi",
+        "group": "kimi",
+        "producer": "tests/provider/openai-compatible-kimi-code.ts",
+        "observedPath": "/tmp/dominds-tests-compatible-semantic-p3aXhi/1.tmp/dominds-compatible-kimi-eeUmmt/unsupported-xhigh.json",
+        "actualTextSha256": "b86ada02e3998b987f434e338fc358aefcc331a32ba9bcf4de956024856b1c5f",
+        "evidenceJsonSha256": "5438885768c9d941b36cbd8d397cac6795277a17985162ab5f5b301d50c73fff"
+      }
+    },
+    {
+      "id": "generic-disabled-thinking-conflict",
+      "scenario": "generic-disabled-thinking-conflict",
+      "businessValue": "Explain a concrete provider/protocol failure accurately while preserving supplied arguments, recovery identity and diagnostic evidence.",
+      "context": {
+        "input": "{\"thinking\":{\"type\":\"disabled\"},\"reasoning_effort\":\"medium\"}",
+        "scope": "Real parser/configuration component. No provider request or driver/persistence repair is executed."
+      },
+      "reviewQuestions": [
+        "Does the actual diagnostic accurately describe the supplied failure, affected request/call and any available recovery or retained evidence without inventing provider execution, tool results or completion?"
+      ],
+      "actualText": "Invalid openai-compatible model_params: thinking disabled conflicts with reasoning_effort=medium for model 'generic-model'.",
+      "verdict": "passed",
+      "rationale": "实际输入禁用 thinking 却要求 medium effort，说明准确指出冲突及 generic-model，没有将纯参数组件写成一次远端调用。",
+      "reviewScope": "纯参数 builder，不证明调度、网络或恢复。",
+      "provenance": {
+        "batch": "final-p3aXhi",
+        "group": "compatible",
+        "producer": "tests/provider/openai-compatible-volcengine-coding-plan.ts",
+        "observedPath": "/tmp/dominds-tests-compatible-semantic-p3aXhi/2.tmp/dominds-compatible-contract-v8Ek5K/generic-disabled-thinking-conflict.json",
+        "actualTextSha256": "6c0184201ce9809b7ab69dbbbaae476a1e01c222f76129ce7f3505fedc5c3f5a",
+        "evidenceJsonSha256": "510b454b1ec0cb9b3e00b42af04ca0bf84b13ce9e08065201dbf45f5bcdab795"
+      }
+    },
+    {
+      "id": "invalid-reasoning-details",
+      "scenario": "invalid-reasoning-details",
+      "businessValue": "Explain a concrete provider/protocol failure accurately while preserving supplied arguments, recovery identity and diagnostic evidence.",
+      "context": {
+        "input": "[{\"id\":\"chatcmpl-test\",\"object\":\"chat.completion.chunk\",\"created\":1,\"model\":\"kimi-k2.6\",\"choices\":[{\"index\":0,\"delta\":{\"reasoning_details\":\"not-an-array\"},\"finish_reason\":null}]}]",
+        "scope": "Real parser/configuration component. No provider request or driver/persistence repair is executed."
+      },
+      "reviewQuestions": [
+        "Does the actual diagnostic accurately describe the supplied failure, affected request/call and any available recovery or retained evidence without inventing provider execution, tool results or completion?"
+      ],
+      "actualText": "{\n  \"error\": \"LlmStreamErrorEmittedError: OPENAI-COMPATIBLE invalid reasoning_details stream payload: Invalid openai-compatible reasoning_details: expected array\",\n  \"streamErrors\": [\n    \"OPENAI-COMPATIBLE invalid reasoning_details stream payload: Invalid openai-compatible reasoning_details: expected array\"\n  ]\n}",
+      "verdict": "passed",
+      "rationale": "给定 reasoning_details 是字符串；实际错误清楚说明字段应为数组，并经抛错与单次 streamError 呈现，未虚构正常内容、工具执行或完成事实。",
+      "reviewScope": "直接真实 parser 的给定坏分块，非 SDK 流传输。",
+      "provenance": {
+        "batch": "final-p3aXhi",
+        "group": "compatible",
+        "producer": "tests/provider/openai-compatible-volcengine-coding-plan.ts",
+        "observedPath": "/tmp/dominds-tests-compatible-semantic-p3aXhi/2.tmp/dominds-compatible-contract-v8Ek5K/invalid-reasoning-details.json",
+        "actualTextSha256": "301d06ddd0f48bb774fb06efa25b227be728d22f6295619f2b4dcb8024d1cc7b",
+        "evidenceJsonSha256": "f9bfaa60263057493e0626518ed339d0ccfdbd150c4a338e2ccd58235c351309"
+      }
+    },
+    {
+      "id": "missing-batch-name",
+      "scenario": "missing-batch-name",
+      "businessValue": "Explain a concrete provider/protocol failure accurately while preserving supplied arguments, recovery identity and diagnostic evidence.",
+      "context": {
+        "input": "{\"id\":\"chatcmpl-local-peer\",\"object\":\"chat.completion\",\"created\":1,\"model\":\"peer-model\",\"choices\":[{\"index\":0,\"finish_reason\":\"tool_calls\",\"logprobs\":null,\"message\":{\"role\":\"assistant\",\"content\":null,\"refusal\":null,\"tool_calls\":[{\"index\":0,\"id\":\"call-1\",\"type\":\"function\",\"function\":{\"name\":\"\",\"arguments\":\"{}\"}}]}}],\"usage\":{\"prompt_tokens\":1,\"completion_tokens\":1,\"completion_tokens_details\":{\"reasoning_tokens\":1},\"total_tokens\":2}}",
+        "scope": "Real SDK and generator through a controlled local HTTP response. No vendor service, tool execution or driver recovery is established."
+      },
+      "reviewQuestions": [
+        "Does the actual diagnostic accurately describe the supplied failure, affected request/call and any available recovery or retained evidence without inventing provider execution, tool results or completion?"
+      ],
+      "actualText": "{\n  \"kind\": \"invalid_func_call\",\n  \"call\": {\n    \"provider\": \"openai-compatible\",\n    \"callId\": \"call-1\",\n    \"detail\": \"OPENAI-COMPATIBLE missing tool function name for callId=call-1\",\n    \"toolCallIndex\": 0,\n    \"rawArgumentsText\": \"{}\"\n  }\n}",
+      "verdict": "passed",
+      "rationale": "SDK 接收的工具名称为空，invalid_func_call 准确说明缺名并保留 call-1、索引和原始 {} 参数，没有冒充有效调用或工具结果。",
+      "reviewScope": "本地 HTTP→真实 SDK→generator 的一次坏批次 JSON，不证明 driver 修复。",
+      "provenance": {
+        "batch": "final-p3aXhi",
+        "group": "compatible",
+        "producer": "tests/provider/openai-compatible-volcengine-coding-plan.ts",
+        "observedPath": "/tmp/dominds-tests-compatible-semantic-p3aXhi/2.tmp/dominds-compatible-contract-v8Ek5K/missing-batch-name.json",
+        "actualTextSha256": "1ed9970154a60125238731b22d66499e9a311698e5987e3d1d9e08c58b3e9219",
+        "evidenceJsonSha256": "5fc240e5d9a337776bde019b505899b4b43de25cc9ae428c2bfee92215ffdf34"
+      }
+    },
+    {
+      "id": "missing-stream-name-with-hook",
+      "scenario": "missing-stream-name-with-hook",
+      "businessValue": "Explain a concrete provider/protocol failure accurately while preserving supplied arguments, recovery identity and diagnostic evidence.",
+      "context": {
+        "input": "[{\"id\":\"chatcmpl-test\",\"object\":\"chat.completion.chunk\",\"created\":1,\"model\":\"kimi-k2.6\",\"choices\":[{\"index\":0,\"delta\":{\"tool_calls\":[{\"index\":2,\"type\":\"function\",\"function\":{\"arguments\":\"{}\"}}]},\"finish_reason\":\"tool_calls\"}]}]",
+        "scope": "Real parser/configuration component. No provider request or driver/persistence repair is executed."
+      },
+      "reviewQuestions": [
+        "Does the actual diagnostic accurately describe the supplied failure, affected request/call and any available recovery or retained evidence without inventing provider execution, tool results or completion?"
+      ],
+      "actualText": "[\n  {\n    \"provider\": \"openai-compatible\",\n    \"callId\": \"toolcall_67_2\",\n    \"detail\": \"OPENAI-COMPATIBLE missing streamed tool function name for callId=toolcall_67_2\",\n    \"toolCallIndex\": 2,\n    \"rawArgumentsText\": \"{}\"\n  }\n]",
+      "verdict": "passed",
+      "rationale": "有参数无名称的流项被准确说明为缺名，带合成身份 toolcall_67_2、索引2及原始参数，可交恢复 hook；没有捏造有效函数或已恢复事实。",
+      "reviewScope": "直接 parser 的单次 invalidFuncCall，不执行后续恢复。",
+      "provenance": {
+        "batch": "final-p3aXhi",
+        "group": "compatible",
+        "producer": "tests/provider/openai-compatible-volcengine-coding-plan.ts",
+        "observedPath": "/tmp/dominds-tests-compatible-semantic-p3aXhi/2.tmp/dominds-compatible-contract-v8Ek5K/missing-stream-name-with-hook.json",
+        "actualTextSha256": "aa305c03b4fd6b93069c44047e30f02afeb4ab8324d3549e505470d274463aaa",
+        "evidenceJsonSha256": "163698c369c85b88fb5c0c56ba7fc0cb885741e39077eefa5732e2f50fe1643a"
+      }
+    },
+    {
+      "id": "missing-stream-name-without-hook",
+      "scenario": "missing-stream-name-without-hook",
+      "businessValue": "Explain a concrete provider/protocol failure accurately while preserving supplied arguments, recovery identity and diagnostic evidence.",
+      "context": {
+        "input": "[{\"id\":\"chatcmpl-test\",\"object\":\"chat.completion.chunk\",\"created\":1,\"model\":\"kimi-k2.6\",\"choices\":[{\"index\":0,\"delta\":{\"tool_calls\":[{\"index\":2,\"type\":\"function\",\"function\":{\"arguments\":\"{}\"}}]},\"finish_reason\":\"tool_calls\"}]}]",
+        "scope": "Real parser/configuration component. No provider request or driver/persistence repair is executed."
+      },
+      "reviewQuestions": [
+        "Does the actual diagnostic accurately describe the supplied failure, affected request/call and any available recovery or retained evidence without inventing provider execution, tool results or completion?"
+      ],
+      "actualText": "{\n  \"error\": \"LlmStreamErrorEmittedError: OPENAI-COMPATIBLE missing streamed tool function name for callId=toolcall_67_2\",\n  \"streamErrors\": [\n    \"OPENAI-COMPATIBLE missing streamed tool function name for callId=toolcall_67_2\"\n  ]\n}",
+      "verdict": "passed",
+      "rationale": "同一缺名分块在无 hook 时被抛错和单次 streamError 清楚呈现，并准确关联合成调用身份；没有虚构有效函数、结果或恢复成功。",
+      "reviewScope": "直接 parser，无恢复 hook 的错误通道。",
+      "provenance": {
+        "batch": "final-p3aXhi",
+        "group": "compatible",
+        "producer": "tests/provider/openai-compatible-volcengine-coding-plan.ts",
+        "observedPath": "/tmp/dominds-tests-compatible-semantic-p3aXhi/2.tmp/dominds-compatible-contract-v8Ek5K/missing-stream-name-without-hook.json",
+        "actualTextSha256": "ead7b6758661a749462e4f3dbb82aacd977f3ad77dd02b7cb9157bb1399230b2",
+        "evidenceJsonSha256": "6e98a68c528d58ad9bf433ba14d119bfd80d05ae47e05c168eebaabdde5dbc7c"
+      }
+    },
+    {
+      "id": "rejected-capture-io-failure",
+      "scenario": "rejected-capture-io-failure",
+      "businessValue": "Explain a concrete provider/protocol failure accurately while preserving supplied arguments, recovery identity and diagnostic evidence.",
+      "context": {
+        "input": "{\"upstream\":{\"message\":\"400 A parameter specified in the request is not valid Request id: test-request\",\"status\":400,\"code\":\"InvalidParameter\"},\"captureRootIsRegularFile\":true,\"payload\":{\"model\":\"kimi-k2.6\",\"messages\":[{\"role\":\"user\",\"content\":\"payload-data:f812\"}]}}",
+        "scope": "Actual error enrichment, regular-file capture failure and classifier. Source file/rtws retained on failure by CLI; no provider request."
+      },
+      "reviewQuestions": [
+        "Does the actual diagnostic accurately describe the supplied failure, affected request/call and any available recovery or retained evidence without inventing provider execution, tool results or completion?"
+      ],
+      "actualText": "{\n  \"error\": \"OPENAI-compatible provider rejected stream request with HTTP 400.\\nprovider=volcano-engine-coding-plan\\nmodel=kimi-k2.6\\nrootId=tests/provider/openai-compatible-volcengine-coding-plan\\nselfId=tests/provider/openai-compatible-volcengine-coding-plan\\ngenseq=44\\nupstream=400 A parameter specified in the request is not valid Request id: test-request\\ndebugCaptureError=ENOTDIR: not a directory, mkdir '/tmp/dominds-tests-compatible-semantic-p3aXhi/2.tmp/dominds-tests-rtws-d1zM9q/rtws/compatible-capture-not-directory/2026-10-31T18-06-18-401Z__volcano-engine-coding-plan__kimi-k2.6__tests_provider_openai-compatible-volcengine-coding-plan__g44__stream__yoitb03i'\",\n  \"debugCaptureError\": \"ENOTDIR: not a directory, mkdir '/tmp/dominds-tests-compatible-semantic-p3aXhi/2.tmp/dominds-tests-rtws-d1zM9q/rtws/compatible-capture-not-directory/2026-10-31T18-06-18-401Z__volcano-engine-coding-plan__kimi-k2.6__tests_provider_openai-compatible-volcengine-coding-plan__g44__stream__yoitb03i'\",\n  \"failure\": {\n    \"kind\": \"rejected\",\n    \"message\": \"OPENAI-compatible provider rejected stream request with HTTP 400.\\nprovider=volcano-engine-coding-plan\\nmodel=kimi-k2.6\\nrootId=tests/provider/openai-compatible-volcengine-coding-plan\\nselfId=tests/provider/openai-compatible-volcengine-coding-plan\\ngenseq=44\\nupstream=400 A parameter specified in the request is not valid Request id: test-request\\ndebugCaptureError=ENOTDIR: not a directory, mkdir '/tmp/dominds-tests-compatible-semantic-p3aXhi/2.tmp/dominds-tests-rtws-d1zM9q/rtws/compatible-capture-not-directory/2026-10-31T18-06-18-401Z__volcano-engine-coding-plan__kimi-k2.6__tests_provider_openai-compatible-volcengine-coding-plan__g44__stream__yoitb03i'\",\n    \"status\": 400,\n    \"code\": \"InvalidParameter\"\n  }\n}",
+      "verdict": "passed",
+      "rationale": "给定 HTTP400/InvalidParameter 仍是主要拒绝；另清楚说明真实 ENOTDIR 捕获失败，未声称证据已写出，也未以次要 I/O 错误覆盖上游拒绝。provider/model/dialog/genseq 与输入一致。",
+      "reviewScope": "注入上游 Error 的真实增强、分类及文件系统故障，不是网络拒绝实测。",
+      "provenance": {
+        "batch": "final-p3aXhi",
+        "group": "compatible",
+        "producer": "tests/provider/openai-compatible-volcengine-coding-plan.ts",
+        "observedPath": "/tmp/dominds-tests-compatible-semantic-p3aXhi/2.tmp/dominds-compatible-contract-v8Ek5K/rejected-capture-io-failure.json",
+        "actualTextSha256": "689d6d34db1de88b3ed4ea9e82fe607df9722275a05251127ec9f1f106e78d6e",
+        "evidenceJsonSha256": "459b0e6533145a59fe58d9a3534aef49b89f0a3756367174c377d09c20da78a0"
+      }
+    },
+    {
+      "id": "rejected-with-retained-payload",
+      "scenario": "rejected-with-retained-payload",
+      "businessValue": "Explain a concrete provider/protocol failure accurately while preserving supplied arguments, recovery identity and diagnostic evidence.",
+      "context": {
+        "input": "{\"upstream\":{\"message\":\"400 A parameter specified in the request is not valid Request id: test-request\",\"status\":400,\"code\":\"InvalidParameter\"},\"payload\":{\"model\":\"kimi-k2.6\",\"messages\":[{\"role\":\"user\",\"content\":\"payload-data:8ae4\"}],\"metadata\":{\"opaque\":[\"data:934d\",2]}},\"payloadPath\":\"/tmp/dominds-tests-compatible-semantic-p3aXhi/2.tmp/dominds-tests-rtws-d1zM9q/rtws/compatible-rejected-capture/2026-10-31T18-06-18-378Z__volcano-engine-coding-plan__kimi-k2.6__tests_provider_openai-compatible-volcengine-coding-plan__g43__stream__noep0m5m/request-payload.json\"}",
+        "scope": "Actual rejected-error enrichment, local disk capture and classifier only. No provider request or backend restart. Payload remains in CLI-owned rtws for retained evidence."
+      },
+      "reviewQuestions": [
+        "Does the actual diagnostic accurately describe the supplied failure, affected request/call and any available recovery or retained evidence without inventing provider execution, tool results or completion?"
+      ],
+      "actualText": "{\n  \"error\": \"OPENAI-compatible provider rejected stream request with HTTP 400.\\nprovider=volcano-engine-coding-plan\\nmodel=kimi-k2.6\\nrootId=tests/provider/openai-compatible-volcengine-coding-plan\\nselfId=tests/provider/openai-compatible-volcengine-coding-plan\\ngenseq=43\\nupstream=400 A parameter specified in the request is not valid Request id: test-request\\ndebugPath=/tmp/dominds-tests-compatible-semantic-p3aXhi/2.tmp/dominds-tests-rtws-d1zM9q/rtws/compatible-rejected-capture/2026-10-31T18-06-18-378Z__volcano-engine-coding-plan__kimi-k2.6__tests_provider_openai-compatible-volcengine-coding-plan__g43__stream__noep0m5m\\nrequestPayloadPath=/tmp/dominds-tests-compatible-semantic-p3aXhi/2.tmp/dominds-tests-rtws-d1zM9q/rtws/compatible-rejected-capture/2026-10-31T18-06-18-378Z__volcano-engine-coding-plan__kimi-k2.6__tests_provider_openai-compatible-volcengine-coding-plan__g43__stream__noep0m5m/request-payload.json\",\n  \"failure\": {\n    \"kind\": \"rejected\",\n    \"message\": \"OPENAI-compatible provider rejected stream request with HTTP 400.\\nprovider=volcano-engine-coding-plan\\nmodel=kimi-k2.6\\nrootId=tests/provider/openai-compatible-volcengine-coding-plan\\nselfId=tests/provider/openai-compatible-volcengine-coding-plan\\ngenseq=43\\nupstream=400 A parameter specified in the request is not valid Request id: test-request\\ndebugPath=/tmp/dominds-tests-compatible-semantic-p3aXhi/2.tmp/dominds-tests-rtws-d1zM9q/rtws/compatible-rejected-capture/2026-10-31T18-06-18-378Z__volcano-engine-coding-plan__kimi-k2.6__tests_provider_openai-compatible-volcengine-coding-plan__g43__stream__noep0m5m\\nrequestPayloadPath=/tmp/dominds-tests-compatible-semantic-p3aXhi/2.tmp/dominds-tests-rtws-d1zM9q/rtws/compatible-rejected-capture/2026-10-31T18-06-18-378Z__volcano-engine-coding-plan__kimi-k2.6__tests_provider_openai-compatible-volcengine-coding-plan__g43__stream__noep0m5m/request-payload.json\",\n    \"status\": 400,\n    \"code\": \"InvalidParameter\"\n  }\n}",
+      "verdict": "passed",
+      "rationale": "说明保留给定 HTTP400 上游原因及请求身份，并指向真实写出的 debug/payload 文件，未内联给定 payload 正文；真实全量文件读回支持所指路径，未声称重试或任务完成。",
+      "reviewScope": "实际错误增强、本地磁盘捕获与分类；上游 Error 是给定组件输入，不是供应商拒绝实测。",
+      "provenance": {
+        "batch": "final-p3aXhi",
+        "group": "compatible",
+        "producer": "tests/provider/openai-compatible-volcengine-coding-plan.ts",
+        "observedPath": "/tmp/dominds-tests-compatible-semantic-p3aXhi/2.tmp/dominds-compatible-contract-v8Ek5K/rejected-with-retained-payload.json",
+        "actualTextSha256": "9184644e8d28c5733e47c7dc76e1d6f3683a5e6630f68918e71b7d331c668161",
+        "evidenceJsonSha256": "158d1afb18ce82a20bbcb61f6d2cf24e63a62a6d435201061ab5d380f4a59ff2"
+      }
+    },
+    {
+      "id": "volc-disabled-thinking-conflict",
+      "scenario": "volc-disabled-thinking-conflict",
+      "businessValue": "Explain a concrete provider/protocol failure accurately while preserving supplied arguments, recovery identity and diagnostic evidence.",
+      "context": {
+        "input": "{\"model\":\"kimi-k2.6\",\"parameters\":{\"openai-compatible\":{\"thinking\":false,\"reasoning_effort\":\"medium\"}}}",
+        "scope": "Actual request construction with controlled localhost peer and zero received requests. No vendor service."
+      },
+      "reviewQuestions": [
+        "Does the actual diagnostic accurately describe the supplied failure, affected request/call and any available recovery or retained evidence without inventing provider execution, tool results or completion?"
+      ],
+      "actualText": "Error: Invalid openai-compatible model_params: thinking disabled conflicts with reasoning_effort=medium for model 'kimi-k2.6'.",
+      "verdict": "passed",
+      "rationale": "thinking=false 与 medium effort 的冲突及 kimi-k2.6 身份准确，文案没有把零 HTTP 请求的本地拒绝写成远端响应。",
+      "reviewScope": "内置配置克隆到 localhost 的实际请求构建，非厂商服务。",
+      "provenance": {
+        "batch": "final-p3aXhi",
+        "group": "compatible",
+        "producer": "tests/provider/openai-compatible-volcengine-coding-plan.ts",
+        "observedPath": "/tmp/dominds-tests-compatible-semantic-p3aXhi/2.tmp/dominds-compatible-contract-v8Ek5K/volc-disabled-thinking-conflict.json",
+        "actualTextSha256": "6b584baf7280b442c3106711c1116d9269d5756b9c13d331d79d445a7e62cb81",
+        "evidenceJsonSha256": "195895b4796b5cfc7d29d8b14115dcc706d33afde62dc99a2b5bd8927fed2e70"
+      }
+    }
+  ],
+  "initialReviewedSupersededCases": [
+    {
+      "id": "auto-low-conflict",
+      "scenario": "Kimi request construction rejects conflicting or unsupported supplied reasoning parameters before contacting the local peer.",
+      "businessValue": "Reject unusable provider configuration before consuming a request and explain which input needs correction.",
+      "context": {
+        "parameters": "{\"thinking\":\"auto\",\"reasoning_effort\":\"low\"}",
+        "requestsReceived": 0,
+        "scope": "Real SDK request construction with a controlled local HTTP peer. No vendor service is contacted."
+      },
+      "reviewQuestions": [
+        "Does the actual refusal describe these supplied options accurately and give a useful correction without pretending a provider request ran?"
+      ],
+      "actualText": "Error: Invalid Kimi Code openai-compatible model_params: thinking=auto conflicts with reasoning_effort=low for model 'kimi-for-coding'.",
+      "verdict": "passed",
+      "rationale": "准确指出 auto 与显式 low effort 在当前本地配置中不兼容，并关联实际模型；可据此选择自动模式或显式 effort，没有把零请求构建拒绝写成供应商失败。",
+      "reviewScope": "仅此 auto/low 本地参数组合。",
+      "status": "superseded-only-within-the-scoped-claimed-value",
+      "provenance": {
+        "observedPath": "/tmp/dominds-compatible-kimi-BsOH3h/auto-low-conflict.json",
+        "actualTextSha256": "0b17dc2b3def2ae10b9eeffbe2650fe8c5fc347ca2a991b5190f3fa8f7d43fd8",
+        "evidenceJsonSha256": "9bb6687dd6f4ac367372f08506c3f3b1ceea4af03c7dac2cbd64bf047eeec66b",
+        "sourceLimit": "Intermediate producer source identity was not captured contemporaneously. Final source hashes below are not claimed to be this intermediate source."
+      }
+    },
+    {
+      "id": "medium-high-conflict",
+      "scenario": "Kimi request construction rejects conflicting or unsupported supplied reasoning parameters before contacting the local peer.",
+      "businessValue": "Reject unusable provider configuration before consuming a request and explain which input needs correction.",
+      "context": {
+        "parameters": "{\"thinking\":\"medium\",\"reasoning_effort\":\"high\"}",
+        "requestsReceived": 0,
+        "scope": "Real SDK request construction with a controlled local HTTP peer. No vendor service is contacted."
+      },
+      "reviewQuestions": [
+        "Does the actual refusal describe these supplied options accurately and give a useful correction without pretending a provider request ran?"
+      ],
+      "actualText": "Error: Invalid Kimi Code openai-compatible model_params: thinking=medium conflicts with reasoning_effort=high for model 'kimi-for-coding'.",
+      "verdict": "passed",
+      "rationale": "两个显式档位 medium/high 不一致被准确指出，实际模型一致；调用者可据此统一档位或只保留一个设置，没有虚构请求执行。",
+      "reviewScope": "仅此 medium/high 本地冲突，不判断推理质量。",
+      "status": "superseded-only-within-the-scoped-claimed-value",
+      "provenance": {
+        "observedPath": "/tmp/dominds-compatible-kimi-BsOH3h/medium-high-conflict.json",
+        "actualTextSha256": "153713eedad79dbea29ae4a30a5225f4fa6a4215ee13b6a8e3303a8d8a6fd226",
+        "evidenceJsonSha256": "533c44f87f93e8cd7f03289479b699439c4911fe4577cfe2f5acc5f2a5dfd333",
+        "sourceLimit": "Intermediate producer source identity was not captured contemporaneously. Final source hashes below are not claimed to be this intermediate source."
+      }
+    },
+    {
+      "id": "off-low-conflict",
+      "scenario": "Kimi request construction rejects conflicting or unsupported supplied reasoning parameters before contacting the local peer.",
+      "businessValue": "Reject unusable provider configuration before consuming a request and explain which input needs correction.",
+      "context": {
+        "parameters": "{\"thinking\":\"off\",\"reasoning_effort\":\"low\"}",
+        "requestsReceived": 0,
+        "scope": "Real SDK request construction with a controlled local HTTP peer. No vendor service is contacted."
+      },
+      "reviewQuestions": [
+        "Does the actual refusal describe these supplied options accurately and give a useful correction without pretending a provider request ran?"
+      ],
+      "actualText": "Error: Invalid Kimi Code openai-compatible model_params: thinking=off conflicts with reasoning_effort=low for model 'kimi-for-coding'.",
+      "verdict": "passed",
+      "rationale": "禁用 thinking 却指定 low effort 的输入冲突被如实说明，准确关联模型，没有暗示远端已收到请求。",
+      "reviewScope": "仅此 off/low 本地构建拒绝。",
+      "status": "superseded-only-within-the-scoped-claimed-value",
+      "provenance": {
+        "observedPath": "/tmp/dominds-compatible-kimi-BsOH3h/off-low-conflict.json",
+        "actualTextSha256": "212934251bfe3921f3c7c37ef4598ca8b4c114b2574a3d70a8dbf3f88a2e32ad",
+        "evidenceJsonSha256": "b2def58741bd97894b15841450947f11a59070d64e234824b7aa21a26c18b38d",
+        "sourceLimit": "Intermediate producer source identity was not captured contemporaneously. Final source hashes below are not claimed to be this intermediate source."
+      }
+    },
+    {
+      "id": "unsupported-xhigh",
+      "scenario": "Kimi request construction rejects conflicting or unsupported supplied reasoning parameters before contacting the local peer.",
+      "businessValue": "Reject unusable provider configuration before consuming a request and explain which input needs correction.",
+      "context": {
+        "parameters": "{\"reasoning_effort\":\"xhigh\"}",
+        "requestsReceived": 0,
+        "scope": "Real SDK request construction with a controlled local HTTP peer. No vendor service is contacted."
+      },
+      "reviewQuestions": [
+        "Does the actual refusal describe these supplied options accurately and give a useful correction without pretending a provider request ran?"
+      ],
+      "actualText": "Error: Invalid Kimi Code openai-compatible model_params: reasoning_effort=xhigh is not supported for model 'kimi-for-coding'; expected low|medium|high.",
+      "verdict": "passed",
+      "rationale": "准确说明当前模型本地约束不支持 xhigh，并给出实际可用 low/medium/high，修正路径可执行，未捏造任务或供应商执行事实。",
+      "reviewScope": "当前内置模型的本地约束，非实时厂商能力探测。",
+      "status": "superseded-only-within-the-scoped-claimed-value",
+      "provenance": {
+        "observedPath": "/tmp/dominds-compatible-kimi-BsOH3h/unsupported-xhigh.json",
+        "actualTextSha256": "b86ada02e3998b987f434e338fc358aefcc331a32ba9bcf4de956024856b1c5f",
+        "evidenceJsonSha256": "5438885768c9d941b36cbd8d397cac6795277a17985162ab5f5b301d50c73fff",
+        "sourceLimit": "Intermediate producer source identity was not captured contemporaneously. Final source hashes below are not claimed to be this intermediate source."
+      }
+    }
+  ],
+  "unreviewedIntermediateGenerations": {
+    "status": "not-accepted",
+    "scope": "oiEUgY Kimi4 and QtMICE compatible8 were generated but not read/judged by this reviewer; they are not inherited acceptance."
+  },
+  "verification": {
+    "status": "scoped_behavior_and_subjective_review_passed_full_test_types_failed",
+    "runtime": "Repository-pinned Corepack pnpm11.17.0/Node24.19.0 through /tmp/dominds-pnpm. Actual local HTTP/SDK, files and parser components; no dependencies/frameworks/type exclusions or timeout increases.",
+    "baselineProcesses": {
+      "total": 2,
+      "passed": 2,
+      "failed": 0,
+      "timedOut": 0,
+      "results": [
+        {
+          "id": "provider/openai-compatible-kimi-code.ts",
+          "status": "passed",
+          "durationMs": 998,
+          "code": 0,
+          "signal": null,
+          "logPath": "/tmp/dominds-provider-compatible-baseline/001-provider_openai-compatible-kimi-code.ts.log",
+          "tempDir": "/tmp/dominds-provider-compatible-baseline/1.tmp"
+        },
+        {
+          "id": "provider/openai-compatible-volcengine-coding-plan.ts",
+          "status": "passed",
+          "durationMs": 985,
+          "code": 0,
+          "signal": null,
+          "logPath": "/tmp/dominds-provider-compatible-baseline/002-provider_openai-compatible-volcengine-coding-plan.ts.log",
+          "tempDir": "/tmp/dominds-provider-compatible-baseline/2.tmp"
+        }
+      ]
+    },
+    "firstRemediatedProcesses": {
+      "total": 2,
+      "passed": 2,
+      "failed": 0,
+      "timedOut": 0,
+      "results": [
+        {
+          "id": "provider/openai-compatible-kimi-code.ts",
+          "status": "passed",
+          "durationMs": 1214,
+          "code": 0,
+          "signal": null,
+          "logPath": "/tmp/dominds-compatible-first/001-provider_openai-compatible-kimi-code.ts.log",
+          "tempDir": "/tmp/dominds-compatible-first/1.tmp"
+        },
+        {
+          "id": "provider/openai-compatible-volcengine-coding-plan.ts",
+          "status": "passed",
+          "durationMs": 1097,
+          "code": 0,
+          "signal": null,
+          "logPath": "/tmp/dominds-compatible-first/002-provider_openai-compatible-volcengine-coding-plan.ts.log",
+          "tempDir": "/tmp/dominds-compatible-first/2.tmp"
+        }
+      ]
+    },
+    "finalBehavior": {
+      "total": 2,
+      "passed": 2,
+      "failed": 0,
+      "timedOut": 0,
+      "results": [
+        {
+          "id": "provider/openai-compatible-kimi-code.ts",
+          "status": "passed",
+          "durationMs": 1255,
+          "code": 0,
+          "signal": null,
+          "logPath": "/tmp/dominds-tests-compatible-YgAcaI/001-provider_openai-compatible-kimi-code.ts.log"
+        },
+        {
+          "id": "provider/openai-compatible-volcengine-coding-plan.ts",
+          "status": "passed",
+          "durationMs": 1069,
+          "code": 0,
+          "signal": null,
+          "logPath": "/tmp/dominds-tests-compatible-YgAcaI/002-provider_openai-compatible-volcengine-coding-plan.ts.log"
+        }
+      ]
+    },
+    "semanticGenerationProcesses": {
+      "total": 2,
+      "passed": 2,
+      "failed": 0,
+      "timedOut": 0,
+      "results": [
+        {
+          "id": "provider/openai-compatible-kimi-code.ts",
+          "status": "passed",
+          "durationMs": 1298,
+          "code": 0,
+          "signal": null,
+          "logPath": "/tmp/dominds-tests-compatible-semantic-p3aXhi/001-provider_openai-compatible-kimi-code.ts.log",
+          "tempDir": "/tmp/dominds-tests-compatible-semantic-p3aXhi/1.tmp"
+        },
+        {
+          "id": "provider/openai-compatible-volcengine-coding-plan.ts",
+          "status": "passed",
+          "durationMs": 1140,
+          "code": 0,
+          "signal": null,
+          "logPath": "/tmp/dominds-tests-compatible-semantic-p3aXhi/002-provider_openai-compatible-volcengine-coding-plan.ts.log",
+          "tempDir": "/tmp/dominds-tests-compatible-semantic-p3aXhi/2.tmp"
+        }
+      ],
+      "scope": "evidence-generation-processes",
+      "semanticAcceptance": "pending"
+    },
+    "subjectiveAcceptance": {
+      "total": 12,
+      "passed": 12,
+      "failed": 0,
+      "pending": 0,
+      "reviewer": "/root/stage1_semantic_record",
+      "scope": "Final eeUmmt4+v8Ek5K8 fully reread as fresh output; full actual text/context/verdict/rationale/provenance retained in cases. BsOH3h4 is historical scoped passed/superseded. First combined oiEUgY4/QtMICE8 was generation only. Prior review and hash do not accept fresh output; raw generator summaries remain pending."
+    },
+    "checks": {
+      "applicationTypes": {
+        "exitCode": 0,
+        "logPath": "/tmp/dominds-compatible-app-types.log",
+        "sha256": "41aa5be00a3d0c4d2223d9aee1e64fd44a1a074ddc49dbfbb33b30036175e87a"
+      },
+      "runner": {
+        "exitCode": 0,
+        "logPath": "/tmp/dominds-compatible-runner.log",
+        "sha256": "5483a0ffb083fd5facd478d7fa04ac008cee66914595d27bfd7185ecaa9663dd",
+        "total": 6,
+        "passed": 6,
+        "failed": 0
+      },
+      "fullTestTypes": {
+        "exitCode": 2,
+        "logPath": "/tmp/dominds-compatible-types-commit.log",
+        "sha256": "9d656a16dfc7abc238c7aa622698cd60af647bc4e814e366d1374049415b3764",
+        "status": "failed",
+        "diagnosticsBefore": 132,
+        "diagnosticsNow": 104,
+        "changedTargetDiagnostics": 0,
+        "diagnostics": [
+          "tests/apps-host-tool-result-contract.ts(454,63): error TS2339: Property 'position' does not exist on type 'DomindsAppReminderApplyRequest'.",
+          "tests/provider/anthropic-stream-errors.ts(46,7): error TS2345: Argument of type '{ id: string; name: string; model: string; }' is not assignable to parameter of type 'Member'.",
+          "tests/provider/tool-choice-requirement.ts(23,7): error TS2322: Type '{ type: \"function\"; name: string; description: string; parameters: { type: string; properties: {}; additionalProperties: boolean; }; }' is not assignable to type 'ChatGptTool'.",
+          "tests/provider/volcengine-coding-plan-live-smoke.ts(305,27): error TS2339: Property 'name' does not exist on type 'never'.",
+          "tests/reminders/app-reminder-render-mode-preserve.ts(21,5): error TS2511: Cannot create an instance of an abstract class.",
+          "tests/reminders/daemon-exit-wake-event.ts(9,25): error TS2511: Cannot create an instance of an abstract class.",
+          "tests/reminders/daemon-exit-wake-event.ts(50,22): error TS2339: Property 'reminderId' does not exist on type 'Readonly<{ eventId: string; reminderId: string; content: string; updatedContent?: string | undefined; updatedMeta?: JsonValue | undefined; }> | readonly Readonly<{ eventId: string; reminderId: string; content: string; updatedContent?: string | undefined; updatedMeta?: JsonValue | undefined; }>[]'.",
+          "tests/reminders/daemon-exit-wake-event.ts(51,22): error TS2339: Property 'eventId' does not exist on type 'Readonly<{ eventId: string; reminderId: string; content: string; updatedContent?: string | undefined; updatedMeta?: JsonValue | undefined; }> | readonly Readonly<{ eventId: string; reminderId: string; content: string; updatedContent?: string | undefined; updatedMeta?: JsonValue | undefined; }>[]'.",
+          "tests/reminders/daemon-exit-wake-event.ts(52,22): error TS2339: Property 'content' does not exist on type 'Readonly<{ eventId: string; reminderId: string; content: string; updatedContent?: string | undefined; updatedMeta?: JsonValue | undefined; }> | readonly Readonly<{ eventId: string; reminderId: string; content: string; updatedContent?: string | undefined; updatedMeta?: JsonValue | undefined; }>[]'.",
+          "tests/reminders/daemon-exit-wake-event.ts(53,22): error TS2339: Property 'updatedContent' does not exist on type 'Readonly<{ eventId: string; reminderId: string; content: string; updatedContent?: string | undefined; updatedMeta?: JsonValue | undefined; }> | readonly Readonly<{ eventId: string; reminderId: string; content: string; updatedContent?: string | undefined; updatedMeta?: JsonValue | undefined; }>[]'.",
+          "tests/reminders/daemon-exit-wake-event.ts(54,29): error TS2339: Property 'updatedMeta' does not exist on type 'Readonly<{ eventId: string; reminderId: string; content: string; updatedContent?: string | undefined; updatedMeta?: JsonValue | undefined; }> | readonly Readonly<{ eventId: string; reminderId: string; content: string; updatedContent?: string | undefined; updatedMeta?: JsonValue | undefined; }>[]'.",
+          "tests/reminders/daemon-exit-wake-event.ts(55,25): error TS2339: Property 'updatedMeta' does not exist on type 'Readonly<{ eventId: string; reminderId: string; content: string; updatedContent?: string | undefined; updatedMeta?: JsonValue | undefined; }> | readonly Readonly<{ eventId: string; reminderId: string; content: string; updatedContent?: string | undefined; updatedMeta?: JsonValue | undefined; }>[]'.",
+          "tests/reminders/daemon-exit-wake-event.ts(56,36): error TS2339: Property 'updatedMeta' does not exist on type 'Readonly<{ eventId: string; reminderId: string; content: string; updatedContent?: string | undefined; updatedMeta?: JsonValue | undefined; }> | readonly Readonly<{ eventId: string; reminderId: string; content: string; updatedContent?: string | undefined; updatedMeta?: JsonValue | undefined; }>[]'.",
+          "tests/reminders/daemon-exit-wake-event.ts(58,18): error TS2339: Property 'updatedMeta' does not exist on type 'Readonly<{ eventId: string; reminderId: string; content: string; updatedContent?: string | undefined; updatedMeta?: JsonValue | undefined; }> | readonly Readonly<{ eventId: string; reminderId: string; content: string; updatedContent?: string | undefined; updatedMeta?: JsonValue | undefined; }>[]'.",
+          "tests/reminders/daemon-exit-wake-event.ts(59,11): error TS2339: Property 'updatedMeta' does not exist on type 'Readonly<{ eventId: string; reminderId: string; content: string; updatedContent?: string | undefined; updatedMeta?: JsonValue | undefined; }> | readonly Readonly<{ eventId: string; reminderId: string; content: string; updatedContent?: string | undefined; updatedMeta?: JsonValue | undefined; }>[]'.",
+          "tests/reminders/daemon-exit-wake-event.ts(60,25): error TS2339: Property 'updatedMeta' does not exist on type 'Readonly<{ eventId: string; reminderId: string; content: string; updatedContent?: string | undefined; updatedMeta?: JsonValue | undefined; }> | readonly Readonly<{ eventId: string; reminderId: string; content: string; updatedContent?: string | undefined; updatedMeta?: JsonValue | undefined; }>[]'.",
+          "tests/reminders/daemon-exit-wake-event.ts(64,22): error TS2339: Property 'updatedMeta' does not exist on type 'Readonly<{ eventId: string; reminderId: string; content: string; updatedContent?: string | undefined; updatedMeta?: JsonValue | undefined; }> | readonly Readonly<{ eventId: string; reminderId: string; content: string; updatedContent?: string | undefined; updatedMeta?: JsonValue | undefined; }>[]'.",
+          "tests/reminders/daemon-exit-wake-event.ts(65,22): error TS2339: Property 'updatedMeta' does not exist on type 'Readonly<{ eventId: string; reminderId: string; content: string; updatedContent?: string | undefined; updatedMeta?: JsonValue | undefined; }> | readonly Readonly<{ eventId: string; reminderId: string; content: string; updatedContent?: string | undefined; updatedMeta?: JsonValue | undefined; }>[]'.",
+          "tests/reminders/daemon-exit-wake-event.ts(65,60): error TS2339: Property 'eventId' does not exist on type 'Readonly<{ eventId: string; reminderId: string; content: string; updatedContent?: string | undefined; updatedMeta?: JsonValue | undefined; }> | readonly Readonly<{ eventId: string; reminderId: string; content: string; updatedContent?: string | undefined; updatedMeta?: JsonValue | undefined; }>[]'.",
+          "tests/reminders/daemon-exit-wake-event.ts(66,29): error TS2339: Property 'updatedMeta' does not exist on type 'Readonly<{ eventId: string; reminderId: string; content: string; updatedContent?: string | undefined; updatedMeta?: JsonValue | undefined; }> | readonly Readonly<{ eventId: string; reminderId: string; content: string; updatedContent?: string | undefined; updatedMeta?: JsonValue | undefined; }>[]'.",
+          "tests/reminders/daemon-exit-wake-event.ts(67,22): error TS2339: Property 'updatedMeta' does not exist on type 'Readonly<{ eventId: string; reminderId: string; content: string; updatedContent?: string | undefined; updatedMeta?: JsonValue | undefined; }> | readonly Readonly<{ eventId: string; reminderId: string; content: string; updatedContent?: string | undefined; updatedMeta?: JsonValue | undefined; }>[]'.",
+          "tests/reminders/daemon-exit-wake-event.ts(71,20): error TS2339: Property 'updatedContent' does not exist on type 'Readonly<{ eventId: string; reminderId: string; content: string; updatedContent?: string | undefined; updatedMeta?: JsonValue | undefined; }> | readonly Readonly<{ eventId: string; reminderId: string; content: string; updatedContent?: string | undefined; updatedMeta?: JsonValue | undefined; }>[]'.",
+          "tests/reminders/daemon-exit-wake-event.ts(75,17): error TS2339: Property 'updatedMeta' does not exist on type 'Readonly<{ eventId: string; reminderId: string; content: string; updatedContent?: string | undefined; updatedMeta?: JsonValue | undefined; }> | readonly Readonly<{ eventId: string; reminderId: string; content: string; updatedContent?: string | undefined; updatedMeta?: JsonValue | undefined; }>[]'.",
+          "tests/reminders/daemon-exit-wake-event.ts(86,20): error TS2339: Property 'updatedContent' does not exist on type 'Readonly<{ eventId: string; reminderId: string; content: string; updatedContent?: string | undefined; updatedMeta?: JsonValue | undefined; }> | readonly Readonly<{ eventId: string; reminderId: string; content: string; updatedContent?: string | undefined; updatedMeta?: JsonValue | undefined; }>[]'.",
+          "tests/reminders/daemon-reminder-gone-exit-snapshot.ts(10,5): error TS2511: Cannot create an instance of an abstract class.",
+          "tests/reminders/daemon-reminder-no-jitter-without-output-change.ts(17,5): error TS2511: Cannot create an instance of an abstract class.",
+          "tests/reminders/daemon-reminder-no-jitter-without-output-change.ts(50,9): error TS2322: Type 'string | undefined' is not assignable to type 'JsonValue'.",
+          "tests/reminders/daemon-reminder-no-jitter-without-output-change.ts(62,34): error TS2339: Property 'pid' does not exist on type 'string | number | boolean | JsonObject | JsonArray'.",
+          "tests/reminders/daemon-reminder-render.ts(36,25): error TS2511: Cannot create an instance of an abstract class.",
+          "tests/reminders/daemon-reminder-render.ts(72,9): error TS2322: Type 'string | undefined' is not assignable to type 'JsonValue'.",
+          "tests/reminders/daemon-reminder-retained-after-exit.ts(17,5): error TS2511: Cannot create an instance of an abstract class.",
+          "tests/reminders/daemon-reminder-retained-after-exit.ts(59,9): error TS2322: Type 'string | undefined' is not assignable to type 'JsonValue'.",
+          "tests/reminders/daemon-start-receipt-lifecycle-card.ts(11,5): error TS2511: Cannot create an instance of an abstract class.",
+          "tests/reminders/daemon-start-receipt-lifecycle-card.ts(46,9): error TS2322: Type 'string | undefined' is not assignable to type 'JsonValue'.",
+          "tests/reminders/get-daemon-output-stream-selection.ts(16,5): error TS2511: Cannot create an instance of an abstract class.",
+          "tests/reminders/get-daemon-output-stream-selection.ts(50,5): error TS2322: Type 'string | undefined' is not assignable to type 'JsonValue'.",
+          "tests/reminders/get-daemon-output-stream-selection.ts(117,9): error TS2322: Type 'string | undefined' is not assignable to type 'JsonValue'.",
+          "tests/reminders/main-dialog-goal-reminder.ts(119,11): error TS2322: Type 'number' is not assignable to type 'CallSiteCourseNo'.",
+          "tests/reminders/main-dialog-goal-reminder.ts(120,11): error TS2322: Type 'number' is not assignable to type 'CallSiteGenseqNo'.",
+          "tests/reminders/migrate-reminder-scope.ts(46,11): error TS2322: Type 'number' is not assignable to type 'CallSiteCourseNo'.",
+          "tests/reminders/migrate-reminder-scope.ts(47,11): error TS2322: Type 'number' is not assignable to type 'CallSiteGenseqNo'.",
+          "tests/reminders/migrate-reminder-scope.ts(59,11): error TS2322: Type 'number' is not assignable to type 'CallSiteCourseNo'.",
+          "tests/reminders/migrate-reminder-scope.ts(60,11): error TS2322: Type 'number' is not assignable to type 'CallSiteGenseqNo'.",
+          "tests/reminders/migrate-reminder-scope.ts(76,11): error TS2322: Type 'number' is not assignable to type 'CallSiteCourseNo'.",
+          "tests/reminders/migrate-reminder-scope.ts(77,11): error TS2322: Type 'number' is not assignable to type 'CallSiteGenseqNo'.",
+          "tests/reminders/migrate-reminder-scope.ts(93,11): error TS2322: Type 'number' is not assignable to type 'CallSiteCourseNo'.",
+          "tests/reminders/migrate-reminder-scope.ts(94,11): error TS2322: Type 'number' is not assignable to type 'CallSiteGenseqNo'.",
+          "tests/reminders/pending-tellask-reminder-order.ts(47,5): error TS2322: Type 'number' is not assignable to type 'CallSiteCourseNo'.",
+          "tests/reminders/pending-tellask-reminder-order.ts(48,5): error TS2322: Type 'number' is not assignable to type 'CallSiteGenseqNo'.",
+          "tests/reminders/pending-tellask-reminder-order.ts(163,11): error TS2322: Type 'number' is not assignable to type 'CallSiteCourseNo'.",
+          "tests/reminders/pending-tellask-reminder-order.ts(164,11): error TS2322: Type 'number' is not assignable to type 'CallSiteGenseqNo'.",
+          "tests/reminders/pending-tellask-reminder-order.ts(176,11): error TS2322: Type 'number' is not assignable to type 'CallSiteCourseNo'.",
+          "tests/reminders/pending-tellask-reminder-order.ts(177,11): error TS2322: Type 'number' is not assignable to type 'CallSiteGenseqNo'.",
+          "tests/reminders/pending-tellask-reminder-order.ts(238,13): error TS2322: Type 'number' is not assignable to type 'CallSiteCourseNo'.",
+          "tests/reminders/pending-tellask-reminder-order.ts(239,13): error TS2322: Type 'number' is not assignable to type 'CallSiteGenseqNo'.",
+          "tests/reminders/pending-tellask-reminder-order.ts(252,13): error TS2322: Type 'number' is not assignable to type 'CallSiteCourseNo'.",
+          "tests/reminders/pending-tellask-reminder-order.ts(253,13): error TS2322: Type 'number' is not assignable to type 'CallSiteGenseqNo'.",
+          "tests/reminders/pending-tellask-zero-state-no-jitter.ts(41,5): error TS2322: Type 'number' is not assignable to type 'CallSiteCourseNo'.",
+          "tests/reminders/pending-tellask-zero-state-no-jitter.ts(42,5): error TS2322: Type 'number' is not assignable to type 'CallSiteGenseqNo'.",
+          "tests/reminders/pending-tellask-zero-state-no-jitter.ts(121,11): error TS2322: Type 'number' is not assignable to type 'CallSiteCourseNo'.",
+          "tests/reminders/pending-tellask-zero-state-no-jitter.ts(122,11): error TS2322: Type 'number' is not assignable to type 'CallSiteGenseqNo'.",
+          "tests/reminders/reminder-format.ts(390,5): error TS18048: 'zhMaintenanceReference' is possibly 'undefined'.",
+          "tests/reminders/reminder-format.ts(394,5): error TS18048: 'zhMaintenanceReference' is possibly 'undefined'.",
+          "tests/reminders/reminder-format.ts(398,6): error TS18048: 'zhMaintenanceReference' is possibly 'undefined'.",
+          "tests/reminders/reminder-format.ts(402,6): error TS18048: 'zhMaintenanceReference' is possibly 'undefined'.",
+          "tests/reminders/reminder-format.ts(406,5): error TS18048: 'zhMaintenanceReference' is possibly 'undefined'.",
+          "tests/reminders/reminder-format.ts(410,5): error TS18048: 'zhMaintenanceReference' is possibly 'undefined'.",
+          "tests/reminders/reminder-format.ts(414,5): error TS18048: 'zhMaintenanceReference' is possibly 'undefined'.",
+          "tests/reminders/reminder-format.ts(420,5): error TS18048: 'zhMaintenanceReference' is possibly 'undefined'.",
+          "tests/reminders/reminder-format.ts(424,5): error TS18048: 'zhMaintenanceReference' is possibly 'undefined'.",
+          "tests/reminders/reminder-format.ts(428,5): error TS18048: 'zhMaintenanceReference' is possibly 'undefined'.",
+          "tests/reminders/reminder-format.ts(434,5): error TS18048: 'zhMaintenanceReference' is possibly 'undefined'.",
+          "tests/reminders/reminder-format.ts(934,5): error TS18048: 'enMaintenanceReference' is possibly 'undefined'.",
+          "tests/reminders/reminder-format.ts(940,5): error TS18048: 'enMaintenanceReference' is possibly 'undefined'.",
+          "tests/reminders/reminder-format.ts(944,6): error TS18048: 'enMaintenanceReference' is possibly 'undefined'.",
+          "tests/reminders/reminder-format.ts(950,5): error TS18048: 'enMaintenanceReference' is possibly 'undefined'.",
+          "tests/reminders/reminder-format.ts(954,5): error TS18048: 'enMaintenanceReference' is possibly 'undefined'.",
+          "tests/reminders/reminder-format.ts(958,5): error TS18048: 'enMaintenanceReference' is possibly 'undefined'.",
+          "tests/reminders/reminder-format.ts(964,5): error TS18048: 'enMaintenanceReference' is possibly 'undefined'.",
+          "tests/reminders/reminder-format.ts(970,5): error TS18048: 'enMaintenanceReference' is possibly 'undefined'.",
+          "tests/reminders/reminder-format.ts(974,5): error TS18048: 'enMaintenanceReference' is possibly 'undefined'.",
+          "tests/reminders/reminder-format.ts(978,5): error TS18048: 'enMaintenanceReference' is possibly 'undefined'.",
+          "tests/reminders/reminder-owner-failure-loud.ts(48,5): error TS2511: Cannot create an instance of an abstract class.",
+          "tests/reminders/reminder-render-mode.ts(12,25): error TS2511: Cannot create an instance of an abstract class.",
+          "tests/reminders/shared-daemon-reminder-command-mismatch.ts(33,5): error TS2511: Cannot create an instance of an abstract class.",
+          "tests/reminders/shared-daemon-reminder-command-mismatch.ts(85,9): error TS2322: Type 'string | undefined' is not assignable to type 'JsonValue'.",
+          "tests/reminders/shared-daemon-reminder-persistence.ts(34,5): error TS2511: Cannot create an instance of an abstract class.",
+          "tests/reminders/shared-daemon-reminder-persistence.ts(73,9): error TS2322: Type 'string | undefined' is not assignable to type 'JsonValue'.",
+          "tests/reminders/shared-daemon-reminder-wrapper-command-match.ts(28,5): error TS2511: Cannot create an instance of an abstract class.",
+          "tests/reminders/task-agent-reminder-scope.ts(144,11): error TS2322: Type 'number' is not assignable to type 'CallSiteCourseNo'.",
+          "tests/reminders/task-agent-reminder-scope.ts(145,11): error TS2322: Type 'number' is not assignable to type 'CallSiteGenseqNo'.",
+          "tests/reminders/task-agent-reminder-scope.ts(174,11): error TS2322: Type 'number' is not assignable to type 'CallSiteCourseNo'.",
+          "tests/reminders/task-agent-reminder-scope.ts(175,11): error TS2322: Type 'number' is not assignable to type 'CallSiteGenseqNo'.",
+          "tests/reminders/task-agent-reminder-scope.ts(187,11): error TS2322: Type 'number' is not assignable to type 'CallSiteCourseNo'.",
+          "tests/reminders/task-agent-reminder-scope.ts(188,11): error TS2322: Type 'number' is not assignable to type 'CallSiteGenseqNo'.",
+          "tests/reminders/task-agent-reminder-scope.ts(203,11): error TS2322: Type 'number' is not assignable to type 'CallSiteCourseNo'.",
+          "tests/reminders/task-agent-reminder-scope.ts(204,11): error TS2322: Type 'number' is not assignable to type 'CallSiteGenseqNo'.",
+          "tests/reminders/task-agent-reminder-scope.ts(219,11): error TS2322: Type 'number' is not assignable to type 'CallSiteCourseNo'.",
+          "tests/reminders/task-agent-reminder-scope.ts(220,11): error TS2322: Type 'number' is not assignable to type 'CallSiteGenseqNo'.",
+          "tests/ripgrep-streaming.ts(29,23): error TS2835: Relative import paths need explicit file extensions in ECMAScript imports when '--moduleResolution' is 'node16' or 'nodenext'. Did you mean '../main/tools/ripgrep.js'?",
+          "tests/ripgrep-windows-compat.ts(29,23): error TS2835: Relative import paths need explicit file extensions in ECMAScript imports when '--moduleResolution' is 'node16' or 'nodenext'. Did you mean '../main/tools/ripgrep.js'?",
+          "tests/task-package.ts(174,7): error TS2322: Type 'number' is not assignable to type 'CallSiteCourseNo'.",
+          "tests/task-package.ts(175,7): error TS2322: Type 'number' is not assignable to type 'CallSiteGenseqNo'.",
+          "tests/toolsets/shell-cmd-capture-env.ts(73,5): error TS2322: Type 'unknown' is not assignable to type 'boolean'."
+        ],
+        "scope": "Entire unchanged tests/tsconfig.json. Original28 corrected with actual discriminant narrowing, input-data fidelity and untrusted HTTP response boundary rather than false SDK fixture types. New helper object/Record error corrected with a runtime JSON record guard; no weaker/excluded types."
+      },
+      "format": {
+        "exitCode": 0,
+        "logPath": "/tmp/dominds-compatible-format.log",
+        "sha256": "b1ea3ae2fe62892cb4e7315068d0b5aa27dc325de6426de93c32837cb79bd2f0",
+        "scope": "Full root check of present sources; new/final report separately formatted and checked before commit."
+      },
+      "extraFormat": {
+        "exitCode": 0,
+        "logPath": "/tmp/dominds-compatible-extra-format.log",
+        "sha256": "17aa973d3f004560237d9a95171210b0671deff23d61628eecf7322ff5938f20"
+      },
+      "documentationLinks": {
+        "exitCode": 0,
+        "logPath": "/tmp/dominds-compatible-doclinks.log",
+        "sha256": "378a62964716c63ac4fa049304acc3de11c4c559ebfe50fe36c017a9e3c0b517",
+        "trackedMarkdown": 201,
+        "newMarkdown": 0,
+        "canonicalDocuments": 69,
+        "excludedRuntimeSources": 131,
+        "localTargetsAndFragments": 366,
+        "networkLinksIgnored": 9,
+        "failures": [],
+        "scope": "Complete tracked Markdown via git ls-files, canonical symlinks/narrow runtime exclusions, Markdown-aware local targets/fragments only; no network."
+      },
+      "productionBuildAndBroadSuites": {
+        "status": "not_repeated_for_tests_only_change",
+        "basis": "Production tree diff from b4b5eccf over main/packages/webapp/codex-auth is empty. Last product build/kernel63/smoke11 is retained in 2026-10-31-provider-retry.json; no fresh broad-suite or SDK-streaming/vendor pass is claimed."
+      }
+    },
+    "inventory": {
+      "typescriptFiles": 283,
+      "supportFiles": 28,
+      "candidates": 255,
+      "outsideSuites": 102,
+      "withoutPackageScript": 43,
+      "missingPackageScriptTargets": 0,
+      "unauditedCandidates": 109,
+      "missingAuditedFiles": 0,
+      "note": "Discovery and script registration are not measurements of behavior or line coverage. Missing package-script targets cover direct tsx/rtws TypeScript paths, including explicit shared/isolated flags, not arbitrary shell composition. Outside-suite candidates include live probes and external integrations; audit prerequisites before running them."
+    },
+    "acceptanceScope": "Two candidates retain all26 original values and add concrete request-count/schema/data/file checks. Actual SDK Kimi/batch localhost transport is distinct from component stream parsing. No live-vendor, actual tool execution, backend durability/restart, browser or platform matrix acceptance. Goal remains active:109 candidates unaudited and104 inherited full-test type errors remain failed."
+  },
+  "originalValueAndAssertionReview": [
+    {
+      "id": "kimi-01",
+      "function": "testBuiltinKimiCodeProvider",
+      "originalBusinessValue": "Kimi builtin 路由、模型和可选参数正确。",
+      "finalAssertionsAndPreservation": "保留 apiType、quirks、endpoint/env key、模型集合、tool_choice capability、thinking 枚举；实际 option.type 缩窄读取 values。",
+      "dataMeaningBoundaryAndScope": "仓内声明机器配置，不证明实时厂商能力。",
+      "verdict": "passed"
+    },
+    {
+      "id": "kimi-02",
+      "function": "testKimiCodeAutoThinkingPayload",
+      "originalBusinessValue": "默认自动 thinking 请求可用，usage 不丢。",
+      "finalAssertionsAndPreservation": "真实 SDK POST 路径、版本 UA、cache key、thinking/effort/tool_choice 缺失、parallel=true 与 usage 全字段保留；补唯一 saying_msg、给定 ok 和 peer-model 保真。",
+      "dataMeaningBoundaryAndScope": "删 UA startsWith 否定是精确 UA 相等后的冗余；ok 是给定 peer 数据，不判断回答好坏。",
+      "verdict": "passed"
+    },
+    {
+      "id": "kimi-03",
+      "function": "testKimiCodeThinkingHighPayload",
+      "originalBusinessValue": "high 映射 enabled/high 并保 cache key。",
+      "finalAssertionsAndPreservation": "实际 SDK 请求字段全保。",
+      "dataMeaningBoundaryAndScope": "协议值。",
+      "verdict": "passed"
+    },
+    {
+      "id": "kimi-04",
+      "function": "testKimiCodeThinkingOffPayload",
+      "originalBusinessValue": "off 禁用 thinking 且不携 effort。",
+      "finalAssertionsAndPreservation": "disabled 对象和 effort own-property 缺失全保。",
+      "dataMeaningBoundaryAndScope": "参数到协议字段。",
+      "verdict": "passed"
+    },
+    {
+      "id": "kimi-05",
+      "function": "testKimiCodeReasoningEffortPayload",
+      "originalBusinessValue": "只给 low effort 仍启用 thinking。",
+      "finalAssertionsAndPreservation": "保 enabled 与 low。",
+      "dataMeaningBoundaryAndScope": "参数兼容契约。",
+      "verdict": "passed"
+    },
+    {
+      "id": "kimi-06",
+      "function": "testKimiCodeExplicitParallelToolCallsPayload",
+      "originalBusinessValue": "显式 parallel=false 不被默认值覆盖。",
+      "finalAssertionsAndPreservation": "保真实请求布尔值 false。",
+      "dataMeaningBoundaryAndScope": "机器选项。",
+      "verdict": "passed"
+    },
+    {
+      "id": "kimi-07",
+      "function": "testKimiCodeNormalizesToolSchemaPropertyTypes",
+      "originalBusinessValue": "推导缺失类型，同时保留工具/约束且不改源。",
+      "finalAssertionsAndPreservation": "原零散 type、anyOf 不加外层 type 等被完整实际发出 schema 深比较涵盖；含 description、enum、const、嵌套 mode、anyOf 两支；补工具数量/type/name/description、完整源 schema 不变。",
+      "dataMeaningBoundaryAndScope": "说明文字只作给定输入保真，schema expected 是明确协议变换，不是自然语言意义。",
+      "verdict": "passed"
+    },
+    {
+      "id": "kimi-08",
+      "function": "testKimiCodeValidation",
+      "originalBusinessValue": "四类无效配置先拒绝并给可理解纠正信息。",
+      "finalAssertionsAndPreservation": "保 medium/high、off/low、auto/low、xhigh 四组合；删除错误 RegExp，以 Error 拒绝+peer.requestCount=0/captured=[]+四份全文评审验收。",
+      "dataMeaningBoundaryAndScope": "旧例只证抛错未证零请求；新本地 peer 补实测。",
+      "verdict": "passed"
+    },
+    {
+      "id": "compatible-01",
+      "function": "testVolcanoArkAllowsSegmentAlternation",
+      "originalBusinessValue": "思考/说话可交替，工具前关闭活动段并拼接参数。",
+      "finalAssertionsAndPreservation": "保完整回调 trace、给定中文 chunk 和分块 JSON 参数及零 streamError。",
+      "dataMeaningBoundaryAndScope": "方法标签和给定中文/JSON 是数据与顺序，不是生成文义。",
+      "verdict": "passed"
+    },
+    {
+      "id": "compatible-02",
+      "function": "testReasoningDetailsStreamingIsPreserved",
+      "originalBusinessValue": "累计 reasoning 快照不重复，独立 delta 和原 metadata 保留。",
+      "finalAssertionsAndPreservation": "保 think→ing→ deeply 回调；metadata 原数组长度检查强化为完整最后快照与独立 delta 深比较。",
+      "dataMeaningBoundaryAndScope": "给定外部文本保真，不评推理质量。",
+      "verdict": "passed"
+    },
+    {
+      "id": "compatible-03",
+      "function": "testGenericAllowsSegmentAlternation",
+      "originalBusinessValue": "generic 流同样正确关闭思考/说话段。",
+      "finalAssertionsAndPreservation": "原完整 trace、给定 thinking/content、零错误均保。",
+      "dataMeaningBoundaryAndScope": "直接 parser，不是 SDK streaming。",
+      "verdict": "passed"
+    },
+    {
+      "id": "compatible-04",
+      "function": "testInvalidReasoningDetailsStreamPayloadIsLoud",
+      "originalBusinessValue": "非数组字段不能静默接受或产生正常片段。",
+      "finalAssertionsAndPreservation": "保抛错和零正常事件，强化 streamError 恰1；删除固定错误句，保实际完整错误另评。",
+      "dataMeaningBoundaryAndScope": "Error 类型/次数为机器，含义由本次案例评。",
+      "verdict": "passed"
+    },
+    {
+      "id": "compatible-05",
+      "function": "testMissingToolCallTypeIsTolerated",
+      "originalBusinessValue": "省略工具 type 仍兼容。",
+      "finalAssertionsAndPreservation": "保 call-1/shell_cmd/{} 的精确回调及零错误。",
+      "dataMeaningBoundaryAndScope": "身份及给定参数。",
+      "verdict": "passed"
+    },
+    {
+      "id": "compatible-06",
+      "function": "testMissingToolCallIdIsSynthesized",
+      "originalBusinessValue": "缺 ID 仍能按本轮/索引关联调用。",
+      "finalAssertionsAndPreservation": "保 genseq11/index2→toolcall_11_2 及函数/参数。",
+      "dataMeaningBoundaryAndScope": "合成 ID 是实际关联契约。",
+      "verdict": "passed"
+    },
+    {
+      "id": "compatible-07",
+      "function": "testEmptyStreamedToolCallPlaceholderIsIgnored",
+      "originalBusinessValue": "空 function 占位不生成调用或报错。",
+      "finalAssertionsAndPreservation": "正常事件0、streamError0 保留。",
+      "dataMeaningBoundaryAndScope": "占位组件状态，不声称任务完成。",
+      "verdict": "passed"
+    },
+    {
+      "id": "compatible-08",
+      "function": "testStreamedToolCallWithArgumentsMissingNameIsLoud",
+      "originalBusinessValue": "有参数缺名交恢复 hook，避免双报。",
+      "finalAssertionsAndPreservation": "由扁平文本改真实 LlmInvalidFuncCall；invalid 恰1及 provider/ID/index/raw args，正常事件/streamError0；detail 全文另评。",
+      "dataMeaningBoundaryAndScope": "仅交 hook 一次，不证明恢复执行。",
+      "verdict": "passed"
+    },
+    {
+      "id": "compatible-09",
+      "function": "testStreamedToolCallMissingNameWithoutRecoveryHookThrows",
+      "originalBusinessValue": "无 hook 的缺名必须响亮失败。",
+      "finalAssertionsAndPreservation": "保 Error 拒绝和零正常事件，强化 streamError 恰1；生成解释 includes 删除，全文另评。",
+      "dataMeaningBoundaryAndScope": "错误通道与说明意义分开。",
+      "verdict": "passed"
+    },
+    {
+      "id": "compatible-10",
+      "function": "testInvalidToolArgumentsPassThroughToToolCall",
+      "originalBusinessValue": "adapter 不抢占工具参数对象验证职责。",
+      "finalAssertionsAndPreservation": "给定 [] 原字节、call-1/shell_cmd 回调、零错误保留。",
+      "dataMeaningBoundaryAndScope": "不证明工具执行能成功。",
+      "verdict": "passed"
+    },
+    {
+      "id": "compatible-11",
+      "function": "testBatchReasoningDetailsArePreserved",
+      "originalBusinessValue": "批次 thinking 与 metadata 可用。",
+      "finalAssertionsAndPreservation": "直接转换函数升级真实 HTTP/SDK；保 kind=message/type=thinking_msg 正确判别，补完整给定 metadata 深比较和 genseq。",
+      "dataMeaningBoundaryAndScope": "原 kind 正确，真实 narrowing 修类型。",
+      "verdict": "passed"
+    },
+    {
+      "id": "compatible-12",
+      "function": "testBatchToolCallsUseOpenAiCompatibleRules",
+      "originalBusinessValue": "批次缺 ID/type 兼容、数组位置合成与参数透传。",
+      "finalAssertionsAndPreservation": "不完整 wire JSON 用 unknown 经 SDK；完整三条 id/name/arguments/genseq 数组比较及一次 POST/model；无坏数据 ChatCompletion cast。",
+      "dataMeaningBoundaryAndScope": "保 []、{}、{\"ok\":true} 原数据；未执行工具。",
+      "verdict": "passed"
+    },
+    {
+      "id": "compatible-13",
+      "function": "testBatchToolCallMissingNameIsLoud",
+      "originalBusinessValue": "批次缺名暴露 invalid，不能生成合法工具调用。",
+      "finalAssertionsAndPreservation": "保 invalid_func_call 存在、call-1/raw {}，补正常 func_call 数0；生成 detail 固定句删除改全文评审。",
+      "dataMeaningBoundaryAndScope": "证明 invalid 存在，不声称所有 outputs 唯一或 batch invalid 数恰1。",
+      "verdict": "passed"
+    },
+    {
+      "id": "compatible-14",
+      "function": "testBuiltinVolcanoArkCodingPlanProvider",
+      "originalBusinessValue": "Volc endpoint/quirks/具体模型 key 正确，冲突拒绝。",
+      "finalAssertionsAndPreservation": "原两 retry quirks、endpoint、具体 minimax-m2.7 及旧浮动 key 不存在保留；冲突克隆到 localhost，核零请求并评说明。",
+      "dataMeaningBoundaryAndScope": "修原夹具真实外部 URL 风险，不宣称实际服务可用。",
+      "verdict": "passed"
+    },
+    {
+      "id": "compatible-15",
+      "function": "testBuiltinMiniMaxProvidersUseOpenAiCompatibleReasoningDetails",
+      "originalBusinessValue": "四 MiniMax 内置 provider 保路径/quirk/default。",
+      "finalAssertionsAndPreservation": "四 key、/v1 路径后缀、reasoning_details quirk、reasoning_split 默认 true 全保；先缩窄 option.type=boolean。",
+      "dataMeaningBoundaryAndScope": "配置声明，不是实时供应商探测。",
+      "verdict": "passed"
+    },
+    {
+      "id": "compatible-16",
+      "function": "testOpenAiCompatibleExtraParams",
+      "originalBusinessValue": "generic/MiniMax 参数矩阵及输入不变。",
+      "finalAssertionsAndPreservation": "保 generic effort/split/no implicit thinking、true→enabled、enabled object/budget2048；MiniMax 默认 split、true/object→adaptive且预算2048、false→disabled；disabled+effort 拒绝。",
+      "dataMeaningBoundaryAndScope": "对象引用 === 换完整字段相等及源不变，保业务值且允许等价复制；冲突生成说明另评。",
+      "verdict": "passed"
+    },
+    {
+      "id": "compatible-17",
+      "function": "testOpenAiCompatibleRejectedRequestKeepsFailureClassification",
+      "originalBusinessValue": "错误增强仍保拒绝分类/原因，完整请求可读。",
+      "finalAssertionsAndPreservation": "真实文件全 payload 深比较与 contained path；wrapped.cause 原对象/status/code，classifier rejected/400/InvalidParameter。message marker 删除，实际全文评审。",
+      "dataMeaningBoundaryAndScope": "原不内联 payload 的价值由实际全文核读，未以 requestPayload={ 标签伪装机器 oracle；上游 Error 是给定输入。",
+      "verdict": "passed"
+    },
+    {
+      "id": "compatible-18",
+      "function": "testOpenAiCompatibleRejectedRequestSurvivesDebugCaptureFailure",
+      "originalBusinessValue": "次要捕获 I/O 错误不覆盖上游拒绝。",
+      "finalAssertionsAndPreservation": "真实普通文件触发 ENOTDIR；保 rejected/400，补 code/cause、debugCaptureError 字段存在、requestPayloadPath 缺失，说明全文评审。",
+      "dataMeaningBoundaryAndScope": "只还原 env；失败现场不再 finally 删除，由 CLI 隔离管理。",
+      "verdict": "passed"
+    }
+  ],
+  "assertionReview": {
+    "verdict": "passed",
+    "scope": "Two retained candidates, all101 new helper lines, complete1226-line candidate diff and every other changed test/entry/docs/ledger hunk. No product change, deleted candidate or added dependency.",
+    "classes": [
+      {
+        "kind": "stream trace equality",
+        "justification": "Receiver method labels/order and supplied upstream chunk text, function names and raw JSON arguments are observable callbacks/data. Fixed trace comparison preserves parser behavior, not generated meaning. Fixture strings contain no delimiter ambiguity; this is not proof of general trace encoding."
+      },
+      {
+        "kind": "configuration and SDK fields",
+        "justification": "Builtin provider/model/quirk/URI/env keys, option enums, UA/cache/POST route, parameter absence, normalized schema, supplied peer body/model and usage are real machine/data contracts. Description and ok comparisons preserve given input only."
+      },
+      {
+        "kind": "semantic diagnostics",
+        "justification": "Original generated error/detail RegExp/includes/exact sentences and requestPayloadPath/debugCaptureError rendered-marker checks removed. Actual Error rejection/counts/structured identities remain automatic; all12 complete natural diagnostics are judged above."
+      },
+      {
+        "kind": "invalid channels",
+        "justification": "Stream hook gets exactly1 invalid object and0 normal/streamError callbacks; no-hook gets1 streamError plus throw. Batch invalid existence and0 valid func_calls are narrower than all output uniqueness. kind=message/invalid_func_call and message.type remain genuine discriminants."
+      },
+      {
+        "kind": "capture effects",
+        "justification": "Actual contained path, full JSON readback, regular-file capture failure, cause identity, status/code and public classifier prove preserved original rejection and request evidence. Generated prose is judged separately."
+      },
+      {
+        "kind": "removed incidental checks",
+        "justification": "UA negative prefix follows from exact UA. Thinking reference identity is incidental and replaced by full given fields/source immutability. Partial source schema checks subsumed by full expected normalized schema and entire source comparison."
+      }
+    ],
+    "helper": "compatible-peer uses real localhost HTTP, increments received requestCount before parsing, treats response as unknown wire JSON, captures parsed request, records server/request/parse errors and checks them after run, restores independent fake-key env and closes server in finally. No semantic detector introduced; invalid SDK JSON is not falsely asserted to satisfy ChatCompletion.",
+    "entryAndLifecycle": "Both candidates retain a60s watchdog equal to existing runner limit, cleared after all work/evidence writes or rejection; it prevents unfinished async work with no handles from exiting0, not synchronization/retry/time-limit expansion. compatible and semantic lanes register only two cases; helper is not discovered as a passing case. Direct aliases now use isolated rtws. Writer emits pending and runner separates successful generation from semanticAcceptance=pending.",
+    "ledgerAndDocs": "Both entries preserve8/18 original values with explicit compatible lane. AGENTS/README/strategy distinguish local SDK from stream parser, diagnostic injection from actual provider failure, and104 inherited full-test type errors remain failure. No prior ledger/verdict auto-accepts fresh text."
+  },
+  "limitations": [
+    "No live Kimi/Volc/MiniMax service, authentication or real-vendor advertised capability verification. Builtin values are checked-in configuration contracts.",
+    "Streaming uses the real parser with supplied AsyncIterable chunks, not SDK streaming or a network stream. Batch/Kimi local HTTP scenarios do traverse the actual SDK.",
+    "No tool execution, driver recovery, scheduling, dialog persistence repair, restart, browser or WebSocket claim. Rejected-error enrichment receives an injected upstream Error.",
+    "Batch invalid presence is not total output uniqueness. Supplied trace fixtures do not establish general delimiter-safe logging.",
+    "Only these2 candidates/26 original values and12 final semantic cases are reviewed. Other109 unaudited candidates remain outside this acceptance; full inherited test types remain failed.",
+    "All observed /tmp paths are run identities only. Complete material/context and retained capture content are embedded; temporary directory survival is not a durable acceptance dependency.",
+    "Source and output SHA256 identify reviewed bytes only; no hash judges meaning or automatically accepts later output. SUT fingerprints do not imply every source function was reviewed."
+  ],
+  "baselineAndDesignHistory": {
+    "baselineMeaning": "Two original processes exited0, not original-design acceptance. Invalid reasoning details/missing name/ENOTDIR ERROR logs are expected negative component tests, not hidden live-model failures. No product defect is asserted from those intentional logs.",
+    "baselineSummary": {
+      "total": 2,
+      "passed": 2,
+      "failed": 0,
+      "timedOut": 0,
+      "results": [
+        {
+          "id": "provider/openai-compatible-kimi-code.ts",
+          "status": "passed",
+          "durationMs": 998,
+          "code": 0,
+          "signal": null,
+          "logPath": "/tmp/dominds-provider-compatible-baseline/001-provider_openai-compatible-kimi-code.ts.log",
+          "tempDir": "/tmp/dominds-provider-compatible-baseline/1.tmp"
+        },
+        {
+          "id": "provider/openai-compatible-volcengine-coding-plan.ts",
+          "status": "passed",
+          "durationMs": 985,
+          "code": 0,
+          "signal": null,
+          "logPath": "/tmp/dominds-provider-compatible-baseline/002-provider_openai-compatible-volcengine-coding-plan.ts.log",
+          "tempDir": "/tmp/dominds-provider-compatible-baseline/2.tmp"
+        }
+      ]
+    },
+    "baselineLogs": [
+      {
+        "file": "001-provider_openai-compatible-kimi-code.ts.log",
+        "sha256": "457101b745dc275ed5b417c45eaf9a73d280b4bde7230f60fc2c8687403672ea",
+        "text": "✓ OpenAI-compatible Kimi Code tests passed\n[tests/cli] Keeping isolated rtws at /tmp/dominds-provider-compatible-baseline/1.tmp/dominds-tests-rtws-DlMdfr\n"
+      },
+      {
+        "file": "002-provider_openai-compatible-volcengine-coding-plan.ts.log",
+        "sha256": "52ab0a9e0fb216d592f259fe257962cfa1a2b6132f8331f0e993171e8a9af326",
+        "text": "[2026/10/31-10:46:07] [llm/openai-compatible] ERROR: OPENAI-COMPATIBLE invalid reasoning_details stream payload: Invalid openai-compatible reasoning_details: expected array\nError: openai_compatible_invalid_reasoning_details\n    at emitOpenAiCompatibleStreamError (/ws/AiWorks/dominds/main/llm/gen/openai-compatible.ts:2130:28)\n    at consumeOpenAiCompatibleChatCompletionStream (/ws/AiWorks/dominds/main/llm/gen/openai-compatible.ts:2216:15)\n    at async consumeOpenAiCompatibleChatCompletionStreamForTest (/ws/AiWorks/dominds/main/llm/gen/openai-compatible.ts:2398:10)\n    at async testInvalidReasoningDetailsStreamPayloadIsLoud (/ws/AiWorks/dominds/tests/provider/openai-compatible-volcengine-coding-plan.ts:237:5)\n    at async main (/ws/AiWorks/dominds/tests/provider/openai-compatible-volcengine-coding-plan.ts:1012:3)\n[2026/10/31-10:46:07] [llm/openai-compatible] WARN: OPENAI-COMPATIBLE ignored empty streamed tool call placeholder Extra: {\n  callId: 'toolcall_67_2',\n  index: 2\n}\n[2026/10/31-10:46:07] [llm/openai-compatible] ERROR: OPENAI-COMPATIBLE missing streamed tool function name for callId=toolcall_67_2\nError: openai_compatible_missing_tool_call_name\n    at maybeEmitFuncCall (/ws/AiWorks/dominds/main/llm/gen/openai-compatible.ts:2100:23)\n    at consumeOpenAiCompatibleChatCompletionStream (/ws/AiWorks/dominds/main/llm/gen/openai-compatible.ts:2360:17)\n    at async consumeOpenAiCompatibleChatCompletionStreamForTest (/ws/AiWorks/dominds/main/llm/gen/openai-compatible.ts:2398:10)\n    at async testStreamedToolCallWithArgumentsMissingNameIsLoud (/ws/AiWorks/dominds/tests/provider/openai-compatible-volcengine-coding-plan.ts:358:3)\n    at async main (/ws/AiWorks/dominds/tests/provider/openai-compatible-volcengine-coding-plan.ts:1016:3) Extra: {\n  callId: 'toolcall_67_2',\n  index: 2\n}\n[2026/10/31-10:46:07] [llm/openai-compatible] ERROR: OPENAI-COMPATIBLE missing streamed tool function name for callId=toolcall_67_2\nError: openai_compatible_missing_tool_call_name\n    at maybeEmitFuncCall (/ws/AiWorks/dominds/main/llm/gen/openai-compatible.ts:2100:23)\n    at consumeOpenAiCompatibleChatCompletionStream (/ws/AiWorks/dominds/main/llm/gen/openai-compatible.ts:2360:17)\n    at async consumeOpenAiCompatibleChatCompletionStreamForTest (/ws/AiWorks/dominds/main/llm/gen/openai-compatible.ts:2398:10)\n    at async testStreamedToolCallMissingNameWithoutRecoveryHookThrows (/ws/AiWorks/dominds/tests/provider/openai-compatible-volcengine-coding-plan.ts:395:5)\n    at async main (/ws/AiWorks/dominds/tests/provider/openai-compatible-volcengine-coding-plan.ts:1017:3) Extra: {\n  callId: 'toolcall_67_2',\n  index: 2\n}\n[2026/10/31-10:46:07] [llm/openai-compatible] ERROR: OPENAI-COMPATIBLE missing tool function name for callId=call-1\nError: openai_compatible_missing_tool_call_name\n    at chatCompletionToBatchOutputs (/ws/AiWorks/dominds/main/llm/gen/openai-compatible.ts:2463:39)\n    at chatCompletionToBatchOutputsForTest (/ws/AiWorks/dominds/main/llm/gen/openai-compatible.ts:2509:10)\n    at testBatchToolCallMissingNameIsLoud (/ws/AiWorks/dominds/tests/provider/openai-compatible-volcengine-coding-plan.ts:555:19)\n    at main (/ws/AiWorks/dominds/tests/provider/openai-compatible-volcengine-coding-plan.ts:1021:3) Extra: {\n  callId: 'call-1',\n  index: 0\n}\n[2026/10/31-10:46:07] [llm/openai-compatible] ERROR: OPENAI-COMPATIBLE rejected request debug capture failed\nError: ENOTDIR: not a directory, mkdir '/tmp/dominds-provider-compatible-baseline/2.tmp/dominds-openai-compatible-400-4v4gkv/not-dir/2026-10-31T17-46-07-223Z__volcano-engine-coding-plan__kimi-k2.6__tests_provider_openai-compatible-volcengine-coding-plan__g44__stream__q8b28w6z'\n    at async Object.mkdir (node:internal/fs/promises:916:10)\n    at async writeOpenAiCompatibleRejectedCapture (/ws/AiWorks/dominds/main/llm/gen/openai-compatible.ts:449:3)\n    at async tryWriteOpenAiCompatibleRejectedCapture (/ws/AiWorks/dominds/main/llm/gen/openai-compatible.ts:483:40)\n    at async wrapOpenAiCompatibleRejectedRequestError (/ws/AiWorks/dominds/main/llm/gen/openai-compatible.ts:1188:19)\n    at async wrapOpenAiCompatibleRejectedRequestErrorForTest (/ws/AiWorks/dominds/main/llm/gen/openai-compatible.ts:1252:10)\n    at async testOpenAiCompatibleRejectedRequestSurvivesDebugCaptureFailure (/ws/AiWorks/dominds/tests/provider/openai-compatible-volcengine-coding-plan.ts:978:21)\n    at async main (/ws/AiWorks/dominds/tests/provider/openai-compatible-volcengine-coding-plan.ts:1026:3) Extra: {\n  rootId: 'tests/provider/openai-compatible-volcengine-coding-plan',\n  selfId: 'tests/provider/openai-compatible-volcengine-coding-plan',\n  genseq: 44,\n  model: 'kimi-k2.6',\n  providerKey: 'volcano-engine-coding-plan',\n  providerName: 'Volcano Ark Coding Plan',\n  requestKind: 'stream'\n}\n✓ OpenAI-compatible Volcano Ark Coding Plan tests passed\n[tests/cli] Keeping isolated rtws at /tmp/dominds-provider-compatible-baseline/2.tmp/dominds-tests-rtws-8TGdUj\n"
+      }
+    ],
+    "corrections": [
+      "Original Kimi fixed-prose regex refusal did not observe zero received requests; now actual peer counts and independent text review cover both requirements.",
+      "Original Volc request refusal retained real external baseURL with a fake key. Current clone changes URL/key to localhost and proves zero received requests, removing accidental outgoing-request risk.",
+      "Original deliberately incomplete batch JSON was typed ChatCompletion. Current unknown wire data traverses actual HTTP/SDK; kind=message was correct and is preserved via actual narrowing.",
+      "Original custom assert/option and output unions caused28 inherited candidate diagnostics. They are corrected with genuine node assert narrowing, type predicates, typed option variants and unknown JSON boundaries; the new helper object/Record issue uses a runtime JSON-record guard. No type exclusion/weakening or product change.",
+      "Initial BsOH3h4 were actually independently passed and remain fully embedded with their original scope. Final schema fidelity/helper checks were strengthened, and all final12 output records were read independently."
+    ],
+    "productionChange": "none",
+    "typeResultScope": "Parent reports104 inherited full-test diagnostics, changed-source0; this is not a whole-test-type pass and actual command evidence belongs in verification."
+  },
+  "provenance": {
+    "finalGenerationSummary": {
+      "total": 2,
+      "passed": 2,
+      "failed": 0,
+      "timedOut": 0,
+      "results": [
+        {
+          "id": "provider/openai-compatible-kimi-code.ts",
+          "status": "passed",
+          "durationMs": 1298,
+          "code": 0,
+          "signal": null,
+          "logPath": "/tmp/dominds-tests-compatible-semantic-p3aXhi/001-provider_openai-compatible-kimi-code.ts.log",
+          "tempDir": "/tmp/dominds-tests-compatible-semantic-p3aXhi/1.tmp"
+        },
+        {
+          "id": "provider/openai-compatible-volcengine-coding-plan.ts",
+          "status": "passed",
+          "durationMs": 1140,
+          "code": 0,
+          "signal": null,
+          "logPath": "/tmp/dominds-tests-compatible-semantic-p3aXhi/002-provider_openai-compatible-volcengine-coding-plan.ts.log",
+          "tempDir": "/tmp/dominds-tests-compatible-semantic-p3aXhi/2.tmp"
+        }
+      ],
+      "scope": "evidence-generation-processes",
+      "semanticAcceptance": "pending"
+    },
+    "commands": [
+      "pnpm run test:compatible",
+      "pnpm run test:semantic:compatible",
+      "pnpm -C tests run provider-openai-compatible-kimi-code",
+      "pnpm -C tests run provider-openai-compatible-volcengine-coding-plan"
+    ],
+    "reproduction": "Use repository packageManager pin via Corepack with existing installed dependencies and declared isolated lane. New output must be independently reviewed; paths/timestamps/IDs can vary. Actual environment and executed command summaries belong in parent-owned verification. Reviewer invoked no tests/build or external provider.",
+    "originalSources": [
+      {
+        "path": "tests/provider/openai-compatible-kimi-code.ts",
+        "revision": "b4b5eccfd7d226bd1a91f72e440939d5d0fe3f32",
+        "sha256": "01baac67c4e66f1edad3e4a9074513fc85cf6aa3a5465a0016f4376e5ae6875a",
+        "lines": 362,
+        "reviewedOriginalCopyEqualsRevision": true
+      },
+      {
+        "path": "tests/provider/openai-compatible-volcengine-coding-plan.ts",
+        "revision": "b4b5eccfd7d226bd1a91f72e440939d5d0fe3f32",
+        "sha256": "9e9833ae72d0fdb984d5f7ad072147730dee94f50121b17c9bada148bfdde5b2",
+        "lines": 1033,
+        "reviewedOriginalCopyEqualsRevision": true
+      }
+    ],
+    "reviewedDiff": {
+      "baseRevision": "b4b5eccfd7d226bd1a91f72e440939d5d0fe3f32",
+      "modifiedTrackedPaths": [
+        "AGENTS.md",
+        "docs/testing-strategy.md",
+        "package.json",
+        "tests/README.md",
+        "tests/audit.json",
+        "tests/package.json",
+        "tests/provider/openai-compatible-kimi-code.ts",
+        "tests/provider/openai-compatible-volcengine-coding-plan.ts",
+        "tests/run.mjs"
+      ],
+      "sha256": "f61a83de7632f0901957a0cb0150cd4801d778771d9ca203521572930d26e0fe",
+      "bytes": 68089,
+      "candidateDiffSha256": "a59fa2f34a65d5a0ded2787f475240e475eb551c4c23881ee1a23b2695dd3ef3",
+      "candidateDiffLines": 1226,
+      "newUntrackedSupport": "tests/helpers/compatible-peer.ts separately reviewed in full and fingerprinted; it is not omitted because ordinary git diff excludes untracked files.",
+      "reportExcluded": true
+    },
+    "sourceFingerprints": [
+      {
+        "path": "AGENTS.md",
+        "role": "review and lane obligations",
+        "sha256": "7b9adea6e5efafa44b8a9f3f708690482f3e5d9e48bd904acf35d0abcf17f743",
+        "bytes": 15879,
+        "changedInBatch": true
+      },
+      {
+        "path": "docs/testing-strategy.md",
+        "role": "scope and remediation value",
+        "sha256": "58b6c384e7b2b4687d533ee4d89eb157cf1d1782c0a02bfdfdcfac20d7a2ca7c",
+        "bytes": 96472,
+        "changedInBatch": true
+      },
+      {
+        "path": "package.json",
+        "role": "root entry points and pinned manager",
+        "sha256": "393bc3876e0ba723864d339692336b46099615d187427354f41dbe02dc405923",
+        "bytes": 5826,
+        "changedInBatch": true
+      },
+      {
+        "path": "tests/README.md",
+        "role": "lane documentation",
+        "sha256": "3c139f3d0549c0e42b7ef0d477b2420bae54446c01975a8664f5791669655f81",
+        "bytes": 16939,
+        "changedInBatch": true
+      },
+      {
+        "path": "tests/audit.json",
+        "role": "two reviewed candidate ledger entries",
+        "sha256": "e090ac8de3d16623c05951dcb353e9bb1bc2601872e00dbcb86075c705b3bc5d",
+        "bytes": 108307,
+        "changedInBatch": true
+      },
+      {
+        "path": "tests/package.json",
+        "role": "isolated aliases and suite entry points",
+        "sha256": "376a9c82a4e4e691f0b20109934909fba675eab8880940bed8367f14e76f2c9d",
+        "bytes": 23283,
+        "changedInBatch": true
+      },
+      {
+        "path": "tests/run.mjs",
+        "role": "compatible registration and generation pending",
+        "sha256": "1a3dc0bde0051d0fd6d8074d06de3c760470f3c3b43ba86511cd6231f1d0fb27",
+        "bytes": 17092,
+        "changedInBatch": true
+      },
+      {
+        "path": "tests/provider/openai-compatible-kimi-code.ts",
+        "role": "candidate and four-case producer",
+        "sha256": "446cb1f43f9b7d8cd01322efb0a00db1430f91e8965e011f081b580cfb12d58d",
+        "bytes": 11887,
+        "changedInBatch": true
+      },
+      {
+        "path": "tests/provider/openai-compatible-volcengine-coding-plan.ts",
+        "role": "candidate and eight-case producer",
+        "sha256": "16b539bc16f813bbaf051d8955b17c76d81a1039aaca1f0814fec145ec09e637",
+        "bytes": 34137,
+        "changedInBatch": true
+      },
+      {
+        "path": "tests/helpers/compatible-peer.ts",
+        "role": "new actual local HTTP support",
+        "sha256": "224775183b369a9409ded590e1f5d2254558f548cacc437d2b000a2ae182a899",
+        "bytes": 3312,
+        "changedInBatch": true
+      },
+      {
+        "path": "tests/helpers/semantic-evidence.ts",
+        "role": "pending-only evidence writer",
+        "sha256": "a41efd1058ea6d65394059180dabf987e17ef0d219bae95ca67edd33db7e3777",
+        "bytes": 2050,
+        "changedInBatch": false
+      },
+      {
+        "path": "tests/cli.ts",
+        "role": "isolated runtime workspace and retention",
+        "sha256": "b9f9bc1f034a2a70c4b7bfbc2300ae854706f09a9788b7f4ca17b3a263f41598",
+        "bytes": 5618,
+        "changedInBatch": false
+      },
+      {
+        "path": "tests/tsconfig.json",
+        "role": "test type context",
+        "sha256": "b5bcec0fba331b397ee453a8ff2bb1ea1eb1cb0f5f61f1a4e968ffc0a55dc1df",
+        "bytes": 689,
+        "changedInBatch": false
+      },
+      {
+        "path": "tsconfig.base.json",
+        "role": "base type context",
+        "sha256": "8503d424c12486e1d6a974a27bfedc695b25e4636fb8395c131ab9d32934b1ab",
+        "bytes": 245,
+        "changedInBatch": false
+      },
+      {
+        "path": "main/tsconfig.json",
+        "role": "application type context",
+        "sha256": "a04c695b24a9434b745bd1b4a1d8e78f80868ee20c5c6ae978f70195818cd1c9",
+        "bytes": 657,
+        "changedInBatch": false
+      },
+      {
+        "path": "pnpm-lock.yaml",
+        "role": "dependency identity",
+        "sha256": "39b09df41afbe38240cc837316680ec0b7a2ceb02372f02f6528168adf21da19",
+        "bytes": 84789,
+        "changedInBatch": false
+      },
+      {
+        "path": "main/llm/gen/openai-compatible.ts",
+        "role": "unchanged tested SDK/parser/params/capture implementation",
+        "sha256": "d48d875b01e49e4529d633daecbd6a3811d0e37a3ecfc0d2cce072ff24534546",
+        "bytes": 95490,
+        "changedInBatch": false
+      },
+      {
+        "path": "main/llm/client.ts",
+        "role": "configuration loader/contracts",
+        "sha256": "d4522932503df8c8074d91c74f1ae7ae7568a6a607c7e7270cd538c6a5febd2d",
+        "bytes": 7458,
+        "changedInBatch": false
+      },
+      {
+        "path": "main/llm/defaults.yaml",
+        "role": "builtin machine configuration",
+        "sha256": "a0c94929046dfc40b8795a6629e8f1abd211a89ab33f8634294336a3d7610d56",
+        "bytes": 45894,
+        "changedInBatch": false
+      },
+      {
+        "path": "main/llm/api-quirks.ts",
+        "role": "quirk identifiers",
+        "sha256": "56d606cd05c26662fe82b1af16a5f2d9601539a4b1034db1395c20b403170b6e",
+        "bytes": 28484,
+        "changedInBatch": false
+      },
+      {
+        "path": "main/llm/gen.ts",
+        "role": "output/receiver contracts",
+        "sha256": "3db298d9a21f47ddaed6f2bcf80599a63cafed9e4f9529da974789b850553d42",
+        "bytes": 7800,
+        "changedInBatch": false
+      },
+      {
+        "path": "main/llm/gen/failure-classifier.ts",
+        "role": "failure classifier",
+        "sha256": "f6775e2f99e648925e284e6350fb6dca222e902fdb490be81846beaca4120219",
+        "bytes": 14816,
+        "changedInBatch": false
+      },
+      {
+        "path": "main/team.ts",
+        "role": "model parameter contract",
+        "sha256": "15011ab16f5b36eda146a13201de9fbd9b4c0fde8ece9bc04fd26b0b1aff707c",
+        "bytes": 134570,
+        "changedInBatch": false
+      },
+      {
+        "path": "main/tool.ts",
+        "role": "tool schema contract",
+        "sha256": "b40507b44a834862d1fa5367d2aae37088b348e3b3e03b091ba3145d294ab5f9",
+        "bytes": 23615,
+        "changedInBatch": false
+      },
+      {
+        "path": "main/server/dominds-running-version.ts",
+        "role": "UA version data",
+        "sha256": "b7e801a193e85ad56106bc86e7d9ffd7707f3150a698aaef9b57cab09cf4cb14",
+        "bytes": 257,
+        "changedInBatch": false
+      },
+      {
+        "path": "packages/kernel/src/types/chat-message.ts",
+        "role": "message discriminants",
+        "sha256": "156336298c46c3c42a7e78292d19b66d0e048d33ae02056ae17502b369658750",
+        "bytes": 3408,
+        "changedInBatch": false
+      },
+      {
+        "path": "packages/kernel/src/types/storage.ts",
+        "role": "provider data contract",
+        "sha256": "77ea34b661bb03610d5a023b9a541ee6a426bc94b93bfb5dd24ad69010d07633",
+        "bytes": 36143,
+        "changedInBatch": false
+      },
+      {
+        "path": "packages/kernel/src/types/context-health.ts",
+        "role": "usage contract",
+        "sha256": "a3f53a342898051da58624992cb8fa11d979676ebe60d2f7a0ef676409e769e4",
+        "bytes": 1297,
+        "changedInBatch": false
+      }
+    ],
+    "retainedActualCaptureFiles": [
+      {
+        "relativeToObservedRtws": "compatible-rejected-capture/2026-10-31T18-06-18-378Z__volcano-engine-coding-plan__kimi-k2.6__tests_provider_openai-compatible-volcengine-coding-plan__g43__stream__noep0m5m/meta.json",
+        "sha256": "70fa6b777c4962ec0475e7e93d07b2fe2c3d4b611993b393565a10c00214f151",
+        "text": "{\n  \"id\": \"2026-10-31T18-06-18-378Z__volcano-engine-coding-plan__kimi-k2.6__tests_provider_openai-compatible-volcengine-coding-plan__g43__stream__noep0m5m\",\n  \"capturedAt\": \"2026-10-31T18:06:18.378Z\",\n  \"context\": {\n    \"providerKey\": \"volcano-engine-coding-plan\",\n    \"providerName\": \"Volcano Ark Coding Plan\",\n    \"model\": \"kimi-k2.6\",\n    \"dialogRootId\": \"tests/provider/openai-compatible-volcengine-coding-plan\",\n    \"dialogSelfId\": \"tests/provider/openai-compatible-volcengine-coding-plan\",\n    \"requestKind\": \"stream\",\n    \"genseq\": 43,\n    \"status\": 400,\n    \"code\": \"InvalidParameter\",\n    \"upstreamMessage\": \"400 A parameter specified in the request is not valid Request id: test-request\"\n  },\n  \"request\": {\n    \"payloadPath\": \"/tmp/dominds-tests-compatible-semantic-p3aXhi/2.tmp/dominds-tests-rtws-d1zM9q/rtws/compatible-rejected-capture/2026-10-31T18-06-18-378Z__volcano-engine-coding-plan__kimi-k2.6__tests_provider_openai-compatible-volcengine-coding-plan__g43__stream__noep0m5m/request-payload.json\"\n  },\n  \"error\": {\n    \"name\": \"Error\",\n    \"message\": \"400 A parameter specified in the request is not valid Request id: test-request\",\n    \"status\": 400,\n    \"code\": \"InvalidParameter\"\n  }\n}\n"
+      },
+      {
+        "relativeToObservedRtws": "compatible-rejected-capture/2026-10-31T18-06-18-378Z__volcano-engine-coding-plan__kimi-k2.6__tests_provider_openai-compatible-volcengine-coding-plan__g43__stream__noep0m5m/request-payload.json",
+        "sha256": "ac240d03e621d4cb9d36173161625e742a1600f2bb34671ac761fac5995bc742",
+        "text": "{\n  \"model\": \"kimi-k2.6\",\n  \"messages\": [\n    {\n      \"role\": \"user\",\n      \"content\": \"payload-data:8ae4\"\n    }\n  ],\n  \"metadata\": {\n    \"opaque\": [\n      \"data:934d\",\n      2\n    ]\n  }\n}\n"
+      },
+      {
+        "relativeToObservedRtws": "compatible-capture-not-directory",
+        "sha256": "3b2a43e3a5b13459006960eac2534b6a71bf7170ea998dc49b1990f23508a6d6",
+        "text": "not a directory"
+      }
+    ],
+    "identityLimit": "SHA256 records identity only. All final actual text/context and reviewed initial output are fully embedded. Capture files are also embedded so /tmp paths are not durable dependencies. Source identities include execution/import support; focused SUT reading covered parameter building, SDK batch conversion, stream invalid/error dispatch and rejected capture/classification, not every function. No self-hash."
+  }
+}

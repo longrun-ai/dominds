@@ -124,7 +124,12 @@ const projection = [
   'provider/user-image-model-support.ts',
   'provider/tool-result-truncation.ts',
 ];
+const compatible = [
+  'provider/openai-compatible-kimi-code.ts',
+  'provider/openai-compatible-volcengine-coding-plan.ts',
+];
 const semanticSuites = {
+  compatible,
   projection,
   retry,
   packaging: [
@@ -258,6 +263,7 @@ export async function inventory() {
     packaging,
     retry,
     projection,
+    compatible,
   };
   const included = new Set(Object.values(suites).flat());
   const audit = JSON.parse(await fs.readFile(path.join(testsRoot, 'audit.json'), 'utf8'));
@@ -377,10 +383,11 @@ async function main() {
       'packaging',
       'retry',
       'projection',
+      'compatible',
     ].includes(args[1])
   ) {
     throw new Error(
-      'Usage: node tests/run.mjs --list | --suite smoke | --suite kernel | --suite context [--semantic] | --suite configuration [--semantic] | --suite manual [--semantic] | --suite filesystem [--semantic] | --suite persistence [--semantic] | --suite recovery [--semantic] | --suite bootstrap [--semantic] | --suite packaging [--semantic] | --suite retry [--semantic] | --suite projection [--semantic]',
+      'Usage: node tests/run.mjs --list | --suite smoke | --suite kernel | --suite context [--semantic] | --suite configuration [--semantic] | --suite manual [--semantic] | --suite filesystem [--semantic] | --suite persistence [--semantic] | --suite recovery [--semantic] | --suite bootstrap [--semantic] | --suite packaging [--semantic] | --suite retry [--semantic] | --suite projection [--semantic] | --suite compatible [--semantic]',
     );
   }
   const suite = args[1];

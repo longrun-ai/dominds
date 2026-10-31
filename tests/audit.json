@@ -864,6 +864,18 @@
       "lane": "projection",
       "value": "真实三种投影的120字符结果预算、短数据正对照与源历史不变、七个provider默认限制及显式override；真实Dialog/文件/ripgrep的公开YAML原长度和截断元数据",
       "evidence": "Complete original/final/helper/test-diff review and actual output: tests/semantic/reviews/2026-10-31-provider-media.json. Actual isolated rtws, Dialog, distinct artifact bytes, native protocol payload identity, supplied input_text data, size/capability and parsed YAML fields/enums are machine/data oracles; no natural omission/truncation word/count is a meaning oracle. Seven-producer evidence includes prior three history regressions and16 new cases, all34 fresh texts require independent subjective review; ledger/process success/hash do not accept them. Budget fixtures deliberately use small valid GIF bytes with declared20MiB metadata to check local selection, not actual60MiB transport. No provider request, SDK transport, visual reasoning or persistent-history repair claim."
+    },
+    "provider/openai-compatible-kimi-code.ts": {
+      "status": "reviewed",
+      "lane": "compatible",
+      "value": "沿袭原8项Kimi值：builtin驱动的本地真实SDK POST/UA/cache/thinking/parallel/usage与给定响应保真，完整schema约束归一化/输入不变，四种无效配置在零HTTP请求下拒绝",
+      "evidence": "Complete original26-value/final/helper/full-test-diff review and actual output: tests/semantic/reviews/2026-10-31-compatible-provider-contracts.json. Callback method/order, supplied chunk bytes/JSON, protocol IDs/kinds, request fields/counts, full supplied schema/data and actual file/classifier effects are machine/data oracles. Fixed error/invalid-detail phrases are removed;12 actual diagnostics require independent subjective review. No pending generator/hash/ledger entry accepts fresh semantic output. Incomplete wire batch JSON passes through the actual SDK/local HTTP peer, not a ChatCompletion cast; invalid configuration targets localhost and proves zero received requests. Stream parser components do not establish SDK streaming, live vendors, tool execution or backend persistence/recovery. Existing60s per-case bound retained; completion guards prevent an unfinished async parser from exiting zero."
+    },
+    "provider/openai-compatible-volcengine-coding-plan.ts": {
+      "status": "reviewed",
+      "lane": "compatible",
+      "value": "沿袭原18项Volc/兼容值：真实流parser组件的回调顺序/给定字节、累计reasoning_details及无效/缺名通道，真实SDK批次坏wire JSON容忍/身份/metadata，声明参数矩阵/零请求拒绝，真实磁盘捕获和失败后的分类/原因保真",
+      "evidence": "Complete original26-value/final/helper/full-test-diff review and actual output: tests/semantic/reviews/2026-10-31-compatible-provider-contracts.json. Callback method/order, supplied chunk bytes/JSON, protocol IDs/kinds, request fields/counts, full supplied schema/data and actual file/classifier effects are machine/data oracles. Fixed error/invalid-detail phrases are removed;12 actual diagnostics require independent subjective review. No pending generator/hash/ledger entry accepts fresh semantic output. Incomplete wire batch JSON passes through the actual SDK/local HTTP peer, not a ChatCompletion cast; invalid configuration targets localhost and proves zero received requests. Stream parser components do not establish SDK streaming, live vendors, tool execution or backend persistence/recovery. Existing60s per-case bound retained; completion guards prevent an unfinished async parser from exiting zero."
     }
   },
   "retired": {
