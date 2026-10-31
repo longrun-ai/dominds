@@ -71,7 +71,9 @@
     "test:packaging": "node tests/run.mjs --suite packaging",
     "test:semantic:packaging": "node tests/run.mjs --suite packaging --semantic",
     "test:retry": "node tests/run.mjs --suite retry",
-    "test:semantic:retry": "node tests/run.mjs --suite retry --semantic"
+    "test:semantic:retry": "node tests/run.mjs --suite retry --semantic",
+    "test:projection": "node tests/run.mjs --suite projection",
+    "test:semantic:projection": "node tests/run.mjs --suite projection --semantic"
   },
   "repository": {
     "type": "git",

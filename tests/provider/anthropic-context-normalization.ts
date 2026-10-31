@@ -1,222 +1,134 @@
+import assert from 'node:assert/strict';
 import type { ChatMessage } from '../../main/llm/client';
 import {
   reconstructAnthropicContextWrapper,
   reconstructAnthropicContextWrapperAsync,
 } from '../../main/llm/gen/anthropic';
+import { assertInvalidProviderHistories, providerHistory } from '../helpers/provider-context';
+import { semanticEvidenceCollector } from '../helpers/semantic-evidence';
 
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === 'object' && value !== null && !Array.isArray(value);
-}
-
-function assert(condition: boolean, message: string): void {
-  if (!condition) throw new Error(message);
-}
-
-function extractBlockTypes(content: unknown): string[] {
-  if (!Array.isArray(content)) return [];
-  return content
-    .map((block) => (isRecord(block) && typeof block.type === 'string' ? block.type : 'unknown'))
-    .filter((t) => t.length > 0);
-}
-
-function findContentBlock(content: unknown, type: string): Record<string, unknown> | undefined {
-  if (!Array.isArray(content)) return undefined;
-  return content.find((block): block is Record<string, unknown> => {
-    return isRecord(block) && block.type === type;
-  });
-}
-
-function findTextBlockText(content: unknown): string | undefined {
-  const block = findContentBlock(content, 'text');
-  if (block === undefined || typeof block.text !== 'string') return undefined;
-  return block.text;
-}
-
-function allTextBlockText(content: unknown): string {
-  if (!Array.isArray(content)) return '';
-  return content
-    .map((block) => (isRecord(block) && typeof block.text === 'string' ? block.text : ''))
-    .join('\n');
-}
-
+const evidence = semanticEvidenceCollector('dominds-projection-anthropic-');
 async function main() {
-  const context: ChatMessage[] = [
-    {
-      type: 'prompting_msg',
-      role: 'user',
-      genseq: 1,
-      msgId: 'user-1',
-      grammar: 'markdown',
-      content: 'Run `ls -la` via tool.',
+  const fixture = providerHistory();
+  const malformed = {
+    ...fixture,
+    call: { ...fixture.call, id: 'call-malformed', arguments: '{"command":\n"opaque:7ae2' },
+    result: {
+      ...fixture.result,
+      id: 'call-malformed',
+      content: 'supplied-failure-data:81fe\n引号 " / Ω',
     },
-    {
-      type: 'thinking_msg',
-      role: 'assistant',
-      genseq: 1,
-      content: 'I should use a tool.',
-    },
-    {
-      type: 'saying_msg',
-      role: 'assistant',
-      genseq: 1,
-      content: 'Calling tool now.',
-    },
-    {
-      type: 'func_call_msg',
-      role: 'assistant',
-      genseq: 1,
-      id: 'call-1',
-      name: 'shell_cmd',
-      arguments: JSON.stringify({ command: 'ls -la' }),
-    },
-    {
-      type: 'func_result_msg',
-      role: 'tool',
-      genseq: 1,
-      id: 'call-1',
-      name: 'shell_cmd',
-      content: 'ok',
-    },
+  };
+  const scenarios = [
+    { id: 'normal', ...fixture },
+    { id: 'malformed', ...malformed },
   ];
-
-  const messages = reconstructAnthropicContextWrapper(context);
-
-  // Anthropic-compatible endpoints often require strict role alternation.
-  for (let i = 1; i < messages.length; i++) {
-    assert(messages[i - 1].role !== messages[i].role, 'Found consecutive messages with same role');
+  for (const row of scenarios) {
+    const context: ChatMessage[] = [row.user, row.thinking, row.saying, row.call, row.result];
+    const original = structuredClone(context);
+    for (const [mode, project] of [
+      ['sync', reconstructAnthropicContextWrapper],
+      ['async', reconstructAnthropicContextWrapperAsync],
+    ] as const) {
+      const messages = await project(context);
+      assert.deepEqual(
+        messages.map((message) => message.role),
+        ['user', 'assistant', 'user'],
+      );
+      const texts = messages.map((message) => {
+        assert.ok(Array.isArray(message.content));
+        // No native JSON tool_use/tool_result is replayed from opaque historical arguments.
+        assert.ok(message.content.every((block) => block.type === 'text'));
+        return message.content.map((block) => {
+          assert.ok(block.type === 'text');
+          return block.text;
+        });
+      });
+      assert.deepEqual(texts[0], [row.user.content]);
+      for (const supplied of [row.thinking.content, row.saying.content, row.call.arguments])
+        assert.ok(texts[1]!.some((text) => text.includes(supplied)));
+      assert.ok(texts[2]!.some((text) => text.includes(row.result.content)));
+      assert.deepEqual(context, original);
+      evidence.record({
+        id: `${mode}-${row.id}-history`,
+        scenario: `Anthropic ${mode} request projection of ${row.id} supplied tool history.`,
+        businessValue:
+          'Preserve raw arguments and observed result without requiring valid JSON or presenting historical tool activity as a fresh action.',
+        context: {
+          input: JSON.stringify(original),
+          scope: 'Actual sync/async projection; no provider request, tool execution or restart.',
+        },
+        reviewQuestions: [
+          'Does the actual text attribute the call and result correctly, preserve malformed input as historical data, and keep the supplied failure visible without inventing execution or completion?',
+        ],
+        actualText: JSON.stringify(messages, null, 2),
+      });
+    }
   }
-
-  assert(messages.length === 3, `Expected 3 projected turns, got ${messages.length}`);
-  assert(messages[0].role === 'user', 'Expected first message to be user');
-  assert(messages[1].role === 'assistant', 'Expected second message to be assistant');
-  assert(messages[2].role === 'user', 'Expected third message to be user (function result)');
-
-  const assistantTypes = extractBlockTypes(messages[1].content);
-  assert(
-    assistantTypes.includes('text'),
-    'Expected assistant function call history to be projected as text',
-  );
-  assert(
-    findContentBlock(messages[1].content, 'tool_use') === undefined,
-    'Expected provider projection to avoid parsing raw arguments into native tool_use input',
-  );
-  const assistantText = allTextBlockText(messages[1].content);
-  assert(
-    assistantText.includes('"command":"ls -la"'),
-    'Expected assistant function call text to preserve raw arguments',
-  );
-
-  const userTypes = extractBlockTypes(messages[2].content);
-  assert(userTypes.includes('text'), 'Expected function result history to be projected as text');
-  assert(
-    findContentBlock(messages[2].content, 'tool_result') === undefined,
-    'Expected provider projection to avoid native tool_result replay without native tool_use',
-  );
-
-  const malformedToolCallContext: ChatMessage[] = [
-    {
-      type: 'prompting_msg',
-      role: 'user',
-      genseq: 2,
-      msgId: 'user-malformed',
-      grammar: 'markdown',
-      content: 'Call a tool with malformed arguments.',
-    },
-    {
-      type: 'func_call_msg',
-      role: 'assistant',
-      genseq: 2,
-      id: 'call-malformed',
-      name: 'shell_cmd',
-      arguments: '{"command":',
-    },
-    {
-      type: 'func_result_msg',
-      role: 'tool',
-      genseq: 2,
-      id: 'call-malformed',
-      name: 'shell_cmd',
-      content: 'Invalid arguments: Arguments must be valid JSON: Unexpected end of JSON input',
-    },
-  ];
-
-  const malformedMessages = await reconstructAnthropicContextWrapperAsync(malformedToolCallContext);
-  assert(
-    malformedMessages.length === 3,
-    `Expected malformed call context to project 3 turns, got ${malformedMessages.length}`,
-  );
-  assert(
-    malformedMessages[1].role === 'assistant',
-    'Expected malformed call correction context to remain assistant-authored',
-  );
-  const malformedCallText = findTextBlockText(malformedMessages[1].content);
-  assert(
-    malformedCallText !== undefined && malformedCallText.includes('{"command":'),
-    'Expected malformed call correction context to preserve raw arguments verbatim',
-  );
-  assert(
-    findContentBlock(malformedMessages[1].content, 'tool_use') === undefined,
-    'Expected malformed call to avoid native tool_use projection',
-  );
-  assert(
-    malformedMessages[2].role === 'user',
-    'Expected malformed call failure result to be projected as user context',
-  );
-  const malformedResultText = findTextBlockText(malformedMessages[2].content);
-  assert(
-    malformedResultText !== undefined && malformedResultText.includes('Invalid arguments:'),
-    'Expected malformed call failure result to be visible to the next model round',
-  );
-  assert(
-    findContentBlock(malformedMessages[2].content, 'tool_result') === undefined,
-    'Expected malformed call failure to avoid native tool_result projection',
-  );
-
-  const orphanedCallContext: ChatMessage[] = [
-    {
-      type: 'prompting_msg',
-      role: 'user',
-      genseq: 2,
-      msgId: 'user-2',
-      grammar: 'markdown',
-      content: 'Earlier tool call was interrupted.',
-    },
-    {
-      type: 'func_call_msg',
-      role: 'assistant',
-      genseq: 2,
-      id: 'call-orphan',
-      name: 'shell_cmd',
-      arguments: JSON.stringify({ command: 'cat missing.txt' }),
-    },
-    {
-      type: 'prompting_msg',
-      role: 'user',
-      genseq: 3,
-      msgId: 'user-3',
-      grammar: 'markdown',
-      content: 'Please continue without that tool result.',
-    },
-  ];
-
-  let threw = false;
-  try {
-    reconstructAnthropicContextWrapper(orphanedCallContext);
-  } catch (err) {
-    threw = true;
-    const message = err instanceof Error ? err.message : String(err);
-    assert(
-      message.includes('unresolved persisted tool call message detected'),
-      'Expected explicit unresolved func_call invariant error',
+  const second = {
+    ...fixture.call,
+    id: 'call-2',
+    name: 'inspect_data',
+    arguments: '{"selector":"second"}',
+  };
+  const secondResult = {
+    ...fixture.result,
+    id: second.id,
+    name: second.name,
+    content: 'second-result-data:316e',
+  };
+  const parallelContext = [fixture.user, fixture.call, second, secondResult, fixture.result];
+  for (const [mode, project] of [
+    ['sync', reconstructAnthropicContextWrapper],
+    ['async', reconstructAnthropicContextWrapperAsync],
+  ] as const) {
+    const before = structuredClone(parallelContext);
+    const messages = await project(parallelContext);
+    assert.deepEqual(
+      messages.map((message) => message.role),
+      ['user', 'assistant', 'user', 'assistant', 'user'],
     );
-    assert(message.includes('callId=call-orphan'), 'Expected callId in invariant error');
+    for (const [index, payload] of [
+      [1, fixture.call.arguments],
+      [2, fixture.result.content],
+      [3, second.arguments],
+      [4, secondResult.content],
+    ] as const) {
+      const content = messages[index]?.content;
+      assert.ok(Array.isArray(content));
+      assert.ok(content.every((block) => block.type === 'text'));
+      assert.ok(content.some((block) => block.type === 'text' && block.text.includes(payload)));
+    }
+    assert.deepEqual(parallelContext, before);
+    evidence.record({
+      id: `${mode}-parallel-history`,
+      scenario: `Anthropic ${mode} projection pairs two parallel calls with reverse-arriving results.`,
+      businessValue:
+        'Keep each observed outcome attributed to its own historical call instead of misrepresenting another tool result.',
+      context: {
+        input: JSON.stringify(before),
+        scope: 'Actual request projection only; no provider request or tool execution.',
+      },
+      reviewQuestions: [
+        'Does the actual text keep both call identities, raw arguments and corresponding outcomes correctly attributed after normalization?',
+      ],
+      actualText: JSON.stringify(messages, null, 2),
+    });
   }
-  assert(threw, 'Expected orphaned func_call context reconstruction to fail loudly');
-
-  console.log('✓ Anthropic context normalization test passed');
+  await assertInvalidProviderHistories(
+    'anthropic-sync',
+    reconstructAnthropicContextWrapper,
+    evidence,
+  );
+  await assertInvalidProviderHistories(
+    'anthropic-async',
+    reconstructAnthropicContextWrapperAsync,
+    evidence,
+  );
+  await evidence.write();
+  console.log('Anthropic raw history, role assembly and rejection: PASS');
 }
-
-main().catch((err) => {
-  console.error(err);
-  process.exit(1);
+main().catch((error: unknown) => {
+  console.error(error);
+  process.exitCode = 1;
 });

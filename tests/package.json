@@ -238,7 +238,12 @@
     "test:semantic:retry": "node run.mjs --suite retry --semantic",
     "provider-llm-quirks-retry-handling": "pnpm run rtws -- --isolated-rtws provider/llm-quirks-retry-handling.ts",
     "provider-retry-request-lifecycle": "pnpm run rtws -- --isolated-rtws provider/retry-request-lifecycle.ts",
-    "provider-retry-empty-recovery": "pnpm run rtws -- --isolated-rtws provider/retry-empty-recovery.ts"
+    "provider-retry-empty-recovery": "pnpm run rtws -- --isolated-rtws provider/retry-empty-recovery.ts",
+    "test:projection": "node run.mjs --suite projection",
+    "test:semantic:projection": "node run.mjs --suite projection --semantic",
+    "provider-openai-context-normalization": "pnpm run rtws -- --isolated-rtws provider/openai-context-normalization.ts",
+    "provider-anthropic-context-normalization": "pnpm run rtws -- --isolated-rtws provider/anthropic-context-normalization.ts",
+    "provider-openai-compatible-context-normalization": "pnpm run rtws -- --isolated-rtws provider/openai-compatible-context-normalization.ts"
   },
   "devDependencies": {
     "tsx": "^4.22.4",

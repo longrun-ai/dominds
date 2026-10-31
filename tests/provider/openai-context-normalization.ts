@@ -1,172 +1,85 @@
-import type { ChatMessage } from '../../main/llm/client';
+import assert from 'node:assert/strict';
 import { buildOpenAiRequestInputWrapper } from '../../main/llm/gen/openai';
+import { assertInvalidProviderHistories, providerHistory } from '../helpers/provider-context';
+import { semanticEvidenceCollector } from '../helpers/semantic-evidence';
 
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === 'object' && value !== null && !Array.isArray(value);
-}
-
-function assert(condition: boolean, message: string): void {
-  if (!condition) throw new Error(message);
-}
-
-function getItemType(value: unknown): string {
-  if (!isRecord(value)) return 'unknown';
-  const t = value.type;
-  return typeof t === 'string' ? t : 'unknown';
-}
-
-function isReasoningItem(
-  value: unknown,
-): value is { type: 'reasoning'; summary: ReadonlyArray<unknown> } {
-  return isRecord(value) && value.type === 'reasoning' && Array.isArray(value.summary);
-}
-
-function isAssistantMessageItem(
-  value: unknown,
-): value is { type: 'message'; role: 'assistant'; content: string } {
-  return (
-    isRecord(value) &&
-    value.type === 'message' &&
-    value.role === 'assistant' &&
-    typeof value.content === 'string'
-  );
-}
-
-function requireReasoningItem(value: unknown): {
-  type: 'reasoning';
-  summary: ReadonlyArray<unknown>;
-} {
-  if (!isReasoningItem(value)) {
-    throw new Error('Expected thinking item to map to reasoning');
-  }
-  return value;
-}
-
-function requireAssistantMessageItem(value: unknown): {
-  type: 'message';
-  role: 'assistant';
-  content: string;
-} {
-  if (!isAssistantMessageItem(value)) {
-    throw new Error('Expected assistant item to be message');
-  }
-  return value;
-}
-
-function requireSummaryTextItem(value: unknown): { type: 'summary_text'; text: string } {
-  if (!isRecord(value) || value.type !== 'summary_text' || typeof value.text !== 'string') {
-    throw new Error('Expected reasoning summary item to be summary_text');
-  }
-  return value as { type: 'summary_text'; text: string };
-}
-
+const evidence = semanticEvidenceCollector('dominds-projection-openai-');
 async function main() {
-  const context: ChatMessage[] = [
-    {
-      type: 'prompting_msg',
-      role: 'user',
-      genseq: 1,
-      msgId: 'user-1',
-      grammar: 'markdown',
-      content: 'Run `ls -la` via tool.',
-    },
-    {
-      type: 'thinking_msg',
-      role: 'assistant',
-      genseq: 1,
-      content: 'I should use a tool.',
-    },
-    {
-      type: 'saying_msg',
-      role: 'assistant',
-      genseq: 1,
-      content: 'Calling tool now.',
-    },
-    {
-      type: 'func_call_msg',
-      role: 'assistant',
-      genseq: 1,
-      id: 'call-1',
-      name: 'shell_cmd',
-      arguments: JSON.stringify({ command: 'ls -la' }),
-    },
-    {
-      type: 'func_result_msg',
-      role: 'tool',
-      genseq: 1,
-      id: 'call-1',
-      name: 'shell_cmd',
-      content: 'ok',
-    },
-  ];
-
+  const { user, thinking, saying, call, result, context } = providerHistory();
+  const original = structuredClone(context);
   const input = await buildOpenAiRequestInputWrapper(context);
-  const types = input.map(getItemType);
-
-  assert(
-    types.join(',') === 'message,reasoning,message,function_call,function_call_output',
-    `Unexpected input item types: ${types.join(',')}`,
+  assert.deepEqual(
+    input.map((item) => item.type),
+    ['message', 'reasoning', 'message', 'function_call', 'function_call_output'],
   );
+  const [userItem, reasoning, assistant, toolCall, output] = input;
+  assert.ok(userItem?.type === 'message');
+  assert.equal(userItem.role, 'user');
+  assert.equal(userItem.content, user.content);
+  assert.ok(reasoning?.type === 'reasoning');
+  assert.deepEqual(reasoning.summary, [{ type: 'summary_text', text: thinking.content }]);
+  assert.ok(assistant?.type === 'message');
+  assert.equal(assistant.role, 'assistant');
+  assert.equal(assistant.content, saying.content);
+  assert.ok(toolCall?.type === 'function_call');
+  assert.equal(toolCall.call_id, call.id);
+  assert.equal(toolCall.name, call.name);
+  assert.equal(toolCall.arguments, call.arguments);
+  assert.ok(output?.type === 'function_call_output');
+  assert.equal(output.call_id, result.id);
+  assert.equal(output.output, result.content);
+  assert.deepEqual(context, original);
+  const rawArguments = '{"command":\n"opaque:7ae2';
+  const malformed = await buildOpenAiRequestInputWrapper([
+    user,
+    { ...call, arguments: rawArguments },
+    result,
+  ]);
+  const malformedCall = malformed.find((item) => item.type === 'function_call');
+  assert.ok(malformedCall?.type === 'function_call');
+  assert.equal(malformedCall.arguments, rawArguments);
+  const malformedResult = malformed.find((item) => item.type === 'function_call_output');
+  assert.ok(malformedResult?.type === 'function_call_output');
+  assert.equal(malformedResult.output, result.content);
 
-  const reasoningItem = requireReasoningItem(input[1]);
-  assert(reasoningItem.summary.length === 1, 'Expected one reasoning summary item');
-  const summary0 = requireSummaryTextItem(reasoningItem.summary[0]);
-  assert(
-    summary0.text === 'I should use a tool.',
-    'Expected reasoning text to match thinking content',
+  const second = {
+    ...call,
+    id: 'call-2',
+    name: 'inspect_data',
+    arguments: '{"selector":"second"}',
+  };
+  const secondResult = {
+    ...result,
+    id: second.id,
+    name: second.name,
+    content: 'second-result-data:316e',
+  };
+  const parallel = await buildOpenAiRequestInputWrapper([user, call, second, secondResult, result]);
+  const calls = parallel.filter((item) => item.type === 'function_call');
+  const results = parallel.filter((item) => item.type === 'function_call_output');
+  assert.deepEqual(
+    calls.map((item) => [item.call_id, item.name, item.arguments]),
+    [
+      [call.id, call.name, call.arguments],
+      [second.id, second.name, second.arguments],
+    ],
   );
-
-  const assistantMsg = requireAssistantMessageItem(input[2]);
-  assert(
-    assistantMsg.content === 'Calling tool now.',
-    'Expected assistant content to stay as saying',
+  assert.deepEqual(
+    results.map((item) => [item.call_id, item.output]),
+    [
+      [result.id, result.content],
+      [secondResult.id, secondResult.content],
+    ],
   );
-
-  const orphanedCallContext: ChatMessage[] = [
-    {
-      type: 'prompting_msg',
-      role: 'user',
-      genseq: 2,
-      msgId: 'user-2',
-      grammar: 'markdown',
-      content: 'Tool call was interrupted.',
-    },
-    {
-      type: 'func_call_msg',
-      role: 'assistant',
-      genseq: 2,
-      id: 'call-orphan',
-      name: 'shell_cmd',
-      arguments: JSON.stringify({ command: 'cat missing.txt' }),
-    },
-    {
-      type: 'prompting_msg',
-      role: 'user',
-      genseq: 3,
-      msgId: 'user-3',
-      grammar: 'markdown',
-      content: 'Continue normally.',
-    },
-  ];
-
-  let threw = false;
-  try {
-    await buildOpenAiRequestInputWrapper(orphanedCallContext);
-  } catch (err) {
-    threw = true;
-    const message = err instanceof Error ? err.message : String(err);
-    assert(
-      message.includes('unresolved persisted func_call_msg detected'),
-      'Expected explicit unresolved func_call invariant error',
-    );
-    assert(message.includes('callId=call-orphan'), 'Expected callId in invariant error');
-  }
-  assert(threw, 'Expected orphaned func_call provider projection to fail loudly');
-
-  console.log('✓ OpenAI context normalization test passed');
+  assert.deepEqual(
+    parallel.map((item) => item.type),
+    ['message', 'function_call', 'function_call_output', 'function_call', 'function_call_output'],
+  );
+  await assertInvalidProviderHistories('openai', buildOpenAiRequestInputWrapper, evidence);
+  await evidence.write();
+  console.log('OpenAI history data, pairing and rejection: PASS');
 }
-
-main().catch((err) => {
-  console.error(err);
-  process.exit(1);
+main().catch((error: unknown) => {
+  console.error(error);
+  process.exitCode = 1;
 });

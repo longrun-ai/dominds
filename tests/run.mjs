@@ -115,7 +115,13 @@ const retry = [
   'provider/retry-request-lifecycle.ts',
   'provider/retry-empty-recovery.ts',
 ];
+const projection = [
+  'provider/openai-context-normalization.ts',
+  'provider/anthropic-context-normalization.ts',
+  'provider/openai-compatible-context-normalization.ts',
+];
 const semanticSuites = {
+  projection,
   retry,
   packaging: [
     'apps-kernel-package-exports-contract.ts',
@@ -247,6 +253,7 @@ export async function inventory() {
     bootstrap,
     packaging,
     retry,
+    projection,
   };
   const included = new Set(Object.values(suites).flat());
   const audit = JSON.parse(await fs.readFile(path.join(testsRoot, 'audit.json'), 'utf8'));
@@ -365,10 +372,11 @@ async function main() {
       'bootstrap',
       'packaging',
       'retry',
+      'projection',
     ].includes(args[1])
   ) {
     throw new Error(
-      'Usage: node tests/run.mjs --list | --suite smoke | --suite kernel | --suite context [--semantic] | --suite configuration [--semantic] | --suite manual [--semantic] | --suite filesystem [--semantic] | --suite persistence [--semantic] | --suite recovery [--semantic] | --suite bootstrap [--semantic] | --suite packaging [--semantic] | --suite retry [--semantic]',
+      'Usage: node tests/run.mjs --list | --suite smoke | --suite kernel | --suite context [--semantic] | --suite configuration [--semantic] | --suite manual [--semantic] | --suite filesystem [--semantic] | --suite persistence [--semantic] | --suite recovery [--semantic] | --suite bootstrap [--semantic] | --suite packaging [--semantic] | --suite retry [--semantic] | --suite projection [--semantic]',
     );
   }
   const suite = args[1];

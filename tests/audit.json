@@ -822,6 +822,24 @@
       "lane": "retry",
       "value": "四个真实五请求空响应burst：一次恢复预留、第二次预算拒绝、成功复位和same-context路径；保留三秒实际退避、事件路由/错误保真与磁盘闭合",
       "evidence": "Full 2141-line original/42-value mapping, three final candidates, two helpers, production guidance and complete test diff review: tests/semantic/reviews/2026-10-31-provider-retry.json. Actual timers/Dialogs/persistence/events and controlled external request callbacks; no fake Dialog, guessed event-count reader, prose/unique-wording oracle or global timer replacement. 38 actual policy/UI/recovery texts require independent subjective review. Baseline monolith timed out at the same60s bound; individual generation success/ledger design scope never accepts fresh semantic output or claims a live provider."
+    },
+    "provider/openai-context-normalization.ts": {
+      "status": "reviewed",
+      "lane": "projection",
+      "value": "真实Responses输入投影中的user/thinking/saying/工具参数和结果数据保真；逆序并行结果按call ID配对，畸形参数原样保留，不完整历史在构造请求前拒绝且原输入不变",
+      "evidence": "Complete original/final/assertion diff and actual diagnostic/history review: tests/semantic/reviews/2026-10-31-provider-projection.json. Protocol types/roles, given opaque payloads, call IDs, supplied reasoning data and input preservation are machine/data oracles. No fixed error sentence, source snippet or generated guidance keyword decides meaning. Twelve actual pairing diagnostics and six Anthropic history outputs require independent subjective review; generation, ledger and prior output identity do not accept fresh output. Actual projection only, no provider request, SDK transport, tool execution, backend restart or vision claim."
+    },
+    "provider/anthropic-context-normalization.ts": {
+      "status": "reviewed",
+      "lane": "projection",
+      "value": "Anthropic sync/async真实角色归并与历史文本投影；完整raw参数（含malformed）/结果和逆序并行调用身份保真，不伪造native JSON工具调用，不完整历史拒绝且原输入不变",
+      "evidence": "Complete original/final/assertion diff and actual diagnostic/history review: tests/semantic/reviews/2026-10-31-provider-projection.json. Protocol types/roles, given opaque payloads, call IDs, supplied reasoning data and input preservation are machine/data oracles. No fixed error sentence, source snippet or generated guidance keyword decides meaning. Twelve actual pairing diagnostics and six Anthropic history outputs require independent subjective review; generation, ledger and prior output identity do not accept fresh output. Actual projection only, no provider request, SDK transport, tool execution, backend restart or vision claim."
+    },
+    "provider/openai-compatible-context-normalization.ts": {
+      "status": "reviewed",
+      "lane": "projection",
+      "value": "Chat Completions兼容真实投影中的完整参数/结果、当前turn推理、禁用call reasoning边界、MiniMax完整reasoning_details保真及generic reasoning路径；逆序配对和不完整历史拒绝",
+      "evidence": "Complete original/final/assertion diff and actual diagnostic/history review: tests/semantic/reviews/2026-10-31-provider-projection.json. Protocol types/roles, given opaque payloads, call IDs, supplied reasoning data and input preservation are machine/data oracles. No fixed error sentence, source snippet or generated guidance keyword decides meaning. Twelve actual pairing diagnostics and six Anthropic history outputs require independent subjective review; generation, ledger and prior output identity do not accept fresh output. Actual projection only, no provider request, SDK transport, tool execution, backend restart or vision claim."
     }
   },
   "retired": {

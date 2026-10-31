@@ -32,6 +32,8 @@ pnpm run test:packaging
 pnpm run test:semantic:packaging
 pnpm run test:retry
 pnpm run test:semantic:retry
+pnpm run test:projection
+pnpm run test:semantic:projection
 ```
 
 - `test`: a small local smoke suite; not full product, browser, packaging, or provider coverage.
@@ -67,6 +69,9 @@ pnpm run test:semantic:retry
 
 - `test:retry`: three isolated cases. The policy case retains 21 original classification/quirk components; two runtime cases preserve the remaining 21 original values with real Dialogs, events, timers and disk generation lifetimes. Known upstream messages are supplied classification data, while emitted guidance has no literal semantic oracle. Scheduled deadlines and real request times verify actual backoff, including the three-second empty-response delay; the normal 60-second case limit is retained. The actual driver sends two persisted Kimi review inputs before the third refusal finalizes a stopped state; separate callback components check reservation rather than claim actual follow-up execution. No SDK network/live-provider coverage is claimed.
 - `test:semantic:retry`: three explicit producers emit 14 actual policy decisions, twenty retry/stop/driver outputs and four full empty-burst cases. Generation starts pending; the [batch review](./semantic/reviews/2026-10-31-provider-retry.json) retains the original 42-value map, rejected initial outputs, final subjective verdicts and actual execution scope.
+
+- `test:projection`: three isolated request-construction cases for Responses, Chat Completions-compatible and Anthropic sync/async projections. They check supplied user/thinking/saying/argument/result data, current-turn reasoning and MiniMax details, the reasoning-disable boundary, malformed raw arguments, reverse-arriving parallel results and immutable rejection of incomplete tool histories. No live request, tool execution or persisted-history repair is claimed.
+- `test:semantic:projection`: three producers emit twelve actual pairing refusals and six actual Anthropic history projections. The [batch review](./semantic/reviews/2026-10-31-provider-projection.json) records full inputs and text, original value mapping, independent judgments and execution scope; generation starts pending.
 
 The [assertion audit ledger](./audit.json) records which candidate tests have actually been reviewed, their business value, lane and evidence. Inventory exposes unaudited candidates and stale ledger paths. Neither suite membership nor a prior ledger entry decides the meaning of freshly generated output.
 

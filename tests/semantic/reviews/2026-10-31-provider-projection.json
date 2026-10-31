@@ -1,0 +1,1190 @@
+{
+  "reviewDate": "2026-10-31",
+  "status": "passed",
+  "statusMeaning": "Independent semantic and assertion-design review passed for the three context projection candidates/helper/entry changes and these18 actual outputs. This is not full repository, image/truncation, actual tool execution, persistence repair, SDK/network or live-provider acceptance. Parent execution verification is merged below; full test types remain failed and the whole-repository remediation goal remains active.",
+  "sourceBaseRevision": "dc44406684bb09c73499d1092d929f841652975d",
+  "method": "Every actual JSON input/context/scenario/actualText was completely read as untrusted data and judged subjectively. No keywords/regex/fixed sentences/snapshots/source snippets/hash decide meaning. Exact protocol types/roles/IDs/arrays and supplied opaque data fidelity are legitimate only for their concrete stated data contracts. Generated wrappers/diagnostics are separate subjective cases; generation starts pending.",
+  "counts": {
+    "total": 18,
+    "passed": 18,
+    "failed": 0,
+    "pending": 0
+  },
+  "cases": [
+    {
+      "id": "openai-mismatched-result",
+      "scenario": "openai rejects an incomplete or incorrectly paired tool history before request construction.",
+      "businessValue": "Prevent invented tool outcomes or invalid provider replay, while preserving the supplied history for investigation.",
+      "context": {
+        "provider": "openai",
+        "input": "[{\"type\":\"prompting_msg\",\"role\":\"user\",\"genseq\":1,\"msgId\":\"user-1\",\"grammar\":\"markdown\",\"content\":\"input-data:7ae2\\n引号 \\\" / Ω\"},{\"type\":\"func_call_msg\",\"role\":\"assistant\",\"genseq\":1,\"id\":\"call-1\",\"name\":\"shell_cmd\",\"arguments\":\"{\\\"command\\\":\\\"printf \\\\\\\"Ω\\\\\\\"\\\",\\\"opaque\\\":\\\"7ae2\\\"}\"},{\"type\":\"func_result_msg\",\"role\":\"tool\",\"genseq\":1,\"id\":\"other-call\",\"name\":\"shell_cmd\",\"content\":\"result-data:f628\\n引号 \\\" / Ω\"},{\"type\":\"prompting_msg\",\"role\":\"user\",\"genseq\":2,\"msgId\":\"user-2\",\"grammar\":\"markdown\",\"content\":\"later-input-data:2ba3\"}]",
+        "scope": "Actual request projection only; no provider request or driver repair is executed."
+      },
+      "reviewQuestions": [
+        "Does the actual diagnostic accurately identify this supplied pairing failure and affected call without inventing a tool result or suggesting that the request was sent?"
+      ],
+      "actualText": "Error: OPENAI provider projection: unresolved persisted tool call message detected (callId=call-1, tool=shell_cmd, index=1). This means a tool call was persisted without a matching tool result message.",
+      "verdict": "passed",
+      "rationale": "输入call-1后是other-call结果，所以call-1首先未配对；当前说明指出的是缺“匹配”结果，并未否认存在别的结果，身份与index正确，不制造执行或repair。",
+      "scope": "Actual request projection only; no provider request or driver repair is executed.",
+      "provenance": {
+        "generator": "tests/provider/openai-context-normalization.ts",
+        "sourceFile": "openai-mismatched-result.json",
+        "originDirectoryLabel": "dominds-projection-openai-d1qQ1n",
+        "laneLabel": "dominds-tests-projection-semantic-BngUmj",
+        "actualTextSha256": "255264e74818349bf0907039bd2dbe85c6bba01a2ccabbc949d2cb424f1d57f4",
+        "evidenceJsonSha256": "31f2b6899809f76e5278dc3f3c5354a19d2c976da27160caf7468199ec8322b0",
+        "meaning": "Full actualText/input/context retained and independently subjectively read. Hashes identify bytes only, never meaning or automatic acceptance of later output."
+      }
+    },
+    {
+      "id": "openai-orphaned-result",
+      "scenario": "openai rejects an incomplete or incorrectly paired tool history before request construction.",
+      "businessValue": "Prevent invented tool outcomes or invalid provider replay, while preserving the supplied history for investigation.",
+      "context": {
+        "provider": "openai",
+        "input": "[{\"type\":\"prompting_msg\",\"role\":\"user\",\"genseq\":1,\"msgId\":\"user-1\",\"grammar\":\"markdown\",\"content\":\"input-data:7ae2\\n引号 \\\" / Ω\"},{\"type\":\"func_result_msg\",\"role\":\"tool\",\"genseq\":1,\"id\":\"call-1\",\"name\":\"shell_cmd\",\"content\":\"result-data:f628\\n引号 \\\" / Ω\"},{\"type\":\"prompting_msg\",\"role\":\"user\",\"genseq\":2,\"msgId\":\"user-2\",\"grammar\":\"markdown\",\"content\":\"later-input-data:2ba3\"}]",
+        "scope": "Actual request projection only; no provider request or driver repair is executed."
+      },
+      "reviewQuestions": [
+        "Does the actual diagnostic accurately identify this supplied pairing failure and affected call without inventing a tool result or suggesting that the request was sent?"
+      ],
+      "actualText": "Error: OPENAI provider projection: orphaned persisted tool result message detected (callId=call-1, tool=shell_cmd, index=1). This means a tool result was restored without the immediately preceding tool call message.",
+      "verdict": "passed",
+      "rationale": "输入有call-1结果但前无对应调用，诊断明确孤立结果和缺紧邻调用，与所给顺序一致；没有把结果丢失/调用成功等未知事实补入。",
+      "scope": "Actual request projection only; no provider request or driver repair is executed.",
+      "provenance": {
+        "generator": "tests/provider/openai-context-normalization.ts",
+        "sourceFile": "openai-orphaned-result.json",
+        "originDirectoryLabel": "dominds-projection-openai-d1qQ1n",
+        "laneLabel": "dominds-tests-projection-semantic-BngUmj",
+        "actualTextSha256": "7e70510a0a3ef84820229e589eaafead5ded4d78b2b1b34c44c74dee7ef43e73",
+        "evidenceJsonSha256": "f9f871392bb562f5243bbaa8d4377eac8bab3bd50473c99e814f2fc76e767cd2",
+        "meaning": "Full actualText/input/context retained and independently subjectively read. Hashes identify bytes only, never meaning or automatic acceptance of later output."
+      }
+    },
+    {
+      "id": "openai-unresolved-call",
+      "scenario": "openai rejects an incomplete or incorrectly paired tool history before request construction.",
+      "businessValue": "Prevent invented tool outcomes or invalid provider replay, while preserving the supplied history for investigation.",
+      "context": {
+        "provider": "openai",
+        "input": "[{\"type\":\"prompting_msg\",\"role\":\"user\",\"genseq\":1,\"msgId\":\"user-1\",\"grammar\":\"markdown\",\"content\":\"input-data:7ae2\\n引号 \\\" / Ω\"},{\"type\":\"func_call_msg\",\"role\":\"assistant\",\"genseq\":1,\"id\":\"call-1\",\"name\":\"shell_cmd\",\"arguments\":\"{\\\"command\\\":\\\"printf \\\\\\\"Ω\\\\\\\"\\\",\\\"opaque\\\":\\\"7ae2\\\"}\"},{\"type\":\"prompting_msg\",\"role\":\"user\",\"genseq\":2,\"msgId\":\"user-2\",\"grammar\":\"markdown\",\"content\":\"later-input-data:2ba3\"}]",
+        "scope": "Actual request projection only; no provider request or driver repair is executed."
+      },
+      "reviewQuestions": [
+        "Does the actual diagnostic accurately identify this supplied pairing failure and affected call without inventing a tool result or suggesting that the request was sent?"
+      ],
+      "actualText": "Error: OPENAI provider projection: unresolved persisted tool call message detected (callId=call-1, tool=shell_cmd, index=1). This means a tool call was persisted without a matching tool result message.",
+      "verdict": "passed",
+      "rationale": "输入call-1后接新用户消息，确无匹配结果；诊断准确指出该call、tool和位置，不补造结果，也没有说请求已送provider。只接受当前给定历史的投影拒绝，不把它当真实磁盘事故取证。",
+      "scope": "Actual request projection only; no provider request or driver repair is executed.",
+      "provenance": {
+        "generator": "tests/provider/openai-context-normalization.ts",
+        "sourceFile": "openai-unresolved-call.json",
+        "originDirectoryLabel": "dominds-projection-openai-d1qQ1n",
+        "laneLabel": "dominds-tests-projection-semantic-BngUmj",
+        "actualTextSha256": "255264e74818349bf0907039bd2dbe85c6bba01a2ccabbc949d2cb424f1d57f4",
+        "evidenceJsonSha256": "b0465c5a01e9b42248a2f5c70cb52dcf0db797c9bec900900111d8aae184b179",
+        "meaning": "Full actualText/input/context retained and independently subjectively read. Hashes identify bytes only, never meaning or automatic acceptance of later output."
+      }
+    },
+    {
+      "id": "anthropic-async-mismatched-result",
+      "scenario": "anthropic-async rejects an incomplete or incorrectly paired tool history before request construction.",
+      "businessValue": "Prevent invented tool outcomes or invalid provider replay, while preserving the supplied history for investigation.",
+      "context": {
+        "provider": "anthropic-async",
+        "input": "[{\"type\":\"prompting_msg\",\"role\":\"user\",\"genseq\":1,\"msgId\":\"user-1\",\"grammar\":\"markdown\",\"content\":\"input-data:7ae2\\n引号 \\\" / Ω\"},{\"type\":\"func_call_msg\",\"role\":\"assistant\",\"genseq\":1,\"id\":\"call-1\",\"name\":\"shell_cmd\",\"arguments\":\"{\\\"command\\\":\\\"printf \\\\\\\"Ω\\\\\\\"\\\",\\\"opaque\\\":\\\"7ae2\\\"}\"},{\"type\":\"func_result_msg\",\"role\":\"tool\",\"genseq\":1,\"id\":\"other-call\",\"name\":\"shell_cmd\",\"content\":\"result-data:f628\\n引号 \\\" / Ω\"},{\"type\":\"prompting_msg\",\"role\":\"user\",\"genseq\":2,\"msgId\":\"user-2\",\"grammar\":\"markdown\",\"content\":\"later-input-data:2ba3\"}]",
+        "scope": "Actual request projection only; no provider request or driver repair is executed."
+      },
+      "reviewQuestions": [
+        "Does the actual diagnostic accurately identify this supplied pairing failure and affected call without inventing a tool result or suggesting that the request was sent?"
+      ],
+      "actualText": "Error: ANTH provider projection: unresolved persisted tool call message detected (callId=call-1, tool=shell_cmd, index=1). This means a tool call was persisted without a matching tool result message.",
+      "verdict": "passed",
+      "rationale": "异步给定call-1与other-call结果不匹配，当前首先指出call-1缺匹配结果，归属和index一致，不误认别的结果为该调用结果。",
+      "scope": "Actual request projection only; no provider request or driver repair is executed.",
+      "provenance": {
+        "generator": "tests/provider/anthropic-context-normalization.ts",
+        "sourceFile": "anthropic-async-mismatched-result.json",
+        "originDirectoryLabel": "dominds-projection-anthropic-rmUNkt",
+        "laneLabel": "dominds-tests-projection-semantic-BngUmj",
+        "actualTextSha256": "121c5cabbc87f5887a2c4c113859968dec29ca6204a3b334f5f0ac0ecf46e597",
+        "evidenceJsonSha256": "aad54525f487a18dbdc90902240d63af6590af8d209f53163bf927ffdff649c8",
+        "meaning": "Full actualText/input/context retained and independently subjectively read. Hashes identify bytes only, never meaning or automatic acceptance of later output."
+      }
+    },
+    {
+      "id": "anthropic-async-orphaned-result",
+      "scenario": "anthropic-async rejects an incomplete or incorrectly paired tool history before request construction.",
+      "businessValue": "Prevent invented tool outcomes or invalid provider replay, while preserving the supplied history for investigation.",
+      "context": {
+        "provider": "anthropic-async",
+        "input": "[{\"type\":\"prompting_msg\",\"role\":\"user\",\"genseq\":1,\"msgId\":\"user-1\",\"grammar\":\"markdown\",\"content\":\"input-data:7ae2\\n引号 \\\" / Ω\"},{\"type\":\"func_result_msg\",\"role\":\"tool\",\"genseq\":1,\"id\":\"call-1\",\"name\":\"shell_cmd\",\"content\":\"result-data:f628\\n引号 \\\" / Ω\"},{\"type\":\"prompting_msg\",\"role\":\"user\",\"genseq\":2,\"msgId\":\"user-2\",\"grammar\":\"markdown\",\"content\":\"later-input-data:2ba3\"}]",
+        "scope": "Actual request projection only; no provider request or driver repair is executed."
+      },
+      "reviewQuestions": [
+        "Does the actual diagnostic accurately identify this supplied pairing failure and affected call without inventing a tool result or suggesting that the request was sent?"
+      ],
+      "actualText": "Error: ANTH provider projection: orphaned persisted tool result message detected (callId=call-1, tool=shell_cmd, index=1). This means a tool result was restored without the immediately preceding tool call message.",
+      "verdict": "passed",
+      "rationale": "异步输入的call-1结果无前驱调用，当前孤立结果说明准确；“restored”按API传入历史的假定背景理解，不作为实际重启覆盖。",
+      "scope": "Actual request projection only; no provider request or driver repair is executed.",
+      "provenance": {
+        "generator": "tests/provider/anthropic-context-normalization.ts",
+        "sourceFile": "anthropic-async-orphaned-result.json",
+        "originDirectoryLabel": "dominds-projection-anthropic-rmUNkt",
+        "laneLabel": "dominds-tests-projection-semantic-BngUmj",
+        "actualTextSha256": "838a708f2a88d682f5ff13dff7b269cf8b33a2c51612a8d25c10cfb7aa6dbdf0",
+        "evidenceJsonSha256": "0d4b8a892ad4352edd3dccd1f5386f6db75cf468e5aa8ca08f429ddc67a15126",
+        "meaning": "Full actualText/input/context retained and independently subjectively read. Hashes identify bytes only, never meaning or automatic acceptance of later output."
+      }
+    },
+    {
+      "id": "anthropic-async-unresolved-call",
+      "scenario": "anthropic-async rejects an incomplete or incorrectly paired tool history before request construction.",
+      "businessValue": "Prevent invented tool outcomes or invalid provider replay, while preserving the supplied history for investigation.",
+      "context": {
+        "provider": "anthropic-async",
+        "input": "[{\"type\":\"prompting_msg\",\"role\":\"user\",\"genseq\":1,\"msgId\":\"user-1\",\"grammar\":\"markdown\",\"content\":\"input-data:7ae2\\n引号 \\\" / Ω\"},{\"type\":\"func_call_msg\",\"role\":\"assistant\",\"genseq\":1,\"id\":\"call-1\",\"name\":\"shell_cmd\",\"arguments\":\"{\\\"command\\\":\\\"printf \\\\\\\"Ω\\\\\\\"\\\",\\\"opaque\\\":\\\"7ae2\\\"}\"},{\"type\":\"prompting_msg\",\"role\":\"user\",\"genseq\":2,\"msgId\":\"user-2\",\"grammar\":\"markdown\",\"content\":\"later-input-data:2ba3\"}]",
+        "scope": "Actual request projection only; no provider request or driver repair is executed."
+      },
+      "reviewQuestions": [
+        "Does the actual diagnostic accurately identify this supplied pairing failure and affected call without inventing a tool result or suggesting that the request was sent?"
+      ],
+      "actualText": "Error: ANTH provider projection: unresolved persisted tool call message detected (callId=call-1, tool=shell_cmd, index=1). This means a tool call was persisted without a matching tool result message.",
+      "verdict": "passed",
+      "rationale": "异步投影给定call-1后没有匹配result，诊断精确识别该调用/位置及缺结果事实；没有伪造结果、发请求或repair。",
+      "scope": "Actual request projection only; no provider request or driver repair is executed.",
+      "provenance": {
+        "generator": "tests/provider/anthropic-context-normalization.ts",
+        "sourceFile": "anthropic-async-unresolved-call.json",
+        "originDirectoryLabel": "dominds-projection-anthropic-rmUNkt",
+        "laneLabel": "dominds-tests-projection-semantic-BngUmj",
+        "actualTextSha256": "121c5cabbc87f5887a2c4c113859968dec29ca6204a3b334f5f0ac0ecf46e597",
+        "evidenceJsonSha256": "16e6f0d0794a2286bf8ab09c3b7eeb88e823ea6c4db9f585b12cf490254ba2d0",
+        "meaning": "Full actualText/input/context retained and independently subjectively read. Hashes identify bytes only, never meaning or automatic acceptance of later output."
+      }
+    },
+    {
+      "id": "anthropic-sync-mismatched-result",
+      "scenario": "anthropic-sync rejects an incomplete or incorrectly paired tool history before request construction.",
+      "businessValue": "Prevent invented tool outcomes or invalid provider replay, while preserving the supplied history for investigation.",
+      "context": {
+        "provider": "anthropic-sync",
+        "input": "[{\"type\":\"prompting_msg\",\"role\":\"user\",\"genseq\":1,\"msgId\":\"user-1\",\"grammar\":\"markdown\",\"content\":\"input-data:7ae2\\n引号 \\\" / Ω\"},{\"type\":\"func_call_msg\",\"role\":\"assistant\",\"genseq\":1,\"id\":\"call-1\",\"name\":\"shell_cmd\",\"arguments\":\"{\\\"command\\\":\\\"printf \\\\\\\"Ω\\\\\\\"\\\",\\\"opaque\\\":\\\"7ae2\\\"}\"},{\"type\":\"func_result_msg\",\"role\":\"tool\",\"genseq\":1,\"id\":\"other-call\",\"name\":\"shell_cmd\",\"content\":\"result-data:f628\\n引号 \\\" / Ω\"},{\"type\":\"prompting_msg\",\"role\":\"user\",\"genseq\":2,\"msgId\":\"user-2\",\"grammar\":\"markdown\",\"content\":\"later-input-data:2ba3\"}]",
+        "scope": "Actual request projection only; no provider request or driver repair is executed."
+      },
+      "reviewQuestions": [
+        "Does the actual diagnostic accurately identify this supplied pairing failure and affected call without inventing a tool result or suggesting that the request was sent?"
+      ],
+      "actualText": "Error: ANTH sync context reconstruction: unresolved persisted tool call message detected (callId=call-1, tool=shell_cmd, index=1). This means a tool call was persisted without a matching tool result message.",
+      "verdict": "passed",
+      "rationale": "同步输入other-call结果不能配call-1，诊断指出首个未配对调用而非编造匹配事实；仅当前重建拒绝范围。",
+      "scope": "Actual request projection only; no provider request or driver repair is executed.",
+      "provenance": {
+        "generator": "tests/provider/anthropic-context-normalization.ts",
+        "sourceFile": "anthropic-sync-mismatched-result.json",
+        "originDirectoryLabel": "dominds-projection-anthropic-rmUNkt",
+        "laneLabel": "dominds-tests-projection-semantic-BngUmj",
+        "actualTextSha256": "4ba1fdb944389ab59f0800e9bb1cd275c696bc8ac0150c56ef4af3513e56e6cb",
+        "evidenceJsonSha256": "e6220fa8df25557f6b5d53c56be8870622890e1347019e8c21ac9cbdf824e699",
+        "meaning": "Full actualText/input/context retained and independently subjectively read. Hashes identify bytes only, never meaning or automatic acceptance of later output."
+      }
+    },
+    {
+      "id": "anthropic-sync-orphaned-result",
+      "scenario": "anthropic-sync rejects an incomplete or incorrectly paired tool history before request construction.",
+      "businessValue": "Prevent invented tool outcomes or invalid provider replay, while preserving the supplied history for investigation.",
+      "context": {
+        "provider": "anthropic-sync",
+        "input": "[{\"type\":\"prompting_msg\",\"role\":\"user\",\"genseq\":1,\"msgId\":\"user-1\",\"grammar\":\"markdown\",\"content\":\"input-data:7ae2\\n引号 \\\" / Ω\"},{\"type\":\"func_result_msg\",\"role\":\"tool\",\"genseq\":1,\"id\":\"call-1\",\"name\":\"shell_cmd\",\"content\":\"result-data:f628\\n引号 \\\" / Ω\"},{\"type\":\"prompting_msg\",\"role\":\"user\",\"genseq\":2,\"msgId\":\"user-2\",\"grammar\":\"markdown\",\"content\":\"later-input-data:2ba3\"}]",
+        "scope": "Actual request projection only; no provider request or driver repair is executed."
+      },
+      "reviewQuestions": [
+        "Does the actual diagnostic accurately identify this supplied pairing failure and affected call without inventing a tool result or suggesting that the request was sent?"
+      ],
+      "actualText": "Error: ANTH sync context reconstruction: orphaned persisted tool result message detected (callId=call-1, tool=shell_cmd, index=1). This means a tool result was restored without the immediately preceding tool call message.",
+      "verdict": "passed",
+      "rationale": "同步给定result前无调用，当前孤立结果和缺紧邻调用说明与原数据一致，身份正确，不造成功/失败业务结果。",
+      "scope": "Actual request projection only; no provider request or driver repair is executed.",
+      "provenance": {
+        "generator": "tests/provider/anthropic-context-normalization.ts",
+        "sourceFile": "anthropic-sync-orphaned-result.json",
+        "originDirectoryLabel": "dominds-projection-anthropic-rmUNkt",
+        "laneLabel": "dominds-tests-projection-semantic-BngUmj",
+        "actualTextSha256": "d6ac6e1ec0e2547c5399087451da65c3d1a99545929113b56b6cf3b77912b2ee",
+        "evidenceJsonSha256": "ee31abf21062ead6cd7d0bd41ec312946e3b8456477314dd98410caf443f9e8f",
+        "meaning": "Full actualText/input/context retained and independently subjectively read. Hashes identify bytes only, never meaning or automatic acceptance of later output."
+      }
+    },
+    {
+      "id": "anthropic-sync-unresolved-call",
+      "scenario": "anthropic-sync rejects an incomplete or incorrectly paired tool history before request construction.",
+      "businessValue": "Prevent invented tool outcomes or invalid provider replay, while preserving the supplied history for investigation.",
+      "context": {
+        "provider": "anthropic-sync",
+        "input": "[{\"type\":\"prompting_msg\",\"role\":\"user\",\"genseq\":1,\"msgId\":\"user-1\",\"grammar\":\"markdown\",\"content\":\"input-data:7ae2\\n引号 \\\" / Ω\"},{\"type\":\"func_call_msg\",\"role\":\"assistant\",\"genseq\":1,\"id\":\"call-1\",\"name\":\"shell_cmd\",\"arguments\":\"{\\\"command\\\":\\\"printf \\\\\\\"Ω\\\\\\\"\\\",\\\"opaque\\\":\\\"7ae2\\\"}\"},{\"type\":\"prompting_msg\",\"role\":\"user\",\"genseq\":2,\"msgId\":\"user-2\",\"grammar\":\"markdown\",\"content\":\"later-input-data:2ba3\"}]",
+        "scope": "Actual request projection only; no provider request or driver repair is executed."
+      },
+      "reviewQuestions": [
+        "Does the actual diagnostic accurately identify this supplied pairing failure and affected call without inventing a tool result or suggesting that the request was sent?"
+      ],
+      "actualText": "Error: ANTH sync context reconstruction: unresolved persisted tool call message detected (callId=call-1, tool=shell_cmd, index=1). This means a tool call was persisted without a matching tool result message.",
+      "verdict": "passed",
+      "rationale": "同步重建的call-1后只有later user，当前诊断如实指出未配对调用及位置；没有声称新工具执行或模型请求发生。",
+      "scope": "Actual request projection only; no provider request or driver repair is executed.",
+      "provenance": {
+        "generator": "tests/provider/anthropic-context-normalization.ts",
+        "sourceFile": "anthropic-sync-unresolved-call.json",
+        "originDirectoryLabel": "dominds-projection-anthropic-rmUNkt",
+        "laneLabel": "dominds-tests-projection-semantic-BngUmj",
+        "actualTextSha256": "4ba1fdb944389ab59f0800e9bb1cd275c696bc8ac0150c56ef4af3513e56e6cb",
+        "evidenceJsonSha256": "3d0fd75df9d840118db44ec6b7f5df934a698c1c1656d428a56dde14f361ad98",
+        "meaning": "Full actualText/input/context retained and independently subjectively read. Hashes identify bytes only, never meaning or automatic acceptance of later output."
+      }
+    },
+    {
+      "id": "async-malformed-history",
+      "scenario": "Anthropic async request projection of malformed supplied tool history.",
+      "businessValue": "Preserve raw arguments and observed result without requiring valid JSON or presenting historical tool activity as a fresh action.",
+      "context": {
+        "input": "[{\"type\":\"prompting_msg\",\"role\":\"user\",\"genseq\":1,\"msgId\":\"user-1\",\"grammar\":\"markdown\",\"content\":\"input-data:7ae2\\n引号 \\\" / Ω\"},{\"type\":\"thinking_msg\",\"role\":\"assistant\",\"genseq\":1,\"content\":\"thinking-data:c409\\n保留\"},{\"type\":\"saying_msg\",\"role\":\"assistant\",\"genseq\":1,\"content\":\"saying-data:380f\\n保留\"},{\"type\":\"func_call_msg\",\"role\":\"assistant\",\"genseq\":1,\"id\":\"call-malformed\",\"name\":\"shell_cmd\",\"arguments\":\"{\\\"command\\\":\\n\\\"opaque:7ae2\"},{\"type\":\"func_result_msg\",\"role\":\"tool\",\"genseq\":1,\"id\":\"call-malformed\",\"name\":\"shell_cmd\",\"content\":\"supplied-failure-data:81fe\\n引号 \\\" / Ω\"}]",
+        "scope": "Actual sync/async projection; no provider request, tool execution or restart."
+      },
+      "reviewQuestions": [
+        "Does the actual text attribute the call and result correctly, preserve malformed input as historical data, and keep the supplied failure visible without inventing execution or completion?"
+      ],
+      "actualText": "[\n  {\n    \"role\": \"user\",\n    \"content\": [\n      {\n        \"type\": \"text\",\n        \"text\": \"input-data:7ae2\\n引号 \\\" / Ω\"\n      }\n    ]\n  },\n  {\n    \"role\": \"assistant\",\n    \"content\": [\n      {\n        \"type\": \"text\",\n        \"text\": \"thinking-data:c409\\n保留\"\n      },\n      {\n        \"type\": \"text\",\n        \"text\": \"saying-data:380f\\n保留\"\n      },\n      {\n        \"type\": \"text\",\n        \"text\": \"Function call emitted by the assistant.\\nTool name: shell_cmd\\nCall ID: call-malformed\\nRaw arguments, verbatim:\\n<raw_arguments>\\n{\\\"command\\\":\\n\\\"opaque:7ae2\\n</raw_arguments>\"\n      }\n    ]\n  },\n  {\n    \"role\": \"user\",\n    \"content\": [\n      {\n        \"type\": \"text\",\n        \"text\": \"Function call result.\\nTool name: shell_cmd\\nCall ID: call-malformed\\nResult content:\\nsupplied-failure-data:81fe\\n引号 \\\" / Ω\"\n      }\n    ]\n  }\n]",
+      "verdict": "passed",
+      "rationale": "异步包装明确将未闭合JSON标作原始参数原文，在call-malformed身份下保留给定opaque结果，没有擅自修成可执行JSON或编造错误原因。supplied-failure-data只是给定结果，接受可见与归属，不声称真实handler报错。",
+      "scope": "Actual sync/async projection; no provider request, tool execution or restart.",
+      "provenance": {
+        "generator": "tests/provider/anthropic-context-normalization.ts",
+        "sourceFile": "async-malformed-history.json",
+        "originDirectoryLabel": "dominds-projection-anthropic-rmUNkt",
+        "laneLabel": "dominds-tests-projection-semantic-BngUmj",
+        "actualTextSha256": "a66dee42332111fe6f2e1534c92b6b036937093077e9718b4faea0329393b211",
+        "evidenceJsonSha256": "27901f32c7ad163b5e75e148366c00841af655e088cff93a77f0a8b356ea0186",
+        "meaning": "Full actualText/input/context retained and independently subjectively read. Hashes identify bytes only, never meaning or automatic acceptance of later output."
+      }
+    },
+    {
+      "id": "async-normal-history",
+      "scenario": "Anthropic async request projection of normal supplied tool history.",
+      "businessValue": "Preserve raw arguments and observed result without requiring valid JSON or presenting historical tool activity as a fresh action.",
+      "context": {
+        "input": "[{\"type\":\"prompting_msg\",\"role\":\"user\",\"genseq\":1,\"msgId\":\"user-1\",\"grammar\":\"markdown\",\"content\":\"input-data:7ae2\\n引号 \\\" / Ω\"},{\"type\":\"thinking_msg\",\"role\":\"assistant\",\"genseq\":1,\"content\":\"thinking-data:c409\\n保留\"},{\"type\":\"saying_msg\",\"role\":\"assistant\",\"genseq\":1,\"content\":\"saying-data:380f\\n保留\"},{\"type\":\"func_call_msg\",\"role\":\"assistant\",\"genseq\":1,\"id\":\"call-1\",\"name\":\"shell_cmd\",\"arguments\":\"{\\\"command\\\":\\\"printf \\\\\\\"Ω\\\\\\\"\\\",\\\"opaque\\\":\\\"7ae2\\\"}\"},{\"type\":\"func_result_msg\",\"role\":\"tool\",\"genseq\":1,\"id\":\"call-1\",\"name\":\"shell_cmd\",\"content\":\"result-data:f628\\n引号 \\\" / Ω\"}]",
+        "scope": "Actual sync/async projection; no provider request, tool execution or restart."
+      },
+      "reviewQuestions": [
+        "Does the actual text attribute the call and result correctly, preserve malformed input as historical data, and keep the supplied failure visible without inventing execution or completion?"
+      ],
+      "actualText": "[\n  {\n    \"role\": \"user\",\n    \"content\": [\n      {\n        \"type\": \"text\",\n        \"text\": \"input-data:7ae2\\n引号 \\\" / Ω\"\n      }\n    ]\n  },\n  {\n    \"role\": \"assistant\",\n    \"content\": [\n      {\n        \"type\": \"text\",\n        \"text\": \"thinking-data:c409\\n保留\"\n      },\n      {\n        \"type\": \"text\",\n        \"text\": \"saying-data:380f\\n保留\"\n      },\n      {\n        \"type\": \"text\",\n        \"text\": \"Function call emitted by the assistant.\\nTool name: shell_cmd\\nCall ID: call-1\\nRaw arguments, verbatim:\\n<raw_arguments>\\n{\\\"command\\\":\\\"printf \\\\\\\"Ω\\\\\\\"\\\",\\\"opaque\\\":\\\"7ae2\\\"}\\n</raw_arguments>\"\n      }\n    ]\n  },\n  {\n    \"role\": \"user\",\n    \"content\": [\n      {\n        \"type\": \"text\",\n        \"text\": \"Function call result.\\nTool name: shell_cmd\\nCall ID: call-1\\nResult content:\\nresult-data:f628\\n引号 \\\" / Ω\"\n      }\n    ]\n  }\n]",
+      "verdict": "passed",
+      "rationale": "异步实际输出把user数据保在user，把thinking/saying及原始call归assistant历史，并在对应call-1下呈现给定result。生成标签区分发出的历史调用与结果，没有把正文当新指令、声称新执行或任务完成。",
+      "scope": "Actual sync/async projection; no provider request, tool execution or restart.",
+      "provenance": {
+        "generator": "tests/provider/anthropic-context-normalization.ts",
+        "sourceFile": "async-normal-history.json",
+        "originDirectoryLabel": "dominds-projection-anthropic-rmUNkt",
+        "laneLabel": "dominds-tests-projection-semantic-BngUmj",
+        "actualTextSha256": "a59d53b8664b2a5fe94a54fc0be68c4ccf206593c3d7471064cf152ffa4784e4",
+        "evidenceJsonSha256": "9099b20f9ef66549965e2b9a195e798c9121034326490065ed0952483c5b5376",
+        "meaning": "Full actualText/input/context retained and independently subjectively read. Hashes identify bytes only, never meaning or automatic acceptance of later output."
+      }
+    },
+    {
+      "id": "async-parallel-history",
+      "scenario": "Anthropic async projection pairs two parallel calls with reverse-arriving results.",
+      "businessValue": "Keep each observed outcome attributed to its own historical call instead of misrepresenting another tool result.",
+      "context": {
+        "input": "[{\"type\":\"prompting_msg\",\"role\":\"user\",\"genseq\":1,\"msgId\":\"user-1\",\"grammar\":\"markdown\",\"content\":\"input-data:7ae2\\n引号 \\\" / Ω\"},{\"type\":\"func_call_msg\",\"role\":\"assistant\",\"genseq\":1,\"id\":\"call-1\",\"name\":\"shell_cmd\",\"arguments\":\"{\\\"command\\\":\\\"printf \\\\\\\"Ω\\\\\\\"\\\",\\\"opaque\\\":\\\"7ae2\\\"}\"},{\"type\":\"func_call_msg\",\"role\":\"assistant\",\"genseq\":1,\"id\":\"call-2\",\"name\":\"inspect_data\",\"arguments\":\"{\\\"selector\\\":\\\"second\\\"}\"},{\"type\":\"func_result_msg\",\"role\":\"tool\",\"genseq\":1,\"id\":\"call-2\",\"name\":\"inspect_data\",\"content\":\"second-result-data:316e\"},{\"type\":\"func_result_msg\",\"role\":\"tool\",\"genseq\":1,\"id\":\"call-1\",\"name\":\"shell_cmd\",\"content\":\"result-data:f628\\n引号 \\\" / Ω\"}]",
+        "scope": "Actual request projection only; no provider request or tool execution."
+      },
+      "reviewQuestions": [
+        "Does the actual text keep both call identities, raw arguments and corresponding outcomes correctly attributed after normalization?"
+      ],
+      "actualText": "[\n  {\n    \"role\": \"user\",\n    \"content\": [\n      {\n        \"type\": \"text\",\n        \"text\": \"input-data:7ae2\\n引号 \\\" / Ω\"\n      }\n    ]\n  },\n  {\n    \"role\": \"assistant\",\n    \"content\": [\n      {\n        \"type\": \"text\",\n        \"text\": \"Function call emitted by the assistant.\\nTool name: shell_cmd\\nCall ID: call-1\\nRaw arguments, verbatim:\\n<raw_arguments>\\n{\\\"command\\\":\\\"printf \\\\\\\"Ω\\\\\\\"\\\",\\\"opaque\\\":\\\"7ae2\\\"}\\n</raw_arguments>\"\n      }\n    ]\n  },\n  {\n    \"role\": \"user\",\n    \"content\": [\n      {\n        \"type\": \"text\",\n        \"text\": \"Function call result.\\nTool name: shell_cmd\\nCall ID: call-1\\nResult content:\\nresult-data:f628\\n引号 \\\" / Ω\"\n      }\n    ]\n  },\n  {\n    \"role\": \"assistant\",\n    \"content\": [\n      {\n        \"type\": \"text\",\n        \"text\": \"Function call emitted by the assistant.\\nTool name: inspect_data\\nCall ID: call-2\\nRaw arguments, verbatim:\\n<raw_arguments>\\n{\\\"selector\\\":\\\"second\\\"}\\n</raw_arguments>\"\n      }\n    ]\n  },\n  {\n    \"role\": \"user\",\n    \"content\": [\n      {\n        \"type\": \"text\",\n        \"text\": \"Function call result.\\nTool name: inspect_data\\nCall ID: call-2\\nResult content:\\nsecond-result-data:316e\"\n      }\n    ]\n  }\n]",
+      "verdict": "passed",
+      "rationale": "反序到达的两结果被规范成call-1/result-1、call-2/result-2，实际包装的工具名、ID、原参数及对应数据均归属正确；只是给定历史投影顺序，不承诺真实执行先后。",
+      "scope": "Actual request projection only; no provider request or tool execution.",
+      "provenance": {
+        "generator": "tests/provider/anthropic-context-normalization.ts",
+        "sourceFile": "async-parallel-history.json",
+        "originDirectoryLabel": "dominds-projection-anthropic-rmUNkt",
+        "laneLabel": "dominds-tests-projection-semantic-BngUmj",
+        "actualTextSha256": "d401d1304d921325b7d8b8ee1860e43dc4a449a4cfe1ea9429580329c81f6376",
+        "evidenceJsonSha256": "1036d8e2dd62bc702e01db35751eebd9b42e59bb987b943d27c468519993ca27",
+        "meaning": "Full actualText/input/context retained and independently subjectively read. Hashes identify bytes only, never meaning or automatic acceptance of later output."
+      }
+    },
+    {
+      "id": "sync-malformed-history",
+      "scenario": "Anthropic sync request projection of malformed supplied tool history.",
+      "businessValue": "Preserve raw arguments and observed result without requiring valid JSON or presenting historical tool activity as a fresh action.",
+      "context": {
+        "input": "[{\"type\":\"prompting_msg\",\"role\":\"user\",\"genseq\":1,\"msgId\":\"user-1\",\"grammar\":\"markdown\",\"content\":\"input-data:7ae2\\n引号 \\\" / Ω\"},{\"type\":\"thinking_msg\",\"role\":\"assistant\",\"genseq\":1,\"content\":\"thinking-data:c409\\n保留\"},{\"type\":\"saying_msg\",\"role\":\"assistant\",\"genseq\":1,\"content\":\"saying-data:380f\\n保留\"},{\"type\":\"func_call_msg\",\"role\":\"assistant\",\"genseq\":1,\"id\":\"call-malformed\",\"name\":\"shell_cmd\",\"arguments\":\"{\\\"command\\\":\\n\\\"opaque:7ae2\"},{\"type\":\"func_result_msg\",\"role\":\"tool\",\"genseq\":1,\"id\":\"call-malformed\",\"name\":\"shell_cmd\",\"content\":\"supplied-failure-data:81fe\\n引号 \\\" / Ω\"}]",
+        "scope": "Actual sync/async projection; no provider request, tool execution or restart."
+      },
+      "reviewQuestions": [
+        "Does the actual text attribute the call and result correctly, preserve malformed input as historical data, and keep the supplied failure visible without inventing execution or completion?"
+      ],
+      "actualText": "[\n  {\n    \"role\": \"user\",\n    \"content\": [\n      {\n        \"type\": \"text\",\n        \"text\": \"input-data:7ae2\\n引号 \\\" / Ω\"\n      }\n    ]\n  },\n  {\n    \"role\": \"assistant\",\n    \"content\": [\n      {\n        \"type\": \"text\",\n        \"text\": \"thinking-data:c409\\n保留\"\n      },\n      {\n        \"type\": \"text\",\n        \"text\": \"saying-data:380f\\n保留\"\n      },\n      {\n        \"type\": \"text\",\n        \"text\": \"Function call emitted by the assistant.\\nTool name: shell_cmd\\nCall ID: call-malformed\\nRaw arguments, verbatim:\\n<raw_arguments>\\n{\\\"command\\\":\\n\\\"opaque:7ae2\\n</raw_arguments>\"\n      }\n    ]\n  },\n  {\n    \"role\": \"user\",\n    \"content\": [\n      {\n        \"type\": \"text\",\n        \"text\": \"Function call result.\\nTool name: shell_cmd\\nCall ID: call-malformed\\nResult content:\\nsupplied-failure-data:81fe\\n引号 \\\" / Ω\"\n      }\n    ]\n  }\n]",
+      "verdict": "passed",
+      "rationale": "同步包装保留畸形参数全部换行/原文并用原始参数标识，与call-malformed给定opaque结果正确关联；不解析/修复JSON或捏造实际工具故障。",
+      "scope": "Actual sync/async projection; no provider request, tool execution or restart.",
+      "provenance": {
+        "generator": "tests/provider/anthropic-context-normalization.ts",
+        "sourceFile": "sync-malformed-history.json",
+        "originDirectoryLabel": "dominds-projection-anthropic-rmUNkt",
+        "laneLabel": "dominds-tests-projection-semantic-BngUmj",
+        "actualTextSha256": "a66dee42332111fe6f2e1534c92b6b036937093077e9718b4faea0329393b211",
+        "evidenceJsonSha256": "3269205d72bad7f26372cfd0717311b04e1cc87983a45bbe20de474261a18418",
+        "meaning": "Full actualText/input/context retained and independently subjectively read. Hashes identify bytes only, never meaning or automatic acceptance of later output."
+      }
+    },
+    {
+      "id": "sync-normal-history",
+      "scenario": "Anthropic sync request projection of normal supplied tool history.",
+      "businessValue": "Preserve raw arguments and observed result without requiring valid JSON or presenting historical tool activity as a fresh action.",
+      "context": {
+        "input": "[{\"type\":\"prompting_msg\",\"role\":\"user\",\"genseq\":1,\"msgId\":\"user-1\",\"grammar\":\"markdown\",\"content\":\"input-data:7ae2\\n引号 \\\" / Ω\"},{\"type\":\"thinking_msg\",\"role\":\"assistant\",\"genseq\":1,\"content\":\"thinking-data:c409\\n保留\"},{\"type\":\"saying_msg\",\"role\":\"assistant\",\"genseq\":1,\"content\":\"saying-data:380f\\n保留\"},{\"type\":\"func_call_msg\",\"role\":\"assistant\",\"genseq\":1,\"id\":\"call-1\",\"name\":\"shell_cmd\",\"arguments\":\"{\\\"command\\\":\\\"printf \\\\\\\"Ω\\\\\\\"\\\",\\\"opaque\\\":\\\"7ae2\\\"}\"},{\"type\":\"func_result_msg\",\"role\":\"tool\",\"genseq\":1,\"id\":\"call-1\",\"name\":\"shell_cmd\",\"content\":\"result-data:f628\\n引号 \\\" / Ω\"}]",
+        "scope": "Actual sync/async projection; no provider request, tool execution or restart."
+      },
+      "reviewQuestions": [
+        "Does the actual text attribute the call and result correctly, preserve malformed input as historical data, and keep the supplied failure visible without inventing execution or completion?"
+      ],
+      "actualText": "[\n  {\n    \"role\": \"user\",\n    \"content\": [\n      {\n        \"type\": \"text\",\n        \"text\": \"input-data:7ae2\\n引号 \\\" / Ω\"\n      }\n    ]\n  },\n  {\n    \"role\": \"assistant\",\n    \"content\": [\n      {\n        \"type\": \"text\",\n        \"text\": \"thinking-data:c409\\n保留\"\n      },\n      {\n        \"type\": \"text\",\n        \"text\": \"saying-data:380f\\n保留\"\n      },\n      {\n        \"type\": \"text\",\n        \"text\": \"Function call emitted by the assistant.\\nTool name: shell_cmd\\nCall ID: call-1\\nRaw arguments, verbatim:\\n<raw_arguments>\\n{\\\"command\\\":\\\"printf \\\\\\\"Ω\\\\\\\"\\\",\\\"opaque\\\":\\\"7ae2\\\"}\\n</raw_arguments>\"\n      }\n    ]\n  },\n  {\n    \"role\": \"user\",\n    \"content\": [\n      {\n        \"type\": \"text\",\n        \"text\": \"Function call result.\\nTool name: shell_cmd\\nCall ID: call-1\\nResult content:\\nresult-data:f628\\n引号 \\\" / Ω\"\n      }\n    ]\n  }\n]",
+      "verdict": "passed",
+      "rationale": "同步输出的assistant历史调用与user承载结果明确配call-1，原user/thinking/saying及参数结果可见；标签没有把历史数据变成新执行或任务完成事实。",
+      "scope": "Actual sync/async projection; no provider request, tool execution or restart.",
+      "provenance": {
+        "generator": "tests/provider/anthropic-context-normalization.ts",
+        "sourceFile": "sync-normal-history.json",
+        "originDirectoryLabel": "dominds-projection-anthropic-rmUNkt",
+        "laneLabel": "dominds-tests-projection-semantic-BngUmj",
+        "actualTextSha256": "a59d53b8664b2a5fe94a54fc0be68c4ccf206593c3d7471064cf152ffa4784e4",
+        "evidenceJsonSha256": "8ae8ab349489734c6a5c4812824ea569a1c344b98677b8d376939af98d339cbe",
+        "meaning": "Full actualText/input/context retained and independently subjectively read. Hashes identify bytes only, never meaning or automatic acceptance of later output."
+      }
+    },
+    {
+      "id": "sync-parallel-history",
+      "scenario": "Anthropic sync projection pairs two parallel calls with reverse-arriving results.",
+      "businessValue": "Keep each observed outcome attributed to its own historical call instead of misrepresenting another tool result.",
+      "context": {
+        "input": "[{\"type\":\"prompting_msg\",\"role\":\"user\",\"genseq\":1,\"msgId\":\"user-1\",\"grammar\":\"markdown\",\"content\":\"input-data:7ae2\\n引号 \\\" / Ω\"},{\"type\":\"func_call_msg\",\"role\":\"assistant\",\"genseq\":1,\"id\":\"call-1\",\"name\":\"shell_cmd\",\"arguments\":\"{\\\"command\\\":\\\"printf \\\\\\\"Ω\\\\\\\"\\\",\\\"opaque\\\":\\\"7ae2\\\"}\"},{\"type\":\"func_call_msg\",\"role\":\"assistant\",\"genseq\":1,\"id\":\"call-2\",\"name\":\"inspect_data\",\"arguments\":\"{\\\"selector\\\":\\\"second\\\"}\"},{\"type\":\"func_result_msg\",\"role\":\"tool\",\"genseq\":1,\"id\":\"call-2\",\"name\":\"inspect_data\",\"content\":\"second-result-data:316e\"},{\"type\":\"func_result_msg\",\"role\":\"tool\",\"genseq\":1,\"id\":\"call-1\",\"name\":\"shell_cmd\",\"content\":\"result-data:f628\\n引号 \\\" / Ω\"}]",
+        "scope": "Actual request projection only; no provider request or tool execution."
+      },
+      "reviewQuestions": [
+        "Does the actual text keep both call identities, raw arguments and corresponding outcomes correctly attributed after normalization?"
+      ],
+      "actualText": "[\n  {\n    \"role\": \"user\",\n    \"content\": [\n      {\n        \"type\": \"text\",\n        \"text\": \"input-data:7ae2\\n引号 \\\" / Ω\"\n      }\n    ]\n  },\n  {\n    \"role\": \"assistant\",\n    \"content\": [\n      {\n        \"type\": \"text\",\n        \"text\": \"Function call emitted by the assistant.\\nTool name: shell_cmd\\nCall ID: call-1\\nRaw arguments, verbatim:\\n<raw_arguments>\\n{\\\"command\\\":\\\"printf \\\\\\\"Ω\\\\\\\"\\\",\\\"opaque\\\":\\\"7ae2\\\"}\\n</raw_arguments>\"\n      }\n    ]\n  },\n  {\n    \"role\": \"user\",\n    \"content\": [\n      {\n        \"type\": \"text\",\n        \"text\": \"Function call result.\\nTool name: shell_cmd\\nCall ID: call-1\\nResult content:\\nresult-data:f628\\n引号 \\\" / Ω\"\n      }\n    ]\n  },\n  {\n    \"role\": \"assistant\",\n    \"content\": [\n      {\n        \"type\": \"text\",\n        \"text\": \"Function call emitted by the assistant.\\nTool name: inspect_data\\nCall ID: call-2\\nRaw arguments, verbatim:\\n<raw_arguments>\\n{\\\"selector\\\":\\\"second\\\"}\\n</raw_arguments>\"\n      }\n    ]\n  },\n  {\n    \"role\": \"user\",\n    \"content\": [\n      {\n        \"type\": \"text\",\n        \"text\": \"Function call result.\\nTool name: inspect_data\\nCall ID: call-2\\nResult content:\\nsecond-result-data:316e\"\n      }\n    ]\n  }\n]",
+      "verdict": "passed",
+      "rationale": "同步将逆序结果按各自call ID重排，两个工具的名字、参数和结果未串线，历史标签合理。只接受当前规范化投影，不据此宣称实际并行执行或持久交付。",
+      "scope": "Actual request projection only; no provider request or tool execution.",
+      "provenance": {
+        "generator": "tests/provider/anthropic-context-normalization.ts",
+        "sourceFile": "sync-parallel-history.json",
+        "originDirectoryLabel": "dominds-projection-anthropic-rmUNkt",
+        "laneLabel": "dominds-tests-projection-semantic-BngUmj",
+        "actualTextSha256": "d401d1304d921325b7d8b8ee1860e43dc4a449a4cfe1ea9429580329c81f6376",
+        "evidenceJsonSha256": "aeb337fdd116004db5a0730f1933b4828ea1b8688f81badfff43cc910072ab36",
+        "meaning": "Full actualText/input/context retained and independently subjectively read. Hashes identify bytes only, never meaning or automatic acceptance of later output."
+      }
+    },
+    {
+      "id": "compatible-mismatched-result",
+      "scenario": "compatible rejects an incomplete or incorrectly paired tool history before request construction.",
+      "businessValue": "Prevent invented tool outcomes or invalid provider replay, while preserving the supplied history for investigation.",
+      "context": {
+        "provider": "compatible",
+        "input": "[{\"type\":\"prompting_msg\",\"role\":\"user\",\"genseq\":1,\"msgId\":\"user-1\",\"grammar\":\"markdown\",\"content\":\"input-data:7ae2\\n引号 \\\" / Ω\"},{\"type\":\"func_call_msg\",\"role\":\"assistant\",\"genseq\":1,\"id\":\"call-1\",\"name\":\"shell_cmd\",\"arguments\":\"{\\\"command\\\":\\\"printf \\\\\\\"Ω\\\\\\\"\\\",\\\"opaque\\\":\\\"7ae2\\\"}\"},{\"type\":\"func_result_msg\",\"role\":\"tool\",\"genseq\":1,\"id\":\"other-call\",\"name\":\"shell_cmd\",\"content\":\"result-data:f628\\n引号 \\\" / Ω\"},{\"type\":\"prompting_msg\",\"role\":\"user\",\"genseq\":2,\"msgId\":\"user-2\",\"grammar\":\"markdown\",\"content\":\"later-input-data:2ba3\"}]",
+        "scope": "Actual request projection only; no provider request or driver repair is executed."
+      },
+      "reviewQuestions": [
+        "Does the actual diagnostic accurately identify this supplied pairing failure and affected call without inventing a tool result or suggesting that the request was sent?"
+      ],
+      "actualText": "Error: OPENAI-COMPATIBLE provider projection: unresolved persisted tool call message detected (callId=call-1, tool=shell_cmd, index=1). This means a tool call was persisted without a matching tool result message.",
+      "verdict": "passed",
+      "rationale": "other-call结果不能满足call-1，诊断按首个实际未配对调用解释正确，没有因有一条结果就误称call-1已有结果。",
+      "scope": "Actual request projection only; no provider request or driver repair is executed.",
+      "provenance": {
+        "generator": "tests/provider/openai-compatible-context-normalization.ts",
+        "sourceFile": "compatible-mismatched-result.json",
+        "originDirectoryLabel": "dominds-projection-compatible-52TDKF",
+        "laneLabel": "dominds-tests-projection-semantic-BngUmj",
+        "actualTextSha256": "e65b54f5f13e56dc90c48b21374b9c60843e9fb51ce51098889df058df69d869",
+        "evidenceJsonSha256": "e21d0412b40186f2d244dc9170c0458ce7046f18e1071f0af5bdd721f5d55da7",
+        "meaning": "Full actualText/input/context retained and independently subjectively read. Hashes identify bytes only, never meaning or automatic acceptance of later output."
+      }
+    },
+    {
+      "id": "compatible-orphaned-result",
+      "scenario": "compatible rejects an incomplete or incorrectly paired tool history before request construction.",
+      "businessValue": "Prevent invented tool outcomes or invalid provider replay, while preserving the supplied history for investigation.",
+      "context": {
+        "provider": "compatible",
+        "input": "[{\"type\":\"prompting_msg\",\"role\":\"user\",\"genseq\":1,\"msgId\":\"user-1\",\"grammar\":\"markdown\",\"content\":\"input-data:7ae2\\n引号 \\\" / Ω\"},{\"type\":\"func_result_msg\",\"role\":\"tool\",\"genseq\":1,\"id\":\"call-1\",\"name\":\"shell_cmd\",\"content\":\"result-data:f628\\n引号 \\\" / Ω\"},{\"type\":\"prompting_msg\",\"role\":\"user\",\"genseq\":2,\"msgId\":\"user-2\",\"grammar\":\"markdown\",\"content\":\"later-input-data:2ba3\"}]",
+        "scope": "Actual request projection only; no provider request or driver repair is executed."
+      },
+      "reviewQuestions": [
+        "Does the actual diagnostic accurately identify this supplied pairing failure and affected call without inventing a tool result or suggesting that the request was sent?"
+      ],
+      "actualText": "Error: OPENAI-COMPATIBLE provider projection: orphaned persisted tool result message detected (callId=call-1, tool=shell_cmd, index=1). This means a tool result was restored without the immediately preceding tool call message.",
+      "verdict": "passed",
+      "rationale": "结果call-1出现在无调用的位置，当前说明对应孤立result/缺前驱call，保留身份与位置；不把它伪造成新的工具输出或任务完成。",
+      "scope": "Actual request projection only; no provider request or driver repair is executed.",
+      "provenance": {
+        "generator": "tests/provider/openai-compatible-context-normalization.ts",
+        "sourceFile": "compatible-orphaned-result.json",
+        "originDirectoryLabel": "dominds-projection-compatible-52TDKF",
+        "laneLabel": "dominds-tests-projection-semantic-BngUmj",
+        "actualTextSha256": "628f20f6883999113f491fc6d2d075191f5380b09d4f2f77e980a187556109fd",
+        "evidenceJsonSha256": "cce38739bf7c0f83d74002923172b5b4bf57ee556d518f5db5dad4f3501a9c39",
+        "meaning": "Full actualText/input/context retained and independently subjectively read. Hashes identify bytes only, never meaning or automatic acceptance of later output."
+      }
+    },
+    {
+      "id": "compatible-unresolved-call",
+      "scenario": "compatible rejects an incomplete or incorrectly paired tool history before request construction.",
+      "businessValue": "Prevent invented tool outcomes or invalid provider replay, while preserving the supplied history for investigation.",
+      "context": {
+        "provider": "compatible",
+        "input": "[{\"type\":\"prompting_msg\",\"role\":\"user\",\"genseq\":1,\"msgId\":\"user-1\",\"grammar\":\"markdown\",\"content\":\"input-data:7ae2\\n引号 \\\" / Ω\"},{\"type\":\"func_call_msg\",\"role\":\"assistant\",\"genseq\":1,\"id\":\"call-1\",\"name\":\"shell_cmd\",\"arguments\":\"{\\\"command\\\":\\\"printf \\\\\\\"Ω\\\\\\\"\\\",\\\"opaque\\\":\\\"7ae2\\\"}\"},{\"type\":\"prompting_msg\",\"role\":\"user\",\"genseq\":2,\"msgId\":\"user-2\",\"grammar\":\"markdown\",\"content\":\"later-input-data:2ba3\"}]",
+        "scope": "Actual request projection only; no provider request or driver repair is executed."
+      },
+      "reviewQuestions": [
+        "Does the actual diagnostic accurately identify this supplied pairing failure and affected call without inventing a tool result or suggesting that the request was sent?"
+      ],
+      "actualText": "Error: OPENAI-COMPATIBLE provider projection: unresolved persisted tool call message detected (callId=call-1, tool=shell_cmd, index=1). This means a tool call was persisted without a matching tool result message.",
+      "verdict": "passed",
+      "rationale": "给定兼容请求历史中call-1缺配对结果，说明清楚指出该调用及投影阶段，没有暗示服务已接收请求或恢复已发生。",
+      "scope": "Actual request projection only; no provider request or driver repair is executed.",
+      "provenance": {
+        "generator": "tests/provider/openai-compatible-context-normalization.ts",
+        "sourceFile": "compatible-unresolved-call.json",
+        "originDirectoryLabel": "dominds-projection-compatible-52TDKF",
+        "laneLabel": "dominds-tests-projection-semantic-BngUmj",
+        "actualTextSha256": "e65b54f5f13e56dc90c48b21374b9c60843e9fb51ce51098889df058df69d869",
+        "evidenceJsonSha256": "6c5331e955b90097fbd928f9c315b8af73e8ec9ca380fde7846197791b01e05a",
+        "meaning": "Full actualText/input/context retained and independently subjectively read. Hashes identify bytes only, never meaning or automatic acceptance of later output."
+      }
+    }
+  ],
+  "assertionReview": {
+    "status": "passed",
+    "scope": "All three original769 lines, final three387 lines, new helper95 lines and complete tracked test/entry/docs/ledger diff read; source wrappers/common pairing implementation checked for declared request-construction scope. Other four original image/truncation files were read for preliminary value mapping only and are excluded from this batch acceptance.",
+    "candidates": [
+      {
+        "path": "tests/provider/openai-context-normalization.ts",
+        "verdict": "passed",
+        "originalValueMap": [
+          {
+            "old": "Five Responses item kinds/order; thinking summary one item and saying payload unchanged.",
+            "now": "Exact type array, exact one-item summary_text structure with supplied thinking body, user/assistant role and original body checks.",
+            "why": "These are native protocol discriminants and opaque history data, not judgments of the supplied sentence meaning."
+          },
+          {
+            "old": "A persisted call without result fails loudly and reports affected call.",
+            "now": "Shared observer requires Error rejection and deep input preservation for unresolved-call/orphaned-result/mismatched-result; actual full diagnostic subjectively read for affected ID and accurate meaning.",
+            "why": "Removed old stale error wording is not lost business value; neither Error alone nor a prior verdict accepts future diagnostic meaning."
+          },
+          {
+            "old": "Original normal fixture had call/result but did not fully assert their argument/output data or user payload.",
+            "now": "Exact call_id/name/raw arguments/output + user body; malformed raw argument and two parallel reversed results verify arrays of IDs/names/arguments/outputs in normalized call order, count included.",
+            "why": "Arrays retain count/order/association rather than Set membership; opaque Unicode/newline/quotes protect unmodified transport."
+          }
+        ],
+        "assertionLimit": "Normal and invalid inputs checked immutable; do not claim every newly constructed malformed/parallel input has an explicit nonmutation assertion. No network/provider request, actual tool execution or durable history repair."
+      },
+      {
+        "path": "tests/provider/anthropic-context-normalization.ts",
+        "verdict": "passed",
+        "originalValueMap": [
+          {
+            "old": "Three-turn user/assistant/user alternation; tool history encoded as text, not native tool_use/tool_result.",
+            "now": "Both sync/async normal+malformed exact role arrays and all-text blocks; positive supplied content checks rule out vacuous empty every().",
+            "why": "Role/block enums are actual protocol shape; text wrappers have separate18-case subjective review scope."
+          },
+          {
+            "old": "Raw tool JSON arguments remain in assistant text; malformed arguments and supplied error result stay visible.",
+            "now": "Entire supplied thinking/saying/raw malformed argument and result strings must be contained in their proper turns; full emitted wrappers independently read.",
+            "why": "Old Invalid-arguments prefix was given-input data, not generated error meaning; replacing it with full distinct opaque result preserves and strengthens fidelity. It never established actual tool-handler error behavior."
+          },
+          {
+            "old": "Orphaned call fails without a result.",
+            "now": "Sync/async each reject all three invalid pairs, retain input unchanged and emit full actual diagnostic for subjective acceptance.",
+            "why": "No fixed explanation or callId= formatting accepted as semantic oracle."
+          },
+          {
+            "old": "Original did not prove multi-call result identity/order.",
+            "now": "Two calls/results in reverse arrival are projected to five alternating turns; full given payloads in corresponding positions and input preservation asserted, exact generated IDs/tool names judged from full actual text.",
+            "why": "Containment only checks entire supplied payload presence; it does not automatically judge generated labels, uniqueness or interpretation."
+          }
+        ],
+        "assertionLimit": "Given malformed result is opaque supplied history, no actual handler failure. Text containment does not freeze generated wrappers or by itself prove absence of extra/duplicate prose; actual wrapper meaning/current attribution was subjectively read. Normalization order is not observed real completion order."
+      },
+      {
+        "path": "tests/provider/openai-compatible-context-normalization.ts",
+        "verdict": "passed",
+        "originalValueMap": [
+          {
+            "old": "Four role order, standalone saying, thinking reasoning_content on visible assistant and tool call; tool-call content omitted.",
+            "now": "Exact native roles/body/reasoning/hasOwn(content)=false and full tool_calls/result association.",
+            "why": "Known input body transport and protocol presence/absence are concrete machine/data contracts."
+          },
+          {
+            "old": "disable-assistant-tool-call-reasoning-content removes only call reasoning and keeps visible reasoning.",
+            "now": "Disabled call reasoning undefined while full call data equals normal; visible reasoning and body equal original.",
+            "why": "Positive retained payload prevents a vacuous all-assistant-data deletion."
+          },
+          {
+            "old": "Generic reasoning and MiniMax details paths; original only checked one detail.text and used same text in content/details.",
+            "now": "Generic keeps explicit thinking body; MiniMax preserves full distinct details array and visible saying.",
+            "why": "Original equal texts did not distinguish source selection; new distinct sentinels clarify the tested paths without claiming a product behavior change or real provider reasoning correctness."
+          },
+          {
+            "old": "Current fresh turn reasoning retained on a call after saying.",
+            "now": "Normal and parallel call-bearing messages equal that supplied current thinking body.",
+            "why": "Original separate genseq11 fixture was another independent fresh turn, not a cross-generation stale-reasoning negative; its value is retained without claiming broader stale-turn coverage."
+          },
+          {
+            "old": "Orphan call rejects and native call ID/type/name exist; arguments only string typed.",
+            "now": "Three invalid pair cases with input preservation/full diagnostic review; malformed raw argument stays exact, full normal/parallel tuples preserve IDs/name/arguments/result and count/order.",
+            "why": "Native function/custom union is narrowed using actual type===function, no type weakening, casted fake input or literal error-meaning oracle."
+          }
+        ],
+        "assertionLimit": "Normal and invalid inputs checked unchanged; no claim that all alternate quirk/malformed/parallel inputs are independently mutation-checked. No MiniMax SDK/network or reasoning-content correctness claim."
+      }
+    ],
+    "helper": {
+      "path": "tests/helpers/provider-context.ts",
+      "verdict": "passed",
+      "value": "A direct fixture for actually used three projections and observer for three bad-pair shapes. It supplies distinct opaque user/thinking/saying/JSON/result data with Unicode/newlines/quotes; cannot execute those instructions. Each rejection uses a clone taken before projection, requires real Error rejection and exact unchanged supplied history, then retains actual diagnostic pending independent meaning review. Positive legal cases prevent treating universal failure as success.",
+      "limits": "No new product/provider abstraction, framework or semantic detector. Error rejection alone proves refusal, not the reason/identity meaning; full actual evidence supplies that separate acceptance."
+    },
+    "deletedAndRetainedChecks": "Original supplied thinking/saying equality and raw argument containment are legitimate fidelity checks and remain; generated invariant-error fixed sentence/includes checks removed. Handwritten loose SDK-shape readers replaced actual discriminated unions/native type checks. Console PASS labels are reporting, not acceptance predicates.",
+    "entryAndLedger": "Root/tests package add behavior+semantic projection lane and three isolated aliases; run.mjs registers exactly three candidates/three producers. Helper remains support, never a passing case. AGENTS/README/strategy/ledger distinguish generation pending from subjective acceptance and exclude SDK/live/tool/persistence/vision; other four image/truncation candidates remain unaudited by this batch.",
+    "productScope": "No main/packages production diff in this batch. Real public wrappers call real common pair normalization/validation; no same-source formatter used to compute expected prose. Source inspection only verifies scope and actual machine path, not natural-language meaning."
+  },
+  "baselineHistory": {
+    "meaning": "Seven attempted original cases were5runner passes/2runner failures, not seven design acceptances. Current three correspond to2passes/1failure. Expected negative pairing ERROR logs in Anthropic/compatible are intentional refusal inputs, not hidden model-generation failures.",
+    "summary": {
+      "total": 7,
+      "passed": 5,
+      "failed": 2,
+      "timedOut": 0,
+      "results": [
+        {
+          "id": "provider/openai-context-normalization.ts",
+          "status": "failed",
+          "durationMs": 804,
+          "code": 1,
+          "signal": null,
+          "logPath": "/tmp/dominds-provider-projection-baseline/001-provider_openai-context-normalization.ts.log",
+          "tempDir": "/tmp/dominds-provider-projection-baseline/1.tmp"
+        },
+        {
+          "id": "provider/anthropic-context-normalization.ts",
+          "status": "passed",
+          "durationMs": 724,
+          "code": 0,
+          "signal": null,
+          "logPath": "/tmp/dominds-provider-projection-baseline/002-provider_anthropic-context-normalization.ts.log",
+          "tempDir": "/tmp/dominds-provider-projection-baseline/2.tmp"
+        },
+        {
+          "id": "provider/openai-compatible-context-normalization.ts",
+          "status": "passed",
+          "durationMs": 790,
+          "code": 0,
+          "signal": null,
+          "logPath": "/tmp/dominds-provider-projection-baseline/003-provider_openai-compatible-context-normalization.ts.log",
+          "tempDir": "/tmp/dominds-provider-projection-baseline/3.tmp"
+        },
+        {
+          "id": "provider/tool-result-truncation.ts",
+          "status": "passed",
+          "durationMs": 1011,
+          "code": 0,
+          "signal": null,
+          "logPath": "/tmp/dominds-provider-projection-baseline/004-provider_tool-result-truncation.ts.log",
+          "tempDir": "/tmp/dominds-provider-projection-baseline/4.tmp"
+        },
+        {
+          "id": "provider/tool-result-image-size-fallback.ts",
+          "status": "passed",
+          "durationMs": 851,
+          "code": 0,
+          "signal": null,
+          "logPath": "/tmp/dominds-provider-projection-baseline/005-provider_tool-result-image-size-fallback.ts.log",
+          "tempDir": "/tmp/dominds-provider-projection-baseline/5.tmp"
+        },
+        {
+          "id": "provider/openai-compatible-image-fallback.ts",
+          "status": "failed",
+          "durationMs": 773,
+          "code": 1,
+          "signal": null,
+          "logPath": "/tmp/dominds-provider-projection-baseline/006-provider_openai-compatible-image-fallback.ts.log",
+          "tempDir": "/tmp/dominds-provider-projection-baseline/6.tmp"
+        },
+        {
+          "id": "provider/user-image-model-support.ts",
+          "status": "passed",
+          "durationMs": 699,
+          "code": 0,
+          "signal": null,
+          "logPath": "/tmp/dominds-provider-projection-baseline/007-provider_user-image-model-support.ts.log",
+          "tempDir": "/tmp/dominds-provider-projection-baseline/7.tmp"
+        }
+      ]
+    },
+    "summarySha256": "511f8a87ed3630c23d8c8c09d27a382d08b37344587a22f044488ce64d72dc76",
+    "logs": [
+      {
+        "caseId": "provider/openai-context-normalization.ts",
+        "runnerStatus": "failed",
+        "originLabel": "001-provider_openai-context-normalization.ts.log",
+        "sha256": "b990cc6034f9ad0e6d80cf10d6980ea477627519d29c2fd4803cd1b37ad3a47d",
+        "fullText": "[2026/10/31-10:16:49] [llm/openai] ERROR: OPENAI provider projection: unresolved persisted tool call message detected (callId=call-orphan, tool=shell_cmd, index=1). This means a tool call was persisted without a matching tool result message.\nError: openai_tool_call_adjacency_violation\n    at buildOpenAiRequestInput (/ws/AiWorks/dominds/main/llm/gen/openai.ts:732:23)\n    at buildOpenAiRequestInputWrapper (/ws/AiWorks/dominds/main/llm/gen/openai.ts:1376:16)\n    at main (/ws/AiWorks/dominds/tests/provider/openai-context-normalization.ts:154:11) Extra: {\n  callId: 'call-orphan',\n  toolName: 'shell_cmd',\n  index: 1,\n  violationKind: 'unresolved_call'\n}\nError: Expected explicit unresolved func_call invariant error\n    at assert (/ws/AiWorks/dominds/tests/provider/openai-context-normalization.ts:9:25)\n    at main (/ws/AiWorks/dominds/tests/provider/openai-context-normalization.ts:158:5)\n[tests/cli] Keeping isolated rtws at /tmp/dominds-provider-projection-baseline/1.tmp/dominds-tests-rtws-Vgmckw\n",
+        "designScope": "current batch baseline only, not acceptance"
+      },
+      {
+        "caseId": "provider/anthropic-context-normalization.ts",
+        "runnerStatus": "passed",
+        "originLabel": "002-provider_anthropic-context-normalization.ts.log",
+        "sha256": "1298a67623bea3d25ff2ea75ceb710df2c631198c47acd96162d47583f689e2f",
+        "fullText": "[2026/10/31-10:16:50] [llm/anthropic] ERROR: ANTH sync context reconstruction: unresolved persisted tool call message detected (callId=call-orphan, tool=shell_cmd, index=1). This means a tool call was persisted without a matching tool result message.\nError: anthropic_tool_call_adjacency_violation\n    at buildAnthropicRequestMessagesSync (/ws/AiWorks/dominds/main/llm/gen/anthropic.ts:1682:23)\n    at reconstructAnthropicContext (/ws/AiWorks/dominds/main/llm/gen/anthropic.ts:1549:10)\n    at reconstructAnthropicContextWrapper (/ws/AiWorks/dominds/main/llm/gen/anthropic.ts:2323:25)\n    at main (/ws/AiWorks/dominds/tests/provider/anthropic-context-normalization.ts:204:5) Extra: {\n  callId: 'call-orphan',\n  toolName: 'shell_cmd',\n  index: 1,\n  violationKind: 'unresolved_call'\n}\n✓ Anthropic context normalization test passed\n[tests/cli] Keeping isolated rtws at /tmp/dominds-provider-projection-baseline/2.tmp/dominds-tests-rtws-yJsCaE\n",
+        "designScope": "current batch baseline only, not acceptance"
+      },
+      {
+        "caseId": "provider/openai-compatible-context-normalization.ts",
+        "runnerStatus": "passed",
+        "originLabel": "003-provider_openai-compatible-context-normalization.ts.log",
+        "sha256": "d0f84d447849c55d2a9a7d908015485b119151d53977f22230385ab493b69969",
+        "fullText": "[2026/10/31-10:16:50] [llm/openai-compatible] ERROR: OPENAI-COMPATIBLE provider projection: unresolved persisted tool call message detected (callId=call-orphan, tool=shell_cmd, index=1). This means a tool call was persisted without a matching tool result message.\nError: openai_compatible_tool_call_adjacency_violation\n    at buildChatCompletionMessages (/ws/AiWorks/dominds/main/llm/gen/openai-compatible.ts:1840:23)\n    at buildOpenAiCompatibleRequestMessagesWrapper (/ws/AiWorks/dominds/main/llm/gen/openai-compatible.ts:2001:16)\n    at main (/ws/AiWorks/dominds/tests/provider/openai-compatible-context-normalization.ts:357:11) Extra: {\n  callId: 'call-orphan',\n  toolName: 'shell_cmd',\n  index: 1,\n  violationKind: 'unresolved_call'\n}\n✓ OpenAI-compatible context normalization test passed\n[tests/cli] Keeping isolated rtws at /tmp/dominds-provider-projection-baseline/3.tmp/dominds-tests-rtws-k78rq6\n",
+        "designScope": "current batch baseline only, not acceptance"
+      },
+      {
+        "caseId": "provider/tool-result-truncation.ts",
+        "runnerStatus": "passed",
+        "originLabel": "004-provider_tool-result-truncation.ts.log",
+        "sha256": "5538d8cda1b4d1d535bb7ec1d51066e69c590bbfc178bc25b831f961f0d65177",
+        "fullText": "[2026/10/31-10:16:51] [llm/openai] WARN: OPENAI tool output truncated before provider request Extra: {\n  callId: 'call-1',\n  toolName: 'demo_tool',\n  limitChars: 120,\n  originalChars: 505\n}\n[2026/10/31-10:16:51] [llm/openai-compatible] WARN: OPENAI-COMPATIBLE tool output truncated before provider request Extra: {\n  callId: 'call-1',\n  toolName: 'demo_tool',\n  limitChars: 120,\n  originalChars: 505\n}\n[2026/10/31-10:16:51] [llm/anthropic] WARN: ANTH tool output truncated before provider request Extra: {\n  callId: 'call-1',\n  toolName: 'demo_tool',\n  limitChars: 120,\n  originalChars: 580\n}\n✓ Provider tool-result truncation test passed\n[tests/cli] Keeping isolated rtws at /tmp/dominds-provider-projection-baseline/4.tmp/dominds-tests-rtws-poKWGp\n",
+        "designScope": "out of current batch; baseline execution retained, no design/semantic acceptance"
+      },
+      {
+        "caseId": "provider/tool-result-image-size-fallback.ts",
+        "runnerStatus": "passed",
+        "originLabel": "005-provider_tool-result-image-size-fallback.ts.log",
+        "sha256": "ed3fad487e55430235e31ab96727dccc77327440c0a626ed84db3fc661a7faf5",
+        "fullText": "✓ Provider image budget fallback test passed\n[tests/cli] Keeping isolated rtws at /tmp/dominds-provider-projection-baseline/5.tmp/dominds-tests-rtws-r9qyvr\n",
+        "designScope": "out of current batch; baseline execution retained, no design/semantic acceptance"
+      },
+      {
+        "caseId": "provider/openai-compatible-image-fallback.ts",
+        "runnerStatus": "failed",
+        "originLabel": "006-provider_openai-compatible-image-fallback.ts.log",
+        "sha256": "a59c68cd41701ba297bf36b90f45b7d79135122900439449dde1f58fedf24c35",
+        "fullText": "Error: Expected missing image to be downgraded to text\n    at assert (/ws/AiWorks/dominds/tests/provider/openai-compatible-image-fallback.ts:9:25)\n    at main (/ws/AiWorks/dominds/tests/provider/openai-compatible-image-fallback.ts:68:3)\n[tests/cli] Keeping isolated rtws at /tmp/dominds-provider-projection-baseline/6.tmp/dominds-tests-rtws-k3QhBz\n",
+        "designScope": "out of current batch; baseline execution retained, no design/semantic acceptance"
+      },
+      {
+        "caseId": "provider/user-image-model-support.ts",
+        "runnerStatus": "passed",
+        "originLabel": "007-provider_user-image-model-support.ts.log",
+        "sha256": "f146b0aae19a13544e0831d4582552299a26dc66425a550396b932f9ac6787b2",
+        "fullText": "ok provider user image model support test passed\n[tests/cli] Keeping isolated rtws at /tmp/dominds-provider-projection-baseline/7.tmp/dominds-tests-rtws-vTxrGu\n",
+        "designScope": "out of current batch; baseline execution retained, no design/semantic acceptance"
+      }
+    ],
+    "findings": [
+      {
+        "id": "stale-openai-error-wording",
+        "classification": "test oracle failure, no product defect",
+        "rationale": "Baseline actual OpenAI projection rejected the orphaned call with correct current diagnostic, then old assertion required an obsolete func_call_msg sentence and failed. New test removes wording oracle; actual current diagnosis still independently reviewed. Full raw failing log retained."
+      },
+      {
+        "id": "image-fallback-baseline-outside-current-batch",
+        "classification": "unremediated separate candidate, no acceptance",
+        "rationale": "Original compatible image fixture did not enable image input; its missing-image explanation check failed in baseline. This batch does not repair/accept that candidate or any other image/truncation behavior."
+      }
+    ]
+  },
+  "outOfScope": {
+    "files": [
+      "tests/provider/tool-result-truncation.ts",
+      "tests/provider/tool-result-image-size-fallback.ts",
+      "tests/provider/openai-compatible-image-fallback.ts",
+      "tests/provider/user-image-model-support.ts"
+    ],
+    "meaning": "These originals were read only for initial value discovery. Original baseline results retained; no complete redesign/final semantic acceptance for these four. Prior warning that missing-image phrase counts do not prove concrete image identity or valid delivery remains for a later batch."
+  },
+  "provenance": {
+    "sourceFingerprints": [
+      {
+        "path": "AGENTS.md",
+        "sha256": "e1254079fa0e1d541fcb25cb8ac71c86cba885312c812cf1baa76e1ec04c37e9",
+        "bytes": 15094,
+        "scope": "changed source fully read/diff reviewed"
+      },
+      {
+        "path": "docs/testing-strategy.md",
+        "sha256": "4d2607a546229df812820a071f7fa0e0c1dad258ab4969e915660b8cb5b8430e",
+        "bytes": 90625,
+        "scope": "changed source fully read/diff reviewed"
+      },
+      {
+        "path": "package.json",
+        "sha256": "1cd129f3886dfa034fc1f8a73ec38001eabe2c64eaefa60241028390dbadf73b",
+        "bytes": 5678,
+        "scope": "changed source fully read/diff reviewed"
+      },
+      {
+        "path": "tests/README.md",
+        "sha256": "79e2c782349b511470ab61064f3ef925044cb872c481883a40112857ffa0bd31",
+        "bytes": 15078,
+        "scope": "changed source fully read/diff reviewed"
+      },
+      {
+        "path": "tests/audit.json",
+        "sha256": "fc070bc13018756d22c136b16d7d681a916bf5e352fc63d745ab0abb38c42975",
+        "bytes": 101207,
+        "scope": "changed source fully read/diff reviewed"
+      },
+      {
+        "path": "tests/package.json",
+        "sha256": "a62bde632af0eac2e79d61b8e2daf8a08a12e3d2b6dcff310e1d5fa1b6765760",
+        "bytes": 22791,
+        "scope": "changed source fully read/diff reviewed"
+      },
+      {
+        "path": "tests/provider/openai-context-normalization.ts",
+        "sha256": "8630f7ead254ec58d929e69629dbe1b2f1636a1a4541ea090fc94791f77e350b",
+        "bytes": 3459,
+        "scope": "changed source fully read/diff reviewed"
+      },
+      {
+        "path": "tests/provider/anthropic-context-normalization.ts",
+        "sha256": "7bdd2888a043e944668962db0416d601e0a66e393f843e8c1b3160adc564db34",
+        "bytes": 5360,
+        "scope": "changed source fully read/diff reviewed"
+      },
+      {
+        "path": "tests/provider/openai-compatible-context-normalization.ts",
+        "sha256": "e39af19c86800db562557e00185af410ce8d598a6b6bb5c56ad0a6168b40a6ad",
+        "bytes": 6012,
+        "scope": "changed source fully read/diff reviewed"
+      },
+      {
+        "path": "tests/run.mjs",
+        "sha256": "2a91c1b3897ed4dd118780849a39e326c53362bfd41433355175d6582b1ea6bb",
+        "bytes": 16700,
+        "scope": "changed source fully read/diff reviewed"
+      },
+      {
+        "path": "tests/helpers/provider-context.ts",
+        "sha256": "1ea25a8b20b40390011c478810792c607bc35019d52e189e14b28166b20845cf",
+        "bytes": 3207,
+        "scope": "changed source fully read/diff reviewed"
+      },
+      {
+        "path": "main/llm/gen/openai.ts",
+        "sha256": "6bd60f1c6322ee1c204c9eac2990f435936b36dec249cb0087809c2fe38eb17c",
+        "bytes": 94651,
+        "scope": "unchanged projection/source/support identity; not acceptance of entire provider/SDK surface"
+      },
+      {
+        "path": "main/llm/gen/anthropic.ts",
+        "sha256": "bafa80dd39e265d188b251c4252531cf25966b50dd0c4331d7af49f2fdfcf923",
+        "bytes": 86864,
+        "scope": "unchanged projection/source/support identity; not acceptance of entire provider/SDK surface"
+      },
+      {
+        "path": "main/llm/gen/openai-compatible.ts",
+        "sha256": "d48d875b01e49e4529d633daecbd6a3811d0e37a3ecfc0d2cce072ff24534546",
+        "bytes": 95490,
+        "scope": "unchanged projection/source/support identity; not acceptance of entire provider/SDK surface"
+      },
+      {
+        "path": "main/llm/gen/tool-call-context.ts",
+        "sha256": "f0c03468c98fb1d35c6c44c82c406dd0aa7e3df266944fa8d40b696a20ea0c99",
+        "bytes": 5786,
+        "scope": "unchanged projection/source/support identity; not acceptance of entire provider/SDK surface"
+      },
+      {
+        "path": "main/llm/client.ts",
+        "sha256": "d4522932503df8c8074d91c74f1ae7ae7568a6a607c7e7270cd538c6a5febd2d",
+        "bytes": 7458,
+        "scope": "unchanged projection/source/support identity; not acceptance of entire provider/SDK surface"
+      },
+      {
+        "path": "main/llm/api-quirks.ts",
+        "sha256": "56d606cd05c26662fe82b1af16a5f2d9601539a4b1034db1395c20b403170b6e",
+        "bytes": 28484,
+        "scope": "unchanged projection/source/support identity; not acceptance of entire provider/SDK surface"
+      },
+      {
+        "path": "tests/helpers/semantic-evidence.ts",
+        "sha256": "a41efd1058ea6d65394059180dabf987e17ef0d219bae95ca67edd33db7e3777",
+        "bytes": 2050,
+        "scope": "unchanged projection/source/support identity; not acceptance of entire provider/SDK surface"
+      },
+      {
+        "path": "tests/cli.ts",
+        "sha256": "b9f9bc1f034a2a70c4b7bfbc2300ae854706f09a9788b7f4ca17b3a263f41598",
+        "bytes": 5618,
+        "scope": "unchanged projection/source/support identity; not acceptance of entire provider/SDK surface"
+      },
+      {
+        "path": "tests/rtws-script-runner.ts",
+        "sha256": "410949f941c1f0166b4e42dace6fa9d87138740c8d6a85aac9b5d99852730359",
+        "bytes": 920,
+        "scope": "unchanged projection/source/support identity; not acceptance of entire provider/SDK surface"
+      },
+      {
+        "path": "tests/tsconfig.json",
+        "sha256": "b5bcec0fba331b397ee453a8ff2bb1ea1eb1cb0f5f61f1a4e968ffc0a55dc1df",
+        "bytes": 689,
+        "scope": "unchanged projection/source/support identity; not acceptance of entire provider/SDK surface"
+      },
+      {
+        "path": "tsconfig.base.json",
+        "sha256": "8503d424c12486e1d6a974a27bfedc695b25e4636fb8395c131ab9d32934b1ab",
+        "bytes": 245,
+        "scope": "unchanged projection/source/support identity; not acceptance of entire provider/SDK surface"
+      },
+      {
+        "path": "main/tsconfig.json",
+        "sha256": "a04c695b24a9434b745bd1b4a1d8e78f80868ee20c5c6ae978f70195818cd1c9",
+        "bytes": 657,
+        "scope": "unchanged projection/source/support identity; not acceptance of entire provider/SDK surface"
+      }
+    ],
+    "originalSources": [
+      {
+        "path": "tests/provider/openai-context-normalization.ts",
+        "baseRevision": "dc44406684bb09c73499d1092d929f841652975d",
+        "sha256": "ea0ffc8d487e32c1ca04241152b3af66c6e21834fb10307509524e24972fda39",
+        "bytes": 4664,
+        "lines": 172,
+        "meaning": "Original full source read; local supplied copy identity matches base revision. Identity is not semantic judgment."
+      },
+      {
+        "path": "tests/provider/anthropic-context-normalization.ts",
+        "baseRevision": "dc44406684bb09c73499d1092d929f841652975d",
+        "sha256": "5cc580c4c7553472f78424553b7da083b2c15fa4dfbf80f748d4d3d35b753522",
+        "bytes": 7099,
+        "lines": 222,
+        "meaning": "Original full source read; local supplied copy identity matches base revision. Identity is not semantic judgment."
+      },
+      {
+        "path": "tests/provider/openai-compatible-context-normalization.ts",
+        "baseRevision": "dc44406684bb09c73499d1092d929f841652975d",
+        "sha256": "c99215e1d6340d2284661fc44352f98ded166d86a21f08cb45716719d568991d",
+        "bytes": 11268,
+        "lines": 375,
+        "meaning": "Original full source read; local supplied copy identity matches base revision. Identity is not semantic judgment."
+      }
+    ],
+    "trackedDiff": {
+      "sha256": "8e51665dc54e6c994a4354e0ebbc2491774d44d8ff2d7c3f7a100c544830c406",
+      "scope": "Complete tracked diff over ten tracked changed sources. New provider-context helper is separately full-file fingerprinted because untracked files are not in git diff."
+    },
+    "generationRuntime": {
+      "node": "v24.19.0",
+      "packageManager": "Corepack pnpm11.17.0",
+      "scope": "Parent uses pinned repository wrapper; reviewer invokes no live provider/build."
+    },
+    "retention": "All18 full actual input/context/scenario/questions/text/reasons embedded; base revision/current source fingerprints and original source identities retain reproducible provenance. Temporary directory names are origin labels, not durable dependencies. Report excludes its own hash. Hashes only identify reviewed material, never semantic meaning or acceptance of later output."
+  },
+  "limitations": [
+    "Request construction only, not a provider/SDK request, real model instruction-following, actual tool execution, restart or persisted repair.",
+    "Supplied argument/result text is opaque input even if it resembles instructions or an error; matching its complete bytes does not judge its meaning. Generated wrappers/diagnostics were read subjectively.",
+    "No full image/truncation/vision or encrypted reasoning side-channel coverage. The tested MiniMax details sample is data fidelity, not a complete provider metadata compatibility matrix.",
+    "Generation success/old ledger/old verdict/output hash do not accept future output. Whole-directory test type failures remain a separate explicit execution result; this report does not claim all test remediation complete."
+  ],
+  "verification": {
+    "status": "scoped_behavior_and_subjective_review_passed_full_test_types_failed",
+    "runtime": "Root-pinned Corepack pnpm11.17.0/Node24.19.0 through /tmp/dominds-pnpm; no dependencies/frameworks/type exclusions added.",
+    "behavior": {
+      "total": 3,
+      "passed": 3,
+      "failed": 0,
+      "timedOut": 0,
+      "results": [
+        {
+          "id": "provider/openai-context-normalization.ts",
+          "status": "passed",
+          "durationMs": 814,
+          "code": 0,
+          "signal": null,
+          "logPath": "/tmp/dominds-tests-projection-I7IEG1/001-provider_openai-context-normalization.ts.log"
+        },
+        {
+          "id": "provider/anthropic-context-normalization.ts",
+          "status": "passed",
+          "durationMs": 794,
+          "code": 0,
+          "signal": null,
+          "logPath": "/tmp/dominds-tests-projection-I7IEG1/002-provider_anthropic-context-normalization.ts.log"
+        },
+        {
+          "id": "provider/openai-compatible-context-normalization.ts",
+          "status": "passed",
+          "durationMs": 806,
+          "code": 0,
+          "signal": null,
+          "logPath": "/tmp/dominds-tests-projection-I7IEG1/003-provider_openai-compatible-context-normalization.ts.log"
+        }
+      ]
+    },
+    "semanticGenerationProcesses": {
+      "total": 3,
+      "passed": 3,
+      "failed": 0,
+      "timedOut": 0,
+      "results": [
+        {
+          "id": "provider/openai-context-normalization.ts",
+          "status": "passed",
+          "durationMs": 791,
+          "code": 0,
+          "signal": null,
+          "logPath": "/tmp/dominds-tests-projection-semantic-BngUmj/001-provider_openai-context-normalization.ts.log",
+          "tempDir": "/tmp/dominds-tests-projection-semantic-BngUmj/1.tmp"
+        },
+        {
+          "id": "provider/anthropic-context-normalization.ts",
+          "status": "passed",
+          "durationMs": 737,
+          "code": 0,
+          "signal": null,
+          "logPath": "/tmp/dominds-tests-projection-semantic-BngUmj/002-provider_anthropic-context-normalization.ts.log",
+          "tempDir": "/tmp/dominds-tests-projection-semantic-BngUmj/2.tmp"
+        },
+        {
+          "id": "provider/openai-compatible-context-normalization.ts",
+          "status": "passed",
+          "durationMs": 758,
+          "code": 0,
+          "signal": null,
+          "logPath": "/tmp/dominds-tests-projection-semantic-BngUmj/003-provider_openai-compatible-context-normalization.ts.log",
+          "tempDir": "/tmp/dominds-tests-projection-semantic-BngUmj/3.tmp"
+        }
+      ],
+      "scope": "evidence-generation-processes",
+      "semanticAcceptance": "pending"
+    },
+    "subjectiveAcceptance": {
+      "total": 18,
+      "passed": 18,
+      "failed": 0,
+      "pending": 0,
+      "reviewer": "/root/stage1_semantic_record",
+      "scope": "Final BngUmj material only: d1qQ1n3/rmUNkt12/52TDKF3 actual full inputs, outputs, verdicts, rationales and provenance retained in cases. Generator summaries remain pending; design ledger and identities do not accept future output."
+    },
+    "checks": {
+      "applicationTypes": {
+        "exitCode": 0,
+        "logPath": "/tmp/dominds-provider-context-app-types.log",
+        "sha256": "41aa5be00a3d0c4d2223d9aee1e64fd44a1a074ddc49dbfbb33b30036175e87a"
+      },
+      "runner": {
+        "exitCode": 0,
+        "logPath": "/tmp/dominds-provider-context-runner.log",
+        "sha256": "ae02ad2df26e318007e8ab05217330776974b3d05a597e722dda1f89cee0fdeb",
+        "total": 6,
+        "passed": 6,
+        "failed": 0
+      },
+      "fullTestTypes": {
+        "exitCode": 2,
+        "logPath": "/tmp/dominds-provider-context-types-final.log",
+        "sha256": "516b4e1c9e04cbcf8beb7f329fba82220cd29bfb3112e9b1b61137d45308e113",
+        "status": "failed",
+        "diagnosticsBefore": 139,
+        "diagnosticsNow": 136,
+        "changedTargetDiagnostics": 0,
+        "diagnostics": [
+          "tests/apps-host-tool-result-contract.ts(454,63): error TS2339: Property 'position' does not exist on type 'DomindsAppReminderApplyRequest'.",
+          "tests/provider/anthropic-stream-errors.ts(46,7): error TS2345: Argument of type '{ id: string; name: string; model: string; }' is not assignable to parameter of type 'Member'.",
+          "tests/provider/openai-compatible-volcengine-coding-plan.ts(506,5): error TS18048: 'thinkingOutput' is possibly 'undefined'.",
+          "tests/provider/openai-compatible-volcengine-coding-plan.ts(506,42): error TS18048: 'thinkingOutput' is possibly 'undefined'.",
+          "tests/provider/openai-compatible-volcengine-coding-plan.ts(506,57): error TS2339: Property 'message' does not exist on type 'LlmBatchOutput'.",
+          "tests/provider/openai-compatible-volcengine-coding-plan.ts(510,5): error TS18048: 'thinkingOutput' is possibly 'undefined'.",
+          "tests/provider/openai-compatible-volcengine-coding-plan.ts(510,20): error TS2339: Property 'message' does not exist on type 'LlmBatchOutput'.",
+          "tests/provider/openai-compatible-volcengine-coding-plan.ts(514,19): error TS18048: 'thinkingOutput' is possibly 'undefined'.",
+          "tests/provider/openai-compatible-volcengine-coding-plan.ts(514,34): error TS2339: Property 'message' does not exist on type 'LlmBatchOutput'.",
+          "tests/provider/openai-compatible-volcengine-coding-plan.ts(524,11): error TS2353: Object literal may only specify known properties, and 'index' does not exist in type 'ChatCompletionMessageFunctionToolCall'.",
+          "tests/provider/openai-compatible-volcengine-coding-plan.ts(530,11): error TS2353: Object literal may only specify known properties, and 'index' does not exist in type 'ChatCompletionMessageFunctionToolCall'.",
+          "tests/provider/openai-compatible-volcengine-coding-plan.ts(535,11): error TS2353: Object literal may only specify known properties, and 'index' does not exist in type 'ChatCompletionMessageToolCall'.",
+          "tests/provider/openai-compatible-volcengine-coding-plan.ts(559,11): error TS2353: Object literal may only specify known properties, and 'index' does not exist in type 'ChatCompletionMessageFunctionToolCall'.",
+          "tests/provider/openai-compatible-volcengine-coding-plan.ts(571,5): error TS18048: 'invalid' is possibly 'undefined'.",
+          "tests/provider/openai-compatible-volcengine-coding-plan.ts(572,51): error TS18048: 'invalid' is possibly 'undefined'.",
+          "tests/provider/openai-compatible-volcengine-coding-plan.ts(574,10): error TS18048: 'invalid' is possibly 'undefined'.",
+          "tests/provider/openai-compatible-volcengine-coding-plan.ts(704,77): error TS2339: Property 'default' does not exist on type 'ModelParamOption'.",
+          "tests/provider/openai-compatible-volcengine-coding-plan.ts(740,30): error TS2339: Property 'type' does not exist on type 'boolean | Record<string, unknown>'.",
+          "tests/provider/openai-compatible-volcengine-coding-plan.ts(804,41): error TS2339: Property 'type' does not exist on type 'boolean | Record<string, unknown>'.",
+          "tests/provider/openai-compatible-volcengine-coding-plan.ts(836,42): error TS2339: Property 'type' does not exist on type 'boolean | Record<string, unknown>'.",
+          "tests/provider/openai-compatible-volcengine-coding-plan.ts(922,12): error TS18048: 'failure' is possibly 'undefined'.",
+          "tests/provider/openai-compatible-volcengine-coding-plan.ts(922,71): error TS18048: 'failure' is possibly 'undefined'.",
+          "tests/provider/openai-compatible-volcengine-coding-plan.ts(924,7): error TS18048: 'failure' is possibly 'undefined'.",
+          "tests/provider/openai-compatible-volcengine-coding-plan.ts(925,53): error TS18048: 'failure' is possibly 'undefined'.",
+          "tests/provider/openai-compatible-volcengine-coding-plan.ts(928,7): error TS18048: 'failure' is possibly 'undefined'.",
+          "tests/provider/openai-compatible-volcengine-coding-plan.ts(932,8): error TS18048: 'failure' is possibly 'undefined'.",
+          "tests/provider/openai-compatible-volcengine-coding-plan.ts(941,43): error TS2769: No overload matches this call.",
+          "tests/provider/openai-compatible-volcengine-coding-plan.ts(993,12): error TS18048: 'failure' is possibly 'undefined'.",
+          "tests/provider/openai-compatible-volcengine-coding-plan.ts(993,71): error TS18048: 'failure' is possibly 'undefined'.",
+          "tests/provider/openai-compatible-volcengine-coding-plan.ts(995,7): error TS18048: 'failure' is possibly 'undefined'.",
+          "tests/provider/tool-choice-requirement.ts(23,7): error TS2322: Type '{ type: \"function\"; name: string; description: string; parameters: { type: string; properties: {}; additionalProperties: boolean; }; }' is not assignable to type 'ChatGptTool'.",
+          "tests/provider/tool-result-image-size-fallback.ts(87,78): error TS2339: Property 'contentItems' does not exist on type 'ChatMessage'.",
+          "tests/provider/tool-result-image-size-fallback.ts(128,35): error TS2339: Property 'contentItems' does not exist on type 'ChatMessage'.",
+          "tests/provider/tool-result-image-size-fallback.ts(129,35): error TS2339: Property 'contentItems' does not exist on type 'ChatMessage'.",
+          "tests/provider/user-image-model-support.ts(31,67): error TS2339: Property 'contentItems' does not exist on type 'ChatMessage'.",
+          "tests/provider/volcengine-coding-plan-live-smoke.ts(305,27): error TS2339: Property 'name' does not exist on type 'never'.",
+          "tests/reminders/app-reminder-render-mode-preserve.ts(21,5): error TS2511: Cannot create an instance of an abstract class.",
+          "tests/reminders/daemon-exit-wake-event.ts(9,25): error TS2511: Cannot create an instance of an abstract class.",
+          "tests/reminders/daemon-exit-wake-event.ts(50,22): error TS2339: Property 'reminderId' does not exist on type 'Readonly<{ eventId: string; reminderId: string; content: string; updatedContent?: string | undefined; updatedMeta?: JsonValue | undefined; }> | readonly Readonly<{ eventId: string; reminderId: string; content: string; updatedContent?: string | undefined; updatedMeta?: JsonValue | undefined; }>[]'.",
+          "tests/reminders/daemon-exit-wake-event.ts(51,22): error TS2339: Property 'eventId' does not exist on type 'Readonly<{ eventId: string; reminderId: string; content: string; updatedContent?: string | undefined; updatedMeta?: JsonValue | undefined; }> | readonly Readonly<{ eventId: string; reminderId: string; content: string; updatedContent?: string | undefined; updatedMeta?: JsonValue | undefined; }>[]'.",
+          "tests/reminders/daemon-exit-wake-event.ts(52,22): error TS2339: Property 'content' does not exist on type 'Readonly<{ eventId: string; reminderId: string; content: string; updatedContent?: string | undefined; updatedMeta?: JsonValue | undefined; }> | readonly Readonly<{ eventId: string; reminderId: string; content: string; updatedContent?: string | undefined; updatedMeta?: JsonValue | undefined; }>[]'.",
+          "tests/reminders/daemon-exit-wake-event.ts(53,22): error TS2339: Property 'updatedContent' does not exist on type 'Readonly<{ eventId: string; reminderId: string; content: string; updatedContent?: string | undefined; updatedMeta?: JsonValue | undefined; }> | readonly Readonly<{ eventId: string; reminderId: string; content: string; updatedContent?: string | undefined; updatedMeta?: JsonValue | undefined; }>[]'.",
+          "tests/reminders/daemon-exit-wake-event.ts(54,29): error TS2339: Property 'updatedMeta' does not exist on type 'Readonly<{ eventId: string; reminderId: string; content: string; updatedContent?: string | undefined; updatedMeta?: JsonValue | undefined; }> | readonly Readonly<{ eventId: string; reminderId: string; content: string; updatedContent?: string | undefined; updatedMeta?: JsonValue | undefined; }>[]'.",
+          "tests/reminders/daemon-exit-wake-event.ts(55,25): error TS2339: Property 'updatedMeta' does not exist on type 'Readonly<{ eventId: string; reminderId: string; content: string; updatedContent?: string | undefined; updatedMeta?: JsonValue | undefined; }> | readonly Readonly<{ eventId: string; reminderId: string; content: string; updatedContent?: string | undefined; updatedMeta?: JsonValue | undefined; }>[]'.",
+          "tests/reminders/daemon-exit-wake-event.ts(56,36): error TS2339: Property 'updatedMeta' does not exist on type 'Readonly<{ eventId: string; reminderId: string; content: string; updatedContent?: string | undefined; updatedMeta?: JsonValue | undefined; }> | readonly Readonly<{ eventId: string; reminderId: string; content: string; updatedContent?: string | undefined; updatedMeta?: JsonValue | undefined; }>[]'.",
+          "tests/reminders/daemon-exit-wake-event.ts(58,18): error TS2339: Property 'updatedMeta' does not exist on type 'Readonly<{ eventId: string; reminderId: string; content: string; updatedContent?: string | undefined; updatedMeta?: JsonValue | undefined; }> | readonly Readonly<{ eventId: string; reminderId: string; content: string; updatedContent?: string | undefined; updatedMeta?: JsonValue | undefined; }>[]'.",
+          "tests/reminders/daemon-exit-wake-event.ts(59,11): error TS2339: Property 'updatedMeta' does not exist on type 'Readonly<{ eventId: string; reminderId: string; content: string; updatedContent?: string | undefined; updatedMeta?: JsonValue | undefined; }> | readonly Readonly<{ eventId: string; reminderId: string; content: string; updatedContent?: string | undefined; updatedMeta?: JsonValue | undefined; }>[]'.",
+          "tests/reminders/daemon-exit-wake-event.ts(60,25): error TS2339: Property 'updatedMeta' does not exist on type 'Readonly<{ eventId: string; reminderId: string; content: string; updatedContent?: string | undefined; updatedMeta?: JsonValue | undefined; }> | readonly Readonly<{ eventId: string; reminderId: string; content: string; updatedContent?: string | undefined; updatedMeta?: JsonValue | undefined; }>[]'.",
+          "tests/reminders/daemon-exit-wake-event.ts(64,22): error TS2339: Property 'updatedMeta' does not exist on type 'Readonly<{ eventId: string; reminderId: string; content: string; updatedContent?: string | undefined; updatedMeta?: JsonValue | undefined; }> | readonly Readonly<{ eventId: string; reminderId: string; content: string; updatedContent?: string | undefined; updatedMeta?: JsonValue | undefined; }>[]'.",
+          "tests/reminders/daemon-exit-wake-event.ts(65,22): error TS2339: Property 'updatedMeta' does not exist on type 'Readonly<{ eventId: string; reminderId: string; content: string; updatedContent?: string | undefined; updatedMeta?: JsonValue | undefined; }> | readonly Readonly<{ eventId: string; reminderId: string; content: string; updatedContent?: string | undefined; updatedMeta?: JsonValue | undefined; }>[]'.",
+          "tests/reminders/daemon-exit-wake-event.ts(65,60): error TS2339: Property 'eventId' does not exist on type 'Readonly<{ eventId: string; reminderId: string; content: string; updatedContent?: string | undefined; updatedMeta?: JsonValue | undefined; }> | readonly Readonly<{ eventId: string; reminderId: string; content: string; updatedContent?: string | undefined; updatedMeta?: JsonValue | undefined; }>[]'.",
+          "tests/reminders/daemon-exit-wake-event.ts(66,29): error TS2339: Property 'updatedMeta' does not exist on type 'Readonly<{ eventId: string; reminderId: string; content: string; updatedContent?: string | undefined; updatedMeta?: JsonValue | undefined; }> | readonly Readonly<{ eventId: string; reminderId: string; content: string; updatedContent?: string | undefined; updatedMeta?: JsonValue | undefined; }>[]'.",
+          "tests/reminders/daemon-exit-wake-event.ts(67,22): error TS2339: Property 'updatedMeta' does not exist on type 'Readonly<{ eventId: string; reminderId: string; content: string; updatedContent?: string | undefined; updatedMeta?: JsonValue | undefined; }> | readonly Readonly<{ eventId: string; reminderId: string; content: string; updatedContent?: string | undefined; updatedMeta?: JsonValue | undefined; }>[]'.",
+          "tests/reminders/daemon-exit-wake-event.ts(71,20): error TS2339: Property 'updatedContent' does not exist on type 'Readonly<{ eventId: string; reminderId: string; content: string; updatedContent?: string | undefined; updatedMeta?: JsonValue | undefined; }> | readonly Readonly<{ eventId: string; reminderId: string; content: string; updatedContent?: string | undefined; updatedMeta?: JsonValue | undefined; }>[]'.",
+          "tests/reminders/daemon-exit-wake-event.ts(75,17): error TS2339: Property 'updatedMeta' does not exist on type 'Readonly<{ eventId: string; reminderId: string; content: string; updatedContent?: string | undefined; updatedMeta?: JsonValue | undefined; }> | readonly Readonly<{ eventId: string; reminderId: string; content: string; updatedContent?: string | undefined; updatedMeta?: JsonValue | undefined; }>[]'.",
+          "tests/reminders/daemon-exit-wake-event.ts(86,20): error TS2339: Property 'updatedContent' does not exist on type 'Readonly<{ eventId: string; reminderId: string; content: string; updatedContent?: string | undefined; updatedMeta?: JsonValue | undefined; }> | readonly Readonly<{ eventId: string; reminderId: string; content: string; updatedContent?: string | undefined; updatedMeta?: JsonValue | undefined; }>[]'.",
+          "tests/reminders/daemon-reminder-gone-exit-snapshot.ts(10,5): error TS2511: Cannot create an instance of an abstract class.",
+          "tests/reminders/daemon-reminder-no-jitter-without-output-change.ts(17,5): error TS2511: Cannot create an instance of an abstract class.",
+          "tests/reminders/daemon-reminder-no-jitter-without-output-change.ts(50,9): error TS2322: Type 'string | undefined' is not assignable to type 'JsonValue'.",
+          "tests/reminders/daemon-reminder-no-jitter-without-output-change.ts(62,34): error TS2339: Property 'pid' does not exist on type 'string | number | boolean | JsonObject | JsonArray'.",
+          "tests/reminders/daemon-reminder-render.ts(36,25): error TS2511: Cannot create an instance of an abstract class.",
+          "tests/reminders/daemon-reminder-render.ts(72,9): error TS2322: Type 'string | undefined' is not assignable to type 'JsonValue'.",
+          "tests/reminders/daemon-reminder-retained-after-exit.ts(17,5): error TS2511: Cannot create an instance of an abstract class.",
+          "tests/reminders/daemon-reminder-retained-after-exit.ts(59,9): error TS2322: Type 'string | undefined' is not assignable to type 'JsonValue'.",
+          "tests/reminders/daemon-start-receipt-lifecycle-card.ts(11,5): error TS2511: Cannot create an instance of an abstract class.",
+          "tests/reminders/daemon-start-receipt-lifecycle-card.ts(46,9): error TS2322: Type 'string | undefined' is not assignable to type 'JsonValue'.",
+          "tests/reminders/get-daemon-output-stream-selection.ts(16,5): error TS2511: Cannot create an instance of an abstract class.",
+          "tests/reminders/get-daemon-output-stream-selection.ts(50,5): error TS2322: Type 'string | undefined' is not assignable to type 'JsonValue'.",
+          "tests/reminders/get-daemon-output-stream-selection.ts(117,9): error TS2322: Type 'string | undefined' is not assignable to type 'JsonValue'.",
+          "tests/reminders/main-dialog-goal-reminder.ts(119,11): error TS2322: Type 'number' is not assignable to type 'CallSiteCourseNo'.",
+          "tests/reminders/main-dialog-goal-reminder.ts(120,11): error TS2322: Type 'number' is not assignable to type 'CallSiteGenseqNo'.",
+          "tests/reminders/migrate-reminder-scope.ts(46,11): error TS2322: Type 'number' is not assignable to type 'CallSiteCourseNo'.",
+          "tests/reminders/migrate-reminder-scope.ts(47,11): error TS2322: Type 'number' is not assignable to type 'CallSiteGenseqNo'.",
+          "tests/reminders/migrate-reminder-scope.ts(59,11): error TS2322: Type 'number' is not assignable to type 'CallSiteCourseNo'.",
+          "tests/reminders/migrate-reminder-scope.ts(60,11): error TS2322: Type 'number' is not assignable to type 'CallSiteGenseqNo'.",
+          "tests/reminders/migrate-reminder-scope.ts(76,11): error TS2322: Type 'number' is not assignable to type 'CallSiteCourseNo'.",
+          "tests/reminders/migrate-reminder-scope.ts(77,11): error TS2322: Type 'number' is not assignable to type 'CallSiteGenseqNo'.",
+          "tests/reminders/migrate-reminder-scope.ts(93,11): error TS2322: Type 'number' is not assignable to type 'CallSiteCourseNo'.",
+          "tests/reminders/migrate-reminder-scope.ts(94,11): error TS2322: Type 'number' is not assignable to type 'CallSiteGenseqNo'.",
+          "tests/reminders/pending-tellask-reminder-order.ts(47,5): error TS2322: Type 'number' is not assignable to type 'CallSiteCourseNo'.",
+          "tests/reminders/pending-tellask-reminder-order.ts(48,5): error TS2322: Type 'number' is not assignable to type 'CallSiteGenseqNo'.",
+          "tests/reminders/pending-tellask-reminder-order.ts(163,11): error TS2322: Type 'number' is not assignable to type 'CallSiteCourseNo'.",
+          "tests/reminders/pending-tellask-reminder-order.ts(164,11): error TS2322: Type 'number' is not assignable to type 'CallSiteGenseqNo'.",
+          "tests/reminders/pending-tellask-reminder-order.ts(176,11): error TS2322: Type 'number' is not assignable to type 'CallSiteCourseNo'.",
+          "tests/reminders/pending-tellask-reminder-order.ts(177,11): error TS2322: Type 'number' is not assignable to type 'CallSiteGenseqNo'.",
+          "tests/reminders/pending-tellask-reminder-order.ts(238,13): error TS2322: Type 'number' is not assignable to type 'CallSiteCourseNo'.",
+          "tests/reminders/pending-tellask-reminder-order.ts(239,13): error TS2322: Type 'number' is not assignable to type 'CallSiteGenseqNo'.",
+          "tests/reminders/pending-tellask-reminder-order.ts(252,13): error TS2322: Type 'number' is not assignable to type 'CallSiteCourseNo'.",
+          "tests/reminders/pending-tellask-reminder-order.ts(253,13): error TS2322: Type 'number' is not assignable to type 'CallSiteGenseqNo'.",
+          "tests/reminders/pending-tellask-zero-state-no-jitter.ts(41,5): error TS2322: Type 'number' is not assignable to type 'CallSiteCourseNo'.",
+          "tests/reminders/pending-tellask-zero-state-no-jitter.ts(42,5): error TS2322: Type 'number' is not assignable to type 'CallSiteGenseqNo'.",
+          "tests/reminders/pending-tellask-zero-state-no-jitter.ts(121,11): error TS2322: Type 'number' is not assignable to type 'CallSiteCourseNo'.",
+          "tests/reminders/pending-tellask-zero-state-no-jitter.ts(122,11): error TS2322: Type 'number' is not assignable to type 'CallSiteGenseqNo'.",
+          "tests/reminders/reminder-format.ts(390,5): error TS18048: 'zhMaintenanceReference' is possibly 'undefined'.",
+          "tests/reminders/reminder-format.ts(394,5): error TS18048: 'zhMaintenanceReference' is possibly 'undefined'.",
+          "tests/reminders/reminder-format.ts(398,6): error TS18048: 'zhMaintenanceReference' is possibly 'undefined'.",
+          "tests/reminders/reminder-format.ts(402,6): error TS18048: 'zhMaintenanceReference' is possibly 'undefined'.",
+          "tests/reminders/reminder-format.ts(406,5): error TS18048: 'zhMaintenanceReference' is possibly 'undefined'.",
+          "tests/reminders/reminder-format.ts(410,5): error TS18048: 'zhMaintenanceReference' is possibly 'undefined'.",
+          "tests/reminders/reminder-format.ts(414,5): error TS18048: 'zhMaintenanceReference' is possibly 'undefined'.",
+          "tests/reminders/reminder-format.ts(420,5): error TS18048: 'zhMaintenanceReference' is possibly 'undefined'.",
+          "tests/reminders/reminder-format.ts(424,5): error TS18048: 'zhMaintenanceReference' is possibly 'undefined'.",
+          "tests/reminders/reminder-format.ts(428,5): error TS18048: 'zhMaintenanceReference' is possibly 'undefined'.",
+          "tests/reminders/reminder-format.ts(434,5): error TS18048: 'zhMaintenanceReference' is possibly 'undefined'.",
+          "tests/reminders/reminder-format.ts(934,5): error TS18048: 'enMaintenanceReference' is possibly 'undefined'.",
+          "tests/reminders/reminder-format.ts(940,5): error TS18048: 'enMaintenanceReference' is possibly 'undefined'.",
+          "tests/reminders/reminder-format.ts(944,6): error TS18048: 'enMaintenanceReference' is possibly 'undefined'.",
+          "tests/reminders/reminder-format.ts(950,5): error TS18048: 'enMaintenanceReference' is possibly 'undefined'.",
+          "tests/reminders/reminder-format.ts(954,5): error TS18048: 'enMaintenanceReference' is possibly 'undefined'.",
+          "tests/reminders/reminder-format.ts(958,5): error TS18048: 'enMaintenanceReference' is possibly 'undefined'.",
+          "tests/reminders/reminder-format.ts(964,5): error TS18048: 'enMaintenanceReference' is possibly 'undefined'.",
+          "tests/reminders/reminder-format.ts(970,5): error TS18048: 'enMaintenanceReference' is possibly 'undefined'.",
+          "tests/reminders/reminder-format.ts(974,5): error TS18048: 'enMaintenanceReference' is possibly 'undefined'.",
+          "tests/reminders/reminder-format.ts(978,5): error TS18048: 'enMaintenanceReference' is possibly 'undefined'.",
+          "tests/reminders/reminder-owner-failure-loud.ts(48,5): error TS2511: Cannot create an instance of an abstract class.",
+          "tests/reminders/reminder-render-mode.ts(12,25): error TS2511: Cannot create an instance of an abstract class.",
+          "tests/reminders/shared-daemon-reminder-command-mismatch.ts(33,5): error TS2511: Cannot create an instance of an abstract class.",
+          "tests/reminders/shared-daemon-reminder-command-mismatch.ts(85,9): error TS2322: Type 'string | undefined' is not assignable to type 'JsonValue'.",
+          "tests/reminders/shared-daemon-reminder-persistence.ts(34,5): error TS2511: Cannot create an instance of an abstract class.",
+          "tests/reminders/shared-daemon-reminder-persistence.ts(73,9): error TS2322: Type 'string | undefined' is not assignable to type 'JsonValue'.",
+          "tests/reminders/shared-daemon-reminder-wrapper-command-match.ts(28,5): error TS2511: Cannot create an instance of an abstract class.",
+          "tests/reminders/task-agent-reminder-scope.ts(144,11): error TS2322: Type 'number' is not assignable to type 'CallSiteCourseNo'.",
+          "tests/reminders/task-agent-reminder-scope.ts(145,11): error TS2322: Type 'number' is not assignable to type 'CallSiteGenseqNo'.",
+          "tests/reminders/task-agent-reminder-scope.ts(174,11): error TS2322: Type 'number' is not assignable to type 'CallSiteCourseNo'.",
+          "tests/reminders/task-agent-reminder-scope.ts(175,11): error TS2322: Type 'number' is not assignable to type 'CallSiteGenseqNo'.",
+          "tests/reminders/task-agent-reminder-scope.ts(187,11): error TS2322: Type 'number' is not assignable to type 'CallSiteCourseNo'.",
+          "tests/reminders/task-agent-reminder-scope.ts(188,11): error TS2322: Type 'number' is not assignable to type 'CallSiteGenseqNo'.",
+          "tests/reminders/task-agent-reminder-scope.ts(203,11): error TS2322: Type 'number' is not assignable to type 'CallSiteCourseNo'.",
+          "tests/reminders/task-agent-reminder-scope.ts(204,11): error TS2322: Type 'number' is not assignable to type 'CallSiteGenseqNo'.",
+          "tests/reminders/task-agent-reminder-scope.ts(219,11): error TS2322: Type 'number' is not assignable to type 'CallSiteCourseNo'.",
+          "tests/reminders/task-agent-reminder-scope.ts(220,11): error TS2322: Type 'number' is not assignable to type 'CallSiteGenseqNo'.",
+          "tests/ripgrep-streaming.ts(29,23): error TS2835: Relative import paths need explicit file extensions in ECMAScript imports when '--moduleResolution' is 'node16' or 'nodenext'. Did you mean '../main/tools/ripgrep.js'?",
+          "tests/ripgrep-windows-compat.ts(29,23): error TS2835: Relative import paths need explicit file extensions in ECMAScript imports when '--moduleResolution' is 'node16' or 'nodenext'. Did you mean '../main/tools/ripgrep.js'?",
+          "tests/task-package.ts(174,7): error TS2322: Type 'number' is not assignable to type 'CallSiteCourseNo'.",
+          "tests/task-package.ts(175,7): error TS2322: Type 'number' is not assignable to type 'CallSiteGenseqNo'.",
+          "tests/toolsets/shell-cmd-capture-env.ts(73,5): error TS2322: Type 'unknown' is not assignable to type 'boolean'."
+        ],
+        "scope": "Entire unchanged tests/tsconfig.json. No weakened types or exclusions."
+      },
+      "format": {
+        "exitCode": 0,
+        "logPath": "/tmp/dominds-provider-context-format.log",
+        "sha256": "b1ea3ae2fe62892cb4e7315068d0b5aa27dc325de6426de93c32837cb79bd2f0",
+        "scope": "Full root format check of present sources, with final new/merged report separately formatted and checked before commit."
+      },
+      "documentationLinks": {
+        "exitCode": 0,
+        "logPath": "/tmp/dominds-provider-context-doclinks.log",
+        "sha256": "7fc587ae52506f39d26ddba9563b18b41cb7cbec47dbb40758d38d961fbb2d53",
+        "trackedMarkdown": 201,
+        "newMarkdown": 0,
+        "canonicalDocuments": 69,
+        "excludedRuntimeSources": 131,
+        "localTargetsAndFragments": 362,
+        "networkLinksIgnored": 9,
+        "failures": [],
+        "scope": "Complete tracked Markdown from git ls-files, canonical symlinks/narrow runtime role exclusions, Markdown-aware local targets/fragments only; no network."
+      },
+      "productionBuildAndBroadSuites": {
+        "status": "not_repeated_for_tests_only_change",
+        "basis": "git diff dc444066 over main/packages/webapp/codex-auth is empty; this batch modifies tests, test entry registrations and documentation only. Previous batch build0/kernel63/smoke11 is retained in 2026-10-31-provider-retry.json; no fresh broad-suite pass claimed."
+      }
+    },
+    "inventory": {
+      "typescriptFiles": 281,
+      "supportFiles": 26,
+      "candidates": 255,
+      "outsideSuites": 108,
+      "withoutPackageScript": 45,
+      "missingPackageScriptTargets": 0,
+      "unauditedCandidates": 115,
+      "missingAuditedFiles": 0,
+      "note": "Discovery and script registration are not measurements of behavior or line coverage. Missing package-script targets cover direct tsx/rtws TypeScript paths, including explicit shared/isolated flags, not arbitrary shell composition. Outside-suite candidates include live probes and external integrations; audit prerequisites before running them."
+    },
+    "acceptanceScope": "Only three original context-normalization candidates are remediated here. Other four of the exploratory7 baseline remain unaudited, including the compatible image missing-fixture failure. Remaining115 candidates and136 inherited type diagnostics keep the whole-repository autonomous goal active. Projection alone does not execute tools or establish provider/network/SDK/restart/vision behavior."
+  }
+}
