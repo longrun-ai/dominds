@@ -1,500 +1,424 @@
 import assert from 'node:assert/strict';
-import * as fs from 'node:fs/promises';
-import * as path from 'node:path';
-import { crc32 } from 'zlib';
-
-import { DialogStore, MainDialog } from '../../main/dialog';
+import path from 'node:path';
+import type { Dialog, MainDialog } from '../../main/dialog';
 import { globalDialogRegistry } from '../../main/dialog-global-registry';
 import { MAIN_DIALOG_GOAL_REMINDER_ID } from '../../main/main-dialog-goal-reminder';
+import { DialogPersistence } from '../../main/persistence';
 import { mutateSharedReminders } from '../../main/shared-reminders';
-import type { Team } from '../../main/team';
-import { materializeReminder, type ReminderOwner } from '../../main/tool';
-import { addReminderTool, deleteReminderTool, updateReminderTool } from '../../main/tools/ctrl';
+import { materializeReminder, type JsonObject, type ReminderOwner } from '../../main/tool';
+import {
+  addReminderTool,
+  deleteReminderTool,
+  migrateReminderTool,
+  updateReminderTool,
+} from '../../main/tools/ctrl';
 import { registerReminderOwner, unregisterReminderOwner } from '../../main/tools/registry';
-import { withTempCwd } from './daemon-test-utils';
+import { reminderData } from '../helpers/manual-reminders';
+import { semanticEvidenceCollector } from '../helpers/semantic-evidence';
+import {
+  captureSharedNotices,
+  sharedNoticeState,
+  sharedReminderFile,
+  withSharedReminderFixture,
+} from '../helpers/shared-reminders';
 
-class MemoryDialogStore extends DialogStore {}
-
-function createDialog(agentId: string, taskDocPath = 'task-agent-reminder-scope.tsk'): MainDialog {
-  return new MainDialog(new MemoryDialogStore(), taskDocPath, undefined, agentId);
-}
-
-function taskStorageKey(taskDocPath: string): string {
-  const normalized = taskDocPath.trim().replace(/\\/g, '/').replace(/\/+$/g, '');
-  return `crc32-${((crc32(normalized) >>> 0).toString(16) as string).padStart(8, '0')}`;
-}
-
-function withoutMainDialogGoal<T extends Readonly<{ id: string }>>(reminders: readonly T[]): T[] {
-  return reminders.filter((reminder) => reminder.id !== MAIN_DIALOG_GOAL_REMINDER_ID);
-}
-
-async function main(): Promise<void> {
-  await withTempCwd('dominds-task-agent-reminder-', async (sandboxDir) => {
-    const caller = {} as Team.Member;
-    const taskDocPath = 'task-agent-reminder-scope.tsk';
-    const otherTaskDocPath = 'other-task-agent-reminder-scope.tsk';
-    const autoOwnerName = 'task-agent-reminder-scope-auto-owner';
-    const registeredRuntimeDialogs: MainDialog[] = [];
-    let releaseActiveMainPeer: (() => void) | undefined;
-    const registerRuntimeDialog = (dialog: MainDialog): void => {
-      globalDialogRegistry.register(dialog);
-      registeredRuntimeDialogs.push(dialog);
-    };
-
-    try {
-      const dialogA = new MainDialog(new MemoryDialogStore(), taskDocPath, undefined, 'tester', {
-        reminders: [
-          materializeReminder({
-            id: 'dialog001',
-            content: 'Older dialog reminder',
-            createdAt: '2026-03-30T00:00:00.000Z',
-            scope: 'dialog',
-            renderMode: 'markdown',
-          }),
-        ],
+const evidence = semanticEvidenceCollector('dominds-shared-reminder-');
+async function main() {
+  for (const language of ['zh', 'en'] as const) {
+    await withSharedReminderFixture(language, async (fixture) => {
+      const actors: Dialog[] = [];
+      const root = async (agent = 'tester', task = fixture.taskDocPath) => {
+        const dialog = await fixture.root(agent, task);
+        actors.push(dialog);
+        return dialog;
+      };
+      const side = async (parent: MainDialog, callId: string) => {
+        const dialog = await fixture.side(parent, callId);
+        actors.push(dialog);
+        return dialog;
+      };
+      const a = await root();
+      const local = materializeReminder({
+        id: 'dialog001',
+        content: 'Older dialog reminder',
+        createdAt: '2026-03-30T00:00:00.000Z',
+        scope: 'dialog',
+        renderMode: 'markdown',
       });
-      registerRuntimeDialog(dialogA);
-
-      const addOutput = (
-        await addReminderTool.call(dialogA, caller, {
-          content: 'Remember the preferred deploy smoke-check command for this task',
-        })
-      ).content;
-      assert.match(addOutput, /Added|已添加/);
-      assert.equal(
-        dialogA.reminders.length,
-        1,
-        'Expected default task reminder not to live in dialog-local array',
+      a.reminders.push(local);
+      const givenTask = 'Remember the preferred deploy smoke-check command for this task';
+      const added = await addReminderTool.call(a, fixture.caller, { content: givenTask });
+      assert.equal(added.outcome, 'success');
+      const visibleA = (await a.listVisibleReminders()).filter(
+        (row) => row.id !== MAIN_DIALOG_GOAL_REMINDER_ID,
       );
-
-      const visibleA = withoutMainDialogGoal(await dialogA.listVisibleReminders());
-      assert.equal(visibleA.length, 2, 'Expected dialog and task reminders to both be visible');
-      const taskReminder = visibleA.find((reminder) => reminder.scope === 'task');
-      assert.ok(taskReminder, 'Expected task reminder to exist');
-      assert.ok(taskReminder.id, 'Expected task reminder id to exist');
-      assert.equal(
-        visibleA[1]?.id,
-        'dialog001',
-        'Expected newer task reminder to sort ahead of older dialog reminder',
+      const task = visibleA.find((row) => row.scope === 'task');
+      assert.ok(task);
+      assert.deepEqual(
+        visibleA.map((row) => row.id),
+        [task.id, local.id],
       );
-
-      const taskPersistedPath = path.join(
-        sandboxDir,
-        '.dialogs',
-        'reminders',
+      assert.equal(
+        a.reminders.some((row) => row.id === task.id),
+        false,
+      );
+      const storedTask = await sharedReminderFile(fixture.rtws, task.id);
+      assert.ok(storedTask);
+      assert.deepEqual(storedTask.relativePath.split(path.sep).slice(0, 2), [
         'agent_tasks',
         'tester',
-        taskStorageKey(taskDocPath),
-        `${taskReminder.id}.json`,
+      ]);
+      assert.equal(storedTask.data.id, task.id);
+      assert.equal(storedTask.data.scope, 'task');
+      assert.equal(storedTask.data.renderMode, 'markdown');
+      assert.equal(storedTask.data.content, givenTask);
+      await captureSharedNotices({
+        language,
+        id: 'default-task-added',
+        scenario:
+          'Default add creates a task-shared work note, not a dialog-local copy. No active peer exists.',
+        updater: a,
+        reminderId: task.id,
+        scope: 'task',
+        actors,
+        recipients: [],
+        receipt: added,
+        givenData: givenTask,
+        evidence,
+      });
+      const b = await root();
+      const otherTask = await root('tester', fixture.otherTaskDocPath);
+      const otherAgent = await root('other-agent');
+      await fixture.lock(otherAgent);
+      assert.deepEqual(
+        (await b.listVisibleReminders())
+          .filter((row) => row.id !== MAIN_DIALOG_GOAL_REMINDER_ID)
+          .map((row) => ({ id: row.id, content: row.content, scope: row.scope })),
+        [{ id: task.id, content: givenTask, scope: 'task' }],
       );
-      const taskPersistedRaw = await fs.readFile(taskPersistedPath, 'utf-8');
-      assert.match(taskPersistedRaw, /"scope": "task"/);
-
-      const dialogB = createDialog('tester', taskDocPath);
-      registerRuntimeDialog(dialogB);
-      const visibleB = withoutMainDialogGoal(await dialogB.listVisibleReminders());
+      for (const dialog of [otherTask, otherAgent])
+        assert.equal(
+          (await dialog.listVisibleReminders()).some(
+            (row) => row.id === task.id || row.id === local.id,
+          ),
+          false,
+        );
+      const loadedBody = 'Remember the loaded-only deploy smoke-check command';
+      const loadedUpdate = await updateReminderTool.call(b, fixture.caller, {
+        reminder_id: task.id,
+        content: loadedBody,
+      });
+      assert.equal(loadedUpdate.outcome, 'success');
       assert.equal(
-        visibleB[0]?.id,
-        taskReminder.id,
-        'Expected another dialog of the same agent and Taskdoc to see the same task reminder',
+        (await a.listVisibleReminders()).find((row) => row.id === task.id)?.content,
+        loadedBody,
       );
-      assert.equal(
-        visibleB.length,
-        1,
-        'Expected only task-scoped reminder to be visible in fresh dialog for the same Taskdoc',
-      );
-
-      const dialogOtherTask = createDialog('tester', otherTaskDocPath);
-      registerRuntimeDialog(dialogOtherTask);
-      assert.equal(
-        withoutMainDialogGoal(await dialogOtherTask.listVisibleReminders()).length,
-        0,
-        'Expected same agent with a different Taskdoc not to see task-scoped reminder',
-      );
-
-      const updateOutput = (
-        await updateReminderTool.call(dialogB, caller, {
-          reminder_id: taskReminder.id,
-          content: 'Remember the loaded-only deploy smoke-check command',
-        })
-      ).content;
-      assert.match(updateOutput, /Updated|已更新/);
-      assert.doesNotMatch(
-        updateOutput,
-        /Dispatched notices|已向/,
-        'Expected no dispatch when the current runtime has no active same-agent peer dialogs',
-      );
-      assert.equal(
-        dialogA.peekQueuedPrompt(),
-        undefined,
-        'Expected loaded historical same-agent dialog not to receive task update impact prompt',
-      );
-
-      const singleActiveRoot = createDialog('mentor-single-active', taskDocPath);
-      registerRuntimeDialog(singleActiveRoot);
-      const onlyActiveSide = await singleActiveRoot.createSideDialog(
-        'tester',
-        ['@tester'],
-        'Only active same-agent side dialog in this root',
-        {
-          callName: 'tellask',
-          originMemberId: 'mentor-single-active',
-          askerDialogId: singleActiveRoot.id.selfId,
-          callId: 'call-only-active-side',
-          callSiteCourse: 1,
-          callSiteGenseq: 1,
-        },
-      );
-      singleActiveRoot.addActiveCalleeDialogs([onlyActiveSide.id]);
-      const singleActiveUpdateOutput = (
-        await updateReminderTool.call(onlyActiveSide, caller, {
-          reminder_id: taskReminder.id,
-          content: 'Remember the single-active deploy smoke-check command',
-        })
-      ).content;
-      assert.match(singleActiveUpdateOutput, /Updated|已更新/);
-      assert.doesNotMatch(
-        singleActiveUpdateOutput,
-        /Dispatched notices|已向/,
-        'Expected no dispatch when the only active same-agent dialog is the updater itself',
-      );
-      globalDialogRegistry.unregister(singleActiveRoot.id.rootId);
-
-      const activeRoot = createDialog('mentor', taskDocPath);
-      registerRuntimeDialog(activeRoot);
-      const activeSideA = await activeRoot.createSideDialog(
-        'tester',
-        ['@tester'],
-        'Active same-agent side dialog A',
-        {
-          callName: 'tellask',
-          originMemberId: 'mentor',
-          askerDialogId: activeRoot.id.selfId,
-          callId: 'call-active-side-a',
-          callSiteCourse: 1,
-          callSiteGenseq: 1,
-        },
-      );
-      const activeSideB = await activeRoot.createSideDialog(
-        'tester',
-        ['@tester'],
-        'Active same-agent side dialog B',
-        {
-          callName: 'tellask',
-          originMemberId: 'mentor',
-          askerDialogId: activeRoot.id.selfId,
-          callId: 'call-active-side-b',
-          callSiteCourse: 1,
-          callSiteGenseq: 1,
-        },
-      );
-      activeRoot.addActiveCalleeDialogs([activeSideA.id, activeSideB.id]);
-      const activeRootSameTaskOtherRoot = createDialog('mentor-other-root', taskDocPath);
-      registerRuntimeDialog(activeRootSameTaskOtherRoot);
-      const activeSideSameTaskOtherRoot = await activeRootSameTaskOtherRoot.createSideDialog(
-        'tester',
-        ['@tester'],
-        'Active same-agent same-task side dialog in another root',
-        {
-          callName: 'tellask',
-          originMemberId: 'mentor-other-root',
-          askerDialogId: activeRootSameTaskOtherRoot.id.selfId,
-          callId: 'call-active-side-same-task-other-root',
-          callSiteCourse: 1,
-          callSiteGenseq: 1,
-        },
-      );
-      activeRootSameTaskOtherRoot.addActiveCalleeDialogs([activeSideSameTaskOtherRoot.id]);
-      const activeRootOtherTaskOtherRoot = createDialog('mentor-other-task', otherTaskDocPath);
-      registerRuntimeDialog(activeRootOtherTaskOtherRoot);
-      const activeSideOtherTaskOtherRoot = await activeRootOtherTaskOtherRoot.createSideDialog(
-        'tester',
-        ['@tester'],
-        'Active same-agent different-task side dialog in another root',
-        {
-          callName: 'tellask',
-          originMemberId: 'mentor-other-task',
-          askerDialogId: activeRootOtherTaskOtherRoot.id.selfId,
-          callId: 'call-active-side-other-task-other-root',
-          callSiteCourse: 1,
-          callSiteGenseq: 1,
-        },
-      );
-      activeRootOtherTaskOtherRoot.addActiveCalleeDialogs([activeSideOtherTaskOtherRoot.id]);
-      const activeMainPeer = createDialog('tester', taskDocPath);
-      registerRuntimeDialog(activeMainPeer);
-      releaseActiveMainPeer = await activeMainPeer.acquire();
-
-      const activeUpdateOutput = (
-        await updateReminderTool.call(activeSideA, caller, {
-          reminder_id: taskReminder.id,
-          content: 'Remember the active peer deploy smoke-check command',
-        })
-      ).content;
-      assert.match(activeUpdateOutput, /Updated|已更新/);
-      assert.match(
-        activeUpdateOutput,
-        /Dispatched notices to 3\/3 affected parallel dialog/,
-        'Expected task-scoped update result to report dispatch to same-task active peers across roots',
-      );
-      assert.ok(
-        activeSideB.peekQueuedPrompt()?.prompt.includes(`reminder_id=${taskReminder.id}`),
-        'Expected active same-root peer dialog to receive shared reminder update prompt',
-      );
-      assert.ok(
-        activeSideSameTaskOtherRoot
-          .peekQueuedPrompt()
-          ?.prompt.includes(`reminder_id=${taskReminder.id}`),
-        'Expected active same-agent same-task peer in another root to receive shared reminder update prompt',
-      );
-      assert.ok(
-        activeMainPeer.peekQueuedPrompt()?.prompt.includes(`reminder_id=${taskReminder.id}`),
-        'Expected active same-agent same-task main dialog in another root to receive shared reminder update prompt',
-      );
-      assert.equal(
-        activeSideOtherTaskOtherRoot.peekQueuedPrompt(),
-        undefined,
-        'Expected active same-agent different-task peer not to receive task-scope update prompt',
-      );
-      assert.equal(
-        dialogA.peekQueuedPrompt(),
-        undefined,
-        'Expected loaded historical same-agent dialog outside active-callees not to receive prompt',
-      );
-      assert.equal(
-        dialogOtherTask.peekQueuedPrompt(),
-        undefined,
-        'Expected different-task dialog not to receive task-scoped update impact prompt',
-      );
-      const manualUpdatePrompt = activeSideB.takeQueuedPrompt();
-      const crossRootTaskUpdatePrompt = activeSideSameTaskOtherRoot.takeQueuedPrompt();
-      const activeMainTaskUpdatePrompt = activeMainPeer.takeQueuedPrompt();
-      assert.ok(manualUpdatePrompt, 'Expected manual shared update prompt to be queued');
-      assert.ok(
-        crossRootTaskUpdatePrompt,
-        'Expected cross-root task shared update prompt to be queued',
-      );
-      assert.ok(
-        activeMainTaskUpdatePrompt,
-        'Expected active main task shared update prompt to be queued',
-      );
-
-      const autoOwner: ReminderOwner = {
-        name: autoOwnerName,
-        async updateReminder(_dlg, reminder) {
-          if (reminder.content === 'Owner refreshed shared state') {
-            return { treatment: 'keep' };
-          }
+      await captureSharedNotices({
+        language,
+        id: 'loaded-history-excluded',
+        scenario:
+          'A shared task update is visible to another loaded same-task Main Dialog, but unlocked historical roots and a locked other-agent root are not current recipients.',
+        updater: b,
+        reminderId: task.id,
+        scope: 'task',
+        actors,
+        recipients: [],
+        receipt: loadedUpdate,
+        givenData: loadedBody,
+        evidence,
+      });
+      const singleRoot = await root('mentor-single');
+      const single = await side(singleRoot, 'only-active-side');
+      const singleBody = 'Remember the single-active deploy smoke-check command';
+      const singleUpdate = await updateReminderTool.call(single, fixture.caller, {
+        reminder_id: task.id,
+        content: singleBody,
+      });
+      assert.equal(singleUpdate.outcome, 'success');
+      await captureSharedNotices({
+        language,
+        id: 'only-updater-is-active',
+        scenario:
+          'The only active same-agent Side Dialog performs the update; do not send it a peer notification about its own change.',
+        updater: single,
+        reminderId: task.id,
+        scope: 'task',
+        actors,
+        recipients: [],
+        receipt: singleUpdate,
+        givenData: singleBody,
+        evidence,
+      });
+      globalDialogRegistry.unregister(singleRoot.id.rootId);
+      const activeRoot = await root('mentor');
+      const activeA = await side(activeRoot, 'active-side-a');
+      const activeB = await side(activeRoot, 'active-side-b');
+      const crossRoot = await root('mentor-cross-root');
+      const crossTask = await side(crossRoot, 'same-task-cross-root');
+      const otherRoot = await root('mentor-other-task', fixture.otherTaskDocPath);
+      const crossOtherTask = await side(otherRoot, 'other-task-cross-root');
+      const mainPeer = await root();
+      await fixture.lock(mainPeer);
+      const manualBody = 'Remember the active peer deploy smoke-check command';
+      const manual = await updateReminderTool.call(activeA, fixture.caller, {
+        reminder_id: task.id,
+        content: manualBody,
+      });
+      assert.equal(manual.outcome, 'success');
+      await captureSharedNotices({
+        language,
+        id: 'active-task-manual-update',
+        scenario:
+          'A task change reaches the same-root Side, cross-root same-task Side and locked same-task Main. Different-task, other-agent, historical and updater dialogs are excluded.',
+        updater: activeA,
+        reminderId: task.id,
+        scope: 'task',
+        actors,
+        recipients: [activeB, crossTask, mainPeer],
+        receipt: manual,
+        givenData: manualBody,
+        evidence,
+      });
+      const ownerId = 'owner-' + language + '-001';
+      let refreshOwner = false;
+      let ownerCalls = 0;
+      const owner: ReminderOwner = {
+        name: 'task-agent-reminder-scope-auto-owner',
+        async updateReminder(_dialog, reminder) {
+          ownerCalls++;
+          const updatedMeta: JsonObject = refreshOwner
+            ? { ownerUpdated: true }
+            : { nested: { b: 2, a: 1 }, state: 'same' };
           return {
             treatment: 'update',
-            updatedContent: 'Owner refreshed shared state',
-            updatedMeta: { ownerUpdated: true },
+            updatedContent: refreshOwner ? 'Owner refreshed shared state' : reminder.content,
+            updatedMeta,
           };
         },
-        async renderReminder(_dlg, reminder) {
-          return {
-            type: 'transient_guide_msg',
-            role: 'assistant',
-            content: reminder.content,
-          };
+        async renderReminder(_dialog, reminder) {
+          return { type: 'transient_guide_msg', role: 'assistant', content: reminder.content };
         },
       };
-      registerReminderOwner(autoOwner);
-      await mutateSharedReminders(
-        { kind: 'task', agentId: 'tester', taskDocPath },
-        (sharedReminders) => {
-          sharedReminders.push(
-            materializeReminder({
-              id: 'owner001',
-              content: 'Owner stale shared state',
-              owner: autoOwner,
-              scope: 'task',
-              createdAt: '2026-03-30T00:00:01.000Z',
-              renderMode: 'markdown',
-            }),
-          );
-        },
-      );
-      await activeSideB.processReminderUpdates();
-      assert.ok(
-        activeSideA.peekQueuedPrompt()?.prompt.includes('reminder_id=owner001'),
-        'Expected owner-driven shared reminder update to notify active same-root peer dialog',
-      );
-      assert.ok(
-        activeSideSameTaskOtherRoot.peekQueuedPrompt()?.prompt.includes('reminder_id=owner001'),
-        'Expected owner-driven shared reminder update to notify active cross-root same-task peer dialog',
-      );
-      assert.ok(
-        activeMainPeer.peekQueuedPrompt()?.prompt.includes('reminder_id=owner001'),
-        'Expected owner-driven shared reminder update to notify active cross-root same-task main dialog',
-      );
-      assert.equal(
-        activeSideOtherTaskOtherRoot.peekQueuedPrompt(),
-        undefined,
-        'Expected owner-driven task reminder update not to notify active cross-root different-task peer dialog',
-      );
-      assert.equal(
-        dialogA.peekQueuedPrompt(),
-        undefined,
-        'Expected owner-driven task reminder update not to notify loaded historical same-agent dialog',
-      );
-      assert.equal(
-        dialogOtherTask.peekQueuedPrompt(),
-        undefined,
-        'Expected owner-driven task reminder update not to notify different-task dialog',
-      );
-      const autoUpdatedReminder = (await activeSideB.listVisibleReminders()).find(
-        (reminder) => reminder.id === 'owner001',
-      );
-      assert.equal(autoUpdatedReminder?.content, 'Owner refreshed shared state');
-      const updatedReminder = (await activeSideB.listVisibleReminders()).find(
-        (reminder) => reminder.id === taskReminder.id,
-      );
-      assert.equal(updatedReminder?.content, 'Remember the active peer deploy smoke-check command');
-      assert.equal(updatedReminder?.scope, 'task');
-
-      const addAgentOutput = (
-        await addReminderTool.call(activeSideA, caller, {
-          content: 'Urgent: confirm before deleting external resources',
+      registerReminderOwner(owner);
+      try {
+        await mutateSharedReminders(
+          { kind: 'task', agentId: 'tester', taskDocPath: fixture.taskDocPath },
+          (reminders) => {
+            reminders.push(
+              materializeReminder({
+                id: ownerId,
+                content: 'Owner stale shared state',
+                owner,
+                meta: { state: 'same', nested: { a: 1, b: 2 } },
+                scope: 'task',
+                createdAt: '2026-03-30T00:00:01.000Z',
+                priority: 'medium',
+                renderMode: 'markdown',
+              }),
+            );
+          },
+        );
+        const before = await sharedNoticeState(actors);
+        const fileBefore = await sharedReminderFile(fixture.rtws, ownerId);
+        await activeB.processReminderUpdates();
+        assert.equal(ownerCalls, 1);
+        assert.deepEqual(await sharedNoticeState(actors), before);
+        assert.deepEqual(await sharedReminderFile(fixture.rtws, ownerId), fileBefore);
+        refreshOwner = true;
+        await activeB.processReminderUpdates();
+        assert.equal(ownerCalls, 2);
+        const ownerFile = await sharedReminderFile(fixture.rtws, ownerId);
+        assert.ok(ownerFile);
+        assert.equal(ownerFile.data.ownerName, owner.name);
+        assert.equal(ownerFile.data.content, 'Owner refreshed shared state');
+        assert.deepEqual(ownerFile.data.meta, { ownerUpdated: true });
+        assert.equal(
+          (await activeB.listVisibleReminders()).find((row) => row.id === task.id)?.content,
+          manualBody,
+        );
+        await captureSharedNotices({
+          language,
+          id: 'active-task-owner-update',
+          scenario:
+            'A registered owner really changes task state after an equivalent-key-order control produced no new memory/disk scheduling state. The actual change reaches three intended same-task peers.',
+          updater: activeB,
+          reminderId: ownerId,
+          scope: 'task',
+          actors,
+          recipients: [activeA, crossTask, mainPeer],
+          givenData: JSON.stringify({
+            content: 'Owner refreshed shared state',
+            meta: { ownerUpdated: true },
+          }),
+          evidence,
+        });
+        const ownedBefore = {
+          local: reminderData(activeB.reminders),
+          localDisk: reminderData(
+            await DialogPersistence.loadReminderState(activeB.id, activeB.status),
+          ),
+          shared: await sharedReminderFile(fixture.rtws, ownerId),
+          notices: await sharedNoticeState(actors),
+        };
+        const ownedMigration = await migrateReminderTool.call(activeB, fixture.caller, {
+          reminder_id: ownerId,
+          scope: 'dialog',
+        });
+        assert.equal(ownedMigration.outcome, 'failure');
+        assert.equal(ownerCalls, 2);
+        assert.deepEqual(
+          {
+            local: reminderData(activeB.reminders),
+            localDisk: reminderData(
+              await DialogPersistence.loadReminderState(activeB.id, activeB.status),
+            ),
+            shared: await sharedReminderFile(fixture.rtws, ownerId),
+            notices: await sharedNoticeState(actors),
+          },
+          ownedBefore,
+        );
+        evidence.record({
+          id: language + '-owner-migration-refused',
+          scenario:
+            'The same actual owner-maintained shared note cannot be migrated through the manual tool; the tool refuses without changing private/shared/durable queued state.',
+          businessValue:
+            'Keep automated state under its owning capability rather than advertise or permit a manual migration that cannot preserve its lifecycle.',
+          context: {
+            language,
+            reminderId: ownerId,
+            owner: owner.name,
+            givenData: JSON.stringify(ownerFile.data),
+            scopeLimit:
+              'Actual tool handler and complete local/shared/queue state; this does not invoke an owner management command or discover a new capability.',
+          },
+          reviewQuestions: [
+            'Does the actual refusal accurately explain the automatic maintenance boundary without claiming a migration happened or inventing a maintenance action?',
+          ],
+          actualText: ownedMigration.content,
+        });
+        const agentBody = 'Urgent: confirm before deleting external resources';
+        const agentAdded = await addReminderTool.call(activeA, fixture.caller, {
+          content: agentBody,
           scope: 'agent',
-        })
-      ).content;
-      assert.match(addAgentOutput, /Added|已添加/);
-      const agentReminder = (await dialogOtherTask.listVisibleReminders()).find(
-        (reminder) => reminder.scope === 'agent',
-      );
-      assert.ok(
-        agentReminder,
-        'Expected same agent with a different Taskdoc to see agent-scoped reminder',
-      );
-      const agentPersistedPath = path.join(
-        sandboxDir,
-        '.dialogs',
-        'reminders',
-        'agents',
-        'tester',
-        `${agentReminder.id}.json`,
-      );
-      const agentPersistedRaw = await fs.readFile(agentPersistedPath, 'utf-8');
-      assert.match(agentPersistedRaw, /"scope": "agent"/);
-      const ownerUpdatePrompt = activeSideA.takeQueuedPrompt();
-      const ownerCrossRootUpdatePrompt = activeSideSameTaskOtherRoot.takeQueuedPrompt();
-      const ownerActiveMainUpdatePrompt = activeMainPeer.takeQueuedPrompt();
-      assert.ok(ownerUpdatePrompt, 'Expected owner-driven shared update prompt to be queued');
-      assert.ok(
-        ownerCrossRootUpdatePrompt,
-        'Expected owner-driven cross-root shared update prompt to be queued',
-      );
-      assert.ok(
-        ownerActiveMainUpdatePrompt,
-        'Expected owner-driven active main shared update prompt to be queued',
-      );
-
-      const updateAgentOutput = (
-        await updateReminderTool.call(activeSideB, caller, {
-          reminder_id: agentReminder.id,
-          content: 'Urgent: confirm twice before deleting external resources',
-        })
-      ).content;
-      assert.match(updateAgentOutput, /Updated|已更新/);
-      assert.match(
-        updateAgentOutput,
-        /Dispatched notices to 4\/4 affected parallel dialog/,
-        'Expected agent-scoped update result to report dispatch to same-agent active peers across roots',
-      );
-      assert.ok(
-        activeSideA.peekQueuedPrompt()?.prompt.includes(`reminder_id=${agentReminder.id}`),
-        'Expected active same-root peer dialog to receive agent-scope update impact prompt',
-      );
-      assert.ok(
-        activeSideSameTaskOtherRoot
-          .peekQueuedPrompt()
-          ?.prompt.includes(`reminder_id=${agentReminder.id}`),
-        'Expected active same-agent same-task cross-root peer to receive agent-scope update impact prompt',
-      );
-      assert.ok(
-        activeSideOtherTaskOtherRoot
-          .peekQueuedPrompt()
-          ?.prompt.includes(`reminder_id=${agentReminder.id}`),
-        'Expected active same-agent different-task cross-root peer to receive agent-scope update impact prompt',
-      );
-      assert.ok(
-        activeMainPeer.peekQueuedPrompt()?.prompt.includes(`reminder_id=${agentReminder.id}`),
-        'Expected active same-agent main dialog in another root to receive agent-scope update impact prompt',
-      );
-      assert.equal(
-        dialogA.peekQueuedPrompt(),
-        undefined,
-        'Expected loaded historical same-agent dialog not to receive agent-scope update impact prompt',
-      );
-      const agentUpdatePromptA = activeSideA.takeQueuedPrompt();
-      const agentUpdatePromptSameTaskCrossRoot = activeSideSameTaskOtherRoot.takeQueuedPrompt();
-      const agentUpdatePromptOtherTaskCrossRoot = activeSideOtherTaskOtherRoot.takeQueuedPrompt();
-      const agentUpdatePromptActiveMain = activeMainPeer.takeQueuedPrompt();
-      assert.ok(agentUpdatePromptA, 'Expected dialogA agent-scope prompt to be queued');
-      assert.ok(
-        agentUpdatePromptSameTaskCrossRoot,
-        'Expected same-task cross-root agent-scope prompt to be queued',
-      );
-      assert.ok(
-        agentUpdatePromptOtherTaskCrossRoot,
-        'Expected other-task cross-root agent-scope prompt to be queued',
-      );
-      assert.ok(
-        agentUpdatePromptActiveMain,
-        'Expected active main cross-root agent-scope prompt to be queued',
-      );
-
-      assert.equal(
-        withoutMainDialogGoal(await createDialog('other-agent', taskDocPath).listVisibleReminders())
-          .length,
-        0,
-        'Expected another agent not to see tester task/agent reminders',
-      );
-
-      const deleteOutput = (
-        await deleteReminderTool.call(dialogB, caller, {
-          reminder_id: taskReminder.id,
-        })
-      ).content;
-      assert.match(deleteOutput, /Deleted|已删除/);
-      const visibleAfterTaskDelete = await dialogB.listVisibleReminders();
-      assert.equal(
-        visibleAfterTaskDelete.some((reminder) => reminder.id === taskReminder.id),
-        false,
-        'Expected the deleted task reminder to disappear',
-      );
-      assert.ok(
-        visibleAfterTaskDelete.some((reminder) => reminder.id === 'owner001'),
-        'Expected the owner-maintained task reminder to remain visible',
-      );
-      assert.ok(
-        visibleAfterTaskDelete.some((reminder) => reminder.id === agentReminder.id),
-        'Expected the agent-scoped reminder to remain visible',
-      );
-
-      const deleteAgentOutput = (
-        await deleteReminderTool.call(dialogOtherTask, caller, {
-          reminder_id: agentReminder.id,
-        })
-      ).content;
-      assert.match(deleteAgentOutput, /Deleted|已删除/);
-      assert.equal(withoutMainDialogGoal(await dialogOtherTask.listVisibleReminders()).length, 0);
-    } finally {
-      if (releaseActiveMainPeer) {
-        releaseActiveMainPeer();
+        });
+        assert.equal(agentAdded.outcome, 'success');
+        const agent = (await otherTask.listVisibleReminders()).find((row) => row.scope === 'agent');
+        assert.ok(agent);
+        const agentFile = await sharedReminderFile(fixture.rtws, agent.id);
+        assert.ok(agentFile);
+        assert.deepEqual(agentFile.relativePath.split(path.sep).slice(0, 2), ['agents', 'tester']);
+        assert.equal(agentFile.data.scope, 'agent');
+        assert.equal(agentFile.data.content, agentBody);
+        assert.equal(agentFile.data.id, agent.id);
+        assert.equal(
+          (await otherAgent.listVisibleReminders()).some(
+            (row) => row.id === task.id || row.id === agent.id,
+          ),
+          false,
+        );
+        evidence.record({
+          id: language + '-agent-added',
+          scenario:
+            'An explicitly agent-shared work note is visible across this agent Taskdocs and excluded from another agent.',
+          businessValue:
+            'Keep urgent global notes visible to their owner agent without crossing agent isolation.',
+          context: {
+            language,
+            givenContent: agentBody,
+            reminderId: agent.id,
+            scopeLimit:
+              'Actual handler, visibility and agent-namespace JSON; the note is given data, no external deletion or permission action runs.',
+          },
+          reviewQuestions: [
+            'Does the actual receipt agree with creating this shared work note without claiming an external operation?',
+          ],
+          actualText: agentAdded.content,
+        });
+        const agentUpdatedBody = 'Urgent: confirm twice before deleting external resources';
+        const agentUpdate = await updateReminderTool.call(activeB, fixture.caller, {
+          reminder_id: agent.id,
+          content: agentUpdatedBody,
+        });
+        assert.equal(agentUpdate.outcome, 'success');
+        await captureSharedNotices({
+          language,
+          id: 'active-agent-manual-update',
+          scenario:
+            'An agent-scoped update also reaches the active same-agent Side on another Taskdoc; the other-agent, historical and updater dialogs remain excluded.',
+          updater: activeB,
+          reminderId: agent.id,
+          scope: 'agent',
+          actors,
+          recipients: [activeA, crossTask, crossOtherTask, mainPeer],
+          receipt: agentUpdate,
+          givenData: agentUpdatedBody,
+          evidence,
+        });
+        const taskDeleted = await deleteReminderTool.call(b, fixture.caller, {
+          reminder_id: task.id,
+        });
+        assert.equal(taskDeleted.outcome, 'success');
+        assert.equal(await sharedReminderFile(fixture.rtws, task.id), undefined);
+        const afterDelete = await b.listVisibleReminders();
+        assert.equal(
+          afterDelete.some((row) => row.id === task.id),
+          false,
+        );
+        assert.equal(
+          afterDelete.find((row) => row.id === ownerId)?.content,
+          'Owner refreshed shared state',
+        );
+        assert.equal(afterDelete.find((row) => row.id === agent.id)?.content, agentUpdatedBody);
+        const agentDeleted = await deleteReminderTool.call(otherTask, fixture.caller, {
+          reminder_id: agent.id,
+        });
+        assert.equal(agentDeleted.outcome, 'success');
+        assert.equal(await sharedReminderFile(fixture.rtws, agent.id), undefined);
+        assert.deepEqual(
+          (await otherTask.listVisibleReminders()).filter(
+            (row) => row.id !== MAIN_DIALOG_GOAL_REMINDER_ID,
+          ),
+          [],
+        );
+        assert.equal(
+          (await a.listVisibleReminders()).find((row) => row.id === local.id)?.content,
+          local.content,
+        );
+        evidence.record({
+          id: language + '-independent-shared-deletions',
+          scenario:
+            'A different same-task dialog deletes the manual task item while owner/agent items stay; a different Taskdoc then deletes the agent item. Private original data remain.',
+          businessValue:
+            'Remove only the selected shared work without losing independently owned or private state.',
+          context: {
+            language,
+            taskReminderId: task.id,
+            agentReminderId: agent.id,
+            preservedOwnerReminderId: ownerId,
+            scopeLimit:
+              'Actual handlers, visibility and physical shared file absence; no delete-notification policy or external resource operation is established.',
+          },
+          reviewQuestions: [
+            'Do the actual two deletion receipts fit the observed item removals without implying broader state removal?',
+          ],
+          actualText: JSON.stringify({ taskDeleted, agentDeleted }, null, 2),
+        });
+      } finally {
+        unregisterReminderOwner(owner.name);
       }
-      unregisterReminderOwner(autoOwnerName);
-      for (const dialog of registeredRuntimeDialogs) {
-        globalDialogRegistry.unregister(dialog.id.rootId);
-      }
-    }
-  });
-
-  console.log('OK');
+    });
+  }
+  await evidence.write();
+  console.log('Shared task/agent visibility, actual recipient routing and disk state: PASS');
 }
-
-void main().catch((error: unknown) => {
-  console.error(error instanceof Error ? (error.stack ?? error.message) : String(error));
-  process.exit(1);
-});
+const watchdog = setTimeout(() => {
+  throw new Error('Shared reminder scope case did not complete within60 seconds');
+}, 60_000);
+main().then(
+  () => clearTimeout(watchdog),
+  (error: unknown) => {
+    clearTimeout(watchdog);
+    console.error(error);
+    process.exitCode = 1;
+  },
+);

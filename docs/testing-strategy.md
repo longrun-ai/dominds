@@ -443,3 +443,15 @@ Kimi 原本已有真实 SDK 到本地 HTTP 的成功请求，保留这条实际�
 owner抛错用真实event registry核一次stream_error_evt、正确course和无generation，并保原注入异常身份、公开数据/磁盘不变及不发布成功full快照。等价更新使用公开remindersVer，不依赖跨秒sleep或同tick时间相等；仍允许正常persist/full事件。新增nested对象键序变化实测暴露产品缺陷：JSON.stringify把对象插入顺序算入renderRevision，错误推进状态版本。对最终回归切回原产品源码，明确复现3≠2，再恢复修复后的相同源码通过；不是加timeout或重试直到绿。修复只让render identity的对象键有序，保留数组次序。真实数组逆序与真实正文变化分别推进版本、改变revision并写入磁盘，不把内容哈希当语义判断。
 
 扩展test:reminders共九项；语义九个入口新输出八十一份（原核心六十二份也需对本次新材料逐份重审，新增十九份保护/owner证据）。生成不自动接受含义。原值映射、失败现场、全部断言及产品diff审查、实际全文与独立理由见[本批记录](../tests/semantic/reviews/2026-10-31-reminder-mutation-guards.json)。当前284个TypeScript文件、30个辅助/证据模块、254个候选，审查155项，余99项；套件外92项，无单独脚本43项，直接失效与陈旧账本路径均零。owner原一条抽象基类类型错误修复后，全目录仍有79条继承类型诊断，继续明确失败，不弱化类型或排除源码。
+
+### 共享提醒路由、持久队列与私有迁移批次
+
+原task-agent500行与migrate181行、实际routing/shared storage/registry/queue/store完整审阅，两个旧基线均通过，但receipt/派发数量/迁移含义仍有字面oracle。保留默认task与local分离、旧private/new task合并排序、同agent/sameTask/crossRoot共享、异Task和异agent隔离、物理task/agent命名空间JSON、loaded历史/唯一active updater/并行Side与锁住Main的准确受众，以及独立删除不丢其他项。当前真实候选是registered roots中locked Main和loaded active-callee frontier，不把全部loaded或persisted running对话当作当前收件者。
+
+真实Disk/Team/native call-site取代memory store/空caller/原始数字brand与中途chdir。每次通知直接核完整接收者ID集合（task三人、agent四人）、runtime-guide kind/origin/grammar/lang/skipTaskdoc、memory正文与disk pendingRuntimePrompt保真、对应queued_prompt ID/course及root队列标志，不解析“Dispatched 3/3”句。观测后显式用真实clearPendingRuntimePrompt和clearRootDriveQueue确认/排空夹具；takeQueuedPrompt仅移内存，不代表持久消费。实际receipt和每份notice全文单独发主观评，不声称执行智能体已处理或重启后交付。
+
+registered owner的等价nested对象key序更新确实被调用一次；完整memory queue/pending/nextStep/root flags和共享JSON前后保持。真正body/meta变化再按三个正确同任务peer新增通知，原manual数据保留。将初版共享scope回归临时切回24549bbe的旧main/tool.ts，明确复现三个peer新增完整pending/runtime guide及根调度，再恢复当前相同字节后通过；这是上批render identity修复的实际协作价值反例，不是微观性能优化或零写断言。随后独立全文评审初九份材料时又拒绝一份：真实自动维护提醒的三份peer notice建议updater调用migrate_reminder，实际工具却因owner拒绝此操作。现仅修中英updater/peer四条建议，限定无owner/manager/维护限制的手工提醒才适用手工迁移；自动或受限状态遵循已有维护说明，无可用通道时向负责维护者说明范围问题。没有新增DSL字段或放宽权限。两个入口各按中英执行，另实际调用owner迁移核failure及private/shared/queue全状态不变，双语真手工迁移仍成功。每个语言使用不同Taskdoc路径和owner ID，保留成功的前一语言现场也不会污染下一语言。
+
+迁移沿袭默认task→当前Side私有的同ID行为，补plain/完整opaque checkpoint数据/createdAt/priority保真、实际local磁盘、shared文件消失、两个Side/locked Main/历史/新开Main全部不再可见，以及按原task范围给三个active peer排撤下通知；异Task/异agent不收。自动owner迁移拒绝由scope案例实测；agent→private、管理工具/delete限制等其他迁移拒绝、browser或真实LLM消费仍不在本批范围。
+
+完整提醒行为入口扩为十一项，完整语义入口可产生一百零一份材料。本批只显式执行新增两个CLI producer，按中英生成二十份新材料并重新独立全文评审；初九份八通过、一拒绝的全文和理由保留。历史core/guard八十一份仍在各自来源固定的报告中，不把它们的旧verdict用于任何新输出。原值/完整断言审查、真实旧产品失败、实际新全文和主观理由见[本批记录](../tests/semantic/reviews/2026-10-31-shared-reminder-routing.json)。当前285个TypeScript文件、31个辅助/证据模块、254个候选，审查157项，余97项，套件外90项、无单独脚本43项、直接失效与陈旧账本路径均零。原18条call-site brand错误通过真实转换修正；新helper的trigger联合字段以kind窄化，新owner条件JSON对象的undefined推导以原生JsonObject修正。全目录仍有61条继承诊断，继续明确失败，不弱化类型或排除源码。

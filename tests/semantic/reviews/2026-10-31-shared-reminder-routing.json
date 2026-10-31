@@ -1,0 +1,2022 @@
+{
+  "schemaVersion": 1,
+  "date": "2026-10-31",
+  "reviewer": "Independent test-execution agent /root/stage1_semantic_record",
+  "baseRevision": "b4a22bc3e3e89e5cb1bc44c56c4a87b8875f8527",
+  "status": "passed",
+  "statusMeaning": "Only the20 embedded fresh bilingual semantic cases and complete scoped assertion/product/entry/documentation review pass. Initial9 retain8passed/1failed. Actual parent checks include61 inherited test-type failures and97 unaudited candidates; whole-repository remediation remains active. Neither process success, prior verdicts, ledger nor fingerprints accept future output.",
+  "initialCases": [
+    {
+      "id": "active-agent-manual-update",
+      "scenario": "An agent-scoped update also reaches the active same-agent Side on another Taskdoc; the other-agent, historical and updater dialogs remain excluded.",
+      "businessValue": "Deliver relevant shared-state changes to the intended executing peers without redirecting historical, private or unrelated work.",
+      "context": {
+        "reminderId": "jagi9afo",
+        "scope": "agent",
+        "givenData": "Urgent: confirm twice before deleting external resources",
+        "updaterAgent": "tester",
+        "updaterTask": "shared-reminder-task.tsk",
+        "expectedRecipients": "[{\"agentId\":\"tester\",\"taskDocPath\":\"shared-reminder-task.tsk\",\"id\":\"35/22/93894b61#ee/72/93894b62\"},{\"agentId\":\"tester\",\"taskDocPath\":\"shared-reminder-task.tsk\",\"id\":\"33/6b/93894b74#86/d2/93894b75\"},{\"agentId\":\"tester\",\"taskDocPath\":\"other-shared-reminder-task.tsk\",\"id\":\"22/20/93894b7e#d3/f8/93894b7f\"},{\"agentId\":\"tester\",\"taskDocPath\":\"shared-reminder-task.tsk\",\"id\":\"49/38/93894b89\"}]",
+        "scopeLimit": "Real Dialog/registry/queue/disk and scheduled root flags. Notices are pending work, not LLM/backend consumption or restart delivery. Fixture explicitly acknowledges each observed queued notice afterward using production clear APIs."
+      },
+      "reviewQuestions": [
+        "Do the actual receipt and each queued notice accurately describe the observed scope/change/withdrawal and intended recipient, without prescribing private state or claiming the peer already handled it?"
+      ],
+      "actualText": "{\n  \"receipt\": {\n    \"content\": \"Updated\\n\\nShared-scope impact: the reminder you just updated, reminder_id=jagi9afo, is agent-scope, not private to the current dialog. The current in-flight work has other parallel dialogs for the same agent, so other dialogs that can see this reminder will see this update too. Consider running migrate_reminder({ \\\"reminder_id\\\": \\\"jagi9afo\\\", \\\"scope\\\": \\\"dialog\\\" }) to make sure the reminder's impact scope is appropriate; if the new content should affect only the current dialog, Dominds will withdraw it from shared scope and keep it visible only in this dialog after migration.\\nDispatched notices to 4/4 affected parallel dialog(s).\",\n    \"outcome\": \"success\"\n  },\n  \"notices\": [\n    {\n      \"recipient\": \"35/22/93894b61#ee/72/93894b62\",\n      \"agentId\": \"tester\",\n      \"taskDocPath\": \"shared-reminder-task.tsk\",\n      \"prompt\": \"[System notice] Shared-scope reminder updated\\n\\nreminder_id=jagi9afo is agent-scope, not private to the current dialog. The current in-flight work has other parallel dialogs for the same agent. Another parallel dialog for the same agent just updated it, so this dialog will see the update too.\\nThis shared reminder was actually maintained by another dialog this time; decide for yourself whether it is relevant to this dialog context, and use only the parts that are truly relevant.\\nUse it as the latest shared reference. If this update appears to fit only the updater's dialog, do not correct the shared content from this dialog; you may ask the updater to run migrate_reminder({ \\\"reminder_id\\\": \\\"jagi9afo\\\", \\\"scope\\\": \\\"dialog\\\" }) in that dialog so Dominds withdraws it from other parallel dialogs. If this dialog has its own private state, create a separate dialog-scope reminder here.\"\n    },\n    {\n      \"recipient\": \"33/6b/93894b74#86/d2/93894b75\",\n      \"agentId\": \"tester\",\n      \"taskDocPath\": \"shared-reminder-task.tsk\",\n      \"prompt\": \"[System notice] Shared-scope reminder updated\\n\\nreminder_id=jagi9afo is agent-scope, not private to the current dialog. The current in-flight work has other parallel dialogs for the same agent. Another parallel dialog for the same agent just updated it, so this dialog will see the update too.\\nThis shared reminder was actually maintained by another dialog this time; decide for yourself whether it is relevant to this dialog context, and use only the parts that are truly relevant.\\nUse it as the latest shared reference. If this update appears to fit only the updater's dialog, do not correct the shared content from this dialog; you may ask the updater to run migrate_reminder({ \\\"reminder_id\\\": \\\"jagi9afo\\\", \\\"scope\\\": \\\"dialog\\\" }) in that dialog so Dominds withdraws it from other parallel dialogs. If this dialog has its own private state, create a separate dialog-scope reminder here.\"\n    },\n    {\n      \"recipient\": \"22/20/93894b7e#d3/f8/93894b7f\",\n      \"agentId\": \"tester\",\n      \"taskDocPath\": \"other-shared-reminder-task.tsk\",\n      \"prompt\": \"[System notice] Shared-scope reminder updated\\n\\nreminder_id=jagi9afo is agent-scope, not private to the current dialog. The current in-flight work has other parallel dialogs for the same agent. Another parallel dialog for the same agent just updated it, so this dialog will see the update too.\\nThis shared reminder was actually maintained by another dialog this time; decide for yourself whether it is relevant to this dialog context, and use only the parts that are truly relevant.\\nUse it as the latest shared reference. If this update appears to fit only the updater's dialog, do not correct the shared content from this dialog; you may ask the updater to run migrate_reminder({ \\\"reminder_id\\\": \\\"jagi9afo\\\", \\\"scope\\\": \\\"dialog\\\" }) in that dialog so Dominds withdraws it from other parallel dialogs. If this dialog has its own private state, create a separate dialog-scope reminder here.\"\n    },\n    {\n      \"recipient\": \"49/38/93894b89\",\n      \"agentId\": \"tester\",\n      \"taskDocPath\": \"shared-reminder-task.tsk\",\n      \"prompt\": \"[System notice] Shared-scope reminder updated\\n\\nreminder_id=jagi9afo is agent-scope, not private to the current dialog. The current in-flight work has other parallel dialogs for the same agent. Another parallel dialog for the same agent just updated it, so this dialog will see the update too.\\nThis shared reminder was actually maintained by another dialog this time; decide for yourself whether it is relevant to this dialog context, and use only the parts that are truly relevant.\\nUse it as the latest shared reference. If this update appears to fit only the updater's dialog, do not correct the shared content from this dialog; you may ask the updater to run migrate_reminder({ \\\"reminder_id\\\": \\\"jagi9afo\\\", \\\"scope\\\": \\\"dialog\\\" }) in that dialog so Dominds withdraws it from other parallel dialogs. If this dialog has its own private state, create a separate dialog-scope reminder here.\"\n    }\n  ]\n}",
+      "verdict": "passed",
+      "rationale": "手工agent项的更新回执与四个同agent收件者吻合，明确跨Task可见；各notice让peer判断相关性，私有修复由updater实施，没有声称peer已处理或擅改他方状态。",
+      "reviewScope": "Real Dialog/registry/queue/disk and scheduled root flags. Notices are pending work, not LLM/backend consumption or restart delivery. Fixture explicitly acknowledges each observed queued notice afterward using production clear APIs.",
+      "provenance": {
+        "batch": "initial-sharing-final-semantic",
+        "producer": "tests/reminders/task-agent-reminder-scope.ts",
+        "observedPath": "/tmp/dominds-reminder-sharing-final-semantic/1.tmp/dominds-shared-reminder-ZpnwQY/active-agent-manual-update.json",
+        "evidenceJsonSha256": "21087b9f8caf7802063726f7c18ee00e31350ab33bd66e5ed436371ff471a40b",
+        "actualTextSha256": "167190fe70f9d345f67f8b57598ea713aeed499d9ed66f10c37c3888b3c7f4e0",
+        "durableMaterial": "Complete actualText/scenario/input/context/questions embedded; /tmp availability not required."
+      }
+    },
+    {
+      "id": "active-task-manual-update",
+      "scenario": "A task change reaches the same-root Side, cross-root same-task Side and locked same-task Main. Different-task, other-agent, historical and updater dialogs are excluded.",
+      "businessValue": "Deliver relevant shared-state changes to the intended executing peers without redirecting historical, private or unrelated work.",
+      "context": {
+        "reminderId": "r6m6xlei",
+        "scope": "task",
+        "givenData": "Remember the active peer deploy smoke-check command",
+        "updaterAgent": "tester",
+        "updaterTask": "shared-reminder-task.tsk",
+        "expectedRecipients": "[{\"agentId\":\"tester\",\"taskDocPath\":\"shared-reminder-task.tsk\",\"id\":\"35/22/93894b61#a2/12/93894b6a\"},{\"agentId\":\"tester\",\"taskDocPath\":\"shared-reminder-task.tsk\",\"id\":\"33/6b/93894b74#86/d2/93894b75\"},{\"agentId\":\"tester\",\"taskDocPath\":\"shared-reminder-task.tsk\",\"id\":\"49/38/93894b89\"}]",
+        "scopeLimit": "Real Dialog/registry/queue/disk and scheduled root flags. Notices are pending work, not LLM/backend consumption or restart delivery. Fixture explicitly acknowledges each observed queued notice afterward using production clear APIs."
+      },
+      "reviewQuestions": [
+        "Do the actual receipt and each queued notice accurately describe the observed scope/change/withdrawal and intended recipient, without prescribing private state or claiming the peer already handled it?"
+      ],
+      "actualText": "{\n  \"receipt\": {\n    \"content\": \"Updated\\n\\nShared-scope impact: the reminder you just updated, reminder_id=r6m6xlei, is task-scope, not private to the current dialog. The current in-flight work has other parallel dialogs for the same agent and Taskdoc, so other dialogs that can see this reminder will see this update too. Consider running migrate_reminder({ \\\"reminder_id\\\": \\\"r6m6xlei\\\", \\\"scope\\\": \\\"dialog\\\" }) to make sure the reminder's impact scope is appropriate; if the new content should affect only the current dialog, Dominds will withdraw it from shared scope and keep it visible only in this dialog after migration.\\nDispatched notices to 3/3 affected parallel dialog(s).\",\n    \"outcome\": \"success\"\n  },\n  \"notices\": [\n    {\n      \"recipient\": \"35/22/93894b61#a2/12/93894b6a\",\n      \"agentId\": \"tester\",\n      \"taskDocPath\": \"shared-reminder-task.tsk\",\n      \"prompt\": \"[System notice] Shared-scope reminder updated\\n\\nreminder_id=r6m6xlei is task-scope, not private to the current dialog. The current in-flight work has other parallel dialogs for the same agent and Taskdoc. Another parallel dialog for the same agent just updated it, so this dialog will see the update too.\\nThis shared reminder was actually maintained by another dialog this time; decide for yourself whether it is relevant to this dialog context, and use only the parts that are truly relevant.\\nUse it as the latest shared reference. If this update appears to fit only the updater's dialog, do not correct the shared content from this dialog; you may ask the updater to run migrate_reminder({ \\\"reminder_id\\\": \\\"r6m6xlei\\\", \\\"scope\\\": \\\"dialog\\\" }) in that dialog so Dominds withdraws it from other parallel dialogs. If this dialog has its own private state, create a separate dialog-scope reminder here.\"\n    },\n    {\n      \"recipient\": \"33/6b/93894b74#86/d2/93894b75\",\n      \"agentId\": \"tester\",\n      \"taskDocPath\": \"shared-reminder-task.tsk\",\n      \"prompt\": \"[System notice] Shared-scope reminder updated\\n\\nreminder_id=r6m6xlei is task-scope, not private to the current dialog. The current in-flight work has other parallel dialogs for the same agent and Taskdoc. Another parallel dialog for the same agent just updated it, so this dialog will see the update too.\\nThis shared reminder was actually maintained by another dialog this time; decide for yourself whether it is relevant to this dialog context, and use only the parts that are truly relevant.\\nUse it as the latest shared reference. If this update appears to fit only the updater's dialog, do not correct the shared content from this dialog; you may ask the updater to run migrate_reminder({ \\\"reminder_id\\\": \\\"r6m6xlei\\\", \\\"scope\\\": \\\"dialog\\\" }) in that dialog so Dominds withdraws it from other parallel dialogs. If this dialog has its own private state, create a separate dialog-scope reminder here.\"\n    },\n    {\n      \"recipient\": \"49/38/93894b89\",\n      \"agentId\": \"tester\",\n      \"taskDocPath\": \"shared-reminder-task.tsk\",\n      \"prompt\": \"[System notice] Shared-scope reminder updated\\n\\nreminder_id=r6m6xlei is task-scope, not private to the current dialog. The current in-flight work has other parallel dialogs for the same agent and Taskdoc. Another parallel dialog for the same agent just updated it, so this dialog will see the update too.\\nThis shared reminder was actually maintained by another dialog this time; decide for yourself whether it is relevant to this dialog context, and use only the parts that are truly relevant.\\nUse it as the latest shared reference. If this update appears to fit only the updater's dialog, do not correct the shared content from this dialog; you may ask the updater to run migrate_reminder({ \\\"reminder_id\\\": \\\"r6m6xlei\\\", \\\"scope\\\": \\\"dialog\\\" }) in that dialog so Dominds withdraws it from other parallel dialogs. If this dialog has its own private state, create a separate dialog-scope reminder here.\"\n    }\n  ]\n}",
+      "verdict": "passed",
+      "rationale": "手工task项准确限定同agent/Taskdoc影响，三notice身份与给定收件者对应，迁回updater的建议适用于此可手工维护项；未将已排队等同LLM已响应。",
+      "reviewScope": "Real Dialog/registry/queue/disk and scheduled root flags. Notices are pending work, not LLM/backend consumption or restart delivery. Fixture explicitly acknowledges each observed queued notice afterward using production clear APIs.",
+      "provenance": {
+        "batch": "initial-sharing-final-semantic",
+        "producer": "tests/reminders/task-agent-reminder-scope.ts",
+        "observedPath": "/tmp/dominds-reminder-sharing-final-semantic/1.tmp/dominds-shared-reminder-ZpnwQY/active-task-manual-update.json",
+        "evidenceJsonSha256": "091cd243a3a6f005505e5d715a26edf9effe6619180f02823ad83705709cb7c3",
+        "actualTextSha256": "1ff8305a7da6f747cf0e2a52e6c56454c74babafb937627968333846863249b2",
+        "durableMaterial": "Complete actualText/scenario/input/context/questions embedded; /tmp availability not required."
+      }
+    },
+    {
+      "id": "active-task-owner-update",
+      "scenario": "A registered owner really changes task state after an equivalent-key-order control produced no new memory/disk scheduling state. The actual change reaches three intended same-task peers.",
+      "businessValue": "Deliver relevant shared-state changes to the intended executing peers without redirecting historical, private or unrelated work.",
+      "context": {
+        "reminderId": "owner001",
+        "scope": "task",
+        "givenData": "{\"content\":\"Owner refreshed shared state\",\"meta\":{\"ownerUpdated\":true}}",
+        "updaterAgent": "tester",
+        "updaterTask": "shared-reminder-task.tsk",
+        "expectedRecipients": "[{\"agentId\":\"tester\",\"taskDocPath\":\"shared-reminder-task.tsk\",\"id\":\"35/22/93894b61#ee/72/93894b62\"},{\"agentId\":\"tester\",\"taskDocPath\":\"shared-reminder-task.tsk\",\"id\":\"33/6b/93894b74#86/d2/93894b75\"},{\"agentId\":\"tester\",\"taskDocPath\":\"shared-reminder-task.tsk\",\"id\":\"49/38/93894b89\"}]",
+        "scopeLimit": "Real Dialog/registry/queue/disk and scheduled root flags. Notices are pending work, not LLM/backend consumption or restart delivery. Fixture explicitly acknowledges each observed queued notice afterward using production clear APIs."
+      },
+      "reviewQuestions": [
+        "Do the actual receipt and each queued notice accurately describe the observed scope/change/withdrawal and intended recipient, without prescribing private state or claiming the peer already handled it?"
+      ],
+      "actualText": "{\n  \"notices\": [\n    {\n      \"recipient\": \"35/22/93894b61#ee/72/93894b62\",\n      \"agentId\": \"tester\",\n      \"taskDocPath\": \"shared-reminder-task.tsk\",\n      \"prompt\": \"[System notice] Shared-scope reminder updated\\n\\nreminder_id=owner001 is task-scope, not private to the current dialog. The current in-flight work has other parallel dialogs for the same agent and Taskdoc. Another parallel dialog for the same agent just updated it, so this dialog will see the update too.\\nThis shared reminder was actually maintained by another dialog this time; decide for yourself whether it is relevant to this dialog context, and use only the parts that are truly relevant.\\nUse it as the latest shared reference. If this update appears to fit only the updater's dialog, do not correct the shared content from this dialog; you may ask the updater to run migrate_reminder({ \\\"reminder_id\\\": \\\"owner001\\\", \\\"scope\\\": \\\"dialog\\\" }) in that dialog so Dominds withdraws it from other parallel dialogs. If this dialog has its own private state, create a separate dialog-scope reminder here.\"\n    },\n    {\n      \"recipient\": \"33/6b/93894b74#86/d2/93894b75\",\n      \"agentId\": \"tester\",\n      \"taskDocPath\": \"shared-reminder-task.tsk\",\n      \"prompt\": \"[System notice] Shared-scope reminder updated\\n\\nreminder_id=owner001 is task-scope, not private to the current dialog. The current in-flight work has other parallel dialogs for the same agent and Taskdoc. Another parallel dialog for the same agent just updated it, so this dialog will see the update too.\\nThis shared reminder was actually maintained by another dialog this time; decide for yourself whether it is relevant to this dialog context, and use only the parts that are truly relevant.\\nUse it as the latest shared reference. If this update appears to fit only the updater's dialog, do not correct the shared content from this dialog; you may ask the updater to run migrate_reminder({ \\\"reminder_id\\\": \\\"owner001\\\", \\\"scope\\\": \\\"dialog\\\" }) in that dialog so Dominds withdraws it from other parallel dialogs. If this dialog has its own private state, create a separate dialog-scope reminder here.\"\n    },\n    {\n      \"recipient\": \"49/38/93894b89\",\n      \"agentId\": \"tester\",\n      \"taskDocPath\": \"shared-reminder-task.tsk\",\n      \"prompt\": \"[System notice] Shared-scope reminder updated\\n\\nreminder_id=owner001 is task-scope, not private to the current dialog. The current in-flight work has other parallel dialogs for the same agent and Taskdoc. Another parallel dialog for the same agent just updated it, so this dialog will see the update too.\\nThis shared reminder was actually maintained by another dialog this time; decide for yourself whether it is relevant to this dialog context, and use only the parts that are truly relevant.\\nUse it as the latest shared reference. If this update appears to fit only the updater's dialog, do not correct the shared content from this dialog; you may ask the updater to run migrate_reminder({ \\\"reminder_id\\\": \\\"owner001\\\", \\\"scope\\\": \\\"dialog\\\" }) in that dialog so Dominds withdraws it from other parallel dialogs. If this dialog has its own private state, create a separate dialog-scope reminder here.\"\n    }\n  ]\n}",
+      "verdict": "failed",
+      "rationale": "owner001确由registered owner.updateReminder自动维护，但三个peer notice都建议在内容仅适合updater时请其调用migrate_reminder迁回dialog。实际工具明确拒绝owner.updateReminder存在的项；更换调用对话并不解除ownership约束，因此宣传了不可执行的修复通道。应把手工可迁移项与owner/受控项管理通道区分，不能放宽权限来迎合提示。",
+      "reviewScope": "Real Dialog/registry/queue/disk and scheduled root flags. Notices are pending work, not LLM/backend consumption or restart delivery. Fixture explicitly acknowledges each observed queued notice afterward using production clear APIs.",
+      "provenance": {
+        "batch": "initial-sharing-final-semantic",
+        "producer": "tests/reminders/task-agent-reminder-scope.ts",
+        "observedPath": "/tmp/dominds-reminder-sharing-final-semantic/1.tmp/dominds-shared-reminder-ZpnwQY/active-task-owner-update.json",
+        "evidenceJsonSha256": "b1eb7182df101af4636c2599c548b89fc113c713197654e0e5ab957529b8967a",
+        "actualTextSha256": "5b84e86319b30bd95897209ea839cca20977ab57f12c869440e0ed3a65891a1f",
+        "durableMaterial": "Complete actualText/scenario/input/context/questions embedded; /tmp availability not required."
+      }
+    },
+    {
+      "id": "agent-added",
+      "scenario": "An explicitly agent-shared work note is visible across this agent Taskdocs and excluded from another agent.",
+      "businessValue": "Keep urgent global notes visible to their owner agent without crossing agent isolation.",
+      "context": {
+        "givenContent": "Urgent: confirm before deleting external resources",
+        "reminderId": "jagi9afo",
+        "scopeLimit": "Actual handler, visibility and agent-namespace JSON; the note is given data, no external deletion or permission action runs."
+      },
+      "reviewQuestions": [
+        "Does the actual receipt agree with creating this shared work note without claiming an external operation?"
+      ],
+      "actualText": "Added",
+      "verdict": "passed",
+      "rationale": "Added仅确认给定agent共享便签已创建，符合实际可见/namespace效果，没有声称便签正文所说的外部删除或授权操作已经发生。",
+      "reviewScope": "Actual handler, visibility and agent-namespace JSON; the note is given data, no external deletion or permission action runs.",
+      "provenance": {
+        "batch": "initial-sharing-final-semantic",
+        "producer": "tests/reminders/task-agent-reminder-scope.ts",
+        "observedPath": "/tmp/dominds-reminder-sharing-final-semantic/1.tmp/dominds-shared-reminder-ZpnwQY/agent-added.json",
+        "evidenceJsonSha256": "95952658f596f08820fc0f98eebf180b341859225b2ef1e244dcc82ba1c2c387",
+        "actualTextSha256": "6b02e0d363a4af1c95eef50364bb0202c8b250aa05a48a69e68fd7787b4b0632",
+        "durableMaterial": "Complete actualText/scenario/input/context/questions embedded; /tmp availability not required."
+      }
+    },
+    {
+      "id": "default-task-added",
+      "scenario": "Default add creates a task-shared work note, not a dialog-local copy. No active peer exists.",
+      "businessValue": "Deliver relevant shared-state changes to the intended executing peers without redirecting historical, private or unrelated work.",
+      "context": {
+        "reminderId": "r6m6xlei",
+        "scope": "task",
+        "givenData": "Remember the preferred deploy smoke-check command for this task",
+        "updaterAgent": "tester",
+        "updaterTask": "shared-reminder-task.tsk",
+        "expectedRecipients": "[]",
+        "scopeLimit": "Real Dialog/registry/queue/disk and scheduled root flags. Notices are pending work, not LLM/backend consumption or restart delivery. Fixture explicitly acknowledges each observed queued notice afterward using production clear APIs."
+      },
+      "reviewQuestions": [
+        "Do the actual receipt and each queued notice accurately describe the observed scope/change/withdrawal and intended recipient, without prescribing private state or claiming the peer already handled it?"
+      ],
+      "actualText": "{\n  \"receipt\": {\n    \"content\": \"Added\",\n    \"outcome\": \"success\"\n  },\n  \"notices\": []\n}",
+      "verdict": "passed",
+      "rationale": "Added与默认task创建相符，空notice列表对应无active peer；未冒称创建dialog私有副本或已有人处理通知。",
+      "reviewScope": "Real Dialog/registry/queue/disk and scheduled root flags. Notices are pending work, not LLM/backend consumption or restart delivery. Fixture explicitly acknowledges each observed queued notice afterward using production clear APIs.",
+      "provenance": {
+        "batch": "initial-sharing-final-semantic",
+        "producer": "tests/reminders/task-agent-reminder-scope.ts",
+        "observedPath": "/tmp/dominds-reminder-sharing-final-semantic/1.tmp/dominds-shared-reminder-ZpnwQY/default-task-added.json",
+        "evidenceJsonSha256": "7d6ba582f04d39e7219fb2b2d6bfc87a14e4f756b21249b29a09aee3718d2e15",
+        "actualTextSha256": "db8e779aab3a8d1eb9ceb9e6886c8bd27ca71888d740316c2ad05e6cb88a79b3",
+        "durableMaterial": "Complete actualText/scenario/input/context/questions embedded; /tmp availability not required."
+      }
+    },
+    {
+      "id": "independent-shared-deletions",
+      "scenario": "A different same-task dialog deletes the manual task item while owner/agent items stay; a different Taskdoc then deletes the agent item. Private original data remain.",
+      "businessValue": "Remove only the selected shared work without losing independently owned or private state.",
+      "context": {
+        "taskReminderId": "r6m6xlei",
+        "agentReminderId": "jagi9afo",
+        "preservedOwnerReminderId": "owner001",
+        "scopeLimit": "Actual handlers, visibility and physical shared file absence; no delete-notification policy or external resource operation is established."
+      },
+      "reviewQuestions": [
+        "Do the actual two deletion receipts fit the observed item removals without implying broader state removal?"
+      ],
+      "actualText": "{\n  \"taskDeleted\": {\n    \"content\": \"Deleted\",\n    \"outcome\": \"success\"\n  },\n  \"agentDeleted\": {\n    \"content\": \"Deleted\",\n    \"outcome\": \"success\"\n  }\n}",
+      "verdict": "passed",
+      "rationale": "两条Deleted只确认指定task/agent项分别删除，与owner项和私有数据保留的观察一致，没有扩张为删除资源或整个共享集合。",
+      "reviewScope": "Actual handlers, visibility and physical shared file absence; no delete-notification policy or external resource operation is established.",
+      "provenance": {
+        "batch": "initial-sharing-final-semantic",
+        "producer": "tests/reminders/task-agent-reminder-scope.ts",
+        "observedPath": "/tmp/dominds-reminder-sharing-final-semantic/1.tmp/dominds-shared-reminder-ZpnwQY/independent-shared-deletions.json",
+        "evidenceJsonSha256": "85b7f6048409943d6c232ac658de81bfe7d197200d21354809ef413d10b72989",
+        "actualTextSha256": "3826754e0a8f3321a9e8c63edd01a5ab3f92b845732ccb81c328a21f63cc7bb3",
+        "durableMaterial": "Complete actualText/scenario/input/context/questions embedded; /tmp availability not required."
+      }
+    },
+    {
+      "id": "loaded-history-excluded",
+      "scenario": "A shared task update is visible to another loaded same-task Main Dialog, but unlocked historical roots and a locked other-agent root are not current recipients.",
+      "businessValue": "Deliver relevant shared-state changes to the intended executing peers without redirecting historical, private or unrelated work.",
+      "context": {
+        "reminderId": "r6m6xlei",
+        "scope": "task",
+        "givenData": "Remember the loaded-only deploy smoke-check command",
+        "updaterAgent": "tester",
+        "updaterTask": "shared-reminder-task.tsk",
+        "expectedRecipients": "[]",
+        "scopeLimit": "Real Dialog/registry/queue/disk and scheduled root flags. Notices are pending work, not LLM/backend consumption or restart delivery. Fixture explicitly acknowledges each observed queued notice afterward using production clear APIs."
+      },
+      "reviewQuestions": [
+        "Do the actual receipt and each queued notice accurately describe the observed scope/change/withdrawal and intended recipient, without prescribing private state or claiming the peer already handled it?"
+      ],
+      "actualText": "{\n  \"receipt\": {\n    \"content\": \"Updated\",\n    \"outcome\": \"success\"\n  },\n  \"notices\": []\n}",
+      "verdict": "passed",
+      "rationale": "Updated反映共享数据实际改变，空notice列表吻合历史unlocked和other-agent不作为当前收件者的事实；没有把共享可见性误当已派发通知。",
+      "reviewScope": "Real Dialog/registry/queue/disk and scheduled root flags. Notices are pending work, not LLM/backend consumption or restart delivery. Fixture explicitly acknowledges each observed queued notice afterward using production clear APIs.",
+      "provenance": {
+        "batch": "initial-sharing-final-semantic",
+        "producer": "tests/reminders/task-agent-reminder-scope.ts",
+        "observedPath": "/tmp/dominds-reminder-sharing-final-semantic/1.tmp/dominds-shared-reminder-ZpnwQY/loaded-history-excluded.json",
+        "evidenceJsonSha256": "3ec846a55301de874379b2e8ea99f9ece857d3924b9f4fe310953034c13c9e1f",
+        "actualTextSha256": "2fee254dd4edffe322d0094d2d1a5bc28b819e313b1030ff33bde1fe0c58b271",
+        "durableMaterial": "Complete actualText/scenario/input/context/questions embedded; /tmp availability not required."
+      }
+    },
+    {
+      "id": "only-updater-is-active",
+      "scenario": "The only active same-agent Side Dialog performs the update; do not send it a peer notification about its own change.",
+      "businessValue": "Deliver relevant shared-state changes to the intended executing peers without redirecting historical, private or unrelated work.",
+      "context": {
+        "reminderId": "r6m6xlei",
+        "scope": "task",
+        "givenData": "Remember the single-active deploy smoke-check command",
+        "updaterAgent": "tester",
+        "updaterTask": "shared-reminder-task.tsk",
+        "expectedRecipients": "[]",
+        "scopeLimit": "Real Dialog/registry/queue/disk and scheduled root flags. Notices are pending work, not LLM/backend consumption or restart delivery. Fixture explicitly acknowledges each observed queued notice afterward using production clear APIs."
+      },
+      "reviewQuestions": [
+        "Do the actual receipt and each queued notice accurately describe the observed scope/change/withdrawal and intended recipient, without prescribing private state or claiming the peer already handled it?"
+      ],
+      "actualText": "{\n  \"receipt\": {\n    \"content\": \"Updated\",\n    \"outcome\": \"success\"\n  },\n  \"notices\": []\n}",
+      "verdict": "passed",
+      "rationale": "Updated与实际修改吻合，没有给唯一active updater派自通知；未从无peer notice推断共享数据未保存或任务已完成。",
+      "reviewScope": "Real Dialog/registry/queue/disk and scheduled root flags. Notices are pending work, not LLM/backend consumption or restart delivery. Fixture explicitly acknowledges each observed queued notice afterward using production clear APIs.",
+      "provenance": {
+        "batch": "initial-sharing-final-semantic",
+        "producer": "tests/reminders/task-agent-reminder-scope.ts",
+        "observedPath": "/tmp/dominds-reminder-sharing-final-semantic/1.tmp/dominds-shared-reminder-ZpnwQY/only-updater-is-active.json",
+        "evidenceJsonSha256": "0f7a7e87b0b053782f6ab11a2fd6a95a2f0ad214d26bd71ec36c98fec996345c",
+        "actualTextSha256": "2fee254dd4edffe322d0094d2d1a5bc28b819e313b1030ff33bde1fe0c58b271",
+        "durableMaterial": "Complete actualText/scenario/input/context/questions embedded; /tmp availability not required."
+      }
+    },
+    {
+      "id": "task-migrated-private",
+      "scenario": "A default task-shared note is migrated to the updater Side Dialog with stable ID and complete plain body/opaque metadata preserved. Shared storage and peer visibility lose it; withdrawal is queued only to the original three active same-task peers, not history, another Taskdoc or another agent.",
+      "businessValue": "Deliver relevant shared-state changes to the intended executing peers without redirecting historical, private or unrelated work.",
+      "context": {
+        "reminderId": "yik8avfr",
+        "scope": "task",
+        "givenData": "{\"original\":{\"id\":\"yik8avfr\",\"content\":\"This shared task reminder turns out to belong only to side A\",\"meta\":{\"checkpoint\":{\"sequence\":7,\"remaining\":[\"A\",\"B\"]}},\"scope\":\"task\",\"renderMode\":\"plain\",\"createdAt\":\"2026-10-31 12:56:53\",\"priority\":\"medium\"},\"privateCopy\":{\"id\":\"yik8avfr\",\"content\":\"This shared task reminder turns out to belong only to side A\",\"meta\":{\"checkpoint\":{\"sequence\":7,\"remaining\":[\"A\",\"B\"]}},\"scope\":\"dialog\",\"renderMode\":\"plain\",\"createdAt\":\"2026-10-31 12:56:53\",\"priority\":\"medium\"}}",
+        "updaterAgent": "tester",
+        "updaterTask": "shared-reminder-task.tsk",
+        "expectedRecipients": "[{\"agentId\":\"tester\",\"taskDocPath\":\"shared-reminder-task.tsk\",\"id\":\"e8/de/938953ea#3c/3a/938953fe\"},{\"agentId\":\"tester\",\"taskDocPath\":\"shared-reminder-task.tsk\",\"id\":\"ca/df/93895404#16/97/93895405\"},{\"agentId\":\"tester\",\"taskDocPath\":\"shared-reminder-task.tsk\",\"id\":\"a0/2f/93895413\"}]",
+        "scopeLimit": "Real Dialog/registry/queue/disk and scheduled root flags. Notices are pending work, not LLM/backend consumption or restart delivery. Fixture explicitly acknowledges each observed queued notice afterward using production clear APIs."
+      },
+      "reviewQuestions": [
+        "Do the actual receipt and each queued notice accurately describe the observed scope/change/withdrawal and intended recipient, without prescribing private state or claiming the peer already handled it?"
+      ],
+      "actualText": "{\n  \"receipt\": {\n    \"content\": \"Migrated: reminder_id=yik8avfr has been withdrawn from shared scope and kept as a current-dialog reminder.\\nDispatched withdrawal notices to 3/3 affected parallel dialog(s).\",\n    \"outcome\": \"success\"\n  },\n  \"notices\": [\n    {\n      \"recipient\": \"e8/de/938953ea#3c/3a/938953fe\",\n      \"agentId\": \"tester\",\n      \"taskDocPath\": \"shared-reminder-task.tsk\",\n      \"prompt\": \"[System notice] Shared-scope reminder migrated back to another dialog\\n\\nreminder_id=yik8avfr was task-scope. The updater dialog has moved it back into its own dialog scope, so it is no longer a shared reference visible to this dialog.\\nIf this dialog still needs similar content, create a dialog-scope or task-scope reminder that matches this dialog now; do not assume the migrated content still applies here.\"\n    },\n    {\n      \"recipient\": \"ca/df/93895404#16/97/93895405\",\n      \"agentId\": \"tester\",\n      \"taskDocPath\": \"shared-reminder-task.tsk\",\n      \"prompt\": \"[System notice] Shared-scope reminder migrated back to another dialog\\n\\nreminder_id=yik8avfr was task-scope. The updater dialog has moved it back into its own dialog scope, so it is no longer a shared reference visible to this dialog.\\nIf this dialog still needs similar content, create a dialog-scope or task-scope reminder that matches this dialog now; do not assume the migrated content still applies here.\"\n    },\n    {\n      \"recipient\": \"a0/2f/93895413\",\n      \"agentId\": \"tester\",\n      \"taskDocPath\": \"shared-reminder-task.tsk\",\n      \"prompt\": \"[System notice] Shared-scope reminder migrated back to another dialog\\n\\nreminder_id=yik8avfr was task-scope. The updater dialog has moved it back into its own dialog scope, so it is no longer a shared reference visible to this dialog.\\nIf this dialog still needs similar content, create a dialog-scope or task-scope reminder that matches this dialog now; do not assume the migrated content still applies here.\"\n    }\n  ]\n}",
+      "verdict": "passed",
+      "rationale": "回执和三条withdraw notice准确说明原task项已迁到updater私有dialog、peer不再共享可见，保同ID/完整给定数据；需类似内容时可另建合适范围，不声称peer已消费通知。",
+      "reviewScope": "Real Dialog/registry/queue/disk and scheduled root flags. Notices are pending work, not LLM/backend consumption or restart delivery. Fixture explicitly acknowledges each observed queued notice afterward using production clear APIs.",
+      "provenance": {
+        "batch": "initial-sharing-final-semantic",
+        "producer": "tests/reminders/migrate-reminder-scope.ts",
+        "observedPath": "/tmp/dominds-reminder-sharing-final-semantic/2.tmp/dominds-shared-migration-73ZZlZ/task-migrated-private.json",
+        "evidenceJsonSha256": "79939a522d63a8b40dcf7484666f30619873c6cbb3f7e2ead5aab6cbddf89ab9",
+        "actualTextSha256": "91d301749eb9fc09f07db0c1a17d56e1a6924c3dd1ded86094319331c4728127",
+        "durableMaterial": "Complete actualText/scenario/input/context/questions embedded; /tmp availability not required."
+      }
+    }
+  ],
+  "initialCounts": {
+    "total": 9,
+    "passed": 8,
+    "failed": 1
+  },
+  "finalCases": [
+    {
+      "id": "en-active-agent-manual-update",
+      "scenario": "An agent-scoped update also reaches the active same-agent Side on another Taskdoc; the other-agent, historical and updater dialogs remain excluded.",
+      "businessValue": "Deliver relevant shared-state changes to the intended executing peers without redirecting historical, private or unrelated work.",
+      "context": {
+        "language": "en",
+        "reminderId": "7yd71bnd",
+        "scope": "agent",
+        "givenData": "Urgent: confirm twice before deleting external resources",
+        "updaterAgent": "tester",
+        "updaterTask": "shared-reminder-en-task.tsk",
+        "expectedRecipients": "[{\"agentId\":\"tester\",\"taskDocPath\":\"shared-reminder-en-task.tsk\",\"id\":\"7a/bb/93922fde#fa/3f/93922fdf\"},{\"agentId\":\"tester\",\"taskDocPath\":\"shared-reminder-en-task.tsk\",\"id\":\"53/14/93922ffa#fc/e0/93922ffb\"},{\"agentId\":\"tester\",\"taskDocPath\":\"other-shared-reminder-en-task.tsk\",\"id\":\"3d/5e/9392300a#b3/a7/9392300a\"},{\"agentId\":\"tester\",\"taskDocPath\":\"shared-reminder-en-task.tsk\",\"id\":\"bd/6b/93923018\"}]",
+        "scopeLimit": "Real Dialog/registry/queue/disk and scheduled root flags. Notices are pending work, not LLM/backend consumption or restart delivery. Fixture explicitly acknowledges each observed queued notice afterward using production clear APIs."
+      },
+      "reviewQuestions": [
+        "Do the actual receipt and each queued notice accurately describe the observed scope/change/withdrawal and intended recipient, without prescribing private state or claiming the peer already handled it?"
+      ],
+      "actualText": "{\n  \"receipt\": {\n    \"content\": \"Updated\\n\\nShared-scope impact: the reminder you just updated, reminder_id=7yd71bnd, is agent-scope, not private to the current dialog. The current in-flight work has other parallel dialogs for the same agent, so other dialogs that can see this reminder will see this update too. Only for a manually maintained reminder with no owner, manager or maintenance restriction, if the new content belongs only to this dialog, consider running migrate_reminder({ \\\"reminder_id\\\": \\\"7yd71bnd\\\", \\\"scope\\\": \\\"dialog\\\" }); migration withdraws it from shared scope and preserves a private copy in this dialog. For automatically maintained or restricted reminders, follow their declared maintenance guidance and do not request manual migration. If no applicable path is available, ask the responsible maintainer about the scope concern.\\nDispatched notices to 4/4 affected parallel dialog(s).\",\n    \"outcome\": \"success\"\n  },\n  \"notices\": [\n    {\n      \"recipient\": \"7a/bb/93922fde#fa/3f/93922fdf\",\n      \"agentId\": \"tester\",\n      \"taskDocPath\": \"shared-reminder-en-task.tsk\",\n      \"prompt\": \"[System notice] Shared-scope reminder updated\\n\\nreminder_id=7yd71bnd is agent-scope, not private to the current dialog. The current in-flight work has other parallel dialogs for the same agent. Another parallel dialog for the same agent just updated it, so this dialog will see the update too.\\nThis shared reminder was actually maintained by another dialog this time; decide for yourself whether it is relevant to this dialog context, and use only the parts that are truly relevant.\\nUse it as the latest shared reference. If this update appears to fit only the updater's dialog, do not correct its shared content from here. Only for a manually maintained reminder with no owner, manager or maintenance restriction may you ask the updater to run migrate_reminder({ \\\"reminder_id\\\": \\\"7yd71bnd\\\", \\\"scope\\\": \\\"dialog\\\" }) there, withdrawing it from other parallel dialogs. For automatically maintained or restricted reminders, follow their declared maintenance guidance and do not request manual migration. If no applicable path is available, ask the responsible maintainer about the scope concern. If this dialog has its own private state, create a separate dialog-scope reminder here.\"\n    },\n    {\n      \"recipient\": \"53/14/93922ffa#fc/e0/93922ffb\",\n      \"agentId\": \"tester\",\n      \"taskDocPath\": \"shared-reminder-en-task.tsk\",\n      \"prompt\": \"[System notice] Shared-scope reminder updated\\n\\nreminder_id=7yd71bnd is agent-scope, not private to the current dialog. The current in-flight work has other parallel dialogs for the same agent. Another parallel dialog for the same agent just updated it, so this dialog will see the update too.\\nThis shared reminder was actually maintained by another dialog this time; decide for yourself whether it is relevant to this dialog context, and use only the parts that are truly relevant.\\nUse it as the latest shared reference. If this update appears to fit only the updater's dialog, do not correct its shared content from here. Only for a manually maintained reminder with no owner, manager or maintenance restriction may you ask the updater to run migrate_reminder({ \\\"reminder_id\\\": \\\"7yd71bnd\\\", \\\"scope\\\": \\\"dialog\\\" }) there, withdrawing it from other parallel dialogs. For automatically maintained or restricted reminders, follow their declared maintenance guidance and do not request manual migration. If no applicable path is available, ask the responsible maintainer about the scope concern. If this dialog has its own private state, create a separate dialog-scope reminder here.\"\n    },\n    {\n      \"recipient\": \"3d/5e/9392300a#b3/a7/9392300a\",\n      \"agentId\": \"tester\",\n      \"taskDocPath\": \"other-shared-reminder-en-task.tsk\",\n      \"prompt\": \"[System notice] Shared-scope reminder updated\\n\\nreminder_id=7yd71bnd is agent-scope, not private to the current dialog. The current in-flight work has other parallel dialogs for the same agent. Another parallel dialog for the same agent just updated it, so this dialog will see the update too.\\nThis shared reminder was actually maintained by another dialog this time; decide for yourself whether it is relevant to this dialog context, and use only the parts that are truly relevant.\\nUse it as the latest shared reference. If this update appears to fit only the updater's dialog, do not correct its shared content from here. Only for a manually maintained reminder with no owner, manager or maintenance restriction may you ask the updater to run migrate_reminder({ \\\"reminder_id\\\": \\\"7yd71bnd\\\", \\\"scope\\\": \\\"dialog\\\" }) there, withdrawing it from other parallel dialogs. For automatically maintained or restricted reminders, follow their declared maintenance guidance and do not request manual migration. If no applicable path is available, ask the responsible maintainer about the scope concern. If this dialog has its own private state, create a separate dialog-scope reminder here.\"\n    },\n    {\n      \"recipient\": \"bd/6b/93923018\",\n      \"agentId\": \"tester\",\n      \"taskDocPath\": \"shared-reminder-en-task.tsk\",\n      \"prompt\": \"[System notice] Shared-scope reminder updated\\n\\nreminder_id=7yd71bnd is agent-scope, not private to the current dialog. The current in-flight work has other parallel dialogs for the same agent. Another parallel dialog for the same agent just updated it, so this dialog will see the update too.\\nThis shared reminder was actually maintained by another dialog this time; decide for yourself whether it is relevant to this dialog context, and use only the parts that are truly relevant.\\nUse it as the latest shared reference. If this update appears to fit only the updater's dialog, do not correct its shared content from here. Only for a manually maintained reminder with no owner, manager or maintenance restriction may you ask the updater to run migrate_reminder({ \\\"reminder_id\\\": \\\"7yd71bnd\\\", \\\"scope\\\": \\\"dialog\\\" }) there, withdrawing it from other parallel dialogs. For automatically maintained or restricted reminders, follow their declared maintenance guidance and do not request manual migration. If no applicable path is available, ask the responsible maintainer about the scope concern. If this dialog has its own private state, create a separate dialog-scope reminder here.\"\n    }\n  ]\n}",
+      "verdict": "passed",
+      "rationale": "The receipt and all four notices accurately describe same-agent visibility across Taskdocs. They leave relevance judgment to the receiving dialog, keep private correction with the updater, and restrict migration advice to unrestricted manual reminders; no peer processing or external deletion is claimed.",
+      "reviewScope": "Real Dialog/registry/queue/disk and scheduled root flags. Notices are pending work, not LLM/backend consumption or restart delivery. Fixture explicitly acknowledges each observed queued notice afterward using production clear APIs.",
+      "provenance": {
+        "batch": "revised-bilingual-sharing-fresh20",
+        "producer": "tests/reminders/task-agent-reminder-scope.ts",
+        "observedPath": "/tmp/dominds-reminder-sharing-revised-semantic/1.tmp/dominds-shared-reminder-nFkzKc/en-active-agent-manual-update.json",
+        "evidenceJsonSha256": "d638cd3b56dfc27446d638cd31577059884bb328d2e9cde8295390a4610b3835",
+        "actualTextSha256": "ea655dcf9b535413366ef17b3b007441b626dded7c6f88d67a4adcd9cdea2a39",
+        "durableMaterial": "Complete original evidence fields including actualText/scenario/context/reviewQuestions are embedded. Temporary paths identify the observation and are not required for durable acceptance."
+      }
+    },
+    {
+      "id": "en-active-task-manual-update",
+      "scenario": "A task change reaches the same-root Side, cross-root same-task Side and locked same-task Main. Different-task, other-agent, historical and updater dialogs are excluded.",
+      "businessValue": "Deliver relevant shared-state changes to the intended executing peers without redirecting historical, private or unrelated work.",
+      "context": {
+        "language": "en",
+        "reminderId": "cr4uph0k",
+        "scope": "task",
+        "givenData": "Remember the active peer deploy smoke-check command",
+        "updaterAgent": "tester",
+        "updaterTask": "shared-reminder-en-task.tsk",
+        "expectedRecipients": "[{\"agentId\":\"tester\",\"taskDocPath\":\"shared-reminder-en-task.tsk\",\"id\":\"7a/bb/93922fde#f4/e9/93922fed\"},{\"agentId\":\"tester\",\"taskDocPath\":\"shared-reminder-en-task.tsk\",\"id\":\"53/14/93922ffa#fc/e0/93922ffb\"},{\"agentId\":\"tester\",\"taskDocPath\":\"shared-reminder-en-task.tsk\",\"id\":\"bd/6b/93923018\"}]",
+        "scopeLimit": "Real Dialog/registry/queue/disk and scheduled root flags. Notices are pending work, not LLM/backend consumption or restart delivery. Fixture explicitly acknowledges each observed queued notice afterward using production clear APIs."
+      },
+      "reviewQuestions": [
+        "Do the actual receipt and each queued notice accurately describe the observed scope/change/withdrawal and intended recipient, without prescribing private state or claiming the peer already handled it?"
+      ],
+      "actualText": "{\n  \"receipt\": {\n    \"content\": \"Updated\\n\\nShared-scope impact: the reminder you just updated, reminder_id=cr4uph0k, is task-scope, not private to the current dialog. The current in-flight work has other parallel dialogs for the same agent and Taskdoc, so other dialogs that can see this reminder will see this update too. Only for a manually maintained reminder with no owner, manager or maintenance restriction, if the new content belongs only to this dialog, consider running migrate_reminder({ \\\"reminder_id\\\": \\\"cr4uph0k\\\", \\\"scope\\\": \\\"dialog\\\" }); migration withdraws it from shared scope and preserves a private copy in this dialog. For automatically maintained or restricted reminders, follow their declared maintenance guidance and do not request manual migration. If no applicable path is available, ask the responsible maintainer about the scope concern.\\nDispatched notices to 3/3 affected parallel dialog(s).\",\n    \"outcome\": \"success\"\n  },\n  \"notices\": [\n    {\n      \"recipient\": \"7a/bb/93922fde#f4/e9/93922fed\",\n      \"agentId\": \"tester\",\n      \"taskDocPath\": \"shared-reminder-en-task.tsk\",\n      \"prompt\": \"[System notice] Shared-scope reminder updated\\n\\nreminder_id=cr4uph0k is task-scope, not private to the current dialog. The current in-flight work has other parallel dialogs for the same agent and Taskdoc. Another parallel dialog for the same agent just updated it, so this dialog will see the update too.\\nThis shared reminder was actually maintained by another dialog this time; decide for yourself whether it is relevant to this dialog context, and use only the parts that are truly relevant.\\nUse it as the latest shared reference. If this update appears to fit only the updater's dialog, do not correct its shared content from here. Only for a manually maintained reminder with no owner, manager or maintenance restriction may you ask the updater to run migrate_reminder({ \\\"reminder_id\\\": \\\"cr4uph0k\\\", \\\"scope\\\": \\\"dialog\\\" }) there, withdrawing it from other parallel dialogs. For automatically maintained or restricted reminders, follow their declared maintenance guidance and do not request manual migration. If no applicable path is available, ask the responsible maintainer about the scope concern. If this dialog has its own private state, create a separate dialog-scope reminder here.\"\n    },\n    {\n      \"recipient\": \"53/14/93922ffa#fc/e0/93922ffb\",\n      \"agentId\": \"tester\",\n      \"taskDocPath\": \"shared-reminder-en-task.tsk\",\n      \"prompt\": \"[System notice] Shared-scope reminder updated\\n\\nreminder_id=cr4uph0k is task-scope, not private to the current dialog. The current in-flight work has other parallel dialogs for the same agent and Taskdoc. Another parallel dialog for the same agent just updated it, so this dialog will see the update too.\\nThis shared reminder was actually maintained by another dialog this time; decide for yourself whether it is relevant to this dialog context, and use only the parts that are truly relevant.\\nUse it as the latest shared reference. If this update appears to fit only the updater's dialog, do not correct its shared content from here. Only for a manually maintained reminder with no owner, manager or maintenance restriction may you ask the updater to run migrate_reminder({ \\\"reminder_id\\\": \\\"cr4uph0k\\\", \\\"scope\\\": \\\"dialog\\\" }) there, withdrawing it from other parallel dialogs. For automatically maintained or restricted reminders, follow their declared maintenance guidance and do not request manual migration. If no applicable path is available, ask the responsible maintainer about the scope concern. If this dialog has its own private state, create a separate dialog-scope reminder here.\"\n    },\n    {\n      \"recipient\": \"bd/6b/93923018\",\n      \"agentId\": \"tester\",\n      \"taskDocPath\": \"shared-reminder-en-task.tsk\",\n      \"prompt\": \"[System notice] Shared-scope reminder updated\\n\\nreminder_id=cr4uph0k is task-scope, not private to the current dialog. The current in-flight work has other parallel dialogs for the same agent and Taskdoc. Another parallel dialog for the same agent just updated it, so this dialog will see the update too.\\nThis shared reminder was actually maintained by another dialog this time; decide for yourself whether it is relevant to this dialog context, and use only the parts that are truly relevant.\\nUse it as the latest shared reference. If this update appears to fit only the updater's dialog, do not correct its shared content from here. Only for a manually maintained reminder with no owner, manager or maintenance restriction may you ask the updater to run migrate_reminder({ \\\"reminder_id\\\": \\\"cr4uph0k\\\", \\\"scope\\\": \\\"dialog\\\" }) there, withdrawing it from other parallel dialogs. For automatically maintained or restricted reminders, follow their declared maintenance guidance and do not request manual migration. If no applicable path is available, ask the responsible maintainer about the scope concern. If this dialog has its own private state, create a separate dialog-scope reminder here.\"\n    }\n  ]\n}",
+      "verdict": "passed",
+      "rationale": "The receipt and three notices match the active same-task audience, including the cross-root Side and locked Main. Their shared-reference/private-copy distinction is actionable for this manual item, and the added maintenance conditions avoid extending that advice to owner-controlled state.",
+      "reviewScope": "Real Dialog/registry/queue/disk and scheduled root flags. Notices are pending work, not LLM/backend consumption or restart delivery. Fixture explicitly acknowledges each observed queued notice afterward using production clear APIs.",
+      "provenance": {
+        "batch": "revised-bilingual-sharing-fresh20",
+        "producer": "tests/reminders/task-agent-reminder-scope.ts",
+        "observedPath": "/tmp/dominds-reminder-sharing-revised-semantic/1.tmp/dominds-shared-reminder-nFkzKc/en-active-task-manual-update.json",
+        "evidenceJsonSha256": "ccd29e7f7c19c5fde33487b1f7b7aea45d3d3c94e46625d4e63b8b9c974f8f69",
+        "actualTextSha256": "fb92a2b7def850bd829c7575077428dd1186be16af723efb47ecb0e8b45402fb",
+        "durableMaterial": "Complete original evidence fields including actualText/scenario/context/reviewQuestions are embedded. Temporary paths identify the observation and are not required for durable acceptance."
+      }
+    },
+    {
+      "id": "en-active-task-owner-update",
+      "scenario": "A registered owner really changes task state after an equivalent-key-order control produced no new memory/disk scheduling state. The actual change reaches three intended same-task peers.",
+      "businessValue": "Deliver relevant shared-state changes to the intended executing peers without redirecting historical, private or unrelated work.",
+      "context": {
+        "language": "en",
+        "reminderId": "owner-en-001",
+        "scope": "task",
+        "givenData": "{\"content\":\"Owner refreshed shared state\",\"meta\":{\"ownerUpdated\":true}}",
+        "updaterAgent": "tester",
+        "updaterTask": "shared-reminder-en-task.tsk",
+        "expectedRecipients": "[{\"agentId\":\"tester\",\"taskDocPath\":\"shared-reminder-en-task.tsk\",\"id\":\"7a/bb/93922fde#fa/3f/93922fdf\"},{\"agentId\":\"tester\",\"taskDocPath\":\"shared-reminder-en-task.tsk\",\"id\":\"53/14/93922ffa#fc/e0/93922ffb\"},{\"agentId\":\"tester\",\"taskDocPath\":\"shared-reminder-en-task.tsk\",\"id\":\"bd/6b/93923018\"}]",
+        "scopeLimit": "Real Dialog/registry/queue/disk and scheduled root flags. Notices are pending work, not LLM/backend consumption or restart delivery. Fixture explicitly acknowledges each observed queued notice afterward using production clear APIs."
+      },
+      "reviewQuestions": [
+        "Do the actual receipt and each queued notice accurately describe the observed scope/change/withdrawal and intended recipient, without prescribing private state or claiming the peer already handled it?"
+      ],
+      "actualText": "{\n  \"notices\": [\n    {\n      \"recipient\": \"7a/bb/93922fde#fa/3f/93922fdf\",\n      \"agentId\": \"tester\",\n      \"taskDocPath\": \"shared-reminder-en-task.tsk\",\n      \"prompt\": \"[System notice] Shared-scope reminder updated\\n\\nreminder_id=owner-en-001 is task-scope, not private to the current dialog. The current in-flight work has other parallel dialogs for the same agent and Taskdoc. Another parallel dialog for the same agent just updated it, so this dialog will see the update too.\\nThis shared reminder was actually maintained by another dialog this time; decide for yourself whether it is relevant to this dialog context, and use only the parts that are truly relevant.\\nUse it as the latest shared reference. If this update appears to fit only the updater's dialog, do not correct its shared content from here. Only for a manually maintained reminder with no owner, manager or maintenance restriction may you ask the updater to run migrate_reminder({ \\\"reminder_id\\\": \\\"owner-en-001\\\", \\\"scope\\\": \\\"dialog\\\" }) there, withdrawing it from other parallel dialogs. For automatically maintained or restricted reminders, follow their declared maintenance guidance and do not request manual migration. If no applicable path is available, ask the responsible maintainer about the scope concern. If this dialog has its own private state, create a separate dialog-scope reminder here.\"\n    },\n    {\n      \"recipient\": \"53/14/93922ffa#fc/e0/93922ffb\",\n      \"agentId\": \"tester\",\n      \"taskDocPath\": \"shared-reminder-en-task.tsk\",\n      \"prompt\": \"[System notice] Shared-scope reminder updated\\n\\nreminder_id=owner-en-001 is task-scope, not private to the current dialog. The current in-flight work has other parallel dialogs for the same agent and Taskdoc. Another parallel dialog for the same agent just updated it, so this dialog will see the update too.\\nThis shared reminder was actually maintained by another dialog this time; decide for yourself whether it is relevant to this dialog context, and use only the parts that are truly relevant.\\nUse it as the latest shared reference. If this update appears to fit only the updater's dialog, do not correct its shared content from here. Only for a manually maintained reminder with no owner, manager or maintenance restriction may you ask the updater to run migrate_reminder({ \\\"reminder_id\\\": \\\"owner-en-001\\\", \\\"scope\\\": \\\"dialog\\\" }) there, withdrawing it from other parallel dialogs. For automatically maintained or restricted reminders, follow their declared maintenance guidance and do not request manual migration. If no applicable path is available, ask the responsible maintainer about the scope concern. If this dialog has its own private state, create a separate dialog-scope reminder here.\"\n    },\n    {\n      \"recipient\": \"bd/6b/93923018\",\n      \"agentId\": \"tester\",\n      \"taskDocPath\": \"shared-reminder-en-task.tsk\",\n      \"prompt\": \"[System notice] Shared-scope reminder updated\\n\\nreminder_id=owner-en-001 is task-scope, not private to the current dialog. The current in-flight work has other parallel dialogs for the same agent and Taskdoc. Another parallel dialog for the same agent just updated it, so this dialog will see the update too.\\nThis shared reminder was actually maintained by another dialog this time; decide for yourself whether it is relevant to this dialog context, and use only the parts that are truly relevant.\\nUse it as the latest shared reference. If this update appears to fit only the updater's dialog, do not correct its shared content from here. Only for a manually maintained reminder with no owner, manager or maintenance restriction may you ask the updater to run migrate_reminder({ \\\"reminder_id\\\": \\\"owner-en-001\\\", \\\"scope\\\": \\\"dialog\\\" }) there, withdrawing it from other parallel dialogs. For automatically maintained or restricted reminders, follow their declared maintenance guidance and do not request manual migration. If no applicable path is available, ask the responsible maintainer about the scope concern. If this dialog has its own private state, create a separate dialog-scope reminder here.\"\n    }\n  ]\n}",
+      "verdict": "passed",
+      "rationale": "All three notices describe an actual owner-triggered update and allow each peer to judge relevance. Unlike the rejected initial material, they expressly exclude automatically maintained/restricted reminders from manual migration advice and direct scope concerns to the declared maintenance path or responsible maintainer without inventing a command.",
+      "reviewScope": "Real Dialog/registry/queue/disk and scheduled root flags. Notices are pending work, not LLM/backend consumption or restart delivery. Fixture explicitly acknowledges each observed queued notice afterward using production clear APIs.",
+      "provenance": {
+        "batch": "revised-bilingual-sharing-fresh20",
+        "producer": "tests/reminders/task-agent-reminder-scope.ts",
+        "observedPath": "/tmp/dominds-reminder-sharing-revised-semantic/1.tmp/dominds-shared-reminder-nFkzKc/en-active-task-owner-update.json",
+        "evidenceJsonSha256": "d98f240a83d22037d9099a9962a1762b4db0af30318598c35d2d388fd00acc01",
+        "actualTextSha256": "eec959ac4c54c159557ba65d45bb217c1926db9109c8f7a3349d55bf5396297a",
+        "durableMaterial": "Complete original evidence fields including actualText/scenario/context/reviewQuestions are embedded. Temporary paths identify the observation and are not required for durable acceptance."
+      }
+    },
+    {
+      "id": "en-agent-added",
+      "scenario": "An explicitly agent-shared work note is visible across this agent Taskdocs and excluded from another agent.",
+      "businessValue": "Keep urgent global notes visible to their owner agent without crossing agent isolation.",
+      "context": {
+        "language": "en",
+        "givenContent": "Urgent: confirm before deleting external resources",
+        "reminderId": "7yd71bnd",
+        "scopeLimit": "Actual handler, visibility and agent-namespace JSON; the note is given data, no external deletion or permission action runs."
+      },
+      "reviewQuestions": [
+        "Does the actual receipt agree with creating this shared work note without claiming an external operation?"
+      ],
+      "actualText": "Added",
+      "verdict": "passed",
+      "rationale": "The short receipt acknowledges creation of the given agent-shared note and is consistent with actual storage and cross-Taskdoc visibility; it does not claim to perform the deletion discussed inside the supplied note.",
+      "reviewScope": "Actual handler, visibility and agent-namespace JSON; the note is given data, no external deletion or permission action runs.",
+      "provenance": {
+        "batch": "revised-bilingual-sharing-fresh20",
+        "producer": "tests/reminders/task-agent-reminder-scope.ts",
+        "observedPath": "/tmp/dominds-reminder-sharing-revised-semantic/1.tmp/dominds-shared-reminder-nFkzKc/en-agent-added.json",
+        "evidenceJsonSha256": "d29c619c61dac2ee0f30d4d5c88c39651ccfa3079a8ff298d27ccc91228f772d",
+        "actualTextSha256": "6b02e0d363a4af1c95eef50364bb0202c8b250aa05a48a69e68fd7787b4b0632",
+        "durableMaterial": "Complete original evidence fields including actualText/scenario/context/reviewQuestions are embedded. Temporary paths identify the observation and are not required for durable acceptance."
+      }
+    },
+    {
+      "id": "en-default-task-added",
+      "scenario": "Default add creates a task-shared work note, not a dialog-local copy. No active peer exists.",
+      "businessValue": "Deliver relevant shared-state changes to the intended executing peers without redirecting historical, private or unrelated work.",
+      "context": {
+        "language": "en",
+        "reminderId": "cr4uph0k",
+        "scope": "task",
+        "givenData": "Remember the preferred deploy smoke-check command for this task",
+        "updaterAgent": "tester",
+        "updaterTask": "shared-reminder-en-task.tsk",
+        "expectedRecipients": "[]",
+        "scopeLimit": "Real Dialog/registry/queue/disk and scheduled root flags. Notices are pending work, not LLM/backend consumption or restart delivery. Fixture explicitly acknowledges each observed queued notice afterward using production clear APIs."
+      },
+      "reviewQuestions": [
+        "Do the actual receipt and each queued notice accurately describe the observed scope/change/withdrawal and intended recipient, without prescribing private state or claiming the peer already handled it?"
+      ],
+      "actualText": "{\n  \"receipt\": {\n    \"content\": \"Added\",\n    \"outcome\": \"success\"\n  },\n  \"notices\": []\n}",
+      "verdict": "passed",
+      "rationale": "Creation succeeds as a task-shared item while no active peer exists; the plain creation receipt and empty notice list do not imply private scope or fabricated dispatch.",
+      "reviewScope": "Real Dialog/registry/queue/disk and scheduled root flags. Notices are pending work, not LLM/backend consumption or restart delivery. Fixture explicitly acknowledges each observed queued notice afterward using production clear APIs.",
+      "provenance": {
+        "batch": "revised-bilingual-sharing-fresh20",
+        "producer": "tests/reminders/task-agent-reminder-scope.ts",
+        "observedPath": "/tmp/dominds-reminder-sharing-revised-semantic/1.tmp/dominds-shared-reminder-nFkzKc/en-default-task-added.json",
+        "evidenceJsonSha256": "0463a968ecd28d9ae109d14398f1fc1433e09a5fb75fd80fb86302297115c83c",
+        "actualTextSha256": "db8e779aab3a8d1eb9ceb9e6886c8bd27ca71888d740316c2ad05e6cb88a79b3",
+        "durableMaterial": "Complete original evidence fields including actualText/scenario/context/reviewQuestions are embedded. Temporary paths identify the observation and are not required for durable acceptance."
+      }
+    },
+    {
+      "id": "en-independent-shared-deletions",
+      "scenario": "A different same-task dialog deletes the manual task item while owner/agent items stay; a different Taskdoc then deletes the agent item. Private original data remain.",
+      "businessValue": "Remove only the selected shared work without losing independently owned or private state.",
+      "context": {
+        "language": "en",
+        "taskReminderId": "cr4uph0k",
+        "agentReminderId": "7yd71bnd",
+        "preservedOwnerReminderId": "owner-en-001",
+        "scopeLimit": "Actual handlers, visibility and physical shared file absence; no delete-notification policy or external resource operation is established."
+      },
+      "reviewQuestions": [
+        "Do the actual two deletion receipts fit the observed item removals without implying broader state removal?"
+      ],
+      "actualText": "{\n  \"taskDeleted\": {\n    \"content\": \"Deleted\",\n    \"outcome\": \"success\"\n  },\n  \"agentDeleted\": {\n    \"content\": \"Deleted\",\n    \"outcome\": \"success\"\n  }\n}",
+      "verdict": "passed",
+      "rationale": "Both deletion receipts correspond to the selected task item and then the agent item disappearing. Independent owner and private data are preserved, and the output makes no broader removal or notification-consumption claim.",
+      "reviewScope": "Actual handlers, visibility and physical shared file absence; no delete-notification policy or external resource operation is established.",
+      "provenance": {
+        "batch": "revised-bilingual-sharing-fresh20",
+        "producer": "tests/reminders/task-agent-reminder-scope.ts",
+        "observedPath": "/tmp/dominds-reminder-sharing-revised-semantic/1.tmp/dominds-shared-reminder-nFkzKc/en-independent-shared-deletions.json",
+        "evidenceJsonSha256": "f909ba2eb02e4141b4dd67c336e247b04b6b1353faec6c874b277c68dc4c71e7",
+        "actualTextSha256": "3826754e0a8f3321a9e8c63edd01a5ab3f92b845732ccb81c328a21f63cc7bb3",
+        "durableMaterial": "Complete original evidence fields including actualText/scenario/context/reviewQuestions are embedded. Temporary paths identify the observation and are not required for durable acceptance."
+      }
+    },
+    {
+      "id": "en-loaded-history-excluded",
+      "scenario": "A shared task update is visible to another loaded same-task Main Dialog, but unlocked historical roots and a locked other-agent root are not current recipients.",
+      "businessValue": "Deliver relevant shared-state changes to the intended executing peers without redirecting historical, private or unrelated work.",
+      "context": {
+        "language": "en",
+        "reminderId": "cr4uph0k",
+        "scope": "task",
+        "givenData": "Remember the loaded-only deploy smoke-check command",
+        "updaterAgent": "tester",
+        "updaterTask": "shared-reminder-en-task.tsk",
+        "expectedRecipients": "[]",
+        "scopeLimit": "Real Dialog/registry/queue/disk and scheduled root flags. Notices are pending work, not LLM/backend consumption or restart delivery. Fixture explicitly acknowledges each observed queued notice afterward using production clear APIs."
+      },
+      "reviewQuestions": [
+        "Do the actual receipt and each queued notice accurately describe the observed scope/change/withdrawal and intended recipient, without prescribing private state or claiming the peer already handled it?"
+      ],
+      "actualText": "{\n  \"receipt\": {\n    \"content\": \"Updated\",\n    \"outcome\": \"success\"\n  },\n  \"notices\": []\n}",
+      "verdict": "passed",
+      "rationale": "The update receipt agrees with changed shared data, while the empty notice list correctly distinguishes loaded historical visibility from the active routing frontier and excludes the locked other-agent root.",
+      "reviewScope": "Real Dialog/registry/queue/disk and scheduled root flags. Notices are pending work, not LLM/backend consumption or restart delivery. Fixture explicitly acknowledges each observed queued notice afterward using production clear APIs.",
+      "provenance": {
+        "batch": "revised-bilingual-sharing-fresh20",
+        "producer": "tests/reminders/task-agent-reminder-scope.ts",
+        "observedPath": "/tmp/dominds-reminder-sharing-revised-semantic/1.tmp/dominds-shared-reminder-nFkzKc/en-loaded-history-excluded.json",
+        "evidenceJsonSha256": "37ba33baa3b838e84f585f6ecf1c20d24cdcefd8fdffebede42b9c6a6f24171d",
+        "actualTextSha256": "2fee254dd4edffe322d0094d2d1a5bc28b819e313b1030ff33bde1fe0c58b271",
+        "durableMaterial": "Complete original evidence fields including actualText/scenario/context/reviewQuestions are embedded. Temporary paths identify the observation and are not required for durable acceptance."
+      }
+    },
+    {
+      "id": "en-only-updater-is-active",
+      "scenario": "The only active same-agent Side Dialog performs the update; do not send it a peer notification about its own change.",
+      "businessValue": "Deliver relevant shared-state changes to the intended executing peers without redirecting historical, private or unrelated work.",
+      "context": {
+        "language": "en",
+        "reminderId": "cr4uph0k",
+        "scope": "task",
+        "givenData": "Remember the single-active deploy smoke-check command",
+        "updaterAgent": "tester",
+        "updaterTask": "shared-reminder-en-task.tsk",
+        "expectedRecipients": "[]",
+        "scopeLimit": "Real Dialog/registry/queue/disk and scheduled root flags. Notices are pending work, not LLM/backend consumption or restart delivery. Fixture explicitly acknowledges each observed queued notice afterward using production clear APIs."
+      },
+      "reviewQuestions": [
+        "Do the actual receipt and each queued notice accurately describe the observed scope/change/withdrawal and intended recipient, without prescribing private state or claiming the peer already handled it?"
+      ],
+      "actualText": "{\n  \"receipt\": {\n    \"content\": \"Updated\",\n    \"outcome\": \"success\"\n  },\n  \"notices\": []\n}",
+      "verdict": "passed",
+      "rationale": "The actual update is acknowledged without queuing a peer notice to the only active dialog about its own change; neither receipt nor empty notice list fabricates another participant.",
+      "reviewScope": "Real Dialog/registry/queue/disk and scheduled root flags. Notices are pending work, not LLM/backend consumption or restart delivery. Fixture explicitly acknowledges each observed queued notice afterward using production clear APIs.",
+      "provenance": {
+        "batch": "revised-bilingual-sharing-fresh20",
+        "producer": "tests/reminders/task-agent-reminder-scope.ts",
+        "observedPath": "/tmp/dominds-reminder-sharing-revised-semantic/1.tmp/dominds-shared-reminder-nFkzKc/en-only-updater-is-active.json",
+        "evidenceJsonSha256": "a947144d3897ffc2618ea569ec4ca6c1ab55710f22948ee72b21cd8998ad4a1d",
+        "actualTextSha256": "2fee254dd4edffe322d0094d2d1a5bc28b819e313b1030ff33bde1fe0c58b271",
+        "durableMaterial": "Complete original evidence fields including actualText/scenario/context/reviewQuestions are embedded. Temporary paths identify the observation and are not required for durable acceptance."
+      }
+    },
+    {
+      "id": "en-owner-migration-refused",
+      "scenario": "The same actual owner-maintained shared note cannot be migrated through the manual tool; the tool refuses without changing private/shared/durable queued state.",
+      "businessValue": "Keep automated state under its owning capability rather than advertise or permit a manual migration that cannot preserve its lifecycle.",
+      "context": {
+        "language": "en",
+        "reminderId": "owner-en-001",
+        "owner": "task-agent-reminder-scope-auto-owner",
+        "givenData": "{\"id\":\"owner-en-001\",\"content\":\"Owner refreshed shared state\",\"ownerName\":\"task-agent-reminder-scope-auto-owner\",\"meta\":{\"ownerUpdated\":true},\"scope\":\"task\",\"renderMode\":\"markdown\",\"createdAt\":\"2026-03-30T00:00:01.000Z\",\"priority\":\"medium\"}",
+        "scopeLimit": "Actual tool handler and complete local/shared/queue state; this does not invoke an owner management command or discover a new capability."
+      },
+      "reviewQuestions": [
+        "Does the actual refusal accurately explain the automatic maintenance boundary without claiming a migration happened or inventing a maintenance action?"
+      ],
+      "actualText": "Error: This reminder is automatically maintained by a reminder owner and cannot be migrated via migrate_reminder.",
+      "verdict": "passed",
+      "rationale": "The refusal accurately identifies automatic owner maintenance as the reason the manual migration cannot proceed. It neither claims success nor invents an available owner command; unchanged private/shared and queued state supports that boundary.",
+      "reviewScope": "Actual tool handler and complete local/shared/queue state; this does not invoke an owner management command or discover a new capability.",
+      "provenance": {
+        "batch": "revised-bilingual-sharing-fresh20",
+        "producer": "tests/reminders/task-agent-reminder-scope.ts",
+        "observedPath": "/tmp/dominds-reminder-sharing-revised-semantic/1.tmp/dominds-shared-reminder-nFkzKc/en-owner-migration-refused.json",
+        "evidenceJsonSha256": "cec678a015b4fc51c78743321e42b271a299de5384d1d0c7b5d4b105f69d4146",
+        "actualTextSha256": "7ecb570fdd182f07202272f629ee4080e3533367d5be4159b1fd5655adbfcf83",
+        "durableMaterial": "Complete original evidence fields including actualText/scenario/context/reviewQuestions are embedded. Temporary paths identify the observation and are not required for durable acceptance."
+      }
+    },
+    {
+      "id": "zh-active-agent-manual-update",
+      "scenario": "An agent-scoped update also reaches the active same-agent Side on another Taskdoc; the other-agent, historical and updater dialogs remain excluded.",
+      "businessValue": "Deliver relevant shared-state changes to the intended executing peers without redirecting historical, private or unrelated work.",
+      "context": {
+        "language": "zh",
+        "reminderId": "rzieumk7",
+        "scope": "agent",
+        "givenData": "Urgent: confirm twice before deleting external resources",
+        "updaterAgent": "tester",
+        "updaterTask": "shared-reminder-zh-task.tsk",
+        "expectedRecipients": "[{\"agentId\":\"tester\",\"taskDocPath\":\"shared-reminder-zh-task.tsk\",\"id\":\"11/f8/93922f7d#8b/67/93922f7e\"},{\"agentId\":\"tester\",\"taskDocPath\":\"shared-reminder-zh-task.tsk\",\"id\":\"54/e5/93922f8e#ef/94/93922f8e\"},{\"agentId\":\"tester\",\"taskDocPath\":\"other-shared-reminder-zh-task.tsk\",\"id\":\"df/0d/93922f97#af/94/93922f98\"},{\"agentId\":\"tester\",\"taskDocPath\":\"shared-reminder-zh-task.tsk\",\"id\":\"5e/fd/93922fa2\"}]",
+        "scopeLimit": "Real Dialog/registry/queue/disk and scheduled root flags. Notices are pending work, not LLM/backend consumption or restart delivery. Fixture explicitly acknowledges each observed queued notice afterward using production clear APIs."
+      },
+      "reviewQuestions": [
+        "Do the actual receipt and each queued notice accurately describe the observed scope/change/withdrawal and intended recipient, without prescribing private state or claiming the peer already handled it?"
+      ],
+      "actualText": "{\n  \"receipt\": {\n    \"content\": \"已更新\\n\\n共享范围影响：你刚更新的 reminder_id=rzieumk7 是智能体范围提醒项，不是当前对话私有；当前进行时存在同一智能体的其它并行对话，其它能看到这条提醒项的对话也会看到这次更新。仅当这是没有自动维护所有者、管理工具或维护限制的手工提醒项，且新内容只属于当前对话时，才考虑使用 migrate_reminder({ \\\"reminder_id\\\": \\\"rzieumk7\\\", \\\"scope\\\": \\\"dialog\\\" })；迁移会从共享范围撤下，并保留当前对话私有副本。自动维护或受限的提醒项应遵循其维护说明，不要请求手工迁移；没有适用通道时，请向负责的维护者说明范围问题。\\n已向 4/4 个受影响的并行对话派发提醒。\",\n    \"outcome\": \"success\"\n  },\n  \"notices\": [\n    {\n      \"recipient\": \"11/f8/93922f7d#8b/67/93922f7e\",\n      \"agentId\": \"tester\",\n      \"taskDocPath\": \"shared-reminder-zh-task.tsk\",\n      \"prompt\": \"【系统提示】 共享范围提醒项已更新\\n\\nreminder_id=rzieumk7 是智能体范围提醒项，不是当前对话私有；当前进行时存在同一智能体的其它并行对话。同一智能体的某个并行对话刚更新了它，你所在对话也会看到这次更新。\\n这条共享提醒项这次实际上由另一对话维护；你应自行判断它与本对话当前上下文是否有关，只采纳确实相关的部分。\\n请把它作为最新共享参考。若这次更新看起来只适合更新者所在对话，不要在本对话替它修正共享内容。仅对没有自动维护所有者、管理工具或维护限制的手工提醒项，可提醒更新者在其对话中使用 migrate_reminder({ \\\"reminder_id\\\": \\\"rzieumk7\\\", \\\"scope\\\": \\\"dialog\\\" }) 迁回私有范围，从其它并行对话撤下。自动维护或受限的提醒项应遵循其维护说明，不要请求手工迁移；没有适用通道时，请向负责的维护者说明范围问题。本对话若另有私有状态，请另建对话范围提醒项。\"\n    },\n    {\n      \"recipient\": \"54/e5/93922f8e#ef/94/93922f8e\",\n      \"agentId\": \"tester\",\n      \"taskDocPath\": \"shared-reminder-zh-task.tsk\",\n      \"prompt\": \"【系统提示】 共享范围提醒项已更新\\n\\nreminder_id=rzieumk7 是智能体范围提醒项，不是当前对话私有；当前进行时存在同一智能体的其它并行对话。同一智能体的某个并行对话刚更新了它，你所在对话也会看到这次更新。\\n这条共享提醒项这次实际上由另一对话维护；你应自行判断它与本对话当前上下文是否有关，只采纳确实相关的部分。\\n请把它作为最新共享参考。若这次更新看起来只适合更新者所在对话，不要在本对话替它修正共享内容。仅对没有自动维护所有者、管理工具或维护限制的手工提醒项，可提醒更新者在其对话中使用 migrate_reminder({ \\\"reminder_id\\\": \\\"rzieumk7\\\", \\\"scope\\\": \\\"dialog\\\" }) 迁回私有范围，从其它并行对话撤下。自动维护或受限的提醒项应遵循其维护说明，不要请求手工迁移；没有适用通道时，请向负责的维护者说明范围问题。本对话若另有私有状态，请另建对话范围提醒项。\"\n    },\n    {\n      \"recipient\": \"df/0d/93922f97#af/94/93922f98\",\n      \"agentId\": \"tester\",\n      \"taskDocPath\": \"other-shared-reminder-zh-task.tsk\",\n      \"prompt\": \"【系统提示】 共享范围提醒项已更新\\n\\nreminder_id=rzieumk7 是智能体范围提醒项，不是当前对话私有；当前进行时存在同一智能体的其它并行对话。同一智能体的某个并行对话刚更新了它，你所在对话也会看到这次更新。\\n这条共享提醒项这次实际上由另一对话维护；你应自行判断它与本对话当前上下文是否有关，只采纳确实相关的部分。\\n请把它作为最新共享参考。若这次更新看起来只适合更新者所在对话，不要在本对话替它修正共享内容。仅对没有自动维护所有者、管理工具或维护限制的手工提醒项，可提醒更新者在其对话中使用 migrate_reminder({ \\\"reminder_id\\\": \\\"rzieumk7\\\", \\\"scope\\\": \\\"dialog\\\" }) 迁回私有范围，从其它并行对话撤下。自动维护或受限的提醒项应遵循其维护说明，不要请求手工迁移；没有适用通道时，请向负责的维护者说明范围问题。本对话若另有私有状态，请另建对话范围提醒项。\"\n    },\n    {\n      \"recipient\": \"5e/fd/93922fa2\",\n      \"agentId\": \"tester\",\n      \"taskDocPath\": \"shared-reminder-zh-task.tsk\",\n      \"prompt\": \"【系统提示】 共享范围提醒项已更新\\n\\nreminder_id=rzieumk7 是智能体范围提醒项，不是当前对话私有；当前进行时存在同一智能体的其它并行对话。同一智能体的某个并行对话刚更新了它，你所在对话也会看到这次更新。\\n这条共享提醒项这次实际上由另一对话维护；你应自行判断它与本对话当前上下文是否有关，只采纳确实相关的部分。\\n请把它作为最新共享参考。若这次更新看起来只适合更新者所在对话，不要在本对话替它修正共享内容。仅对没有自动维护所有者、管理工具或维护限制的手工提醒项，可提醒更新者在其对话中使用 migrate_reminder({ \\\"reminder_id\\\": \\\"rzieumk7\\\", \\\"scope\\\": \\\"dialog\\\" }) 迁回私有范围，从其它并行对话撤下。自动维护或受限的提醒项应遵循其维护说明，不要请求手工迁移；没有适用通道时，请向负责的维护者说明范围问题。本对话若另有私有状态，请另建对话范围提醒项。\"\n    }\n  ]\n}",
+      "verdict": "passed",
+      "rationale": "回执及四份通知准确描述同一智能体跨Taskdoc的共享范围；各收件者自行判断相关性，私有内容由更新者处理。迁移建议明确以无owner、管理工具和维护限制的手工项为前提，没有宣称接收者已经处理或外部资源已删除。",
+      "reviewScope": "Real Dialog/registry/queue/disk and scheduled root flags. Notices are pending work, not LLM/backend consumption or restart delivery. Fixture explicitly acknowledges each observed queued notice afterward using production clear APIs.",
+      "provenance": {
+        "batch": "revised-bilingual-sharing-fresh20",
+        "producer": "tests/reminders/task-agent-reminder-scope.ts",
+        "observedPath": "/tmp/dominds-reminder-sharing-revised-semantic/1.tmp/dominds-shared-reminder-nFkzKc/zh-active-agent-manual-update.json",
+        "evidenceJsonSha256": "0060744a9d83b37826748f166620007dafe0dce4f24c835e713e0da2524a3179",
+        "actualTextSha256": "370841ddb8bf857bdfb9c60173858aa5921af0097003d2dd94f99cea63f34709",
+        "durableMaterial": "Complete original evidence fields including actualText/scenario/context/reviewQuestions are embedded. Temporary paths identify the observation and are not required for durable acceptance."
+      }
+    },
+    {
+      "id": "zh-active-task-manual-update",
+      "scenario": "A task change reaches the same-root Side, cross-root same-task Side and locked same-task Main. Different-task, other-agent, historical and updater dialogs are excluded.",
+      "businessValue": "Deliver relevant shared-state changes to the intended executing peers without redirecting historical, private or unrelated work.",
+      "context": {
+        "language": "zh",
+        "reminderId": "77ila3uu",
+        "scope": "task",
+        "givenData": "Remember the active peer deploy smoke-check command",
+        "updaterAgent": "tester",
+        "updaterTask": "shared-reminder-zh-task.tsk",
+        "expectedRecipients": "[{\"agentId\":\"tester\",\"taskDocPath\":\"shared-reminder-zh-task.tsk\",\"id\":\"11/f8/93922f7d#79/fe/93922f86\"},{\"agentId\":\"tester\",\"taskDocPath\":\"shared-reminder-zh-task.tsk\",\"id\":\"54/e5/93922f8e#ef/94/93922f8e\"},{\"agentId\":\"tester\",\"taskDocPath\":\"shared-reminder-zh-task.tsk\",\"id\":\"5e/fd/93922fa2\"}]",
+        "scopeLimit": "Real Dialog/registry/queue/disk and scheduled root flags. Notices are pending work, not LLM/backend consumption or restart delivery. Fixture explicitly acknowledges each observed queued notice afterward using production clear APIs."
+      },
+      "reviewQuestions": [
+        "Do the actual receipt and each queued notice accurately describe the observed scope/change/withdrawal and intended recipient, without prescribing private state or claiming the peer already handled it?"
+      ],
+      "actualText": "{\n  \"receipt\": {\n    \"content\": \"已更新\\n\\n共享范围影响：你刚更新的 reminder_id=77ila3uu 是任务范围提醒项，不是当前对话私有；当前进行时存在同一智能体在当前差遣牒任务内的其它并行对话，其它能看到这条提醒项的对话也会看到这次更新。仅当这是没有自动维护所有者、管理工具或维护限制的手工提醒项，且新内容只属于当前对话时，才考虑使用 migrate_reminder({ \\\"reminder_id\\\": \\\"77ila3uu\\\", \\\"scope\\\": \\\"dialog\\\" })；迁移会从共享范围撤下，并保留当前对话私有副本。自动维护或受限的提醒项应遵循其维护说明，不要请求手工迁移；没有适用通道时，请向负责的维护者说明范围问题。\\n已向 3/3 个受影响的并行对话派发提醒。\",\n    \"outcome\": \"success\"\n  },\n  \"notices\": [\n    {\n      \"recipient\": \"11/f8/93922f7d#79/fe/93922f86\",\n      \"agentId\": \"tester\",\n      \"taskDocPath\": \"shared-reminder-zh-task.tsk\",\n      \"prompt\": \"【系统提示】 共享范围提醒项已更新\\n\\nreminder_id=77ila3uu 是任务范围提醒项，不是当前对话私有；当前进行时存在同一智能体在当前差遣牒任务内的其它并行对话。同一智能体的某个并行对话刚更新了它，你所在对话也会看到这次更新。\\n这条共享提醒项这次实际上由另一对话维护；你应自行判断它与本对话当前上下文是否有关，只采纳确实相关的部分。\\n请把它作为最新共享参考。若这次更新看起来只适合更新者所在对话，不要在本对话替它修正共享内容。仅对没有自动维护所有者、管理工具或维护限制的手工提醒项，可提醒更新者在其对话中使用 migrate_reminder({ \\\"reminder_id\\\": \\\"77ila3uu\\\", \\\"scope\\\": \\\"dialog\\\" }) 迁回私有范围，从其它并行对话撤下。自动维护或受限的提醒项应遵循其维护说明，不要请求手工迁移；没有适用通道时，请向负责的维护者说明范围问题。本对话若另有私有状态，请另建对话范围提醒项。\"\n    },\n    {\n      \"recipient\": \"54/e5/93922f8e#ef/94/93922f8e\",\n      \"agentId\": \"tester\",\n      \"taskDocPath\": \"shared-reminder-zh-task.tsk\",\n      \"prompt\": \"【系统提示】 共享范围提醒项已更新\\n\\nreminder_id=77ila3uu 是任务范围提醒项，不是当前对话私有；当前进行时存在同一智能体在当前差遣牒任务内的其它并行对话。同一智能体的某个并行对话刚更新了它，你所在对话也会看到这次更新。\\n这条共享提醒项这次实际上由另一对话维护；你应自行判断它与本对话当前上下文是否有关，只采纳确实相关的部分。\\n请把它作为最新共享参考。若这次更新看起来只适合更新者所在对话，不要在本对话替它修正共享内容。仅对没有自动维护所有者、管理工具或维护限制的手工提醒项，可提醒更新者在其对话中使用 migrate_reminder({ \\\"reminder_id\\\": \\\"77ila3uu\\\", \\\"scope\\\": \\\"dialog\\\" }) 迁回私有范围，从其它并行对话撤下。自动维护或受限的提醒项应遵循其维护说明，不要请求手工迁移；没有适用通道时，请向负责的维护者说明范围问题。本对话若另有私有状态，请另建对话范围提醒项。\"\n    },\n    {\n      \"recipient\": \"5e/fd/93922fa2\",\n      \"agentId\": \"tester\",\n      \"taskDocPath\": \"shared-reminder-zh-task.tsk\",\n      \"prompt\": \"【系统提示】 共享范围提醒项已更新\\n\\nreminder_id=77ila3uu 是任务范围提醒项，不是当前对话私有；当前进行时存在同一智能体在当前差遣牒任务内的其它并行对话。同一智能体的某个并行对话刚更新了它，你所在对话也会看到这次更新。\\n这条共享提醒项这次实际上由另一对话维护；你应自行判断它与本对话当前上下文是否有关，只采纳确实相关的部分。\\n请把它作为最新共享参考。若这次更新看起来只适合更新者所在对话，不要在本对话替它修正共享内容。仅对没有自动维护所有者、管理工具或维护限制的手工提醒项，可提醒更新者在其对话中使用 migrate_reminder({ \\\"reminder_id\\\": \\\"77ila3uu\\\", \\\"scope\\\": \\\"dialog\\\" }) 迁回私有范围，从其它并行对话撤下。自动维护或受限的提醒项应遵循其维护说明，不要请求手工迁移；没有适用通道时，请向负责的维护者说明范围问题。本对话若另有私有状态，请另建对话范围提醒项。\"\n    }\n  ]\n}",
+      "verdict": "passed",
+      "rationale": "回执和三份通知与同任务的活动Side、跨root Side及锁住Main相符，未把其它任务或历史对话说成收件者。共享参考与私有副本的区别清楚，手工迁移前提与本例权限一致。",
+      "reviewScope": "Real Dialog/registry/queue/disk and scheduled root flags. Notices are pending work, not LLM/backend consumption or restart delivery. Fixture explicitly acknowledges each observed queued notice afterward using production clear APIs.",
+      "provenance": {
+        "batch": "revised-bilingual-sharing-fresh20",
+        "producer": "tests/reminders/task-agent-reminder-scope.ts",
+        "observedPath": "/tmp/dominds-reminder-sharing-revised-semantic/1.tmp/dominds-shared-reminder-nFkzKc/zh-active-task-manual-update.json",
+        "evidenceJsonSha256": "7f35ce3e39bcd32ca3cf1506e9ab5da9446946766e67cbfff815c65fd368a83b",
+        "actualTextSha256": "44779d11c11122dbe4d935218368641a586dcb9b99e628e7211cf5734fd8269e",
+        "durableMaterial": "Complete original evidence fields including actualText/scenario/context/reviewQuestions are embedded. Temporary paths identify the observation and are not required for durable acceptance."
+      }
+    },
+    {
+      "id": "zh-active-task-owner-update",
+      "scenario": "A registered owner really changes task state after an equivalent-key-order control produced no new memory/disk scheduling state. The actual change reaches three intended same-task peers.",
+      "businessValue": "Deliver relevant shared-state changes to the intended executing peers without redirecting historical, private or unrelated work.",
+      "context": {
+        "language": "zh",
+        "reminderId": "owner-zh-001",
+        "scope": "task",
+        "givenData": "{\"content\":\"Owner refreshed shared state\",\"meta\":{\"ownerUpdated\":true}}",
+        "updaterAgent": "tester",
+        "updaterTask": "shared-reminder-zh-task.tsk",
+        "expectedRecipients": "[{\"agentId\":\"tester\",\"taskDocPath\":\"shared-reminder-zh-task.tsk\",\"id\":\"11/f8/93922f7d#8b/67/93922f7e\"},{\"agentId\":\"tester\",\"taskDocPath\":\"shared-reminder-zh-task.tsk\",\"id\":\"54/e5/93922f8e#ef/94/93922f8e\"},{\"agentId\":\"tester\",\"taskDocPath\":\"shared-reminder-zh-task.tsk\",\"id\":\"5e/fd/93922fa2\"}]",
+        "scopeLimit": "Real Dialog/registry/queue/disk and scheduled root flags. Notices are pending work, not LLM/backend consumption or restart delivery. Fixture explicitly acknowledges each observed queued notice afterward using production clear APIs."
+      },
+      "reviewQuestions": [
+        "Do the actual receipt and each queued notice accurately describe the observed scope/change/withdrawal and intended recipient, without prescribing private state or claiming the peer already handled it?"
+      ],
+      "actualText": "{\n  \"notices\": [\n    {\n      \"recipient\": \"11/f8/93922f7d#8b/67/93922f7e\",\n      \"agentId\": \"tester\",\n      \"taskDocPath\": \"shared-reminder-zh-task.tsk\",\n      \"prompt\": \"【系统提示】 共享范围提醒项已更新\\n\\nreminder_id=owner-zh-001 是任务范围提醒项，不是当前对话私有；当前进行时存在同一智能体在当前差遣牒任务内的其它并行对话。同一智能体的某个并行对话刚更新了它，你所在对话也会看到这次更新。\\n这条共享提醒项这次实际上由另一对话维护；你应自行判断它与本对话当前上下文是否有关，只采纳确实相关的部分。\\n请把它作为最新共享参考。若这次更新看起来只适合更新者所在对话，不要在本对话替它修正共享内容。仅对没有自动维护所有者、管理工具或维护限制的手工提醒项，可提醒更新者在其对话中使用 migrate_reminder({ \\\"reminder_id\\\": \\\"owner-zh-001\\\", \\\"scope\\\": \\\"dialog\\\" }) 迁回私有范围，从其它并行对话撤下。自动维护或受限的提醒项应遵循其维护说明，不要请求手工迁移；没有适用通道时，请向负责的维护者说明范围问题。本对话若另有私有状态，请另建对话范围提醒项。\"\n    },\n    {\n      \"recipient\": \"54/e5/93922f8e#ef/94/93922f8e\",\n      \"agentId\": \"tester\",\n      \"taskDocPath\": \"shared-reminder-zh-task.tsk\",\n      \"prompt\": \"【系统提示】 共享范围提醒项已更新\\n\\nreminder_id=owner-zh-001 是任务范围提醒项，不是当前对话私有；当前进行时存在同一智能体在当前差遣牒任务内的其它并行对话。同一智能体的某个并行对话刚更新了它，你所在对话也会看到这次更新。\\n这条共享提醒项这次实际上由另一对话维护；你应自行判断它与本对话当前上下文是否有关，只采纳确实相关的部分。\\n请把它作为最新共享参考。若这次更新看起来只适合更新者所在对话，不要在本对话替它修正共享内容。仅对没有自动维护所有者、管理工具或维护限制的手工提醒项，可提醒更新者在其对话中使用 migrate_reminder({ \\\"reminder_id\\\": \\\"owner-zh-001\\\", \\\"scope\\\": \\\"dialog\\\" }) 迁回私有范围，从其它并行对话撤下。自动维护或受限的提醒项应遵循其维护说明，不要请求手工迁移；没有适用通道时，请向负责的维护者说明范围问题。本对话若另有私有状态，请另建对话范围提醒项。\"\n    },\n    {\n      \"recipient\": \"5e/fd/93922fa2\",\n      \"agentId\": \"tester\",\n      \"taskDocPath\": \"shared-reminder-zh-task.tsk\",\n      \"prompt\": \"【系统提示】 共享范围提醒项已更新\\n\\nreminder_id=owner-zh-001 是任务范围提醒项，不是当前对话私有；当前进行时存在同一智能体在当前差遣牒任务内的其它并行对话。同一智能体的某个并行对话刚更新了它，你所在对话也会看到这次更新。\\n这条共享提醒项这次实际上由另一对话维护；你应自行判断它与本对话当前上下文是否有关，只采纳确实相关的部分。\\n请把它作为最新共享参考。若这次更新看起来只适合更新者所在对话，不要在本对话替它修正共享内容。仅对没有自动维护所有者、管理工具或维护限制的手工提醒项，可提醒更新者在其对话中使用 migrate_reminder({ \\\"reminder_id\\\": \\\"owner-zh-001\\\", \\\"scope\\\": \\\"dialog\\\" }) 迁回私有范围，从其它并行对话撤下。自动维护或受限的提醒项应遵循其维护说明，不要请求手工迁移；没有适用通道时，请向负责的维护者说明范围问题。本对话若另有私有状态，请另建对话范围提醒项。\"\n    }\n  ]\n}",
+      "verdict": "passed",
+      "rationale": "三份通知与真实owner更新后排给同任务peer的事实一致。它们明确自动维护或受限项不应请求手工迁移，改为遵循维护说明、没有通道则向负责维护者说明范围问题，消除了初轮对owner项推荐不可执行迁移的冲突。",
+      "reviewScope": "Real Dialog/registry/queue/disk and scheduled root flags. Notices are pending work, not LLM/backend consumption or restart delivery. Fixture explicitly acknowledges each observed queued notice afterward using production clear APIs.",
+      "provenance": {
+        "batch": "revised-bilingual-sharing-fresh20",
+        "producer": "tests/reminders/task-agent-reminder-scope.ts",
+        "observedPath": "/tmp/dominds-reminder-sharing-revised-semantic/1.tmp/dominds-shared-reminder-nFkzKc/zh-active-task-owner-update.json",
+        "evidenceJsonSha256": "fd24b2d3b7bd1ccd13067c5616f935a4a8b75b5c5557fd341eb08fa1b4f0abfd",
+        "actualTextSha256": "0a219a01f8c66bab271822033d8c47e571fad700f2b7a7882299a0f4a958c246",
+        "durableMaterial": "Complete original evidence fields including actualText/scenario/context/reviewQuestions are embedded. Temporary paths identify the observation and are not required for durable acceptance."
+      }
+    },
+    {
+      "id": "zh-agent-added",
+      "scenario": "An explicitly agent-shared work note is visible across this agent Taskdocs and excluded from another agent.",
+      "businessValue": "Keep urgent global notes visible to their owner agent without crossing agent isolation.",
+      "context": {
+        "language": "zh",
+        "givenContent": "Urgent: confirm before deleting external resources",
+        "reminderId": "rzieumk7",
+        "scopeLimit": "Actual handler, visibility and agent-namespace JSON; the note is given data, no external deletion or permission action runs."
+      },
+      "reviewQuestions": [
+        "Does the actual receipt agree with creating this shared work note without claiming an external operation?"
+      ],
+      "actualText": "已添加",
+      "verdict": "passed",
+      "rationale": "简短回执确认实际新增提醒，与智能体范围存储和跨Taskdoc可见性一致；给定正文谈到删除资源，不等于工具已执行任何删除或授予权限。",
+      "reviewScope": "Actual handler, visibility and agent-namespace JSON; the note is given data, no external deletion or permission action runs.",
+      "provenance": {
+        "batch": "revised-bilingual-sharing-fresh20",
+        "producer": "tests/reminders/task-agent-reminder-scope.ts",
+        "observedPath": "/tmp/dominds-reminder-sharing-revised-semantic/1.tmp/dominds-shared-reminder-nFkzKc/zh-agent-added.json",
+        "evidenceJsonSha256": "e9a90bacc98c56bf0e48fbaef2623700619d670cce072ab38e49114124c40f1c",
+        "actualTextSha256": "889839915c3f4b8da43889be3c455496945c601ae38e669873f688c736486949",
+        "durableMaterial": "Complete original evidence fields including actualText/scenario/context/reviewQuestions are embedded. Temporary paths identify the observation and are not required for durable acceptance."
+      }
+    },
+    {
+      "id": "zh-default-task-added",
+      "scenario": "Default add creates a task-shared work note, not a dialog-local copy. No active peer exists.",
+      "businessValue": "Deliver relevant shared-state changes to the intended executing peers without redirecting historical, private or unrelated work.",
+      "context": {
+        "language": "zh",
+        "reminderId": "77ila3uu",
+        "scope": "task",
+        "givenData": "Remember the preferred deploy smoke-check command for this task",
+        "updaterAgent": "tester",
+        "updaterTask": "shared-reminder-zh-task.tsk",
+        "expectedRecipients": "[]",
+        "scopeLimit": "Real Dialog/registry/queue/disk and scheduled root flags. Notices are pending work, not LLM/backend consumption or restart delivery. Fixture explicitly acknowledges each observed queued notice afterward using production clear APIs."
+      },
+      "reviewQuestions": [
+        "Do the actual receipt and each queued notice accurately describe the observed scope/change/withdrawal and intended recipient, without prescribing private state or claiming the peer already handled it?"
+      ],
+      "actualText": "{\n  \"receipt\": {\n    \"content\": \"已添加\",\n    \"outcome\": \"success\"\n  },\n  \"notices\": []\n}",
+      "verdict": "passed",
+      "rationale": "默认新增确为任务共享项，当前无活动peer；新增回执与空通知列表一致，没有把它误称私有项或虚构派发。",
+      "reviewScope": "Real Dialog/registry/queue/disk and scheduled root flags. Notices are pending work, not LLM/backend consumption or restart delivery. Fixture explicitly acknowledges each observed queued notice afterward using production clear APIs.",
+      "provenance": {
+        "batch": "revised-bilingual-sharing-fresh20",
+        "producer": "tests/reminders/task-agent-reminder-scope.ts",
+        "observedPath": "/tmp/dominds-reminder-sharing-revised-semantic/1.tmp/dominds-shared-reminder-nFkzKc/zh-default-task-added.json",
+        "evidenceJsonSha256": "be4d317a58eea3fb0e2e303972ef9db0717ee98682ebdeddd50066d883e45754",
+        "actualTextSha256": "01af957b90af9541118ecb87c9e650267038f3db3f6bb6ec6e43570fe44223e1",
+        "durableMaterial": "Complete original evidence fields including actualText/scenario/context/reviewQuestions are embedded. Temporary paths identify the observation and are not required for durable acceptance."
+      }
+    },
+    {
+      "id": "zh-independent-shared-deletions",
+      "scenario": "A different same-task dialog deletes the manual task item while owner/agent items stay; a different Taskdoc then deletes the agent item. Private original data remain.",
+      "businessValue": "Remove only the selected shared work without losing independently owned or private state.",
+      "context": {
+        "language": "zh",
+        "taskReminderId": "77ila3uu",
+        "agentReminderId": "rzieumk7",
+        "preservedOwnerReminderId": "owner-zh-001",
+        "scopeLimit": "Actual handlers, visibility and physical shared file absence; no delete-notification policy or external resource operation is established."
+      },
+      "reviewQuestions": [
+        "Do the actual two deletion receipts fit the observed item removals without implying broader state removal?"
+      ],
+      "actualText": "{\n  \"taskDeleted\": {\n    \"content\": \"已删除\",\n    \"outcome\": \"success\"\n  },\n  \"agentDeleted\": {\n    \"content\": \"已删除\",\n    \"outcome\": \"success\"\n  }\n}",
+      "verdict": "passed",
+      "rationale": "两条删除回执分别对应所选task项和agent项移除；owner及私有数据保留，输出没有暗示更广泛删除、外部资源操作或接收者处理。",
+      "reviewScope": "Actual handlers, visibility and physical shared file absence; no delete-notification policy or external resource operation is established.",
+      "provenance": {
+        "batch": "revised-bilingual-sharing-fresh20",
+        "producer": "tests/reminders/task-agent-reminder-scope.ts",
+        "observedPath": "/tmp/dominds-reminder-sharing-revised-semantic/1.tmp/dominds-shared-reminder-nFkzKc/zh-independent-shared-deletions.json",
+        "evidenceJsonSha256": "87b7f5338860927160d126ba7305da1f4347eac3197327b4a0feb1f70f9b8d7c",
+        "actualTextSha256": "e984cd23bdd368a6c5ed3ada37e8cf006baabaa9afd2693764c41b79a70defc8",
+        "durableMaterial": "Complete original evidence fields including actualText/scenario/context/reviewQuestions are embedded. Temporary paths identify the observation and are not required for durable acceptance."
+      }
+    },
+    {
+      "id": "zh-loaded-history-excluded",
+      "scenario": "A shared task update is visible to another loaded same-task Main Dialog, but unlocked historical roots and a locked other-agent root are not current recipients.",
+      "businessValue": "Deliver relevant shared-state changes to the intended executing peers without redirecting historical, private or unrelated work.",
+      "context": {
+        "language": "zh",
+        "reminderId": "77ila3uu",
+        "scope": "task",
+        "givenData": "Remember the loaded-only deploy smoke-check command",
+        "updaterAgent": "tester",
+        "updaterTask": "shared-reminder-zh-task.tsk",
+        "expectedRecipients": "[]",
+        "scopeLimit": "Real Dialog/registry/queue/disk and scheduled root flags. Notices are pending work, not LLM/backend consumption or restart delivery. Fixture explicitly acknowledges each observed queued notice afterward using production clear APIs."
+      },
+      "reviewQuestions": [
+        "Do the actual receipt and each queued notice accurately describe the observed scope/change/withdrawal and intended recipient, without prescribing private state or claiming the peer already handled it?"
+      ],
+      "actualText": "{\n  \"receipt\": {\n    \"content\": \"已更新\",\n    \"outcome\": \"success\"\n  },\n  \"notices\": []\n}",
+      "verdict": "passed",
+      "rationale": "更新回执与共享正文实际变化一致；空通知列表正确区分已加载历史对话的可见性与当前活动收件边界，也没有把锁住的其它智能体root列为目标。",
+      "reviewScope": "Real Dialog/registry/queue/disk and scheduled root flags. Notices are pending work, not LLM/backend consumption or restart delivery. Fixture explicitly acknowledges each observed queued notice afterward using production clear APIs.",
+      "provenance": {
+        "batch": "revised-bilingual-sharing-fresh20",
+        "producer": "tests/reminders/task-agent-reminder-scope.ts",
+        "observedPath": "/tmp/dominds-reminder-sharing-revised-semantic/1.tmp/dominds-shared-reminder-nFkzKc/zh-loaded-history-excluded.json",
+        "evidenceJsonSha256": "3f5ab4bf6fe10679890f7880053eb6265799eb8486b8e160dbc013a8d5139f6f",
+        "actualTextSha256": "4f78f4b642ae92fa3c768dc62aa2bc64f6e38f6398cd192d753bab21cf09ad3a",
+        "durableMaterial": "Complete original evidence fields including actualText/scenario/context/reviewQuestions are embedded. Temporary paths identify the observation and are not required for durable acceptance."
+      }
+    },
+    {
+      "id": "zh-only-updater-is-active",
+      "scenario": "The only active same-agent Side Dialog performs the update; do not send it a peer notification about its own change.",
+      "businessValue": "Deliver relevant shared-state changes to the intended executing peers without redirecting historical, private or unrelated work.",
+      "context": {
+        "language": "zh",
+        "reminderId": "77ila3uu",
+        "scope": "task",
+        "givenData": "Remember the single-active deploy smoke-check command",
+        "updaterAgent": "tester",
+        "updaterTask": "shared-reminder-zh-task.tsk",
+        "expectedRecipients": "[]",
+        "scopeLimit": "Real Dialog/registry/queue/disk and scheduled root flags. Notices are pending work, not LLM/backend consumption or restart delivery. Fixture explicitly acknowledges each observed queued notice afterward using production clear APIs."
+      },
+      "reviewQuestions": [
+        "Do the actual receipt and each queued notice accurately describe the observed scope/change/withdrawal and intended recipient, without prescribing private state or claiming the peer already handled it?"
+      ],
+      "actualText": "{\n  \"receipt\": {\n    \"content\": \"已更新\",\n    \"outcome\": \"success\"\n  },\n  \"notices\": []\n}",
+      "verdict": "passed",
+      "rationale": "唯一活动对话就是更新者，更新成功而不自发peer通知符合场景；回执和空列表都未虚构其它参与者。",
+      "reviewScope": "Real Dialog/registry/queue/disk and scheduled root flags. Notices are pending work, not LLM/backend consumption or restart delivery. Fixture explicitly acknowledges each observed queued notice afterward using production clear APIs.",
+      "provenance": {
+        "batch": "revised-bilingual-sharing-fresh20",
+        "producer": "tests/reminders/task-agent-reminder-scope.ts",
+        "observedPath": "/tmp/dominds-reminder-sharing-revised-semantic/1.tmp/dominds-shared-reminder-nFkzKc/zh-only-updater-is-active.json",
+        "evidenceJsonSha256": "2210b4f2fa0e756fab9251ff2520bada4c75d88e2e68cd08dd046c02116a4996",
+        "actualTextSha256": "4f78f4b642ae92fa3c768dc62aa2bc64f6e38f6398cd192d753bab21cf09ad3a",
+        "durableMaterial": "Complete original evidence fields including actualText/scenario/context/reviewQuestions are embedded. Temporary paths identify the observation and are not required for durable acceptance."
+      }
+    },
+    {
+      "id": "zh-owner-migration-refused",
+      "scenario": "The same actual owner-maintained shared note cannot be migrated through the manual tool; the tool refuses without changing private/shared/durable queued state.",
+      "businessValue": "Keep automated state under its owning capability rather than advertise or permit a manual migration that cannot preserve its lifecycle.",
+      "context": {
+        "language": "zh",
+        "reminderId": "owner-zh-001",
+        "owner": "task-agent-reminder-scope-auto-owner",
+        "givenData": "{\"id\":\"owner-zh-001\",\"content\":\"Owner refreshed shared state\",\"ownerName\":\"task-agent-reminder-scope-auto-owner\",\"meta\":{\"ownerUpdated\":true},\"scope\":\"task\",\"renderMode\":\"markdown\",\"createdAt\":\"2026-03-30T00:00:01.000Z\",\"priority\":\"medium\"}",
+        "scopeLimit": "Actual tool handler and complete local/shared/queue state; this does not invoke an owner management command or discover a new capability."
+      },
+      "reviewQuestions": [
+        "Does the actual refusal accurately explain the automatic maintenance boundary without claiming a migration happened or inventing a maintenance action?"
+      ],
+      "actualText": "错误：该提醒项由 reminder owner 自动维护，不能用 migrate_reminder 迁移。",
+      "verdict": "passed",
+      "rationale": "拒绝说明准确指出提醒由owner自动维护，不能通过手工迁移工具迁移；没有声称成功或编造维护命令，与调用计数及私有、共享和队列状态不变相符。",
+      "reviewScope": "Actual tool handler and complete local/shared/queue state; this does not invoke an owner management command or discover a new capability.",
+      "provenance": {
+        "batch": "revised-bilingual-sharing-fresh20",
+        "producer": "tests/reminders/task-agent-reminder-scope.ts",
+        "observedPath": "/tmp/dominds-reminder-sharing-revised-semantic/1.tmp/dominds-shared-reminder-nFkzKc/zh-owner-migration-refused.json",
+        "evidenceJsonSha256": "c948fbbd68a1b30e1d51ebc7bf13d392fb265536a3fd65f69d118cf78d7168ca",
+        "actualTextSha256": "41a0a2950bfb4e9ab8a71ba66b95dec0a8c3897d40b394e5d0aa77b5ddef6ada",
+        "durableMaterial": "Complete original evidence fields including actualText/scenario/context/reviewQuestions are embedded. Temporary paths identify the observation and are not required for durable acceptance."
+      }
+    },
+    {
+      "id": "en-task-migrated-private",
+      "scenario": "A default task-shared note is migrated to the updater Side Dialog with stable ID and complete plain body/opaque metadata preserved. Shared storage and peer visibility lose it; withdrawal is queued only to the original three active same-task peers, not history, another Taskdoc or another agent.",
+      "businessValue": "Deliver relevant shared-state changes to the intended executing peers without redirecting historical, private or unrelated work.",
+      "context": {
+        "language": "en",
+        "reminderId": "ult5xmgr",
+        "scope": "task",
+        "givenData": "{\"original\":{\"id\":\"ult5xmgr\",\"content\":\"This shared task reminder turns out to belong only to side A\",\"meta\":{\"checkpoint\":{\"sequence\":7,\"remaining\":[\"A\",\"B\"]}},\"scope\":\"task\",\"renderMode\":\"plain\",\"createdAt\":\"2026-10-31 13:06:35\",\"priority\":\"medium\"},\"privateCopy\":{\"id\":\"ult5xmgr\",\"content\":\"This shared task reminder turns out to belong only to side A\",\"meta\":{\"checkpoint\":{\"sequence\":7,\"remaining\":[\"A\",\"B\"]}},\"scope\":\"dialog\",\"renderMode\":\"plain\",\"createdAt\":\"2026-10-31 13:06:35\",\"priority\":\"medium\"}}",
+        "updaterAgent": "tester",
+        "updaterTask": "shared-reminder-en-task.tsk",
+        "expectedRecipients": "[{\"agentId\":\"tester\",\"taskDocPath\":\"shared-reminder-en-task.tsk\",\"id\":\"28/5c/939238a7#06/b8/939238b2\"},{\"agentId\":\"tester\",\"taskDocPath\":\"shared-reminder-en-task.tsk\",\"id\":\"5e/a2/939238be#20/1d/939238bf\"},{\"agentId\":\"tester\",\"taskDocPath\":\"shared-reminder-en-task.tsk\",\"id\":\"2e/6f/939238d5\"}]",
+        "scopeLimit": "Real Dialog/registry/queue/disk and scheduled root flags. Notices are pending work, not LLM/backend consumption or restart delivery. Fixture explicitly acknowledges each observed queued notice afterward using production clear APIs."
+      },
+      "reviewQuestions": [
+        "Do the actual receipt and each queued notice accurately describe the observed scope/change/withdrawal and intended recipient, without prescribing private state or claiming the peer already handled it?"
+      ],
+      "actualText": "{\n  \"receipt\": {\n    \"content\": \"Migrated: reminder_id=ult5xmgr has been withdrawn from shared scope and kept as a current-dialog reminder.\\nDispatched withdrawal notices to 3/3 affected parallel dialog(s).\",\n    \"outcome\": \"success\"\n  },\n  \"notices\": [\n    {\n      \"recipient\": \"28/5c/939238a7#06/b8/939238b2\",\n      \"agentId\": \"tester\",\n      \"taskDocPath\": \"shared-reminder-en-task.tsk\",\n      \"prompt\": \"[System notice] Shared-scope reminder migrated back to another dialog\\n\\nreminder_id=ult5xmgr was task-scope. The updater dialog has moved it back into its own dialog scope, so it is no longer a shared reference visible to this dialog.\\nIf this dialog still needs similar content, create a dialog-scope or task-scope reminder that matches this dialog now; do not assume the migrated content still applies here.\"\n    },\n    {\n      \"recipient\": \"5e/a2/939238be#20/1d/939238bf\",\n      \"agentId\": \"tester\",\n      \"taskDocPath\": \"shared-reminder-en-task.tsk\",\n      \"prompt\": \"[System notice] Shared-scope reminder migrated back to another dialog\\n\\nreminder_id=ult5xmgr was task-scope. The updater dialog has moved it back into its own dialog scope, so it is no longer a shared reference visible to this dialog.\\nIf this dialog still needs similar content, create a dialog-scope or task-scope reminder that matches this dialog now; do not assume the migrated content still applies here.\"\n    },\n    {\n      \"recipient\": \"2e/6f/939238d5\",\n      \"agentId\": \"tester\",\n      \"taskDocPath\": \"shared-reminder-en-task.tsk\",\n      \"prompt\": \"[System notice] Shared-scope reminder migrated back to another dialog\\n\\nreminder_id=ult5xmgr was task-scope. The updater dialog has moved it back into its own dialog scope, so it is no longer a shared reference visible to this dialog.\\nIf this dialog still needs similar content, create a dialog-scope or task-scope reminder that matches this dialog now; do not assume the migrated content still applies here.\"\n    }\n  ]\n}",
+      "verdict": "passed",
+      "rationale": "The receipt and each withdrawal notice correctly state that the manual task item now belongs to the updater dialog and is no longer a shared reference. They recommend creating context-appropriate new state only if needed, rather than silently reusing withdrawn content; stable ID and complete supplied data are preserved.",
+      "reviewScope": "Real Dialog/registry/queue/disk and scheduled root flags. Notices are pending work, not LLM/backend consumption or restart delivery. Fixture explicitly acknowledges each observed queued notice afterward using production clear APIs.",
+      "provenance": {
+        "batch": "revised-bilingual-sharing-fresh20",
+        "producer": "tests/reminders/migrate-reminder-scope.ts",
+        "observedPath": "/tmp/dominds-reminder-sharing-revised-semantic/2.tmp/dominds-shared-migration-Lxghqb/en-task-migrated-private.json",
+        "evidenceJsonSha256": "6984b19b162aabe4a88b393b45b81e84345bd404128d0592ccd42bbf9ae2d50e",
+        "actualTextSha256": "54c4b688e1b52c3d609e85e6afe8903ed8f0f5a39a17663f6cff74aa8746d25a",
+        "durableMaterial": "Complete original evidence fields including actualText/scenario/context/reviewQuestions are embedded. Temporary paths identify the observation and are not required for durable acceptance."
+      }
+    },
+    {
+      "id": "zh-task-migrated-private",
+      "scenario": "A default task-shared note is migrated to the updater Side Dialog with stable ID and complete plain body/opaque metadata preserved. Shared storage and peer visibility lose it; withdrawal is queued only to the original three active same-task peers, not history, another Taskdoc or another agent.",
+      "businessValue": "Deliver relevant shared-state changes to the intended executing peers without redirecting historical, private or unrelated work.",
+      "context": {
+        "language": "zh",
+        "reminderId": "3233c3q5",
+        "scope": "task",
+        "givenData": "{\"original\":{\"id\":\"3233c3q5\",\"content\":\"This shared task reminder turns out to belong only to side A\",\"meta\":{\"checkpoint\":{\"sequence\":7,\"remaining\":[\"A\",\"B\"]}},\"scope\":\"task\",\"renderMode\":\"plain\",\"createdAt\":\"2026-10-31 13:06:35\",\"priority\":\"medium\"},\"privateCopy\":{\"id\":\"3233c3q5\",\"content\":\"This shared task reminder turns out to belong only to side A\",\"meta\":{\"checkpoint\":{\"sequence\":7,\"remaining\":[\"A\",\"B\"]}},\"scope\":\"dialog\",\"renderMode\":\"plain\",\"createdAt\":\"2026-10-31 13:06:35\",\"priority\":\"medium\"}}",
+        "updaterAgent": "tester",
+        "updaterTask": "shared-reminder-zh-task.tsk",
+        "expectedRecipients": "[{\"agentId\":\"tester\",\"taskDocPath\":\"shared-reminder-zh-task.tsk\",\"id\":\"bd/6e/93923859#9f/62/9392386b\"},{\"agentId\":\"tester\",\"taskDocPath\":\"shared-reminder-zh-task.tsk\",\"id\":\"c5/26/9392386f#08/98/93923870\"},{\"agentId\":\"tester\",\"taskDocPath\":\"shared-reminder-zh-task.tsk\",\"id\":\"75/3b/9392387c\"}]",
+        "scopeLimit": "Real Dialog/registry/queue/disk and scheduled root flags. Notices are pending work, not LLM/backend consumption or restart delivery. Fixture explicitly acknowledges each observed queued notice afterward using production clear APIs."
+      },
+      "reviewQuestions": [
+        "Do the actual receipt and each queued notice accurately describe the observed scope/change/withdrawal and intended recipient, without prescribing private state or claiming the peer already handled it?"
+      ],
+      "actualText": "{\n  \"receipt\": {\n    \"content\": \"已迁移：reminder_id=3233c3q5 已从共享范围撤下，并保留为当前对话范围提醒项。\\n已向 3/3 个受影响的并行对话派发撤下提醒。\",\n    \"outcome\": \"success\"\n  },\n  \"notices\": [\n    {\n      \"recipient\": \"bd/6e/93923859#9f/62/9392386b\",\n      \"agentId\": \"tester\",\n      \"taskDocPath\": \"shared-reminder-zh-task.tsk\",\n      \"prompt\": \"【系统提示】 共享范围提醒项已迁回其它对话\\n\\nreminder_id=3233c3q5 原本是任务范围提醒项；更新者对话已将它迁回自己的对话范围，因此它不再是你所在对话可见的共享参考。\\n若本对话仍需要类似内容，请按本对话当前状态另建对话范围或任务范围提醒项；不要假设迁走后的内容仍适用于这里。\"\n    },\n    {\n      \"recipient\": \"c5/26/9392386f#08/98/93923870\",\n      \"agentId\": \"tester\",\n      \"taskDocPath\": \"shared-reminder-zh-task.tsk\",\n      \"prompt\": \"【系统提示】 共享范围提醒项已迁回其它对话\\n\\nreminder_id=3233c3q5 原本是任务范围提醒项；更新者对话已将它迁回自己的对话范围，因此它不再是你所在对话可见的共享参考。\\n若本对话仍需要类似内容，请按本对话当前状态另建对话范围或任务范围提醒项；不要假设迁走后的内容仍适用于这里。\"\n    },\n    {\n      \"recipient\": \"75/3b/9392387c\",\n      \"agentId\": \"tester\",\n      \"taskDocPath\": \"shared-reminder-zh-task.tsk\",\n      \"prompt\": \"【系统提示】 共享范围提醒项已迁回其它对话\\n\\nreminder_id=3233c3q5 原本是任务范围提醒项；更新者对话已将它迁回自己的对话范围，因此它不再是你所在对话可见的共享参考。\\n若本对话仍需要类似内容，请按本对话当前状态另建对话范围或任务范围提醒项；不要假设迁走后的内容仍适用于这里。\"\n    }\n  ]\n}",
+      "verdict": "passed",
+      "rationale": "回执与每份撤下通知准确说明手工任务项迁到更新者私有范围、其它对话不再能把它当共享参考；需要类似内容时另按当前状态建立，未强令复制旧状态。稳定ID、plain正文及完整给定数据均保留。",
+      "reviewScope": "Real Dialog/registry/queue/disk and scheduled root flags. Notices are pending work, not LLM/backend consumption or restart delivery. Fixture explicitly acknowledges each observed queued notice afterward using production clear APIs.",
+      "provenance": {
+        "batch": "revised-bilingual-sharing-fresh20",
+        "producer": "tests/reminders/migrate-reminder-scope.ts",
+        "observedPath": "/tmp/dominds-reminder-sharing-revised-semantic/2.tmp/dominds-shared-migration-Lxghqb/zh-task-migrated-private.json",
+        "evidenceJsonSha256": "1dbc0d7c2a4e03a15d7d9b576ce1f77fa04ad9b522069664f9096e0452cfd9bc",
+        "actualTextSha256": "a5b4d4f0615f4d6e8351d265c831897140ec6086f30607b205a1ea2c9e6afe82",
+        "durableMaterial": "Complete original evidence fields including actualText/scenario/context/reviewQuestions are embedded. Temporary paths identify the observation and are not required for durable acceptance."
+      }
+    }
+  ],
+  "blockingFinding": {
+    "case": "active-task-owner-update",
+    "actualAdvice": "you may ask the updater to run migrate_reminder({ \"reminder_id\": \"owner001\", \"scope\": \"dialog\" })",
+    "implementationEvidence": "main/tools/ctrl.ts migrateReminderTool rejects targetReminder.owner?.updateReminder !== undefined. Context and producer identify owner001 as registered automatic owner state.",
+    "businessReason": "Ownership is a real capability boundary; advising a different caller does not make a prohibited migration executable. Conditional privacy wording does not remove the owner restriction.",
+    "remedyScope": "Explain the migration path only for manually maintained migratable reminders and use the declared owner/managed channel otherwise; do not weaken actual permissions.",
+    "status": "resolved-in-final20",
+    "resolution": "Four zh/en updater/peer generated advice strings now limit manual migration to an unrestricted manually maintained reminder. Automatic/restricted state follows its declared maintenance path; absence of a usable path is escalated to the responsible maintainer. The actual owner migration refusal is emitted and reviewed in both locales. No permission was relaxed."
+  },
+  "reviewMethod": "Read every final20 and initial9 actualText/scenario/context/input when present/reviewQuestions completely as untrusted data; judge meaning against real tool restrictions, observed state and the business scenario. No keywords, regex, fixed-sentence match, snapshots, source snippet, output hash or prior verdict decides meaning. The explicit per-ID decisions are recorded after individual reading, never inferred by an acceptance program. Source inspection checks whether suggested actions exist and fit actual permissions. Hashes identify materials only.",
+  "scope": {
+    "freshReviewed": "Only the two explicitly executed current producers: eighteen scope/owner cases and two task-to-private cases, Chinese and English, total20. All twenty were read anew.",
+    "historicalReviewed": "Initial nine full outputs retained:8passed/1failed. Historical core/guard81 remain in their own source-bound reports; this batch produced no new81. The eleven-entry full semantic lane can generate101; that capacity is not fresh101 acceptance.",
+    "behaviorBoundary": "Actual managed CLI rtws, Dialog/registry, control tools, registered owner callback, visibility, parsed physical JSON, in-memory runtime-guide queue, persisted pending prompt and matching trigger, and root scheduling flags. No provider/backend/LLM processing is performed by these two cases.",
+    "migrationBoundary": "Successful default task→updater-Side private migration and actual automatic-owner refusal. No agent→private, manager-tool/delete-alt rejection matrix, runtime-scope, browser, restart delivery or real concurrent drives are established."
+  },
+  "assertionReview": {
+    "status": "passed-with-explicit-scope",
+    "readScope": "Original scope500 and migration181 lines, final scope424/migration147/shared helper236 lines, complete tracked diff, new helper, relevant registry/routing/queue/persistence/shared-store/control-tool paths, entry changes and all current AGENTS/README/strategy/ledger diffs read. No remaining semantic literal oracle found in added/changed assertions.",
+    "candidates": [
+      {
+        "path": "tests/reminders/task-agent-reminder-scope.ts",
+        "originalBusinessValue": "Default task sharing must remain separate from older local state, preserve visible order and same-agent/same-task access across roots, isolate another Taskdoc/agent, route manual and owner changes only to executing peers, and delete selected shared items without losing independent state.",
+        "preservedAndStrengthened": [
+          "Real add outcome plus exact visible ID sequence [new task, older local], absence of the new ID in the local array, and parsed on-disk ID/scope/renderMode/content preserve default task/private/order value. Fixed Main Goal filtering uses its machine identifier and does not disguise a prose condition.",
+          "A fresh same-task root receives exactly the supplied task ID/content/scope. Other-task and other-agent roots do not see task or local IDs. Agent-scoped creation is visible across same-agent Taskdocs while another agent is excluded. Actual per-ID files have the task/agent namespace prefix; parsed JSON, not pretty-format matching, checks state.",
+          "Unregistered/loaded history and updater-only phases have empty actual peer queues. Active sides in the same root, active same-task side across roots and a truly locked Main receive task updates (three); agent updates also reach a different-task side (four). Exact recipient arrays and actual root flags replace receipt-count prose matches.",
+          "Registered owner callback is actually invoked once for an equivalent nested key-order update; full observed memory queue, pendingRuntimePrompt, nextStep, root flags and shared JSON remain equal. A genuine body/meta change invokes it a second time, persists ownerName and supplied values, preserves the independent manual item and queues three exact peers.",
+          "The same actual owner item is passed to migrate_reminder. Its public failure outcome, unchanged ownerCalls=2 and complete compared public local data, local disk, selected shared JSON and all observed scheduling state establish refusal without migration. Both actual refusal texts are separately reviewed.",
+          "Deleting the manual task item and then the agent item removes their real files and visibility. Owner content, unrelated agent content until its own deletion, and the original private body remain intact. Given body literals are data sent to real tools/owner callbacks, not an oracle for generated meaning."
+        ],
+        "removedOrReplaced": [
+          "Added/Updated/Deleted and Dispatched-count regexes evaluated generated prose and are replaced by machine outcomes/state/actual packets plus full subjective evidence.",
+          "Old reminder_id substring checks had a legitimate supplied-ID fidelity intent but weakly proved routing. They are replaced by exact target identity and complete packet-to-disk fidelity; generated notices, including embedded IDs and advice, receive subjective review.",
+          "Duplicating the internal CRC task-directory algorithm and matching raw formatted scope JSON were not a concrete caller requirement. Actual per-ID task/agent namespace files, parsed fields and same/different-task visibility preserve useful isolation without freezing a checksum implementation.",
+          "Abstract memory DialogStore, empty-as-Member, raw branded numbers and cwd changes are replaced by real CLI-managed disk Dialogs, a native Team.Member and branded call-site conversions. No fake peer recipient index or provider prompt routing is introduced."
+        ],
+        "limits": "The routing frontier is intentionally seeded through public root/side creation, active-callee IDs and a real acquired Main lock. It is not an actual model dispatch or concurrent drive. Ordinary no-recipient phases assert memory absence/root flags; complete before/after disk comparisons are specifically made for the owner controls, not claimed globally for every excluded dialog."
+      },
+      {
+        "path": "tests/reminders/migrate-reminder-scope.ts",
+        "originalBusinessValue": "A default task item may be moved to the updater dialog without changing its identity; peers lose shared visibility and only active original-scope peers receive withdrawal notices.",
+        "preservedAndStrengthened": [
+          "Actual add tool creates a plain task item. Opaque checkpoint metadata is explicitly seeded as persisted fixture data via the production shared mutation API; the test does not invent an add_reminder meta argument or owner capability.",
+          "Before migration, both side peers, locked Main and loaded history really see the shared ID; different-task side and another agent do not. Success preserves stable ID and complete public supplied reminder data, changing only scope to dialog.",
+          "Shared per-ID file is physically absent, all tested peers/history and a subsequently created root no longer see the ID, and updater projection/local disk retain the supplied plain body and full opaque metadata/createdAt/priority/other public data.",
+          "Three exact active same-task recipients receive actual withdrawal runtime guides with matching disk prompt/trigger/course and root flags. Another task, agent, history and updater are excluded; the migration receipt and every notice are independently judged for meaning in both locales."
+        ],
+        "removedOrReplaced": "Migrated and withdrawal-count prose regexes plus promptDescribesMigration fixed sentences are deleted. Real outcome, storage, visibility, complete data fidelity and actual queue recipients establish the effects; full receipt/notice meaning is separately reviewed.",
+        "limits": "Only task→dialog success is exercised here. Owner refusal is exercised in the sibling scope test. This does not establish agent/runtime migration, managed/delete-restricted migration, physical restart, or completed peer processing."
+      }
+    ],
+    "helperAndSharedAssertions": [
+      {
+        "scope": "tests/helpers/shared-reminders.ts fixture",
+        "proof": "Two concrete users share the helper. It creates real Taskdoc directories and managed disk roots/active sides with native members and course/genseq conversions, registers roots, acquires Main locks and releases/unregisters in finally. Explicit zh/en parameters set actual packet language; per-locale Taskdoc and owner IDs avoid shared-state collision while preserving earlier successful evidence.",
+        "limits": "Registry/queue state is seeded intentionally; no actual backend drive is inferred."
+      },
+      {
+        "scope": "Actual packet and persisted work assertions",
+        "proof": "Unique actor IDs and sorted exact recipient arrays catch missing, extra or duplicate deliveries; root-ID Set compares a boolean scheduling contract where several recipients can share one root. Runtime-guide kind, origin runtime, grammar markdown, exact language and skipTaskdoc are machine protocol. Persisted pending content/msgId/grammar/origin/language/skipTaskdoc equal the actual in-memory packet, and precisely one queued_prompt trigger matches its ID and current course. Equality here proves data transport/durable identity; it does not judge the generated text meaning.",
+        "limits": "The pending disk shape is deliberately checked by its actual fields, not incorrectly required to contain the memory envelope kind. Relative ordering among peer recipients is not a stated contract; array equality is sorted only for the target set."
+      },
+      {
+        "scope": "Explicit fixture acknowledgment",
+        "proof": "takeQueuedPrompt removes the memory entry and verifies no second entry in that recipient. After recording full actual output, the fixture calls production clearPendingRuntimePrompt with the observed ID and clearRootDriveQueue, giving later phases a clean baseline.",
+        "limits": "Those fixture calls are not LLM/backend consumption, automatic acknowledgment or replay/restart delivery. They are not used to claim an execution result."
+      },
+      {
+        "scope": "Public reminder data snapshots",
+        "proof": "reminderData preserves id/content/meta/scope/renderMode/createdAt/priority/echoback and stable owner.name. Before/after comparisons and expected original-plus-scope checks protect supplied data, not JS function/object identity or natural prose quality.",
+        "limits": "No all-internal-JS-state, syscall count, zero-persistence or zero-normal-event claim is made."
+      },
+      {
+        "scope": "Physical shared file helper",
+        "proof": "Actual recursive discovery matches only the complete supplied reminder-ID JSON basename, checks at most one fixture storage target, parses a JSON object and examines real namespace/data. This is a machine filename/data contract rather than semantic matching.",
+        "limits": "Fixture IDs are deliberately unique; this does not promise a new global cross-agent uniqueness rule or freeze private checksum layout."
+      },
+      {
+        "scope": "Liveness and failures",
+        "proof": "The existing 60-second watchdog remains a failing upper bound and keeps an unresolved main promise from silently passing. Success and rejection clear the timer; rejection sets a failing exit code. It is not a synchronization sleep, semantic assertion or a timeout increase."
+      }
+    ],
+    "productReview": {
+      "path": "main/runtime/driver-messages.ts",
+      "change": "Exactly four Chinese/English updater/peer advice strings in formatSharedReminderUpdateImpactNotice change. No control flow, tool schema, storage field, permission or DSL change.",
+      "causalEvidence": "Initial owner case failed subjective review because advice requested a manual migration rejected by the actual automatic-owner guard. Fresh owner notices now condition that advice on an unrestricted manually maintained item. Both locales actually invoke the refused owner migration and a successful manual task migration, keeping the capability distinction concrete.",
+      "callChain": "Shared routing filters the registered running/locked Main and loaded active-callee frontier, same agent and for task scope exact Taskdoc; queues the actual formatted guide then a root drive flag. migrateReminderTool checks delete maintenance instructions, manager tool and automatic owner before migration. The revised guidance does not invent a new owner-management command or assume one exists.",
+      "unchangedProduct": "main/tool.ts canonical object-key render identity equals this batch base and saved fixed copy. The historical key-order routing red exercises the prior product fix; it is not a new implementation change in this batch."
+    },
+    "entryAndDocumentationReview": {
+      "paths": [
+        "tests/run.mjs",
+        "tests/package.json",
+        "AGENTS.md",
+        "tests/README.md",
+        "docs/testing-strategy.md",
+        "tests/audit.json"
+      ],
+      "proof": "The two cases are added to actual reminders behavior and explicit semantic producer arrays; named package scripts route through tests/cli.ts using --isolated-rtws. The support helper is not a discovered passing case. Docs and ledger preserve2 candidates, two producers/fresh20 versus full eleven-producer101 capacity, owner/refusal/migration limits, explicit acknowledgment and inherited type failure. Ledger reviewed is design scope, never a verdict for freshly emitted output. Strategy correctly identifies the old red as using the initial shared scope source.",
+      "semanticBoundary": "No semantic detector, regex-based content gate, snapshot approval, automatic hash acceptance or new test framework/dependency is added."
+    }
+  },
+  "sourceFreeze": "Final current source/docs/ledger frozen, including strategy clarification that the old-product key-order red used the initial single-language shared scope case, not the final bilingual/owner-refusal source. Final fingerprints identify the reviewed current bytes; they do not accept semantics.",
+  "executionVerificationOwner": "Reserved for parent append of parentVerification after explicit handoff. This reviewer performed reading, provenance consistency and report formatting only; build/suite/type results must be attributed to their actual parent executions.",
+  "historicalMachineRegression": {
+    "scope": "Separate machine regression from the current semantic ownership blocker. Old key-order-sensitive product needlessly queued3 peer notices/root drives for equivalent shared owner data; the existing canonicalization fixes it without a permanent main/tool change in this batch.",
+    "observedPath": "/tmp/dominds-reminder-sharing-owner-before-fix.log",
+    "sha256": "570153425b94d9301c8a2b084d17ca56e7d24b1e1fd484eb1ccc1cb829de0d65",
+    "text": "$ tsx cli.ts -- --isolated-rtws reminders/task-agent-reminder-scope.ts\nAssertionError [ERR_ASSERTION]: Expected values to be strictly deep-equal:\n+ actual - expected\n... Skipped lines\n\n  [\n    {\n      hasQueue: false,\n      id: '5a/39/93889370',\n      nextStep: {\n...\n      queued: undefined,\n+     rootDriveQueued: true\n-     rootDriveQueued: false\n    },\n    {\n+     hasQueue: true,\n-     hasQueue: false,\n      id: 'ff/14/938893a1#b0/0a/938893a2',\n      nextStep: {\n+       nextSeq: 2,\n+       triggers: [\n+         {\n+           course: 1,\n+           createdAt: '2026-10-31 12:56:03',\n+           kind: 'queued_prompt',\n+           promptId: 'c0x3nk',\n+           seq: 1,\n+           triggerId: 'queued-prompt:c0x3nk'\n+         }\n+       ]\n-       nextSeq: 1,\n-       triggers: []\n      },\n+     pendingRuntimePrompt: {\n+       content: '[System notice] Shared-scope reminder updated\\n' +\n+         '\\n' +\n+         'reminder_id=owner001 is task-scope, not private to the current dialog. The current in-flight work has other parallel dialogs for the same agent and Taskdoc. Another parallel dialog for the same agent just updated it, so this dialog will see the update too.\\n' +\n+         'This shared reminder was actually maintained by another dialog this time; decide for yourself whether it is relevant to this dialog context, and use only the parts that are truly relevant.\\n' +\n+         `Use it as the latest shared reference. If this update appears to fit only the updater's dialog, do not correct the shared content from this dialog; you may ask the updater to run migrate_reminder({ \"reminder_id\": \"owner001\", \"scope\": \"dialog\" }) in that dialog so Dominds withdraws it from other parallel dialogs. If this dialog has its own private state, create a separate dialog-scope reminder here.`,\n+       grammar: 'markdown',\n+       msgId: 'c0x3nk',\n+       origin: 'runtime',\n+       skipTaskdoc: true,\n+       userLanguageCode: 'en'\n+     },\n+     queued: {\n+       grammar: 'markdown',\n+       kind: 'new_course_runtime_guide',\n+       msgId: 'c0x3nk',\n+       origin: 'runtime',\n+       prompt: '[System notice] Shared-scope reminder updated\\n' +\n+         '\\n' +\n+         'reminder_id=owner001 is task-scope, not private to the current dialog. The current in-flight work has other parallel dialogs for the same agent and Taskdoc. Another parallel dialog for the same agent just updated it, so this dialog will see the update too.\\n' +\n+         'This shared reminder was actually maintained by another dialog this time; decide for yourself whether it is relevant to this dialog context, and use only the parts that are truly relevant.\\n' +\n+         `Use it as the latest shared reference. If this update appears to fit only the updater's dialog, do not correct the shared content from this dialog; you may ask the updater to run migrate_reminder({ \"reminder_id\": \"owner001\", \"scope\": \"dialog\" }) in that dialog so Dominds withdraws it from other parallel dialogs. If this dialog has its own private state, create a separate dialog-scope reminder here.`,\n+       skipTaskdoc: true,\n+       userLanguageCode: 'en'\n+     },\n+     rootDriveQueued: true\n-     pendingRuntimePrompt: undefined,\n-     queued: undefined,\n-     rootDriveQueued: false\n    },\n    {\n      hasQueue: false,\n      id: 'ff/14/938893a1#35/48/938893a9',\n      nextStep: {\n...\n      queued: undefined,\n+     rootDriveQueued: true\n-     rootDriveQueued: false\n    },\n    {\n      hasQueue: false,\n      id: '07/6b/938893b0',\n      nextStep: {\n...\n      queued: undefined,\n+     rootDriveQueued: true\n-     rootDriveQueued: false\n    },\n    {\n+     hasQueue: true,\n-     hasQueue: false,\n      id: '07/6b/938893b0#64/23/938893b0',\n      nextStep: {\n+       nextSeq: 3,\n+       triggers: [\n+         {\n+           course: 1,\n+           createdAt: '2026-10-31 12:56:03',\n+           kind: 'queued_prompt',\n+           promptId: 'ykqm7t',\n+           seq: 2,\n+           triggerId: 'queued-prompt:ykqm7t'\n+         }\n+       ]\n-       nextSeq: 2,\n-       triggers: []\n      },\n+     pendingRuntimePrompt: {\n+       content: '[System notice] Shared-scope reminder updated\\n' +\n+         '\\n' +\n+         'reminder_id=owner001 is task-scope, not private to the current dialog. The current in-flight work has other parallel dialogs for the same agent and Taskdoc. Another parallel dialog for the same agent just updated it, so this dialog will see the update too.\\n' +\n+         'This shared reminder was actually maintained by another dialog this time; decide for yourself whether it is relevant to this dialog context, and use only the parts that are truly relevant.\\n' +\n+         `Use it as the latest shared reference. If this update appears to fit only the updater's dialog, do not correct the shared content from this dialog; you may ask the updater to run migrate_reminder({ \"reminder_id\": \"owner001\", \"scope\": \"dialog\" }) in that dialog so Dominds withdraws it from other parallel dialogs. If this dialog has its own private state, create a separate dialog-scope reminder here.`,\n+       grammar: 'markdown',\n+       msgId: 'ykqm7t',\n+       origin: 'runtime',\n+       skipTaskdoc: true,\n+       userLanguageCode: 'en'\n+     },\n+     queued: {\n+       grammar: 'markdown',\n+       kind: 'new_course_runtime_guide',\n+       msgId: 'ykqm7t',\n+       origin: 'runtime',\n+       prompt: '[System notice] Shared-scope reminder updated\\n' +\n+         '\\n' +\n+         'reminder_id=owner001 is task-scope, not private to the current dialog. The current in-flight work has other parallel dialogs for the same agent and Taskdoc. Another parallel dialog for the same agent just updated it, so this dialog will see the update too.\\n' +\n+         'This shared reminder was actually maintained by another dialog this time; decide for yourself whether it is relevant to this dialog context, and use only the parts that are truly relevant.\\n' +\n+         `Use it as the latest shared reference. If this update appears to fit only the updater's dialog, do not correct the shared content from this dialog; you may ask the updater to run migrate_reminder({ \"reminder_id\": \"owner001\", \"scope\": \"dialog\" }) in that dialog so Dominds withdraws it from other parallel dialogs. If this dialog has its own private state, create a separate dialog-scope reminder here.`,\n+       skipTaskdoc: true,\n+       userLanguageCode: 'en'\n+     },\n+     rootDriveQueued: true\n-     pendingRuntimePrompt: undefined,\n-     queued: undefined,\n-     rootDriveQueued: false\n    },\n    {\n      hasQueue: false,\n      id: '5b/e5/938893b9',\n      nextStep: {\n...\n    {\n+     hasQueue: true,\n-     hasQueue: false,\n      id: 'f2/fe/938893c2',\n      nextStep: {\n+       nextSeq: 3,\n+       triggers: [\n+         {\n+           course: 1,\n+           createdAt: '2026-10-31 12:56:03',\n+           kind: 'queued_prompt',\n+           promptId: 'hz5uy8',\n+           seq: 2,\n+           triggerId: 'queued-prompt:hz5uy8'\n+         }\n+       ]\n-       nextSeq: 2,\n-       triggers: []\n      },\n+     pendingRuntimePrompt: {\n+       content: '[System notice] Shared-scope reminder updated\\n' +\n+         '\\n' +\n+         'reminder_id=owner001 is task-scope, not private to the current dialog. The current in-flight work has other parallel dialogs for the same agent and Taskdoc. Another parallel dialog for the same agent just updated it, so this dialog will see the update too.\\n' +\n+         'This shared reminder was actually maintained by another dialog this time; decide for yourself whether it is relevant to this dialog context, and use only the parts that are truly relevant.\\n' +\n+         `Use it as the latest shared reference. If this update appears to fit only the updater's dialog, do not correct the shared content from this dialog; you may ask the updater to run migrate_reminder({ \"reminder_id\": \"owner001\", \"scope\": \"dialog\" }) in that dialog so Dominds withdraws it from other parallel dialogs. If this dialog has its own private state, create a separate dialog-scope reminder here.`,\n+       grammar: 'markdown',\n+       msgId: 'hz5uy8',\n+       origin: 'runtime',\n+       skipTaskdoc: true,\n+       userLanguageCode: 'en'\n+     },\n+     queued: {\n+       grammar: 'markdown',\n+       kind: 'new_course_runtime_guide',\n+       msgId: 'hz5uy8',\n+       origin: 'runtime',\n+       prompt: '[System notice] Shared-scope reminder updated\\n' +\n+         '\\n' +\n+         'reminder_id=owner001 is task-scope, not private to the current dialog. The current in-flight work has other parallel dialogs for the same agent and Taskdoc. Another parallel dialog for the same agent just updated it, so this dialog will see the update too.\\n' +\n+         'This shared reminder was actually maintained by another dialog this time; decide for yourself whether it is relevant to this dialog context, and use only the parts that are truly relevant.\\n' +\n+         `Use it as the latest shared reference. If this update appears to fit only the updater's dialog, do not correct the shared content from this dialog; you may ask the updater to run migrate_reminder({ \"reminder_id\": \"owner001\", \"scope\": \"dialog\" }) in that dialog so Dominds withdraws it from other parallel dialogs. If this dialog has its own private state, create a separate dialog-scope reminder here.`,\n+       skipTaskdoc: true,\n+       userLanguageCode: 'en'\n+     },\n+     rootDriveQueued: true\n-     pendingRuntimePrompt: undefined,\n-     queued: undefined,\n-     rootDriveQueued: false\n    }\n  ]\n\n    at <anonymous> (/ws/AiWorks/dominds/tests/reminders/task-agent-reminder-scope.ts:212:14)\n    at async <anonymous> (/ws/AiWorks/dominds/tests/helpers/shared-reminders.ts:53:7)\n    at async withTempRtws (/ws/AiWorks/dominds/tests/kernel-driver/helpers.ts:60:3)\n    at async withSharedReminderFixture (/ws/AiWorks/dominds/tests/helpers/shared-reminders.ts:27:3)\n    at async main (/ws/AiWorks/dominds/tests/reminders/task-agent-reminder-scope.ts:20:3) {\n  generatedMessage: true,\n  code: 'ERR_ASSERTION',\n  actual: [Array],\n  expected: [Array],\n  operator: 'deepStrictEqual',\n  diff: 'simple'\n}\n[tests/cli] Keeping isolated rtws at /tmp/dominds-tests-rtws-M1KpZs\n[ELIFECYCLE] Command failed with exit code 1.\n",
+    "retainedWorkspace": "/tmp/dominds-tests-rtws-M1KpZs",
+    "reportedOldProductRevision": "24549bbe601b158ff9ee3137876c40c24d2afb2a",
+    "oldToolSha256": "b40507b44a834862d1fa5367d2aae37088b348e3b3e03b091ba3145d294ab5f9",
+    "savedFixedToolCopy": {
+      "observedPath": "/tmp/dominds-sharing-tool-fixed.ts",
+      "sha256": "59f2eba785f152117f9baa803da7f1a71d5b6b7902529bfac08fbd2ba89dd615",
+      "meaning": "Historical fixed artifact identity, not a final source freeze for the reopened batch."
+    },
+    "reading": "Full201-line red log read. Failure is real queued/pending/nextStep/root flag mismatch, not natural notice wording; repeated notice text in assertion diff is data evidence and is not counted as a semantic pass.",
+    "testSourceQualification": "This red log was produced by the initial shared-scope implementation before the later bilingual and owner-refusal extensions. Its exact historical test-source fingerprint was not retained and is not falsely assigned the final source hash. The complete observed failure log, old product revision/hash and saved fixed-product identity remain embedded; the final case separately checks the same observable queue-state invariant.",
+    "currentProductRelationship": "Current main/tool.ts equals the batch base and the saved fixed copy. Object-key canonicalization was the prior batch product fix; this batch adds its shared-routing consequence regression, while only four driver-message strings are permanently changed here."
+  },
+  "finalCounts": {
+    "total": 20,
+    "passed": 20,
+    "failed": 0,
+    "pending": 0
+  },
+  "limitations": [
+    "No live provider, backend/LLM response to a queued notice, browser UI, physical restart or concurrent driving is exercised. Actual queues and disk prompts prove pending durable work only.",
+    "Task/agent visibility and active routing are covered; runtime-scope routing and agent-to-private migration remain outside this batch. Owner refusal is real; manager/delete-maintenance migration refusals are not newly exercised.",
+    "Per-locale receipt/notice/refusal meaning is accepted only for the embedded actual outputs and supplied scenarios. This report is not a reusable semantic oracle and does not judge arbitrary reminder contents or their external operational correctness.",
+    "Opaque bodies such as deletion advice and owner callback strings are fixture inputs. Equality protects their preservation and does not prove their policy merits, authorize an external action or execute their text.",
+    "The original historical red test-source bytes were not retained; do not assign final bilingual source fingerprints to that earlier run. Its full failure log and old/fixed product identities are retained. Final evidence contains complete text/context and current generator identities independently.",
+    "Whole-test type diagnostics and broad suite results remain parent-verification scope. This report status does not mean every repository candidate, full semantic lane or test-directory types passed."
+  ],
+  "sourceFingerprints": {
+    "meaning": "SHA256 identifies the exact reviewed source/material bytes only; never used to decide meaning or automatically accept new output. This report is deliberately excluded from self-hashing.",
+    "baseRevision": "b4a22bc3e3e89e5cb1bc44c56c4a87b8875f8527",
+    "files": [
+      {
+        "path": "AGENTS.md",
+        "sha256": "595856f6a4aef91a2675541c1854abe1df42c9afe3d57b75146d1cc1835dd85f"
+      },
+      {
+        "path": "docs/testing-strategy.md",
+        "sha256": "883c4983c31854494bd5a479a40af8acf5bc0dc8221356cc760b81f278f57bbd"
+      },
+      {
+        "path": "tests/README.md",
+        "sha256": "690376361086a8f93c8754ed99e9b9505a1fec1950750ab9d0b494d597428fa0"
+      },
+      {
+        "path": "tests/audit.json",
+        "sha256": "b739909dcf18535e52aa78e459895a0a76228152425632b4afbf60df71b113db"
+      },
+      {
+        "path": "tests/package.json",
+        "sha256": "a1af889eda1f17fe6ece58a1264a8233b094fc09d63868a7607a876911523adc"
+      },
+      {
+        "path": "tests/run.mjs",
+        "sha256": "375e061852cfcaabb6e8528c2c05418ac80cd2ece40b34d6832e92c1b71dcb44"
+      },
+      {
+        "path": "tests/reminders/task-agent-reminder-scope.ts",
+        "sha256": "ccfd711e42b41d2f4f4298d279833a39cc2c6f5ae8fb56382530061f42f66c70"
+      },
+      {
+        "path": "tests/reminders/migrate-reminder-scope.ts",
+        "sha256": "af033a2dc12c45c6e99146a438f779abab3093fed9ba773402b4141ca6918b6e"
+      },
+      {
+        "path": "tests/helpers/shared-reminders.ts",
+        "sha256": "83a70750ac245381fe96262486e72184521bccb28fa0f38efddb575ac9b68a21"
+      },
+      {
+        "path": "tests/helpers/manual-reminders.ts",
+        "sha256": "b1b56582614b98f9ddfa8d0211f76a2389fd348564e77b158e749400845d8460"
+      },
+      {
+        "path": "tests/helpers/semantic-evidence.ts",
+        "sha256": "a41efd1058ea6d65394059180dabf987e17ef0d219bae95ca67edd33db7e3777"
+      },
+      {
+        "path": "tests/semantic/evidence.ts",
+        "sha256": "8bc39e1e57b1ff2d81bbc4eee0778f55f38b030e85cf75b1a477b747cfc1596e"
+      },
+      {
+        "path": "tests/cli.ts",
+        "sha256": "b9f9bc1f034a2a70c4b7bfbc2300ae854706f09a9788b7f4ca17b3a263f41598"
+      },
+      {
+        "path": "tests/kernel-driver/helpers.ts",
+        "sha256": "520b1288cdb2114cb28cb9dcebdf95c7b0f19b1703fe3837a780ffb2d916f9a1"
+      },
+      {
+        "path": "tests/tsconfig.json",
+        "sha256": "b5bcec0fba331b397ee453a8ff2bb1ea1eb1cb0f5f61f1a4e968ffc0a55dc1df"
+      },
+      {
+        "path": "main/runtime/driver-messages.ts",
+        "sha256": "4b09e9eebd787c2bdc8a35138865aafbea43120a55558850204f9753f9824816"
+      },
+      {
+        "path": "main/runtime/shared-reminder-update-impact.ts",
+        "sha256": "07142cb624da085a5f4475e3d5c02620e57bbb82ee856cee9aaaa6960215b2d5"
+      },
+      {
+        "path": "main/shared-reminders.ts",
+        "sha256": "2f694b2850089158a9bbce24630fb3240d184e184c538fceb69e16c3585e60ae"
+      },
+      {
+        "path": "main/dialog.ts",
+        "sha256": "86d52e01fd224791c49c9438dca20e44991c0396bfc0a95738483908cccf6966"
+      },
+      {
+        "path": "main/dialog-global-registry.ts",
+        "sha256": "33e331312d402851a1b8678cb532c1044fe9bcfac951be236dfdf22617f01a7f"
+      },
+      {
+        "path": "main/persistence.ts",
+        "sha256": "0cec578ad261491aa6437e0c7cc6e21782a9e239e75edc64e962c2175c125baf"
+      },
+      {
+        "path": "main/tools/ctrl.ts",
+        "sha256": "3fbaae91cc5f5f820e975bece05277d0f358a4607de99400111ed71b97de9fe0"
+      },
+      {
+        "path": "main/tool.ts",
+        "sha256": "59f2eba785f152117f9baa803da7f1a71d5b6b7902529bfac08fbd2ba89dd615"
+      },
+      {
+        "path": "main/tools/registry.ts",
+        "sha256": "1d5b8fe2b8edfeb949a8fe7d6378e03a6f12e9807d989aacb070a93f7ce237a9"
+      },
+      {
+        "path": "main/main-dialog-goal-reminder.ts",
+        "sha256": "69055acd9b39d2e7ed3f6bede931959a2e67ad2cfe85ada576f086825840e45a"
+      },
+      {
+        "path": "main/runtime/work-language.ts",
+        "sha256": "fa5b57a7e8cbaac28001c3bcbfb33f7e049304f804aa672aab489ab6a926e1b1"
+      },
+      {
+        "path": "main/team.ts",
+        "sha256": "15011ab16f5b36eda146a13201de9fbd9b4c0fde8ece9bc04fd26b0b1aff707c"
+      },
+      {
+        "path": "package.json",
+        "sha256": "861098ada695b550cd88c37dc41dca205d69d73bcf0fb1b03b63564e636931b9"
+      },
+      {
+        "path": "pnpm-lock.yaml",
+        "sha256": "39b09df41afbe38240cc837316680ec0b7a2ceb02372f02f6528168adf21da19"
+      }
+    ],
+    "originalCandidates": [
+      {
+        "path": "tests/reminders/task-agent-reminder-scope.ts",
+        "revision": "b4a22bc3e3e89e5cb1bc44c56c4a87b8875f8527",
+        "sha256": "d02dbdaf9a69942772740a28c59823a9399ecd6791823320a765514d8d4a680e",
+        "lines": 500
+      },
+      {
+        "path": "tests/reminders/migrate-reminder-scope.ts",
+        "revision": "b4a22bc3e3e89e5cb1bc44c56c4a87b8875f8527",
+        "sha256": "1725b7f387889b44d647d2c07960d5ee6f91dd17aad6e221b3604a771189591b",
+        "lines": 181
+      }
+    ],
+    "reviewedDiff": {
+      "trackedCommand": [
+        "git",
+        "diff",
+        "--no-ext-diff",
+        "b4a22bc3e3e89e5cb1bc44c56c4a87b8875f8527",
+        "--",
+        "AGENTS.md",
+        "docs/testing-strategy.md",
+        "main/runtime/driver-messages.ts",
+        "tests/README.md",
+        "tests/audit.json",
+        "tests/package.json",
+        "tests/reminders/migrate-reminder-scope.ts",
+        "tests/reminders/task-agent-reminder-scope.ts",
+        "tests/run.mjs"
+      ],
+      "trackedSha256": "dc02c26c7148084c57e1d0ad3af77f5e2f95b3d1320b0ea2a735e83070aaf278",
+      "trackedBytes": 81527,
+      "newHelperDiffCommand": [
+        "git",
+        "diff",
+        "--no-index",
+        "--no-ext-diff",
+        "--",
+        "/dev/null",
+        "tests/helpers/shared-reminders.ts"
+      ],
+      "newHelperDiffSha256": "dbca4325fd50e529797d324659562ae8b1caba614b63626d14d727c9f646c242",
+      "combinedTrackedThenHelperSha256": "929281b974b6ee80c5019b31c65badb62f464312125e88841b97cf5279c0a6ed",
+      "includesUntrackedHelper": true,
+      "excludesReport": true
+    }
+  },
+  "generationProvenance": {
+    "runtime": "Parent confirms all pnpm/tsx commands use /tmp/dominds-pnpm with Node24.19.0 and Corepack pnpm11.17.0. Reviewer did not run behavior/build commands.",
+    "summary": {
+      "total": 2,
+      "passed": 2,
+      "failed": 0,
+      "timedOut": 0,
+      "results": [
+        {
+          "id": "reminders/task-agent-reminder-scope.ts",
+          "status": "passed",
+          "durationMs": 2395,
+          "code": 0,
+          "signal": null,
+          "logPath": "/tmp/dominds-reminder-sharing-revised-semantic/001-reminders_task-agent-reminder-scope.ts.log",
+          "tempDir": "/tmp/dominds-reminder-sharing-revised-semantic/1.tmp"
+        },
+        {
+          "id": "reminders/migrate-reminder-scope.ts",
+          "status": "passed",
+          "durationMs": 2238,
+          "code": 0,
+          "signal": null,
+          "logPath": "/tmp/dominds-reminder-sharing-revised-semantic/002-reminders_migrate-reminder-scope.ts.log",
+          "tempDir": "/tmp/dominds-reminder-sharing-revised-semantic/2.tmp"
+        }
+      ],
+      "scope": "evidence-generation-processes",
+      "semanticAcceptance": "pending"
+    },
+    "summarySha256": "2418444120132bf731308ee9e7a2b19642e409b5719c797eeee2229c046a512c",
+    "meaning": "Two process exits establish evidence generation only. Their semanticAcceptance remains pending in generated JSON; this separate report supplies independent20-case decisions."
+  },
+  "parentVerification": {
+    "owner": "Primary execution agent /root; semantic verdicts above belong to the independent test-execution reviewer",
+    "environment": {
+      "node": "v24.19.0",
+      "pnpm": "11.17.0 via root packageManager/Corepack and /tmp/dominds-pnpm",
+      "rtws": "CLI-owned isolated processes, two declared language-specific Taskdoc/owner identities per new case; no concurrent shared rtws or overlapping builds"
+    },
+    "build": {
+      "command": "pnpm run build",
+      "logPath": "/tmp/dominds-reminder-sharing-build.log",
+      "exitCode": 0,
+      "logSha256": "dc574c667f5563212892142cf72886400b521b77e24ac04381db93d44361061b"
+    },
+    "permanentProductChange": "Only four zh/en updater/peer shared-impact guidance strings in main/runtime/driver-messages.ts. main/tool.ts remains identical to the base commit; its earlier identity fix is exercised downstream by these cases.",
+    "behavior": {
+      "total": 11,
+      "passed": 11,
+      "failed": 0,
+      "timedOut": 0,
+      "results": [
+        {
+          "id": "reminders/main-dialog-goal-reminder.ts",
+          "status": "passed",
+          "durationMs": 2313,
+          "code": 0,
+          "signal": null,
+          "logPath": "/tmp/dominds-tests-reminders-VRYj1J/001-reminders_main-dialog-goal-reminder.ts.log"
+        },
+        {
+          "id": "reminders/reminder-display-order.ts",
+          "status": "passed",
+          "durationMs": 2237,
+          "code": 0,
+          "signal": null,
+          "logPath": "/tmp/dominds-tests-reminders-VRYj1J/002-reminders_reminder-display-order.ts.log"
+        },
+        {
+          "id": "reminders/reminder-render-mode.ts",
+          "status": "passed",
+          "durationMs": 2319,
+          "code": 0,
+          "signal": null,
+          "logPath": "/tmp/dominds-tests-reminders-VRYj1J/003-reminders_reminder-render-mode.ts.log"
+        },
+        {
+          "id": "reminders/delete-reminder-empty-state.ts",
+          "status": "passed",
+          "durationMs": 2237,
+          "code": 0,
+          "signal": null,
+          "logPath": "/tmp/dominds-tests-reminders-VRYj1J/004-reminders_delete-reminder-empty-state.ts.log"
+        },
+        {
+          "id": "reminders/delete-reminder-meta-guard.ts",
+          "status": "passed",
+          "durationMs": 2284,
+          "code": 0,
+          "signal": null,
+          "logPath": "/tmp/dominds-tests-reminders-VRYj1J/005-reminders_delete-reminder-meta-guard.ts.log"
+        },
+        {
+          "id": "reminders/update-reminder-meta-guard.ts",
+          "status": "passed",
+          "durationMs": 2203,
+          "code": 0,
+          "signal": null,
+          "logPath": "/tmp/dominds-tests-reminders-VRYj1J/006-reminders_update-reminder-meta-guard.ts.log"
+        },
+        {
+          "id": "reminders/delete-reminder-round-snapshot.ts",
+          "status": "passed",
+          "durationMs": 2083,
+          "code": 0,
+          "signal": null,
+          "logPath": "/tmp/dominds-tests-reminders-VRYj1J/007-reminders_delete-reminder-round-snapshot.ts.log"
+        },
+        {
+          "id": "reminders/stale-target-message.ts",
+          "status": "passed",
+          "durationMs": 2296,
+          "code": 0,
+          "signal": null,
+          "logPath": "/tmp/dominds-tests-reminders-VRYj1J/008-reminders_stale-target-message.ts.log"
+        },
+        {
+          "id": "reminders/reminder-owner-failure-loud.ts",
+          "status": "passed",
+          "durationMs": 2149,
+          "code": 0,
+          "signal": null,
+          "logPath": "/tmp/dominds-tests-reminders-VRYj1J/009-reminders_reminder-owner-failure-loud.ts.log"
+        },
+        {
+          "id": "reminders/task-agent-reminder-scope.ts",
+          "status": "passed",
+          "durationMs": 2283,
+          "code": 0,
+          "signal": null,
+          "logPath": "/tmp/dominds-tests-reminders-VRYj1J/010-reminders_task-agent-reminder-scope.ts.log"
+        },
+        {
+          "id": "reminders/migrate-reminder-scope.ts",
+          "status": "passed",
+          "durationMs": 2200,
+          "code": 0,
+          "signal": null,
+          "logPath": "/tmp/dominds-tests-reminders-VRYj1J/011-reminders_migrate-reminder-scope.ts.log"
+        }
+      ]
+    },
+    "focusedBilingual": {
+      "total": 2,
+      "passed": 2,
+      "failed": 0,
+      "timedOut": 0,
+      "results": [
+        {
+          "id": "reminders/task-agent-reminder-scope.ts",
+          "status": "passed",
+          "durationMs": 2379,
+          "code": 0,
+          "signal": null,
+          "logPath": "/tmp/dominds-reminder-sharing-bilingual/001-reminders_task-agent-reminder-scope.ts.log",
+          "tempDir": "/tmp/dominds-reminder-sharing-bilingual/1.tmp"
+        },
+        {
+          "id": "reminders/migrate-reminder-scope.ts",
+          "status": "passed",
+          "durationMs": 2201,
+          "code": 0,
+          "signal": null,
+          "logPath": "/tmp/dominds-reminder-sharing-bilingual/002-reminders_migrate-reminder-scope.ts.log",
+          "tempDir": "/tmp/dominds-reminder-sharing-bilingual/2.tmp"
+        }
+      ]
+    },
+    "semanticGeneration": {
+      "total": 2,
+      "passed": 2,
+      "failed": 0,
+      "timedOut": 0,
+      "results": [
+        {
+          "id": "reminders/task-agent-reminder-scope.ts",
+          "status": "passed",
+          "durationMs": 2395,
+          "code": 0,
+          "signal": null,
+          "logPath": "/tmp/dominds-reminder-sharing-revised-semantic/001-reminders_task-agent-reminder-scope.ts.log",
+          "tempDir": "/tmp/dominds-reminder-sharing-revised-semantic/1.tmp"
+        },
+        {
+          "id": "reminders/migrate-reminder-scope.ts",
+          "status": "passed",
+          "durationMs": 2238,
+          "code": 0,
+          "signal": null,
+          "logPath": "/tmp/dominds-reminder-sharing-revised-semantic/002-reminders_migrate-reminder-scope.ts.log",
+          "tempDir": "/tmp/dominds-reminder-sharing-revised-semantic/2.tmp"
+        }
+      ],
+      "scope": "evidence-generation-processes",
+      "semanticAcceptance": "pending"
+    },
+    "semanticAcceptance": "Only20 fresh bilingual outputs independently accepted in this report. Initial9 retain8passed/1failed. Full eleven-producer lane was not regenerated; historical81 are not fresh101 acceptance. Any new output remains pending subjective review.",
+    "kernel": {
+      "total": 63,
+      "passed": 63,
+      "failed": 0,
+      "timedOut": 0,
+      "results": [
+        {
+          "id": "kernel-driver/answer-human-a2h-deferred.ts",
+          "status": "passed",
+          "durationMs": 2858,
+          "code": 0,
+          "signal": null,
+          "logPath": "/tmp/dominds-tests-kernel-WP1LB0/001-kernel-driver_answer-human-a2h-deferred.ts.log"
+        },
+        {
+          "id": "kernel-driver/answering-a2h-side-reply-reminder.ts",
+          "status": "passed",
+          "durationMs": 2857,
+          "code": 0,
+          "signal": null,
+          "logPath": "/tmp/dominds-tests-kernel-WP1LB0/002-kernel-driver_answering-a2h-side-reply-reminder.ts.log"
+        },
+        {
+          "id": "kernel-driver/backend-loop-persists-drive-error-stall.ts",
+          "status": "passed",
+          "durationMs": 2470,
+          "code": 0,
+          "signal": null,
+          "logPath": "/tmp/dominds-tests-kernel-WP1LB0/003-kernel-driver_backend-loop-persists-drive-error-stall.ts.log"
+        },
+        {
+          "id": "kernel-driver/clear-mind-blocks-on-sibling-tool-failure.ts",
+          "status": "passed",
+          "durationMs": 3989,
+          "code": 0,
+          "signal": null,
+          "logPath": "/tmp/dominds-tests-kernel-WP1LB0/004-kernel-driver_clear-mind-blocks-on-sibling-tool-failure.ts.log"
+        },
+        {
+          "id": "kernel-driver/clear-mind-critical-auto-course.ts",
+          "status": "passed",
+          "durationMs": 2860,
+          "code": 0,
+          "signal": null,
+          "logPath": "/tmp/dominds-tests-kernel-WP1LB0/005-kernel-driver_clear-mind-critical-auto-course.ts.log"
+        },
+        {
+          "id": "kernel-driver/context-health-large-tool-output-hidden.ts",
+          "status": "passed",
+          "durationMs": 9605,
+          "code": 0,
+          "signal": null,
+          "logPath": "/tmp/dominds-tests-kernel-WP1LB0/006-kernel-driver_context-health-large-tool-output-hidden.ts.log"
+        },
+        {
+          "id": "kernel-driver/context-health-model-limit-usage.ts",
+          "status": "passed",
+          "durationMs": 2326,
+          "code": 0,
+          "signal": null,
+          "logPath": "/tmp/dominds-tests-kernel-WP1LB0/007-kernel-driver_context-health-model-limit-usage.ts.log"
+        },
+        {
+          "id": "kernel-driver/context-health-multi-iter-gate.ts",
+          "status": "passed",
+          "durationMs": 2843,
+          "code": 0,
+          "signal": null,
+          "logPath": "/tmp/dominds-tests-kernel-WP1LB0/008-kernel-driver_context-health-multi-iter-gate.ts.log"
+        },
+        {
+          "id": "kernel-driver/critical-queued-user-interjection.ts",
+          "status": "passed",
+          "durationMs": 3671,
+          "code": 0,
+          "signal": null,
+          "logPath": "/tmp/dominds-tests-kernel-WP1LB0/009-kernel-driver_critical-queued-user-interjection.ts.log"
+        },
+        {
+          "id": "kernel-driver/duplicate-raw-callid-effective-id.ts",
+          "status": "passed",
+          "durationMs": 3420,
+          "code": 0,
+          "signal": null,
+          "logPath": "/tmp/dominds-tests-kernel-WP1LB0/010-kernel-driver_duplicate-raw-callid-effective-id.ts.log"
+        },
+        {
+          "id": "kernel-driver/duplicate-tool-call-feedback.ts",
+          "status": "passed",
+          "durationMs": 2480,
+          "code": 0,
+          "signal": null,
+          "logPath": "/tmp/dominds-tests-kernel-WP1LB0/011-kernel-driver_duplicate-tool-call-feedback.ts.log"
+        },
+        {
+          "id": "kernel-driver/fbr-internal-conclusion-flow.ts",
+          "status": "passed",
+          "durationMs": 12154,
+          "code": 0,
+          "signal": null,
+          "logPath": "/tmp/dominds-tests-kernel-WP1LB0/012-kernel-driver_fbr-internal-conclusion-flow.ts.log"
+        },
+        {
+          "id": "kernel-driver/fbr-model-params-merge.ts",
+          "status": "passed",
+          "durationMs": 483,
+          "code": 0,
+          "signal": null,
+          "logPath": "/tmp/dominds-tests-kernel-WP1LB0/013-kernel-driver_fbr-model-params-merge.ts.log"
+        },
+        {
+          "id": "kernel-driver/func-call-persists-before-result.ts",
+          "status": "passed",
+          "durationMs": 3239,
+          "code": 0,
+          "signal": null,
+          "logPath": "/tmp/dominds-tests-kernel-WP1LB0/014-kernel-driver_func-call-persists-before-result.ts.log"
+        },
+        {
+          "id": "kernel-driver/idle-with-active-reply-obligation-display-state.ts",
+          "status": "passed",
+          "durationMs": 2026,
+          "code": 0,
+          "signal": null,
+          "logPath": "/tmp/dominds-tests-kernel-WP1LB0/015-kernel-driver_idle-with-active-reply-obligation-display-state.ts.log"
+        },
+        {
+          "id": "kernel-driver/immediate-followup-trigger-repair.ts",
+          "status": "passed",
+          "durationMs": 2236,
+          "code": 0,
+          "signal": null,
+          "logPath": "/tmp/dominds-tests-kernel-WP1LB0/016-kernel-driver_immediate-followup-trigger-repair.ts.log"
+        },
+        {
+          "id": "kernel-driver/invalid-json-tool-call-feedback.ts",
+          "status": "passed",
+          "durationMs": 2941,
+          "code": 0,
+          "signal": null,
+          "logPath": "/tmp/dominds-tests-kernel-WP1LB0/017-kernel-driver_invalid-json-tool-call-feedback.ts.log"
+        },
+        {
+          "id": "kernel-driver/llm-request-failure-single-stream-error.ts",
+          "status": "passed",
+          "durationMs": 2479,
+          "code": 0,
+          "signal": null,
+          "logPath": "/tmp/dominds-tests-kernel-WP1LB0/018-kernel-driver_llm-request-failure-single-stream-error.ts.log"
+        },
+        {
+          "id": "kernel-driver/mainline-reply-obligation-reminder-direct-fallback.ts",
+          "status": "passed",
+          "durationMs": 2716,
+          "code": 0,
+          "signal": null,
+          "logPath": "/tmp/dominds-tests-kernel-WP1LB0/019-kernel-driver_mainline-reply-obligation-reminder-direct-fallback.ts.log"
+        },
+        {
+          "id": "kernel-driver/mock-provider-contract.ts",
+          "status": "passed",
+          "durationMs": 2515,
+          "code": 0,
+          "signal": null,
+          "logPath": "/tmp/dominds-tests-kernel-WP1LB0/020-kernel-driver_mock-provider-contract.ts.log"
+        },
+        {
+          "id": "kernel-driver/multi-iter-tool-round-context-continuity.ts",
+          "status": "passed",
+          "durationMs": 2778,
+          "code": 0,
+          "signal": null,
+          "logPath": "/tmp/dominds-tests-kernel-WP1LB0/021-kernel-driver_multi-iter-tool-round-context-continuity.ts.log"
+        },
+        {
+          "id": "kernel-driver/multiple-askhuman-invalid.ts",
+          "status": "passed",
+          "durationMs": 3047,
+          "code": 0,
+          "signal": null,
+          "logPath": "/tmp/dominds-tests-kernel-WP1LB0/022-kernel-driver_multiple-askhuman-invalid.ts.log"
+        },
+        {
+          "id": "kernel-driver/pending-user-interjection-recovery.ts",
+          "status": "passed",
+          "durationMs": 2068,
+          "code": 0,
+          "signal": null,
+          "logPath": "/tmp/dominds-tests-kernel-WP1LB0/023-kernel-driver_pending-user-interjection-recovery.ts.log"
+        },
+        {
+          "id": "kernel-driver/pre-drive-latest-load-failure-stops.ts",
+          "status": "passed",
+          "durationMs": 2062,
+          "code": 0,
+          "signal": null,
+          "logPath": "/tmp/dominds-tests-kernel-WP1LB0/024-kernel-driver_pre-drive-latest-load-failure-stops.ts.log"
+        },
+        {
+          "id": "kernel-driver/q4h-preserves-diligence-budget.ts",
+          "status": "passed",
+          "durationMs": 2590,
+          "code": 0,
+          "signal": null,
+          "logPath": "/tmp/dominds-tests-kernel-WP1LB0/025-kernel-driver_q4h-preserves-diligence-budget.ts.log"
+        },
+        {
+          "id": "kernel-driver/reminder-context-footer-state.ts",
+          "status": "passed",
+          "durationMs": 402,
+          "code": 0,
+          "signal": null,
+          "logPath": "/tmp/dominds-tests-kernel-WP1LB0/026-kernel-driver_reminder-context-footer-state.ts.log"
+        },
+        {
+          "id": "kernel-driver/repeated-tool-call-reminder.ts",
+          "status": "passed",
+          "durationMs": 3374,
+          "code": 0,
+          "signal": null,
+          "logPath": "/tmp/dominds-tests-kernel-WP1LB0/027-kernel-driver_repeated-tool-call-reminder.ts.log"
+        },
+        {
+          "id": "kernel-driver/reply-tool-dynamic-guidance.ts",
+          "status": "passed",
+          "durationMs": 2778,
+          "code": 0,
+          "signal": null,
+          "logPath": "/tmp/dominds-tests-kernel-WP1LB0/028-kernel-driver_reply-tool-dynamic-guidance.ts.log"
+        },
+        {
+          "id": "kernel-driver/retry-recovery-diligence-push-with-keep-going-disabled.ts",
+          "status": "passed",
+          "durationMs": 26767,
+          "code": 0,
+          "signal": null,
+          "logPath": "/tmp/dominds-tests-kernel-WP1LB0/029-kernel-driver_retry-recovery-diligence-push-with-keep-going-disabled.ts.log"
+        },
+        {
+          "id": "kernel-driver/root-cross-trigger-does-not-reenter-during-tail.ts",
+          "status": "passed",
+          "durationMs": 2296,
+          "code": 0,
+          "signal": null,
+          "logPath": "/tmp/dominds-tests-kernel-WP1LB0/030-kernel-driver_root-cross-trigger-does-not-reenter-during-tail.ts.log"
+        },
+        {
+          "id": "kernel-driver/root-runtime-wake-lifecycle.ts",
+          "status": "passed",
+          "durationMs": 2948,
+          "code": 0,
+          "signal": null,
+          "logPath": "/tmp/dominds-tests-kernel-WP1LB0/031-kernel-driver_root-runtime-wake-lifecycle.ts.log"
+        },
+        {
+          "id": "kernel-driver/root-tail-error-still-rewakes-root-runtime-wake.ts",
+          "status": "passed",
+          "durationMs": 2189,
+          "code": 0,
+          "signal": null,
+          "logPath": "/tmp/dominds-tests-kernel-WP1LB0/032-kernel-driver_root-tail-error-still-rewakes-root-runtime-wake.ts.log"
+        },
+        {
+          "id": "kernel-driver/root-tellask-background-callee-badge-event.ts",
+          "status": "passed",
+          "durationMs": 2676,
+          "code": 0,
+          "signal": null,
+          "logPath": "/tmp/dominds-tests-kernel-WP1LB0/033-kernel-driver_root-tellask-background-callee-badge-event.ts.log"
+        },
+        {
+          "id": "kernel-driver/runtime-reminder-context.ts",
+          "status": "passed",
+          "durationMs": 2590,
+          "code": 0,
+          "signal": null,
+          "logPath": "/tmp/dominds-tests-kernel-WP1LB0/034-kernel-driver_runtime-reminder-context.ts.log"
+        },
+        {
+          "id": "kernel-driver/sideDialog-askback-auto-resume-while-pending-registered-sideDialog.ts",
+          "status": "passed",
+          "durationMs": 4245,
+          "code": 0,
+          "signal": null,
+          "logPath": "/tmp/dominds-tests-kernel-WP1LB0/035-kernel-driver_sideDialog-askback-auto-resume-while-pending-registered-sideDialog.ts.log"
+        },
+        {
+          "id": "kernel-driver/sideDialog-askback-reply-tool-no-double-delivery.ts",
+          "status": "passed",
+          "durationMs": 2579,
+          "code": 0,
+          "signal": null,
+          "logPath": "/tmp/dominds-tests-kernel-WP1LB0/036-kernel-driver_sideDialog-askback-reply-tool-no-double-delivery.ts.log"
+        },
+        {
+          "id": "kernel-driver/sideDialog-backend-loop-retries-after-active-run-blocker.ts",
+          "status": "passed",
+          "durationMs": 2569,
+          "code": 0,
+          "signal": null,
+          "logPath": "/tmp/dominds-tests-kernel-WP1LB0/037-kernel-driver_sideDialog-backend-loop-retries-after-active-run-blocker.ts.log"
+        },
+        {
+          "id": "kernel-driver/sideDialog-caller-result-arrival-backend-wake-queue.ts",
+          "status": "passed",
+          "durationMs": 3043,
+          "code": 0,
+          "signal": null,
+          "logPath": "/tmp/dominds-tests-kernel-WP1LB0/038-kernel-driver_sideDialog-caller-result-arrival-backend-wake-queue.ts.log"
+        },
+        {
+          "id": "kernel-driver/sideDialog-clear-mind-keeps-pending-round.ts",
+          "status": "passed",
+          "durationMs": 2672,
+          "code": 0,
+          "signal": null,
+          "logPath": "/tmp/dominds-tests-kernel-WP1LB0/039-kernel-driver_sideDialog-clear-mind-keeps-pending-round.ts.log"
+        },
+        {
+          "id": "kernel-driver/sideDialog-diligence-push-state.ts",
+          "status": "passed",
+          "durationMs": 2052,
+          "code": 0,
+          "signal": null,
+          "logPath": "/tmp/dominds-tests-kernel-WP1LB0/040-kernel-driver_sideDialog-diligence-push-state.ts.log"
+        },
+        {
+          "id": "kernel-driver/sideDialog-direct-fallback-thinking.ts",
+          "status": "passed",
+          "durationMs": 4053,
+          "code": 0,
+          "signal": null,
+          "logPath": "/tmp/dominds-tests-kernel-WP1LB0/041-kernel-driver_sideDialog-direct-fallback-thinking.ts.log"
+        },
+        {
+          "id": "kernel-driver/sideDialog-mixed-tool-round-honors-suspension.ts",
+          "status": "passed",
+          "durationMs": 2995,
+          "code": 0,
+          "signal": null,
+          "logPath": "/tmp/dominds-tests-kernel-WP1LB0/042-kernel-driver_sideDialog-mixed-tool-round-honors-suspension.ts.log"
+        },
+        {
+          "id": "kernel-driver/sideDialog-multi-pending-registers-before-drive.ts",
+          "status": "passed",
+          "durationMs": 2850,
+          "code": 0,
+          "signal": null,
+          "logPath": "/tmp/dominds-tests-kernel-WP1LB0/043-kernel-driver_sideDialog-multi-pending-registers-before-drive.ts.log"
+        },
+        {
+          "id": "kernel-driver/sideDialog-new-course-prompt-survives-restore.ts",
+          "status": "passed",
+          "durationMs": 2579,
+          "code": 0,
+          "signal": null,
+          "logPath": "/tmp/dominds-tests-kernel-WP1LB0/044-kernel-driver_sideDialog-new-course-prompt-survives-restore.ts.log"
+        },
+        {
+          "id": "kernel-driver/sideDialog-new-course-update-reminder-followup.ts",
+          "status": "passed",
+          "durationMs": 2643,
+          "code": 0,
+          "signal": null,
+          "logPath": "/tmp/dominds-tests-kernel-WP1LB0/045-kernel-driver_sideDialog-new-course-update-reminder-followup.ts.log"
+        },
+        {
+          "id": "kernel-driver/sideDialog-no-empty-autodrive-after-final-response.ts",
+          "status": "passed",
+          "durationMs": 2768,
+          "code": 0,
+          "signal": null,
+          "logPath": "/tmp/dominds-tests-kernel-WP1LB0/046-kernel-driver_sideDialog-no-empty-autodrive-after-final-response.ts.log"
+        },
+        {
+          "id": "kernel-driver/sideDialog-pending-runtime-prompt-counts-as-resumable.ts",
+          "status": "passed",
+          "durationMs": 2058,
+          "code": 0,
+          "signal": null,
+          "logPath": "/tmp/dominds-tests-kernel-WP1LB0/047-kernel-driver_sideDialog-pending-runtime-prompt-counts-as-resumable.ts.log"
+        },
+        {
+          "id": "kernel-driver/sideDialog-queue-commit-mirror.ts",
+          "status": "passed",
+          "durationMs": 2963,
+          "code": 0,
+          "signal": null,
+          "logPath": "/tmp/dominds-tests-kernel-WP1LB0/048-kernel-driver_sideDialog-queue-commit-mirror.ts.log"
+        },
+        {
+          "id": "kernel-driver/sideDialog-queue-interrupt-rollback.ts",
+          "status": "passed",
+          "durationMs": 2841,
+          "code": 0,
+          "signal": null,
+          "logPath": "/tmp/dominds-tests-kernel-WP1LB0/049-kernel-driver_sideDialog-queue-interrupt-rollback.ts.log"
+        },
+        {
+          "id": "kernel-driver/sideDialog-registered-initial-auto-drive.ts",
+          "status": "passed",
+          "durationMs": 2581,
+          "code": 0,
+          "signal": null,
+          "logPath": "/tmp/dominds-tests-kernel-WP1LB0/050-kernel-driver_sideDialog-registered-initial-auto-drive.ts.log"
+        },
+        {
+          "id": "kernel-driver/sideDialog-registered-update-clear-mind-rebinds-reply-target.ts",
+          "status": "passed",
+          "durationMs": 2641,
+          "code": 0,
+          "signal": null,
+          "logPath": "/tmp/dominds-tests-kernel-WP1LB0/051-kernel-driver_sideDialog-registered-update-clear-mind-rebinds-reply-target.ts.log"
+        },
+        {
+          "id": "kernel-driver/sideDialog-registered-update-queues-queued-prompt.ts",
+          "status": "passed",
+          "durationMs": 2858,
+          "code": 0,
+          "signal": null,
+          "logPath": "/tmp/dominds-tests-kernel-WP1LB0/052-kernel-driver_sideDialog-registered-update-queues-queued-prompt.ts.log"
+        },
+        {
+          "id": "kernel-driver/sideDialog-registered-update-replaces-pending-round.ts",
+          "status": "passed",
+          "durationMs": 2826,
+          "code": 0,
+          "signal": null,
+          "logPath": "/tmp/dominds-tests-kernel-WP1LB0/053-kernel-driver_sideDialog-registered-update-replaces-pending-round.ts.log"
+        },
+        {
+          "id": "kernel-driver/sideDialog-reply-delivery-marked-delivered.ts",
+          "status": "passed",
+          "durationMs": 2288,
+          "code": 0,
+          "signal": null,
+          "logPath": "/tmp/dominds-tests-kernel-WP1LB0/054-kernel-driver_sideDialog-reply-delivery-marked-delivered.ts.log"
+        },
+        {
+          "id": "kernel-driver/sideDialog-reply-missing-assignment-anchor.ts",
+          "status": "passed",
+          "durationMs": 2100,
+          "code": 0,
+          "signal": null,
+          "logPath": "/tmp/dominds-tests-kernel-WP1LB0/055-kernel-driver_sideDialog-reply-missing-assignment-anchor.ts.log"
+        },
+        {
+          "id": "kernel-driver/sideDialog-stale-pending-runtime-prompt-clears-on-restore.ts",
+          "status": "passed",
+          "durationMs": 2323,
+          "code": 0,
+          "signal": null,
+          "logPath": "/tmp/dominds-tests-kernel-WP1LB0/056-kernel-driver_sideDialog-stale-pending-runtime-prompt-clears-on-restore.ts.log"
+        },
+        {
+          "id": "kernel-driver/stale-pending-runtime-prompt-queue-claim.ts",
+          "status": "passed",
+          "durationMs": 2431,
+          "code": 0,
+          "signal": null,
+          "logPath": "/tmp/dominds-tests-kernel-WP1LB0/057-kernel-driver_stale-pending-runtime-prompt-queue-claim.ts.log"
+        },
+        {
+          "id": "kernel-driver/tellask-background-dispatch-does-not-immediate-followup.ts",
+          "status": "passed",
+          "durationMs": 2722,
+          "code": 0,
+          "signal": null,
+          "logPath": "/tmp/dominds-tests-kernel-WP1LB0/058-kernel-driver_tellask-background-dispatch-does-not-immediate-followup.ts.log"
+        },
+        {
+          "id": "kernel-driver/tellask-resolved-result-context-pointer.ts",
+          "status": "passed",
+          "durationMs": 799,
+          "code": 0,
+          "signal": null,
+          "logPath": "/tmp/dominds-tests-kernel-WP1LB0/059-kernel-driver_tellask-resolved-result-context-pointer.ts.log"
+        },
+        {
+          "id": "kernel-driver/unexpected-idle-after-tool-round-debug-dump.ts",
+          "status": "passed",
+          "durationMs": 2449,
+          "code": 0,
+          "signal": null,
+          "logPath": "/tmp/dominds-tests-kernel-WP1LB0/060-kernel-driver_unexpected-idle-after-tool-round-debug-dump.ts.log"
+        },
+        {
+          "id": "kernel-driver/update-reminder-immediate-followup.ts",
+          "status": "passed",
+          "durationMs": 2771,
+          "code": 0,
+          "signal": null,
+          "logPath": "/tmp/dominds-tests-kernel-WP1LB0/061-kernel-driver_update-reminder-immediate-followup.ts.log"
+        },
+        {
+          "id": "kernel-driver/user-interject-active-callee-suppresses-reply-guidance.ts",
+          "status": "passed",
+          "durationMs": 5273,
+          "code": 0,
+          "signal": null,
+          "logPath": "/tmp/dominds-tests-kernel-WP1LB0/062-kernel-driver_user-interject-active-callee-suppresses-reply-guidance.ts.log"
+        },
+        {
+          "id": "kernel-driver/user-interject-active-callee-tool-followup.ts",
+          "status": "passed",
+          "durationMs": 3843,
+          "code": 0,
+          "signal": null,
+          "logPath": "/tmp/dominds-tests-kernel-WP1LB0/063-kernel-driver_user-interject-active-callee-tool-followup.ts.log"
+        }
+      ]
+    },
+    "applicationTypes": {
+      "command": "pnpm run lint:types",
+      "logPath": "/tmp/dominds-reminder-sharing-app-types-revised.log",
+      "exitCode": 0,
+      "logSha256": "41aa5be00a3d0c4d2223d9aee1e64fd44a1a074ddc49dbfbb33b30036175e87a"
+    },
+    "testTypes": {
+      "command": "pnpm run test:types",
+      "logPath": "/tmp/dominds-reminder-sharing-types-revised.log",
+      "exitCode": 2,
+      "logSha256": "ce8a535653066319267067c69c376149d8355feaec1cd27d7634cea330c83636",
+      "status": "failed",
+      "diagnostics": 61,
+      "priorDiagnostics": 79,
+      "changedCandidateOrHelperDiagnostics": 0,
+      "note": "Eighteen inherited call-site errors corrected with native brands. New helper union/owner JSON typing corrected with real narrowing/JsonObject. No weakening or tsconfig exclusion; all61 inherited failures remain explicit."
+    },
+    "runner": {
+      "command": "pnpm run test:runner",
+      "logPath": "/tmp/dominds-reminder-sharing-runner.log",
+      "exitCode": 0,
+      "logSha256": "6551dde6c49cffcaaa98f42a8e7a157271bc801c1687f39aaf7a5cc7176724e5",
+      "attempted": 6,
+      "passed": 6,
+      "scope": "Runner and entry source unchanged after this run; later product text/language-fixture changes do not alter runner code."
+    },
+    "format": [
+      {
+        "command": "pnpm run format:check",
+        "logPath": "/tmp/dominds-reminder-sharing-format-revised.log",
+        "exitCode": 0,
+        "logSha256": "b1ea3ae2fe62892cb4e7315068d0b5aa27dc325de6426de93c32837cb79bd2f0"
+      },
+      {
+        "command": "pnpm exec prettier --check AGENTS.md tests/package.json",
+        "logPath": "/tmp/dominds-reminder-sharing-extra-format-revised.log",
+        "exitCode": 0,
+        "logSha256": "17aa973d3f004560237d9a95171210b0671deff23d61628eecf7322ff5938f20"
+      }
+    ],
+    "documentationLinks": {
+      "command": "pinned Node /tmp/dominds-doclint/check.mjs",
+      "logPath": "/tmp/dominds-reminder-sharing-doclinks.log",
+      "exitCode": 0,
+      "logSha256": "7ed97ba75d475ca373128bd6b8f7a1d6bf8f62f94603d336ed39fc7dcc46f129",
+      "summary": {
+        "trackedMarkdown": 201,
+        "newMarkdown": 0,
+        "canonicalDocuments": 69,
+        "excludedRuntimeSources": 131,
+        "localTargetsAndFragments": 372,
+        "networkLinksIgnored": 9,
+        "failures": []
+      },
+      "scope": "Full git ls-files tracked Markdown, canonical symlinks, narrow runtime exclusions and repo-local file/heading targets; no network requests. Later strategy clarification changed no links/headings and received its own format check."
+    },
+    "inventory": {
+      "typescriptFiles": 285,
+      "supportFiles": 31,
+      "candidates": 254,
+      "reviewed": 157,
+      "unaudited": 97,
+      "outsideSuites": 90,
+      "withoutPackageScript": 43,
+      "missingPackageScriptTargets": [],
+      "missingAuditedFiles": []
+    },
+    "originalBaseline": {
+      "total": 2,
+      "passed": 2,
+      "failed": 0,
+      "timedOut": 0,
+      "results": [
+        {
+          "id": "reminders/task-agent-reminder-scope.ts",
+          "status": "passed",
+          "durationMs": 729,
+          "code": 0,
+          "signal": null,
+          "logPath": "/tmp/dominds-reminder-sharing-baseline/001-reminders_task-agent-reminder-scope.ts.log",
+          "tempDir": "/tmp/dominds-reminder-sharing-baseline/1.tmp"
+        },
+        {
+          "id": "reminders/migrate-reminder-scope.ts",
+          "status": "passed",
+          "durationMs": 676,
+          "code": 0,
+          "signal": null,
+          "logPath": "/tmp/dominds-reminder-sharing-baseline/002-reminders_migrate-reminder-scope.ts.log",
+          "tempDir": "/tmp/dominds-reminder-sharing-baseline/2.tmp"
+        }
+      ]
+    },
+    "initialImplementationBehavior": {
+      "total": 2,
+      "passed": 2,
+      "failed": 0,
+      "timedOut": 0,
+      "results": [
+        {
+          "id": "reminders/task-agent-reminder-scope.ts",
+          "status": "passed",
+          "durationMs": 2095,
+          "code": 0,
+          "signal": null,
+          "logPath": "/tmp/dominds-reminder-sharing-first/001-reminders_task-agent-reminder-scope.ts.log",
+          "tempDir": "/tmp/dominds-reminder-sharing-first/1.tmp"
+        },
+        {
+          "id": "reminders/migrate-reminder-scope.ts",
+          "status": "passed",
+          "durationMs": 2049,
+          "code": 0,
+          "signal": null,
+          "logPath": "/tmp/dominds-reminder-sharing-first/002-reminders_migrate-reminder-scope.ts.log",
+          "tempDir": "/tmp/dominds-reminder-sharing-first/2.tmp"
+        }
+      ]
+    },
+    "initialSemanticGeneration": {
+      "total": 2,
+      "passed": 2,
+      "failed": 0,
+      "timedOut": 0,
+      "results": [
+        {
+          "id": "reminders/task-agent-reminder-scope.ts",
+          "status": "passed",
+          "durationMs": 2050,
+          "code": 0,
+          "signal": null,
+          "logPath": "/tmp/dominds-reminder-sharing-final-semantic/001-reminders_task-agent-reminder-scope.ts.log",
+          "tempDir": "/tmp/dominds-reminder-sharing-final-semantic/1.tmp"
+        },
+        {
+          "id": "reminders/migrate-reminder-scope.ts",
+          "status": "passed",
+          "durationMs": 2230,
+          "code": 0,
+          "signal": null,
+          "logPath": "/tmp/dominds-reminder-sharing-final-semantic/002-reminders_migrate-reminder-scope.ts.log",
+          "tempDir": "/tmp/dominds-reminder-sharing-final-semantic/2.tmp"
+        }
+      ],
+      "scope": "evidence-generation-processes",
+      "semanticAcceptance": "pending"
+    },
+    "historicalMachineRegression": {
+      "status": "expected failure reproduced",
+      "exitCode": 1,
+      "logPath": "/tmp/dominds-reminder-sharing-owner-before-fix.log",
+      "actualLog": "$ tsx cli.ts -- --isolated-rtws reminders/task-agent-reminder-scope.ts\nAssertionError [ERR_ASSERTION]: Expected values to be strictly deep-equal:\n+ actual - expected\n... Skipped lines\n\n  [\n    {\n      hasQueue: false,\n      id: '5a/39/93889370',\n      nextStep: {\n...\n      queued: undefined,\n+     rootDriveQueued: true\n-     rootDriveQueued: false\n    },\n    {\n+     hasQueue: true,\n-     hasQueue: false,\n      id: 'ff/14/938893a1#b0/0a/938893a2',\n      nextStep: {\n+       nextSeq: 2,\n+       triggers: [\n+         {\n+           course: 1,\n+           createdAt: '2026-10-31 12:56:03',\n+           kind: 'queued_prompt',\n+           promptId: 'c0x3nk',\n+           seq: 1,\n+           triggerId: 'queued-prompt:c0x3nk'\n+         }\n+       ]\n-       nextSeq: 1,\n-       triggers: []\n      },\n+     pendingRuntimePrompt: {\n+       content: '[System notice] Shared-scope reminder updated\\n' +\n+         '\\n' +\n+         'reminder_id=owner001 is task-scope, not private to the current dialog. The current in-flight work has other parallel dialogs for the same agent and Taskdoc. Another parallel dialog for the same agent just updated it, so this dialog will see the update too.\\n' +\n+         'This shared reminder was actually maintained by another dialog this time; decide for yourself whether it is relevant to this dialog context, and use only the parts that are truly relevant.\\n' +\n+         `Use it as the latest shared reference. If this update appears to fit only the updater's dialog, do not correct the shared content from this dialog; you may ask the updater to run migrate_reminder({ \"reminder_id\": \"owner001\", \"scope\": \"dialog\" }) in that dialog so Dominds withdraws it from other parallel dialogs. If this dialog has its own private state, create a separate dialog-scope reminder here.`,\n+       grammar: 'markdown',\n+       msgId: 'c0x3nk',\n+       origin: 'runtime',\n+       skipTaskdoc: true,\n+       userLanguageCode: 'en'\n+     },\n+     queued: {\n+       grammar: 'markdown',\n+       kind: 'new_course_runtime_guide',\n+       msgId: 'c0x3nk',\n+       origin: 'runtime',\n+       prompt: '[System notice] Shared-scope reminder updated\\n' +\n+         '\\n' +\n+         'reminder_id=owner001 is task-scope, not private to the current dialog. The current in-flight work has other parallel dialogs for the same agent and Taskdoc. Another parallel dialog for the same agent just updated it, so this dialog will see the update too.\\n' +\n+         'This shared reminder was actually maintained by another dialog this time; decide for yourself whether it is relevant to this dialog context, and use only the parts that are truly relevant.\\n' +\n+         `Use it as the latest shared reference. If this update appears to fit only the updater's dialog, do not correct the shared content from this dialog; you may ask the updater to run migrate_reminder({ \"reminder_id\": \"owner001\", \"scope\": \"dialog\" }) in that dialog so Dominds withdraws it from other parallel dialogs. If this dialog has its own private state, create a separate dialog-scope reminder here.`,\n+       skipTaskdoc: true,\n+       userLanguageCode: 'en'\n+     },\n+     rootDriveQueued: true\n-     pendingRuntimePrompt: undefined,\n-     queued: undefined,\n-     rootDriveQueued: false\n    },\n    {\n      hasQueue: false,\n      id: 'ff/14/938893a1#35/48/938893a9',\n      nextStep: {\n...\n      queued: undefined,\n+     rootDriveQueued: true\n-     rootDriveQueued: false\n    },\n    {\n      hasQueue: false,\n      id: '07/6b/938893b0',\n      nextStep: {\n...\n      queued: undefined,\n+     rootDriveQueued: true\n-     rootDriveQueued: false\n    },\n    {\n+     hasQueue: true,\n-     hasQueue: false,\n      id: '07/6b/938893b0#64/23/938893b0',\n      nextStep: {\n+       nextSeq: 3,\n+       triggers: [\n+         {\n+           course: 1,\n+           createdAt: '2026-10-31 12:56:03',\n+           kind: 'queued_prompt',\n+           promptId: 'ykqm7t',\n+           seq: 2,\n+           triggerId: 'queued-prompt:ykqm7t'\n+         }\n+       ]\n-       nextSeq: 2,\n-       triggers: []\n      },\n+     pendingRuntimePrompt: {\n+       content: '[System notice] Shared-scope reminder updated\\n' +\n+         '\\n' +\n+         'reminder_id=owner001 is task-scope, not private to the current dialog. The current in-flight work has other parallel dialogs for the same agent and Taskdoc. Another parallel dialog for the same agent just updated it, so this dialog will see the update too.\\n' +\n+         'This shared reminder was actually maintained by another dialog this time; decide for yourself whether it is relevant to this dialog context, and use only the parts that are truly relevant.\\n' +\n+         `Use it as the latest shared reference. If this update appears to fit only the updater's dialog, do not correct the shared content from this dialog; you may ask the updater to run migrate_reminder({ \"reminder_id\": \"owner001\", \"scope\": \"dialog\" }) in that dialog so Dominds withdraws it from other parallel dialogs. If this dialog has its own private state, create a separate dialog-scope reminder here.`,\n+       grammar: 'markdown',\n+       msgId: 'ykqm7t',\n+       origin: 'runtime',\n+       skipTaskdoc: true,\n+       userLanguageCode: 'en'\n+     },\n+     queued: {\n+       grammar: 'markdown',\n+       kind: 'new_course_runtime_guide',\n+       msgId: 'ykqm7t',\n+       origin: 'runtime',\n+       prompt: '[System notice] Shared-scope reminder updated\\n' +\n+         '\\n' +\n+         'reminder_id=owner001 is task-scope, not private to the current dialog. The current in-flight work has other parallel dialogs for the same agent and Taskdoc. Another parallel dialog for the same agent just updated it, so this dialog will see the update too.\\n' +\n+         'This shared reminder was actually maintained by another dialog this time; decide for yourself whether it is relevant to this dialog context, and use only the parts that are truly relevant.\\n' +\n+         `Use it as the latest shared reference. If this update appears to fit only the updater's dialog, do not correct the shared content from this dialog; you may ask the updater to run migrate_reminder({ \"reminder_id\": \"owner001\", \"scope\": \"dialog\" }) in that dialog so Dominds withdraws it from other parallel dialogs. If this dialog has its own private state, create a separate dialog-scope reminder here.`,\n+       skipTaskdoc: true,\n+       userLanguageCode: 'en'\n+     },\n+     rootDriveQueued: true\n-     pendingRuntimePrompt: undefined,\n-     queued: undefined,\n-     rootDriveQueued: false\n    },\n    {\n      hasQueue: false,\n      id: '5b/e5/938893b9',\n      nextStep: {\n...\n    {\n+     hasQueue: true,\n-     hasQueue: false,\n      id: 'f2/fe/938893c2',\n      nextStep: {\n+       nextSeq: 3,\n+       triggers: [\n+         {\n+           course: 1,\n+           createdAt: '2026-10-31 12:56:03',\n+           kind: 'queued_prompt',\n+           promptId: 'hz5uy8',\n+           seq: 2,\n+           triggerId: 'queued-prompt:hz5uy8'\n+         }\n+       ]\n-       nextSeq: 2,\n-       triggers: []\n      },\n+     pendingRuntimePrompt: {\n+       content: '[System notice] Shared-scope reminder updated\\n' +\n+         '\\n' +\n+         'reminder_id=owner001 is task-scope, not private to the current dialog. The current in-flight work has other parallel dialogs for the same agent and Taskdoc. Another parallel dialog for the same agent just updated it, so this dialog will see the update too.\\n' +\n+         'This shared reminder was actually maintained by another dialog this time; decide for yourself whether it is relevant to this dialog context, and use only the parts that are truly relevant.\\n' +\n+         `Use it as the latest shared reference. If this update appears to fit only the updater's dialog, do not correct the shared content from this dialog; you may ask the updater to run migrate_reminder({ \"reminder_id\": \"owner001\", \"scope\": \"dialog\" }) in that dialog so Dominds withdraws it from other parallel dialogs. If this dialog has its own private state, create a separate dialog-scope reminder here.`,\n+       grammar: 'markdown',\n+       msgId: 'hz5uy8',\n+       origin: 'runtime',\n+       skipTaskdoc: true,\n+       userLanguageCode: 'en'\n+     },\n+     queued: {\n+       grammar: 'markdown',\n+       kind: 'new_course_runtime_guide',\n+       msgId: 'hz5uy8',\n+       origin: 'runtime',\n+       prompt: '[System notice] Shared-scope reminder updated\\n' +\n+         '\\n' +\n+         'reminder_id=owner001 is task-scope, not private to the current dialog. The current in-flight work has other parallel dialogs for the same agent and Taskdoc. Another parallel dialog for the same agent just updated it, so this dialog will see the update too.\\n' +\n+         'This shared reminder was actually maintained by another dialog this time; decide for yourself whether it is relevant to this dialog context, and use only the parts that are truly relevant.\\n' +\n+         `Use it as the latest shared reference. If this update appears to fit only the updater's dialog, do not correct the shared content from this dialog; you may ask the updater to run migrate_reminder({ \"reminder_id\": \"owner001\", \"scope\": \"dialog\" }) in that dialog so Dominds withdraws it from other parallel dialogs. If this dialog has its own private state, create a separate dialog-scope reminder here.`,\n+       skipTaskdoc: true,\n+       userLanguageCode: 'en'\n+     },\n+     rootDriveQueued: true\n-     pendingRuntimePrompt: undefined,\n-     queued: undefined,\n-     rootDriveQueued: false\n    }\n  ]\n\n    at <anonymous> (/ws/AiWorks/dominds/tests/reminders/task-agent-reminder-scope.ts:212:14)\n    at async <anonymous> (/ws/AiWorks/dominds/tests/helpers/shared-reminders.ts:53:7)\n    at async withTempRtws (/ws/AiWorks/dominds/tests/kernel-driver/helpers.ts:60:3)\n    at async withSharedReminderFixture (/ws/AiWorks/dominds/tests/helpers/shared-reminders.ts:27:3)\n    at async main (/ws/AiWorks/dominds/tests/reminders/task-agent-reminder-scope.ts:20:3) {\n  generatedMessage: true,\n  code: 'ERR_ASSERTION',\n  actual: [Array],\n  expected: [Array],\n  operator: 'deepStrictEqual',\n  diff: 'simple'\n}\n[tests/cli] Keeping isolated rtws at /tmp/dominds-tests-rtws-M1KpZs\n[ELIFECYCLE] Command failed with exit code 1.\n",
+      "meaning": "Initial shared-case version with old24549bbe main/tool.ts produced new runtime guides, durable pending/nextStep and root scheduling for three peers when only equivalent metadata object key order changed. This happened before later bilingual/owner-refusal extensions and is not claimed to have run the exact final test bytes. Final unchanged identity-fix bytes were restored before all later checks."
+    },
+    "parentAssertionReview": "Complete original2/final2/helper and full final test diff reviewed. Exact outcomes, supplied IDs/bodies/metadata, namespace JSON, recipient sets/counts, runtime envelopes, persistence fidelity and scheduling effects are machine/data oracles; actual notice/receipt meaning was independently read above. No literal semantic oracle remains. Fixture acknowledgments do not mean backend/LLM consumption or restart delivery; owner refusal and manual task migration are distinct actual outcomes. Whole-repository goal remains active with97 unaudited candidates and61 inherited type errors."
+  }
+}

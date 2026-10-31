@@ -930,6 +930,18 @@
       "lane": "reminders",
       "value": "注册owner抛错的原cause身份传播/实际stream_error_evt一次/不发布成功快照/状态保全；等价nested对象metadata重排不推进公开版本或renderRevision，数组顺序/正文实际变化正对照识别并持久化",
       "evidence": "Complete original6/final6/helper/product diff/assertion review and actual semantic material: tests/semantic/reviews/2026-10-31-reminder-mutation-guards.json. Exact IDs/enums/outcomes/versions/event kinds/counts, full given data and observed state/disk effects are machine/data contracts; generated diagnostic/receipt meaning requires independent subjective review. Literal wording or hash never accepts meaning. Controlled post-resolution interleaving is not an actual concurrent drive. No fake DialogStore/Member, invented index4, sleeps, type weakening or timeout increase. Owner stability still permits normal persistence/full-reminder events; no zero-write/zero-event/browser/restart claim."
+    },
+    "reminders/task-agent-reminder-scope.ts": {
+      "status": "reviewed",
+      "lane": "reminders",
+      "value": "沿袭默认task/局部旧项与排序、task-agent-otherAgent可见隔离、真实namespaced JSON、loaded vs唯一active/并行Side/跨root锁Main的准确路由、manual/registered owner更新及独立删除；等价owner key序必须全queues/pending/nextStep/root flags不变，真变化按3/4矩阵通知；实际owner手工迁移拒绝且全private/shared/queue不变，中英通知建议与实际可执行维护边界另审",
+      "evidence": "Full original2/final2/shared helper/assertion diff review and actual revised20 bilingual materials (initial9 retained with one semantic rejection): tests/semantic/reviews/2026-10-31-shared-reminder-routing.json. Outcomes, exact recipient IDs/counts, runtime-guide envelopes, persisted pendingRuntimePrompt/queued_prompt IDs and course, root flags, parsed namespace JSON and given-data/observed-state fidelity are machine/data contracts. Generated receipt/notice meaning requires independent subjective review; literal text or hashes never accept meaning. The fixture observes then explicitly acknowledges queued state using production clear APIs; takeQueuedPrompt alone does not consume disk work. No LLM/backend consumption, restart delivery, real external deletion, agent-to-private or manager-tool/delete-restriction migration coverage is claimed. Existing60s bound preserved, no sleeps/fake Member/abstract store/raw call-site casts or mid-run cwd/cleanup retries."
+    },
+    "reminders/migrate-reminder-scope.ts": {
+      "status": "reviewed",
+      "lane": "reminders",
+      "value": "默认task共享项稳定ID迁到当前Side私有；完整给定plain正文/opaque meta/模式/时间/priority等数据保持，共享文件消失、SameRoot/CrossRoot/active Main/history/新Main皆不可见，原scope决定3个active同Task撤下目标、异Task/异agent不收",
+      "evidence": "Full original2/final2/shared helper/assertion diff review and actual revised20 bilingual materials (initial9 retained with one semantic rejection): tests/semantic/reviews/2026-10-31-shared-reminder-routing.json. Outcomes, exact recipient IDs/counts, runtime-guide envelopes, persisted pendingRuntimePrompt/queued_prompt IDs and course, root flags, parsed namespace JSON and given-data/observed-state fidelity are machine/data contracts. Generated receipt/notice meaning requires independent subjective review; literal text or hashes never accept meaning. The fixture observes then explicitly acknowledges queued state using production clear APIs; takeQueuedPrompt alone does not consume disk work. No LLM/backend consumption, restart delivery, real external deletion, agent-to-private or manager-tool/delete-restriction migration coverage is claimed. Existing60s bound preserved, no sleeps/fake Member/abstract store/raw call-site casts or mid-run cwd/cleanup retries."
     }
   },
   "retired": {

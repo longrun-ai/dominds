@@ -732,14 +732,14 @@ export function formatSharedReminderUpdateImpactNotice(
         ? '当前进行时存在同一智能体在当前差遣牒任务内的其它并行对话'
         : '当前进行时存在同一智能体的其它并行对话';
     if (args.audience === 'updater') {
-      return `共享范围影响：你刚更新的 reminder_id=${reminderId} 是${scopeName}提醒项，不是当前对话私有；${impactedDialogs}，其它能看到这条提醒项的对话也会看到这次更新。请考虑使用 migrate_reminder({ "reminder_id": "${reminderId}", "scope": "dialog" }) 确保提醒项的影响范围合理；若新内容只应影响当前对话，迁移后系统会从共享范围撤下，并保留为仅本对话可见的提醒项。`;
+      return `共享范围影响：你刚更新的 reminder_id=${reminderId} 是${scopeName}提醒项，不是当前对话私有；${impactedDialogs}，其它能看到这条提醒项的对话也会看到这次更新。仅当这是没有自动维护所有者、管理工具或维护限制的手工提醒项，且新内容只属于当前对话时，才考虑使用 migrate_reminder({ "reminder_id": "${reminderId}", "scope": "dialog" })；迁移会从共享范围撤下，并保留当前对话私有副本。自动维护或受限的提醒项应遵循其维护说明，不要请求手工迁移；没有适用通道时，请向负责的维护者说明范围问题。`;
     }
     return [
       `${formatSystemNoticePrefix(language)} 共享范围提醒项已更新`,
       '',
       `reminder_id=${reminderId} 是${scopeName}提醒项，不是当前对话私有；${impactedDialogs}。同一智能体的某个并行对话刚更新了它，你所在对话也会看到这次更新。`,
       '这条共享提醒项这次实际上由另一对话维护；你应自行判断它与本对话当前上下文是否有关，只采纳确实相关的部分。',
-      `请把它作为最新共享参考。若这次更新看起来只适合更新者所在对话，不要在本对话替它修正共享内容；可提醒更新者在其对话中使用 migrate_reminder({ "reminder_id": "${reminderId}", "scope": "dialog" }) 迁回对话范围，从而从其它并行对话撤下。本对话若另有私有状态，请另建对话范围提醒项。`,
+      `请把它作为最新共享参考。若这次更新看起来只适合更新者所在对话，不要在本对话替它修正共享内容。仅对没有自动维护所有者、管理工具或维护限制的手工提醒项，可提醒更新者在其对话中使用 migrate_reminder({ "reminder_id": "${reminderId}", "scope": "dialog" }) 迁回私有范围，从其它并行对话撤下。自动维护或受限的提醒项应遵循其维护说明，不要请求手工迁移；没有适用通道时，请向负责的维护者说明范围问题。本对话若另有私有状态，请另建对话范围提醒项。`,
     ].join('\n');
   }
 
@@ -750,14 +750,14 @@ export function formatSharedReminderUpdateImpactNotice(
       ? 'The current in-flight work has other parallel dialogs for the same agent and Taskdoc'
       : 'The current in-flight work has other parallel dialogs for the same agent';
   if (args.audience === 'updater') {
-    return `Shared-scope impact: the reminder you just updated, reminder_id=${reminderId}, is ${scopeName}, not private to the current dialog. ${impactedDialogs}, so other dialogs that can see this reminder will see this update too. Consider running migrate_reminder({ "reminder_id": "${reminderId}", "scope": "dialog" }) to make sure the reminder's impact scope is appropriate; if the new content should affect only the current dialog, Dominds will withdraw it from shared scope and keep it visible only in this dialog after migration.`;
+    return `Shared-scope impact: the reminder you just updated, reminder_id=${reminderId}, is ${scopeName}, not private to the current dialog. ${impactedDialogs}, so other dialogs that can see this reminder will see this update too. Only for a manually maintained reminder with no owner, manager or maintenance restriction, if the new content belongs only to this dialog, consider running migrate_reminder({ "reminder_id": "${reminderId}", "scope": "dialog" }); migration withdraws it from shared scope and preserves a private copy in this dialog. For automatically maintained or restricted reminders, follow their declared maintenance guidance and do not request manual migration. If no applicable path is available, ask the responsible maintainer about the scope concern.`;
   }
   return [
     `${formatSystemNoticePrefix(language)} Shared-scope reminder updated`,
     '',
     `reminder_id=${reminderId} is ${scopeName}, not private to the current dialog. ${impactedDialogs}. Another parallel dialog for the same agent just updated it, so this dialog will see the update too.`,
     'This shared reminder was actually maintained by another dialog this time; decide for yourself whether it is relevant to this dialog context, and use only the parts that are truly relevant.',
-    `Use it as the latest shared reference. If this update appears to fit only the updater's dialog, do not correct the shared content from this dialog; you may ask the updater to run migrate_reminder({ "reminder_id": "${reminderId}", "scope": "dialog" }) in that dialog so Dominds withdraws it from other parallel dialogs. If this dialog has its own private state, create a separate dialog-scope reminder here.`,
+    `Use it as the latest shared reference. If this update appears to fit only the updater's dialog, do not correct its shared content from here. Only for a manually maintained reminder with no owner, manager or maintenance restriction may you ask the updater to run migrate_reminder({ "reminder_id": "${reminderId}", "scope": "dialog" }) there, withdrawing it from other parallel dialogs. For automatically maintained or restricted reminders, follow their declared maintenance guidance and do not request manual migration. If no applicable path is available, ask the responsible maintainer about the scope concern. If this dialog has its own private state, create a separate dialog-scope reminder here.`,
   ].join('\n');
 }
 

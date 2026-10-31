@@ -138,6 +138,8 @@ const reminders = [
   'reminders/delete-reminder-round-snapshot.ts',
   'reminders/stale-target-message.ts',
   'reminders/reminder-owner-failure-loud.ts',
+  'reminders/task-agent-reminder-scope.ts',
+  'reminders/migrate-reminder-scope.ts',
 ];
 const semanticSuites = {
   reminders: [
@@ -150,6 +152,8 @@ const semanticSuites = {
     'reminders/delete-reminder-round-snapshot.ts',
     'reminders/stale-target-message.ts',
     'reminders/reminder-owner-failure-loud.ts',
+    'reminders/task-agent-reminder-scope.ts',
+    'reminders/migrate-reminder-scope.ts',
   ],
   compatible,
   projection,
