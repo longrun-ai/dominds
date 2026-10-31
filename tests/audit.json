@@ -456,6 +456,48 @@
       "lane": "kernel",
       "value": "真实后台执行受控暂停时，真人取证工具链获得一次答复；后台随后真实交付并恰好消费一次",
       "evidence": "Collaboration/interjection batch: complete assertion-diff review; exact text comparisons protect supplied fixture data, parser-consumed envelopes or identity only. Component callbacks and public renderer scope remain explicit. Independent semantic verdicts and source provenance: tests/semantic/reviews/2026-10-31-collaboration-interjections.json. This design ledger does not accept later output."
+    },
+    "access-control/dialogs-root-deny.ts": {
+      "status": "reviewed",
+      "lane": "filesystem",
+      "value": "公开权限判定函数按rtws根保留.dialogs/.minds/Taskdoc命名空间，允许嵌套工作区和相似普通名字；大小写行为限当前宿主平台",
+      "evidence": "Filesystem/editing batch: complete assertion-design diff review; supplied data/bytes, public YAML fields, actual disk/link effects, budget counts and explicit API scope. Natural guidance/preview meaning is judged only from actual evidence by the test-execution agent. Durable review and provenance: tests/semantic/reviews/2026-10-31-filesystem.json. This design ledger does not accept later output."
+    },
+    "access-control/file-ext-names.ts": {
+      "status": "reviewed",
+      "lane": "filesystem",
+      "value": "公开路径/扩展名权限判定的白黑名单组合、扩展规范化与rtws外相邻路径拒绝；属于决策API而非真实文件访问或所有symlink安全边界",
+      "evidence": "Filesystem/editing batch: complete assertion-design diff review; supplied data/bytes, public YAML fields, actual disk/link effects, budget counts and explicit API scope. Natural guidance/preview meaning is judged only from actual evidence by the test-execution agent. Durable review and provenance: tests/semantic/reviews/2026-10-31-filesystem.json. This design ledger does not accept later output."
+    },
+    "fs-symlink-follow.ts": {
+      "status": "reviewed",
+      "lane": "filesystem",
+      "value": "真实相对/绝对目录链接可列出；删除/移动链接条目保留原目标和数据，移动后相对链接实际不可达仍如实说明；team_mgmt链接能力作用于.minds",
+      "evidence": "Filesystem/editing batch: complete assertion-design diff review; supplied data/bytes, public YAML fields, actual disk/link effects, budget counts and explicit API scope. Natural guidance/preview meaning is judged only from actual evidence by the test-execution agent. Durable review and provenance: tests/semantic/reviews/2026-10-31-filesystem.json. This design ledger does not accept later output."
+    },
+    "create-new-file.ts": {
+      "status": "reviewed",
+      "lane": "filesystem",
+      "value": "已有文件/目录拒绝后原数据保留；新文件末尾换行、完整pad源写入及跨dialog不可读取私有pad；恢复建议按任务意图判断",
+      "evidence": "Filesystem/editing batch: complete assertion-design diff review; supplied data/bytes, public YAML fields, actual disk/link effects, budget counts and explicit API scope. Natural guidance/preview meaning is judged only from actual evidence by the test-execution agent. Durable review and provenance: tests/semantic/reviews/2026-10-31-filesystem.json. This design ledger does not accept later output."
+    },
+    "file-block-tools.ts": {
+      "status": "reviewed",
+      "lane": "filesystem",
+      "value": "append/anchor前后插入/block替换真实字节、pad源不回显、preview不写入并可随后按相同输入实际应用",
+      "evidence": "Filesystem/editing batch: complete assertion-design diff review; supplied data/bytes, public YAML fields, actual disk/link effects, budget counts and explicit API scope. Natural guidance/preview meaning is judged only from actual evidence by the test-execution agent. Durable review and provenance: tests/semantic/reviews/2026-10-31-filesystem.json. This design ledger does not accept later output."
+    },
+    "file-range-edit.ts": {
+      "status": "reviewed",
+      "lane": "filesystem",
+      "value": "范围替换/追加/删除真实字节与pad来源，preview可见已知输入且原文件不变",
+      "evidence": "Filesystem/editing batch: complete assertion-design diff review; supplied data/bytes, public YAML fields, actual disk/link effects, budget counts and explicit API scope. Natural guidance/preview meaning is judged only from actual evidence by the test-execution agent. Durable review and provenance: tests/semantic/reviews/2026-10-31-filesystem.json. This design ledger does not accept later output."
+    },
+    "edit-output-truncation.ts": {
+      "status": "reviewed",
+      "lane": "filesystem",
+      "value": "大预览完整可读的YAML元数据与有界输出，所有preview保留原文件；大规模替换恰好应用及plan不可重用，80k正文真实写入不被预览限制截断",
+      "evidence": "Filesystem/editing batch: complete assertion-design diff review; supplied data/bytes, public YAML fields, actual disk/link effects, budget counts and explicit API scope. Natural guidance/preview meaning is judged only from actual evidence by the test-execution agent. Durable review and provenance: tests/semantic/reviews/2026-10-31-filesystem.json. This design ledger does not accept later output."
     }
   },
   "retired": {
@@ -566,6 +608,11 @@
       "decision": "merge",
       "replacement": "kernel-driver/fbr-internal-conclusion-flow.ts",
       "reason": "保留真实吃紧提前收口、告急停止、调用方消费和持久状态；删除同源formatter期望与指导文字路由，并增加有界吃紧重试、能力隔离及两种传输。旧命名脚本重定向替代入口。"
+    },
+    "list-dir-symlink.ts": {
+      "decision": "merge",
+      "replacement": "fs-symlink-follow.ts",
+      "reason": "原header/说明字面检查删除；已知目录entry经真实symlink列出与链接/目标保持的业务价值并入中英真实文件系统回归，原命名入口转发替代用例。"
     }
   }
 }

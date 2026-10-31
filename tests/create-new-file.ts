@@ -1,113 +1,132 @@
 import assert from 'node:assert/strict';
-import * as fs from 'node:fs/promises';
-import os from 'node:os';
-import path from 'node:path';
-import type { DialogStore } from '../main/dialog';
-import { MainDialog } from '../main/dialog';
+import fs from 'node:fs/promises';
+
 import { setWorkLanguage } from '../main/runtime/work-language';
 import { Team } from '../main/team';
 import { createNewFileTool, padWriteTool, readFileTool } from '../main/tools/txt';
+import { semanticEvidenceCollector } from './helpers/semantic-evidence';
+import { toolOutputData } from './helpers/tool-output';
+import { createMainDialog, withTempRtws } from './kernel-driver/helpers';
 
-async function readText(p: string): Promise<string> {
-  return await fs.readFile(p, 'utf-8');
-}
-
+const evidence = semanticEvidenceCollector('dominds-create-file-');
 async function main(): Promise<void> {
-  const oldCwd = process.cwd();
-  const tmpRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'dominds-create-new-file-'));
-  try {
-    process.chdir(tmpRoot);
-    setWorkLanguage('en');
+  await withTempRtws(async () => {
+    const caller = new Team.Member({ id: 'editor', name: 'Editor' });
+    for (const language of ['en', 'zh'] as const) {
+      setWorkLanguage(language);
+      const dlg = await createMainDialog('editor');
+      const file = `created-${language}.txt`;
+      const empty = await createNewFileTool.call(dlg, caller, { path: file, content: '' });
+      assert.equal(empty.outcome, 'success');
+      const emptyData = toolOutputData(empty.content);
+      assert.equal(emptyData.mode, 'create_new_file');
+      assert.equal(emptyData.new_total_lines, 0);
+      assert.equal(emptyData.new_total_bytes, 0);
+      assert.equal(await fs.readFile(file, 'utf8'), '');
+      const readEmpty = await readFileTool.call(dlg, caller, { path: file });
+      assert.equal(readEmpty.outcome, 'success');
+      assert.equal(toolOutputData(readEmpty.content).total_lines, 0);
 
-    const dlg = new MainDialog(
-      {} as unknown as DialogStore,
-      'create-new-file.tsk',
-      undefined,
-      'alice',
-    );
-    const alice = new Team.Member({
-      id: 'alice',
-      name: 'Alice',
-      read_dirs: ['**'],
-      write_dirs: ['**'],
-    });
+      const original = `existing-file-data-${language}\n`;
+      await fs.writeFile(file, original);
+      const exists = await createNewFileTool.call(dlg, caller, {
+        path: file,
+        content: 'replacement-data',
+      });
+      assert.equal(exists.outcome, 'failure');
+      assert.equal(toolOutputData(exists.content).error, 'FILE_EXISTS');
+      assert.equal(
+        await fs.readFile(file, 'utf8'),
+        original,
+        'refused creation must preserve existing bytes',
+      );
 
-    // Empty content is allowed; creates an empty file.
-    const createdEmpty = (
-      await createNewFileTool.call(dlg, alice, {
-        path: 'a.txt',
-        content: '',
-      })
-    ).content;
-    assert.ok(createdEmpty.includes('status: ok'));
-    assert.ok(createdEmpty.includes('mode: create_new_file'));
-    assert.ok(createdEmpty.includes('new_total_lines: 0'));
-    assert.ok(createdEmpty.includes('new_total_bytes: 0'));
+      const directory = `existing-directory-${language}`;
+      await fs.mkdir(directory);
+      const notFile = await createNewFileTool.call(dlg, caller, {
+        path: directory,
+        content: 'replacement-data',
+      });
+      assert.equal(notFile.outcome, 'failure');
+      assert.equal(toolOutputData(notFile.content).error, 'NOT_A_FILE');
+      assert.ok((await fs.stat(directory)).isDirectory());
+      assert.deepEqual(await fs.readdir(directory), []);
 
-    const readEmpty = (await readFileTool.call(dlg, alice, { path: 'a.txt' })).content;
-    assert.ok(readEmpty.includes('mode: read_file'));
-    assert.ok(readEmpty.includes('total_lines: 0'));
+      const normalizedFile = `normalized-${language}.txt`;
+      const normalized = await createNewFileTool.call(dlg, caller, {
+        path: normalizedFile,
+        content: 'body-data',
+      });
+      assert.equal(normalized.outcome, 'success');
+      assert.equal(toolOutputData(normalized.content).normalized_trailing_newline_added, true);
+      assert.equal(await fs.readFile(normalizedFile, 'utf8'), 'body-data\n');
 
-    // Existing file: refuse with FILE_EXISTS and a next-step hint.
-    const exists = (
-      await createNewFileTool.call(dlg, alice, {
-        path: 'a.txt',
-        content: '',
-      })
-    ).content;
-    assert.ok(exists.includes('status: error'));
-    assert.ok(exists.includes('error: FILE_EXISTS'));
-    assert.ok(exists.includes('next:'));
-
-    // Existing non-file path: refuse with NOT_A_FILE.
-    await fs.mkdir(path.join(tmpRoot, 'dir'));
-    const notAFile = (
-      await createNewFileTool.call(dlg, alice, {
-        path: 'dir',
-        content: '',
-      })
-    ).content;
-    assert.ok(notAFile.includes('status: error'));
-    assert.ok(notAFile.includes('error: NOT_A_FILE'));
-
-    // Trailing newline normalization for non-empty content.
-    const createdWithContent = (
-      await createNewFileTool.call(dlg, alice, {
-        path: 'b.txt',
-        content: 'hello',
-      })
-    ).content;
-    assert.ok(createdWithContent.includes('status: ok'));
-    assert.ok(createdWithContent.includes('normalized_trailing_newline_added: true'));
-    const bText = await readText(path.join(tmpRoot, 'b.txt'));
-    assert.equal(bText, 'hello\n');
-
-    const padToken = 'CREATE_FROM_PAD_TOKEN';
-    const padWriteOutput = (
-      await padWriteTool.call(dlg, alice, {
+      const token = `private-pad-body-data-${language}`;
+      const pad = await padWriteTool.call(dlg, caller, {
         pad_id: 'create_src',
-        content: `${padToken}\n`,
-      })
-    ).content;
-    assert.ok(!padWriteOutput.includes(padToken), 'pad_write should not echo pad body');
-
-    const createdFromPad = (
-      await createNewFileTool.call(dlg, alice, {
-        path: 'from-pad.txt',
+        content: `${token}\n`,
+      });
+      assert.equal(pad.outcome, 'success');
+      assert.equal(pad.content.includes(token), false, 'the supplied private body is not echoed');
+      const padFile = `from-pad-${language}.txt`;
+      const created = await createNewFileTool.call(dlg, caller, {
+        path: padFile,
         pad_id: 'create_src',
-      })
-    ).content;
-    assert.ok(createdFromPad.includes('status: ok'));
-    assert.ok(createdFromPad.includes('source: pad'));
-    assert.ok(createdFromPad.includes('redacted: true'));
-    assert.ok(!createdFromPad.includes(padToken), 'create_new_file should not echo pad body');
-    assert.equal(await readText(path.join(tmpRoot, 'from-pad.txt')), `${padToken}\n`);
+      });
+      assert.equal(created.outcome, 'success');
+      const data = toolOutputData(created.content);
+      assert.equal(data.source, 'pad');
+      assert.equal(data.redacted, true);
+      assert.equal(created.content.includes(token), false);
+      assert.equal(await fs.readFile(padFile, 'utf8'), `${token}\n`);
 
-    console.log('✅ create-new-file tests passed');
-  } finally {
-    process.chdir(oldCwd);
-    await fs.rm(tmpRoot, { recursive: true, force: true });
-  }
+      const other = await createMainDialog('editor');
+      const unavailable = await createNewFileTool.call(other, caller, {
+        path: `other-dialog-${language}.txt`,
+        pad_id: 'create_src',
+      });
+      assert.equal(unavailable.outcome, 'failure');
+      await assert.rejects(fs.lstat(`other-dialog-${language}.txt`), { code: 'ENOENT' });
+      assert.equal(unavailable.content.includes(token), false);
+
+      evidence.record({
+        id: language,
+        scenario:
+          'Create-new-file refuses an existing file and a directory; an owning dialog creates from its pad while another dialog cannot use that pad.',
+        businessValue:
+          'Preserve existing work, give an accurate safe next step after refusal, and keep private editing input out of unrelated output.',
+        context: {
+          language,
+          existingFileUnchanged: true,
+          directoryUnchanged: true,
+          owningPadFileHasExactBody: true,
+          otherDialogHasNoPad: true,
+          scope:
+            'Direct public tools, real disk and dialog/reminder objects; not provider behavior or restart persistence.',
+        },
+        reviewQuestions: [
+          'Does the actual refusal/recovery guidance explain the observed state and a safe applicable next action?',
+          'Do the pad success and unavailable-pad diagnostics avoid claiming nonexistent writes or revealing the supplied private body?',
+        ],
+        actualText: JSON.stringify(
+          {
+            existingFile: exists.content,
+            directory: notFile.content,
+            createdFromPad: created.content,
+            unavailablePad: unavailable.content,
+          },
+          null,
+          2,
+        ),
+      });
+    }
+  });
+  await evidence.write();
+  console.log(
+    'create-new-file preserves existing data, normalizes new data and scopes pad sources: passed',
+  );
 }
-
-void main();
+main().catch((error: unknown) => {
+  console.error(error);
+  process.exitCode = 1;
+});

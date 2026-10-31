@@ -1,14 +1,14 @@
 import assert from 'node:assert/strict';
-import * as fs from 'node:fs/promises';
-import os from 'node:os';
+import fs from 'node:fs/promises';
 import path from 'node:path';
-import type { Dialog } from '../main/dialog';
+
 import { setWorkLanguage } from '../main/runtime/work-language';
 import { Team } from '../main/team';
-import type { FuncTool } from '../main/tool';
+import type { FuncTool, ToolCallOutput } from '../main/tool';
 import '../main/tools/builtins';
 import {
   createSymlinkTool,
+  listDirTool,
   mkDirTool,
   moveDirTool,
   moveFileTool,
@@ -18,211 +18,285 @@ import {
   rmSymlinkTool,
 } from '../main/tools/fs';
 import { getTool } from '../main/tools/registry';
+import { semanticEvidenceCollector } from './helpers/semantic-evidence';
+import { toolOutputData } from './helpers/tool-output';
+import { createMainDialog, withTempRtws } from './kernel-driver/helpers';
 
-function requireFuncTool(name: string): FuncTool {
+const evidence = semanticEvidenceCollector('dominds-filesystem-links-');
+function func(name: string): FuncTool {
   const tool = getTool(name);
-  assert.ok(tool, `${name} should exist`);
-  assert.equal(tool.type, 'func');
+  assert.ok(tool);
   return tool;
 }
-
-async function exists(absPath: string): Promise<boolean> {
-  try {
-    await fs.lstat(absPath);
-    return true;
-  } catch {
-    return false;
-  }
+async function missing(file: string) {
+  await assert.rejects(fs.lstat(file), { code: 'ENOENT' });
 }
-
 async function main(): Promise<void> {
-  const oldCwd = process.cwd();
-  const tmpRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'dominds-fs-symlink-follow-'));
-  try {
-    process.chdir(tmpRoot);
-    setWorkLanguage('zh');
+  await withTempRtws(async (rtws) => {
+    const caller = new Team.Member({ id: 'editor', name: 'Editor' });
+    for (const language of ['en', 'zh'] as const) {
+      setWorkLanguage(language);
+      const dlg = await createMainDialog('editor');
+      const folder = `symlinks-${language}`;
+      await fs.mkdir(folder);
+      const local = (name: string) => path.join(folder, name);
+      const record = (
+        id: string,
+        scenario: string,
+        output: ToolCallOutput,
+        facts: Record<string, string | number | boolean>,
+      ) => {
+        evidence.record({
+          id: `${id}-${language}`,
+          scenario,
+          businessValue:
+            'Let an executing agent distinguish the link path, its target and the actual filesystem effect before its next operation.',
+          context: {
+            language,
+            scope:
+              'Direct public filesystem tools, real link/target bytes on this host; no provider or browser.',
+            ...facts,
+          },
+          reviewQuestions: [
+            'Does the actual output accurately describe the observed link/target behavior, without claiming an operation on a target that was only inspected?',
+            'When the link is moved, does the guidance make clear what moved and that a relative target is resolved from the new location?',
+          ],
+          actualText: output.content,
+        });
+      };
 
-    const dlg = {} as unknown as Dialog;
-    const alice = new Team.Member({
-      id: 'alice',
-      name: 'Alice',
-      read_dirs: ['**'],
-      write_dirs: ['**'],
-    });
+      await fs.writeFile(local('file-target.txt'), 'file-target-data\n');
+      await fs.symlink('file-target.txt', local('file-link.txt'));
+      const removedFile = await rmFileTool.call(dlg, caller, { path: local('file-link.txt') });
+      assert.equal(removedFile.outcome, 'success');
+      await missing(local('file-link.txt'));
+      assert.equal(await fs.readFile(local('file-target.txt'), 'utf8'), 'file-target-data\n');
+      record(
+        'remove-file',
+        'Remove a symlink to a file while preserving the target file and its exact bytes.',
+        removedFile,
+        { removedEntryIsLink: true, targetFileUnchanged: true },
+      );
 
-    // rm_file: symlink -> file
-    const fileTarget = path.join(tmpRoot, 'file-target.txt');
-    const fileLink = path.join(tmpRoot, 'file-link.txt');
-    await fs.writeFile(fileTarget, 'hello\n', 'utf8');
-    await fs.symlink(fileTarget, fileLink);
-    const rmFileOut = (await rmFileTool.call(dlg, alice, { path: 'file-link.txt' })).content;
-    assert.ok(rmFileOut.includes('已删除文件'), 'rm_file should succeed on symlink to file');
-    assert.ok(rmFileOut.includes('符号链接'), 'rm_file should explain symlink follow');
-    assert.equal(await exists(fileLink), false, 'rm_file should remove link path');
-    assert.equal(await exists(fileTarget), true, 'rm_file should keep target file');
+      await fs.mkdir(local('dir-target'));
+      await fs.writeFile(local('dir-target/marker.txt'), 'directory-child-data\n');
+      // Preserve the merged case's absolute-target coverage as well as relative links.
+      const absoluteTarget = path.join(rtws, folder, 'dir-target');
+      await fs.symlink(absoluteTarget, local('absolute-dir-link'));
+      const absoluteListing = await listDirTool.call(dlg, caller, {
+        path: local('absolute-dir-link'),
+      });
+      assert.equal(absoluteListing.outcome, 'success');
+      assert.ok(absoluteListing.content.includes('marker.txt'));
+      assert.ok(
+        absoluteListing.content.includes(absoluteTarget),
+        'the supplied target path is rendered without data loss',
+      );
+      assert.equal(await fs.readlink(local('absolute-dir-link')), absoluteTarget);
+      await fs.symlink('dir-target', local('dir-link'));
+      const listed = await listDirTool.call(dlg, caller, { path: local('dir-link') });
+      assert.equal(listed.outcome, 'success');
+      assert.ok(
+        listed.content.includes('marker.txt'),
+        'the supplied directory entry is visible through the link',
+      );
+      assert.equal(await fs.readlink(local('dir-link')), 'dir-target');
+      record(
+        'list-directory',
+        'List through a directory symlink whose target contains the known marker.txt entry.',
+        listed,
+        { linkTarget: 'dir-target', expectedEntry: 'marker.txt', targetDirectoryUnchanged: true },
+      );
+      const existing = await mkDirTool.call(dlg, caller, { path: local('dir-link') });
+      assert.equal(existing.outcome, 'success');
+      assert.equal(toolOutputData(existing.content).created, false);
+      assert.equal(toolOutputData(existing.content).path_kind, 'symlink');
+      const refusedDir = await rmDirTool.call(dlg, caller, {
+        path: local('dir-link'),
+        recursive: false,
+      });
+      assert.equal(refusedDir.outcome, 'failure');
+      assert.equal(await fs.readlink(local('dir-link')), 'dir-target');
+      assert.equal(
+        await fs.readFile(local('dir-target/marker.txt'), 'utf8'),
+        'directory-child-data\n',
+      );
+      const removedDir = await rmDirTool.call(dlg, caller, {
+        path: local('dir-link'),
+        recursive: true,
+      });
+      assert.equal(removedDir.outcome, 'success');
+      await missing(local('dir-link'));
+      assert.equal(
+        await fs.readFile(local('dir-target/marker.txt'), 'utf8'),
+        'directory-child-data\n',
+      );
+      await fs.mkdir(local('empty-dir-target'));
+      await fs.symlink('empty-dir-target', local('empty-dir-link'));
+      const emptyRemoved = await rmDirTool.call(dlg, caller, {
+        path: local('empty-dir-link'),
+        recursive: false,
+      });
+      assert.equal(emptyRemoved.outcome, 'success');
+      await missing(local('empty-dir-link'));
+      assert.ok((await fs.stat(local('empty-dir-target'))).isDirectory());
+      record(
+        'remove-directory',
+        'A nonempty directory symlink first refuses recursive=false; recursive=true removes only the link. An empty directory symlink can be removed with recursive=false. Both target directories remain.',
+        {
+          ...removedDir,
+          content: JSON.stringify(
+            {
+              nonemptyRefusal: refusedDir.content,
+              nonemptyRemoval: removedDir.content,
+              emptyRemoval: emptyRemoved.content,
+            },
+            null,
+            2,
+          ),
+        },
+        {
+          removedEntriesAreLinks: true,
+          targetDirectoriesUnchanged: true,
+          nonemptyRecursiveFalseRefused: true,
+        },
+      );
 
-    // rm_dir: symlink -> empty dir
-    const dirTarget = path.join(tmpRoot, 'dir-target');
-    const dirLink = path.join(tmpRoot, 'dir-link');
-    await fs.mkdir(dirTarget, { recursive: true });
-    await fs.symlink(dirTarget, dirLink);
-    const rmDirOut = (await rmDirTool.call(dlg, alice, { path: 'dir-link', recursive: false }))
-      .content;
-    assert.ok(rmDirOut.includes('已删除目录'), 'rm_dir should succeed on symlink to dir');
-    assert.ok(rmDirOut.includes('符号链接'), 'rm_dir should explain symlink follow');
-    assert.equal(await exists(dirLink), false, 'rm_dir should remove link path');
-    assert.equal(await exists(dirTarget), true, 'rm_dir should keep target dir');
+      await fs.writeFile(local('move-file-target.txt'), 'move-file-target-data\n');
+      await fs.symlink('move-file-target.txt', local('move-file-link.txt'));
+      await fs.mkdir(local('file-destination'));
+      await fs.symlink('file-destination', local('file-parent-link'));
+      const fileDestination = local('file-parent-link/moved.txt');
+      const movedFile = await moveFileTool.call(dlg, caller, {
+        from: local('move-file-link.txt'),
+        to: fileDestination,
+      });
+      assert.equal(movedFile.outcome, 'success');
+      assert.equal(toolOutputData(movedFile.content).from_path_kind, 'symlink');
+      assert.equal(toolOutputData(movedFile.content).to_parent_path_kind, 'symlink');
+      await missing(local('move-file-link.txt'));
+      assert.ok((await fs.lstat(fileDestination)).isSymbolicLink());
+      assert.equal(await fs.readlink(fileDestination), 'move-file-target.txt');
+      await assert.rejects(fs.stat(fileDestination), { code: 'ENOENT' });
+      assert.equal(
+        await fs.readFile(local('move-file-target.txt'), 'utf8'),
+        'move-file-target-data\n',
+      );
+      record(
+        'move-file',
+        'Move a relative file symlink into a different directory through a symlinked destination parent. The raw target string is unchanged and now resolves to a missing path.',
+        movedFile,
+        {
+          movedEntryIsLink: true,
+          originalTargetUnchanged: true,
+          relativeTarget: 'move-file-target.txt',
+          movedLinkIsBroken: true,
+        },
+      );
 
-    // mk_dir: existing symlink -> dir
-    const mkTarget = path.join(tmpRoot, 'mk-target');
-    const mkLink = path.join(tmpRoot, 'mk-link');
-    await fs.mkdir(mkTarget, { recursive: true });
-    await fs.symlink(mkTarget, mkLink);
-    const mkOut = (await mkDirTool.call(dlg, alice, { path: 'mk-link' })).content;
-    assert.ok(mkOut.includes('status: ok'), 'mk_dir should treat symlinked dir as existing dir');
-    assert.ok(mkOut.includes('created: false'));
-    assert.ok(mkOut.includes('path_kind: symlink'), 'mk_dir should annotate symlink path');
+      await fs.mkdir(local('move-dir-target'));
+      await fs.writeFile(local('move-dir-target/child.txt'), 'move-dir-child-data\n');
+      await fs.symlink('move-dir-target', local('move-dir-link'));
+      await fs.mkdir(local('dir-destination'));
+      await fs.symlink('dir-destination', local('dir-parent-link'));
+      const dirDestination = local('dir-parent-link/moved');
+      const movedDir = await moveDirTool.call(dlg, caller, {
+        from: local('move-dir-link'),
+        to: dirDestination,
+      });
+      assert.equal(movedDir.outcome, 'success');
+      const moveData = toolOutputData(movedDir.content);
+      assert.equal(moveData.from_path_kind, 'symlink');
+      assert.equal(moveData.to_parent_path_kind, 'symlink');
+      assert.equal(moveData.moved_entry_count, 1);
+      await missing(local('move-dir-link'));
+      assert.ok((await fs.lstat(dirDestination)).isSymbolicLink());
+      assert.equal(await fs.readlink(dirDestination), 'move-dir-target');
+      await assert.rejects(fs.stat(dirDestination), { code: 'ENOENT' });
+      assert.equal(
+        await fs.readFile(local('move-dir-target/child.txt'), 'utf8'),
+        'move-dir-child-data\n',
+      );
+      record(
+        'move-directory',
+        'Move a relative directory symlink into a different directory, preserving the raw target and original directory. The relocated link is broken; the directory tree was not moved.',
+        movedDir,
+        {
+          movedEntryIsLink: true,
+          originalTargetUnchanged: true,
+          relativeTarget: 'move-dir-target',
+          movedLinkIsBroken: true,
+          movedEntryCount: 1,
+        },
+      );
 
-    // move_file: from symlink file, to parent symlink dir
-    const moveFileTarget = path.join(tmpRoot, 'move-file-target.txt');
-    const moveFileLink = path.join(tmpRoot, 'move-file-link.txt');
-    await fs.writeFile(moveFileTarget, 'move me\n', 'utf8');
-    await fs.symlink('move-file-target.txt', moveFileLink);
-    const moveFileDstParentReal = path.join(tmpRoot, 'move-file-dst-real');
-    const moveFileDstParentLink = path.join(tmpRoot, 'move-file-dst-link');
-    await fs.mkdir(moveFileDstParentReal, { recursive: true });
-    await fs.symlink('move-file-dst-real', moveFileDstParentLink);
-    const moveFileOut = (
-      await moveFileTool.call(dlg, alice, {
-        from: 'move-file-link.txt',
-        to: 'move-file-dst-link/moved-link.txt',
-      })
-    ).content;
-    assert.ok(
-      moveFileOut.includes('status: ok'),
-      'move_file should succeed with symlink from/parent',
-    );
-    assert.ok(moveFileOut.includes('from_path_kind: symlink'));
-    assert.ok(moveFileOut.includes('to_parent_path_kind: symlink'));
-    assert.equal(await exists(path.join(moveFileDstParentReal, 'moved-link.txt')), true);
-    assert.equal(await exists(moveFileTarget), true, 'moving symlink path should keep target file');
-
-    // move_dir: from symlink dir, to parent symlink dir
-    const moveDirTarget = path.join(tmpRoot, 'move-dir-target');
-    const moveDirLink = path.join(tmpRoot, 'move-dir-link');
-    await fs.mkdir(path.join(moveDirTarget, 'sub'), { recursive: true });
-    await fs.writeFile(path.join(moveDirTarget, 'sub', 'a.txt'), 'a\n', 'utf8');
-    await fs.symlink('move-dir-target', moveDirLink);
-    const moveDirDstParentReal = path.join(tmpRoot, 'move-dir-dst-real');
-    const moveDirDstParentLink = path.join(tmpRoot, 'move-dir-dst-link');
-    await fs.mkdir(moveDirDstParentReal, { recursive: true });
-    await fs.symlink('move-dir-dst-real', moveDirDstParentLink);
-    const moveDirOut = (
-      await moveDirTool.call(dlg, alice, {
-        from: 'move-dir-link',
-        to: 'move-dir-dst-link/moved-dir-link',
-      })
-    ).content;
-    assert.ok(
-      moveDirOut.includes('status: ok'),
-      'move_dir should succeed with symlink from/parent',
-    );
-    assert.ok(moveDirOut.includes('from_path_kind: symlink'));
-    assert.ok(moveDirOut.includes('to_parent_path_kind: symlink'));
-    assert.ok(moveDirOut.includes('moved_entry_count: 1'));
-    assert.equal(await exists(path.join(moveDirDstParentReal, 'moved-dir-link')), true);
-    assert.equal(await exists(moveDirTarget), true, 'moving symlink path should keep target dir');
-
-    // explicit symlink tools: create/read/remove the link path itself
-    await fs.writeFile(path.join(tmpRoot, 'explicit-target.txt'), 'explicit\n', 'utf8');
-    const createLinkOut = (
-      await createSymlinkTool.call(dlg, alice, {
-        path: 'explicit-link.txt',
+      await fs.writeFile(local('explicit-target.txt'), 'explicit-target-data\n');
+      const created = await createSymlinkTool.call(dlg, caller, {
+        path: local('explicit-link.txt'),
         target: 'explicit-target.txt',
         symlink_type: 'file',
-      })
-    ).content;
-    assert.ok(createLinkOut.includes('status: ok'));
-    assert.ok(createLinkOut.includes('mode: create_symlink'));
-    assert.equal((await fs.lstat(path.join(tmpRoot, 'explicit-link.txt'))).isSymbolicLink(), true);
-    const readLinkOut = (await readSymlinkTool.call(dlg, alice, { path: 'explicit-link.txt' }))
-      .content;
-    assert.ok(readLinkOut.includes('status: ok'));
-    assert.ok(readLinkOut.includes('mode: read_symlink'));
-    assert.ok(readLinkOut.includes('target:'));
-    assert.ok(readLinkOut.includes('explicit-target.txt'));
-    const rmLinkOut = (await rmSymlinkTool.call(dlg, alice, { path: 'explicit-link.txt' })).content;
-    assert.ok(rmLinkOut.includes('status: ok'));
-    assert.ok(rmLinkOut.includes('mode: rm_symlink'));
-    assert.equal(await exists(path.join(tmpRoot, 'explicit-link.txt')), false);
-    assert.equal(await exists(path.join(tmpRoot, 'explicit-target.txt')), true);
+      });
+      assert.equal(created.outcome, 'success');
+      assert.equal(toolOutputData(created.content).mode, 'create_symlink');
+      assert.ok((await fs.lstat(local('explicit-link.txt'))).isSymbolicLink());
+      assert.equal(await fs.readlink(local('explicit-link.txt')), 'explicit-target.txt');
+      const read = await readSymlinkTool.call(dlg, caller, { path: local('explicit-link.txt') });
+      assert.equal(read.outcome, 'success');
+      assert.equal(toolOutputData(read.content).target, 'explicit-target.txt');
+      const removed = await rmSymlinkTool.call(dlg, caller, { path: local('explicit-link.txt') });
+      assert.equal(removed.outcome, 'success');
+      await missing(local('explicit-link.txt'));
+      assert.equal(
+        await fs.readFile(local('explicit-target.txt'), 'utf8'),
+        'explicit-target-data\n',
+      );
+      await fs.symlink('missing-target.txt', local('broken-link.txt'));
+      const broken = await rmSymlinkTool.call(dlg, caller, { path: local('broken-link.txt') });
+      assert.equal(broken.outcome, 'success');
+      await missing(local('broken-link.txt'));
 
-    // rm_symlink also handles broken links, where rm_file/rm_dir cannot follow a target.
-    await fs.symlink('missing-target.txt', path.join(tmpRoot, 'broken-explicit-link.txt'));
-    const rmBrokenLinkOut = (
-      await rmSymlinkTool.call(dlg, alice, { path: 'broken-explicit-link.txt' })
-    ).content;
-    assert.ok(rmBrokenLinkOut.includes('status: ok'));
-    assert.ok(rmBrokenLinkOut.includes('mode: rm_symlink'));
-    assert.equal(await exists(path.join(tmpRoot, 'broken-explicit-link.txt')), false);
-
-    const outsideRoot = `${tmpRoot}-outside`;
-    await fs.rm(outsideRoot, { recursive: true, force: true });
-    await fs.mkdir(outsideRoot, { recursive: true });
-    const outsideCreateOut = (
-      await createSymlinkTool.call(dlg, alice, {
-        path: path.join('..', path.basename(outsideRoot), 'outside-link.txt'),
+      const outsidePath = path.join('..', `outside-link-${path.basename(rtws)}-${language}`);
+      await missing(outsidePath);
+      const denied = await createSymlinkTool.call(dlg, caller, {
+        path: outsidePath,
         target: 'elsewhere.txt',
-      })
-    ).content;
-    assert.ok(outsideCreateOut.includes('status: error'));
-    assert.ok(outsideCreateOut.includes('PATH_OUTSIDE_WORKSPACE'));
+      });
+      assert.equal(denied.outcome, 'failure');
+      assert.equal(toolOutputData(denied.content).error, 'PATH_OUTSIDE_WORKSPACE');
+      await missing(outsidePath);
 
-    await fs.mkdir(path.join(tmpRoot, '.minds', 'links'), { recursive: true });
-    await fs.writeFile(path.join(tmpRoot, '.minds', 'links', 'team-target.txt'), 'team\n', 'utf8');
-    const manager = new Team.Member({
-      id: 'manager',
-      name: 'Manager',
-      toolsets: ['team_mgmt'],
-    });
-    const teamCreateLinkOut = (
-      await requireFuncTool('team_mgmt_create_symlink').call(dlg, manager, {
-        path: 'links/team-link.txt',
-        target: 'team-target.txt',
+      const manager = new Team.Member({ id: 'manager', name: 'Manager', toolsets: ['team_mgmt'] });
+      await fs.mkdir(`.minds/links/${language}`, { recursive: true });
+      await fs.writeFile(`.minds/links/${language}/target.txt`, 'team-target-data\n');
+      const teamCreated = await func('team_mgmt_create_symlink').call(dlg, manager, {
+        path: `links/${language}/link.txt`,
+        target: 'target.txt',
         symlink_type: 'file',
-      })
-    ).content;
-    assert.ok(teamCreateLinkOut.includes('status: ok'));
-    assert.ok(teamCreateLinkOut.includes('mode: create_symlink'));
-    assert.equal(
-      (await fs.lstat(path.join(tmpRoot, '.minds', 'links', 'team-link.txt'))).isSymbolicLink(),
-      true,
-    );
-    const teamReadLinkOut = (
-      await requireFuncTool('team_mgmt_read_symlink').call(dlg, manager, {
-        path: '.minds/links/team-link.txt',
-      })
-    ).content;
-    assert.ok(teamReadLinkOut.includes('status: ok'));
-    assert.ok(teamReadLinkOut.includes('mode: read_symlink'));
-    assert.ok(teamReadLinkOut.includes('target:'));
-    assert.ok(teamReadLinkOut.includes('team-target.txt'));
-    const teamRmLinkOut = (
-      await requireFuncTool('team_mgmt_rm_symlink').call(dlg, manager, {
-        path: 'links/team-link.txt',
-      })
-    ).content;
-    assert.ok(teamRmLinkOut.includes('status: ok'));
-    assert.ok(teamRmLinkOut.includes('mode: rm_symlink'));
-    assert.equal(await exists(path.join(tmpRoot, '.minds', 'links', 'team-link.txt')), false);
-    assert.equal(await exists(path.join(tmpRoot, '.minds', 'links', 'team-target.txt')), true);
-
-    console.log('✅ fs-symlink-follow tests passed');
-  } finally {
-    process.chdir(oldCwd);
-    await fs.rm(tmpRoot, { recursive: true, force: true });
-    await fs.rm(`${tmpRoot}-outside`, { recursive: true, force: true });
-  }
+      });
+      assert.equal(teamCreated.outcome, 'success');
+      assert.equal(await fs.readlink(`.minds/links/${language}/link.txt`), 'target.txt');
+      const teamRead = await func('team_mgmt_read_symlink').call(dlg, manager, {
+        path: `.minds/links/${language}/link.txt`,
+      });
+      assert.equal(teamRead.outcome, 'success');
+      assert.equal(toolOutputData(teamRead.content).target, 'target.txt');
+      const teamRemoved = await func('team_mgmt_rm_symlink').call(dlg, manager, {
+        path: `links/${language}/link.txt`,
+      });
+      assert.equal(teamRemoved.outcome, 'success');
+      await missing(`.minds/links/${language}/link.txt`);
+      assert.equal(
+        await fs.readFile(`.minds/links/${language}/target.txt`, 'utf8'),
+        'team-target-data\n',
+      );
+    }
+  });
+  await evidence.write();
+  console.log(
+    'actual link-path operations, directory listing, target preservation and scoped team tools: passed',
+  );
 }
-
-void main();
+main().catch((error: unknown) => {
+  console.error(error);
+  process.exitCode = 1;
+});

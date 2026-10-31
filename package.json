@@ -59,7 +59,9 @@
     "test:manual": "node tests/run.mjs --suite manual",
     "test:semantic:manual": "node ./scripts/run-pnpm.mjs -C tests run test:semantic:manual",
     "test:types": "tsc -p tests/tsconfig.json --noEmit",
-    "test:semantic:kernel": "node tests/run.mjs --suite kernel --semantic"
+    "test:semantic:kernel": "node tests/run.mjs --suite kernel --semantic",
+    "test:filesystem": "node tests/run.mjs --suite filesystem",
+    "test:semantic:filesystem": "node tests/run.mjs --suite filesystem --semantic"
   },
   "repository": {
     "type": "git",

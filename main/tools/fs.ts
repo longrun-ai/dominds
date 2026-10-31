@@ -109,6 +109,42 @@ function symlinkRemovalNotice(workLanguage: string, relPath: string, target?: st
   return `🔗 Note: removed symlink path \`${relPath}\` itself (→ \`${targetText}\`), not the target directly.`;
 }
 
+async function symlinkMoveNotice(
+  language: string,
+  from: string,
+  to: string,
+  info: PathStatInfo,
+): Promise<string> {
+  if (!info.isSymlink) return '';
+  const target = symlinkTargetText(info.symlinkTarget);
+  let reachability: string;
+  try {
+    await fs.stat(path.resolve(process.cwd(), to));
+    reachability =
+      language === 'zh'
+        ? '新位置的链接目标目前可访问。'
+        : 'The target at the new link location is currently reachable.';
+  } catch (error: unknown) {
+    const missing =
+      typeof error === 'object' &&
+      error !== null &&
+      'code' in error &&
+      (error.code === 'ENOENT' || error.code === 'ENOTDIR');
+    reachability = missing
+      ? language === 'zh'
+        ? '新位置的链接目前无法解析到现存目标。'
+        : 'The relocated link currently does not resolve to an existing target.'
+      : language === 'zh'
+        ? '移动已完成，但无法核实新位置的目标是否可访问。'
+        : 'The move completed, but target reachability at the new location could not be verified.';
+  }
+  const relative = info.symlinkTarget !== undefined && !path.isAbsolute(info.symlinkTarget);
+  if (language === 'zh') {
+    return ` 已移动符号链接条目 \`${from}\` → \`${to}\`，没有移动其目标。链接保存的目标文本未改写：\`${target}\`。${relative ? '相对目标现在以新父目录为基准解析。' : ''}${reachability}`;
+  }
+  return ` Moved the symlink entry \`${from}\` → \`${to}\`, without moving its target. The stored target text is unchanged: \`${target}\`. ${relative ? 'The relative target is now resolved from the new parent directory. ' : ''}${reachability}`;
+}
+
 function appendSymlinkYamlFields(
   lines: string[],
   keyPrefix: string,
@@ -1174,11 +1210,12 @@ export const moveFileTool: FuncTool = {
       }
 
       await fs.rename(absFrom, absTo);
+      const movedLinkNotice = await symlinkMoveNotice(workLanguage, from, to, fromInfo);
       const yamlLines = [
         `status: ok`,
         `from: ${yamlQuote(from)}`,
         `to: ${yamlQuote(to)}`,
-        `summary: ${yamlQuote(`Move-file: ${from} \u2192 ${to}.${fromSymlinkSummary}${toParentSymlinkSummary}`)}`,
+        `summary: ${yamlQuote(`Move-file: ${from} \u2192 ${to}.${movedLinkNotice}${toParentSymlinkSummary}`)}`,
       ];
       appendSymlinkYamlFields(yamlLines, 'from_path', fromInfo);
       appendSymlinkYamlFields(yamlLines, 'to_parent_path', toParentInfo);
@@ -1330,15 +1367,13 @@ export const moveDirTool: FuncTool = {
 
       const movedEntryCount = fromInfo.isSymlink ? 1 : await countDirEntries(absFrom);
       await fs.rename(absFrom, absTo);
-      const symlinkMoveNotice = fromInfo.isSymlink
-        ? ` ${symlinkRemovalNotice(workLanguage, from, fromInfo.symlinkTarget)}`
-        : '';
+      const movedLinkNotice = await symlinkMoveNotice(workLanguage, from, to, fromInfo);
       const yamlLines = [
         `status: ok`,
         `from: ${yamlQuote(from)}`,
         `to: ${yamlQuote(to)}`,
         `moved_entry_count: ${movedEntryCount}`,
-        `summary: ${yamlQuote(`Move-dir: ${from} \u2192 ${to} (${movedEntryCount} entries).${fromSymlinkSummary}${toParentSymlinkSummary}${symlinkMoveNotice}`)}`,
+        `summary: ${yamlQuote(`Move-dir: ${from} \u2192 ${to} (${movedEntryCount} entries).${movedLinkNotice}${toParentSymlinkSummary}`)}`,
       ];
       appendSymlinkYamlFields(yamlLines, 'from_path', fromInfo);
       appendSymlinkYamlFields(yamlLines, 'to_parent_path', toParentInfo);

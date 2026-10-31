@@ -52,7 +52,7 @@ export type MockEntry = {
 export async function withTempRtws(fn: (tmpRoot: string) => Promise<void>): Promise<void> {
   if (process.env.DOMINDS_TEST_RTWS_MANAGED !== '1') {
     throw new Error(
-      'kernel-driver tests must run via tests/cli.ts so rtws is fixed at process startup cwd',
+      'tests using managed rtws must run via tests/cli.ts so rtws is fixed at process startup cwd',
     );
   }
   const tmpRoot = process.cwd();

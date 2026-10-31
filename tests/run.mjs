@@ -46,7 +46,17 @@ const manual = [
   'toolsets/manual-behavior.ts',
   'toolsets/manual-size-guard.ts',
 ];
+const filesystem = [
+  'access-control/dialogs-root-deny.ts',
+  'access-control/file-ext-names.ts',
+  'fs-symlink-follow.ts',
+  'create-new-file.ts',
+  'file-block-tools.ts',
+  'file-range-edit.ts',
+  'edit-output-truncation.ts',
+];
 const semanticSuites = {
+  filesystem: filesystem.filter((file) => !file.startsWith('access-control/')),
   kernel: [
     'kernel-driver/sideDialog-askback-auto-resume-while-pending-registered-sideDialog.ts',
     'kernel-driver/sideDialog-reply-delivery-marked-delivered.ts',
@@ -137,7 +147,7 @@ export async function inventory() {
     ].includes(file);
   const candidates = files.filter((file) => !support(file));
   const kernel = candidates.filter((file) => file.startsWith('kernel-driver/'));
-  const suites = { smoke, kernel, context, configuration, manual };
+  const suites = { smoke, kernel, context, configuration, manual, filesystem };
   const included = new Set(Object.values(suites).flat());
   const audit = JSON.parse(await fs.readFile(path.join(testsRoot, 'audit.json'), 'utf8'));
   const unauditedCandidates = candidates.filter((file) => audit.cases[file]?.status !== 'reviewed');
@@ -243,10 +253,10 @@ async function main() {
   if (
     args.length !== 2 ||
     args[0] !== '--suite' ||
-    !['smoke', 'kernel', 'context', 'configuration', 'manual'].includes(args[1])
+    !['smoke', 'kernel', 'context', 'configuration', 'manual', 'filesystem'].includes(args[1])
   ) {
     throw new Error(
-      'Usage: node tests/run.mjs --list | --suite smoke | --suite kernel | --suite context | --suite configuration [--semantic] | --suite manual [--semantic]',
+      'Usage: node tests/run.mjs --list | --suite smoke | --suite kernel | --suite context | --suite configuration [--semantic] | --suite manual [--semantic] | --suite filesystem [--semantic]',
     );
   }
   const suite = args[1];

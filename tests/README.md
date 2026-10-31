@@ -20,6 +20,8 @@ pnpm run test:semantic:context
 pnpm run test:semantic:configuration
 pnpm run test:semantic:manual
 pnpm run test:semantic:kernel
+pnpm run test:filesystem
+pnpm run test:semantic:filesystem
 ```
 
 - `test`: a small local smoke suite; not full product, browser, packaging, or provider coverage.
@@ -36,6 +38,9 @@ pnpm run test:semantic:kernel
 - `test:semantic:manual`: emits actual handbooks, capability-list and refusal guidance, Taskdoc/skills guidance, collaboration result wrappers and the built-in manager prompt. All cases start pending subjective review.
 
 - `test:semantic:kernel`: runs explicit producers for actual provider reminder context, repeated-call guidance and stops, reply-tool errors and expiration, human-answer follow-up queues, reply/footer renderers, context renewal, nested delivery, registered-assignment updates, tight-context result visibility, real tool-loop transitions, queued user interjections, FBR phases/closure and empty-response retry recovery, synchronous ask-back result pointers, reply-delivery rejections and local human interjection/tool-follow-up guidance. Their complete output remains pending agent review even when runtime assertions pass.
+
+- `test:filesystem`: public path/extension decision APIs and direct tools against real files, symlinks and dialog pad objects; includes preview non-effects, exact editing results and output budgets. These cases use the host filesystem and do not establish a full sandbox, other-platform behavior or provider compliance.
+- `test:semantic:filesystem`: emits actual creation refusal/recovery, link operations, proposed edits and clipped tool output. Generation success leaves every semantic case pending subjective review.
 
 The [assertion audit ledger](./audit.json) records which candidate tests have actually been reviewed, their business value, lane and evidence. Inventory exposes unaudited candidates and stale ledger paths. Neither suite membership nor a prior ledger entry decides the meaning of freshly generated output.
 

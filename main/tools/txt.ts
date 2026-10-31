@@ -781,7 +781,18 @@ function buildRangePreview(rangeLines: ReadonlyArray<string>): ReadonlyArray<str
 
 function yamlFlowStringArray(values: ReadonlyArray<string>): string {
   if (values.length === 0) return '[]';
-  return `[${values.map(yamlQuote).join(', ')}]`;
+  // These are evidence previews. A long line must not consume the whole output
+  // budget and cut the surrounding status/summary YAML in half.
+  return `[${values
+    .map((value) =>
+      yamlQuote(
+        truncateToolOutputText(value, {
+          limitChars: 1000,
+          marker: 'preview_line_truncated',
+        }).text.replaceAll('\n', ' '),
+      ),
+    )
+    .join(', ')}]`;
 }
 
 function sha256HexUtf8(text: string): string {
@@ -2253,7 +2264,7 @@ export const createNewFileTool: FuncTool = {
             fileExists: '文件已存在，拒绝创建。',
             notAFile: '路径已存在但不是文件（可能是目录），拒绝创建。',
             nextOverwrite:
-              '下一步：先用 read_file 获取 total_lines/size_bytes，然后再调用 overwrite_entire_file 覆盖写入。',
+              '下一步：先用 read_file 查看已有内容。若任务只是新增文件，保留原文件并换一个路径；只有当前任务确实要求完整替换该文件时，才用本次读取的 total_lines/size_bytes 填写 overwrite_entire_file 的已知旧值并提供新正文。',
             ok: '已创建新文件。',
           }
         : {
@@ -2261,7 +2272,7 @@ export const createNewFileTool: FuncTool = {
             fileExists: 'File already exists; refusing to create.',
             notAFile: 'Path exists but is not a file (e.g. a directory); refusing to create.',
             nextOverwrite:
-              'Next: call read_file to get total_lines/size_bytes, then use overwrite_entire_file to overwrite.',
+              'Next: inspect the existing content with read_file. If the task only needs a new file, preserve this file and choose another path. Only when the current task calls for replacing the entire file, use fresh total_lines/size_bytes as the known old values for overwrite_entire_file and supply the intended new content.',
             ok: 'Created new file.',
           };
 
