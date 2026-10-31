@@ -1,190 +1,124 @@
+import { toCallSiteGenseqNo, type HumanQuestion } from '@longrun-ai/kernel/types/storage';
 import assert from 'node:assert/strict';
-
-import type { HumanQuestion } from '@longrun-ai/kernel/types/storage';
-import {
-  toAskerCourseNumber,
-  toCalleeGenerationSeqNumber,
-  toCallSiteCourseNo,
-  toCallSiteGenseqNo,
-  toDialogCourseNumber,
-} from '@longrun-ai/kernel/types/storage';
-import { formatUnifiedTimestamp } from '@longrun-ai/kernel/utils/time';
-import { installRecordingGlobalDialogEventBroadcaster } from '../../main/bootstrap/global-dialog-event-broadcaster';
 import { globalDialogRegistry } from '../../main/dialog-global-registry';
 import { driveQueuedDialogsOnce } from '../../main/llm/kernel-driver/loop';
 import { DialogPersistence } from '../../main/persistence';
-import { createMainDialog, withTempRtws, writeStandardMinds } from '../kernel-driver/helpers';
+import { recoverPendingReplyDeliveryForDialog } from '../../main/recovery/reply-delivery-recovery';
+import { setWorkLanguage } from '../../main/runtime/work-language';
+import { recordDialogEvents } from '../helpers/dialog-events';
+import {
+  assertRecoveryFacts,
+  createRecoveryPair,
+  installRecoveryProvider,
+  recoveryApiType,
+  waitRecoveryDrives,
+} from '../helpers/reply-recovery';
+import { semanticEvidenceCollector } from '../helpers/semantic-evidence';
+import { withTempRtws, writeStandardMinds } from '../kernel-driver/helpers';
 
+const evidence = semanticEvidenceCollector('dominds-human-gated-reply-recovery-');
 async function main(): Promise<void> {
-  await withTempRtws(async (tmpRoot) => {
-    const recorder = installRecordingGlobalDialogEventBroadcaster({
-      label: 'reply-delivery-recovery-waits-for-q4h',
+  await withTempRtws(async (rtws) => {
+    setWorkLanguage('en');
+    await writeStandardMinds(rtws, {
+      extraMembers: ['worker'],
+      providerApiType: recoveryApiType,
+      diligencePushMax: 0,
     });
-    await writeStandardMinds(tmpRoot, { includePangu: true });
-
-    const root = await createMainDialog('tester');
+    const pair = await createRecoveryPair('human-gated', 'registered', 'delivered');
+    const { root, side, scenario } = pair;
     globalDialogRegistry.register(root);
-    const targetCallId = 'q4h-blocked-reply-target-call';
-    const sideDialog = await root.createSideDialog(
-      'pangu',
-      ['@pangu'],
-      'Need a side reply tool result recovered after Q4H clears.',
-      {
-        callName: 'tellask',
-        originMemberId: 'tester',
-        askerDialogId: root.id.selfId,
-        callId: targetCallId,
-        callSiteCourse: toCallSiteCourseNo(1),
-        callSiteGenseq: toCallSiteGenseqNo(1),
-        sessionSlug: 'reply-delivery-recovery-waits-for-q4h',
-        collectiveTargets: ['pangu'],
-      },
-    );
-
-    const replyCallId = 'q4h-blocked-reply-tool-call';
-    const replyTs = formatUnifiedTimestamp(new Date());
-    const replyDeliveryId = `reply-delivery:${sideDialog.id.rootId}:${sideDialog.id.selfId}:${replyCallId}`;
-    await DialogPersistence.mutateDialogLatest(
-      sideDialog.id,
-      (previous) => ({
-        kind: 'patch',
-        patch: {
-          replyDelivery: {
-            replyDeliveryId,
-            status: 'delivered',
-            toolResultStatus: 'pending',
-            expectedReplyCallName: 'replyTellask',
-            targetDialogId: root.id.selfId,
-            targetCallId,
-            replyCallId,
-            replyGenseq: toCallSiteGenseqNo(3),
-            replyContent: 'Side reply must wait while a human answer is pending.',
-            createdAt: replyTs,
-            deliveredAt: replyTs,
-          },
-          sideDialogFinalResponse: {
-            callId: targetCallId,
-            responseCourse: toDialogCourseNumber(1),
-            responseGenseq: toCalleeGenerationSeqNumber(3),
-            askerDialogId: root.id.selfId,
-            askerCourse: toAskerCourseNumber(1),
-          },
-          displayState: { kind: 'blocked', reason: { kind: 'needs_human_input' } },
-          nextStep: {
-            nextSeq: previous.nextStep.nextSeq + 1,
-            triggers: [
-              ...previous.nextStep.triggers,
-              {
-                triggerId: `reply-delivery-recovery:${replyDeliveryId}`,
-                kind: 'reply_delivery_recovery',
-                replyDeliveryId,
-                targetDialogId: root.id.selfId,
-                createdAt: replyTs,
-                seq: previous.nextStep.nextSeq,
-              },
-            ],
-          },
-        },
-      }),
-      sideDialog.status,
-    );
-
+    const provider = installRecoveryProvider([scenario]);
+    const traces = [recordDialogEvents(root), recordDialogEvents(side)];
+    // Exercise the persisted human-wait gate, not the WebSocket answer flow.
     const question: HumanQuestion = {
       id: 'q4h-side-question',
-      tellaskContent: 'Need a human answer before any backend continuation runs.',
-      askedAt: replyTs,
+      tellaskContent: 'human-question-data',
+      askedAt: new Date().toISOString(),
       callId: 'ask-human-side-call',
-      callSiteRef: { course: 1, messageIndex: 0, callSiteGenseq: 2 },
+      callSiteRef: { course: 1, messageIndex: 0, callSiteGenseq: toCallSiteGenseqNo(2) },
     };
-    await DialogPersistence.appendQuestion4HumanState(sideDialog.id, question, sideDialog.status);
-
+    await DialogPersistence.appendQuestion4HumanState(side.id, question, side.status);
     globalDialogRegistry.queueRootDrive(root.id.rootId, {
-      source: 'test_reply_delivery_recovery_waits_for_q4h',
+      source: 'test_reply_delivery_human_gate',
       reason: 'reply_delivery_recovery',
     });
     await driveQueuedDialogsOnce();
-
-    const parkedLatest = await DialogPersistence.loadDialogLatest(sideDialog.id, sideDialog.status);
+    await waitRecoveryDrives([pair]);
+    provider.assertNoErrors();
+    await assertRecoveryFacts(scenario, 1, 0);
     assert.equal(
-      parkedLatest?.replyDelivery?.toolResultStatus,
-      'pending',
-      'reply delivery recovery must remain pending while Q4H is waiting',
+      provider.counts.get(scenario.rootId),
+      1,
+      'already-delivered caller result can be consumed independently',
     );
-    assert(
-      parkedLatest.nextStep.triggers.some((trigger) => trigger.kind === 'reply_delivery_recovery'),
-      'blocked reply delivery recovery trigger should remain durable',
-    );
-    assert.equal(
-      parkedLatest.userWait?.kind,
-      'awaiting_user_answer',
-      'Q4H user wait should remain intact while recovery is parked',
-    );
-
-    const eventsWhileParked = await DialogPersistence.loadCourseEvents(sideDialog.id, 1, 'running');
-    assert(
-      !eventsWhileParked.some(
-        (event) => event.type === 'func_result_record' && event.id === replyCallId,
-      ),
-      'blocked reply delivery recovery must not record a tool result before Q4H clears',
-    );
-
-    const wakeQueueTargetsWhileParked = await DialogPersistence.loadWakeQueueTargetDialogIds(
-      root.id,
-      root.status,
-    );
-    assert(
-      wakeQueueTargetsWhileParked.some((dialogId) => dialogId.selfId === sideDialog.id.selfId),
-      'blocked reply delivery recovery should stay in wake queue',
-    );
+    assert.equal(provider.counts.has(scenario.sideId), false);
+    const parked = await DialogPersistence.loadDialogLatest(side.id, side.status);
+    assert.equal(parked?.userWait?.kind, 'awaiting_user_answer');
+    const before = await DialogPersistence.loadWakeQueueTargetDialogIds(root.id, root.status);
+    assert.ok(before.some((id) => id.selfId === side.id.selfId));
 
     const removal = await DialogPersistence.removeQuestion4HumanState(
-      sideDialog.id,
+      side.id,
       question.id,
-      sideDialog.status,
+      side.status,
     );
-    assert.equal(removal.found, true, 'test Q4H question should be removed before recovery retry');
-
+    assert.equal(removal.found, true);
+    assert.equal(removal.removedQuestion?.id, question.id);
     globalDialogRegistry.queueRootDrive(root.id.rootId, {
-      source: 'test_reply_delivery_recovery_waits_for_q4h',
+      source: 'test_reply_delivery_human_gate',
       reason: 'q4h_cleared',
     });
     await driveQueuedDialogsOnce();
-
-    const recoveredLatest = await DialogPersistence.loadDialogLatest(
-      sideDialog.id,
-      sideDialog.status,
+    await waitRecoveryDrives([pair]);
+    provider.assertNoErrors();
+    await assertRecoveryFacts(scenario, 1, 1);
+    assert.equal(provider.counts.get(scenario.rootId), 1);
+    assert.equal(provider.counts.has(scenario.sideId), false);
+    assert.equal(await recoverPendingReplyDeliveryForDialog(side), 0);
+    const after = await DialogPersistence.loadWakeQueueTargetDialogIds(root.id, root.status);
+    assert.equal(
+      after.some((id) => id.selfId === side.id.selfId),
+      false,
     );
-    assert.equal(recoveredLatest?.replyDelivery?.status, 'delivered');
-    assert.equal(recoveredLatest?.replyDelivery?.toolResultStatus, 'recorded');
-    assert(
-      !recoveredLatest.nextStep.triggers.some(
-        (trigger) => trigger.kind === 'reply_delivery_recovery',
-      ),
-      'reply delivery recovery trigger should be consumed after Q4H clears',
+    const recovered = await DialogPersistence.loadDialogLatest(side.id, side.status);
+    assert.equal(recovered?.userWait, undefined);
+    const events = (await Promise.all(traces.map((trace) => trace.finish()))).flat();
+    assert.deepEqual(
+      events.filter((event) => event.type === 'stream_error_evt'),
+      [],
     );
-
-    const eventsAfterRecovery = await DialogPersistence.loadCourseEvents(
-      sideDialog.id,
-      1,
-      'running',
+    const stored = await DialogPersistence.loadCourseEvents(side.id, 1, side.status);
+    const result = stored.find(
+      (event) => event.type === 'func_result_record' && event.id === scenario.replyCallId,
     );
-    assert(
-      eventsAfterRecovery.some(
-        (event) => event.type === 'func_result_record' && event.id === replyCallId,
-      ),
-      'reply delivery recovery should record the tool result after Q4H clears',
-    );
-    assert(
-      !recorder.snapshot().some((event) => event.type === 'stream_error_evt'),
-      'parking and later recovering reply delivery should not emit stream_error_evt',
-    );
+    assert.ok(result?.type === 'func_result_record');
+    evidence.record({
+      id: 'human-gated-local-acknowledgement',
+      scenario:
+        'A persisted human question parks local acknowledgement recovery. Its removal releases the backend wake; the canonical reply already reached the caller before this gate.',
+      businessValue:
+        'Keep the human wait intact and repair the local acknowledgement once it clears, without redelivering the reply.',
+      context: {
+        canonicalDeliveries: 1,
+        localResultsBeforeClearing: 0,
+        localResultsAfterClearing: 1,
+        callerRequests: 1,
+        replierRequests: 0,
+        providerFailures: 0,
+        scope:
+          'Persisted gate is seeded and removed through public persistence APIs; real backend/runtime. Does not exercise human-answer WebSocket/UI materialization.',
+      },
+      reviewQuestions: [
+        'Does the acknowledgement accurately describe the delivery, with no implication that an unanswered human question was automatically answered?',
+      ],
+      actualText: result.content,
+    });
+    await evidence.write();
   });
-
   console.log('recovery reply-delivery-recovery-waits-for-q4h: PASS');
 }
-
-void main().catch((err: unknown) => {
-  const message = err instanceof Error ? (err.stack ?? err.message) : String(err);
-  console.error(`recovery reply-delivery-recovery-waits-for-q4h: FAIL\n${message}`);
-  process.exit(1);
+main().catch((error: unknown) => {
+  console.error(error);
+  process.exitCode = 1;
 });

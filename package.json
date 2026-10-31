@@ -63,7 +63,9 @@
     "test:filesystem": "node tests/run.mjs --suite filesystem",
     "test:semantic:filesystem": "node tests/run.mjs --suite filesystem --semantic",
     "test:persistence": "node tests/run.mjs --suite persistence",
-    "test:semantic:persistence": "node tests/run.mjs --suite persistence --semantic"
+    "test:semantic:persistence": "node tests/run.mjs --suite persistence --semantic",
+    "test:recovery": "node tests/run.mjs --suite recovery",
+    "test:semantic:recovery": "node tests/run.mjs --suite recovery --semantic"
   },
   "repository": {
     "type": "git",

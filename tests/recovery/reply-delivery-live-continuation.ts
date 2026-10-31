@@ -1,140 +1,116 @@
 import assert from 'node:assert/strict';
-
-import {
-  toAskerCourseNumber,
-  toCalleeGenerationSeqNumber,
-  toCallSiteCourseNo,
-  toCallSiteGenseqNo,
-  toDialogCourseNumber,
-} from '@longrun-ai/kernel/types/storage';
-import { formatUnifiedTimestamp } from '@longrun-ai/kernel/utils/time';
-import { installRecordingGlobalDialogEventBroadcaster } from '../../main/bootstrap/global-dialog-event-broadcaster';
 import { globalDialogRegistry } from '../../main/dialog-global-registry';
 import { driveQueuedDialogsOnce } from '../../main/llm/kernel-driver/loop';
 import { DialogPersistence } from '../../main/persistence';
-import { createMainDialog, withTempRtws, writeStandardMinds } from '../kernel-driver/helpers';
+import { recoverPendingReplyDeliveryForDialog } from '../../main/recovery/reply-delivery-recovery';
+import { setWorkLanguage } from '../../main/runtime/work-language';
+import { recordDialogEvents } from '../helpers/dialog-events';
+import {
+  assertRecoveryFacts,
+  createRecoveryPair,
+  installRecoveryProvider,
+  recoveryApiType,
+  waitRecoveryDrives,
+} from '../helpers/reply-recovery';
+import { semanticEvidenceCollector } from '../helpers/semantic-evidence';
+import { withTempRtws, writeStandardMinds } from '../kernel-driver/helpers';
 
+const evidence = semanticEvidenceCollector('dominds-live-reply-recovery-');
 async function main(): Promise<void> {
-  await withTempRtws(async (tmpRoot) => {
-    const recorder = installRecordingGlobalDialogEventBroadcaster({
-      label: 'reply-delivery-live-continuation',
+  await withTempRtws(async (rtws) => {
+    setWorkLanguage('en');
+    await writeStandardMinds(rtws, {
+      extraMembers: ['worker'],
+      providerApiType: recoveryApiType,
+      diligencePushMax: 0,
     });
-    await writeStandardMinds(tmpRoot, { includePangu: true });
-
-    const root = await createMainDialog('tester');
+    const pair = await createRecoveryPair('live', 'registered', 'delivered');
+    const { root, side, scenario } = pair;
+    const serialized = await createRecoveryPair('serialized', 'registered', 'delivered');
+    globalDialogRegistry.register(serialized.root);
+    const traces = [root, side, serialized.root, serialized.side].map(recordDialogEvents);
+    // Recovery and a live drive share the public dialog execution lock. A later owner must
+    // observe the completed acknowledgement, not race an out-of-band recovery write.
+    const releaseForeground = await serialized.side.acquire();
+    const recovery = recoverPendingReplyDeliveryForDialog(serialized.side);
+    const nextOwner = serialized.side.acquire();
+    releaseForeground();
+    const releaseNextOwner = await nextOwner;
+    try {
+      await assertRecoveryFacts(serialized.scenario, 1, 1);
+    } finally {
+      releaseNextOwner();
+    }
+    assert.equal(await recovery, 1);
+    assert.equal(await recoverPendingReplyDeliveryForDialog(serialized.side), 0);
     globalDialogRegistry.register(root);
-    const targetCallId = 'live-reply-target-call';
-    const sideDialog = await root.createSideDialog(
-      'pangu',
-      ['@pangu'],
-      'Need a side reply tool result recovered by live backend wake.',
-      {
-        callName: 'tellask',
-        originMemberId: 'tester',
-        askerDialogId: root.id.selfId,
-        callId: targetCallId,
-        callSiteCourse: toCallSiteCourseNo(1),
-        callSiteGenseq: toCallSiteGenseqNo(1),
-        sessionSlug: 'reply-delivery-live-continuation',
-        collectiveTargets: ['pangu'],
-      },
-    );
-
-    const replyCallId = 'live-reply-tool-call-after-delivery';
-    const replyTs = formatUnifiedTimestamp(new Date());
-    const replyDeliveryId = `reply-delivery:${sideDialog.id.rootId}:${sideDialog.id.selfId}:${replyCallId}`;
-    await DialogPersistence.mutateDialogLatest(
-      sideDialog.id,
-      (previous) => ({
-        kind: 'patch',
-        patch: {
-          replyDelivery: {
-            replyDeliveryId,
-            status: 'delivered',
-            toolResultStatus: 'pending',
-            expectedReplyCallName: 'replyTellask',
-            targetDialogId: root.id.selfId,
-            targetCallId,
-            replyCallId,
-            replyGenseq: toCallSiteGenseqNo(3),
-            replyContent: 'Side reply was already delivered before live recovery.',
-            createdAt: replyTs,
-            deliveredAt: replyTs,
-          },
-          sideDialogFinalResponse: {
-            callId: targetCallId,
-            responseCourse: toDialogCourseNumber(1),
-            responseGenseq: toCalleeGenerationSeqNumber(3),
-            askerDialogId: root.id.selfId,
-            askerCourse: toAskerCourseNumber(1),
-          },
-          nextStep: {
-            nextSeq: previous.nextStep.nextSeq + 1,
-            triggers: [
-              ...previous.nextStep.triggers,
-              {
-                triggerId: `reply-delivery-recovery:${replyDeliveryId}`,
-                kind: 'reply_delivery_recovery',
-                replyDeliveryId,
-                targetDialogId: root.id.selfId,
-                createdAt: replyTs,
-                seq: previous.nextStep.nextSeq,
-              },
-            ],
-          },
-        },
-      }),
-      sideDialog.status,
-    );
-
-    const wakeQueueTargetSideDialogs = await DialogPersistence.loadWakeQueueTargetDialogIds(
-      root.id,
-      root.status,
-    );
-    assert(
-      wakeQueueTargetSideDialogs.some((dialogId) => dialogId.selfId === sideDialog.id.selfId),
-      'sideDialog with pending reply delivery recovery must enter wake queue',
-    );
+    const provider = installRecoveryProvider([scenario, serialized.scenario]);
+    const before = await DialogPersistence.loadWakeQueueTargetDialogIds(root.id, root.status);
+    assert.ok(before.some((id) => id.selfId === side.id.selfId));
 
     globalDialogRegistry.queueRootDrive(root.id.rootId, {
       source: 'test_reply_delivery_live_continuation',
       reason: 'reply_delivery_recovery',
     });
     await driveQueuedDialogsOnce();
-
-    const latest = await DialogPersistence.loadDialogLatest(sideDialog.id, sideDialog.status);
-    assert.equal(latest?.replyDelivery?.status, 'delivered');
-    assert.equal(latest?.replyDelivery?.toolResultStatus, 'recorded');
-    assert(
-      !latest.nextStep.triggers.some((trigger) => trigger.kind === 'reply_delivery_recovery'),
-      'completed reply delivery recovery trigger should be consumed locally',
+    await waitRecoveryDrives([pair, serialized]);
+    provider.assertNoErrors();
+    await assertRecoveryFacts(scenario, 1, 1);
+    assert.equal(provider.counts.get(scenario.rootId), 1);
+    assert.equal(provider.counts.has(scenario.sideId), false);
+    const after = await DialogPersistence.loadWakeQueueTargetDialogIds(root.id, root.status);
+    assert.equal(
+      after.some((id) => id.selfId === side.id.selfId),
+      false,
     );
 
-    const sideEvents = await DialogPersistence.loadCourseEvents(sideDialog.id, 1, 'running');
-    assert(
-      sideEvents.some((event) => event.type === 'func_result_record' && event.id === replyCallId),
-      'live backend continuation should record the pending reply tool result',
+    assert.equal(await recoverPendingReplyDeliveryForDialog(side), 0);
+    globalDialogRegistry.queueRootDrive(root.id.rootId, {
+      source: 'test_reply_delivery_live_continuation',
+      reason: 'duplicate_wake',
+    });
+    await driveQueuedDialogsOnce();
+    await waitRecoveryDrives([pair, serialized]);
+    provider.assertNoErrors();
+    await assertRecoveryFacts(scenario, 1, 1);
+    assert.equal(provider.counts.get(scenario.rootId), 1);
+    const events = (await Promise.all(traces.map((trace) => trace.finish()))).flat();
+    assert.deepEqual(
+      events.filter((event) => event.type === 'stream_error_evt'),
+      [],
     );
-    assert(
-      !recorder.snapshot().some((event) => event.type === 'stream_error_evt'),
-      'valid live reply delivery recovery should not emit stream_error_evt',
+    await assertRecoveryFacts(serialized.scenario, 1, 1);
+    assert.equal(provider.counts.get(serialized.scenario.rootId), 1);
+    const stored = await DialogPersistence.loadCourseEvents(side.id, 1, side.status);
+    const result = stored.find(
+      (event) => event.type === 'func_result_record' && event.id === scenario.replyCallId,
     );
-
-    const wakeQueueTargetsAfterRecovery = await DialogPersistence.loadWakeQueueTargetDialogIds(
-      root.id,
-      root.status,
-    );
-    assert(
-      !wakeQueueTargetsAfterRecovery.some((dialogId) => dialogId.selfId === sideDialog.id.selfId),
-      'sideDialog should leave wake queue after live reply delivery recovery is complete',
-    );
+    assert.ok(result?.type === 'func_result_record');
+    evidence.record({
+      id: 'live-delivered-reply',
+      scenario:
+        'The real reply has reached its registered caller; a live backend wake repairs only the missing local tool acknowledgement and the caller consumes its canonical result.',
+      businessValue:
+        'Finish collaboration without replaying an already delivered reply or hiding a failed caller continuation.',
+      context: {
+        canonicalDeliveries: 1,
+        localResults: 1,
+        callerRequests: 1,
+        replierRequests: 0,
+        providerFailures: 0,
+        scope:
+          'Real runtime, persistence and backend wake; controlled provider; no process restart.',
+      },
+      reviewQuestions: [
+        'Does the actual acknowledgement agree with completed delivery and avoid instructing a duplicate reply?',
+      ],
+      actualText: result.content,
+    });
+    await evidence.write();
   });
-
   console.log('recovery reply-delivery-live-continuation: PASS');
 }
-
-void main().catch((err: unknown) => {
-  const message = err instanceof Error ? (err.stack ?? err.message) : String(err);
-  console.error(`recovery reply-delivery-live-continuation: FAIL\n${message}`);
-  process.exit(1);
+main().catch((error: unknown) => {
+  console.error(error);
+  process.exitCode = 1;
 });

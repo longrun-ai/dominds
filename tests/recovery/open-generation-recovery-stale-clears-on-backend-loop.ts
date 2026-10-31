@@ -1,18 +1,30 @@
+import { toCallSiteGenseqNo, toDialogCourseNumber } from '@longrun-ai/kernel/types/storage';
 import assert from 'node:assert/strict';
 import * as fs from 'node:fs/promises';
 import * as path from 'node:path';
 
 import { globalDialogRegistry } from '../../main/dialog-global-registry';
+import { registerLlmGenerator } from '../../main/llm/gen/registry';
 import { driveQueuedDialogsOnce } from '../../main/llm/kernel-driver/loop';
 import { DialogPersistence } from '../../main/persistence';
+import { recordDialogEvents } from '../helpers/dialog-events';
+import { messageProvider } from '../helpers/message-provider';
 import { createMainDialog, withTempRtws, writeStandardMinds } from '../kernel-driver/helpers';
 
 async function main(): Promise<void> {
   await withTempRtws(async (tmpRoot) => {
-    await writeStandardMinds(tmpRoot, { includePangu: true });
+    const apiType = 'controlled-stale-generation';
+    await writeStandardMinds(tmpRoot, { providerApiType: apiType });
+    let requests = 0;
+    const generator = messageProvider(apiType, () => {
+      requests += 1;
+      throw new Error('Stale recovery cue must not invoke a provider');
+    });
+    registerLlmGenerator(generator);
 
     const root = await createMainDialog('tester');
     globalDialogRegistry.register(root);
+    const trace = recordDialogEvents(root);
 
     await DialogPersistence.mutateDialogLatest(root.id, () => ({
       kind: 'patch',
@@ -20,8 +32,8 @@ async function main(): Promise<void> {
         generating: true,
         generationRunState: {
           kind: 'open',
-          course: 1,
-          genseq: 1,
+          course: toDialogCourseNumber(1),
+          genseq: toCallSiteGenseqNo(1),
           phase: 'streaming',
           acceptedTriggerIds: [],
           openedAt: new Date().toISOString(),
@@ -32,8 +44,8 @@ async function main(): Promise<void> {
             {
               triggerId: `open-generation-recovery:${root.id.selfId}:1:1`,
               kind: 'open_generation_recovery',
-              course: 1,
-              genseq: 1,
+              course: toDialogCourseNumber(1),
+              genseq: toCallSiteGenseqNo(1),
               createdAt: new Date().toISOString(),
               seq: 1,
             },
@@ -56,8 +68,8 @@ async function main(): Promise<void> {
             {
               triggerId: `open-generation-recovery:${root.id.selfId}:1:1`,
               kind: 'open_generation_recovery',
-              course: 1,
-              genseq: 1,
+              course: toDialogCourseNumber(1),
+              genseq: toCallSiteGenseqNo(1),
               createdAt: new Date().toISOString(),
               seq: 1,
             },
@@ -98,6 +110,7 @@ async function main(): Promise<void> {
       'test precondition: stale open generation recovery should be represented in Wake Queue before backend loop cleanup',
     );
     await driveQueuedDialogsOnce();
+    generator.assertNoErrors();
 
     const latest = await DialogPersistence.loadDialogLatest(root.id, root.status);
     assert.equal(
@@ -118,6 +131,17 @@ async function main(): Promise<void> {
       wakeQueueTargetsAfterDrive.some((dialogId) => dialogId.selfId === root.id.selfId),
       false,
       'stale open generation recovery cleanup should remove the root Wake Queue entry',
+    );
+    globalDialogRegistry.queueRootDrive(root.id.rootId, {
+      source: 'test_open_generation_recovery_stale',
+      reason: 'duplicate_wake',
+    });
+    await driveQueuedDialogsOnce();
+    generator.assertNoErrors();
+    assert.equal(requests, 0);
+    assert.deepEqual(
+      (await trace.finish()).filter((event) => event.type === 'stream_error_evt'),
+      [],
     );
   });
 

@@ -84,7 +84,14 @@ const persistence = [
   'persistence/runtime-guide-fork-anchor.ts',
   'persistence/priming-reminders.ts',
 ];
+const recovery = [
+  'recovery/open-generation-recovery-stale-clears-on-backend-loop.ts',
+  'recovery/reply-delivery-live-continuation.ts',
+  'recovery/reply-delivery-recovery-after-restart.ts',
+  'recovery/reply-delivery-recovery-waits-for-q4h.ts',
+];
 const semanticSuites = {
+  recovery: recovery.filter((file) => !file.includes('open-generation-recovery-stale')),
   persistence: [
     'persistence/asker-stack-jsonl.ts',
     'persistence/move-dialog-status.ts',
@@ -182,7 +189,16 @@ export async function inventory() {
     ].includes(file);
   const candidates = files.filter((file) => !support(file));
   const kernel = candidates.filter((file) => file.startsWith('kernel-driver/'));
-  const suites = { smoke, kernel, context, configuration, manual, filesystem, persistence };
+  const suites = {
+    smoke,
+    kernel,
+    context,
+    configuration,
+    manual,
+    filesystem,
+    persistence,
+    recovery,
+  };
   const included = new Set(Object.values(suites).flat());
   const audit = JSON.parse(await fs.readFile(path.join(testsRoot, 'audit.json'), 'utf8'));
   const unauditedCandidates = candidates.filter((file) => audit.cases[file]?.status !== 'reviewed');
@@ -296,10 +312,11 @@ async function main() {
       'manual',
       'filesystem',
       'persistence',
+      'recovery',
     ].includes(args[1])
   ) {
     throw new Error(
-      'Usage: node tests/run.mjs --list | --suite smoke | --suite kernel | --suite context | --suite configuration [--semantic] | --suite manual [--semantic] | --suite filesystem [--semantic] | --suite persistence [--semantic]',
+      'Usage: node tests/run.mjs --list | --suite smoke | --suite kernel | --suite context | --suite configuration [--semantic] | --suite manual [--semantic] | --suite filesystem [--semantic] | --suite persistence [--semantic] | --suite recovery [--semantic]',
     );
   }
   const suite = args[1];

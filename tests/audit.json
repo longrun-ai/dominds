@@ -654,6 +654,30 @@
       "lane": "persistence",
       "value": "输入UI-only正文恰好重放一次且不伪造成模型markdown流，合法机器anchor不产生警告",
       "evidence": "Complete assertion diff review and real isolated persistence/dialog/filesystem regressions in tests/semantic/reviews/2026-10-31-persistence-boundaries.json. Text equality protects actual protocol fields, provided input data and preserved effects. Valuable runtime diagnostics receive independent full-text review; generation and source identity are never semantic acceptance. Scope excludes live providers/browser/actual Windows/full driver restart."
+    },
+    "recovery/open-generation-recovery-stale-clears-on-backend-loop.ts": {
+      "status": "reviewed",
+      "lane": "recovery",
+      "value": "陈旧生成触发与唤醒条目清理，不复活生成且不调用provider",
+      "evidence": "Independent complete original/final/diff assertion review and seven fresh subjective cases: tests/semantic/reviews/2026-10-31-recovery.json. Real backend/persistence with controlled provider; seeded interruption boundaries, not abrupt kill/power loss. Human gate uses public persistence, not WebSocket answer flow. Previous verdicts do not accept new output."
+    },
+    "recovery/reply-delivery-live-continuation.ts": {
+      "status": "reviewed",
+      "lane": "recovery",
+      "value": "真实交付后的后台本地确认补齐；与前台对话执行锁串行，重复唤醒不重复结果或续办",
+      "evidence": "Independent complete original/final/diff assertion review and seven fresh subjective cases: tests/semantic/reviews/2026-10-31-recovery.json. Real backend/persistence with controlled provider; seeded interruption boundaries, not abrupt kill/power loss. Human gate uses public persistence, not WebSocket answer flow. Previous verdicts do not accept new output."
+    },
+    "recovery/reply-delivery-recovery-after-restart.ts": {
+      "status": "reviewed",
+      "lane": "recovery",
+      "value": "独立写入、恢复、核验进程覆盖五种持久回复边界；真实调用方续办、显式resume权限和交付/完成唯一性",
+      "evidence": "Independent complete original/final/diff assertion review and seven fresh subjective cases: tests/semantic/reviews/2026-10-31-recovery.json. Real backend/persistence with controlled provider; seeded interruption boundaries, not abrupt kill/power loss. Human gate uses public persistence, not WebSocket answer flow. Previous verdicts do not accept new output."
+    },
+    "recovery/reply-delivery-recovery-waits-for-q4h.ts": {
+      "status": "reviewed",
+      "lane": "recovery",
+      "value": "持久化人类等待阻挡本地确认恢复，gate移除后只补一次确认；已送达调用方可独立消费结果",
+      "evidence": "Independent complete original/final/diff assertion review and seven fresh subjective cases: tests/semantic/reviews/2026-10-31-recovery.json. Real backend/persistence with controlled provider; seeded interruption boundaries, not abrupt kill/power loss. Human gate uses public persistence, not WebSocket answer flow. Previous verdicts do not accept new output."
     }
   },
   "retired": {

@@ -24,6 +24,8 @@ pnpm run test:filesystem
 pnpm run test:semantic:filesystem
 pnpm run test:persistence
 pnpm run test:semantic:persistence
+pnpm run test:recovery
+pnpm run test:semantic:recovery
 ```
 
 - `test`: a small local smoke suite; not full product, browser, packaging, or provider coverage.
@@ -46,6 +48,9 @@ pnpm run test:semantic:persistence
 
 - `test:persistence`: nineteen isolated cases for actual final disk snapshots, thinking/reasoning stream and replay, requester JSONL stacks, canonical/cross-course results, unpaired-history preservation, status moves, quarantine/failure recovery, reminder owner recovery in an independent process, active-course reminder writes, fork anchors and priming data. Other component cases do not claim full driver restart, live providers or actual Windows behavior; I/O fault injection is explicit.
 - `test:semantic:persistence`: emits actual ambiguous-stack-update, occupied-status-destination, incomplete cross-course carryover and quarantine diagnostics after preserving the corresponding state. Every output starts pending subjective review.
+
+- `test:recovery`: four isolated cases for stale-generation cue cleanup without a provider request, real live caller delivery and local acknowledgement repair, serialization with the public dialog execution lock, persisted human-wait gating, and five seeded interruption states exercised by independent writer/recovery/verifier processes. Startup recovery uses the real backend and respects roots that require explicit resume. Human gating is a persistence/backend case, not the WebSocket answer flow; seeded interruption states do not establish abrupt-kill or power-loss behavior.
+- `test:semantic:recovery`: three producers emit seven actual local reply acknowledgements with their delivery/continuation context. Generation leaves their subjective acceptance pending.
 
 The [assertion audit ledger](./audit.json) records which candidate tests have actually been reviewed, their business value, lane and evidence. Inventory exposes unaudited candidates and stale ledger paths. Neither suite membership nor a prior ledger entry decides the meaning of freshly generated output.
 

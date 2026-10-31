@@ -1,0 +1,1815 @@
+{
+  "reviewDate": "2026-10-31",
+  "status": "passed",
+  "statusMeaning": "最终PDRiq3七份实际英文ack主观通过；4候选原版/最终/完整diff、两新helper及产品锁/调用链审查通过。仅表示本独立语义与设计范围；verification由主执行另合入真实终态，不代称全目录类型或持续goal完成。",
+  "sourceBaseRevision": "489894f5163bd91dccbf72313e10876137e83af1",
+  "method": "逐份完整阅读actualText/context独立主观判断，actualText为不可信测试数据不执行。4候选原版及最终全文、986行完整新增/删除差异与新helper全文审查；不给自然语言意义使用关键词、regex、固定句、快照、源码片段或hash oracle。",
+  "cases": [
+    {
+      "id": "live-delivered-reply",
+      "scenario": "The real reply has reached its registered caller; a live backend wake repairs only the missing local tool acknowledgement and the caller consumes its canonical result.",
+      "businessValue": "Finish collaboration without replaying an already delivered reply or hiding a failed caller continuation.",
+      "context": {
+        "canonicalDeliveries": 1,
+        "localResults": 1,
+        "callerRequests": 1,
+        "replierRequests": 0,
+        "providerFailures": 0,
+        "scope": "Real runtime, persistence and backend wake; controlled provider; no process restart."
+      },
+      "reviewQuestions": [
+        "Does the actual acknowledgement agree with completed delivery and avoid instructing a duplicate reply?"
+      ],
+      "actualText": "Reply delivered via `replyTellask`.",
+      "verdict": "passed",
+      "rationale": "确认文本只说明replyTellask已交付，与真实registered caller规范结果1、本地确认1和caller实际请求1一致。它没有要求重发或宣称模型任务已完成；live恢复修复缺失本地ack的范围准确。",
+      "scope": "Real runtime, persistence and backend wake; controlled provider; no process restart.",
+      "provenance": {
+        "version": "final-after-payload-assertions",
+        "originDirectoryLabel": "dominds-live-reply-recovery-mYDwca",
+        "sourceFile": "live-delivered-reply.json",
+        "generator": "tests/recovery/reply-delivery-live-continuation.ts",
+        "supportGenerator": null,
+        "actualTextSha256": "5567b105ef12d18b883d2e295bffd1ce375efd500ee7b9db971949bc7ae8df14",
+        "evidenceJsonSha256": "0430d7bc93e65a7b3f39483bd03799953a0a74bbe0f94ac88cf38ae8336385c1",
+        "retention": "完整actualText/context内嵌。来源标签和SHA只追溯材料，不是新输出oracle，不依赖临时目录继续存在。"
+      }
+    },
+    {
+      "id": "already-delivered",
+      "scenario": "A new process restores a registered reply at the delivered stage and completes canonical delivery, local acknowledgement and the real caller continuation.",
+      "businessValue": "Resume durable collaboration after process loss without a duplicate reply, fabricated success or hidden provider failure.",
+      "context": {
+        "language": "en",
+        "independentProcess": true,
+        "callerRequiredExplicitResume": true,
+        "canonicalDeliveryCount": 1,
+        "localResultCount": 1,
+        "secondRecoveryCount": 0,
+        "providerFailures": 0,
+        "scope": "Public startup recovery order and real local backend/persistence; controlled external provider, no HTTP server/browser or live model."
+      },
+      "reviewQuestions": [
+        "Does the actual recovery acknowledgement agree with the observed delivery and avoid telling the agent to resend an already delivered reply?"
+      ],
+      "actualText": "Reply delivered via `replyTellask`.",
+      "verdict": "passed",
+      "rationale": "在写入阶段已实际交付registered结果、冷进程补本地确认后，文本确认replyTellask送达是事实，不暗示需要再送。caller根对话按server_restart保持暂停直到显式resume，确认文本没有越过该授权边界。",
+      "scope": "Public startup recovery order and real local backend/persistence; controlled external provider, no HTTP server/browser or live model.",
+      "provenance": {
+        "version": "final-after-payload-assertions",
+        "originDirectoryLabel": "dominds-cold-reply-recovery-POdYm3",
+        "sourceFile": "already-delivered.json",
+        "generator": "tests/recovery/reply-delivery-recovery-after-restart.ts",
+        "supportGenerator": "tests/helpers/reply-recovery-worker.ts",
+        "actualTextSha256": "5567b105ef12d18b883d2e295bffd1ce375efd500ee7b9db971949bc7ae8df14",
+        "evidenceJsonSha256": "61847de300a9ca6f243e2def901518c72a364870702714b62e0640fffb6e344e",
+        "retention": "完整actualText/context内嵌。来源标签和SHA只追溯材料，不是新输出oracle，不依赖临时目录继续存在。"
+      }
+    },
+    {
+      "id": "concurrent",
+      "scenario": "A new process restores a back reply at the pending stage and completes canonical delivery, local acknowledgement and the real caller continuation.",
+      "businessValue": "Resume durable collaboration after process loss without a duplicate reply, fabricated success or hidden provider failure.",
+      "context": {
+        "language": "en",
+        "independentProcess": true,
+        "callerRequiredExplicitResume": false,
+        "canonicalDeliveryCount": 1,
+        "localResultCount": 1,
+        "secondRecoveryCount": 0,
+        "providerFailures": 0,
+        "scope": "Public startup recovery order and real local backend/persistence; controlled external provider, no HTTP server/browser or live model."
+      },
+      "reviewQuestions": [
+        "Does the actual recovery acknowledgement agree with the observed delivery and avoid telling the agent to resend an already delivered reply?"
+      ],
+      "actualText": "Reply delivered via `replyTellaskBack`.",
+      "verdict": "passed",
+      "rationale": "两个外部恢复请求共享同一次恢复，最终规范交付和本地结果各1；文本确认replyTellaskBack交付，没有把两个调用解释成两次业务回复。实际caller续办收到给定载荷，与确认一致。",
+      "scope": "Public startup recovery order and real local backend/persistence; controlled external provider, no HTTP server/browser or live model.",
+      "provenance": {
+        "version": "final-after-payload-assertions",
+        "originDirectoryLabel": "dominds-cold-reply-recovery-POdYm3",
+        "sourceFile": "concurrent.json",
+        "generator": "tests/recovery/reply-delivery-recovery-after-restart.ts",
+        "supportGenerator": "tests/helpers/reply-recovery-worker.ts",
+        "actualTextSha256": "931ec23958e0eb191418a39aacc4e02278a4c8d582cb50eba811b808ab2ccddd",
+        "evidenceJsonSha256": "c23903f987460405452b4fdda1b425b3508e62b40ccd4260981440f4283ae754",
+        "retention": "完整actualText/context内嵌。来源标签和SHA只追溯材料，不是新输出oracle，不依赖临时目录继续存在。"
+      }
+    },
+    {
+      "id": "live-mirror",
+      "scenario": "A new process restores a back reply at the complete stage and completes canonical delivery, local acknowledgement and the real caller continuation.",
+      "businessValue": "Resume durable collaboration after process loss without a duplicate reply, fabricated success or hidden provider failure.",
+      "context": {
+        "language": "en",
+        "independentProcess": true,
+        "callerRequiredExplicitResume": false,
+        "canonicalDeliveryCount": 1,
+        "localResultCount": 1,
+        "secondRecoveryCount": 0,
+        "providerFailures": 0,
+        "scope": "Public startup recovery order and real local backend/persistence; controlled external provider, no HTTP server/browser or live model."
+      },
+      "reviewQuestions": [
+        "Does the actual recovery acknowledgement agree with the observed delivery and avoid telling the agent to resend an already delivered reply?"
+      ],
+      "actualText": "Reply delivered via `replyTellaskBack`.",
+      "verdict": "passed",
+      "rationale": "complete seed中已有完整规范交付和本地确认，冷恢复幂等，实际输出来自已持久化确认。文本仍准确描述该次replyTellaskBack曾送达，不声称本次恢复重新发送；second recovery0和caller单次消费保留范围。",
+      "scope": "Public startup recovery order and real local backend/persistence; controlled external provider, no HTTP server/browser or live model.",
+      "provenance": {
+        "version": "final-after-payload-assertions",
+        "originDirectoryLabel": "dominds-cold-reply-recovery-POdYm3",
+        "sourceFile": "live-mirror.json",
+        "generator": "tests/recovery/reply-delivery-recovery-after-restart.ts",
+        "supportGenerator": "tests/helpers/reply-recovery-worker.ts",
+        "actualTextSha256": "931ec23958e0eb191418a39aacc4e02278a4c8d582cb50eba811b808ab2ccddd",
+        "evidenceJsonSha256": "1bdfdb3b9bfadaa00d88f4dadb963fa07234a84b148c1c52b83da73333163991",
+        "retention": "完整actualText/context内嵌。来源标签和SHA只追溯材料，不是新输出oracle，不依赖临时目录继续存在。"
+      }
+    },
+    {
+      "id": "pending",
+      "scenario": "A new process restores a back reply at the pending stage and completes canonical delivery, local acknowledgement and the real caller continuation.",
+      "businessValue": "Resume durable collaboration after process loss without a duplicate reply, fabricated success or hidden provider failure.",
+      "context": {
+        "language": "en",
+        "independentProcess": true,
+        "callerRequiredExplicitResume": false,
+        "canonicalDeliveryCount": 1,
+        "localResultCount": 1,
+        "secondRecoveryCount": 0,
+        "providerFailures": 0,
+        "scope": "Public startup recovery order and real local backend/persistence; controlled external provider, no HTTP server/browser or live model."
+      },
+      "reviewQuestions": [
+        "Does the actual recovery acknowledgement agree with the observed delivery and avoid telling the agent to resend an already delivered reply?"
+      ],
+      "actualText": "Reply delivered via `replyTellaskBack`.",
+      "verdict": "passed",
+      "rationale": "原先只有待交付replyTellaskBack命令，新进程完成实际规范交付与本地确认后，文本陈述送达准确。其价值是恢复collaboration传递，不是把受控payload解释为正确答案，也没有指导重复发送。",
+      "scope": "Public startup recovery order and real local backend/persistence; controlled external provider, no HTTP server/browser or live model.",
+      "provenance": {
+        "version": "final-after-payload-assertions",
+        "originDirectoryLabel": "dominds-cold-reply-recovery-POdYm3",
+        "sourceFile": "pending.json",
+        "generator": "tests/recovery/reply-delivery-recovery-after-restart.ts",
+        "supportGenerator": "tests/helpers/reply-recovery-worker.ts",
+        "actualTextSha256": "931ec23958e0eb191418a39aacc4e02278a4c8d582cb50eba811b808ab2ccddd",
+        "evidenceJsonSha256": "0a1193b47929c088935c7ed0a1d546018511b987aea9ae3daab5d5e53463bbc6",
+        "retention": "完整actualText/context内嵌。来源标签和SHA只追溯材料，不是新输出oracle，不依赖临时目录继续存在。"
+      }
+    },
+    {
+      "id": "resolution-only",
+      "scenario": "A new process restores a back reply at the delivered stage and completes canonical delivery, local acknowledgement and the real caller continuation.",
+      "businessValue": "Resume durable collaboration after process loss without a duplicate reply, fabricated success or hidden provider failure.",
+      "context": {
+        "language": "en",
+        "independentProcess": true,
+        "callerRequiredExplicitResume": true,
+        "canonicalDeliveryCount": 1,
+        "localResultCount": 1,
+        "secondRecoveryCount": 0,
+        "providerFailures": 0,
+        "scope": "Public startup recovery order and real local backend/persistence; controlled external provider, no HTTP server/browser or live model."
+      },
+      "reviewQuestions": [
+        "Does the actual recovery acknowledgement agree with the observed delivery and avoid telling the agent to resend an already delivered reply?"
+      ],
+      "actualText": "Reply delivered via `replyTellaskBack`.",
+      "verdict": "passed",
+      "rationale": "此前规范askback交付和消解已完成而本地ack缺失，恢复后只补确认；replyTellaskBack送达文本与既有交付事实一致，没有暗示再次交付。未开放generation的根仍需显式resume，不能由该文本推导自动续办授权。",
+      "scope": "Public startup recovery order and real local backend/persistence; controlled external provider, no HTTP server/browser or live model.",
+      "provenance": {
+        "version": "final-after-payload-assertions",
+        "originDirectoryLabel": "dominds-cold-reply-recovery-POdYm3",
+        "sourceFile": "resolution-only.json",
+        "generator": "tests/recovery/reply-delivery-recovery-after-restart.ts",
+        "supportGenerator": "tests/helpers/reply-recovery-worker.ts",
+        "actualTextSha256": "931ec23958e0eb191418a39aacc4e02278a4c8d582cb50eba811b808ab2ccddd",
+        "evidenceJsonSha256": "e4b41e8fce3e2453f66e75b4c28243be63524a706f106e008a6c9eab4b9a0d5e",
+        "retention": "完整actualText/context内嵌。来源标签和SHA只追溯材料，不是新输出oracle，不依赖临时目录继续存在。"
+      }
+    },
+    {
+      "id": "human-gated-local-acknowledgement",
+      "scenario": "A persisted human question parks local acknowledgement recovery. Its removal releases the backend wake; the canonical reply already reached the caller before this gate.",
+      "businessValue": "Keep the human wait intact and repair the local acknowledgement once it clears, without redelivering the reply.",
+      "context": {
+        "canonicalDeliveries": 1,
+        "localResultsBeforeClearing": 0,
+        "localResultsAfterClearing": 1,
+        "callerRequests": 1,
+        "replierRequests": 0,
+        "providerFailures": 0,
+        "scope": "Persisted gate is seeded and removed through public persistence APIs; real backend/runtime. Does not exercise human-answer WebSocket/UI materialization."
+      },
+      "reviewQuestions": [
+        "Does the acknowledgement accurately describe the delivery, with no implication that an unanswered human question was automatically answered?"
+      ],
+      "actualText": "Reply delivered via `replyTellask`.",
+      "verdict": "passed",
+      "rationale": "确认文本取自公开持久化human gate移除后的本地ack，规范replyTellask此前已经送达。它不宣称人类问题已获回答，不要求重发；与等待时本地0、解除后1而caller独立消费1的事实相符。",
+      "scope": "Persisted gate is seeded and removed through public persistence APIs; real backend/runtime. Does not exercise human-answer WebSocket/UI materialization.",
+      "provenance": {
+        "version": "final-after-payload-assertions",
+        "originDirectoryLabel": "dominds-human-gated-reply-recovery-V2jTBr",
+        "sourceFile": "human-gated-local-acknowledgement.json",
+        "generator": "tests/recovery/reply-delivery-recovery-waits-for-q4h.ts",
+        "supportGenerator": null,
+        "actualTextSha256": "5567b105ef12d18b883d2e295bffd1ce375efd500ee7b9db971949bc7ae8df14",
+        "evidenceJsonSha256": "a451ac88a9fe76d3ead09fb618ce91b19ea58a6d6b7f9a0715e04b8e1a60a608",
+        "retention": "完整actualText/context内嵌。来源标签和SHA只追溯材料，不是新输出oracle，不依赖临时目录继续存在。"
+      }
+    }
+  ],
+  "earlierReviewedMaterials": [
+    {
+      "id": "live-delivered-reply",
+      "scenario": "The real reply has reached its registered caller; a live backend wake repairs only the missing local tool acknowledgement and the caller consumes its canonical result.",
+      "businessValue": "Finish collaboration without replaying an already delivered reply or hiding a failed caller continuation.",
+      "context": {
+        "canonicalDeliveries": 1,
+        "localResults": 1,
+        "callerRequests": 1,
+        "replierRequests": 0,
+        "providerFailures": 0,
+        "scope": "Real runtime, persistence and backend wake; controlled provider; no process restart."
+      },
+      "reviewQuestions": [
+        "Does the actual acknowledgement agree with completed delivery and avoid instructing a duplicate reply?"
+      ],
+      "actualText": "Reply delivered via `replyTellask`.",
+      "verdict": "passed",
+      "rationale": "确认文本只说明replyTellask已交付，与真实registered caller规范结果1、本地确认1和caller实际请求1一致。它没有要求重发或宣称模型任务已完成；live恢复修复缺失本地ack的范围准确。",
+      "scope": "Real runtime, persistence and backend wake; controlled provider; no process restart.",
+      "provenance": {
+        "version": "initial-reviewed-materials",
+        "originDirectoryLabel": "dominds-live-reply-recovery-j5ziip",
+        "sourceFile": "live-delivered-reply.json",
+        "generator": "tests/recovery/reply-delivery-live-continuation.ts",
+        "supportGenerator": null,
+        "actualTextSha256": "5567b105ef12d18b883d2e295bffd1ce375efd500ee7b9db971949bc7ae8df14",
+        "evidenceJsonSha256": "0430d7bc93e65a7b3f39483bd03799953a0a74bbe0f94ac88cf38ae8336385c1",
+        "retention": "完整actualText/context内嵌。来源标签和SHA只追溯材料，不是新输出oracle，不依赖临时目录继续存在。"
+      }
+    },
+    {
+      "id": "already-delivered",
+      "scenario": "A new process restores a registered reply at the delivered stage and completes canonical delivery, local acknowledgement and the real caller continuation.",
+      "businessValue": "Resume durable collaboration after process loss without a duplicate reply, fabricated success or hidden provider failure.",
+      "context": {
+        "language": "en",
+        "independentProcess": true,
+        "callerRequiredExplicitResume": true,
+        "canonicalDeliveryCount": 1,
+        "localResultCount": 1,
+        "secondRecoveryCount": 0,
+        "providerFailures": 0,
+        "scope": "Public startup recovery order and real local backend/persistence; controlled external provider, no HTTP server/browser or live model."
+      },
+      "reviewQuestions": [
+        "Does the actual recovery acknowledgement agree with the observed delivery and avoid telling the agent to resend an already delivered reply?"
+      ],
+      "actualText": "Reply delivered via `replyTellask`.",
+      "verdict": "passed",
+      "rationale": "在写入阶段已实际交付registered结果、冷进程补本地确认后，文本确认replyTellask送达是事实，不暗示需要再送。caller根对话按server_restart保持暂停直到显式resume，确认文本没有越过该授权边界。",
+      "scope": "Public startup recovery order and real local backend/persistence; controlled external provider, no HTTP server/browser or live model.",
+      "provenance": {
+        "version": "initial-reviewed-materials",
+        "originDirectoryLabel": "dominds-cold-reply-recovery-wD1acb",
+        "sourceFile": "already-delivered.json",
+        "generator": "tests/recovery/reply-delivery-recovery-after-restart.ts",
+        "supportGenerator": "tests/helpers/reply-recovery-worker.ts",
+        "actualTextSha256": "5567b105ef12d18b883d2e295bffd1ce375efd500ee7b9db971949bc7ae8df14",
+        "evidenceJsonSha256": "61847de300a9ca6f243e2def901518c72a364870702714b62e0640fffb6e344e",
+        "retention": "完整actualText/context内嵌。来源标签和SHA只追溯材料，不是新输出oracle，不依赖临时目录继续存在。"
+      }
+    },
+    {
+      "id": "concurrent",
+      "scenario": "A new process restores a back reply at the pending stage and completes canonical delivery, local acknowledgement and the real caller continuation.",
+      "businessValue": "Resume durable collaboration after process loss without a duplicate reply, fabricated success or hidden provider failure.",
+      "context": {
+        "language": "en",
+        "independentProcess": true,
+        "callerRequiredExplicitResume": false,
+        "canonicalDeliveryCount": 1,
+        "localResultCount": 1,
+        "secondRecoveryCount": 0,
+        "providerFailures": 0,
+        "scope": "Public startup recovery order and real local backend/persistence; controlled external provider, no HTTP server/browser or live model."
+      },
+      "reviewQuestions": [
+        "Does the actual recovery acknowledgement agree with the observed delivery and avoid telling the agent to resend an already delivered reply?"
+      ],
+      "actualText": "Reply delivered via `replyTellaskBack`.",
+      "verdict": "passed",
+      "rationale": "两个外部恢复请求共享同一次恢复，最终规范交付和本地结果各1；文本确认replyTellaskBack交付，没有把两个调用解释成两次业务回复。实际caller续办收到给定载荷，与确认一致。",
+      "scope": "Public startup recovery order and real local backend/persistence; controlled external provider, no HTTP server/browser or live model.",
+      "provenance": {
+        "version": "initial-reviewed-materials",
+        "originDirectoryLabel": "dominds-cold-reply-recovery-wD1acb",
+        "sourceFile": "concurrent.json",
+        "generator": "tests/recovery/reply-delivery-recovery-after-restart.ts",
+        "supportGenerator": "tests/helpers/reply-recovery-worker.ts",
+        "actualTextSha256": "931ec23958e0eb191418a39aacc4e02278a4c8d582cb50eba811b808ab2ccddd",
+        "evidenceJsonSha256": "c23903f987460405452b4fdda1b425b3508e62b40ccd4260981440f4283ae754",
+        "retention": "完整actualText/context内嵌。来源标签和SHA只追溯材料，不是新输出oracle，不依赖临时目录继续存在。"
+      }
+    },
+    {
+      "id": "live-mirror",
+      "scenario": "A new process restores a back reply at the complete stage and completes canonical delivery, local acknowledgement and the real caller continuation.",
+      "businessValue": "Resume durable collaboration after process loss without a duplicate reply, fabricated success or hidden provider failure.",
+      "context": {
+        "language": "en",
+        "independentProcess": true,
+        "callerRequiredExplicitResume": false,
+        "canonicalDeliveryCount": 1,
+        "localResultCount": 1,
+        "secondRecoveryCount": 0,
+        "providerFailures": 0,
+        "scope": "Public startup recovery order and real local backend/persistence; controlled external provider, no HTTP server/browser or live model."
+      },
+      "reviewQuestions": [
+        "Does the actual recovery acknowledgement agree with the observed delivery and avoid telling the agent to resend an already delivered reply?"
+      ],
+      "actualText": "Reply delivered via `replyTellaskBack`.",
+      "verdict": "passed",
+      "rationale": "complete seed中已有完整规范交付和本地确认，冷恢复幂等，实际输出来自已持久化确认。文本仍准确描述该次replyTellaskBack曾送达，不声称本次恢复重新发送；second recovery0和caller单次消费保留范围。",
+      "scope": "Public startup recovery order and real local backend/persistence; controlled external provider, no HTTP server/browser or live model.",
+      "provenance": {
+        "version": "initial-reviewed-materials",
+        "originDirectoryLabel": "dominds-cold-reply-recovery-wD1acb",
+        "sourceFile": "live-mirror.json",
+        "generator": "tests/recovery/reply-delivery-recovery-after-restart.ts",
+        "supportGenerator": "tests/helpers/reply-recovery-worker.ts",
+        "actualTextSha256": "931ec23958e0eb191418a39aacc4e02278a4c8d582cb50eba811b808ab2ccddd",
+        "evidenceJsonSha256": "1bdfdb3b9bfadaa00d88f4dadb963fa07234a84b148c1c52b83da73333163991",
+        "retention": "完整actualText/context内嵌。来源标签和SHA只追溯材料，不是新输出oracle，不依赖临时目录继续存在。"
+      }
+    },
+    {
+      "id": "pending",
+      "scenario": "A new process restores a back reply at the pending stage and completes canonical delivery, local acknowledgement and the real caller continuation.",
+      "businessValue": "Resume durable collaboration after process loss without a duplicate reply, fabricated success or hidden provider failure.",
+      "context": {
+        "language": "en",
+        "independentProcess": true,
+        "callerRequiredExplicitResume": false,
+        "canonicalDeliveryCount": 1,
+        "localResultCount": 1,
+        "secondRecoveryCount": 0,
+        "providerFailures": 0,
+        "scope": "Public startup recovery order and real local backend/persistence; controlled external provider, no HTTP server/browser or live model."
+      },
+      "reviewQuestions": [
+        "Does the actual recovery acknowledgement agree with the observed delivery and avoid telling the agent to resend an already delivered reply?"
+      ],
+      "actualText": "Reply delivered via `replyTellaskBack`.",
+      "verdict": "passed",
+      "rationale": "原先只有待交付replyTellaskBack命令，新进程完成实际规范交付与本地确认后，文本陈述送达准确。其价值是恢复collaboration传递，不是把受控payload解释为正确答案，也没有指导重复发送。",
+      "scope": "Public startup recovery order and real local backend/persistence; controlled external provider, no HTTP server/browser or live model.",
+      "provenance": {
+        "version": "initial-reviewed-materials",
+        "originDirectoryLabel": "dominds-cold-reply-recovery-wD1acb",
+        "sourceFile": "pending.json",
+        "generator": "tests/recovery/reply-delivery-recovery-after-restart.ts",
+        "supportGenerator": "tests/helpers/reply-recovery-worker.ts",
+        "actualTextSha256": "931ec23958e0eb191418a39aacc4e02278a4c8d582cb50eba811b808ab2ccddd",
+        "evidenceJsonSha256": "0a1193b47929c088935c7ed0a1d546018511b987aea9ae3daab5d5e53463bbc6",
+        "retention": "完整actualText/context内嵌。来源标签和SHA只追溯材料，不是新输出oracle，不依赖临时目录继续存在。"
+      }
+    },
+    {
+      "id": "resolution-only",
+      "scenario": "A new process restores a back reply at the delivered stage and completes canonical delivery, local acknowledgement and the real caller continuation.",
+      "businessValue": "Resume durable collaboration after process loss without a duplicate reply, fabricated success or hidden provider failure.",
+      "context": {
+        "language": "en",
+        "independentProcess": true,
+        "callerRequiredExplicitResume": true,
+        "canonicalDeliveryCount": 1,
+        "localResultCount": 1,
+        "secondRecoveryCount": 0,
+        "providerFailures": 0,
+        "scope": "Public startup recovery order and real local backend/persistence; controlled external provider, no HTTP server/browser or live model."
+      },
+      "reviewQuestions": [
+        "Does the actual recovery acknowledgement agree with the observed delivery and avoid telling the agent to resend an already delivered reply?"
+      ],
+      "actualText": "Reply delivered via `replyTellaskBack`.",
+      "verdict": "passed",
+      "rationale": "此前规范askback交付和消解已完成而本地ack缺失，恢复后只补确认；replyTellaskBack送达文本与既有交付事实一致，没有暗示再次交付。未开放generation的根仍需显式resume，不能由该文本推导自动续办授权。",
+      "scope": "Public startup recovery order and real local backend/persistence; controlled external provider, no HTTP server/browser or live model.",
+      "provenance": {
+        "version": "initial-reviewed-materials",
+        "originDirectoryLabel": "dominds-cold-reply-recovery-wD1acb",
+        "sourceFile": "resolution-only.json",
+        "generator": "tests/recovery/reply-delivery-recovery-after-restart.ts",
+        "supportGenerator": "tests/helpers/reply-recovery-worker.ts",
+        "actualTextSha256": "931ec23958e0eb191418a39aacc4e02278a4c8d582cb50eba811b808ab2ccddd",
+        "evidenceJsonSha256": "e4b41e8fce3e2453f66e75b4c28243be63524a706f106e008a6c9eab4b9a0d5e",
+        "retention": "完整actualText/context内嵌。来源标签和SHA只追溯材料，不是新输出oracle，不依赖临时目录继续存在。"
+      }
+    },
+    {
+      "id": "human-gated-local-acknowledgement",
+      "scenario": "A persisted human question parks local acknowledgement recovery. Its removal releases the backend wake; the canonical reply already reached the caller before this gate.",
+      "businessValue": "Keep the human wait intact and repair the local acknowledgement once it clears, without redelivering the reply.",
+      "context": {
+        "canonicalDeliveries": 1,
+        "localResultsBeforeClearing": 0,
+        "localResultsAfterClearing": 1,
+        "callerRequests": 1,
+        "replierRequests": 0,
+        "providerFailures": 0,
+        "scope": "Persisted gate is seeded and removed through public persistence APIs; real backend/runtime. Does not exercise human-answer WebSocket/UI materialization."
+      },
+      "reviewQuestions": [
+        "Does the acknowledgement accurately describe the delivery, with no implication that an unanswered human question was automatically answered?"
+      ],
+      "actualText": "Reply delivered via `replyTellask`.",
+      "verdict": "passed",
+      "rationale": "确认文本取自公开持久化human gate移除后的本地ack，规范replyTellask此前已经送达。它不宣称人类问题已获回答，不要求重发；与等待时本地0、解除后1而caller独立消费1的事实相符。",
+      "scope": "Persisted gate is seeded and removed through public persistence APIs; real backend/runtime. Does not exercise human-answer WebSocket/UI materialization.",
+      "provenance": {
+        "version": "initial-reviewed-materials",
+        "originDirectoryLabel": "dominds-human-gated-reply-recovery-meAKV9",
+        "sourceFile": "human-gated-local-acknowledgement.json",
+        "generator": "tests/recovery/reply-delivery-recovery-waits-for-q4h.ts",
+        "supportGenerator": null,
+        "actualTextSha256": "5567b105ef12d18b883d2e295bffd1ce375efd500ee7b9db971949bc7ae8df14",
+        "evidenceJsonSha256": "a451ac88a9fe76d3ead09fb618ce91b19ea58a6d6b7f9a0715e04b8e1a60a608",
+        "retention": "完整actualText/context内嵌。来源标签和SHA只追溯材料，不是新输出oracle，不依赖临时目录继续存在。"
+      }
+    },
+    {
+      "id": "live-delivered-reply",
+      "scenario": "The real reply has reached its registered caller; a live backend wake repairs only the missing local tool acknowledgement and the caller consumes its canonical result.",
+      "businessValue": "Finish collaboration without replaying an already delivered reply or hiding a failed caller continuation.",
+      "context": {
+        "canonicalDeliveries": 1,
+        "localResults": 1,
+        "callerRequests": 1,
+        "replierRequests": 0,
+        "providerFailures": 0,
+        "scope": "Real runtime, persistence and backend wake; controlled provider; no process restart."
+      },
+      "reviewQuestions": [
+        "Does the actual acknowledgement agree with completed delivery and avoid instructing a duplicate reply?"
+      ],
+      "actualText": "Reply delivered via `replyTellask`.",
+      "verdict": "passed",
+      "rationale": "确认文本只说明replyTellask已交付，与真实registered caller规范结果1、本地确认1和caller实际请求1一致。它没有要求重发或宣称模型任务已完成；live恢复修复缺失本地ack的范围准确。",
+      "scope": "Real runtime, persistence and backend wake; controlled provider; no process restart.",
+      "provenance": {
+        "version": "intermediate-after-completion-closure",
+        "originDirectoryLabel": "dominds-live-reply-recovery-Lk01Qz",
+        "sourceFile": "live-delivered-reply.json",
+        "generator": "tests/recovery/reply-delivery-live-continuation.ts",
+        "supportGenerator": null,
+        "actualTextSha256": "5567b105ef12d18b883d2e295bffd1ce375efd500ee7b9db971949bc7ae8df14",
+        "evidenceJsonSha256": "0430d7bc93e65a7b3f39483bd03799953a0a74bbe0f94ac88cf38ae8336385c1",
+        "retention": "完整actualText/context内嵌。来源标签和SHA只追溯材料，不是新输出oracle，不依赖临时目录继续存在。"
+      }
+    },
+    {
+      "id": "already-delivered",
+      "scenario": "A new process restores a registered reply at the delivered stage and completes canonical delivery, local acknowledgement and the real caller continuation.",
+      "businessValue": "Resume durable collaboration after process loss without a duplicate reply, fabricated success or hidden provider failure.",
+      "context": {
+        "language": "en",
+        "independentProcess": true,
+        "callerRequiredExplicitResume": true,
+        "canonicalDeliveryCount": 1,
+        "localResultCount": 1,
+        "secondRecoveryCount": 0,
+        "providerFailures": 0,
+        "scope": "Public startup recovery order and real local backend/persistence; controlled external provider, no HTTP server/browser or live model."
+      },
+      "reviewQuestions": [
+        "Does the actual recovery acknowledgement agree with the observed delivery and avoid telling the agent to resend an already delivered reply?"
+      ],
+      "actualText": "Reply delivered via `replyTellask`.",
+      "verdict": "passed",
+      "rationale": "在写入阶段已实际交付registered结果、冷进程补本地确认后，文本确认replyTellask送达是事实，不暗示需要再送。caller根对话按server_restart保持暂停直到显式resume，确认文本没有越过该授权边界。",
+      "scope": "Public startup recovery order and real local backend/persistence; controlled external provider, no HTTP server/browser or live model.",
+      "provenance": {
+        "version": "intermediate-after-completion-closure",
+        "originDirectoryLabel": "dominds-cold-reply-recovery-gXYB37",
+        "sourceFile": "already-delivered.json",
+        "generator": "tests/recovery/reply-delivery-recovery-after-restart.ts",
+        "supportGenerator": "tests/helpers/reply-recovery-worker.ts",
+        "actualTextSha256": "5567b105ef12d18b883d2e295bffd1ce375efd500ee7b9db971949bc7ae8df14",
+        "evidenceJsonSha256": "61847de300a9ca6f243e2def901518c72a364870702714b62e0640fffb6e344e",
+        "retention": "完整actualText/context内嵌。来源标签和SHA只追溯材料，不是新输出oracle，不依赖临时目录继续存在。"
+      }
+    },
+    {
+      "id": "concurrent",
+      "scenario": "A new process restores a back reply at the pending stage and completes canonical delivery, local acknowledgement and the real caller continuation.",
+      "businessValue": "Resume durable collaboration after process loss without a duplicate reply, fabricated success or hidden provider failure.",
+      "context": {
+        "language": "en",
+        "independentProcess": true,
+        "callerRequiredExplicitResume": false,
+        "canonicalDeliveryCount": 1,
+        "localResultCount": 1,
+        "secondRecoveryCount": 0,
+        "providerFailures": 0,
+        "scope": "Public startup recovery order and real local backend/persistence; controlled external provider, no HTTP server/browser or live model."
+      },
+      "reviewQuestions": [
+        "Does the actual recovery acknowledgement agree with the observed delivery and avoid telling the agent to resend an already delivered reply?"
+      ],
+      "actualText": "Reply delivered via `replyTellaskBack`.",
+      "verdict": "passed",
+      "rationale": "两个外部恢复请求共享同一次恢复，最终规范交付和本地结果各1；文本确认replyTellaskBack交付，没有把两个调用解释成两次业务回复。实际caller续办收到给定载荷，与确认一致。",
+      "scope": "Public startup recovery order and real local backend/persistence; controlled external provider, no HTTP server/browser or live model.",
+      "provenance": {
+        "version": "intermediate-after-completion-closure",
+        "originDirectoryLabel": "dominds-cold-reply-recovery-gXYB37",
+        "sourceFile": "concurrent.json",
+        "generator": "tests/recovery/reply-delivery-recovery-after-restart.ts",
+        "supportGenerator": "tests/helpers/reply-recovery-worker.ts",
+        "actualTextSha256": "931ec23958e0eb191418a39aacc4e02278a4c8d582cb50eba811b808ab2ccddd",
+        "evidenceJsonSha256": "c23903f987460405452b4fdda1b425b3508e62b40ccd4260981440f4283ae754",
+        "retention": "完整actualText/context内嵌。来源标签和SHA只追溯材料，不是新输出oracle，不依赖临时目录继续存在。"
+      }
+    },
+    {
+      "id": "live-mirror",
+      "scenario": "A new process restores a back reply at the complete stage and completes canonical delivery, local acknowledgement and the real caller continuation.",
+      "businessValue": "Resume durable collaboration after process loss without a duplicate reply, fabricated success or hidden provider failure.",
+      "context": {
+        "language": "en",
+        "independentProcess": true,
+        "callerRequiredExplicitResume": false,
+        "canonicalDeliveryCount": 1,
+        "localResultCount": 1,
+        "secondRecoveryCount": 0,
+        "providerFailures": 0,
+        "scope": "Public startup recovery order and real local backend/persistence; controlled external provider, no HTTP server/browser or live model."
+      },
+      "reviewQuestions": [
+        "Does the actual recovery acknowledgement agree with the observed delivery and avoid telling the agent to resend an already delivered reply?"
+      ],
+      "actualText": "Reply delivered via `replyTellaskBack`.",
+      "verdict": "passed",
+      "rationale": "complete seed中已有完整规范交付和本地确认，冷恢复幂等，实际输出来自已持久化确认。文本仍准确描述该次replyTellaskBack曾送达，不声称本次恢复重新发送；second recovery0和caller单次消费保留范围。",
+      "scope": "Public startup recovery order and real local backend/persistence; controlled external provider, no HTTP server/browser or live model.",
+      "provenance": {
+        "version": "intermediate-after-completion-closure",
+        "originDirectoryLabel": "dominds-cold-reply-recovery-gXYB37",
+        "sourceFile": "live-mirror.json",
+        "generator": "tests/recovery/reply-delivery-recovery-after-restart.ts",
+        "supportGenerator": "tests/helpers/reply-recovery-worker.ts",
+        "actualTextSha256": "931ec23958e0eb191418a39aacc4e02278a4c8d582cb50eba811b808ab2ccddd",
+        "evidenceJsonSha256": "1bdfdb3b9bfadaa00d88f4dadb963fa07234a84b148c1c52b83da73333163991",
+        "retention": "完整actualText/context内嵌。来源标签和SHA只追溯材料，不是新输出oracle，不依赖临时目录继续存在。"
+      }
+    },
+    {
+      "id": "pending",
+      "scenario": "A new process restores a back reply at the pending stage and completes canonical delivery, local acknowledgement and the real caller continuation.",
+      "businessValue": "Resume durable collaboration after process loss without a duplicate reply, fabricated success or hidden provider failure.",
+      "context": {
+        "language": "en",
+        "independentProcess": true,
+        "callerRequiredExplicitResume": false,
+        "canonicalDeliveryCount": 1,
+        "localResultCount": 1,
+        "secondRecoveryCount": 0,
+        "providerFailures": 0,
+        "scope": "Public startup recovery order and real local backend/persistence; controlled external provider, no HTTP server/browser or live model."
+      },
+      "reviewQuestions": [
+        "Does the actual recovery acknowledgement agree with the observed delivery and avoid telling the agent to resend an already delivered reply?"
+      ],
+      "actualText": "Reply delivered via `replyTellaskBack`.",
+      "verdict": "passed",
+      "rationale": "原先只有待交付replyTellaskBack命令，新进程完成实际规范交付与本地确认后，文本陈述送达准确。其价值是恢复collaboration传递，不是把受控payload解释为正确答案，也没有指导重复发送。",
+      "scope": "Public startup recovery order and real local backend/persistence; controlled external provider, no HTTP server/browser or live model.",
+      "provenance": {
+        "version": "intermediate-after-completion-closure",
+        "originDirectoryLabel": "dominds-cold-reply-recovery-gXYB37",
+        "sourceFile": "pending.json",
+        "generator": "tests/recovery/reply-delivery-recovery-after-restart.ts",
+        "supportGenerator": "tests/helpers/reply-recovery-worker.ts",
+        "actualTextSha256": "931ec23958e0eb191418a39aacc4e02278a4c8d582cb50eba811b808ab2ccddd",
+        "evidenceJsonSha256": "0a1193b47929c088935c7ed0a1d546018511b987aea9ae3daab5d5e53463bbc6",
+        "retention": "完整actualText/context内嵌。来源标签和SHA只追溯材料，不是新输出oracle，不依赖临时目录继续存在。"
+      }
+    },
+    {
+      "id": "resolution-only",
+      "scenario": "A new process restores a back reply at the delivered stage and completes canonical delivery, local acknowledgement and the real caller continuation.",
+      "businessValue": "Resume durable collaboration after process loss without a duplicate reply, fabricated success or hidden provider failure.",
+      "context": {
+        "language": "en",
+        "independentProcess": true,
+        "callerRequiredExplicitResume": true,
+        "canonicalDeliveryCount": 1,
+        "localResultCount": 1,
+        "secondRecoveryCount": 0,
+        "providerFailures": 0,
+        "scope": "Public startup recovery order and real local backend/persistence; controlled external provider, no HTTP server/browser or live model."
+      },
+      "reviewQuestions": [
+        "Does the actual recovery acknowledgement agree with the observed delivery and avoid telling the agent to resend an already delivered reply?"
+      ],
+      "actualText": "Reply delivered via `replyTellaskBack`.",
+      "verdict": "passed",
+      "rationale": "此前规范askback交付和消解已完成而本地ack缺失，恢复后只补确认；replyTellaskBack送达文本与既有交付事实一致，没有暗示再次交付。未开放generation的根仍需显式resume，不能由该文本推导自动续办授权。",
+      "scope": "Public startup recovery order and real local backend/persistence; controlled external provider, no HTTP server/browser or live model.",
+      "provenance": {
+        "version": "intermediate-after-completion-closure",
+        "originDirectoryLabel": "dominds-cold-reply-recovery-gXYB37",
+        "sourceFile": "resolution-only.json",
+        "generator": "tests/recovery/reply-delivery-recovery-after-restart.ts",
+        "supportGenerator": "tests/helpers/reply-recovery-worker.ts",
+        "actualTextSha256": "931ec23958e0eb191418a39aacc4e02278a4c8d582cb50eba811b808ab2ccddd",
+        "evidenceJsonSha256": "e4b41e8fce3e2453f66e75b4c28243be63524a706f106e008a6c9eab4b9a0d5e",
+        "retention": "完整actualText/context内嵌。来源标签和SHA只追溯材料，不是新输出oracle，不依赖临时目录继续存在。"
+      }
+    },
+    {
+      "id": "human-gated-local-acknowledgement",
+      "scenario": "A persisted human question parks local acknowledgement recovery. Its removal releases the backend wake; the canonical reply already reached the caller before this gate.",
+      "businessValue": "Keep the human wait intact and repair the local acknowledgement once it clears, without redelivering the reply.",
+      "context": {
+        "canonicalDeliveries": 1,
+        "localResultsBeforeClearing": 0,
+        "localResultsAfterClearing": 1,
+        "callerRequests": 1,
+        "replierRequests": 0,
+        "providerFailures": 0,
+        "scope": "Persisted gate is seeded and removed through public persistence APIs; real backend/runtime. Does not exercise human-answer WebSocket/UI materialization."
+      },
+      "reviewQuestions": [
+        "Does the acknowledgement accurately describe the delivery, with no implication that an unanswered human question was automatically answered?"
+      ],
+      "actualText": "Reply delivered via `replyTellask`.",
+      "verdict": "passed",
+      "rationale": "确认文本取自公开持久化human gate移除后的本地ack，规范replyTellask此前已经送达。它不宣称人类问题已获回答，不要求重发；与等待时本地0、解除后1而caller独立消费1的事实相符。",
+      "scope": "Persisted gate is seeded and removed through public persistence APIs; real backend/runtime. Does not exercise human-answer WebSocket/UI materialization.",
+      "provenance": {
+        "version": "intermediate-after-completion-closure",
+        "originDirectoryLabel": "dominds-human-gated-reply-recovery-xHkfRh",
+        "sourceFile": "human-gated-local-acknowledgement.json",
+        "generator": "tests/recovery/reply-delivery-recovery-waits-for-q4h.ts",
+        "supportGenerator": null,
+        "actualTextSha256": "5567b105ef12d18b883d2e295bffd1ce375efd500ee7b9db971949bc7ae8df14",
+        "evidenceJsonSha256": "a451ac88a9fe76d3ead09fb618ce91b19ea58a6d6b7f9a0715e04b8e1a60a608",
+        "retention": "完整actualText/context内嵌。来源标签和SHA只追溯材料，不是新输出oracle，不依赖临时目录继续存在。"
+      }
+    }
+  ],
+  "counts": {
+    "semanticPassed": 7,
+    "semanticFailed": 0,
+    "semanticPending": 0,
+    "earlierSemanticPassed": 14,
+    "assertionPassed": 4,
+    "supportModulesPassed": 2
+  },
+  "assertionReview": {
+    "status": "passed",
+    "candidates": [
+      {
+        "path": "tests/recovery/open-generation-recovery-stale-clears-on-backend-loop.ts",
+        "verdict": "passed",
+        "businessValue": "陈旧生成cue只清理，不复活生成或无故花一次provider调用。",
+        "originalValuePreserved": "原真实wake queue正向前提、stale trigger移除、generating false和队列清除保留；品牌构造修复类型，无新伪造模型答案。",
+        "assertions": [
+          "先种真实open generation+cue，再清generating/run state但留stale trigger，实际wake queue含root作正向前提；真实driveQueuedDialogsOnce后cue消失/generating仍false/queue无root。",
+          "message-only受控provider任何调用都计数并fatal，assertNoErrors防runtime收束后误绿；重复wake后requests仍0。action前局部订阅，结束后EOS排空stream_error为空，保护真实无调用效果，不匹配日志文字。"
+        ],
+        "scope": "人为构造stale持久cue的本地backend组件，不是实际崩溃检测或供应商故障恢复。"
+      },
+      {
+        "path": "tests/recovery/reply-delivery-live-continuation.ts",
+        "verdict": "passed",
+        "businessValue": "真实交付之后仅补缺失本地ack，与活跃驱动串行，重复唤醒不重复业务或caller续办。",
+        "originalValuePreserved": "原pending local ack/wake queue/backend修复保留；用真实public execute交付替代直接将delivered字段写成事实，真实caller接收并消费受控载荷。",
+        "assertions": [
+          "registered delivered pair确有canonical1/local0；真实root/side局部stream订阅，backend wake后canonical1/local1、resolution1、latest delivered/recorded和recovery trigger0，side离开wake queue。",
+          "public side lock先占用，恢复排其后，第三owner再排；释放前台后第三owner必须看到修复完成，旧实现实际pending失败。既验证排队顺序与状态效果，也finally释放owner，不按时间sleep猜测。",
+          "受控provider仅root1、已final side0，实际caller context唯一对应call且含给定body；second recovery0和duplicate wake后这些数量仍不增，局部stream_error空。serialized对照也有caller1与闭合事实。"
+        ],
+        "scope": "同进程真实runtime/persistence/backend，公开锁，不声称进程重启或真人/浏览器。"
+      },
+      {
+        "path": "tests/recovery/reply-delivery-recovery-after-restart.ts",
+        "verdict": "passed",
+        "businessValue": "真正独立进程恢复seeded持久交付边界，原回复和续办回复都唯一，尊重暂停后显式resume。",
+        "originalValuePreserved": "原live mirror/pending/registered delivered/resolution-only/concurrent各业务保留成5个合法root-side场景；去掉self-target夹具、正则成功文本和同进程冒称重启。live mirror仍在真实requester且不在replying root。",
+        "assertions": [
+          "父execFile依次seed/recover/verify，受管相同cwd，经真实rtws-script-runner bootstrap；parse唯一JSON机器probe，每phase5场景，三个child PID互异且非parent。child非零/超时使execFile拒绝，不靠日志PASS。",
+          "seed用公开持久化/真实executeTellaskCalls停pending、delivered缺ack或complete；complete结果实际mirror到requester side，不送root自身；自然退出等待实际缓冲写回。没有模拟SIGKILL/断电。",
+          "recover新registry size0，实际reconcile display→reply recovery→open generation recovery→backend顺序；concurrent两调用返回[1,1]表示共享一次工作，事实检查交付/ack各1，不解释成两次交付。",
+          "provider按真实dialog ID和阶段路由，非法/重复请求fatal且assertNoErrors；四个back side分别收到唯一目标reply载荷再显式replyTellask，五root各消费唯一原始work结果载荷，总requests9。无指导关键词路由。",
+          "两个根在实际其他续办/解锁边界仍root request0、display stopped(server_restart)且留result_arrival，只有显式allowResumeFromInterrupted及resume source/reason调用后才各root1；未放宽restart权限来救测试。",
+          "所有root/side真实局部stream订阅并EOS排空无stream_error；initial reply canonical/local/resolution计数及状态/trigger闭合，second recovery全0。",
+          "第三个只读verify独立从磁盘再查上述状态；每root caller-ack原始输入正文恰1，work canonical1且给定body保真，active callee空；4个back side的finish call func_result1/resolution1、finalResponse指向原work、toolResult recorded，避免遗漏后续reply的失败/成功双记录。"
+        ],
+        "scope": "三个独立进程的seeded public边界与真实本地启动/续办，不启动HTTP/WebSocket服务器，不是强杀/断电或live模型；transport无显式stream/batch双模式覆盖宣称。"
+      },
+      {
+        "path": "tests/recovery/reply-delivery-recovery-waits-for-q4h.ts",
+        "verdict": "passed",
+        "businessValue": "人类等待阻挡本地确认恢复，但不重发已送达业务；gate解除后只补一次确认。",
+        "originalValuePreserved": "原持久Q4H wait/pending local ack/queue及解除后修复保留；更准确区分已交付caller可独立消费，与side本地ack仍停留。",
+        "assertions": [
+          "真实registered交付后public appendQuestion种gate；backend后canonical1/local0、recovery trigger1、userWait awaiting_user_answer和side wake保留；root已消费1而side provider0，是独立业务路径。",
+          "public removeQuestion(found及removed ID)后backend修复canonical仍1/local1，wait与recovery trigger清除、side离队；root调用仍1/side0、二次恢复0和真实局部stream_error空。",
+          "确认实际输出由语义材料主观判断，不以送达字句、Question正文或旧expected全文作为oracle。"
+        ],
+        "scope": "公开持久化gate和实际backend，不是WebSocket人类回答、A2H/Q4H内容正确性或问答工具调用链覆盖。"
+      }
+    ],
+    "helpers": {
+      "tests/helpers/reply-recovery.ts": {
+        "verdict": "passed",
+        "reason": "同批live/cold/Q4H都有具体复用，放tests/helpers不作为可执行候选。createRecoveryPair经真实public API建work/registered side及pending，back请求caller是真实side/root相反方向；latest assignment anchor等为明确边界seed，不声称模型推理。stage delivered/complete用真实execute输出证明successfulReplyCallIds，不只写状态标签。",
+        "machineAssertions": [
+          "assertRecoveryFacts读实际requester canonical按callId计数并保给定replyBody穿runtime wrapper，replier按replyCallId计local result/resolution，latest matching reply ID及delivered/recorded和recovery trigger数量。",
+          "loadRecoveryPair真实registry恢复root与ensure side、运行时类型检查；provider按dialogSelfId路由且每caller1，唯一canonical context+supplied body；给定opaque数据includes比较是传输保真，不裁决句意。",
+          "manifest parse校验对象/枚举/string机器输入，waitRecoveryDrives等真实loaded tree解锁；messageProvider fatal与assertNoErrors使内部断言不能被driver吞后假绿。"
+        ],
+        "limits": "message-only边界不含provider-native metadata/side-channel；受控无真实网络供应商或模型遵循。"
+      },
+      "tests/helpers/reply-recovery-worker.ts": {
+        "verdict": "passed",
+        "reason": "同一个cold candidate的3phase支持模块，不新增候选/并发共享case。每阶段独立进程且registry空；seed实际生成合法持久边界，recover采用公开启动顺序，verify仅load/assert，父写完再启动。",
+        "machineAssertions": [
+          "5种状态初始counts先被事实断言；live mirror唯一且不误投replying root。",
+          "recover实际driver/provider、explicit resume、局部EOS事件、第二次恢复0与7中5份真实ack采集；不得把成功生成当语义自动通过。",
+          "verify原始work与后续finish canonical/local/resolution/active/finalResponse闭合及opaque载荷来自真实磁盘，弥补最初仅核initial reply的观察缺口。"
+        ],
+        "limits": "verify分支只读当前格式已写数据；seed自然退出，不是强杀恢复。"
+      }
+    },
+    "literalComparisonMeaning": "机器type/ID/status/count、phase probe JSON、原始传输payload和持久文件数据可精确比较。原调用方opaque正文经wrapper以contains查保真，未裁决其推理/业务含义；自然语言ack只由cases主观判断。原成功ack正则已移除，固定日志PASS不作oracle。",
+    "entryReview": [
+      "显式recovery4 lane复用现runner串行失败/超时汇总，semantic3 producer仍pending，公开根package/4旧命令CLI隔离；helper位于support目录不计通过候选。",
+      "run.mjs对open-generation文件名筛除是明确producer选择，不是检测自然语言语义；新增入口/AGENTS/README/strategy与ledger4均完整审。113 reviewed/149未审/136套件外及全types218仍失败明确列出，不冒称整改全完。"
+    ],
+    "findingsResolved": [
+      "独立verify起初只查initial恢复reply，新增四个finish续办reply及原始work/active闭合，防失败成功双记录漏检。",
+      "provider起初只看同callId结果存在，已补actual context suppliedBody，第三进程workResult也检原始payload，解决数据保真证明缺口。"
+    ],
+    "blockingFindings": []
+  },
+  "productReview": {
+    "status": "passed",
+    "path": "main/recovery/reply-delivery-recovery.ts",
+    "businessValue": "启动恢复与其先调度的活跃drive竞争同一dialog时，不重复执行reply而制造本地失败/成功双结果。",
+    "assessment": [
+      "外部recover helper保留per-dialog in-flight共享；改用既有public dialog.acquire，持锁后重读latest，再决定pending处理或0，无陈旧replyDelivery跨越活跃drive。所有返回/异常finally release，不新增存储字段/公共type/锁框架。",
+      "核对实际reply执行及continuation回调，回复交付给另一个真实requester，scheduleDrive异步排队；内部driver已持锁路径继续调用低层recoverPendingReplyDelivery，未改成再取同锁。外部startup和WebSocket restoreForDrive入口使用新包装。",
+      "公开锁排队旧实现真实失败和冷整套竞态是产品修复证据，修后执行由verification给出；不靠更大timeout或重复直到绿。"
+    ],
+    "scope": "同进程dialog执行锁与当前公开恢复调用链，不是跨进程互斥、分布式事务或SIGKILL耐久性证明。"
+  },
+  "failureEvidence": [
+    {
+      "id": "hidden-local-stream-error",
+      "classification": "legacy-fixture-and-observation-defect",
+      "meaning": "旧baseline漏配caller续办响应，runtime实际MockFixtureError并发出局部stream_error；旧全局观察遗漏，新局部事件断言真实exit1。它是夹具/断言缺陷，不归因于后来的产品锁竞态。",
+      "originFileLabel": "dominds-recovery-hidden-error-red2.log",
+      "rawLog": "$ tsx cli.ts -- --isolated-rtws recovery/reply-delivery-recovery-after-restart.ts\n[2026/10/31-06:17:32] WARN: LLM request attempt failed\nMockFixtureError: Mock scenario has no configured response.\n\nInput role: \"tool\"\nNo assistant response or tool call was generated. Configure an explicit response for this input.\n\nDatabase: `mock-db/default.yaml`\n\nAdd to database:\n```yaml\nresponses:\n  - message: \"[Dominds Tellask result | callId: tellask-back-target]\\n\\n【TellaskBack】\\n\\n@tester provided a Tellask reply:\\n\\n> Final answer delivered.\\n\\nregarding the original tellask: @tester\\n\\n> Need a final tellasker answer.\\n\\n[Dominds Tellask result status]\\n- Function: `tellaskBack`\\n- callId: tellask-back-target\\n- Note: This is a result fact for an earlier Tellask, not a new user request or a newly initiated function call in the current course.\"\n    role: \"tool\"\n    response: \"Your response here\"\n```\n    at MockGen.missingResponseError (/ws/AiWorks/dominds/main/llm/gen/mock.ts:551:12)\n    at MockGen.genToReceiver (/ws/AiWorks/dominds/main/llm/gen/mock.ts:595:30)\n    at async Object.doRequest (/ws/AiWorks/dominds/main/llm/kernel-driver/drive.ts:5032:38)\n    at async runLlmRequestWithRetry (/ws/AiWorks/dominds/main/llm/kernel-driver/runtime.ts:976:19)\n    at async streamOrBatch (/ws/AiWorks/dominds/main/llm/kernel-driver/drive.ts:4992:25)\n    at async driveDialogStreamCore (/ws/AiWorks/dominds/main/llm/kernel-driver/drive.ts:5105:29)\n    at async executeDriveRound (/ws/AiWorks/dominds/main/llm/kernel-driver/flow.ts:2058:19)\n    at async driveDialogStream (/ws/AiWorks/dominds/main/llm/kernel-driver/engine.ts:33:10) Extra: {\n  rootId: '09/cc/921bb763',\n  selfId: '09/cc/921bb763',\n  dialogId: '09/cc/921bb763',\n  provider: 'local-mock',\n  status: undefined,\n  code: 'mock_response_missing',\n  aggressiveRetryCount: 0,\n  aggressiveRetryMaxRetries: 3,\n  attemptNumber: 1,\n  causeCode: undefined,\n  causeMessage: undefined,\n  debugCaptureError: undefined,\n  debugPath: undefined,\n  errorCode: 'mock_response_missing',\n  errorText: 'Mock scenario has no configured response.\\n' +\n    '\\n' +\n    'Input role: \"tool\"\\n' +\n    'No assistant response or tool call was generated. Configure an explicit response for this input.\\n' +\n    '\\n' +\n    'Database: `mock-db/default.yaml`\\n' +\n    '\\n' +\n    'Add to database:\\n' +\n    '```yaml\\n' +\n    'responses:\\n' +\n    '  - message: \"[Dominds Tellask result | callId: tellask-back-target]\\\\n\\\\n【TellaskBack】\\\\n\\\\n@tester provided a Tellask reply:\\\\n\\\\n> Final answer delivered.\\\\n\\\\nregarding the original tellask: @tester\\\\n\\\\n> Need a final tellasker answer.\\\\n\\\\n[Dominds Tellask result status]\\\\n- Function: `tellaskBack`\\\\n- callId: tellask-back-target\\\\n- Note: This is a result fact for an earlier Tellask, not a new user request or a newly initiated function call in the current course.\"\\n' +\n    '    role: \"tool\"\\n' +\n    '    response: \"Your response here\"\\n' +\n    '```',\n  failureKind: 'fatal',\n  quirkHandling: 'default',\n  quirkSource: undefined,\n  requestPayloadPath: undefined,\n  retryMode: 'policy',\n  retryStrategy: undefined\n}\n[2026/10/31-06:17:32] ERROR: Dialog stream error 'Mock scenario has no configured response.\n\nInput role: \"tool\"\nNo assistant response or tool call was generated. Configure an explicit response for this input.\n\nDatabase: `mock-db/default.yaml`\n\nAdd to database:\n```yaml\nresponses:\n  - message: \"[Dominds Tellask result | callId: tellask-back-target]\\n\\n【TellaskBack】\\n\\n@tester provided a Tellask reply:\\n\\n> Final answer delivered.\\n\\nregarding the original tellask: @tester\\n\\n> Need a final tellasker answer.\\n\\n[Dominds Tellask result status]\\n- Function: `tellaskBack`\\n- callId: tellask-back-target\\n- Note: This is a result fact for an earlier Tellask, not a new user request or a newly initiated function call in the current course.\"\n    role: \"tool\"\n    response: \"Your response here\"\n```'\nError\n    at DiskFileDialogStore.streamError (/ws/AiWorks/dominds/main/persistence.ts:4016:49)\n    at MainDialog.streamError (/ws/AiWorks/dominds/main/dialog.ts:2217:27)\n    at runLlmRequestWithRetry (/ws/AiWorks/dominds/main/llm/kernel-driver/runtime.ts:1182:28)\n    at async streamOrBatch (/ws/AiWorks/dominds/main/llm/kernel-driver/drive.ts:4992:25)\n    at async driveDialogStreamCore (/ws/AiWorks/dominds/main/llm/kernel-driver/drive.ts:5105:29)\n    at async executeDriveRound (/ws/AiWorks/dominds/main/llm/kernel-driver/flow.ts:2058:19)\n    at async driveDialogStream (/ws/AiWorks/dominds/main/llm/kernel-driver/engine.ts:33:10) Extra: {\n  rootId: '09/cc/921bb763',\n  selfId: '09/cc/921bb763',\n  dialogId: '09/cc/921bb763',\n  course: 1,\n  genseq: 2,\n  agentId: 'tester',\n  dialogClass: 'MainDialog',\n  status: 'running',\n  activeGeneration: true,\n  dialogSnapshot: {\n    __class__: 'MainDialog',\n    agentId: 'tester',\n    diligencePushRemainingBudget: 0,\n    disableDiligencePush: false,\n    dlgStore: {\n      __class__: 'DiskFileDialogStore',\n      dialogId: '[DialogID depth limit reached]',\n      sayingContent: '',\n      thinkingContent: '',\n      thinkingReasoning: undefined,\n      thinkingStarted: false\n    },\n    id: {\n      __class__: 'DialogID',\n      rootId: '09/cc/921bb763',\n      selfId: '09/cc/921bb763'\n    },\n    msgs: [\n      '[Object depth limit reached]',\n      '[Object depth limit reached]',\n      '[Object depth limit reached]'\n    ],\n    reminders: [\n      '[Object depth limit reached]'\n    ],\n    taskDocPath: 'test-scenario.tsk',\n    _activeCalleeDialogIds: [],\n    _activeGenCourse: 1,\n    _activeGenSeq: 2,\n    _coursePrefixMsgs: [],\n    _courseRuntimeNoticeMsgs: [\n      '[Object depth limit reached]'\n    ],\n    _createdAt: '2026-10-31 06:17:32',\n    _currentCallId: null,\n    _currentCourse: 1,\n    _driveIntentMode: 'legacy',\n    _driveIntents: [],\n    _generationStarted: true,\n    _generationStartedGenseq: 2,\n    _lastAvailableContextHealth: undefined,\n    _lastContextHealth: undefined,\n    _lastContextHealthGenseq: undefined,\n    _lastUserLanguageCode: 'en',\n    __omittedKeys__: 9\n  }\n} [details_reduced depth<=3, keys<=24, items<=30] [extra_reduced]\n[2026/10/31-06:17:32] WARN: kernel-driver requeued root runtime wake after drive failure Extra: {\n  rootId: '09/cc/921bb763',\n  selfId: '09/cc/921bb763',\n  dialogId: '09/cc/921bb763',\n  hadRootRuntimeWakeBeforeCore: true,\n  reason: 'reply_tellask_back_delivered',\n  requeueReason: 'core_stopped',\n  source: 'kernel_driver_business_continuation'\n}\nrecovery reply-delivery-recovery-after-restart: FAIL\nrecovery must not pass after a background provider/drive failure\n+ actual - expected\n\n+ [\n+   {\n+     course: 1,\n+     dialog: {\n+       rootId: '09/cc/921bb763',\n+       selfId: '09/cc/921bb763'\n+     },\n+     error: 'Mock scenario has no configured response.\\n' +\n+       '\\n' +\n+       'Input role: \"tool\"\\n' +\n+       'No assistant response or tool call was generated. Configure an explicit response for this input.\\n' +\n+       '\\n' +\n+       'Database: `mock-db/default.yaml`\\n' +\n+       '\\n' +\n+       'Add to database:\\n' +\n+       '```yaml\\n' +\n+       'responses:\\n' +\n+       '  - message: \"[Dominds Tellask result | callId: tellask-back-target]\\\\n\\\\n【TellaskBack】\\\\n\\\\n@tester provided a Tellask reply:\\\\n\\\\n> Final answer delivered.\\\\n\\\\nregarding the original tellask: @tester\\\\n\\\\n> Need a final tellasker answer.\\\\n\\\\n[Dominds Tellask result status]\\\\n- Function: `tellaskBack`\\\\n- callId: tellask-back-target\\\\n- Note: This is a result fact for an earlier Tellask, not a new user request or a newly initiated function call in the current course.\"\\n' +\n+       '    role: \"tool\"\\n' +\n+       '    response: \"Your response here\"\\n' +\n+       '```',\n+     genseq: 2,\n+     timestamp: '2026-10-31 06:17:32',\n+     type: 'stream_error_evt'\n+   }\n+ ]\n- []\n\n[tests/cli] Keeping isolated rtws at /tmp/dominds-tests-rtws-hk9R1C\n[ELIFECYCLE] Command failed with exit code 1.\n",
+      "sha256": "bb746c722d31427989442783ac397e1f95f593c4f401ee2b60a310e92eefbd8d",
+      "hashMeaning": "仅来源身份；原文完整内嵌，不依赖临时路径，不按日志词句自动裁决含义。"
+    },
+    {
+      "id": "public-lock-before-fix",
+      "classification": "product-serialization-regression",
+      "meaning": "新增公开dialog锁排队反例在旧实现看到pending而非recorded，真实exit1；锁修复后应由主执行验证记录给出通过，不靠重复直到绿。",
+      "originFileLabel": "dominds-recovery-lock-red.log",
+      "rawLog": "$ tsx cli.ts -- --isolated-rtws recovery/reply-delivery-live-continuation.ts\nAssertionError [ERR_ASSERTION]: Expected values to be strictly equal:\n+ actual - expected\n\n+ 'pending'\n- 'recorded'\n\n    at assertRecoveryFacts (/ws/AiWorks/dominds/tests/helpers/reply-recovery.ts:208:10)\n    at async <anonymous> (/ws/AiWorks/dominds/tests/recovery/reply-delivery-live-continuation.ts:39:7)\n    at async withTempRtws (/ws/AiWorks/dominds/tests/kernel-driver/helpers.ts:60:3)\n    at async main (/ws/AiWorks/dominds/tests/recovery/reply-delivery-live-continuation.ts:20:3) {\n  generatedMessage: true,\n  code: 'ERR_ASSERTION',\n  actual: 'pending',\n  expected: 'recorded',\n  operator: 'strictEqual',\n  diff: 'simple'\n}\n[tests/cli] Keeping isolated rtws at /tmp/dominds-tests-rtws-hS1kBE\n[ELIFECYCLE] Command failed with exit code 1.\n",
+      "sha256": "6c573bc1dcfcccca4ea9e35693125190fa845ed25614227eb09f93e725b8eb52",
+      "hashMeaning": "仅来源身份；原文完整内嵌，不依赖临时路径，不按日志词句自动裁决含义。"
+    },
+    {
+      "id": "cold-concurrent-race",
+      "classification": "actual-product-race",
+      "meaning": "新冷进程整套运行捕获missing askerCourse局部stream_error和非零子进程；原始保留磁盘同finish-concurrent出现失败和成功两条local result。与旧漏配Mock是两个独立原因。",
+      "originFileLabel": "003-recovery_reply-delivery-recovery-after-restart.ts.log",
+      "rawLog": "{\"probe\":\"reply-recovery-phase\",\"phase\":\"seed\",\"pid\":403993,\"scenarios\":5}\nError: Command failed: /run/dwdhome/.cache/codex-runtimes/codex-primary-runtime/dependencies/node/bin/node /ws/AiWorks/dominds/node_modules/.pnpm/tsx@4.22.4/node_modules/tsx/dist/cli.mjs --tsconfig /ws/AiWorks/dominds/tests/tsconfig.json /ws/AiWorks/dominds/tests/rtws-script-runner.ts /ws/AiWorks/dominds/tests/helpers/reply-recovery-worker.ts recover\n[2026/10/31-06:35:49] [dialog-display-state] WARN: Healing stale sideDialog run-control flags after final response anchor Extra: {\n  dialogId: '87/e2/922c7035#ac/b4/922c7037',\n  clearedReplyObligation: false,\n  previousDisplayState: {\n    kind: 'idle_waiting_user'\n  },\n  previousExecutionMarker: null,\n  previousGenerating: null,\n  previousNextStepTriggerCount: 1,\n  responseCallId: 'work-already-delivered',\n  trigger: 'restart_reconciliation'\n}\n[2026/10/31-06:35:50] [dialog-display-state] WARN: Healing stale run-control projection from persistence facts Extra: {\n  dialogId: 'f2/92/922c7074',\n  healedDisplayState: {\n    kind: 'idle_waiting_user'\n  },\n  previousDisplayState: {\n    kind: 'waiting_side_dialog'\n  },\n  previousExecutionMarker: null,\n  trigger: 'restart_reconciliation'\n}\n[2026/10/31-06:35:50] ERROR: kernel-driver failed to supply sideDialog response\nError: Tellask reply anchor invariant violation: missing askerCourse (callerId=20/57/922c7065, sideDialogId=b0/e7/922c7067, callId=work-concurrent)\n    at supplyResponseToAskerDialog (/ws/AiWorks/dominds/main/llm/kernel-driver/sideDialog.ts:416:15)\n    at async supplySideDialogResponseToAssignedAskerIfPendingV2 (/ws/AiWorks/dominds/main/llm/kernel-driver/sideDialog.ts:874:3)\n    at async executeReplyTellaskCall (/ws/AiWorks/dominds/main/llm/kernel-driver/tellask-special.ts:2861:24)\n    at async executeValidTellaskCalls (/ws/AiWorks/dominds/main/llm/kernel-driver/tellask-special.ts:3266:29)\n    at async executeTellaskCalls (/ws/AiWorks/dominds/main/llm/kernel-driver/tellask-special.ts:3380:10)\n    at async processTellaskFunctionRound (/ws/AiWorks/dominds/main/llm/kernel-driver/tellask-special.ts:3585:24)\n    at async executeFunctionRound (/ws/AiWorks/dominds/main/llm/kernel-driver/drive.ts:3571:24)\n    at async driveDialogStreamCore (/ws/AiWorks/dominds/main/llm/kernel-driver/drive.ts:5320:24)\n    at async executeDriveRound (/ws/AiWorks/dominds/main/llm/kernel-driver/flow.ts:2058:19)\n    at async driveDialogStream (/ws/AiWorks/dominds/main/llm/kernel-driver/engine.ts:33:10) Extra: {\n  callerId: '20/57/922c7065',\n  sideDialogId: 'b0/e7/922c7067'\n}\n[2026/10/31-06:35:50] ERROR: Dialog stream error 'Tellask reply anchor invariant violation: missing askerCourse (callerId=20/57/922c7065, sideDialogId=b0/e7/922c7067, callId=work-concurrent)'\nError\n    at DiskFileDialogStore.streamError (/ws/AiWorks/dominds/main/persistence.ts:4016:49)\n    at SideDialog.streamError (/ws/AiWorks/dominds/main/dialog.ts:2217:27)\n    at driveDialogStreamCore (/ws/AiWorks/dominds/main/llm/kernel-driver/drive.ts:5762:23)\n    at async executeDriveRound (/ws/AiWorks/dominds/main/llm/kernel-driver/flow.ts:2058:19)\n    at async driveDialogStream (/ws/AiWorks/dominds/main/llm/kernel-driver/engine.ts:33:10) Extra: {\n  rootId: '20/57/922c7065',\n  selfId: 'b0/e7/922c7067',\n  dialogId: '20/57/922c7065#b0/e7/922c7067',\n  course: 1,\n  genseq: 2,\n  agentId: 'worker',\n  dialogClass: 'SideDialog',\n  status: 'running',\n  activeGeneration: false,\n  dialogSnapshot: {\n    __class__: 'SideDialog',\n    agentId: 'worker',\n    askerStack: '[Object depth limit reached]',\n    diligencePushRemainingBudget: 0,\n    disableDiligencePush: true,\n    dlgStore: '[DiskFileDialogStore depth limit reached]',\n    id: '[DialogID depth limit reached]',\n    mainDialog: '[MainDialog depth limit reached]',\n    msgs: '[Array depth limit reached]',\n    reminders: '[Array depth limit reached]',\n    sessionSlug: 'concurrent',\n    taskDocPath: 'test-scenario.tsk',\n    _activeCalleeDialogIds: '[Array depth limit reached]',\n    __omittedKeys__: 22\n  }\n} [details_reduced depth<=2, keys<=12, items<=12] [extra_reduced]\nAssertionError [ERR_ASSERTION]: Expected values to be strictly deep-equal:\n+ actual - expected\n\n+ [\n+   {\n+     course: 1,\n+     dialog: {\n+       rootId: '20/57/922c7065',\n+       selfId: 'b0/e7/922c7067'\n+     },\n+     error: 'Tellask reply anchor invariant violation: missing askerCourse (callerId=20/57/922c7065, sideDialogId=b0/e7/922c7067, callId=work-concurrent)',\n+     genseq: 2,\n+     timestamp: '2026-10-31 06:35:50',\n+     type: 'stream_error_evt'\n+   }\n+ ]\n- []\n\n    at <anonymous> (/ws/AiWorks/dominds/tests/helpers/reply-recovery-worker.ts:172:12)\n    at async withTempRtws (/ws/AiWorks/dominds/tests/kernel-driver/helpers.ts:60:3)\n    at async main (/ws/AiWorks/dominds/tests/helpers/reply-recovery-worker.ts:32:3) {\n  generatedMessage: true,\n  code: 'ERR_ASSERTION',\n  actual: [Array],\n  expected: [],\n  operator: 'deepStrictEqual',\n  diff: 'simple'\n}\n\n    at genericNodeError (node:internal/errors:985:15)\n    at wrappedFn (node:internal/errors:539:14)\n    at ChildProcess.exithandler (node:child_process:417:12)\n    at ChildProcess.emit (node:events:509:28)\n    at maybeClose (node:internal/child_process:1141:16)\n    at ChildProcess._handle.onexit (node:internal/child_process:306:5) {\n  code: 1,\n  killed: false,\n  signal: null,\n  cmd: '/run/dwdhome/.cache/codex-runtimes/codex-primary-runtime/dependencies/node/bin/node /ws/AiWorks/dominds/node_modules/.pnpm/tsx@4.22.4/node_modules/tsx/dist/cli.mjs --tsconfig /ws/AiWorks/dominds/tests/tsconfig.json /ws/AiWorks/dominds/tests/rtws-script-runner.ts /ws/AiWorks/dominds/tests/helpers/reply-recovery-worker.ts recover',\n  stdout: '',\n  stderr: '[2026/10/31-06:35:49] [dialog-display-state] WARN: Healing stale sideDialog run-control flags after final response anchor Extra: {\\n' +\n    \"  dialogId: '87/e2/922c7035#ac/b4/922c7037',\\n\" +\n    '  clearedReplyObligation: false,\\n' +\n    '  previousDisplayState: {\\n' +\n    \"    kind: 'idle_waiting_user'\\n\" +\n    '  },\\n' +\n    '  previousExecutionMarker: null,\\n' +\n    '  previousGenerating: null,\\n' +\n    '  previousNextStepTriggerCount: 1,\\n' +\n    \"  responseCallId: 'work-already-delivered',\\n\" +\n    \"  trigger: 'restart_reconciliation'\\n\" +\n    '}\\n' +\n    '[2026/10/31-06:35:50] [dialog-display-state] WARN: Healing stale run-control projection from persistence facts Extra: {\\n' +\n    \"  dialogId: 'f2/92/922c7074',\\n\" +\n    '  healedDisplayState: {\\n' +\n    \"    kind: 'idle_waiting_user'\\n\" +\n    '  },\\n' +\n    '  previousDisplayState: {\\n' +\n    \"    kind: 'waiting_side_dialog'\\n\" +\n    '  },\\n' +\n    '  previousExecutionMarker: null,\\n' +\n    \"  trigger: 'restart_reconciliation'\\n\" +\n    '}\\n' +\n    '[2026/10/31-06:35:50] ERROR: kernel-driver failed to supply sideDialog response\\n' +\n    'Error: Tellask reply anchor invariant violation: missing askerCourse (callerId=20/57/922c7065, sideDialogId=b0/e7/922c7067, callId=work-concurrent)\\n' +\n    '    at supplyResponseToAskerDialog (/ws/AiWorks/dominds/main/llm/kernel-driver/sideDialog.ts:416:15)\\n' +\n    '    at async supplySideDialogResponseToAssignedAskerIfPendingV2 (/ws/AiWorks/dominds/main/llm/kernel-driver/sideDialog.ts:874:3)\\n' +\n    '    at async executeReplyTellaskCall (/ws/AiWorks/dominds/main/llm/kernel-driver/tellask-special.ts:2861:24)\\n' +\n    '    at async executeValidTellaskCalls (/ws/AiWorks/dominds/main/llm/kernel-driver/tellask-special.ts:3266:29)\\n' +\n    '    at async executeTellaskCalls (/ws/AiWorks/dominds/main/llm/kernel-driver/tellask-special.ts:3380:10)\\n' +\n    '    at async processTellaskFunctionRound (/ws/AiWorks/dominds/main/llm/kernel-driver/tellask-special.ts:3585:24)\\n' +\n    '    at async executeFunctionRound (/ws/AiWorks/dominds/main/llm/kernel-driver/drive.ts:3571:24)\\n' +\n    '    at async driveDialogStreamCore (/ws/AiWorks/dominds/main/llm/kernel-driver/drive.ts:5320:24)\\n' +\n    '    at async executeDriveRound (/ws/AiWorks/dominds/main/llm/kernel-driver/flow.ts:2058:19)\\n' +\n    '    at async driveDialogStream (/ws/AiWorks/dominds/main/llm/kernel-driver/engine.ts:33:10) Extra: {\\n' +\n    \"  callerId: '20/57/922c7065',\\n\" +\n    \"  sideDialogId: 'b0/e7/922c7067'\\n\" +\n    '}\\n' +\n    \"[2026/10/31-06:35:50] ERROR: Dialog stream error 'Tellask reply anchor invariant violation: missing askerCourse (callerId=20/57/922c7065, sideDialogId=b0/e7/922c7067, callId=work-concurrent)'\\n\" +\n    'Error\\n' +\n    '    at DiskFileDialogStore.streamError (/ws/AiWorks/dominds/main/persistence.ts:4016:49)\\n' +\n    '    at SideDialog.streamError (/ws/AiWorks/dominds/main/dialog.ts:2217:27)\\n' +\n    '    at driveDialogStreamCore (/ws/AiWorks/dominds/main/llm/kernel-driver/drive.ts:5762:23)\\n' +\n    '    at async executeDriveRound (/ws/AiWorks/dominds/main/llm/kernel-driver/flow.ts:2058:19)\\n' +\n    '    at async driveDialogStream (/ws/AiWorks/dominds/main/llm/kernel-driver/engine.ts:33:10) Extra: {\\n' +\n    \"  rootId: '20/57/922c7065',\\n\" +\n    \"  selfId: 'b0/e7/922c7067',\\n\" +\n    \"  dialogId: '20/57/922c7065#b0/e7/922c7067',\\n\" +\n    '  course: 1,\\n' +\n    '  genseq: 2,\\n' +\n    \"  agentId: 'worker',\\n\" +\n    \"  dialogClass: 'SideDialog',\\n\" +\n    \"  status: 'running',\\n\" +\n    '  activeGeneration: false,\\n' +\n    '  dialogSnapshot: {\\n' +\n    \"    __class__: 'SideDialog',\\n\" +\n    \"    agentId: 'worker',\\n\" +\n    \"    askerStack: '[Object depth limit reached]',\\n\" +\n    '    diligencePushRemainingBudget: 0,\\n' +\n    '    disableDiligencePush: true,\\n' +\n    \"    dlgStore: '[DiskFileDialogStore depth limit reached]',\\n\" +\n    \"    id: '[DialogID depth limit reached]',\\n\" +\n    \"    mainDialog: '[MainDialog depth limit reached]',\\n\" +\n    \"    msgs: '[Array depth limit reached]',\\n\" +\n    \"    reminders: '[Array depth limit reached]',\\n\" +\n    \"    sessionSlug: 'concurrent',\\n\" +\n    \"    taskDocPath: 'test-scenario.tsk',\\n\" +\n    \"    _activeCalleeDialogIds: '[Array depth limit reached]',\\n\" +\n    '    __omittedKeys__: 22\\n' +\n    '  }\\n' +\n    '} [details_reduced depth<=2, keys<=12, items<=12] [extra_reduced]\\n' +\n    'AssertionError [ERR_ASSERTION]: Expected values to be strictly deep-equal:\\n' +\n    '+ actual - expected\\n' +\n    '\\n' +\n    '+ [\\n' +\n    '+   {\\n' +\n    '+     course: 1,\\n' +\n    '+     dialog: {\\n' +\n    \"+       rootId: '20/57/922c7065',\\n\" +\n    \"+       selfId: 'b0/e7/922c7067'\\n\" +\n    '+     },\\n' +\n    \"+     error: 'Tellask reply anchor invariant violation: missing askerCourse (callerId=20/57/922c7065, sideDialogId=b0/e7/922c7067, callId=work-concurrent)',\\n\" +\n    '+     genseq: 2,\\n' +\n    \"+     timestamp: '2026-10-31 06:35:50',\\n\" +\n    \"+     type: 'stream_error_evt'\\n\" +\n    '+   }\\n' +\n    '+ ]\\n' +\n    '- []\\n' +\n    '\\n' +\n    '    at <anonymous> (/ws/AiWorks/dominds/tests/helpers/reply-recovery-worker.ts:172:12)\\n' +\n    '    at async withTempRtws (/ws/AiWorks/dominds/tests/kernel-driver/helpers.ts:60:3)\\n' +\n    '    at async main (/ws/AiWorks/dominds/tests/helpers/reply-recovery-worker.ts:32:3) {\\n' +\n    '  generatedMessage: true,\\n' +\n    \"  code: 'ERR_ASSERTION',\\n\" +\n    '  actual: [Array],\\n' +\n    '  expected: [],\\n' +\n    \"  operator: 'deepStrictEqual',\\n\" +\n    \"  diff: 'simple'\\n\" +\n    '}\\n'\n}\n[tests/cli] Keeping isolated rtws at /tmp/dominds-tests-recovery-hvgZWa/3.tmp/dominds-tests-rtws-p6kbA0\n",
+      "sha256": "0d0b8fe95566fe2a3a40b9dbb3b2abb5982c9935961b58e961d121fbe5df5041",
+      "hashMeaning": "仅来源身份；原文完整内嵌，不依赖临时路径，不按日志词句自动裁决含义。",
+      "observedPersistedRecords": [
+        {
+          "ts": "2026-10-31 06:35:50",
+          "type": "tellask_result_record",
+          "callId": "back-concurrent",
+          "status": "completed",
+          "content": "[Dominds Tellask result | callId: back-concurrent]\n\n【TellaskBack】\n\n@tester provided a Tellask reply:\n\n> reply-data-concurrent\n\nregarding the original tellask: @worker\n\n> question-concurrent\n\n[Dominds Tellask result status]\n- Function: `tellaskBack`\n- callId: back-concurrent\n- Note: This is a result fact for an earlier Tellask, not a new user request or a newly initiated function call in the current course.\n",
+          "callSiteCourse": 1,
+          "callSiteGenseq": 1,
+          "responder": {
+            "responderId": "tester",
+            "agentId": "tester",
+            "originMemberId": "worker"
+          },
+          "route": {
+            "calleeDialogId": "20/57/922c7065"
+          },
+          "callName": "tellaskBack",
+          "call": {
+            "tellaskContent": "question-concurrent"
+          },
+          "rootCourse": 1,
+          "rootGenseq": 0
+        },
+        {
+          "ts": "2026-10-31 06:35:50",
+          "type": "tellask_reply_resolution_record",
+          "genseq": 2,
+          "callId": "finish-concurrent",
+          "replyCallName": "replyTellask",
+          "targetCallId": "work-concurrent",
+          "rootCourse": 1,
+          "rootGenseq": 0
+        },
+        {
+          "ts": "2026-10-31 06:35:50",
+          "type": "func_result_record",
+          "id": "finish-concurrent",
+          "name": "replyTellask",
+          "content": "Special function 'replyTellask' execution failed: Error: Tellask reply anchor invariant violation: missing askerCourse (callerId=20/57/922c7065, sideDialogId=b0/e7/922c7067, callId=work-concurrent)",
+          "genseq": 2,
+          "rootCourse": 1,
+          "rootGenseq": 0
+        },
+        {
+          "ts": "2026-10-31 06:35:50",
+          "type": "func_result_record",
+          "id": "finish-concurrent",
+          "name": "replyTellask",
+          "content": "Reply delivered via `replyTellask`.",
+          "genseq": 2,
+          "rootCourse": 1,
+          "rootGenseq": 0
+        }
+      ]
+    }
+  ],
+  "reviewHistory": [
+    {
+      "classification": "baseline-not-acceptance",
+      "meaning": "旧4baseline虽exit0，局部provider stream_error漏检，不作为有效业务全通过；原版全文已审，新观察器实际红例完整保留。"
+    },
+    {
+      "classification": "semantic-material-versions",
+      "meaning": "初始7、中间补续办闭合后7及最终补payload断言后7均分别完整阅读，各份语义通过但不互相自动接受；最终范围只指PDRiq3七份。没有凭同ID/相同字节/hash复用verdict。"
+    }
+  ],
+  "sourceFingerprints": [
+    {
+      "path": "AGENTS.md",
+      "sha256": "def60770b1c7df4fbc09b5881a01f64c20688ddc4928b9976200f7eb6e795164",
+      "bytes": 12213,
+      "scope": "本批完整改动已审（含未跟踪helper）"
+    },
+    {
+      "path": "docs/testing-strategy.md",
+      "sha256": "0073d2eaf9e6fc5cacc5c49ed98b78e9a06f228588f97e9c943a35b7a1cf79c4",
+      "bytes": 67260,
+      "scope": "本批完整改动已审（含未跟踪helper）"
+    },
+    {
+      "path": "main/recovery/reply-delivery-recovery.ts",
+      "sha256": "dfa502a7464abcd7ae4ee6c8506c84fab1eed62b8405c87c2303f613283d8eee",
+      "bytes": 5082,
+      "scope": "本批完整改动已审（含未跟踪helper）"
+    },
+    {
+      "path": "package.json",
+      "sha256": "3aac9a56567bcaa545817a41d0b86f0f2f69c12530396b10c0fe357e30df55e6",
+      "bytes": 5131,
+      "scope": "本批完整改动已审（含未跟踪helper）"
+    },
+    {
+      "path": "tests/README.md",
+      "sha256": "9b957a9f673d8683dbcb89e0224afadeb0bc8ceba17cc217abac0a266eea0d39",
+      "bytes": 9749,
+      "scope": "本批完整改动已审（含未跟踪helper）"
+    },
+    {
+      "path": "tests/audit.json",
+      "sha256": "4c48776aaa100e1815e307f448f19893d6be1a64bdda792860b98beadf6b95b2",
+      "bytes": 75639,
+      "scope": "本批完整改动已审（含未跟踪helper）"
+    },
+    {
+      "path": "tests/package.json",
+      "sha256": "14688b96486abaa5caacc2bd910b077dc753697bbe48f4b69528b3672d4777c9",
+      "bytes": 22060,
+      "scope": "本批完整改动已审（含未跟踪helper）"
+    },
+    {
+      "path": "tests/recovery/open-generation-recovery-stale-clears-on-backend-loop.ts",
+      "sha256": "d684f48a50ba3389df65d59f315163678c67ea395e2cef67d5f88305b46210e3",
+      "bytes": 5546,
+      "scope": "本批完整改动已审（含未跟踪helper）"
+    },
+    {
+      "path": "tests/recovery/reply-delivery-live-continuation.ts",
+      "sha256": "01da90a15e9d6131e2e12980bf962def325656c345616002bbc2abb980e12ecd",
+      "bytes": 5149,
+      "scope": "本批完整改动已审（含未跟踪helper）"
+    },
+    {
+      "path": "tests/recovery/reply-delivery-recovery-after-restart.ts",
+      "sha256": "7515b9326b216b4e9ae3a628d69a302abe61dfb4ad2be932fb99970521033f90",
+      "bytes": 2198,
+      "scope": "本批完整改动已审（含未跟踪helper）"
+    },
+    {
+      "path": "tests/recovery/reply-delivery-recovery-waits-for-q4h.ts",
+      "sha256": "013f1016287921879621e62e9fc52e524650601ededd0692c48fe08caa90519b",
+      "bytes": 5534,
+      "scope": "本批完整改动已审（含未跟踪helper）"
+    },
+    {
+      "path": "tests/run.mjs",
+      "sha256": "13250e4ce6715865473b67eacae528283a8de7be59ee78fe562f3b0b2dd667e6",
+      "bytes": 14656,
+      "scope": "本批完整改动已审（含未跟踪helper）"
+    },
+    {
+      "path": "tests/helpers/reply-recovery.ts",
+      "sha256": "853dbb84bf6b2b4e394b638138105be1ba282afe943cef5457d826a6f183f971",
+      "bytes": 11536,
+      "scope": "本批完整改动已审（含未跟踪helper）"
+    },
+    {
+      "path": "tests/helpers/reply-recovery-worker.ts",
+      "sha256": "21c2d78c7db2eb422cb8a8b13aa82b4a6c5dfe30d803095a808e6502e4740962",
+      "bytes": 10592,
+      "scope": "本批完整改动已审（含未跟踪helper）"
+    },
+    {
+      "path": "tests/helpers/message-provider.ts",
+      "sha256": "6fc5484d516ae293024a05cc81ad50fc70de7e0be7eb40ed3682c2db51109495",
+      "bytes": 3383,
+      "scope": "相关实现/支持/环境身份；只核对报告边界，不表示整文件或额外候选全部审计"
+    },
+    {
+      "path": "tests/helpers/dialog-events.ts",
+      "sha256": "2bd808d4444f7e02a825b18b0664680240d748ea671a65f7dd385ce2d5eb2592",
+      "bytes": 727,
+      "scope": "相关实现/支持/环境身份；只核对报告边界，不表示整文件或额外候选全部审计"
+    },
+    {
+      "path": "tests/helpers/semantic-evidence.ts",
+      "sha256": "a41efd1058ea6d65394059180dabf987e17ef0d219bae95ca67edd33db7e3777",
+      "bytes": 2050,
+      "scope": "相关实现/支持/环境身份；只核对报告边界，不表示整文件或额外候选全部审计"
+    },
+    {
+      "path": "tests/kernel-driver/helpers.ts",
+      "sha256": "520b1288cdb2114cb28cb9dcebdf95c7b0f19b1703fe3837a780ffb2d916f9a1",
+      "bytes": 10137,
+      "scope": "相关实现/支持/环境身份；只核对报告边界，不表示整文件或额外候选全部审计"
+    },
+    {
+      "path": "tests/cli.ts",
+      "sha256": "b9f9bc1f034a2a70c4b7bfbc2300ae854706f09a9788b7f4ca17b3a263f41598",
+      "bytes": 5618,
+      "scope": "相关实现/支持/环境身份；只核对报告边界，不表示整文件或额外候选全部审计"
+    },
+    {
+      "path": "tests/rtws-script-runner.ts",
+      "sha256": "410949f941c1f0166b4e42dace6fa9d87138740c8d6a85aac9b5d99852730359",
+      "bytes": 920,
+      "scope": "相关实现/支持/环境身份；只核对报告边界，不表示整文件或额外候选全部审计"
+    },
+    {
+      "path": "tests/runner.test.mjs",
+      "sha256": "47030439386e142d7897fbe03bd3ef095211458f588db5fcb398c47ddce29fea",
+      "bytes": 6322,
+      "scope": "相关实现/支持/环境身份；只核对报告边界，不表示整文件或额外候选全部审计"
+    },
+    {
+      "path": "main/dialog.ts",
+      "sha256": "86d52e01fd224791c49c9438dca20e44991c0396bfc0a95738483908cccf6966",
+      "bytes": 104035,
+      "scope": "相关实现/支持/环境身份；只核对报告边界，不表示整文件或额外候选全部审计"
+    },
+    {
+      "path": "main/dialog-global-registry.ts",
+      "sha256": "33e331312d402851a1b8678cb532c1044fe9bcfac951be236dfdf22617f01a7f",
+      "bytes": 13182,
+      "scope": "相关实现/支持/环境身份；只核对报告边界，不表示整文件或额外候选全部审计"
+    },
+    {
+      "path": "main/dialog-instance-registry.ts",
+      "sha256": "002c470252e0be1558f529fe51769994d628d0a69669778433e5294899c57d36",
+      "bytes": 8482,
+      "scope": "相关实现/支持/环境身份；只核对报告边界，不表示整文件或额外候选全部审计"
+    },
+    {
+      "path": "main/dialog-display-state.ts",
+      "sha256": "147b51183ab2c4a0589f2c38edcd3f9fb660b2bcc089a738e898e12929a3474e",
+      "bytes": 42421,
+      "scope": "相关实现/支持/环境身份；只核对报告边界，不表示整文件或额外候选全部审计"
+    },
+    {
+      "path": "main/persistence.ts",
+      "sha256": "0cec578ad261491aa6437e0c7cc6e21782a9e239e75edc64e962c2175c125baf",
+      "bytes": 431909,
+      "scope": "相关实现/支持/环境身份；只核对报告边界，不表示整文件或额外候选全部审计"
+    },
+    {
+      "path": "main/server.ts",
+      "sha256": "19402c05fc8b2472d36e6e18cb8239f674b4cab32c190b5aedf3b8cbd4a1eb37",
+      "bytes": 12951,
+      "scope": "相关实现/支持/环境身份；只核对报告边界，不表示整文件或额外候选全部审计"
+    },
+    {
+      "path": "main/server/websocket-handler.ts",
+      "sha256": "88d6732e6980bb07bae6959953c3c985abd2bc50f3ac9c123408d7a1ba28e115",
+      "bytes": 91921,
+      "scope": "相关实现/支持/环境身份；只核对报告边界，不表示整文件或额外候选全部审计"
+    },
+    {
+      "path": "main/llm/kernel-driver/tellask-special.ts",
+      "sha256": "d039124649472b40fe316f2b02e7762037782f9ebea411186a12e52d2517dde2",
+      "bytes": 129563,
+      "scope": "相关实现/支持/环境身份；只核对报告边界，不表示整文件或额外候选全部审计"
+    },
+    {
+      "path": "main/llm/kernel-driver/sideDialog.ts",
+      "sha256": "e5b73b7d590dde64af17da453c73853effbd5d7cf9a36cfd3b60d7b54f2c0e7c",
+      "bytes": 31269,
+      "scope": "相关实现/支持/环境身份；只核对报告边界，不表示整文件或额外候选全部审计"
+    },
+    {
+      "path": "main/llm/kernel-driver/loop.ts",
+      "sha256": "5d9c39d2557dc9b360cc7b2f986c45e4b8f611408c8b6697ea069fca0412c48d",
+      "bytes": 22076,
+      "scope": "相关实现/支持/环境身份；只核对报告边界，不表示整文件或额外候选全部审计"
+    },
+    {
+      "path": "main/llm/kernel-driver/flow.ts",
+      "sha256": "373c2357e92c3db9f85f51357c49c4d3f242b02ce87100e685a404f12fe819d9",
+      "bytes": 104524,
+      "scope": "相关实现/支持/环境身份；只核对报告边界，不表示整文件或额外候选全部审计"
+    },
+    {
+      "path": "main/llm/kernel-driver/engine.ts",
+      "sha256": "035bc97d012c2674a0d543c2d395be6ea71a7a5c52955ddaafddcb770cc73c6e",
+      "bytes": 3183,
+      "scope": "相关实现/支持/环境身份；只核对报告边界，不表示整文件或额外候选全部审计"
+    },
+    {
+      "path": "main/recovery/open-generation-recovery.ts",
+      "sha256": "49ba367b4c91187a6b83b2715b0a34a198716ac791f2f7c7be039864ecba40d0",
+      "bytes": 5055,
+      "scope": "相关实现/支持/环境身份；只核对报告边界，不表示整文件或额外候选全部审计"
+    },
+    {
+      "path": "main/llm/gen/registry.ts",
+      "sha256": "37d40608552950a2d9afe13823d6119f3976fcd3d66ea9d18b9956230a4c4b14",
+      "bytes": 1198,
+      "scope": "相关实现/支持/环境身份；只核对报告边界，不表示整文件或额外候选全部审计"
+    },
+    {
+      "path": "packages/kernel/src/types/storage.ts",
+      "sha256": "77ea34b661bb03610d5a023b9a541ee6a426bc94b93bfb5dd24ad69010d07633",
+      "bytes": 36143,
+      "scope": "相关实现/支持/环境身份；只核对报告边界，不表示整文件或额外候选全部审计"
+    },
+    {
+      "path": "packages/kernel/src/types/dialog.ts",
+      "sha256": "a994239c98c166a2474894c858583ff393f4091791298f0e9f32760c633f31ef",
+      "bytes": 16758,
+      "scope": "相关实现/支持/环境身份；只核对报告边界，不表示整文件或额外候选全部审计"
+    },
+    {
+      "path": "pnpm-lock.yaml",
+      "sha256": "39b09df41afbe38240cc837316680ec0b7a2ceb02372f02f6528168adf21da19",
+      "bytes": 84789,
+      "scope": "相关实现/支持/环境身份；只核对报告边界，不表示整文件或额外候选全部审计"
+    }
+  ],
+  "baselineFingerprints": [
+    {
+      "path": "tests/recovery/open-generation-recovery-stale-clears-on-backend-loop.ts",
+      "revision": "489894f5163bd91dccbf72313e10876137e83af1",
+      "sha256": "a15696ad9c33f2cdb45625d2fb7a283d6cc5a4f6065e67479e7838750227a57c",
+      "bytes": 4413,
+      "meaning": "已读原始版本身份，可由git基线重建，非语义oracle"
+    },
+    {
+      "path": "tests/recovery/reply-delivery-live-continuation.ts",
+      "revision": "489894f5163bd91dccbf72313e10876137e83af1",
+      "sha256": "c2cb9927263abbf2bbf3c5fe29594681bbb29332f49bfc2347a5a72be0bbab1a",
+      "bytes": 5368,
+      "meaning": "已读原始版本身份，可由git基线重建，非语义oracle"
+    },
+    {
+      "path": "tests/recovery/reply-delivery-recovery-after-restart.ts",
+      "revision": "489894f5163bd91dccbf72313e10876137e83af1",
+      "sha256": "e2017387407c515a6b443ce871d3804fd2a39e71eee33534114ffe35ee18b624",
+      "bytes": 10560,
+      "meaning": "已读原始版本身份，可由git基线重建，非语义oracle"
+    },
+    {
+      "path": "tests/recovery/reply-delivery-recovery-waits-for-q4h.ts",
+      "revision": "489894f5163bd91dccbf72313e10876137e83af1",
+      "sha256": "76a0a42ff4292ee73dbd5d57ffe4f4523ed85f35fc40b4d7da928073da610501",
+      "bytes": 7106,
+      "meaning": "已读原始版本身份，可由git基线重建，非语义oracle"
+    },
+    {
+      "path": "main/recovery/reply-delivery-recovery.ts",
+      "revision": "489894f5163bd91dccbf72313e10876137e83af1",
+      "sha256": "3424704599a598f4d4084384df4690bf215aaadbe9128c16b2afe5ca788e6ddc",
+      "bytes": 4775,
+      "meaning": "已读原始版本身份，可由git基线重建，非语义oracle"
+    }
+  ],
+  "provenance": {
+    "retention": "最终7份和已实际读过的14份中间材料均完整内嵌实际文本/context/逐份理由；三份before失败日志及实际双记录完整保留，临时目录仅标签非长期依赖。",
+    "hashPolicy": "SHA256只识别来源，不判含义、不接受之后相同ID/hash的新输出，不hash报告自身。",
+    "reproduce": "根packageManager固定环境下pnpm run test:recovery执行4behavior，pnpm run test:semantic:recovery仅生成3producer的新pending材料；冷candidate内部依次独立seed/recover/verify。单项经tests/cli.ts isolated rtws，不并发共享case。",
+    "runtime": "具体Node/Corepack固定运行环境与实际检查终态由主执行verification合入；独立审查只读代码/材料并写本报告，未改实现或运行重叠build。",
+    "trackedDiffIdentity": {
+      "sha256": "87a2c4f1fd95033f39e19a218382205a061e225004ff17873081c6639727b526",
+      "meaning": "本批sourceFingerprints所列已跟踪源码相对sourceBaseRevision的完整diff身份；不含另批未提交文件、报告自身或两个当时untracked新helper。两helper已单独全文审查并以sourceFingerprints保留身份；哈希不接受语义。"
+    },
+    "sourceMeaning": "最终磁盘38份（14份本批改动含两helper，24份相关依赖）及基线5份身份。源身份只追溯本报告已审材料，最终commit+base可重建改动；实际语义原文/必要情境全部内嵌。",
+    "retentionCheck": "最终7份及此前实际独立读过14份材料都有完整actualText/context/逐案rationale/scope/输出SHA；三份失败日志和实际相同reply双记录内嵌。保全和来源核对只检材料身份，不裁决含义或自动接受新输出。"
+  },
+  "limits": [
+    "语义仅最终7份英文ack，未新增locale合同；ack确认送达不代表受控reply payload的推理或任务正确性。",
+    "真实runtime/persistence/backend与message-only受控provider；没有live模型、HTTP server/真实浏览器、provider-native side-channel覆盖，也无显式双transport矩阵宣称。",
+    "独立writer/recovery/verifier进程共享同一受管workspace顺序执行，seed停在公开API边界并自然退出等待写回，非SIGKILL、断电、磁盘fsync或任意崩溃时刻证明。",
+    "两个停止root显式resume通过drive options公共执行入口，不冒称真正WebSocket resume消息；Q4H只public persistence gate，不声称回答物化/真人问答链路。",
+    "局部事件订阅在动作前，action/drive完成后EOS排空；全局broadcaster不代替局部stream错误观察。锁范围为单进程真实dialog，不覆盖多进程写竞争。",
+    "全目录类型仍218失败、149候选未审；4recovery审查完成不等于所有整改目标完成。"
+  ],
+  "verification": {
+    "status": "scoped_checks_passed_full_test_types_failed",
+    "runtime": "Node 24.19.0; repository-pinned Corepack pnpm 11.17.0 through /tmp/dominds-pnpm, no added dependencies or framework.",
+    "behavior": {
+      "recovery": {
+        "total": 4,
+        "passed": 4,
+        "failed": 0,
+        "timedOut": 0,
+        "cases": [
+          {
+            "id": "recovery/open-generation-recovery-stale-clears-on-backend-loop.ts",
+            "status": "passed",
+            "exitCode": 0
+          },
+          {
+            "id": "recovery/reply-delivery-live-continuation.ts",
+            "status": "passed",
+            "exitCode": 0
+          },
+          {
+            "id": "recovery/reply-delivery-recovery-after-restart.ts",
+            "status": "passed",
+            "exitCode": 0
+          },
+          {
+            "id": "recovery/reply-delivery-recovery-waits-for-q4h.ts",
+            "status": "passed",
+            "exitCode": 0
+          }
+        ]
+      },
+      "kernel": {
+        "total": 63,
+        "passed": 63,
+        "failed": 0,
+        "timedOut": 0,
+        "cases": [
+          {
+            "id": "kernel-driver/answer-human-a2h-deferred.ts",
+            "status": "passed",
+            "exitCode": 0
+          },
+          {
+            "id": "kernel-driver/answering-a2h-side-reply-reminder.ts",
+            "status": "passed",
+            "exitCode": 0
+          },
+          {
+            "id": "kernel-driver/backend-loop-persists-drive-error-stall.ts",
+            "status": "passed",
+            "exitCode": 0
+          },
+          {
+            "id": "kernel-driver/clear-mind-blocks-on-sibling-tool-failure.ts",
+            "status": "passed",
+            "exitCode": 0
+          },
+          {
+            "id": "kernel-driver/clear-mind-critical-auto-course.ts",
+            "status": "passed",
+            "exitCode": 0
+          },
+          {
+            "id": "kernel-driver/context-health-large-tool-output-hidden.ts",
+            "status": "passed",
+            "exitCode": 0
+          },
+          {
+            "id": "kernel-driver/context-health-model-limit-usage.ts",
+            "status": "passed",
+            "exitCode": 0
+          },
+          {
+            "id": "kernel-driver/context-health-multi-iter-gate.ts",
+            "status": "passed",
+            "exitCode": 0
+          },
+          {
+            "id": "kernel-driver/critical-queued-user-interjection.ts",
+            "status": "passed",
+            "exitCode": 0
+          },
+          {
+            "id": "kernel-driver/duplicate-raw-callid-effective-id.ts",
+            "status": "passed",
+            "exitCode": 0
+          },
+          {
+            "id": "kernel-driver/duplicate-tool-call-feedback.ts",
+            "status": "passed",
+            "exitCode": 0
+          },
+          {
+            "id": "kernel-driver/fbr-internal-conclusion-flow.ts",
+            "status": "passed",
+            "exitCode": 0
+          },
+          {
+            "id": "kernel-driver/fbr-model-params-merge.ts",
+            "status": "passed",
+            "exitCode": 0
+          },
+          {
+            "id": "kernel-driver/func-call-persists-before-result.ts",
+            "status": "passed",
+            "exitCode": 0
+          },
+          {
+            "id": "kernel-driver/idle-with-active-reply-obligation-display-state.ts",
+            "status": "passed",
+            "exitCode": 0
+          },
+          {
+            "id": "kernel-driver/immediate-followup-trigger-repair.ts",
+            "status": "passed",
+            "exitCode": 0
+          },
+          {
+            "id": "kernel-driver/invalid-json-tool-call-feedback.ts",
+            "status": "passed",
+            "exitCode": 0
+          },
+          {
+            "id": "kernel-driver/llm-request-failure-single-stream-error.ts",
+            "status": "passed",
+            "exitCode": 0
+          },
+          {
+            "id": "kernel-driver/mainline-reply-obligation-reminder-direct-fallback.ts",
+            "status": "passed",
+            "exitCode": 0
+          },
+          {
+            "id": "kernel-driver/mock-provider-contract.ts",
+            "status": "passed",
+            "exitCode": 0
+          },
+          {
+            "id": "kernel-driver/multi-iter-tool-round-context-continuity.ts",
+            "status": "passed",
+            "exitCode": 0
+          },
+          {
+            "id": "kernel-driver/multiple-askhuman-invalid.ts",
+            "status": "passed",
+            "exitCode": 0
+          },
+          {
+            "id": "kernel-driver/pending-user-interjection-recovery.ts",
+            "status": "passed",
+            "exitCode": 0
+          },
+          {
+            "id": "kernel-driver/pre-drive-latest-load-failure-stops.ts",
+            "status": "passed",
+            "exitCode": 0
+          },
+          {
+            "id": "kernel-driver/q4h-preserves-diligence-budget.ts",
+            "status": "passed",
+            "exitCode": 0
+          },
+          {
+            "id": "kernel-driver/reminder-context-footer-state.ts",
+            "status": "passed",
+            "exitCode": 0
+          },
+          {
+            "id": "kernel-driver/repeated-tool-call-reminder.ts",
+            "status": "passed",
+            "exitCode": 0
+          },
+          {
+            "id": "kernel-driver/reply-tool-dynamic-guidance.ts",
+            "status": "passed",
+            "exitCode": 0
+          },
+          {
+            "id": "kernel-driver/retry-recovery-diligence-push-with-keep-going-disabled.ts",
+            "status": "passed",
+            "exitCode": 0
+          },
+          {
+            "id": "kernel-driver/root-cross-trigger-does-not-reenter-during-tail.ts",
+            "status": "passed",
+            "exitCode": 0
+          },
+          {
+            "id": "kernel-driver/root-runtime-wake-lifecycle.ts",
+            "status": "passed",
+            "exitCode": 0
+          },
+          {
+            "id": "kernel-driver/root-tail-error-still-rewakes-root-runtime-wake.ts",
+            "status": "passed",
+            "exitCode": 0
+          },
+          {
+            "id": "kernel-driver/root-tellask-background-callee-badge-event.ts",
+            "status": "passed",
+            "exitCode": 0
+          },
+          {
+            "id": "kernel-driver/runtime-reminder-context.ts",
+            "status": "passed",
+            "exitCode": 0
+          },
+          {
+            "id": "kernel-driver/sideDialog-askback-auto-resume-while-pending-registered-sideDialog.ts",
+            "status": "passed",
+            "exitCode": 0
+          },
+          {
+            "id": "kernel-driver/sideDialog-askback-reply-tool-no-double-delivery.ts",
+            "status": "passed",
+            "exitCode": 0
+          },
+          {
+            "id": "kernel-driver/sideDialog-backend-loop-retries-after-active-run-blocker.ts",
+            "status": "passed",
+            "exitCode": 0
+          },
+          {
+            "id": "kernel-driver/sideDialog-caller-result-arrival-backend-wake-queue.ts",
+            "status": "passed",
+            "exitCode": 0
+          },
+          {
+            "id": "kernel-driver/sideDialog-clear-mind-keeps-pending-round.ts",
+            "status": "passed",
+            "exitCode": 0
+          },
+          {
+            "id": "kernel-driver/sideDialog-diligence-push-state.ts",
+            "status": "passed",
+            "exitCode": 0
+          },
+          {
+            "id": "kernel-driver/sideDialog-direct-fallback-thinking.ts",
+            "status": "passed",
+            "exitCode": 0
+          },
+          {
+            "id": "kernel-driver/sideDialog-mixed-tool-round-honors-suspension.ts",
+            "status": "passed",
+            "exitCode": 0
+          },
+          {
+            "id": "kernel-driver/sideDialog-multi-pending-registers-before-drive.ts",
+            "status": "passed",
+            "exitCode": 0
+          },
+          {
+            "id": "kernel-driver/sideDialog-new-course-prompt-survives-restore.ts",
+            "status": "passed",
+            "exitCode": 0
+          },
+          {
+            "id": "kernel-driver/sideDialog-new-course-update-reminder-followup.ts",
+            "status": "passed",
+            "exitCode": 0
+          },
+          {
+            "id": "kernel-driver/sideDialog-no-empty-autodrive-after-final-response.ts",
+            "status": "passed",
+            "exitCode": 0
+          },
+          {
+            "id": "kernel-driver/sideDialog-pending-runtime-prompt-counts-as-resumable.ts",
+            "status": "passed",
+            "exitCode": 0
+          },
+          {
+            "id": "kernel-driver/sideDialog-queue-commit-mirror.ts",
+            "status": "passed",
+            "exitCode": 0
+          },
+          {
+            "id": "kernel-driver/sideDialog-queue-interrupt-rollback.ts",
+            "status": "passed",
+            "exitCode": 0
+          },
+          {
+            "id": "kernel-driver/sideDialog-registered-initial-auto-drive.ts",
+            "status": "passed",
+            "exitCode": 0
+          },
+          {
+            "id": "kernel-driver/sideDialog-registered-update-clear-mind-rebinds-reply-target.ts",
+            "status": "passed",
+            "exitCode": 0
+          },
+          {
+            "id": "kernel-driver/sideDialog-registered-update-queues-queued-prompt.ts",
+            "status": "passed",
+            "exitCode": 0
+          },
+          {
+            "id": "kernel-driver/sideDialog-registered-update-replaces-pending-round.ts",
+            "status": "passed",
+            "exitCode": 0
+          },
+          {
+            "id": "kernel-driver/sideDialog-reply-delivery-marked-delivered.ts",
+            "status": "passed",
+            "exitCode": 0
+          },
+          {
+            "id": "kernel-driver/sideDialog-reply-missing-assignment-anchor.ts",
+            "status": "passed",
+            "exitCode": 0
+          },
+          {
+            "id": "kernel-driver/sideDialog-stale-pending-runtime-prompt-clears-on-restore.ts",
+            "status": "passed",
+            "exitCode": 0
+          },
+          {
+            "id": "kernel-driver/stale-pending-runtime-prompt-queue-claim.ts",
+            "status": "passed",
+            "exitCode": 0
+          },
+          {
+            "id": "kernel-driver/tellask-background-dispatch-does-not-immediate-followup.ts",
+            "status": "passed",
+            "exitCode": 0
+          },
+          {
+            "id": "kernel-driver/tellask-resolved-result-context-pointer.ts",
+            "status": "passed",
+            "exitCode": 0
+          },
+          {
+            "id": "kernel-driver/unexpected-idle-after-tool-round-debug-dump.ts",
+            "status": "passed",
+            "exitCode": 0
+          },
+          {
+            "id": "kernel-driver/update-reminder-immediate-followup.ts",
+            "status": "passed",
+            "exitCode": 0
+          },
+          {
+            "id": "kernel-driver/user-interject-active-callee-suppresses-reply-guidance.ts",
+            "status": "passed",
+            "exitCode": 0
+          },
+          {
+            "id": "kernel-driver/user-interject-active-callee-tool-followup.ts",
+            "status": "passed",
+            "exitCode": 0
+          }
+        ]
+      },
+      "persistence": {
+        "total": 19,
+        "passed": 19,
+        "failed": 0,
+        "timedOut": 0,
+        "cases": [
+          {
+            "id": "persistence/call-duplicate-callid-loud.ts",
+            "status": "passed",
+            "exitCode": 0
+          },
+          {
+            "id": "persistence/cross-course-tellask-requires-carryover-content.ts",
+            "status": "passed",
+            "exitCode": 0
+          },
+          {
+            "id": "persistence/dialog-fork.ts",
+            "status": "passed",
+            "exitCode": 0
+          },
+          {
+            "id": "persistence/fork-sideDialog-creation.ts",
+            "status": "passed",
+            "exitCode": 0
+          },
+          {
+            "id": "persistence/malformed-main-dialog-quarantine.ts",
+            "status": "passed",
+            "exitCode": 0
+          },
+          {
+            "id": "persistence/nested-sideDialog-created-parent-context.ts",
+            "status": "passed",
+            "exitCode": 0
+          },
+          {
+            "id": "persistence/restore-preserves-unpaired-tool-events.ts",
+            "status": "passed",
+            "exitCode": 0
+          },
+          {
+            "id": "persistence/tellask-result-duplicate-callid-loud.ts",
+            "status": "passed",
+            "exitCode": 0
+          },
+          {
+            "id": "persistence/tellask-result-requires-canonical-fields.ts",
+            "status": "passed",
+            "exitCode": 0
+          },
+          {
+            "id": "persistence/ui-only-markdown-replay-event.ts",
+            "status": "passed",
+            "exitCode": 0
+          },
+          {
+            "id": "persistence/latest-writeback.ts",
+            "status": "passed",
+            "exitCode": 0
+          },
+          {
+            "id": "persistence/thinking-reasoning-replay-event.ts",
+            "status": "passed",
+            "exitCode": 0
+          },
+          {
+            "id": "persistence/asker-stack-jsonl.ts",
+            "status": "passed",
+            "exitCode": 0
+          },
+          {
+            "id": "persistence/sideDialog-reconciled-course.ts",
+            "status": "passed",
+            "exitCode": 0
+          },
+          {
+            "id": "persistence/move-dialog-status.ts",
+            "status": "passed",
+            "exitCode": 0
+          },
+          {
+            "id": "persistence/reminders-owner-meta.ts",
+            "status": "passed",
+            "exitCode": 0
+          },
+          {
+            "id": "persistence/reminders-status-path.ts",
+            "status": "passed",
+            "exitCode": 0
+          },
+          {
+            "id": "persistence/runtime-guide-fork-anchor.ts",
+            "status": "passed",
+            "exitCode": 0
+          },
+          {
+            "id": "persistence/priming-reminders.ts",
+            "status": "passed",
+            "exitCode": 0
+          }
+        ]
+      },
+      "smoke": {
+        "total": 11,
+        "passed": 11,
+        "failed": 0,
+        "timedOut": 0,
+        "cases": [
+          {
+            "id": "auth.ts",
+            "status": "passed",
+            "exitCode": 0
+          },
+          {
+            "id": "llm-generation-metadata.ts",
+            "status": "passed",
+            "exitCode": 0
+          },
+          {
+            "id": "persistence/latest-writeback.ts",
+            "status": "passed",
+            "exitCode": 0
+          },
+          {
+            "id": "interruption-resumption.ts",
+            "status": "passed",
+            "exitCode": 0
+          },
+          {
+            "id": "access-control/dialogs-root-deny.ts",
+            "status": "passed",
+            "exitCode": 0
+          },
+          {
+            "id": "access-control/file-ext-names.ts",
+            "status": "passed",
+            "exitCode": 0
+          },
+          {
+            "id": "apps-host-ipc-contract.ts",
+            "status": "passed",
+            "exitCode": 0
+          },
+          {
+            "id": "toolsets/tool-availability-snapshot.ts",
+            "status": "passed",
+            "exitCode": 0
+          },
+          {
+            "id": "webapp/create-dialog-flow-ime.ts",
+            "status": "passed",
+            "exitCode": 0
+          },
+          {
+            "id": "webapp/create-dialog-flow-selection.ts",
+            "status": "passed",
+            "exitCode": 0
+          },
+          {
+            "id": "webapp/generation-model-presentation.ts",
+            "status": "passed",
+            "exitCode": 0
+          }
+        ]
+      }
+    },
+    "semanticGeneration": {
+      "producers": 3,
+      "failedProcesses": 0,
+      "timedOut": 0,
+      "actualCases": 7,
+      "origin": "dominds-tests-recovery-semantic-PDRiq3",
+      "acceptance": "Only independently reviewed actual outputs embedded above are passed; future generation starts pending."
+    },
+    "runner": {
+      "passed": 5,
+      "failed": 0,
+      "log": {
+        "origin": "/tmp/dominds-recovery-runner.log",
+        "sha256": "42c47031083b39c389ef776787a38a233c4329936410cc7d6d0a7129bbb25614",
+        "tail": [
+          "ℹ fail 0",
+          "ℹ cancelled 0",
+          "ℹ skipped 0",
+          "ℹ todo 0",
+          "ℹ duration_ms 2037.365041"
+        ]
+      }
+    },
+    "build": {
+      "exitCode": 0,
+      "log": {
+        "origin": "/tmp/dominds-recovery-build-final.log",
+        "sha256": "dc574c667f5563212892142cf72886400b521b77e24ac04381db93d44361061b",
+        "tail": [
+          "codex-auth build: Done",
+          "packages/shell build$ tsc -p tsconfig.json",
+          "packages/shell build: Done",
+          "$ node ./scripts/run-pnpm.mjs -C webapp run build",
+          "$ node ./scripts/build.mjs"
+        ]
+      }
+    },
+    "appTypes": {
+      "exitCode": 0,
+      "log": {
+        "origin": "/tmp/dominds-recovery-app-types-final.log",
+        "sha256": "41aa5be00a3d0c4d2223d9aee1e64fd44a1a074ddc49dbfbb33b30036175e87a",
+        "tail": [
+          "packages/kernel lint:types: Done",
+          "packages/shell lint:types$ tsc -p tsconfig.json --noEmit",
+          "packages/shell lint:types: Done",
+          "webapp lint:types$ tsc -p src/tsconfig.json --noEmit && node ./scripts/check-dom-events.mjs",
+          "webapp lint:types: Done"
+        ]
+      }
+    },
+    "focusedRecoveryTypes": {
+      "exitCode": 0,
+      "meaning": "All recovery cases and new recovery helpers through an external config extending the unchanged tests/tsconfig.json; full-directory check is separate."
+    },
+    "fullTestTypes": {
+      "exitCode": 2,
+      "status": "failed",
+      "diagnostics": 218,
+      "previousDiagnostics": 225,
+      "byFile": {
+        "tests/apps-host-tool-result-contract.ts": 1,
+        "tests/apps-kernel-package-exports-contract.ts": 1,
+        "tests/cli/env-proxy-support.ts": 1,
+        "tests/diligence-push/q4h-global-broadcast.ts": 1,
+        "tests/diligence-push/retry-recovery-bypasses-budget.ts": 3,
+        "tests/interruption-resumption.ts": 10,
+        "tests/provider/anthropic-stream-errors.ts": 1,
+        "tests/provider/llm-quirks-retry-handling.ts": 63,
+        "tests/provider/openai-compatible-context-normalization.ts": 3,
+        "tests/provider/openai-compatible-volcengine-coding-plan.ts": 28,
+        "tests/provider/tool-choice-requirement.ts": 1,
+        "tests/provider/tool-result-image-size-fallback.ts": 3,
+        "tests/provider/user-image-model-support.ts": 1,
+        "tests/provider/volcengine-coding-plan-live-smoke.ts": 1,
+        "tests/reminders/app-reminder-render-mode-preserve.ts": 1,
+        "tests/reminders/daemon-exit-wake-event.ts": 19,
+        "tests/reminders/daemon-reminder-gone-exit-snapshot.ts": 1,
+        "tests/reminders/daemon-reminder-no-jitter-without-output-change.ts": 3,
+        "tests/reminders/daemon-reminder-render.ts": 2,
+        "tests/reminders/daemon-reminder-retained-after-exit.ts": 2,
+        "tests/reminders/daemon-start-receipt-lifecycle-card.ts": 2,
+        "tests/reminders/get-daemon-output-stream-selection.ts": 3,
+        "tests/reminders/main-dialog-goal-reminder.ts": 2,
+        "tests/reminders/migrate-reminder-scope.ts": 8,
+        "tests/reminders/pending-tellask-reminder-order.ts": 10,
+        "tests/reminders/pending-tellask-zero-state-no-jitter.ts": 4,
+        "tests/reminders/reminder-format.ts": 21,
+        "tests/reminders/reminder-owner-failure-loud.ts": 1,
+        "tests/reminders/reminder-render-mode.ts": 1,
+        "tests/reminders/shared-daemon-reminder-command-mismatch.ts": 2,
+        "tests/reminders/shared-daemon-reminder-persistence.ts": 2,
+        "tests/reminders/shared-daemon-reminder-wrapper-command-match.ts": 1,
+        "tests/reminders/task-agent-reminder-scope.ts": 10,
+        "tests/ripgrep-streaming.ts": 1,
+        "tests/ripgrep-windows-compat.ts": 1,
+        "tests/task-package.ts": 2,
+        "tests/toolsets/shell-cmd-capture-env.ts": 1
+      },
+      "meaning": "Inherited test contracts still fail; no weakened types, exclusions or test-directory narrowing."
+    },
+    "inventory": {
+      "typescriptFiles": 281,
+      "supportFiles": 19,
+      "candidates": 262,
+      "reviewed": 113,
+      "remaining": 149,
+      "outsideSuites": 136,
+      "missingDirectScriptTargets": 0,
+      "staleAuditedPaths": 0
+    },
+    "preCommit": {
+      "status": "passed",
+      "formatExitCode": 0,
+      "diffCheckExitCode": 0,
+      "trackedDocumentationOfflineLinkCheck": {
+        "trackedMarkdown": 201,
+        "newMarkdown": 0,
+        "canonicalDocuments": 69,
+        "excludedRuntimeSources": 131,
+        "localTargetsAndFragments": 351,
+        "networkLinksIgnored": 9,
+        "failures": []
+      },
+      "scope": "All repository-tracked documentation Markdown, normalized canonical documents/local fragments only; runtime sources excluded narrowly by role, network not requested. No hook/dependency/CI added."
+    },
+    "notRun": [
+      "No live-provider, browser/HTTP server, Windows, abrupt kill/power loss, cross-process concurrent writer or full test-directory behavioral acceptance.",
+      "No other semantic suites rerun/claimed as newly accepted; this batch reviews only the actual seven recovery acknowledgements."
+    ]
+  }
+}

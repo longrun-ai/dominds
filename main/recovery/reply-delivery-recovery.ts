@@ -34,26 +34,33 @@ export async function recoverPendingReplyDeliveryForDialog(dialog: Dialog): Prom
   // unblock downstream dialogs, so reply recovery keeps normal immediate drive behavior here.
   // Pure read/display flows must not call into this helper.
   const recoveryPromise = (async () => {
-    const latest = await DialogPersistence.loadDialogLatest(dialog.id, dialog.status);
-    const replyDelivery = latest?.replyDelivery;
-    if (
-      !replyDelivery ||
-      (replyDelivery.status !== 'pending' && replyDelivery.toolResultStatus !== 'pending')
-    ) {
-      return 0;
+    // Startup can schedule a live continuation before reaching its dialog in the scan.
+    // Serialize with that execution, then reload: its reply may already be complete.
+    const release = await dialog.acquire();
+    try {
+      const latest = await DialogPersistence.loadDialogLatest(dialog.id, dialog.status);
+      const replyDelivery = latest?.replyDelivery;
+      if (
+        !replyDelivery ||
+        (replyDelivery.status !== 'pending' && replyDelivery.toolResultStatus !== 'pending')
+      ) {
+        return 0;
+      }
+      return await recoverPendingReplyDelivery({
+        dlg: dialog,
+        replyDelivery,
+        callbacks: {
+          scheduleDrive: (scheduledDialog, options) => {
+            void dispatchDrive(scheduledDialog, options);
+          },
+          driveDialog: async (scheduledDialog, options) => {
+            return await dispatchDrive(scheduledDialog, options);
+          },
+        },
+      });
+    } finally {
+      release();
     }
-    return await recoverPendingReplyDelivery({
-      dlg: dialog,
-      replyDelivery,
-      callbacks: {
-        scheduleDrive: (scheduledDialog, options) => {
-          void dispatchDrive(scheduledDialog, options);
-        },
-        driveDialog: async (scheduledDialog, options) => {
-          return await dispatchDrive(scheduledDialog, options);
-        },
-      },
-    });
   })();
   inFlightReplyRecoveryByDialog.set(dialogKey, recoveryPromise);
 
