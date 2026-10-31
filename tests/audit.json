@@ -894,6 +894,42 @@
       "lane": "reminders",
       "value": "真实add/update工具的默认Markdown/显式plain及两者省略mode更新保持、ID和完整给定内容在可见投影/formatter/磁盘保真；公开坏scope/render_mode拒绝且memory/disk状态不变，未保低价值内部doublecast异常句",
       "evidence": "Full original4/final3/public formatter evidence-producer and complete test-diff/value review: tests/semantic/reviews/2026-10-31-reminder-core.json. IDs, scopes, renderMode/mode, registry counts, canonical persisted metadata and supplied Markdown/goal/whole disk data fidelity are machine/data oracles; generated reminder/receipt/refusal meaning requires separate subjective review.62 actual cases are expected through3 explicit producers:44 formatter,10 actual-goal and8 actual-render/refusal. Evidence producer is support and never an automatic behavior test. No keyword/phrase/forbidden-vocabulary semantic detector; no fake Member, mid-run cwd switch or missing-bootstrap directory fix. No browser/LLM-following/real pressure classification/restart/fsync claim. Existing60s per-case bound retained."
+    },
+    "reminders/delete-reminder-empty-state.ts": {
+      "status": "reviewed",
+      "lane": "reminders",
+      "value": "无手工提醒时missing稳定ID拒绝，实际fixedGoal保留；全公开提醒数据/版本和磁盘状态不变，中英实际解释另审",
+      "evidence": "Complete original6/final6/helper/product diff/assertion review and actual semantic material: tests/semantic/reviews/2026-10-31-reminder-mutation-guards.json. Exact IDs/enums/outcomes/versions/event kinds/counts, full given data and observed state/disk effects are machine/data contracts; generated diagnostic/receipt meaning requires independent subjective review. Literal wording or hash never accepts meaning. Controlled post-resolution interleaving is not an actual concurrent drive. No fake DialogStore/Member, invented index4, sleeps, type weakening or timeout increase. Owner stability still permits normal persistence/full-reminder events; no zero-write/zero-event/browser/restart claim."
+    },
+    "reminders/delete-reminder-meta-guard.ts": {
+      "status": "reviewed",
+      "lane": "reminders",
+      "value": "给定delete.altInstruction阻止手工删除且完整原body/meta/模式/ID/版本/磁盘保留；普通无guard正对照实际删除并持久化，不声称daemon执行",
+      "evidence": "Complete original6/final6/helper/product diff/assertion review and actual semantic material: tests/semantic/reviews/2026-10-31-reminder-mutation-guards.json. Exact IDs/enums/outcomes/versions/event kinds/counts, full given data and observed state/disk effects are machine/data contracts; generated diagnostic/receipt meaning requires independent subjective review. Literal wording or hash never accepts meaning. Controlled post-resolution interleaving is not an actual concurrent drive. No fake DialogStore/Member, invented index4, sleeps, type weakening or timeout increase. Owner stability still permits normal persistence/full-reminder events; no zero-write/zero-event/browser/restart claim."
+    },
+    "reminders/update-reminder-meta-guard.ts": {
+      "status": "reviewed",
+      "lane": "reminders",
+      "value": "给定中英update.altInstruction阻止手工覆盖并保全公开数据/版本/磁盘；普通无guard正对照真实更新与plain保持，不声称owner自动刷新",
+      "evidence": "Complete original6/final6/helper/product diff/assertion review and actual semantic material: tests/semantic/reviews/2026-10-31-reminder-mutation-guards.json. Exact IDs/enums/outcomes/versions/event kinds/counts, full given data and observed state/disk effects are machine/data contracts; generated diagnostic/receipt meaning requires independent subjective review. Literal wording or hash never accepts meaning. Controlled post-resolution interleaving is not an actual concurrent drive. No fake DialogStore/Member, invented index4, sleeps, type weakening or timeout increase. Owner stability still permits normal persistence/full-reminder events; no zero-write/zero-event/browser/restart claim."
+    },
+    "reminders/delete-reminder-round-snapshot.ts": {
+      "status": "reviewed",
+      "lane": "reminders",
+      "value": "A/B/C按先前稳定ID先删A再删C，真实投影/磁盘仅B及fixedGoal保留；重复C拒绝不变，移除原错误列表前提",
+      "evidence": "Complete original6/final6/helper/product diff/assertion review and actual semantic material: tests/semantic/reviews/2026-10-31-reminder-mutation-guards.json. Exact IDs/enums/outcomes/versions/event kinds/counts, full given data and observed state/disk effects are machine/data contracts; generated diagnostic/receipt meaning requires independent subjective review. Literal wording or hash never accepts meaning. Controlled post-resolution interleaving is not an actual concurrent drive. No fake DialogStore/Member, invented index4, sleeps, type weakening or timeout increase. Owner stability still permits normal persistence/full-reminder events; no zero-write/zero-event/browser/restart claim."
+    },
+    "reminders/stale-target-message.ts": {
+      "status": "reviewed",
+      "lane": "reminders",
+      "value": "真实resolver返回后通过公开deleteReminder受控移除目标或前置项：消失拒绝、位置变化仍操作目标并保全无关工作，真实磁盘readback；真实重复ID响亮拒绝不改输入",
+      "evidence": "Complete original6/final6/helper/product diff/assertion review and actual semantic material: tests/semantic/reviews/2026-10-31-reminder-mutation-guards.json. Exact IDs/enums/outcomes/versions/event kinds/counts, full given data and observed state/disk effects are machine/data contracts; generated diagnostic/receipt meaning requires independent subjective review. Literal wording or hash never accepts meaning. Controlled post-resolution interleaving is not an actual concurrent drive. No fake DialogStore/Member, invented index4, sleeps, type weakening or timeout increase. Owner stability still permits normal persistence/full-reminder events; no zero-write/zero-event/browser/restart claim."
+    },
+    "reminders/reminder-owner-failure-loud.ts": {
+      "status": "reviewed",
+      "lane": "reminders",
+      "value": "注册owner抛错的原cause身份传播/实际stream_error_evt一次/不发布成功快照/状态保全；等价nested对象metadata重排不推进公开版本或renderRevision，数组顺序/正文实际变化正对照识别并持久化",
+      "evidence": "Complete original6/final6/helper/product diff/assertion review and actual semantic material: tests/semantic/reviews/2026-10-31-reminder-mutation-guards.json. Exact IDs/enums/outcomes/versions/event kinds/counts, full given data and observed state/disk effects are machine/data contracts; generated diagnostic/receipt meaning requires independent subjective review. Literal wording or hash never accepts meaning. Controlled post-resolution interleaving is not an actual concurrent drive. No fake DialogStore/Member, invented index4, sleeps, type weakening or timeout increase. Owner stability still permits normal persistence/full-reminder events; no zero-write/zero-event/browser/restart claim."
     }
   },
   "retired": {

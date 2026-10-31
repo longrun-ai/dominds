@@ -1,38 +1,51 @@
 import assert from 'node:assert/strict';
-import type { DialogStore } from '../../main/dialog';
-import { MainDialog } from '../../main/dialog';
-import { setWorkLanguage } from '../../main/runtime/work-language';
-import type { Team } from '../../main/team';
 import { deleteReminderTool } from '../../main/tools/ctrl';
+import {
+  manualReminderSnapshot,
+  reminderCaller,
+  withManualReminderDialog,
+} from '../helpers/manual-reminders';
+import { semanticEvidenceCollector } from '../helpers/semantic-evidence';
 
-async function runCase(language: 'zh' | 'en', expectedSubstring: string): Promise<void> {
-  setWorkLanguage(language);
-  const dlg = new MainDialog(
-    {} as unknown as DialogStore,
-    'reminders-empty-state.tsk',
-    undefined,
-    'tester',
-  );
-  const result = await deleteReminderTool.call(dlg, {} as Team.Member, {
-    reminder_id: 'missing-id',
-  });
-  const output = result.content;
-
-  assert.equal(result.outcome, 'failure');
-  assert.ok(
-    output.includes(expectedSubstring),
-    `Expected output to include "${expectedSubstring}", got: ${output}`,
-  );
-  assert.ok(!output.includes('1-0'), `Output should not include "1-0", got: ${output}`);
+const evidence = semanticEvidenceCollector('dominds-reminder-guard-');
+async function main() {
+  for (const language of ['zh', 'en'] as const) {
+    await withManualReminderDialog(language, async (dialog) => {
+      const input = { reminder_id: 'missing-id' };
+      const before = await manualReminderSnapshot(dialog);
+      const output = await deleteReminderTool.call(dialog, reminderCaller, input);
+      assert.equal(output.outcome, 'failure');
+      assert.deepEqual(await manualReminderSnapshot(dialog), before);
+      evidence.record({
+        id: language + '-delete-reminder-empty-state',
+        scenario:
+          'The manual reminder collection is empty; deleting an absent stable ID is refused without changing the fixed Goal or persisted reminder state.',
+        businessValue:
+          'Refuse an inapplicable manual mutation without losing work state, and explain an accurate repair or maintenance path.',
+        context: {
+          input: JSON.stringify(input),
+          language,
+          scope:
+            'Real Dialog, tool handler and disk. The declared daemon command/refresh instruction is fixture metadata, not an executed daemon or owner capability.',
+        },
+        reviewQuestions: [
+          'Does the actual refusal describe this missing or managed target accurately, with a useful remedy and no claim that a mutation or maintenance action succeeded?',
+        ],
+        actualText: output.content,
+      });
+    });
+  }
+  await evidence.write();
+  console.log('Manual reminder refusal and state preservation: PASS');
 }
-
-async function main(): Promise<void> {
-  await runCase('zh', "提醒项 'missing-id' 不存在");
-  await runCase('en', "Reminder 'missing-id' does not exist");
-  console.log('✓ delete_reminder empty-state message test passed');
-}
-
-void main().catch((err: unknown) => {
-  console.error(err);
-  process.exit(1);
-});
+const watchdog = setTimeout(() => {
+  throw new Error('Reminder guard did not complete within60 seconds');
+}, 60_000);
+main().then(
+  () => clearTimeout(watchdog),
+  (error: unknown) => {
+    clearTimeout(watchdog);
+    console.error(error);
+    process.exitCode = 1;
+  },
+);

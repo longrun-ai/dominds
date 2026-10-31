@@ -290,14 +290,23 @@ export function serializeReminderMaintenanceMeta(reminder: Reminder): unknown {
 }
 
 export function computeReminderRenderRevision(reminder: Reminder): string {
-  const payload = JSON.stringify({
-    id: reminder.id,
-    content: reminder.content,
-    meta: reminder.meta ?? null,
-    echoback: reminder.echoback ?? true,
-    scope: reminder.scope,
-    renderMode: reminder.renderMode,
-  });
+  // Object key order does not change reminder data. Owners can rebuild equivalent
+  // metadata in a different insertion order without changing visible state or
+  // causing a shared-update notice; array order remains significant.
+  const payload = JSON.stringify(
+    {
+      id: reminder.id,
+      content: reminder.content,
+      meta: reminder.meta ?? null,
+      echoback: reminder.echoback ?? true,
+      scope: reminder.scope,
+      renderMode: reminder.renderMode,
+    },
+    (_key, value: unknown) =>
+      typeof value === 'object' && value !== null && !Array.isArray(value)
+        ? Object.fromEntries(Object.entries(value).sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0)))
+        : value,
+  );
   return `sha256:${createHash('sha256').update(payload, 'utf8').digest('hex')}`;
 }
 

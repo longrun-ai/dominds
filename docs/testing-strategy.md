@@ -433,3 +433,13 @@ Kimi 原本已有真实 SDK 到本地 HTTP 的成功请求，保留这条实际�
 主观首轮八份材料中四份拒绝：中英坏render_mode实际都被正确拒绝并保全状态，但用法提示完全不列该字段/可选值，无法指导修正显示模式。现只补齐add/update四条usage：markdown/plain、add省略默认markdown、update省略保当前模式；无控制流变更，模式保持有真实两值回归。`test:semantic:reminders` 三个producer最终输出六十二份实际材料，生成仍pending，必须重新逐份主观评审；完整旧四项价值、初轮拒绝全文/理由、新输出与断言审查见[本批记录](../tests/semantic/reviews/2026-10-31-reminder-core.json)。纯formatter状态输入没有被宣传成真实压力分类、真人队列、维护动作或重启恢复。
 
 当前283个TypeScript文件、29个辅助/证据模块、254个候选；审查149项，余105项，套件外98项，无单独脚本43项，直接失效与陈旧账本路径均零。原二十四条类型诊断通过移除语义oracle、真实存储/成员与正确call-site转换修复；新增一条坏args联合推断以实际ToolArguments数组修正。全目录仍有80条继承诊断，继续失败，没有弱化类型或排除源码。
+
+### 手工提醒保护、稳定ID与所有者更新批次
+
+原六项共466行完整审阅后基线六项全部执行，五个进程通过，round-snapshot因合法fixedGoal出现在旧自建列表期望里失败。保留无手工提醒时missing-ID拒绝、delete/update替代维护通道、A后C按旧稳定ID删除且B和固定项保全、删后重复拒绝、目标消失/移位及重复ID响亮拒绝、owner异常传播和等价更新稳定性。生成的不存在/阻止/过期说明不再使用句子或禁词判断；给定altInstruction原文保留为输入，由实际全文解释是否正确。两个guard均有真实可编辑/可删除的普通项正对照；拒绝保全公开数据、版本和磁盘，而非只核一段body。
+
+真实bootstrap的Dialog、成员和Disk store替代空对象/抽象基类实例。过期案例让实际resolver先取到真实target/index，再通过公开deleteReminder删除目标或前置项，随后继续原工具；移位后旧index恰落在无关项，必须仍按目标ID操作。这是明确受控的进程内交错，不是实际并发drive或多进程压力。首次新夹具把未声明createdAt/priority的memory与正常补默认值的disk强行全等导致失败；现为历史输入显式给齐字段，原失败现场保留，不改正确持久化默认行为或放宽数据断言。
+
+owner抛错用真实event registry核一次stream_error_evt、正确course和无generation，并保原注入异常身份、公开数据/磁盘不变及不发布成功full快照。等价更新使用公开remindersVer，不依赖跨秒sleep或同tick时间相等；仍允许正常persist/full事件。新增nested对象键序变化实测暴露产品缺陷：JSON.stringify把对象插入顺序算入renderRevision，错误推进状态版本。对最终回归切回原产品源码，明确复现3≠2，再恢复修复后的相同源码通过；不是加timeout或重试直到绿。修复只让render identity的对象键有序，保留数组次序。真实数组逆序与真实正文变化分别推进版本、改变revision并写入磁盘，不把内容哈希当语义判断。
+
+扩展test:reminders共九项；语义九个入口新输出八十一份（原核心六十二份也需对本次新材料逐份重审，新增十九份保护/owner证据）。生成不自动接受含义。原值映射、失败现场、全部断言及产品diff审查、实际全文与独立理由见[本批记录](../tests/semantic/reviews/2026-10-31-reminder-mutation-guards.json)。当前284个TypeScript文件、30个辅助/证据模块、254个候选，审查155项，余99项；套件外92项，无单独脚本43项，直接失效与陈旧账本路径均零。owner原一条抽象基类类型错误修复后，全目录仍有79条继承类型诊断，继续明确失败，不弱化类型或排除源码。
