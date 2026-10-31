@@ -455,3 +455,17 @@ registered owner的等价nested对象key序更新确实被调用一次；完整m
 迁移沿袭默认task→当前Side私有的同ID行为，补plain/完整opaque checkpoint数据/createdAt/priority保真、实际local磁盘、shared文件消失、两个Side/locked Main/历史/新开Main全部不再可见，以及按原task范围给三个active peer排撤下通知；异Task/异agent不收。自动owner迁移拒绝由scope案例实测；agent→private、管理工具/delete限制等其他迁移拒绝、browser或真实LLM消费仍不在本批范围。
 
 完整提醒行为入口扩为十一项，完整语义入口可产生一百零一份材料。本批只显式执行新增两个CLI producer，按中英生成二十份新材料并重新独立全文评审；初九份八通过、一拒绝的全文和理由保留。历史core/guard八十一份仍在各自来源固定的报告中，不把它们的旧verdict用于任何新输出。原值/完整断言审查、真实旧产品失败、实际新全文和主观理由见[本批记录](../tests/semantic/reviews/2026-10-31-shared-reminder-routing.json)。当前285个TypeScript文件、31个辅助/证据模块、254个候选，审查157项，余97项，套件外90项、无单独脚本43项、直接失效与陈旧账本路径均零。原18条call-site brand错误通过真实转换修正；新helper的trigger联合字段以kind窄化，新owner条件JSON对象的undefined推导以原生JsonObject修正。全目录仍有61条继承诊断，继续明确失败，不弱化类型或排除源码。
+
+### 接续标记、进行中诉请活动与零态边界批次
+
+原三项582行及owner/sync/active-call writer读取链路完整审阅。旧基线三个全部尝试，两项通过，context-health-continuation因默认add已是task却仍按dialog-local[0]读meta失败。现用真实工具、成员、可见ID和物理共享/私有数据保留caution新建、critical改标、healthy不标、恢复healthy清标四条值，另核opaque checkpoint不随清标丢失及明确dialog私有桥接。snapshot是给定状态，仅证明工具如何响应该状态，不假称压力算法或真实换程恢复。
+
+进行中状态由真实sessioned Side和品牌化callsite的持久历史构造，latest活动时间用真实mutate接口设置，不手写YAML或中途chdir。最大10:04落在给定10:06比较项后，改10:07后同ID排前，并核count/meta时间与磁盘。比较项是数据，不冒充正在运行的daemon。已有两个合法会话记录和真实文件作基线，再提交不同call/batch/callsite却同worker/sessionSlug的边界输入；实际拒绝且原文件字节/投影不变，生成错误全文交主观评。不把内部opaque signature空串或编码冻成外部合同。
+
+零态沿袭1→0后状态窗保留；先settle固定Goal，零态实际磁盘字段hydrate后再以公开remindersVer、完整提醒数据、meta更新时间和物理数据检查no-op，不靠同clock tick时间相等。正常process仍可持久化/发完整快照。新场景通过真实public updateQuestions4Human登记给定HumanQuestion，实际hasPendingQ4H=true/canDrive=false，同时另一root真实存有pending记录。这个输入不是LLM发问或真人交换，也不是根据内存flag伪造等待。
+
+独立评审首24份20通过、4拒绝：中英两种零态场景都把本dialog零计数扩大为没有其它后台智能体/任何等待错误，带人类问题时更直接违背真实阻塞状态。现只修owner的两条中英零态说明，明确本对话记录范围、不凭旧提醒等已不在列表的诉请、保留登记的人类和真实依赖等待；仅当前请求仍有工作且没有阻碍时推进可用本地动作/必要新诉请。无新能力类型或权限更改。
+
+提醒行为入口扩为十四项，完整语义入口可输出一百二十五份。本批只重新生成新增三个producer的二十四份中英实际材料，须逐份新审；历史材料不自动接受新输出。原值映射、原baseline失败、初轮四拒绝全文/理由、最终断言审查及新实际材料见[本批记录](../tests/semantic/reviews/2026-10-31-pending-reminder-lifecycle.json)。当前286个TypeScript文件、32个辅助/证据模块、254个候选，审查160项，余94项，套件外87项，无单独脚本43项，直接失效与陈旧账本路径均零。原14条callsite品牌类型错误修复；新readonly提醒数组赋值改为合法mutable内容hydrate，不弱化只读属性。全测试仍47条继承类型诊断，明确失败，不排除源码或放松类型。
+
+本批十四项提醒行为与二十四份新语义材料已通过，但广义kernel回归六十三项中六十二项通过、一项超时，不能报告全绿。保留的`sideDialog-backend-loop-retries-after-active-run-blocker`现场显示回复驱动的第二轮已完成，随后backend又启动无acceptedTrigger的第三轮；provider夹具里的次数断言被真实重试策略捕获，造成等待并在60秒上限退出。该额外调度将作为独立的协作调度整改继续处理，不能靠放宽次数或延长超时掩盖。完整失败日志和持久事件/最新状态保存在本批记录中。

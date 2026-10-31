@@ -140,6 +140,9 @@ const reminders = [
   'reminders/reminder-owner-failure-loud.ts',
   'reminders/task-agent-reminder-scope.ts',
   'reminders/migrate-reminder-scope.ts',
+  'reminders/context-health-continuation.ts',
+  'reminders/pending-tellask-reminder-order.ts',
+  'reminders/pending-tellask-zero-state-no-jitter.ts',
 ];
 const semanticSuites = {
   reminders: [
@@ -154,6 +157,9 @@ const semanticSuites = {
     'reminders/reminder-owner-failure-loud.ts',
     'reminders/task-agent-reminder-scope.ts',
     'reminders/migrate-reminder-scope.ts',
+    'reminders/context-health-continuation.ts',
+    'reminders/pending-tellask-reminder-order.ts',
+    'reminders/pending-tellask-zero-state-no-jitter.ts',
   ],
   compatible,
   projection,

@@ -1,272 +1,175 @@
 import assert from 'node:assert/strict';
-import * as fs from 'node:fs/promises';
-import * as path from 'node:path';
-
-import type { SideDialogAssignmentFromAsker } from '@longrun-ai/kernel/types/storage';
-import YAML from 'yaml';
-import { DialogID } from '../../main/dialog';
-import {
-  createEmptyDialogNextStepState,
-  createEmptyDialogTellaskCallState,
-  createEmptyDialogTellaskResultState,
-} from '../../main/dialog-latest-state';
-import { MAIN_DIALOG_GOAL_REMINDER_ID } from '../../main/main-dialog-goal-reminder';
+import fs from 'node:fs/promises';
+import path from 'node:path';
 import { DialogPersistence } from '../../main/persistence';
 import { materializeReminder } from '../../main/tool';
 import {
   pendingTellaskReminderOwner,
   syncPendingTellaskReminderState,
 } from '../../main/tools/pending-tellask-reminder';
-import { createMainDialog } from '../kernel-driver/helpers';
-import { withTempCwd } from './daemon-test-utils';
+import {
+  capturePending,
+  pendingHistory,
+  pendingMeta,
+  pendingReminder,
+  withPendingReminderRoot,
+} from '../helpers/pending-reminders';
+import { semanticEvidenceCollector } from '../helpers/semantic-evidence';
 
-function withoutMainDialogGoal<T extends Readonly<{ id: string }>>(reminders: readonly T[]): T[] {
-  return reminders.filter((reminder) => reminder.id !== MAIN_DIALOG_GOAL_REMINDER_ID);
-}
-
-async function writeYaml(filePath: string, value: unknown): Promise<void> {
-  await fs.mkdir(path.dirname(filePath), { recursive: true });
-  await fs.writeFile(filePath, YAML.stringify(value), 'utf-8');
-}
-
-async function persistActiveCalleeDispatch(args: {
-  rootId: string;
-  selfId: string;
-  createdAt: string;
-  lastModified: string;
-  callId: string;
-}): Promise<void> {
-  const sideDialogId = new DialogID(args.selfId, args.rootId);
-  const assignmentFromAsker: SideDialogAssignmentFromAsker = {
-    callName: 'tellask',
-    mentionList: ['@worker'],
-    tellaskContent: 'Follow the current assignment',
-    originMemberId: 'tester',
-    askerDialogId: args.rootId,
-    callId: args.callId,
-    callSiteCourse: 1,
-    callSiteGenseq: 1,
-    collectiveTargets: ['worker'],
-  };
-  await DialogPersistence.ensureSideDialogDirectory(sideDialogId, 'running');
-  await DialogPersistence.saveSideDialogAskerStackState(
-    sideDialogId,
-    {
-      askerStack: [
-        {
-          kind: 'asker_dialog_stack_frame',
-          askerDialogId: args.rootId,
-          assignmentFromAsker,
-          tellaskReplyObligation: {
-            expectedReplyCallName: 'replyTellask',
-            targetDialogId: args.rootId,
-            targetCallId: args.callId,
-            tellaskContent: assignmentFromAsker.tellaskContent,
+const evidence = semanticEvidenceCollector('dominds-pending-order-');
+async function main() {
+  for (const language of ['zh', 'en'] as const) {
+    await withPendingReminderRoot(language, async (root) => {
+      const pendingId = 'pending001';
+      root.reminders.push(
+        materializeReminder({
+          id: pendingId,
+          content: 'stale pending tellask reminder',
+          owner: pendingTellaskReminderOwner,
+          createdAt: '2026-04-16 10:00:00',
+          priority: 'medium',
+          scope: 'dialog',
+          renderMode: 'markdown',
+          meta: {
+            kind: 'pending_tellask',
+            pendingCount: 2,
+            pendingSignature: 'stale',
+            updatedAt: '2026-04-16 10:00:00',
+            update: { altInstruction: 'wait for system refresh' },
+            delete: { altInstruction: 'do not delete while pending' },
           },
-        },
-      ],
-    },
-    'running',
-  );
-  await DialogPersistence.saveSideDialogMetadata(
-    sideDialogId,
-    {
-      id: args.selfId,
-      agentId: 'worker',
-      taskDocPath: 'task.md',
-      createdAt: args.createdAt,
-    },
-    'running',
-  );
-  await writeYaml(
-    path.join(DialogPersistence.getDialogEventsPath(sideDialogId, 'running'), 'latest.yaml'),
-    {
-      currentCourse: 1,
-      lastModified: args.lastModified,
-      status: 'active',
-      messageCount: 0,
-      functionCallCount: 0,
-      sideDialogCount: 0,
-      nextStep: createEmptyDialogNextStepState(),
-      tellaskCalls: createEmptyDialogTellaskCallState(),
-      tellaskResults: createEmptyDialogTellaskResultState(),
-      displayState: { kind: 'idle_waiting_user' },
-      disableDiligencePush: false,
-      diligencePushRemainingBudget: 0,
-    },
-  );
-}
-
-async function main(): Promise<void> {
-  await withTempCwd('dominds-pending-reminder-order-', async () => {
-    const root = await createMainDialog('tester');
-    const pendingReminderCreatedAt = '2026-04-16 10:00:00';
-    const firstPendingActivityAt = '2026-04-16 10:04:00';
-    const daemonCreatedAt = '2026-04-16 10:06:00';
-    const secondPendingActivityAt = '2026-04-16 10:07:00';
-
-    root.reminders.push(
-      materializeReminder({
-        id: 'pending001',
-        content: 'stale pending tellask reminder',
-        owner: pendingTellaskReminderOwner,
-        createdAt: pendingReminderCreatedAt,
-        scope: 'dialog',
-        renderMode: 'markdown',
-        meta: {
-          kind: 'pending_tellask',
-          pendingCount: 2,
-          pendingSignature: 'stale',
-          updatedAt: pendingReminderCreatedAt,
-          update: { altInstruction: 'wait for system refresh' },
-          delete: { altInstruction: 'do not delete while pending' },
-        },
-      }),
-    );
-    root.reminders.push(
-      materializeReminder({
-        id: 'daemon001',
-        content: 'daemon reminder',
-        createdAt: daemonCreatedAt,
-        scope: 'dialog',
-        renderMode: 'markdown',
-      }),
-    );
-
-    await persistActiveCalleeDispatch({
-      rootId: root.id.rootId,
-      selfId: 'sub001',
-      createdAt: '2026-04-16 10:01:00',
-      lastModified: '2026-04-16 10:03:00',
-      callId: 'call-sub001',
-    });
-    await persistActiveCalleeDispatch({
-      rootId: root.id.rootId,
-      selfId: 'sub002',
-      createdAt: '2026-04-16 10:02:00',
-      lastModified: firstPendingActivityAt,
-      callId: 'call-sub002',
-    });
-
-    await DialogPersistence.saveActiveCalleeDispatches(
-      root.id,
-      [
-        {
-          calleeDialogId: 'sub001',
-          createdAt: '2026-04-16 10:01:00',
-          batchId: 'call-sub001-batch',
-          callName: 'tellask',
-          mentionList: ['@worker'],
-          tellaskContent: 'Follow the current assignment',
-          targetAgentId: 'worker',
-          callId: 'call-sub001',
-          callSiteCourse: 1,
-          callSiteGenseq: 1,
-          callType: 'B',
-        },
-        {
-          calleeDialogId: 'sub002',
-          createdAt: '2026-04-16 10:02:00',
-          batchId: 'call-sub002-batch',
-          callName: 'tellask',
-          mentionList: ['@worker'],
-          tellaskContent: 'Follow the current assignment',
-          targetAgentId: 'worker',
-          callId: 'call-sub002',
-          callSiteCourse: 1,
-          callSiteGenseq: 1,
-          callType: 'B',
-        },
-      ],
-      undefined,
-      root.status,
-    );
-
-    await syncPendingTellaskReminderState(root);
-    let visible = withoutMainDialogGoal(await root.listVisibleReminders());
-    assert.equal(
-      visible[0]?.id,
-      'daemon001',
-      'Expected newer daemon reminder to sort first initially',
-    );
-
-    await persistActiveCalleeDispatch({
-      rootId: root.id.rootId,
-      selfId: 'sub002',
-      createdAt: '2026-04-16 10:02:00',
-      lastModified: secondPendingActivityAt,
-      callId: 'call-sub002',
-    });
-
-    await syncPendingTellaskReminderState(root);
-    visible = withoutMainDialogGoal(await root.listVisibleReminders());
-    assert.equal(
-      visible[0]?.id,
-      'pending001',
-      'Expected pending-tellask reminder to sort ahead after an active callee dispatch becomes newer',
-    );
-
-    const pendingReminder = visible[0];
-    assert.equal(
-      (
-        pendingReminder?.meta as
-          | {
-              updatedAt?: string;
-            }
-          | undefined
-      )?.updatedAt,
-      secondPendingActivityAt,
-      'Expected pending-tellask reminder updatedAt to reflect the newest in-flight sideDialog',
-    );
-  });
-
-  await withTempCwd('dominds-pending-reminder-order-', async () => {
-    const root = await createMainDialog('tester');
-    await assert.rejects(
-      DialogPersistence.saveActiveCalleeDispatches(
+        }),
+      );
+      root.reminders.push(
+        materializeReminder({
+          id: 'daemon001',
+          content: 'supplied comparison-status data',
+          createdAt: '2026-04-16 10:06:00',
+          priority: 'medium',
+          scope: 'dialog',
+          renderMode: 'markdown',
+        }),
+      );
+      const first = await pendingHistory(root, {
+        label: language + '-first',
+        createdAt: '2026-04-16 10:01:00',
+        lastModified: '2026-04-16 10:03:00',
+      });
+      const second = await pendingHistory(root, {
+        label: language + '-second',
+        createdAt: '2026-04-16 10:02:00',
+        lastModified: '2026-04-16 10:04:00',
+        genseq: 2,
+      });
+      const records = [first.record, second.record];
+      await DialogPersistence.saveActiveCalleeDispatches(root.id, records, undefined, root.status);
+      const assertState = async (expectedOrder: string[], activity: string) => {
+        const visible = await root.listVisibleReminders();
+        assert.deepEqual(
+          visible
+            .filter((row) => row.id === pendingId || row.id === 'daemon001')
+            .map((row) => row.id),
+          expectedOrder,
+        );
+        const reminder = pendingReminder(root);
+        assert.equal(reminder.id, pendingId);
+        const meta = pendingMeta(reminder);
+        assert.equal(meta.pendingCount, 2);
+        assert.equal(meta.updatedAt, activity);
+        const stored = await DialogPersistence.loadReminderState(root.id, root.status);
+        const disk = stored.find((row) => row.id === pendingId);
+        assert.ok(disk);
+        assert.equal(disk.content, reminder.content);
+        assert.deepEqual(disk.meta, reminder.meta);
+      };
+      assert.equal(await syncPendingTellaskReminderState(root), true);
+      await root.processReminderUpdates();
+      await assertState(['daemon001', pendingId], '2026-04-16 10:04:00');
+      await capturePending({
+        id: 'older-than-comparison',
+        language,
+        scenario:
+          'Two declared sessioned pending calls have latest activity10:04, so their updated status sorts behind a supplied10:06 comparison note. The comparison note is fixture data, not a running daemon.',
+        root,
+        givenData: JSON.stringify(records),
+        evidence,
+      });
+      await DialogPersistence.mutateDialogLatest(
+        second.side.id,
+        () => ({ kind: 'patch', patch: { lastModified: '2026-04-16 10:07:00' } }),
+        second.side.status,
+      );
+      assert.equal(await syncPendingTellaskReminderState(root), true);
+      await root.processReminderUpdates();
+      await assertState([pendingId, 'daemon001'], '2026-04-16 10:07:00');
+      await capturePending({
+        id: 'newest-pending-activity',
+        language,
+        scenario:
+          'The same second call now has declared activity10:07; the same reminder ID moves ahead of the10:06 comparison note and retains the two real persisted pending records.',
+        root,
+        givenData: JSON.stringify({ records, latestActivity: '2026-04-16 10:07:00' }),
+        evidence,
+      });
+      const file = path.join(
+        DialogPersistence.getDialogEventsPath(root.id, root.status),
+        'active-callees.json',
+      );
+      const before = await fs.readFile(file, 'utf8');
+      const beforeRecords = await DialogPersistence.loadActiveCalleeDispatches(
         root.id,
-        [
-          {
-            calleeDialogId: 'sub-old',
-            createdAt: '2026-04-16 11:01:00',
-            batchId: 'call-old-batch',
-            callName: 'tellask',
-            mentionList: ['@worker'],
-            tellaskContent: 'Old assignment',
-            targetAgentId: 'worker',
-            callId: 'call-old',
-            callSiteCourse: 1,
-            callSiteGenseq: 1,
-            callType: 'B',
-            sessionSlug: 'same-session',
-          },
-          {
-            calleeDialogId: 'sub-new',
-            createdAt: '2026-04-16 11:02:00',
-            batchId: 'call-new-batch',
-            callName: 'tellask',
-            mentionList: ['@worker'],
-            tellaskContent: 'New assignment',
-            targetAgentId: 'worker',
-            callId: 'call-new',
-            callSiteCourse: 1,
-            callSiteGenseq: 2,
-            callType: 'B',
-            sessionSlug: 'same-session',
-          },
-        ],
-        undefined,
         root.status,
-      ),
-      /duplicate sessioned tellask pending record/,
-      'Expected duplicate sessioned pending tellasks to fail loudly instead of being repaired',
-    );
-  });
-
-  console.log('OK');
+      );
+      const invalid = [first.record, { ...second.record, sessionSlug: first.record.sessionSlug }];
+      let caught: Error | undefined;
+      try {
+        await DialogPersistence.saveActiveCalleeDispatches(
+          root.id,
+          invalid,
+          undefined,
+          root.status,
+        );
+      } catch (error: unknown) {
+        assert.ok(error instanceof Error);
+        caught = error;
+      }
+      assert.ok(caught);
+      assert.equal(await fs.readFile(file, 'utf8'), before);
+      assert.deepEqual(
+        await DialogPersistence.loadActiveCalleeDispatches(root.id, root.status),
+        beforeRecords,
+      );
+      evidence.record({
+        id: language + '-duplicate-session-refused',
+        scenario:
+          'Two different callId/batch/callsite records claim the same worker and sessionSlug; the writer refuses before changing the existing valid persisted active-call file.',
+        businessValue:
+          'Keep ambiguous session obligations loud and preserve both prior valid work records instead of silently repairing them.',
+        context: {
+          language,
+          invalidInput: JSON.stringify(invalid),
+          preservedRecords: JSON.stringify(beforeRecords),
+          scopeLimit:
+            'Actual persistence writer and file bytes; invalid records are declared boundary data, not a claim that two such sessions were executed.',
+        },
+        reviewQuestions: [
+          'Does the actual diagnostic accurately explain the duplicated session identity and avoid claiming successful persistence or silent repair?',
+        ],
+        actualText: caught.message,
+      });
+    });
+  }
+  await evidence.write();
+  console.log('Pending tellask activity order, persistence and duplicate-session refusal: PASS');
 }
-
-void main().catch((error: unknown) => {
-  console.error(error instanceof Error ? (error.stack ?? error.message) : String(error));
-  process.exit(1);
-});
+const watchdog = setTimeout(() => {
+  throw new Error('Pending order case did not complete within60 seconds');
+}, 60_000);
+main().then(
+  () => clearTimeout(watchdog),
+  (error: unknown) => {
+    clearTimeout(watchdog);
+    console.error(error);
+    process.exitCode = 1;
+  },
+);

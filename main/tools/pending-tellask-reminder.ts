@@ -165,8 +165,8 @@ function buildReminderContent(
   if (pending.length === 0) {
     const noneRunningText =
       language === 'zh'
-        ? '当前没有任何执行中的诉请，没有其祂智能体仍在后台工作，任何“等待”想法和行为都是错误的。该提醒项只是系统状态窗；后续需要推进时，只能直接执行下一步本地动作，或发起新的诉请。'
-        : 'There are no in-flight Tellasks, and no other agents are still working in the background. Any “wait” thought or behavior is wrong. This reminder is only a system status window; to continue later, take the next local action directly or issue a new Tellask.';
+        ? '当前对话的进行中诉请记录为空。这条状态窗的范围是本对话的诉请记录；其它对话、智能体或外部工作须依据各自的实际状态判断。不要仅因旧提醒而继续等待当前列表里已没有的诉请。若已登记的人类问题或其它真实依赖仍未满足，请保留相应的等待状态。当前请求仍有工作且没有这些阻碍时，再推进可执行的本地步骤，或发起必要的新诉请。'
+        : 'This dialog has no recorded in-flight Tellasks. This window covers this dialog’s tellask records; assess other dialogs, agents and external work from their own actual state. Do not keep waiting for a Tellask absent from the current list solely because of an old reminder. Honor any registered human-question wait or other unmet real dependency. If the current request still has work and none of those conditions blocks it, take an available local step or issue a necessary new Tellask.';
     return [heading, '', noneRunningText].join('\n');
   }
 

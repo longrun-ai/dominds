@@ -942,6 +942,24 @@
       "lane": "reminders",
       "value": "默认task共享项稳定ID迁到当前Side私有；完整给定plain正文/opaque meta/模式/时间/priority等数据保持，共享文件消失、SameRoot/CrossRoot/active Main/history/新Main皆不可见，原scope决定3个active同Task撤下目标、异Task/异agent不收",
       "evidence": "Full original2/final2/shared helper/assertion diff review and actual revised20 bilingual materials (initial9 retained with one semantic rejection): tests/semantic/reviews/2026-10-31-shared-reminder-routing.json. Outcomes, exact recipient IDs/counts, runtime-guide envelopes, persisted pendingRuntimePrompt/queued_prompt IDs and course, root flags, parsed namespace JSON and given-data/observed-state fidelity are machine/data contracts. Generated receipt/notice meaning requires independent subjective review; literal text or hashes never accept meaning. The fixture observes then explicitly acknowledges queued state using production clear APIs; takeQueuedPrompt alone does not consume disk work. No LLM/backend consumption, restart delivery, real external deletion, agent-to-private or manager-tool/delete-restriction migration coverage is claimed. Existing60s bound preserved, no sleeps/fake Member/abstract store/raw call-site casts or mid-run cwd/cleanup retries."
+    },
+    "reminders/context-health-continuation.ts": {
+      "status": "reviewed",
+      "lane": "reminders",
+      "value": "给定caution→critical/healthy状态驱动真实add/update，default task与明确dialog可见/物理数据，原4条tag/清标与wholebody/ID保持，补健康改写保留opaque checkpoint；actualguide另审，不声称实际压力分类/换程恢复",
+      "evidence": "Full original3/final3/native helper/complete assertion diff and actual24 output review: tests/semantic/reviews/2026-10-31-pending-reminder-lifecycle.json. Continuation kind/createdBy/level, scopes/IDs/counts/timestamps, native active-call and HumanQuestion state, visible order, file bytes, full given-data and persisted-state fidelity are machine/data contracts. Generated owner/guide/maintenance/duplicate-refusal meaning requires independent subjective review; initial24 retained20passed/4failed zero guidance, and new24 must be reread. Opaque signature encoding is not frozen. Snapshot input and declared persisted Side history do not establish actual pressure classification, provider execution, an actual human exchange or process restart. Normal reconciliation may still persist/publish snapshots; no zero-I/O/zero-event claim, fake Store/Member, raw YAML, cwd switching, sleep or timeout increase."
+    },
+    "reminders/pending-tellask-reminder-order.ts": {
+      "status": "reviewed",
+      "lane": "reminders",
+      "value": "真实sessioned Side历史latest时间10:04→10:07改变同一pending提醒相对10:06给定比较项的可见顺序，count/更新时间/磁盘保真；两个合法session记录已落盘，再拒绝不同call/batch/callsite却同worker/sessionSlug输入且原文件字节和投影不变",
+      "evidence": "Full original3/final3/native helper/complete assertion diff and actual24 output review: tests/semantic/reviews/2026-10-31-pending-reminder-lifecycle.json. Continuation kind/createdBy/level, scopes/IDs/counts/timestamps, native active-call and HumanQuestion state, visible order, file bytes, full given-data and persisted-state fidelity are machine/data contracts. Generated owner/guide/maintenance/duplicate-refusal meaning requires independent subjective review; initial24 retained20passed/4failed zero guidance, and new24 must be reread. Opaque signature encoding is not frozen. Snapshot input and declared persisted Side history do not establish actual pressure classification, provider execution, an actual human exchange or process restart. Normal reconciliation may still persist/publish snapshots; no zero-I/O/zero-event claim, fake Store/Member, raw YAML, cwd switching, sleep or timeout increase."
+    },
+    "reminders/pending-tellask-zero-state-no-jitter.ts": {
+      "status": "reviewed",
+      "lane": "reminders",
+      "value": "实际pending1→0保同ID状态窗，已存字段hydrate后公开version/完整memory/disk/meta时间稳定；同步不改已注册HumanQuestion/canDrive=false或其它root pending，组件零计数不得全局禁止等待；中英实际owner消息全文独立评",
+      "evidence": "Full original3/final3/native helper/complete assertion diff and actual24 output review: tests/semantic/reviews/2026-10-31-pending-reminder-lifecycle.json. Continuation kind/createdBy/level, scopes/IDs/counts/timestamps, native active-call and HumanQuestion state, visible order, file bytes, full given-data and persisted-state fidelity are machine/data contracts. Generated owner/guide/maintenance/duplicate-refusal meaning requires independent subjective review; initial24 retained20passed/4failed zero guidance, and new24 must be reread. Opaque signature encoding is not frozen. Snapshot input and declared persisted Side history do not establish actual pressure classification, provider execution, an actual human exchange or process restart. Normal reconciliation may still persist/publish snapshots; no zero-I/O/zero-event claim, fake Store/Member, raw YAML, cwd switching, sleep or timeout increase."
     }
   },
   "retired": {
