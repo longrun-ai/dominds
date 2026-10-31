@@ -15,8 +15,8 @@
     "setup-env-input": "tsx setup-env-input.ts",
     "setup-shell-env": "tsx setup-shell-env.ts",
     "websocket-user-msg-generation-boundary": "tsx websocket-user-msg-generation-boundary.ts",
-    "provider-tool-result-image-size-fallback": "tsx provider/tool-result-image-size-fallback.ts",
-    "provider-user-image-model-support": "tsx provider/user-image-model-support.ts",
+    "provider-tool-result-image-size-fallback": "pnpm run rtws -- --isolated-rtws provider/tool-result-image-size-fallback.ts",
+    "provider-user-image-model-support": "pnpm run rtws -- --isolated-rtws provider/user-image-model-support.ts",
     "provider-anthropic-multi-tool-use-stream": "tsx provider/anthropic-multi-tool-use-stream.ts",
     "provider-anthropic-stream-errors": "tsx provider/anthropic-stream-errors.ts",
     "provider-openai-compatible-kimi-code": "tsx provider/openai-compatible-kimi-code.ts",
@@ -243,7 +243,9 @@
     "test:semantic:projection": "node run.mjs --suite projection --semantic",
     "provider-openai-context-normalization": "pnpm run rtws -- --isolated-rtws provider/openai-context-normalization.ts",
     "provider-anthropic-context-normalization": "pnpm run rtws -- --isolated-rtws provider/anthropic-context-normalization.ts",
-    "provider-openai-compatible-context-normalization": "pnpm run rtws -- --isolated-rtws provider/openai-compatible-context-normalization.ts"
+    "provider-openai-compatible-context-normalization": "pnpm run rtws -- --isolated-rtws provider/openai-compatible-context-normalization.ts",
+    "provider-openai-compatible-image-fallback": "pnpm run rtws -- --isolated-rtws provider/openai-compatible-image-fallback.ts",
+    "provider-tool-result-truncation": "pnpm run rtws -- --isolated-rtws provider/tool-result-truncation.ts"
   },
   "devDependencies": {
     "tsx": "^4.22.4",

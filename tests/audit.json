@@ -840,6 +840,30 @@
       "lane": "projection",
       "value": "Chat Completions兼容真实投影中的完整参数/结果、当前turn推理、禁用call reasoning边界、MiniMax完整reasoning_details保真及generic reasoning路径；逆序配对和不完整历史拒绝",
       "evidence": "Complete original/final/assertion diff and actual diagnostic/history review: tests/semantic/reviews/2026-10-31-provider-projection.json. Protocol types/roles, given opaque payloads, call IDs, supplied reasoning data and input preservation are machine/data oracles. No fixed error sentence, source snippet or generated guidance keyword decides meaning. Twelve actual pairing diagnostics and six Anthropic history outputs require independent subjective review; generation, ledger and prior output identity do not accept fresh output. Actual projection only, no provider request, SDK transport, tool execution, backend restart or vision claim."
+    },
+    "provider/tool-result-image-size-fallback.ts": {
+      "status": "reviewed",
+      "lane": "projection",
+      "value": "真实distinct GIF artifact/native payload对照验证三种投影在declared byteLength预算下保留最新图；跨user/tool共享预算，input_text完整数据保真；不数缺失提示推断选择",
+      "evidence": "Complete original/final/helper/test-diff review and actual output: tests/semantic/reviews/2026-10-31-provider-media.json. Actual isolated rtws, Dialog, distinct artifact bytes, native protocol payload identity, supplied input_text data, size/capability and parsed YAML fields/enums are machine/data oracles; no natural omission/truncation word/count is a meaning oracle. Seven-producer evidence includes prior three history regressions and16 new cases, all34 fresh texts require independent subjective review; ledger/process success/hash do not accept them. Budget fixtures deliberately use small valid GIF bytes with declared20MiB metadata to check local selection, not actual60MiB transport. No provider request, SDK transport, visual reasoning or persistent-history repair claim."
+    },
+    "provider/openai-compatible-image-fallback.ts": {
+      "status": "reviewed",
+      "lane": "projection",
+      "value": "明确可支持图片模型下同一artifact缺失→恢复正对照，以及文件存在但默认路径未声明能力的独立对照；原始工具data保真，未见图不声称已分析",
+      "evidence": "Complete original/final/helper/test-diff review and actual output: tests/semantic/reviews/2026-10-31-provider-media.json. Actual isolated rtws, Dialog, distinct artifact bytes, native protocol payload identity, supplied input_text data, size/capability and parsed YAML fields/enums are machine/data oracles; no natural omission/truncation word/count is a meaning oracle. Seven-producer evidence includes prior three history regressions and16 new cases, all34 fresh texts require independent subjective review; ledger/process success/hash do not accept them. Budget fixtures deliberately use small valid GIF bytes with declared20MiB metadata to check local selection, not actual60MiB transport. No provider request, SDK transport, visual reasoning or persistent-history repair claim."
+    },
+    "provider/user-image-model-support.ts": {
+      "status": "reviewed",
+      "lane": "projection",
+      "value": "两个真实user/tool artifact在同一Anthropic模型supports_image_input=false/true间的原生载荷精确负/正对照；两个源的完整给定数据保留",
+      "evidence": "Complete original/final/helper/test-diff review and actual output: tests/semantic/reviews/2026-10-31-provider-media.json. Actual isolated rtws, Dialog, distinct artifact bytes, native protocol payload identity, supplied input_text data, size/capability and parsed YAML fields/enums are machine/data oracles; no natural omission/truncation word/count is a meaning oracle. Seven-producer evidence includes prior three history regressions and16 new cases, all34 fresh texts require independent subjective review; ledger/process success/hash do not accept them. Budget fixtures deliberately use small valid GIF bytes with declared20MiB metadata to check local selection, not actual60MiB transport. No provider request, SDK transport, visual reasoning or persistent-history repair claim."
+    },
+    "provider/tool-result-truncation.ts": {
+      "status": "reviewed",
+      "lane": "projection",
+      "value": "真实三种投影的120字符结果预算、短数据正对照与源历史不变、七个provider默认限制及显式override；真实Dialog/文件/ripgrep的公开YAML原长度和截断元数据",
+      "evidence": "Complete original/final/helper/test-diff review and actual output: tests/semantic/reviews/2026-10-31-provider-media.json. Actual isolated rtws, Dialog, distinct artifact bytes, native protocol payload identity, supplied input_text data, size/capability and parsed YAML fields/enums are machine/data oracles; no natural omission/truncation word/count is a meaning oracle. Seven-producer evidence includes prior three history regressions and16 new cases, all34 fresh texts require independent subjective review; ledger/process success/hash do not accept them. Budget fixtures deliberately use small valid GIF bytes with declared20MiB metadata to check local selection, not actual60MiB transport. No provider request, SDK transport, visual reasoning or persistent-history repair claim."
     }
   },
   "retired": {

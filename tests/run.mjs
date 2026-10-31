@@ -119,6 +119,10 @@ const projection = [
   'provider/openai-context-normalization.ts',
   'provider/anthropic-context-normalization.ts',
   'provider/openai-compatible-context-normalization.ts',
+  'provider/tool-result-image-size-fallback.ts',
+  'provider/openai-compatible-image-fallback.ts',
+  'provider/user-image-model-support.ts',
+  'provider/tool-result-truncation.ts',
 ];
 const semanticSuites = {
   projection,
