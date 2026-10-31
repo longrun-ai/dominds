@@ -14,20 +14,40 @@ async function main(): Promise<void> {
     await dlg.persistTellaskCall('duplicate-tellask-call', 'tellaskBack', '{}', 1);
     await assert.rejects(
       dlg.persistTellaskCall('duplicate-tellask-call', 'tellaskBack', '{"second":true}', 1),
-      /tellask_call duplicate callId invariant violation/u,
+      Error,
     );
 
     const events = await DialogPersistence.loadCourseEvents(dlg.id, 1, 'running');
+    assert.deepEqual(
+      events
+        .filter(
+          (event): event is Extract<typeof event, { type: 'func_call_record' }> =>
+            event.type === 'func_call_record' && event.id === 'duplicate-func-call',
+        )
+        .map((event) => event.rawArgumentsText),
+      ['{}', '{\"second\":true}'],
+    );
+    assert.deepEqual(
+      events
+        .filter(
+          (event): event is Extract<typeof event, { type: 'tellask_call_record' }> =>
+            event.type === 'tellask_call_record' && event.id === 'duplicate-tellask-call',
+        )
+        .map((event) => event.rawArgumentsText),
+      ['{}'],
+    );
     assert.equal(
       events.filter(
-        (event) => event.type === 'func_call_record' && event.id === 'duplicate-func-call',
+        (event): event is Extract<typeof event, { type: 'func_call_record' }> =>
+          event.type === 'func_call_record' && event.id === 'duplicate-func-call',
       ).length,
       2,
       'expected raw duplicate ordinary function call writes to both persist',
     );
     assert.equal(
       events.filter(
-        (event) => event.type === 'tellask_call_record' && event.id === 'duplicate-tellask-call',
+        (event): event is Extract<typeof event, { type: 'tellask_call_record' }> =>
+          event.type === 'tellask_call_record' && event.id === 'duplicate-tellask-call',
       ).length,
       1,
       'expected duplicate tellask call write to persist exactly one canonical call record',

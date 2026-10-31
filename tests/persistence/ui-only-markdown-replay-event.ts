@@ -1,3 +1,4 @@
+import { toRootCourseNumber, toRootGenerationSeqNumber } from '@longrun-ai/kernel/types/storage';
 import assert from 'node:assert/strict';
 
 import { DialogPersistence, DiskFileDialogStore } from '../../main/persistence';
@@ -19,8 +20,8 @@ async function main(): Promise<void> {
         anchorRole: 'assignment',
         callId: 'tellask:11',
         genseq: 93,
-        rootCourse: 6,
-        rootGenseq: 0,
+        rootCourse: toRootCourseNumber(6),
+        rootGenseq: toRootGenerationSeqNumber(0),
       },
       dlg.status,
     );
@@ -78,12 +79,10 @@ async function main(): Promise<void> {
       'expected ui_only_markdown_record replay to stop emitting generic markdown stream events',
     );
 
-    assert.equal(
-      warnLines.some((line) =>
-        line.includes('Unknown persistence event type during direct WebSocket send'),
-      ),
-      false,
-      'expected tellask_anchor_record replay to be recognized as metadata without unknown-event warn',
+    assert.deepEqual(
+      warnLines,
+      [],
+      'replaying the supported metadata anchor must not produce warnings',
     );
   });
 

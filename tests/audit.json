@@ -594,6 +594,66 @@
       "lane": "persistence",
       "value": "导出再导入保留原始提醒与模型元数据、丢弃已真实存在的未完成运行态，dialog/task/agent提醒分流正确",
       "evidence": "Complete assertion diff review, isolated real persistence/dialog regressions and actual semantic diagnostics in tests/semantic/reviews/2026-10-31-persistence-replay.json. Exact comparisons protect machine fields, input data or observable effects. Semantic evidence generation remains pending until independent review; no prior verdict accepts fresh output. Scope excludes live provider/browser/actual Windows and independent-process restart unless explicitly established."
+    },
+    "persistence/call-duplicate-callid-loud.ts": {
+      "status": "reviewed",
+      "lane": "persistence",
+      "value": "普通函数原始重复调用保留两份不同输入历史，tellask重复调用拒绝后保持第一份规范记录",
+      "evidence": "Complete assertion diff review and real isolated persistence/dialog/filesystem regressions in tests/semantic/reviews/2026-10-31-persistence-boundaries.json. Text equality protects actual protocol fields, provided input data and preserved effects. Valuable runtime diagnostics receive independent full-text review; generation and source identity are never semantic acceptance. Scope excludes live providers/browser/actual Windows/full driver restart."
+    },
+    "persistence/cross-course-tellask-requires-carryover-content.ts": {
+      "status": "reviewed",
+      "lane": "persistence",
+      "value": "缺失/空carryover拒绝且不写，完整跨程结果保留原始问答与course身份并恰好存一次carryover",
+      "evidence": "Complete assertion diff review and real isolated persistence/dialog/filesystem regressions in tests/semantic/reviews/2026-10-31-persistence-boundaries.json. Text equality protects actual protocol fields, provided input data and preserved effects. Valuable runtime diagnostics receive independent full-text review; generation and source identity are never semantic acceptance. Scope excludes live providers/browser/actual Windows/full driver restart."
+    },
+    "persistence/dialog-fork.ts": {
+      "status": "reviewed",
+      "lane": "persistence",
+      "value": "真实fork保留截点前主支线内容/提醒及回复路由，去除未来内容和pending，嵌套创建记录留在真实父节点",
+      "evidence": "Complete assertion diff review and real isolated persistence/dialog/filesystem regressions in tests/semantic/reviews/2026-10-31-persistence-boundaries.json. Text equality protects actual protocol fields, provided input data and preserved effects. Valuable runtime diagnostics receive independent full-text review; generation and source identity are never semantic acceptance. Scope excludes live providers/browser/actual Windows/full driver restart."
+    },
+    "persistence/fork-sideDialog-creation.ts": {
+      "status": "reviewed",
+      "lane": "persistence",
+      "value": "fork重建侧线元数据/assignment/回复义务并改写root目标，保持可继续状态且不用定时睡眠收尾",
+      "evidence": "Complete assertion diff review and real isolated persistence/dialog/filesystem regressions in tests/semantic/reviews/2026-10-31-persistence-boundaries.json. Text equality protects actual protocol fields, provided input data and preserved effects. Valuable runtime diagnostics receive independent full-text review; generation and source identity are never semantic acceptance. Scope excludes live providers/browser/actual Windows/full driver restart."
+    },
+    "persistence/malformed-main-dialog-quarantine.ts": {
+      "status": "reviewed",
+      "lane": "persistence",
+      "value": "真实文件隔离与取证数据保全，失败移动不广播且允许后续修复写入；并发共享失败，取消在途写不重建源，健康注册项不被坏项误删",
+      "evidence": "Complete assertion diff review and real isolated persistence/dialog/filesystem regressions in tests/semantic/reviews/2026-10-31-persistence-boundaries.json. Text equality protects actual protocol fields, provided input data and preserved effects. Valuable runtime diagnostics receive independent full-text review; generation and source identity are never semantic acceptance. Scope excludes live providers/browser/actual Windows/full driver restart."
+    },
+    "persistence/nested-sideDialog-created-parent-context.ts": {
+      "status": "reviewed",
+      "lane": "persistence",
+      "value": "真实嵌套FBR创建的持久化记录和唯一直播事件都指向真实side requester，元数据与asker stack职责正确",
+      "evidence": "Complete assertion diff review and real isolated persistence/dialog/filesystem regressions in tests/semantic/reviews/2026-10-31-persistence-boundaries.json. Text equality protects actual protocol fields, provided input data and preserved effects. Valuable runtime diagnostics receive independent full-text review; generation and source identity are never semantic acceptance. Scope excludes live providers/browser/actual Windows/full driver restart."
+    },
+    "persistence/restore-preserves-unpaired-tool-events.ts": {
+      "status": "reviewed",
+      "lane": "persistence",
+      "value": "原始不配对调用/结果不被伪修复，provider上下文按结构排除不完整对且不改原数据，已配对与坏参数tellask准确重放",
+      "evidence": "Complete assertion diff review and real isolated persistence/dialog/filesystem regressions in tests/semantic/reviews/2026-10-31-persistence-boundaries.json. Text equality protects actual protocol fields, provided input data and preserved effects. Valuable runtime diagnostics receive independent full-text review; generation and source identity are never semantic acceptance. Scope excludes live providers/browser/actual Windows/full driver restart."
+    },
+    "persistence/tellask-result-duplicate-callid-loud.ts": {
+      "status": "reviewed",
+      "lane": "persistence",
+      "value": "第二次结果写入拒绝，真实磁盘保留恰好一份原始规范结果",
+      "evidence": "Complete assertion diff review and real isolated persistence/dialog/filesystem regressions in tests/semantic/reviews/2026-10-31-persistence-boundaries.json. Text equality protects actual protocol fields, provided input data and preserved effects. Valuable runtime diagnostics receive independent full-text review; generation and source identity are never semantic acceptance. Scope excludes live providers/browser/actual Windows/full driver restart."
+    },
+    "persistence/tellask-result-requires-canonical-fields.ts": {
+      "status": "reviewed",
+      "lane": "persistence",
+      "value": "缺失回复身份/正文/registered session拒绝且不写，合法askHuman和registered结果能落盘",
+      "evidence": "Complete assertion diff review and real isolated persistence/dialog/filesystem regressions in tests/semantic/reviews/2026-10-31-persistence-boundaries.json. Text equality protects actual protocol fields, provided input data and preserved effects. Valuable runtime diagnostics receive independent full-text review; generation and source identity are never semantic acceptance. Scope excludes live providers/browser/actual Windows/full driver restart."
+    },
+    "persistence/ui-only-markdown-replay-event.ts": {
+      "status": "reviewed",
+      "lane": "persistence",
+      "value": "输入UI-only正文恰好重放一次且不伪造成模型markdown流，合法机器anchor不产生警告",
+      "evidence": "Complete assertion diff review and real isolated persistence/dialog/filesystem regressions in tests/semantic/reviews/2026-10-31-persistence-boundaries.json. Text equality protects actual protocol fields, provided input data and preserved effects. Valuable runtime diagnostics receive independent full-text review; generation and source identity are never semantic acceptance. Scope excludes live providers/browser/actual Windows/full driver restart."
     }
   },
   "retired": {

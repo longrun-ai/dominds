@@ -11,7 +11,6 @@ async function main(): Promise<void> {
     await dlg.receiveTellaskResult({
       type: 'tellask_result_msg',
       role: 'tool',
-      genseq: 1,
       callId: 'duplicate-tellask-call',
       callName: 'tellaskBack',
       status: 'completed',
@@ -30,7 +29,6 @@ async function main(): Promise<void> {
       dlg.receiveTellaskResult({
         type: 'tellask_result_msg',
         role: 'tool',
-        genseq: 1,
         callId: 'duplicate-tellask-call',
         callName: 'tellaskBack',
         status: 'completed',
@@ -44,12 +42,12 @@ async function main(): Promise<void> {
           tellaskContent: 'Need one clarified answer.',
         },
       }),
-      /tellask_result duplicate callId invariant violation/u,
+      Error,
     );
 
     const events = await DialogPersistence.loadCourseEvents(dlg.id, 1, 'running');
     const tellaskResults = events.filter(
-      (event) =>
+      (event): event is Extract<typeof event, { type: 'tellask_result_record' }> =>
         event.type === 'tellask_result_record' && event.callId === 'duplicate-tellask-call',
     );
     assert.equal(

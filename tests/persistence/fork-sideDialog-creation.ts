@@ -1,7 +1,6 @@
+import { toCallSiteCourseNo, toCallSiteGenseqNo } from '@longrun-ai/kernel/types/storage';
 import assert from 'node:assert/strict';
-import * as fs from 'node:fs/promises';
-import * as os from 'node:os';
-import * as path from 'node:path';
+import { withTempRtws } from '../kernel-driver/helpers';
 
 import type {
   DialogLatestFile,
@@ -19,18 +18,6 @@ import {
 } from '../../main/dialog-latest-state';
 import { DialogPersistence } from '../../main/persistence';
 
-async function withTempCwd<T>(fn: (sandboxDir: string) => Promise<T>): Promise<T> {
-  const sandboxDir = await fs.mkdtemp(path.join(os.tmpdir(), 'dominds-fork-sideDialog-creation-'));
-  const previousCwd = process.cwd();
-  process.chdir(sandboxDir);
-  try {
-    return await fn(sandboxDir);
-  } finally {
-    process.chdir(previousCwd);
-    await fs.rm(sandboxDir, { recursive: true, force: true });
-  }
-}
-
 async function writeLatest(dialogId: DialogID, currentCourse: number): Promise<void> {
   const latest: DialogLatestFile = {
     currentCourse,
@@ -45,7 +32,7 @@ async function writeLatest(dialogId: DialogID, currentCourse: number): Promise<v
 }
 
 async function main(): Promise<void> {
-  await withTempCwd(async () => {
+  await withTempRtws(async () => {
     const rootId = new DialogID('44/55/forkroot');
     const subId = new DialogID('44/55/forksub', rootId.rootId);
     const createdAt = formatUnifiedTimestamp(new Date('2026-04-11T00:00:00.000Z'));
@@ -72,8 +59,8 @@ async function main(): Promise<void> {
       originMemberId: 'tester',
       askerDialogId: rootId.selfId,
       callId: 'call-sub-1',
-      callSiteCourse: 1,
-      callSiteGenseq: 1,
+      callSiteCourse: toCallSiteCourseNo(1),
+      callSiteGenseq: toCallSiteGenseqNo(1),
     };
     await DialogPersistence.ensureSideDialogDirectory(subId, 'running');
     await DialogPersistence.saveSideDialogAskerStackState(
@@ -164,8 +151,6 @@ async function main(): Promise<void> {
       'forked sideDialog with preserved reply obligation must keep driving',
     );
     assert.equal(forkedSideDialogLatest?.executionMarker, undefined);
-
-    await new Promise((resolve) => setTimeout(resolve, 700));
   });
 }
 

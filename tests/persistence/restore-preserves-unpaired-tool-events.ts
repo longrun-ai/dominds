@@ -151,6 +151,9 @@ async function main(): Promise<void> {
       -1,
       'expected restored dialog state to retain orphaned func_result_msg',
     );
+    const originalOrphanedResult = restoredWithOrphanedResult.messages[orphanedResultIndex];
+    assert.ok(originalOrphanedResult?.type === 'func_result_msg');
+    assert.equal(originalOrphanedResult.content, orphanedResult.content);
     const sanitizedOrphaned = sanitizeToolContextForProvider(restoredWithOrphanedResult.messages);
     assert.equal(
       sanitizedOrphaned.droppedViolations.length,
@@ -168,6 +171,13 @@ async function main(): Promise<void> {
       'expected sanitized orphaned-result context to be provider-safe',
     );
     await buildOpenAiRequestInputWrapper(sanitizedOrphaned.messages);
+    assert.equal(originalOrphanedResult.content, orphanedResult.content);
+    assert.equal(
+      sanitizedOrphaned.messages.some(
+        (message) => message.type === 'func_result_msg' && message.id === orphanedResult.id,
+      ),
+      false,
+    );
 
     const replyDeliveryDlg = await createMainDialog('tester');
     await replyDeliveryDlg.persistTellaskCall(

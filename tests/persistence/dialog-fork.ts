@@ -1,7 +1,6 @@
+import { toCallSiteCourseNo, toCallSiteGenseqNo } from '@longrun-ai/kernel/types/storage';
 import assert from 'node:assert/strict';
-import * as fs from 'node:fs/promises';
-import * as os from 'node:os';
-import * as path from 'node:path';
+import { withTempRtws } from '../kernel-driver/helpers';
 
 import type {
   ActiveCalleesReconciledRecord,
@@ -24,18 +23,6 @@ import {
 import { DialogPersistence } from '../../main/persistence';
 import { materializeReminder } from '../../main/tool';
 
-async function withTempCwd<T>(fn: (sandboxDir: string) => Promise<T>): Promise<T> {
-  const sandboxDir = await fs.mkdtemp(path.join(os.tmpdir(), 'dominds-dialog-fork-'));
-  const previousCwd = process.cwd();
-  process.chdir(sandboxDir);
-  try {
-    return await fn(sandboxDir);
-  } finally {
-    process.chdir(previousCwd);
-    await fs.rm(sandboxDir, { recursive: true, force: true });
-  }
-}
-
 async function writeLatest(dialogId: DialogID, currentCourse: number): Promise<void> {
   const latest: DialogLatestFile = {
     currentCourse,
@@ -50,7 +37,7 @@ async function writeLatest(dialogId: DialogID, currentCourse: number): Promise<v
 }
 
 async function main(): Promise<void> {
-  await withTempCwd(async () => {
+  await withTempRtws(async () => {
     const rootId = new DialogID('11/22/rootfork');
     const subId = new DialogID('11/22/subfork', rootId.rootId);
     const nestedSubId = new DialogID('11/22/nestedfork', rootId.rootId);
@@ -84,8 +71,8 @@ async function main(): Promise<void> {
       originMemberId: 'rtws',
       askerDialogId: rootId.selfId,
       callId: 'call-sub-1',
-      callSiteCourse: 1,
-      callSiteGenseq: 1,
+      callSiteCourse: toCallSiteCourseNo(1),
+      callSiteGenseq: toCallSiteGenseqNo(1),
       collectiveTargets: ['scribe'],
     };
     await DialogPersistence.ensureSideDialogDirectory(subId, 'running');
@@ -119,8 +106,8 @@ async function main(): Promise<void> {
       originMemberId: 'scribe',
       askerDialogId: subId.selfId,
       callId: 'call-nested-1',
-      callSiteCourse: 1,
-      callSiteGenseq: 1,
+      callSiteCourse: toCallSiteCourseNo(1),
+      callSiteGenseq: toCallSiteGenseqNo(1),
       effectiveFbrEffort: 1,
     };
     await DialogPersistence.ensureSideDialogDirectory(nestedSubId, 'running');
@@ -171,14 +158,7 @@ async function main(): Promise<void> {
       agentId: 'scribe',
       taskDocPath: 'plans/demo.tsk',
       createdAt,
-      assignmentFromAsker: {
-        callName: 'tellaskSessionless',
-        mentionList: ['@scribe'],
-        tellaskContent: 'Investigate',
-        originMemberId: 'rtws',
-        askerDialogId: rootId.selfId,
-        callId: 'call-sub-1',
-      },
+      assignmentFromAsker: subAssignment,
     };
     await DialogPersistence.appendEvent(rootId, 1, subCreatedRecord);
     const preSecondReminderRecord: RemindersReconciledRecord = {
@@ -217,14 +197,7 @@ async function main(): Promise<void> {
       agentId: 'critic',
       taskDocPath: 'plans/demo.tsk',
       createdAt,
-      assignmentFromAsker: {
-        callName: 'freshBootsReasoning',
-        tellaskContent: 'Challenge the parent side dialog.',
-        originMemberId: 'scribe',
-        askerDialogId: subId.selfId,
-        callId: 'call-nested-1',
-        effectiveFbrEffort: 1,
-      },
+      assignmentFromAsker: nestedSubAssignment,
     });
 
     const secondTs = formatUnifiedTimestamp(new Date('2026-03-09T01:01:00.000Z'));
@@ -267,9 +240,9 @@ async function main(): Promise<void> {
           tellaskContent: 'Investigate',
           targetAgentId: 'scribe',
           callId: 'call-sub-1',
-          callSiteCourse: 1,
-          callSiteGenseq: 1,
-          callType: 'B',
+          callSiteCourse: toCallSiteCourseNo(1),
+          callSiteGenseq: toCallSiteGenseqNo(1),
+          callType: 'C',
         },
       ],
     };
@@ -359,6 +332,16 @@ async function main(): Promise<void> {
       false,
       'forked main dialog must not hoist nested sideDialog-created records out of their actual parent side dialog',
     );
+    assert.deepEqual(
+      forkedEvents
+        .filter((event) => event.type === 'agent_words_record')
+        .map((event) => event.content),
+      ['first answer'],
+    );
+    assert.deepEqual(
+      await DialogPersistence.loadActiveCalleeDispatches(forkedRootId, 'running'),
+      [],
+    );
     const forkedCreatedRecord = forkedEvents.find(
       (event): event is SideDialogCreatedRecord => event.type === 'sideDialog_created_record',
     );
@@ -425,6 +408,12 @@ async function main(): Promise<void> {
       new DialogID(subId.selfId, forkedRootId.selfId),
       1,
       'running',
+    );
+    assert.deepEqual(
+      forkedSubEvents
+        .filter((event) => event.type === 'agent_words_record')
+        .map((event) => event.content),
+      ['sideDialog baseline'],
     );
     const forkedNestedCreatedRecord = forkedSubEvents.find(
       (event): event is SideDialogCreatedRecord =>

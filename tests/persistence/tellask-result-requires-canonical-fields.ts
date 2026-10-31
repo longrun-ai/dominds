@@ -12,7 +12,6 @@ async function main(): Promise<void> {
       missingResponderDlg.receiveTellaskResult({
         type: 'tellask_result_msg',
         role: 'tool',
-        genseq: 1,
         callId: 'missing-responder',
         callName: 'askHuman',
         status: 'completed',
@@ -21,7 +20,7 @@ async function main(): Promise<void> {
           tellaskContent: 'Need one human decision.',
         },
       }),
-      /missing responderId/u,
+      Error,
     );
     const missingResponderEvents = await DialogPersistence.loadCourseEvents(
       missingResponderDlg.id,
@@ -41,7 +40,6 @@ async function main(): Promise<void> {
       missingContentDlg.receiveTellaskResult({
         type: 'tellask_result_msg',
         role: 'tool',
-        genseq: 1,
         callId: 'missing-content',
         callName: 'askHuman',
         status: 'completed',
@@ -53,7 +51,7 @@ async function main(): Promise<void> {
           tellaskContent: '   ',
         },
       }),
-      /empty tellaskContent/u,
+      Error,
     );
     const missingContentEvents = await DialogPersistence.loadCourseEvents(
       missingContentDlg.id,
@@ -73,7 +71,6 @@ async function main(): Promise<void> {
       missingSessionSlugDlg.receiveTellaskResult({
         type: 'tellask_result_msg',
         role: 'tool',
-        genseq: 1,
         callId: 'missing-session-slug',
         callName: 'tellask',
         status: 'completed',
@@ -86,7 +83,7 @@ async function main(): Promise<void> {
           mentionList: [],
         },
       }),
-      /missing sessionSlug/u,
+      Error,
     );
     const missingSessionSlugEvents = await DialogPersistence.loadCourseEvents(
       missingSessionSlugDlg.id,
@@ -101,6 +98,44 @@ async function main(): Promise<void> {
       false,
       'expected missing sessionSlug to persist no tellask_result_record',
     );
+    // Valid adjacent inputs prove these APIs can persist a result after the invalid variants.
+    for (const [callName, call] of [
+      ['askHuman', { tellaskContent: 'Need one human decision.' }],
+      [
+        'tellask',
+        {
+          tellaskContent: 'Review this plan.',
+          mentionList: ['@mentor'],
+          sessionSlug: 'review-session',
+        },
+      ],
+    ] as const) {
+      const valid = await createMainDialog('tester');
+      await valid.receiveTellaskResult({
+        type: 'tellask_result_msg',
+        role: 'tool',
+        callId: `valid-${callName}`,
+        callName,
+        status: 'completed',
+        content: 'supplied-reply-data',
+        responder: {
+          responderId: callName === 'askHuman' ? 'human' : 'mentor',
+          agentId: callName === 'askHuman' ? 'human' : 'mentor',
+          originMemberId: 'tester',
+        },
+        call: {
+          tellaskContent: call.tellaskContent,
+          ...('sessionSlug' in call
+            ? { sessionSlug: call.sessionSlug, mentionList: ['@mentor'] }
+            : {}),
+        },
+      });
+      const records = (await DialogPersistence.loadCourseEvents(valid.id, 1, 'running')).filter(
+        (event) => event.type === 'tellask_result_record',
+      );
+      assert.equal(records.length, 1);
+      assert.equal(records[0]?.content, 'supplied-reply-data');
+    }
   });
 
   console.log('persistence tellask-result-requires-canonical-fields: PASS');

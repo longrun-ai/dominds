@@ -63,6 +63,17 @@ const filesystem = [
   'edit-output-truncation.ts',
 ];
 const persistence = [
+  'persistence/call-duplicate-callid-loud.ts',
+  'persistence/cross-course-tellask-requires-carryover-content.ts',
+  'persistence/dialog-fork.ts',
+  'persistence/fork-sideDialog-creation.ts',
+  'persistence/malformed-main-dialog-quarantine.ts',
+  'persistence/nested-sideDialog-created-parent-context.ts',
+  'persistence/restore-preserves-unpaired-tool-events.ts',
+  'persistence/tellask-result-duplicate-callid-loud.ts',
+  'persistence/tellask-result-requires-canonical-fields.ts',
+  'persistence/ui-only-markdown-replay-event.ts',
+
   'persistence/latest-writeback.ts',
   'persistence/thinking-reasoning-replay-event.ts',
   'persistence/asker-stack-jsonl.ts',
@@ -74,7 +85,12 @@ const persistence = [
   'persistence/priming-reminders.ts',
 ];
 const semanticSuites = {
-  persistence: ['persistence/asker-stack-jsonl.ts', 'persistence/move-dialog-status.ts'],
+  persistence: [
+    'persistence/asker-stack-jsonl.ts',
+    'persistence/move-dialog-status.ts',
+    'persistence/cross-course-tellask-requires-carryover-content.ts',
+    'persistence/malformed-main-dialog-quarantine.ts',
+  ],
   filesystem: filesystem.filter((file) => !file.startsWith('access-control/')),
   kernel: [
     'kernel-driver/sideDialog-askback-auto-resume-while-pending-registered-sideDialog.ts',
