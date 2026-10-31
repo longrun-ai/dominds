@@ -498,6 +498,48 @@
       "lane": "filesystem",
       "value": "大预览完整可读的YAML元数据与有界输出，所有preview保留原文件；大规模替换恰好应用及plan不可重用，80k正文真实写入不被预览限制截断",
       "evidence": "Filesystem/editing batch: complete assertion-design diff review; supplied data/bytes, public YAML fields, actual disk/link effects, budget counts and explicit API scope. Natural guidance/preview meaning is judged only from actual evidence by the test-execution agent. Durable review and provenance: tests/semantic/reviews/2026-10-31-filesystem.json. This design ledger does not accept later output."
+    },
+    "overwrite-entire-file.ts": {
+      "status": "reviewed",
+      "lane": "filesystem",
+      "value": "独立旧行/UTF-8字节数护栏、真实format拒绝、明确diff字面量存储与完整pad写入",
+      "evidence": "Complete assertion diff review and isolated real file/dialog/Team.load regressions in tests/semantic/reviews/2026-10-31-edit-plans.json. Text equality protects machine fields, supplied data or actual file effects; natural-language meaning is independently reviewed from actual output. Direct component scope is explicit; prior verdicts do not accept fresh output."
+    },
+    "occurrence-replace.ts": {
+      "status": "reviewed",
+      "lane": "filesystem",
+      "value": "真实计划与全量/指定替换、同尺寸正文漂移、owner拒绝、消费后不重复写及长行数据完整",
+      "evidence": "Complete assertion diff review and isolated real file/dialog/Team.load regressions in tests/semantic/reviews/2026-10-31-edit-plans.json. Text equality protects machine fields, supplied data or actual file effects; natural-language meaning is independently reviewed from actual output. Direct component scope is explicit; prior verdicts do not accept fresh output."
+    },
+    "team_mgmt-create-new-file.ts": {
+      "status": "reviewed",
+      "lane": "filesystem",
+      "value": "团队范围空文件/pad创建与覆盖、旧值/路径/已有目标拒绝保全、原始元数据保真",
+      "evidence": "Complete assertion diff review and isolated real file/dialog/Team.load regressions in tests/semantic/reviews/2026-10-31-edit-plans.json. Text equality protects machine fields, supplied data or actual file effects; natural-language meaning is independently reviewed from actual output. Direct component scope is explicit; prior verdicts do not accept fresh output."
+    },
+    "team_mgmt-file-range-edit.ts": {
+      "status": "reviewed",
+      "lane": "filesystem",
+      "value": "团队范围真实行/锚点/块/追加效果、不同正文的预览不写、pad数据不回显",
+      "evidence": "Complete assertion diff review and isolated real file/dialog/Team.load regressions in tests/semantic/reviews/2026-10-31-edit-plans.json. Text equality protects machine fields, supplied data or actual file effects; natural-language meaning is independently reviewed from actual output. Direct component scope is explicit; prior verdicts do not accept fresh output."
+    },
+    "team_mgmt-occurrence-replace.ts": {
+      "status": "reviewed",
+      "lane": "filesystem",
+      "value": "团队范围计划与局部替换、普通工具拒绝.minds、团队工具拒绝工作区计划且不消费、原始find保真",
+      "evidence": "Complete assertion diff review and isolated real file/dialog/Team.load regressions in tests/semantic/reviews/2026-10-31-edit-plans.json. Text equality protects machine fields, supplied data or actual file effects; natural-language meaning is independently reviewed from actual output. Direct component scope is explicit; prior verdicts do not accept fresh output."
+    },
+    "reminders/ws-mod-pad.ts": {
+      "status": "reviewed",
+      "lane": "filesystem",
+      "value": "真实pad编辑/投影/维护/文件应用、预览与正文隔离、按真实reminder身份清理损坏元数据",
+      "evidence": "Complete assertion diff review and isolated real file/dialog/Team.load regressions in tests/semantic/reviews/2026-10-31-edit-plans.json. Text equality protects machine fields, supplied data or actual file effects; natural-language meaning is independently reviewed from actual output. Direct component scope is explicit; prior verdicts do not accept fresh output."
+    },
+    "team-file-ext-permissions.ts": {
+      "status": "reviewed",
+      "lane": "configuration",
+      "value": "配置默认值与成员覆盖影响实际读写，拒绝列表优先；非法成员Problem及修正后的历史保留",
+      "evidence": "Complete assertion diff review and isolated real file/dialog/Team.load regressions in tests/semantic/reviews/2026-10-31-edit-plans.json. Text equality protects machine fields, supplied data or actual file effects; natural-language meaning is independently reviewed from actual output. Direct component scope is explicit; prior verdicts do not accept fresh output."
     }
   },
   "retired": {

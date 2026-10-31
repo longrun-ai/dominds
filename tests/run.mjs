@@ -30,6 +30,7 @@ const context = [
 ];
 
 const configuration = [
+  'team-file-ext-permissions.ts',
   'team-yaml-parsing.ts',
   'team_mgmt-validate-team-manual-guidance.ts',
   'team_mgmt-manual/mcp-manual-content.ts',
@@ -47,6 +48,12 @@ const manual = [
   'toolsets/manual-size-guard.ts',
 ];
 const filesystem = [
+  'overwrite-entire-file.ts',
+  'occurrence-replace.ts',
+  'team_mgmt-create-new-file.ts',
+  'team_mgmt-file-range-edit.ts',
+  'team_mgmt-occurrence-replace.ts',
+  'reminders/ws-mod-pad.ts',
   'access-control/dialogs-root-deny.ts',
   'access-control/file-ext-names.ts',
   'fs-symlink-follow.ts',

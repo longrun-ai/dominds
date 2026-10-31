@@ -64,15 +64,15 @@ import {
   renderMcpToolsetSetupGuideSection,
 } from './team_mgmt-mcp-manual';
 import {
-  applyOccurrenceReplaceTool,
-  createNewFileTool,
+  callApplyOccurrenceReplace,
+  callCreateNewFile,
+  callOverwriteEntireFile,
+  callPrepareOccurrenceReplace,
   fileAppendTool,
   fileBlockReplaceTool,
   fileInsertAfterTool,
   fileInsertBeforeTool,
   fileRangeEditTool,
-  overwriteEntireFileTool,
-  prepareOccurrenceReplaceTool,
   readFileTool,
 } from './txt';
 
@@ -1834,12 +1834,17 @@ export const teamMgmtCreateNewFileTool: FuncTool = {
       const rel = toMindsRelativePath(rawPath);
       ensureMindsScopedPath(rel);
       const proxyCaller = makeMindsOnlyAccessMember(caller);
-      const output = await createNewFileTool.call(dlg, proxyCaller, {
-        path: rel,
-        ...(contentValue !== undefined ? { content: contentValue } : {}),
-        ...(padIdValue !== undefined ? { pad_id: padIdValue } : {}),
-        ...(padRangeValue !== undefined ? { pad_range: padRangeValue } : {}),
-      });
+      const output = await callCreateNewFile(
+        dlg,
+        proxyCaller,
+        {
+          path: rel,
+          ...(contentValue !== undefined ? { content: contentValue } : {}),
+          ...(padIdValue !== undefined ? { pad_id: padIdValue } : {}),
+          ...(padRangeValue !== undefined ? { pad_range: padRangeValue } : {}),
+        },
+        'team_mgmt_',
+      );
       const content = toolCallOutputToString(output);
       if (isSuccessfulYamlToolResult(content, 'create_new_file')) {
         await refreshDerivedStateAfterTeamMgmtWrite({
@@ -1938,15 +1943,20 @@ export const teamMgmtOverwriteEntireFileTool: FuncTool = {
       const rel = toMindsRelativePath(rawPath);
       ensureMindsScopedPath(rel);
       const proxyCaller = makeMindsOnlyAccessMember(caller);
-      const output = await overwriteEntireFileTool.call(dlg, proxyCaller, {
-        path: rel,
-        known_old_total_lines: knownLinesValue,
-        known_old_total_bytes: knownBytesValue,
-        ...(contentValue !== undefined ? { content: contentValue } : {}),
-        ...(padIdValue !== undefined ? { pad_id: padIdValue } : {}),
-        ...(padRangeValue !== undefined ? { pad_range: padRangeValue } : {}),
-        ...(contentFormat ? { content_format: contentFormat } : {}),
-      });
+      const output = await callOverwriteEntireFile(
+        dlg,
+        proxyCaller,
+        {
+          path: rel,
+          known_old_total_lines: knownLinesValue,
+          known_old_total_bytes: knownBytesValue,
+          ...(contentValue !== undefined ? { content: contentValue } : {}),
+          ...(padIdValue !== undefined ? { pad_id: padIdValue } : {}),
+          ...(padRangeValue !== undefined ? { pad_range: padRangeValue } : {}),
+          ...(contentFormat ? { content_format: contentFormat } : {}),
+        },
+        'team_mgmt_',
+      );
       const result = toolCallOutputToString(output);
       if (isSuccessfulYamlToolResult(result, 'overwrite_entire_file')) {
         await refreshDerivedStateAfterTeamMgmtWrite({
@@ -2575,17 +2585,22 @@ export const teamMgmtPrepareOccurrenceReplaceTool: FuncTool = {
       const rel = toMindsRelativePath(rawPath);
       ensureMindsScopedPath(rel);
       const proxyCaller = makeMindsOnlyAccessMember(caller);
-      return await prepareOccurrenceReplaceTool.call(dlg, proxyCaller, {
-        path: rel,
-        find: findText,
-        ...(contentValue !== undefined ? { content: contentValue } : {}),
-        ...(padIdValue !== undefined ? { pad_id: padIdValue } : {}),
-        ...(padRangeValue !== undefined ? { pad_range: padRangeValue } : {}),
-        ...(occurrenceIndexesValue !== undefined
-          ? { occurrence_indexes: occurrenceIndexesValue }
-          : {}),
-        ...(showDiffValue !== undefined ? { show_diff: showDiffValue } : {}),
-      });
+      return await callPrepareOccurrenceReplace(
+        dlg,
+        proxyCaller,
+        {
+          path: rel,
+          find: findText,
+          ...(contentValue !== undefined ? { content: contentValue } : {}),
+          ...(padIdValue !== undefined ? { pad_id: padIdValue } : {}),
+          ...(padRangeValue !== undefined ? { pad_range: padRangeValue } : {}),
+          ...(occurrenceIndexesValue !== undefined
+            ? { occurrence_indexes: occurrenceIndexesValue }
+            : {}),
+          ...(showDiffValue !== undefined ? { show_diff: showDiffValue } : {}),
+        },
+        'team_mgmt_',
+      );
     } catch (err: unknown) {
       const msg =
         language === 'zh'
@@ -2633,10 +2648,15 @@ export const teamMgmtApplyOccurrenceReplaceTool: FuncTool = {
       }
 
       const proxyCaller = makeMindsOnlyAccessMember(caller);
-      const output = await applyOccurrenceReplaceTool.call(dlg, proxyCaller, {
-        plan_id: planId,
-        ...(showDiffValue !== undefined ? { show_diff: showDiffValue } : {}),
-      });
+      const output = await callApplyOccurrenceReplace(
+        dlg,
+        proxyCaller,
+        {
+          plan_id: planId,
+          ...(showDiffValue !== undefined ? { show_diff: showDiffValue } : {}),
+        },
+        'team_mgmt_',
+      );
       const content = toolCallOutputToString(output);
       if (isSuccessfulYamlToolResult(content, 'apply_occurrence_replace')) {
         const outputRel = extractPathFromYamlToolOutput(content);

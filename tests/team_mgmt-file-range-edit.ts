@@ -1,127 +1,148 @@
 import assert from 'node:assert/strict';
-import * as fs from 'node:fs/promises';
-import os from 'node:os';
-import path from 'node:path';
-import type { DialogStore } from '../main/dialog';
-import { MainDialog } from '../main/dialog';
+import fs from 'node:fs/promises';
 import { setWorkLanguage } from '../main/runtime/work-language';
 import { Team } from '../main/team';
 import {
   teamMgmtFileAppendTool,
+  teamMgmtFileBlockReplaceTool,
+  teamMgmtFileInsertAfterTool,
+  teamMgmtFileInsertBeforeTool,
   teamMgmtFileRangeEditTool,
-  teamMgmtTools,
 } from '../main/tools/team_mgmt';
 import { padWriteTool } from '../main/tools/txt';
+import { semanticEvidenceCollector } from './helpers/semantic-evidence';
+import { toolOutputData } from './helpers/tool-output';
+import { createMainDialog, withTempRtws } from './kernel-driver/helpers';
 
+const evidence = semanticEvidenceCollector('dominds-scoped-direct-edit-');
 async function main(): Promise<void> {
-  const oldCwd = process.cwd();
-  const tmpRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'dominds-team_mgmt-range-'));
-  try {
-    process.chdir(tmpRoot);
-    setWorkLanguage('en');
-
-    await fs.mkdir(path.join(tmpRoot, '.minds'), { recursive: true });
-    await fs.writeFile(path.join(tmpRoot, '.minds', 'team.yaml'), 'one\ntwo\nthree\n', 'utf8');
-
-    const dlg = new MainDialog(
-      {} as unknown as DialogStore,
-      'team-mgmt-range.tsk',
-      undefined,
-      'tester',
-    );
-    const alice = new Team.Member({
-      id: 'alice',
-      name: 'Alice',
-      read_dirs: ['**'],
-      write_dirs: ['**'],
-    });
-
-    const toolNames = new Set(teamMgmtTools.map((tool) => tool.name));
-    assert.ok(toolNames.has('team_mgmt_file_range_edit'));
-    assert.ok(toolNames.has('team_mgmt_file_append'));
-    assert.ok(toolNames.has('team_mgmt_file_insert_after'));
-    assert.ok(toolNames.has('team_mgmt_file_insert_before'));
-    assert.ok(toolNames.has('team_mgmt_file_block_replace'));
-    assert.ok(!toolNames.has('team_mgmt_prepare_file_range_edit'));
-    assert.ok(!toolNames.has('team_mgmt_prepare_file_append'));
-    assert.ok(!toolNames.has('team_mgmt_prepare_file_insert_after'));
-    assert.ok(!toolNames.has('team_mgmt_prepare_file_insert_before'));
-    assert.ok(!toolNames.has('team_mgmt_prepare_file_block_replace'));
-
-    const token = 'TEAM_MGMT_RANGE_TOKEN';
-    const output = (
-      await teamMgmtFileRangeEditTool.call(dlg, alice, {
-        path: 'team.yaml',
+  await withTempRtws(async () => {
+    const caller = new Team.Member({ id: 'manager', name: 'Manager' });
+    for (const language of ['en', 'zh'] as const) {
+      setWorkLanguage(language);
+      const dlg = await createMainDialog('manager');
+      dlg.setLastUserLanguageCode(language);
+      const file = `direct-${language}.md`;
+      const fullPath = `.minds/${file}`;
+      await fs.writeFile(fullPath, 'one\ntwo\nthree\n');
+      const token = `range-body-${language}`;
+      const range = await teamMgmtFileRangeEditTool.call(dlg, caller, {
+        path: file,
         range: '2~2',
         content: `${token}\n`,
-      })
-    ).content;
-    assert.ok(output.includes('mode: file_range_edit'));
-    assert.ok(output.includes("path: '.minds/team.yaml'"));
-    assert.ok(!output.includes(token), 'team_mgmt_file_range_edit should not echo body by default');
-    assert.equal(
-      await fs.readFile(path.join(tmpRoot, '.minds', 'team.yaml'), 'utf8'),
-      `one\n${token}\nthree\n`,
-    );
+      });
+      assert.equal(range.outcome, 'success');
+      assert.equal(toolOutputData(range.content).mode, 'file_range_edit');
+      assert.equal(toolOutputData(range.content).path, fullPath);
+      assert.equal(range.content.includes(token), false);
+      assert.equal(await fs.readFile(fullPath, 'utf8'), `one\n${token}\nthree\n`);
 
-    const padToken = 'TEAM_MGMT_PAD_RANGE_TOKEN';
-    const padWriteOutput = (
-      await padWriteTool.call(dlg, alice, {
-        pad_id: 'team_range_src',
-        content: `${padToken}\n`,
-      })
-    ).content;
-    assert.ok(!padWriteOutput.includes(padToken), 'pad_write should not echo pad body');
-    const padRangeOutput = (
-      await teamMgmtFileRangeEditTool.call(dlg, alice, {
-        path: 'team.yaml',
+      const padBody = `pad-range-body-${language}`;
+      const pad = await padWriteTool.call(dlg, caller, {
+        pad_id: 'scoped_range',
+        content: `${padBody}\n`,
+        intent: 'replace the last data line',
+        completion: 'after the intended edits are accepted',
+      });
+      assert.equal(pad.outcome, 'success');
+      assert.equal(pad.content.includes(padBody), false);
+      const fromPad = await teamMgmtFileRangeEditTool.call(dlg, caller, {
+        path: fullPath,
         range: '3~3',
-        pad_id: 'team_range_src',
-      })
-    ).content;
-    assert.ok(padRangeOutput.includes('source: pad'));
-    assert.ok(!padRangeOutput.includes(padToken), 'team_mgmt pad range edit should not echo body');
-    assert.equal(
-      await fs.readFile(path.join(tmpRoot, '.minds', 'team.yaml'), 'utf8'),
-      `one\n${token}\n${padToken}\n`,
-    );
-
-    const previewOutput = (
-      await teamMgmtFileRangeEditTool.call(dlg, alice, {
-        path: 'team.yaml',
+        pad_id: 'scoped_range',
+      });
+      assert.equal(fromPad.outcome, 'success');
+      assert.equal(toolOutputData(fromPad.content).source, 'pad');
+      assert.equal(fromPad.content.includes(padBody), false);
+      const beforePreview = `one\n${token}\n${padBody}\n`;
+      assert.equal(await fs.readFile(fullPath, 'utf8'), beforePreview);
+      const preview = await teamMgmtFileRangeEditTool.call(dlg, caller, {
+        path: file,
         range: '2~2',
-        content: 'PREVIEW_ONLY\n',
+        content: 'PREVIEW_ONLY_DATA\n',
         preview: true,
         show_diff: true,
-      })
-    ).content;
-    assert.ok(previewOutput.includes('preview: true'));
-    assert.ok(previewOutput.includes('```diff'));
-    assert.equal(
-      await fs.readFile(path.join(tmpRoot, '.minds', 'team.yaml'), 'utf8'),
-      `one\n${token}\n${padToken}\n`,
-      'preview must not write the file',
-    );
+      });
+      assert.equal(preview.outcome, 'success');
+      assert.equal(toolOutputData(preview.content).preview, true);
+      assert.match(preview.content, /^```diff\r?\n/m, 'public unified-diff block grammar');
+      assert.equal(await fs.readFile(fullPath, 'utf8'), beforePreview);
 
-    const appendToken = 'TEAM_MGMT_APPEND_TOKEN';
-    const appendOutput = (
-      await teamMgmtFileAppendTool.call(dlg, alice, {
-        path: 'team.yaml',
-        content: `${appendToken}\n`,
-      })
-    ).content;
-    assert.ok(appendOutput.includes('mode: file_append'));
-    assert.ok(!appendOutput.includes(appendToken), 'team_mgmt_file_append should not echo body');
-    assert.equal(
-      await fs.readFile(path.join(tmpRoot, '.minds', 'team.yaml'), 'utf8'),
-      `one\n${token}\n${padToken}\n${appendToken}\n`,
-    );
-
-    console.log('✅ team_mgmt-file-range-edit tests passed');
-  } finally {
-    process.chdir(oldCwd);
-    await fs.rm(tmpRoot, { recursive: true, force: true });
-  }
+      const appended = await teamMgmtFileAppendTool.call(dlg, caller, {
+        path: file,
+        content: 'tail-data\n',
+      });
+      assert.equal(appended.outcome, 'success');
+      assert.equal(toolOutputData(appended.content).mode, 'file_append');
+      assert.equal(appended.content.includes('tail-data'), false);
+      assert.equal(await fs.readFile(fullPath, 'utf8'), `${beforePreview}tail-data\n`);
+      const before = await teamMgmtFileInsertBeforeTool.call(dlg, caller, {
+        path: file,
+        anchor: 'one',
+        content: 'head-data\n',
+      });
+      assert.equal(before.outcome, 'success');
+      assert.equal(await fs.readFile(fullPath, 'utf8'), `head-data\n${beforePreview}tail-data\n`);
+      const after = await teamMgmtFileInsertAfterTool.call(dlg, caller, {
+        path: fullPath,
+        anchor: 'tail-data',
+        content: 'after-data\n',
+      });
+      assert.equal(after.outcome, 'success');
+      assert.equal(
+        await fs.readFile(fullPath, 'utf8'),
+        `head-data\n${beforePreview}tail-data\nafter-data\n`,
+      );
+      const block = await teamMgmtFileBlockReplaceTool.call(dlg, caller, {
+        path: file,
+        start_anchor: 'one',
+        end_anchor: 'tail-data',
+        content: 'block-data\n',
+        include_anchors: true,
+      });
+      assert.equal(block.outcome, 'success');
+      assert.equal(
+        await fs.readFile(fullPath, 'utf8'),
+        'head-data\none\nblock-data\ntail-data\nafter-data\n',
+      );
+      evidence.record({
+        id: language,
+        scenario:
+          'Direct .minds range, pad, append, before/after and block edits write exact intended data; preview shows a different body without writing.',
+        businessValue:
+          'Let a team editor safely review and apply targeted changes using tools valid for the team directory.',
+        context: {
+          language,
+          previewFileUnchanged: true,
+          exactFinalBytesChecked: true,
+          scope:
+            'Direct public tools with real disk and pad/dialog objects; no driver discovery, model, browser or live configuration reload claim.',
+        },
+        reviewQuestions: [
+          'Do actual summaries distinguish preview from completed writes?',
+          'Is pad cleanup guidance applicable only after the dependent edits are complete?',
+          'Does the displayed diff describe the proposed change and avoid implying that preview wrote it?',
+        ],
+        actualText: JSON.stringify(
+          {
+            range: range.content,
+            pad: fromPad.content,
+            preview: preview.content,
+            append: appended.content,
+            before: before.content,
+            after: after.content,
+            block: block.content,
+          },
+          null,
+          2,
+        ),
+      });
+    }
+  });
+  await evidence.write();
+  console.log('team-scoped direct edits, distinct preview, pad and anchor effects: passed');
 }
-
-void main();
+main().catch((error: unknown) => {
+  console.error(error);
+  process.exitCode = 1;
+});

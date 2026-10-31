@@ -27,7 +27,7 @@ pnpm run test:semantic:filesystem
 - `test`: a small local smoke suite; not full product, browser, packaging, or provider coverage.
 - `test:kernel`: discovers TypeScript cases under `kernel-driver/`, excluding its helper. Each runs in an isolated rtws. Failures do not prevent subsequent cases. `kernel-driver:integration` delegates here.
 - `test:context`: runs six state/data regressions for generation-boundary eligibility and language fallback, preservation cadence, user interjections, continuation-body fidelity, retry budgets, and exhaustion notices. It does not judge wording.
-- `test:configuration`: six isolated regressions for team configuration, capability boundaries, manual payload fidelity, MCP reload and Problems lifecycle. Only external MCP peers are replaced; no live providers or installed components are required.
+- `test:configuration`: seven isolated regressions for team configuration, extension rules against actual file access, capability boundaries, manual payload fidelity, MCP reload and Problems lifecycle. Only external MCP peers are replaced; no live providers or installed components are required.
 - `test:manual`: six isolated cases for language normalization, actual mind assets and skill scope/permissions, snippet paths, manual visibility and the original prose budget.
 - `test:types`: the full test-directory type check. During remediation it still reports inherited contract drift; that failure is tracked separately and is not a pass.
 - `test:inventory`: sources, support files, discovered suites, outside-suite candidates, and candidates without package scripts. These counts are not behavior coverage. Unknown candidates can be live probes or external integrations; inspect prerequisites before executing them.
@@ -39,8 +39,8 @@ pnpm run test:semantic:filesystem
 
 - `test:semantic:kernel`: runs explicit producers for actual provider reminder context, repeated-call guidance and stops, reply-tool errors and expiration, human-answer follow-up queues, reply/footer renderers, context renewal, nested delivery, registered-assignment updates, tight-context result visibility, real tool-loop transitions, queued user interjections, FBR phases/closure and empty-response retry recovery, synchronous ask-back result pointers, reply-delivery rejections and local human interjection/tool-follow-up guidance. Their complete output remains pending agent review even when runtime assertions pass.
 
-- `test:filesystem`: public path/extension decision APIs and direct tools against real files, symlinks and dialog pad objects; includes preview non-effects, exact editing results and output budgets. These cases use the host filesystem and do not establish a full sandbox, other-platform behavior or provider compliance.
-- `test:semantic:filesystem`: emits actual creation refusal/recovery, link operations, proposed edits and clipped tool output. Generation success leaves every semantic case pending subjective review.
+- `test:filesystem`: public path/extension decision APIs and direct tools against real files, symlinks and dialog pad objects; includes preview non-effects, pad lifecycle/scope, occurrence-plan ownership and drift guards, scoped team edits, exact editing results and output budgets. These cases use the host filesystem and do not establish a full sandbox, other-platform behavior or provider compliance.
+- `test:semantic:filesystem`: emits actual creation/overwrite refusal and recovery, link operations, edit plans, pad projection/cleanup, proposed edits and clipped tool output. Generation success leaves every semantic case pending subjective review.
 
 The [assertion audit ledger](./audit.json) records which candidate tests have actually been reviewed, their business value, lane and evidence. Inventory exposes unaudited candidates and stale ledger paths. Neither suite membership nor a prior ledger entry decides the meaning of freshly generated output.
 
