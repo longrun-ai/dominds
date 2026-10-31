@@ -1122,6 +1122,36 @@
       "lane": "shell",
       "value": "真实过滤/raw globs/路径身份、空成功/缺路径partial/有效匹配partial/参数失败及filesystem sibling；受控Windows stderr范围明确",
       "evidence": "Original nine-case value and complete assertion diff reviewed; actual local process/data/state/protocol outcomes. tests/semantic/reviews/2026-10-31-shell-execution.json retains actual text and independent subjective verdicts, rejected initial guidance, source provenance and native-rg red. Source hashes identify material only; fresh output always starts pending. Native Windows execution is not established by supplied platform/argv components."
+    },
+    "toolsets/list-dir-output-truncation.ts": {
+      "status": "reviewed",
+      "lane": "filesystem",
+      "value": "真实400个给定长文件名的120个返回数据/字符界限/不变性及单文件完整对照；实际省略指导另评",
+      "evidence": "Complete original5(468lines)/final assertion and execution-scope review; tests/semantic/reviews/2026-10-31-tool-data-boundaries.json. Supplied identifiers/file bytes, protocol fields, counts and effects are machine/data evidence; no Added/omission/duplicate/signature sentence judges natural-language meaning. Four explicit producers emit16 actual semantic records for independent subjective review. Availability is pure machine acceptance, not a semantic producer; future output always starts pending."
+    },
+    "toolsets/picture-tools.ts": {
+      "status": "reviewed",
+      "lane": "filesystem",
+      "value": "原生Dialog的图片文件/完整image项/准确artifact字节与引用边界，duplicate/伪签名/已存在外部PNG拒绝均保数据和artifact",
+      "evidence": "Complete original5(468lines)/final assertion and execution-scope review; tests/semantic/reviews/2026-10-31-tool-data-boundaries.json. Supplied identifiers/file bytes, protocol fields, counts and effects are machine/data evidence; no Added/omission/duplicate/signature sentence judges natural-language meaning. Four explicit producers emit16 actual semantic records for independent subjective review. Availability is pure machine acceptance, not a semantic producer; future output always starts pending."
+    },
+    "toolsets/memory-access.ts": {
+      "status": "reviewed",
+      "lane": "manual",
+      "value": "专用个人/团队记忆在普通写规则限制下保完整给定正文与命名空间；自有绝对目标拒绝且所有文件保全，不代表授予工具权限",
+      "evidence": "Complete original5(468lines)/final assertion and execution-scope review; tests/semantic/reviews/2026-10-31-tool-data-boundaries.json. Supplied identifiers/file bytes, protocol fields, counts and effects are machine/data evidence; no Added/omission/duplicate/signature sentence judges natural-language meaning. Four explicit producers emit16 actual semantic records for independent subjective review. Availability is pure machine acceptance, not a semantic producer; future output always starts pending."
+    },
+    "toolsets/team-mgmt-output-truncation.ts": {
+      "status": "reviewed",
+      "lane": "configuration",
+      "value": "真实240×20配置中的给定provider/model标识、有界80provider列表及过滤找回被省略provider，model显示上限1正对照",
+      "evidence": "Complete original5(468lines)/final assertion and execution-scope review; tests/semantic/reviews/2026-10-31-tool-data-boundaries.json. Supplied identifiers/file bytes, protocol fields, counts and effects are machine/data evidence; no Added/omission/duplicate/signature sentence judges natural-language meaning. Four explicit producers emit16 actual semantic records for independent subjective review. Availability is pure machine acceptance, not a semantic producer; future output always starts pending."
+    },
+    "toolsets/tool-availability-snapshot.ts": {
+      "status": "reviewed",
+      "lane": "configuration",
+      "value": "真实Team YAML绑定中的主/支线控制工具、直接赋予/工具集选择与shell specialist过滤的公开ID集合矩阵，仅快照组件",
+      "evidence": "Complete original5(468lines)/final assertion and execution-scope review; tests/semantic/reviews/2026-10-31-tool-data-boundaries.json. Supplied identifiers/file bytes, protocol fields, counts and effects are machine/data evidence; no Added/omission/duplicate/signature sentence judges natural-language meaning. Four explicit producers emit16 actual semantic records for independent subjective review. Availability is pure machine acceptance, not a semantic producer; future output always starts pending."
     }
   },
   "retired": {

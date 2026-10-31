@@ -4,8 +4,8 @@ import '../../main/tools/builtins';
 
 import assert from 'node:assert/strict';
 import * as fs from 'node:fs/promises';
-import os from 'node:os';
 import path from 'node:path';
+import { withTempRtws } from '../kernel-driver/helpers';
 
 import { createToolAvailabilitySnapshot } from '../../main/tool-availability';
 
@@ -33,11 +33,7 @@ function toolsetByName(
 }
 
 async function main(): Promise<void> {
-  const previousCwd = process.cwd();
-  const tmpRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'dominds-tool-availability-'));
-
-  try {
-    process.chdir(tmpRoot);
+  await withTempRtws(async (tmpRoot) => {
     await writeText(
       path.join(tmpRoot, '.minds', 'team.yaml'),
       [
@@ -101,10 +97,7 @@ async function main(): Promise<void> {
       cmdrOs.tools.some((tool) => tool.name === 'shell_cmd'),
       'shell specialist os toolset should include shell_cmd',
     );
-  } finally {
-    process.chdir(previousCwd);
-    await fs.rm(tmpRoot, { recursive: true, force: true });
-  }
+  });
 }
 
 main()

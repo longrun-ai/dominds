@@ -31,6 +31,8 @@ const context = [
 ];
 
 const configuration = [
+  'toolsets/team-mgmt-output-truncation.ts',
+  'toolsets/tool-availability-snapshot.ts',
   'team-file-ext-permissions.ts',
   'team-yaml-parsing.ts',
   'team_mgmt-validate-team-manual-guidance.ts',
@@ -41,6 +43,7 @@ const configuration = [
 ];
 
 const manual = [
+  'toolsets/memory-access.ts',
   'language.ts',
   'minds/mindset-i18n.ts',
   'minds/skills-i18n.ts',
@@ -49,6 +52,8 @@ const manual = [
   'toolsets/manual-size-guard.ts',
 ];
 const filesystem = [
+  'toolsets/list-dir-output-truncation.ts',
+  'toolsets/picture-tools.ts',
   'overwrite-entire-file.ts',
   'occurrence-replace.ts',
   'team_mgmt-create-new-file.ts',
@@ -262,9 +267,17 @@ const semanticSuites = {
     'kernel-driver/sideDialog-registered-update-replaces-pending-round.ts',
   ],
   configuration: configuration.filter(
-    (file) => file !== 'team_mgmt-manual/mcp-hot-reload-manual-problems.ts',
+    (file) =>
+      ![
+        'team_mgmt-manual/mcp-hot-reload-manual-problems.ts',
+        'toolsets/tool-availability-snapshot.ts',
+      ].includes(file),
   ),
-  manual: ['toolsets/manual-behavior.ts', 'semantic/manual-guidance.ts'],
+  manual: [
+    'toolsets/manual-behavior.ts',
+    'semantic/manual-guidance.ts',
+    'toolsets/memory-access.ts',
+  ],
 };
 
 async function sourceFiles(directory = testsRoot) {
@@ -481,7 +494,8 @@ async function main() {
       (suite !== 'smoke' && suite !== 'packaging') ||
       persistence.includes(file) ||
       recovery.includes(file) ||
-      presentation.includes(file)
+      presentation.includes(file) ||
+      configuration.includes(file)
         ? [tsx, path.join(testsRoot, 'cli.ts'), '--', file, ...(semantic ? ['--semantic'] : [])]
         : [
             tsx,
