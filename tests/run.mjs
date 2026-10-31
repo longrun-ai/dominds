@@ -48,6 +48,11 @@ const manual = [
 ];
 const semanticSuites = {
   kernel: [
+    'kernel-driver/sideDialog-askback-auto-resume-while-pending-registered-sideDialog.ts',
+    'kernel-driver/sideDialog-reply-delivery-marked-delivered.ts',
+    'kernel-driver/tellask-resolved-result-context-pointer.ts',
+    'kernel-driver/user-interject-active-callee-suppresses-reply-guidance.ts',
+    'kernel-driver/user-interject-active-callee-tool-followup.ts',
     'kernel-driver/fbr-internal-conclusion-flow.ts',
     'kernel-driver/retry-recovery-diligence-push-with-keep-going-disabled.ts',
     'kernel-driver/context-health-large-tool-output-hidden.ts',

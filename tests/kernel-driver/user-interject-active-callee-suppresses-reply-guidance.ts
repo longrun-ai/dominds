@@ -1,7 +1,15 @@
 import assert from 'node:assert/strict';
 
+import { toCallSiteCourseNo, toCallSiteGenseqNo } from '@longrun-ai/kernel/types/storage';
 import { formatUnifiedTimestamp } from '@longrun-ai/kernel/utils/time';
+import { DialogID } from '../../main/dialog';
 import type { ChatMessage } from '../../main/llm/client';
+import type { LlmGenerator, LlmRequestContext } from '../../main/llm/gen';
+import {
+  getLlmGenerator,
+  registerLlmGenerator,
+  unregisterLlmGenerator,
+} from '../../main/llm/gen/registry';
 import { driveDialogStream } from '../../main/llm/kernel-driver';
 import { executeDriveRound } from '../../main/llm/kernel-driver/flow';
 import { resolvePromptReplyGuidance } from '../../main/llm/kernel-driver/reply-guidance';
@@ -10,13 +18,8 @@ import {
   type KernelDriverDriveCallOptions,
 } from '../../main/llm/kernel-driver/types';
 import { DialogPersistence } from '../../main/persistence';
-import {
-  ACTIVE_REPLY_TOOL_PREFIX_EN,
-  NO_ACTIVE_REPLY_PREFIX_EN,
-  REPLY_TOOL_REMINDER_PREFIX_EN,
-  buildReplyObligationSuppressionGuideText,
-} from '../../main/runtime/reply-prompt-copy';
-import { setWorkLanguage } from '../../main/runtime/work-language';
+import { getWorkLanguage, setWorkLanguage } from '../../main/runtime/work-language';
+import { semanticEvidenceCollector } from '../helpers/semantic-evidence';
 import {
   createMainDialog,
   makeDriveOptions,
@@ -46,15 +49,54 @@ function assistantSayingContents(msgs: readonly ChatMessage[]): string[] {
     .map((msg) => msg.content);
 }
 
-function assertNoInjectedReplyGuidance(contents: readonly string[]): void {
-  for (const content of contents) {
-    assert.ok(
-      !content.startsWith(ACTIVE_REPLY_TOOL_PREFIX_EN) &&
-        !content.startsWith(NO_ACTIVE_REPLY_PREFIX_EN) &&
-        !content.startsWith(REPLY_TOOL_REMINDER_PREFIX_EN),
-      `unexpected injected reply guidance: ${content}`,
-    );
-  }
+const evidence = semanticEvidenceCollector('dominds-local-interjections-');
+const apiType = 'observed-user-interjection';
+const invalidAnswerRecovery = 'invalid-answer-continuation-data';
+function isInvalidAnswerContinuation(context: readonly ChatMessage[]): boolean {
+  return context.some(
+    (message) =>
+      message.type === 'func_call_msg' &&
+      message.id === 'invalid-answer-human-after-visible-answer',
+  );
+}
+let fixtureFailure: unknown;
+let fixtureFailed = false;
+let requestNo = 0;
+function assertProviderSucceeded() {
+  if (fixtureFailed) throw fixtureFailure;
+}
+async function captureRequest(
+  request: LlmRequestContext,
+  systemPrompt: string,
+  context: ChatMessage[],
+  streaming: boolean,
+) {
+  if (!streaming) return;
+  requestNo += 1;
+  const id = new DialogID(request.dialogSelfId, request.dialogRootId);
+  const obligation = await DialogPersistence.loadActiveTellaskReplyObligation(id);
+  const pending = await DialogPersistence.loadActiveCalleeDispatches(id);
+  evidence.record({
+    id: `request-${requestNo}`,
+    scenario:
+      'A real user input receives a local response while background work or an earlier requester reply obligation is still active.',
+    businessValue:
+      'Respond to the current human without losing the existing task, duplicating its reply or letting old guidance choose the current action.',
+    context: {
+      language: getWorkLanguage(),
+      streaming,
+      dialogScope: request.dialogSelfId === request.dialogRootId ? 'mainDialog' : 'sideDialog',
+      activeReply: JSON.stringify(obligation ?? null),
+      pendingCalleeCount: pending.length,
+      scope:
+        'Controlled MockGen boundary; component rounds separately capture scheduling decisions. This material does not establish real model compliance.',
+    },
+    reviewQuestions: [
+      'Does the actual request prioritize the latest user input while keeping earlier work and requester replies distinct?',
+      'Are tool use and answer/ask/requester channels consistent with the actual system, context and outstanding obligations?',
+    ],
+    actualText: JSON.stringify({ systemPrompt, context }, null, 2),
+  });
 }
 
 async function runMainDialogScenario(): Promise<void> {
@@ -68,29 +110,23 @@ async function runMainDialogScenario(): Promise<void> {
       role: 'user',
       response: interjectResponse,
     },
-    {
-      message: 'Reply delivered via `replyTellaskBack`.',
-      role: 'tool',
-      response: '',
-      omitDefaultThinking: true,
-    },
   ]);
 
   const root = await createMainDialog('tester');
   root.disableDiligencePush = true;
 
   const activeCalleeDispatch = await root.createSideDialog(
-    'pangu',
-    ['@pangu'],
+    'worker',
+    ['@worker'],
     'Background side dialog work remains active.',
     {
       callName: 'tellaskSessionless',
       originMemberId: 'tester',
       askerDialogId: root.id.selfId,
       callId: 'root-active-callee-call',
-      callSiteCourse: 1,
-      callSiteGenseq: 1,
-      collectiveTargets: ['pangu'],
+      callSiteCourse: toCallSiteCourseNo(1),
+      callSiteGenseq: toCallSiteGenseqNo(1),
+      collectiveTargets: ['worker'],
     },
   );
   await DialogPersistence.appendActiveCalleeDispatch(root.id, {
@@ -98,12 +134,12 @@ async function runMainDialogScenario(): Promise<void> {
     createdAt: formatUnifiedTimestamp(new Date()),
     batchId: 'root-active-callee-batch',
     callName: 'tellaskSessionless',
-    mentionList: ['@pangu'],
+    mentionList: ['@worker'],
     tellaskContent: 'Background side dialog work remains active.',
-    targetAgentId: 'pangu',
+    targetAgentId: 'worker',
     callId: 'root-active-callee-call',
-    callSiteCourse: 1,
-    callSiteGenseq: 1,
+    callSiteCourse: toCallSiteCourseNo(1),
+    callSiteGenseq: toCallSiteGenseqNo(1),
     callType: 'C',
   });
 
@@ -112,7 +148,7 @@ async function runMainDialogScenario(): Promise<void> {
     'root-runtime-reply-directive',
     'markdown',
     'runtime',
-    'en',
+    getWorkLanguage(),
     undefined,
     {
       expectedReplyCallName: 'replyTellaskBack',
@@ -125,7 +161,7 @@ async function runMainDialogScenario(): Promise<void> {
   await driveDialogStream(
     root,
     makeUserPrompt(interjectPrompt, 'root-user-interject-while-active-callee', {
-      userLanguageCode: 'en',
+      userLanguageCode: getWorkLanguage(),
     }),
     true,
     makeDriveOptions({ suppressDiligencePush: true }),
@@ -149,9 +185,6 @@ async function runMainDialogScenario(): Promise<void> {
     undefined,
     'root interjection should not inherit the pending reply directive',
   );
-  assertNoInjectedReplyGuidance(
-    humanTextRecords.filter((event) => event.origin === 'user').map((event) => event.content),
-  );
 
   const pending = await DialogPersistence.loadActiveCalleeDispatches(root.id, root.status);
   assert.equal(pending.length, 1, 'root should retain the original active callee dispatch');
@@ -172,43 +205,48 @@ async function runSideDialogScenario(): Promise<void> {
   const root = await createMainDialog('tester');
   root.disableDiligencePush = true;
 
-  const sideDialog = await root.createSideDialog('pangu', ['@pangu'], 'Finish the assigned task.', {
-    callName: 'tellask',
-    originMemberId: 'tester',
-    askerDialogId: root.id.selfId,
-    callId: 'root-to-pangu-call',
-    callSiteCourse: 1,
-    callSiteGenseq: 1,
-    sessionSlug: 'parent-session',
-    collectiveTargets: ['pangu'],
-  });
+  const sideDialog = await root.createSideDialog(
+    'worker',
+    ['@worker'],
+    'Finish the assigned task.',
+    {
+      callName: 'tellask',
+      originMemberId: 'tester',
+      askerDialogId: root.id.selfId,
+      callId: 'root-to-worker-call',
+      callSiteCourse: toCallSiteCourseNo(1),
+      callSiteGenseq: toCallSiteGenseqNo(1),
+      sessionSlug: 'parent-session',
+      collectiveTargets: ['worker'],
+    },
+  );
   sideDialog.disableDiligencePush = true;
 
   const nestedSideDialog = await sideDialog.createSideDialog(
-    'nuwa',
-    ['@nuwa'],
+    'helper',
+    ['@helper'],
     'Investigate a nested side dialog.',
     {
       callName: 'tellaskSessionless',
-      originMemberId: 'pangu',
+      originMemberId: 'worker',
       askerDialogId: sideDialog.id.selfId,
-      callId: 'pangu-to-nuwa-call',
-      callSiteCourse: 1,
-      callSiteGenseq: 1,
-      collectiveTargets: ['nuwa'],
+      callId: 'worker-to-helper-call',
+      callSiteCourse: toCallSiteCourseNo(1),
+      callSiteGenseq: toCallSiteGenseqNo(1),
+      collectiveTargets: ['helper'],
     },
   );
   await DialogPersistence.appendActiveCalleeDispatch(sideDialog.id, {
     calleeDialogId: nestedSideDialog.id.selfId,
     createdAt: formatUnifiedTimestamp(new Date()),
-    batchId: 'pangu-to-nuwa-call-batch',
+    batchId: 'worker-to-helper-call-batch',
     callName: 'tellaskSessionless',
-    mentionList: ['@nuwa'],
+    mentionList: ['@helper'],
     tellaskContent: 'Investigate a nested side dialog.',
-    targetAgentId: 'nuwa',
-    callId: 'pangu-to-nuwa-call',
-    callSiteCourse: 1,
-    callSiteGenseq: 1,
+    targetAgentId: 'helper',
+    callId: 'worker-to-helper-call',
+    callSiteCourse: toCallSiteCourseNo(1),
+    callSiteGenseq: toCallSiteGenseqNo(1),
     callType: 'C',
   });
 
@@ -217,12 +255,12 @@ async function runSideDialogScenario(): Promise<void> {
     'sideDialog-runtime-assignment',
     'markdown',
     'runtime',
-    'en',
+    getWorkLanguage(),
     undefined,
     {
       expectedReplyCallName: 'replyTellask',
       targetDialogId: root.id.selfId,
-      targetCallId: 'root-to-pangu-call',
+      targetCallId: 'root-to-worker-call',
       tellaskContent: 'Finish the assigned task.',
     },
   );
@@ -230,7 +268,7 @@ async function runSideDialogScenario(): Promise<void> {
   await driveDialogStream(
     sideDialog,
     makeUserPrompt(interjectPrompt, 'sideDialog-user-interject-while-active-callee', {
-      userLanguageCode: 'en',
+      userLanguageCode: getWorkLanguage(),
     }),
     true,
     makeDriveOptions({ suppressDiligencePush: true }),
@@ -260,9 +298,6 @@ async function runSideDialogScenario(): Promise<void> {
     interjectRecord.tellaskReplyDirective,
     undefined,
     'sideDialog interjection should not inherit the tellasker reply directive',
-  );
-  assertNoInjectedReplyGuidance(
-    humanTextRecords.filter((event) => event.origin === 'user').map((event) => event.content),
   );
 
   const pending = await DialogPersistence.loadActiveCalleeDispatches(
@@ -296,17 +331,17 @@ async function runRepeatedRootInterjectionScenario(): Promise<void> {
   root.disableDiligencePush = true;
 
   const activeCalleeDispatch = await root.createSideDialog(
-    'pangu',
-    ['@pangu'],
+    'worker',
+    ['@worker'],
     'Background side dialog work remains active.',
     {
       callName: 'tellaskSessionless',
       originMemberId: 'tester',
       askerDialogId: root.id.selfId,
       callId: 'root-active-callee-call-repeated',
-      callSiteCourse: 1,
-      callSiteGenseq: 1,
-      collectiveTargets: ['pangu'],
+      callSiteCourse: toCallSiteCourseNo(1),
+      callSiteGenseq: toCallSiteGenseqNo(1),
+      collectiveTargets: ['worker'],
     },
   );
   await DialogPersistence.appendActiveCalleeDispatch(root.id, {
@@ -314,12 +349,12 @@ async function runRepeatedRootInterjectionScenario(): Promise<void> {
     createdAt: formatUnifiedTimestamp(new Date()),
     batchId: 'root-active-callee-repeated-batch',
     callName: 'tellaskSessionless',
-    mentionList: ['@pangu'],
+    mentionList: ['@worker'],
     tellaskContent: 'Background side dialog work remains active.',
-    targetAgentId: 'pangu',
+    targetAgentId: 'worker',
     callId: 'root-active-callee-call-repeated',
-    callSiteCourse: 1,
-    callSiteGenseq: 1,
+    callSiteCourse: toCallSiteCourseNo(1),
+    callSiteGenseq: toCallSiteGenseqNo(1),
     callType: 'C',
   });
 
@@ -328,7 +363,7 @@ async function runRepeatedRootInterjectionScenario(): Promise<void> {
     'root-runtime-reply-directive-repeated',
     'markdown',
     'runtime',
-    'en',
+    getWorkLanguage(),
     undefined,
     {
       expectedReplyCallName: 'replyTellaskBack',
@@ -341,7 +376,7 @@ async function runRepeatedRootInterjectionScenario(): Promise<void> {
   await driveDialogStream(
     root,
     makeUserPrompt(firstPrompt, 'root-user-interject-active-callee-first', {
-      userLanguageCode: 'en',
+      userLanguageCode: getWorkLanguage(),
     }),
     true,
     makeDriveOptions({ suppressDiligencePush: true }),
@@ -352,7 +387,7 @@ async function runRepeatedRootInterjectionScenario(): Promise<void> {
   await driveDialogStream(
     root,
     makeUserPrompt(secondPrompt, 'root-user-interject-active-callee-second', {
-      userLanguageCode: 'en',
+      userLanguageCode: getWorkLanguage(),
     }),
     true,
     makeDriveOptions({ suppressDiligencePush: true }),
@@ -408,7 +443,7 @@ async function runProceedingReplyObligationScenario(): Promise<void> {
     'root-runtime-reply-directive-proceeding',
     'markdown',
     'runtime',
-    'en',
+    getWorkLanguage(),
     undefined,
     boundReplyDirective,
   );
@@ -424,7 +459,7 @@ async function runProceedingReplyObligationScenario(): Promise<void> {
     driveArgs: [
       root,
       makeUserPrompt(interjectPrompt, 'root-user-interject-while-proceeding-reply-obligation', {
-        userLanguageCode: 'en',
+        userLanguageCode: getWorkLanguage(),
       }),
       true,
       makeDriveOptions({ suppressDiligencePush: true }),
@@ -463,19 +498,6 @@ async function runProceedingReplyObligationScenario(): Promise<void> {
     boundReplyDirective,
     'direct visible answer should leave the active reply obligation for the ordinary state machine',
   );
-  const deliveredEvents = await DialogPersistence.loadCourseEvents(
-    root.id,
-    root.currentCourse,
-    root.status,
-  );
-
-  const humanTextRecords = deliveredEvents.filter(
-    (event): event is Extract<(typeof deliveredEvents)[number], { type: 'human_text_record' }> =>
-      event.type === 'human_text_record',
-  );
-  assertNoInjectedReplyGuidance(
-    humanTextRecords.filter((event) => event.origin === 'user').map((event) => event.content),
-  );
 }
 
 async function runProceedingReplyObligationStructuredAnsweringScenario(): Promise<void> {
@@ -510,7 +532,7 @@ async function runProceedingReplyObligationStructuredAnsweringScenario(): Promis
     'root-runtime-reply-directive-structured-answering',
     'markdown',
     'runtime',
-    'en',
+    getWorkLanguage(),
     undefined,
     boundReplyDirective,
   );
@@ -526,7 +548,7 @@ async function runProceedingReplyObligationStructuredAnsweringScenario(): Promis
     driveArgs: [
       root,
       makeUserPrompt(interjectPrompt, 'root-user-interject-structured-answering', {
-        userLanguageCode: 'en',
+        userLanguageCode: getWorkLanguage(),
       }),
       true,
       makeDriveOptions({ suppressDiligencePush: true }),
@@ -583,7 +605,7 @@ async function runStructuredAnsweringWithVisibleSayingDoesNotDuplicateA2HScenari
     'root-runtime-reply-directive-answering-and-saying',
     'markdown',
     'runtime',
-    'en',
+    getWorkLanguage(),
     undefined,
     boundReplyDirective,
   );
@@ -599,7 +621,7 @@ async function runStructuredAnsweringWithVisibleSayingDoesNotDuplicateA2HScenari
     driveArgs: [
       root,
       makeUserPrompt(interjectPrompt, 'root-user-interject-answering-and-saying', {
-        userLanguageCode: 'en',
+        userLanguageCode: getWorkLanguage(),
       }),
       true,
       makeDriveOptions({ suppressDiligencePush: true }),
@@ -666,7 +688,7 @@ async function runInvalidAnswerHumanStillAllowsVisibleInterjectionAnswerScenario
     'root-runtime-reply-directive-invalid-answer-human',
     'markdown',
     'runtime',
-    'en',
+    getWorkLanguage(),
     undefined,
     boundReplyDirective,
   );
@@ -682,7 +704,7 @@ async function runInvalidAnswerHumanStillAllowsVisibleInterjectionAnswerScenario
     driveArgs: [
       root,
       makeUserPrompt(interjectPrompt, 'root-user-interject-invalid-answer-human', {
-        userLanguageCode: 'en',
+        userLanguageCode: getWorkLanguage(),
       }),
       true,
       makeDriveOptions({ suppressDiligencePush: true }),
@@ -700,6 +722,8 @@ async function runInvalidAnswerHumanStillAllowsVisibleInterjectionAnswerScenario
     1,
     'invalid answerHuman should not prevent the same-round visible answer from becoming A2H',
   );
+  assert.equal(answersToHuman.length, 1);
+  assert.ok(assistantSayingContents(root.msgs).includes(invalidAnswerRecovery));
   assert.equal(
     scheduled.length,
     0,
@@ -734,7 +758,7 @@ async function runToolOnlyInterjectionDoesNotAutoContinueLongLineScenario(): Pro
     'root-runtime-reply-directive-tool-only',
     'markdown',
     'runtime',
-    'en',
+    getWorkLanguage(),
     undefined,
     {
       expectedReplyCallName: 'replyTellaskBack',
@@ -760,7 +784,7 @@ async function runToolOnlyInterjectionDoesNotAutoContinueLongLineScenario(): Pro
     driveArgs: [
       root,
       makeUserPrompt(interjectPrompt, 'root-user-interject-tool-only', {
-        userLanguageCode: 'en',
+        userLanguageCode: getWorkLanguage(),
       }),
       true,
       makeDriveOptions({ suppressDiligencePush: true }),
@@ -811,22 +835,6 @@ async function runToolOnlyInterjectionDoesNotAutoContinueLongLineScenario(): Pro
   );
 }
 
-function runSuppressionGuidePriorityScenario(): void {
-  const zhGuide = buildReplyObligationSuppressionGuideText('zh');
-  assert.ok(
-    zhGuide.includes('本轮最新用户消息是真实用户插话'),
-    'zh suppression guide should explicitly identify the latest user message as the active topic',
-  );
-  assert.ok(
-    zhGuide.includes('不要在回答当前用户消息前切回旧任务、旧工具流程或旧收口'),
-    'zh suppression guide should keep old task/tool/closure instructions behind the visible answer',
-  );
-  assert.ok(
-    zhGuide.includes('不要因为旧长线任务、旧技能提示或旧提醒项去调用工具'),
-    'zh suppression guide should prevent old skill/reminder hints from driving tool calls',
-  );
-}
-
 async function runQ4HAnswerNeverCountsAsInterjectionScenario(): Promise<void> {
   const root = await createMainDialog('tester');
   root.disableDiligencePush = true;
@@ -836,7 +844,7 @@ async function runQ4HAnswerNeverCountsAsInterjectionScenario(): Promise<void> {
     'root-runtime-reply-directive-q4h',
     'markdown',
     'runtime',
-    'en',
+    getWorkLanguage(),
     undefined,
     {
       expectedReplyCallName: 'replyTellaskBack',
@@ -870,10 +878,10 @@ async function runQ4HAnswerNeverCountsAsInterjectionScenario(): Promise<void> {
   const guidance = await resolvePromptReplyGuidance({
     dlg: root,
     prompt: makeUserPrompt('Here is the formal askHuman answer.', 'root-q4h-answer-msg', {
-      userLanguageCode: 'en',
+      userLanguageCode: getWorkLanguage(),
       q4hAnswerCallId: 'ask-human-root-call',
     }),
-    language: 'en',
+    language: getWorkLanguage(),
   });
 
   assert.equal(
@@ -892,40 +900,129 @@ async function runQ4HAnswerNeverCountsAsInterjectionScenario(): Promise<void> {
     targetDialogId: root.id.selfId,
     tellaskContent: 'Deliver the tellasker reply once the askHuman answer is in.',
   });
-  assert.equal(
-    guidance.promptContent !== undefined &&
-      guidance.promptContent.startsWith(ACTIVE_REPLY_TOOL_PREFIX_EN),
-    true,
-    'askHuman answers should continue the active reply-obligation path instead of being downgraded into interjection suppression',
-  );
+  const body = 'Here is the formal askHuman answer.';
   assert.ok(
-    guidance.promptContent !== undefined &&
-      guidance.promptContent.includes('Here is the formal askHuman answer.'),
-    'the formal askHuman answer content itself should still be preserved inside the continued prompt',
+    guidance.promptContent?.endsWith(body),
+    'the supplied human answer body survives wrapping',
   );
+  evidence.record({
+    id: `q4h-classification-${getWorkLanguage()}`,
+    scenario:
+      'An explicit askHuman-answer continuation coexists with an outstanding requester reply obligation.',
+    businessValue:
+      'Resume the asked question rather than misclassifying its answer as a separate local interruption.',
+    context: {
+      language: getWorkLanguage(),
+      activeReply: JSON.stringify(guidance.activeReplyDirective),
+      scope: 'Direct reply-guidance classification API; not actual human-answer delivery.',
+    },
+    reviewQuestions: [
+      'Does the actual continuation guidance preserve the supplied human answer and correctly address the active requester obligation?',
+    ],
+    actualText: JSON.stringify(guidance, null, 2),
+  });
 }
 
 async function main(): Promise<void> {
   await withTempRtws(async () => {
-    setWorkLanguage('en');
-    await writeStandardMinds(process.cwd(), {
-      includePangu: true,
-      extraMembers: ['nuwa'],
-      memberTools: ['env_get'],
-    });
-    await runMainDialogScenario();
-    await runSideDialogScenario();
-    await runRepeatedRootInterjectionScenario();
-    await runProceedingReplyObligationScenario();
-    await runProceedingReplyObligationStructuredAnsweringScenario();
-    await runStructuredAnsweringWithVisibleSayingDoesNotDuplicateA2HScenario();
-    await runInvalidAnswerHumanStillAllowsVisibleInterjectionAnswerScenario();
-    await runToolOnlyInterjectionDoesNotAutoContinueLongLineScenario();
-    runSuppressionGuidePriorityScenario();
-    await runQ4HAnswerNeverCountsAsInterjectionScenario();
+    const mock = getLlmGenerator('mock');
+    assert.ok(mock);
+    const observed: LlmGenerator = {
+      apiType,
+      classifyFailure(error) {
+        fixtureFailure = error;
+        fixtureFailed = true;
+        return {
+          kind: 'fatal',
+          code: 'test_provider_failure',
+          message: error instanceof Error ? error.message : String(error),
+        };
+      },
+      async genToReceiver(
+        provider,
+        agent,
+        system,
+        tools,
+        request,
+        context,
+        receiver,
+        genseq,
+        signal,
+      ) {
+        await captureRequest(request, system, context, true);
+        if (isInvalidAnswerContinuation(context)) {
+          await receiver.sayingStart();
+          await receiver.sayingChunk(invalidAnswerRecovery);
+          await receiver.sayingFinish();
+          return { usage: { kind: 'unavailable' } };
+        }
+        return mock.genToReceiver(
+          provider,
+          agent,
+          system,
+          tools,
+          request,
+          context,
+          receiver,
+          genseq,
+          signal,
+        );
+      },
+      async genMoreMessages(provider, agent, system, tools, request, context, genseq, signal) {
+        await captureRequest(request, system, context, false);
+        if (isInvalidAnswerContinuation(context))
+          return {
+            messages: [
+              { type: 'saying_msg', role: 'assistant', content: invalidAnswerRecovery, genseq },
+            ],
+            usage: { kind: 'unavailable' },
+          };
+        return mock.genMoreMessages(
+          provider,
+          agent,
+          system,
+          tools,
+          request,
+          context,
+          genseq,
+          signal,
+        );
+      },
+    };
+    registerLlmGenerator(observed);
+    try {
+      for (const language of ['en', 'zh'] as const) {
+        setWorkLanguage(language);
+        for (const streaming of [true, false]) {
+          await writeStandardMinds(process.cwd(), {
+            extraMembers: ['worker', 'helper'],
+            memberTools: ['env_get'],
+            providerApiType: apiType,
+            streaming,
+          });
+          for (const run of [
+            runMainDialogScenario,
+            runSideDialogScenario,
+            runRepeatedRootInterjectionScenario,
+            runProceedingReplyObligationScenario,
+            runProceedingReplyObligationStructuredAnsweringScenario,
+            runStructuredAnsweringWithVisibleSayingDoesNotDuplicateA2HScenario,
+            runInvalidAnswerHumanStillAllowsVisibleInterjectionAnswerScenario,
+            runToolOnlyInterjectionDoesNotAutoContinueLongLineScenario,
+          ]) {
+            await run();
+            assertProviderSucceeded();
+          }
+        }
+        await runQ4HAnswerNeverCountsAsInterjectionScenario();
+      }
+    } finally {
+      unregisterLlmGenerator(apiType);
+    }
   });
 
-  console.log('kernel-driver user-interject-while-active-callee-suppresses-reply-guidance: PASS');
+  await evidence.write();
+  console.log('local human response, native answering and pending requester obligations: passed');
 }
 
 void main().catch((err: unknown) => {

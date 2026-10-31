@@ -272,6 +272,10 @@ type ReplyTellaskExecutionResult = Readonly<{
   delivered: boolean;
 }>;
 
+// A synchronous Type-A roundtrip consumes its reply in the same tool round.
+// Keep that ownership local to the handler; UI call correlation can outlive it.
+const inlineAskBackCalls = new WeakMap<SideDialog, string>();
+
 type TellaskBackReplyDeliveryResult = Readonly<
   | {
       kind: 'delivered';
@@ -403,11 +407,19 @@ export async function deliverTellaskBackReplyFromDirective(args: {
   // persisted and mirrored locally. Otherwise a write failure here would leave suspension state
   // claiming "resumed" while the business fact never landed.
   askBackAskerDialog.setSuspensionState('resumed');
-  await scheduleContinuationDriveIfUnblocked(
-    askBackAskerDialog,
-    args.callbacks,
-    'reply_tellask_back_delivered',
-  );
+  // The synchronous Type-A handler will read this canonical result and continue the same
+  // drive when it still owns the matching call. Queuing another drive here would consume
+  // the same answer twice. Replies arriving after that call has yielded still need a wake.
+  const handledInline =
+    askBackAskerDialog instanceof SideDialog &&
+    inlineAskBackCalls.get(askBackAskerDialog) === args.directive.targetCallId;
+  if (!handledInline) {
+    await scheduleContinuationDriveIfUnblocked(
+      askBackAskerDialog,
+      args.callbacks,
+      'reply_tellask_back_delivered',
+    );
+  }
   return { kind: 'delivered' };
 }
 
@@ -2007,6 +2019,7 @@ async function executeTellaskCall(
         const askBackAskerDialog = dlg;
         const askBackTellaskeeDialog = dlg.askerDialog;
         askBackAskerDialog.setSuspensionState('suspended');
+        inlineAskBackCalls.set(askBackAskerDialog, callId);
 
         try {
           const assignment = askBackAskerDialog.assignmentFromAsker;
@@ -2188,6 +2201,8 @@ async function executeTellaskCall(
               callSiteGenseq,
             },
           );
+        } finally {
+          inlineAskBackCalls.delete(askBackAskerDialog);
         }
       } else {
         const err = new Error(

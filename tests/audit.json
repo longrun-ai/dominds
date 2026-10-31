@@ -420,6 +420,42 @@
       "lane": "kernel",
       "value": "旧状态缺少渲染锚点时默认不交付；显式兜底参数允许有效回复，重复调用只保留一份正式结果并清除准确义务/UI状态",
       "evidence": "FBR/delivery batch: complete assertion design review, real isolated runtime and durable effects or explicit component contracts. tests/semantic/reviews/2026-10-31-fbr-delivery.json. This ledger does not accept fresh semantic output."
+    },
+    "kernel-driver/sideDialog-askback-auto-resume-while-pending-registered-sideDialog.ts": {
+      "status": "reviewed",
+      "lane": "kernel",
+      "value": "真实ask-back在同一驱动中恰好续办一次；独立注册子任务等待和父回复义务保留，实际上下文结果定位",
+      "evidence": "Collaboration/interjection batch: complete assertion-diff review; exact text comparisons protect supplied fixture data, parser-consumed envelopes or identity only. Component callbacks and public renderer scope remain explicit. Independent semantic verdicts and source provenance: tests/semantic/reviews/2026-10-31-collaboration-interjections.json. This design ledger does not accept later output."
+    },
+    "kernel-driver/sideDialog-caller-result-arrival-backend-wake-queue.ts": {
+      "status": "reviewed",
+      "lane": "kernel",
+      "value": "主支线已完成或仍活跃时，丢失直接调度或触发器仍可恢复结果；晚到与陈旧触发不得重复生成",
+      "evidence": "Collaboration/interjection batch: complete assertion-diff review; exact text comparisons protect supplied fixture data, parser-consumed envelopes or identity only. Component callbacks and public renderer scope remain explicit. Independent semantic verdicts and source provenance: tests/semantic/reviews/2026-10-31-collaboration-interjections.json. This design ledger does not accept later output."
+    },
+    "kernel-driver/sideDialog-reply-delivery-marked-delivered.ts": {
+      "status": "reviewed",
+      "lane": "kernel",
+      "value": "实际投递与结果记录分离、合法新任务替换、成功/拒绝控制流及晚到ask-back仍唤醒一次",
+      "evidence": "Collaboration/interjection batch: complete assertion-diff review; exact text comparisons protect supplied fixture data, parser-consumed envelopes or identity only. Component callbacks and public renderer scope remain explicit. Independent semantic verdicts and source provenance: tests/semantic/reviews/2026-10-31-collaboration-interjections.json. This design ledger does not accept later output."
+    },
+    "kernel-driver/tellask-resolved-result-context-pointer.ts": {
+      "status": "reviewed",
+      "lane": "kernel",
+      "value": "公开渲染器的结果锚点机器标识、原正文保真和旧持久化帧兼容；状态/位置指导另行主观评审",
+      "evidence": "Collaboration/interjection batch: complete assertion-diff review; exact text comparisons protect supplied fixture data, parser-consumed envelopes or identity only. Component callbacks and public renderer scope remain explicit. Independent semantic verdicts and source provenance: tests/semantic/reviews/2026-10-31-collaboration-interjections.json. This design ledger does not accept later output."
+    },
+    "kernel-driver/user-interject-active-callee-suppresses-reply-guidance.ts": {
+      "status": "reviewed",
+      "lane": "kernel",
+      "value": "真人插话、正式Q4H续办、原生answering侧通道、A2H去重和无效answerHuman后的正常续办；旧回复义务不丢失",
+      "evidence": "Collaboration/interjection batch: complete assertion-diff review; exact text comparisons protect supplied fixture data, parser-consumed envelopes or identity only. Component callbacks and public renderer scope remain explicit. Independent semantic verdicts and source provenance: tests/semantic/reviews/2026-10-31-collaboration-interjections.json. This design ledger does not accept later output."
+    },
+    "kernel-driver/user-interject-active-callee-tool-followup.ts": {
+      "status": "reviewed",
+      "lane": "kernel",
+      "value": "真实后台执行受控暂停时，真人取证工具链获得一次答复；后台随后真实交付并恰好消费一次",
+      "evidence": "Collaboration/interjection batch: complete assertion-diff review; exact text comparisons protect supplied fixture data, parser-consumed envelopes or identity only. Component callbacks and public renderer scope remain explicit. Independent semantic verdicts and source provenance: tests/semantic/reviews/2026-10-31-collaboration-interjections.json. This design ledger does not accept later output."
     }
   },
   "retired": {

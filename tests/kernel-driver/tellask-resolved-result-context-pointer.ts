@@ -9,175 +9,160 @@ import {
   formatTellaskResultContextContent,
 } from '../../main/runtime/inter-dialog-format';
 import { getWorkLanguage, setWorkLanguage } from '../../main/runtime/work-language';
+import { semanticEvidenceCollector } from '../helpers/semantic-evidence';
 
-function main(): void {
+const evidence = semanticEvidenceCollector('dominds-result-pointers-');
+async function main(): Promise<void> {
   const originalLanguage = getWorkLanguage();
   try {
-    setWorkLanguage('zh');
-    const zh = formatResolvedTellaskFuncResultContent({
-      name: 'tellask',
-      callId: 'call_pointer_zh',
-      status: 'completed',
-      resultPointer: {
-        kind: 'later_context_message',
-        recordedAt: '2026-07-23 01:08:51',
-        messageOffset: 17,
-        contentAnchor: '【Dominds 诉请结果｜callId: call_pointer_zh】',
-      },
-    });
-    assert.match(zh, /callId: call_pointer_zh/u);
-    assert.match(zh, /诉请结果记录时间: 2026-07-23 01:08:51/u);
-    assert.match(zh, /向后约第 17 个消息块/u);
-    assert.match(zh, /唯一首行锚点: "【Dominds 诉请结果｜callId: call_pointer_zh】"/u);
-    assert.match(zh, /锚点已包含同一 callId/u);
-    assert.doesNotMatch(zh, /回执之前|向前/u);
-
-    setWorkLanguage('en');
-    const en = formatResolvedTellaskFuncResultContent({
-      name: 'tellaskBack',
-      callId: 'call_pointer_en',
-      status: 'failed',
-      resultPointer: {
-        kind: 'later_context_message',
-        recordedAt: '2026-07-23 02:09:14',
-        messageOffset: 4,
-        contentAnchor: '[Dominds Tellask result | callId: call_pointer_en]',
-      },
-    });
-    assert.match(en, /callId: call_pointer_en/u);
-    assert.match(en, /Tellask result recorded at: 2026-07-23 02:09:14/u);
-    assert.match(en, /4 message blocks after this tool receipt/u);
-    assert.match(
-      en,
-      /Unique first-line anchor: "\[Dominds Tellask result \| callId: call_pointer_en\]"/u,
-    );
-    assert.match(en, /Search forward/u);
-    assert.doesNotMatch(en, /before this tool receipt/u);
-
-    const anchoredZh = formatTellaskResultContextContent({
-      callId: 'call_anchor_zh',
-      callName: 'tellask',
-      content: '结果正文',
-      language: 'zh',
-    });
-    assert.equal(anchoredZh, '【Dominds 诉请结果｜callId: call_anchor_zh】\n\n结果正文');
+    for (const language of ['en', 'zh'] as const) {
+      setWorkLanguage(language);
+      for (const [name, status, offset] of [
+        ['tellask', 'completed', 17],
+        ['tellaskBack', 'failed', 4],
+        ['askHuman', 'completed', 2],
+        ['askHuman', 'pending', null],
+      ] as const) {
+        const callId = `pointer-${name}-${status}-${language}`;
+        const body = `result-body-data-${callId}`;
+        const recordedAt = '2026-07-23 01:08:51';
+        const anchor = formatTellaskResultContextAnchor({ callId, callName: name, language });
+        const content = formatTellaskResultContextContent({
+          callId,
+          callName: name,
+          content: body,
+          language,
+        });
+        assert.equal(
+          content,
+          `${anchor}\n\n${body}`,
+          'the generated machine anchor and exact supplied body survive framing',
+        );
+        assert.equal(
+          formatTellaskResultContextContent({
+            callId,
+            callName: name,
+            content,
+            language: language === 'en' ? 'zh' : 'en',
+          }),
+          content,
+          'already anchored persisted content survives another work language without duplication',
+        );
+        assert.throws(
+          () =>
+            formatTellaskResultContextContent({
+              callId: `${callId}-other`,
+              callName: name,
+              content,
+              language,
+            }),
+          { name: 'Error' },
+        );
+        const pointer =
+          offset === null
+            ? undefined
+            : {
+                kind: 'later_context_message' as const,
+                recordedAt,
+                messageOffset: offset,
+                contentAnchor: anchor,
+              };
+        const receipt = pointer
+          ? formatResolvedTellaskFuncResultContent({
+              name,
+              callId,
+              status: status === 'failed' ? 'failed' : 'completed',
+              resultPointer: pointer,
+            })
+          : formatResolvedTellaskFuncResultContent({ name, callId, status: 'pending' });
+        if (pointer)
+          assert.throws(
+            () =>
+              formatResolvedTellaskFuncResultContent({
+                name,
+                callId,
+                status: status === 'failed' ? 'failed' : 'completed',
+                resultPointer: {
+                  ...pointer,
+                  contentAnchor: formatTellaskResultContextAnchor({
+                    callId: 'other-call-data',
+                    callName: name,
+                    language,
+                  }),
+                },
+              }),
+            { name: 'Error' },
+          );
+        evidence.record({
+          id: `${name}-${status}-${language}`,
+          scenario:
+            offset === null
+              ? 'A human question remains unanswered.'
+              : 'A resolved tool receipt points forward to a separately rendered result message.',
+          businessValue:
+            'Let the executing agent locate the actual result and distinguish teammate work from human input without copying results into status receipts.',
+          context: {
+            language,
+            callName: name,
+            callId,
+            status,
+            recordedAt: offset === null ? 'not available yet' : recordedAt,
+            expectedMessageBlocksAfterReceipt: offset ?? 'no result yet',
+            expectedResultAnchor: anchor,
+            scope:
+              'Public renderer with supplied relative-position data; this case does not test runtime offset calculation or real message delivery.',
+          },
+          reviewQuestions: [
+            'Does the actual receipt truthfully distinguish pending, completed and failed results, including human answers versus teammate replies?',
+            'For a resolved result, can the executor locate its forward position and unique anchor using the supplied identity, time and offset without a misleading search direction?',
+            'For an unanswered question, does the guidance avoid inventing an answer or a completed teammate reply?',
+          ],
+          actualText: JSON.stringify(
+            { receipt, separatelyRenderedResult: offset === null ? null : content },
+            null,
+            2,
+          ),
+        });
+      }
+    }
+    // These are legacy persisted machine-envelope values consumed by the runtime parser,
+    // not an oracle for the meaning of natural-language guidance.
+    const legacy = '【Dominds 诉请结果｜callId: legacy-call-data】\n\nlegacy-body-data';
     assert.equal(
       formatTellaskResultContextContent({
-        callId: 'call_anchor_zh',
+        callId: 'legacy-call-data',
         callName: 'tellask',
-        content: anchoredZh,
+        content: legacy,
         language: 'en',
       }),
-      anchoredZh,
-      'an existing canonical anchor must survive a work-language change',
-    );
-    assert.equal(
-      formatTellaskResultContextAnchor({
-        callId: 'call_anchor_en',
-        callName: 'tellask',
-        language: 'en',
-      }),
-      '[Dominds Tellask result | callId: call_anchor_en]',
+      legacy,
     );
     assert.throws(
       () =>
         formatTellaskResultContextContent({
-          callId: ' call_with_whitespace',
+          callId: 'legacy-call-data',
           callName: 'tellask',
-          content: 'result body',
+          content: ` ${legacy}`,
           language: 'en',
         }),
-      /must not contain surrounding whitespace/u,
+      { name: 'Error' },
     );
-    assert.throws(
-      () =>
-        formatTellaskResultContextAnchor({
-          callId: 'call\u2028line',
-          callName: 'tellask',
-          language: 'en',
-        }),
-      /must fit on one line/u,
-    );
-    assert.throws(
-      () =>
-        formatTellaskResultContextContent({
-          callId: 'call_anchor_zh',
-          callName: 'tellask',
-          content: ' 【Dominds 诉请结果｜callId: call_anchor_zh】\n\n结果正文',
-          language: 'zh',
-        }),
-      /anchor conflicts/u,
-    );
-    assert.throws(
-      () =>
-        formatTellaskResultContextContent({
-          callId: 'call_anchor_zh',
-          callName: 'tellask',
-          content: '【Dominds 诉请结果｜callId: other_call】\n\n结果正文',
-          language: 'zh',
-        }),
-      /anchor conflicts/u,
-    );
-    assert.throws(
-      () =>
-        formatResolvedTellaskFuncResultContent({
-          name: 'tellask',
-          callId: 'call_pointer_zh',
-          status: 'completed',
-          resultPointer: {
-            kind: 'later_context_message',
-            recordedAt: '2026-07-23 01:08:51',
-            messageOffset: 17,
-            contentAnchor: '【Dominds 诉请结果｜callId: wrong_call】',
-          },
-        }),
-      /contentAnchor does not match callId/u,
-    );
-    const humanResult = formatTellaskResultContextContent({
-      callId: 'call_human_answer',
-      callName: 'askHuman',
-      content: 'Human answer body',
-      language: 'en',
-    });
-    assert.equal(
-      humanResult,
-      '[Dominds human answer result | callId: call_human_answer]\n\nHuman answer body',
-    );
-    const humanStatus = formatResolvedTellaskFuncResultContent({
-      name: 'askHuman',
-      callId: 'call_human_answer',
-      status: 'completed',
-      resultPointer: {
-        kind: 'later_context_message',
-        recordedAt: '2026-07-23 03:10:11',
-        messageOffset: 2,
-        contentAnchor: '[Dominds human answer result | callId: call_human_answer]',
-      },
-    });
-    assert.match(humanStatus, /\[Dominds human answer result status\]/u);
-    assert.match(humanStatus, /The human has answered/u);
-    assert.match(humanStatus, /2 message blocks after this tool receipt/u);
-    assert.doesNotMatch(humanStatus, /Tellask reply/u);
-    const pendingHumanStatus = formatResolvedTellaskFuncResultContent({
-      name: 'askHuman',
-      callId: 'call_human_pending',
-      status: 'pending',
-    });
-    assert.match(pendingHumanStatus, /\[Dominds waiting for human answer\]/u);
-    assert.doesNotMatch(pendingHumanStatus, /Tellask reply/u);
-    assert.throws(
-      () => formatPendingTellaskFuncResultContent('tellask', null, ' call_pending'),
-      /invalid callId/u,
-    );
-    assert.throws(
-      () => formatPendingTellaskFuncResultContent('askHuman', null, 'call\u2029pending'),
-      /invalid callId/u,
-    );
-
-    console.log('kernel-driver tellask-resolved-result-context-pointer: PASS');
+    for (const callId of [' leading-data', 'trailing-data ', 'line\u2028data', 'line\u2029data']) {
+      assert.throws(
+        () => formatTellaskResultContextAnchor({ callId, callName: 'tellask', language: 'en' }),
+        { name: 'Error' },
+      );
+      assert.throws(() => formatPendingTellaskFuncResultContent('askHuman', null, callId), {
+        name: 'Error',
+      });
+    }
   } finally {
     setWorkLanguage(originalLanguage);
   }
+  await evidence.write();
+  console.log('result-anchor data identity, framing and invalid-input contracts: passed');
 }
-
-main();
+main().catch((error: unknown) => {
+  console.error(error);
+  process.exitCode = 1;
+});
