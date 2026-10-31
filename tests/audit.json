@@ -762,6 +762,18 @@
       "lane": "context",
       "value": "公开retry准备策略保持普通/恢复预算、禁用和人工补额边界，真实已初始化对话及同根请求者的回复义务阻挡自动续推",
       "evidence": "Complete original/final/diff assertion review and thirty newly generated subjective cases: tests/semantic/reviews/2026-10-31-context-budget.json. Baseline missing-provider-phase failure and initial over-specified snapshot count are retained separately. Machine enum/count/state/input fidelity assertions, no semantic word oracle. Runtime budget consumption/answers use controlled external providers; ingress/policy/forwarding components have explicit limits. Previous verdicts never accept fresh output."
+    },
+    "interruption-resumption.ts": {
+      "status": "reviewed",
+      "lane": "recovery",
+      "value": "实际根/支线生成在观测到的持久边界SIGKILL后跨进程恢复及真实调用方续办；快照/启动独立状态夹具保留等待、明确停止、完成闭合、未完义务、投影修复与损坏隔离数据",
+      "evidence": "Complete original A–L/final/diff and owned-process worker review: tests/semantic/reviews/2026-10-31-interruption.json. Old zero-exit case had a hidden caller stream failure and a reply delivered before its restart. New cold boundary observes open root/side, closed initial caller and no pre-crash reply; data/state/actual caller effects are machine assertions. Nine fresh actual acknowledgement/diagnostic texts require independent subjective review; old verdicts cannot accept fresh output. Seeded projection components do not claim model completion or arbitrary-crash/power-loss coverage."
+    },
+    "interruption-llm-retry-stopped-resumable.ts": {
+      "status": "reviewed",
+      "lane": "recovery",
+      "value": "公开llm_retry_stopped恢复资格和最终Continue开关：结束状态可继续，尚未收口的transient状态不可提前继续",
+      "evidence": "Complete unchanged 74-line candidate review: tests/semantic/reviews/2026-10-31-interruption.json. Public enum/state eligibility component only, no real click, new retry invocation or display prose judgment. Supplied display/error strings are input data, never a semantic oracle."
     }
   },
   "retired": {

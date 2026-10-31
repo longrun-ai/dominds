@@ -87,6 +87,8 @@ const persistence = [
   'persistence/priming-reminders.ts',
 ];
 const recovery = [
+  'interruption-resumption.ts',
+  'interruption-llm-retry-stopped-resumable.ts',
   'recovery/open-generation-recovery-stale-clears-on-backend-loop.ts',
   'recovery/reply-delivery-live-continuation.ts',
   'recovery/reply-delivery-recovery-after-restart.ts',
@@ -108,7 +110,12 @@ const semanticSuites = {
     'diligence-push/q4h-diligence-push-i18n.ts',
   ],
   bootstrap: ['cli/man-subcommand.ts', 'cli/validate-team-def-subcommand.ts', 'env/env-tools.ts'],
-  recovery: recovery.filter((file) => !file.includes('open-generation-recovery-stale')),
+  recovery: [
+    'interruption-resumption.ts',
+    'recovery/reply-delivery-live-continuation.ts',
+    'recovery/reply-delivery-recovery-after-restart.ts',
+    'recovery/reply-delivery-recovery-waits-for-q4h.ts',
+  ],
   persistence: [
     'persistence/asker-stack-jsonl.ts',
     'persistence/move-dialog-status.ts',
@@ -348,7 +355,7 @@ async function main() {
   const cases = files.map((file) => ({
     id: file,
     args:
-      suite !== 'smoke' || persistence.includes(file)
+      suite !== 'smoke' || persistence.includes(file) || recovery.includes(file)
         ? [tsx, path.join(testsRoot, 'cli.ts'), '--', file, ...(semantic ? ['--semantic'] : [])]
         : [tsx, '--tsconfig', path.join(testsRoot, 'tsconfig.json'), path.join(testsRoot, file)],
   }));

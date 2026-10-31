@@ -1,11 +1,21 @@
-import type { SideDialogAssignmentFromAsker } from '@longrun-ai/kernel/types/storage';
-import { toCallSiteCourseNo, toCallSiteGenseqNo } from '@longrun-ai/kernel/types/storage';
+import type {
+  DialogLatestFile,
+  SideDialogAssignmentFromAsker,
+} from '@longrun-ai/kernel/types/storage';
+import {
+  toAskerCourseNumber,
+  toCalleeGenerationSeqNumber,
+  toCallSiteCourseNo,
+  toCallSiteGenseqNo,
+  toDialogCourseNumber,
+} from '@longrun-ai/kernel/types/storage';
+import type { DialogsQuarantinedMessage } from '@longrun-ai/kernel/types/wire';
 import assert from 'node:assert/strict';
-import * as fs from 'node:fs/promises';
-import os from 'node:os';
+import { execFile, spawn } from 'node:child_process';
+import fs from 'node:fs/promises';
 import path from 'node:path';
+import { promisify } from 'node:util';
 import yaml from 'yaml';
-import { installRecordingGlobalDialogEventBroadcaster } from '../main/bootstrap/global-dialog-event-broadcaster';
 import { DialogID } from '../main/dialog';
 import {
   getRunControlCountsSnapshot,
@@ -18,968 +28,716 @@ import {
   createEmptyDialogTellaskCallState,
   createEmptyDialogTellaskResultState,
 } from '../main/dialog-latest-state';
-import { driveDialogStream } from '../main/llm/kernel-driver';
-import { driveQueuedDialogsOnce } from '../main/llm/kernel-driver/loop';
-import { DialogPersistence } from '../main/persistence';
+import { DialogPersistence, setDialogsQuarantinedBroadcaster } from '../main/persistence';
 import { recoverOpenGenerationAfterRestart } from '../main/recovery/open-generation-recovery';
-import { formatAssignmentFromAskerDialog } from '../main/runtime/inter-dialog-format';
-import { getWorkLanguage } from '../main/runtime/work-language';
-import {
-  createMainDialog,
-  lastAssistantSaying,
-  makeDriveOptions,
-  makeUserPrompt,
-  waitFor,
-  waitForAllDialogsUnlocked,
-  wrapPromptWithExpectedReplyTool,
-  writeMockDb,
-  writeStandardMinds,
-} from './kernel-driver/helpers';
+import { setWorkLanguage } from '../main/runtime/work-language';
+import { readGenerationManifest } from './helpers/open-generation-worker';
+import { semanticEvidenceCollector } from './helpers/semantic-evidence';
+import { waitFor, withTempRtws, writeStandardMinds } from './kernel-driver/helpers';
 
+const evidence = semanticEvidenceCollector('dominds-interruption-recovery-');
 async function writeYaml(filePath: string, value: unknown): Promise<void> {
   await fs.mkdir(path.dirname(filePath), { recursive: true });
-  await fs.writeFile(filePath, yaml.stringify(value), 'utf-8');
+  await fs.writeFile(filePath, yaml.stringify(value));
+}
+function record(value: unknown): Record<string, unknown> {
+  assert.ok(value !== null && typeof value === 'object' && !Array.isArray(value));
+  return value as Record<string, unknown>;
+}
+async function rawCourse(root: string, self = root): Promise<Record<string, unknown>[]> {
+  const dir =
+    self === root
+      ? path.join('.dialogs/run', root)
+      : path.join('.dialogs/run', root, 'sideDialogs', self);
+  return (await fs.readFile(path.join(dir, 'course-001.jsonl'), 'utf8'))
+    .split('\n')
+    .filter(Boolean)
+    .map((line) => record(JSON.parse(line)));
+}
+async function rawLatest(root: string, self = root): Promise<Record<string, unknown>> {
+  const dir =
+    self === root
+      ? path.join('.dialogs/run', root)
+      : path.join('.dialogs/run', root, 'sideDialogs', self);
+  return record(yaml.parse(await fs.readFile(path.join(dir, 'latest.yaml'), 'utf8')));
+}
+function workerArgs(phase: string): string[] {
+  return [
+    '--import',
+    require.resolve('tsx'),
+    path.resolve(__dirname, 'rtws-script-runner.ts'),
+    path.resolve(__dirname, 'helpers/open-generation-worker.ts'),
+    phase,
+  ];
+}
+async function coldGenerationRecovery(rtws: string): Promise<void> {
+  const seed = spawn(process.execPath, workerArgs('seed'), {
+    cwd: rtws,
+    env: { ...process.env, TSX_TSCONFIG_PATH: path.resolve(__dirname, 'tsconfig.json') },
+    stdio: ['ignore', 'pipe', 'pipe'],
+  });
+  let stdout = '',
+    stderr = '',
+    pending = '';
+  let readyCount = 0;
+  let readyResolve!: (pid: number) => void;
+  let readyReject!: (error: Error) => void;
+  const ready = new Promise<number>((resolve, reject) => {
+    readyResolve = resolve;
+    readyReject = reject;
+  });
+  seed.stdout.on('data', (chunk: Buffer) => {
+    stdout += chunk.toString();
+    pending += chunk.toString();
+    while (pending.includes('\n')) {
+      const index = pending.indexOf('\n'),
+        line = pending.slice(0, index);
+      pending = pending.slice(index + 1);
+      let packet: unknown;
+      try {
+        packet = JSON.parse(line);
+      } catch {
+        continue;
+      }
+      if (
+        packet !== null &&
+        typeof packet === 'object' &&
+        'probe' in packet &&
+        packet.probe === 'generation-seed-ready' &&
+        'pid' in packet &&
+        typeof packet.pid === 'number'
+      ) {
+        readyCount += 1;
+        readyResolve(packet.pid);
+      }
+    }
+  });
+  seed.stderr.on('data', (chunk: Buffer) => {
+    stderr += chunk.toString();
+  });
+  seed.once('error', readyReject);
+  const closed = new Promise<{ code: number | null; signal: NodeJS.Signals | null }>((resolve) => {
+    seed.once('close', (code, signal) => {
+      readyReject(
+        new Error(`seed closed before readiness: ${code}/${signal}\n${stdout}\n${stderr}`),
+      );
+      resolve({ code, signal });
+    });
+  });
+  const timer = setTimeout(
+    () => readyReject(new Error(`seed did not reach its provider boundary\n${stdout}\n${stderr}`)),
+    15000,
+  );
+  try {
+    const pid = await ready;
+    assert.equal(pid, seed.pid);
+    assert.notEqual(pid, process.pid);
+    const m = await readGenerationManifest();
+    assert.equal(m.seedPid, pid);
+    await waitFor(
+      async () => {
+        try {
+          const root = await rawLatest(m.rootA),
+            side = await rawLatest(m.rootB, m.sideB),
+            caller = await rawLatest(m.rootB);
+          return (
+            caller.generating === false &&
+            record(caller.generationRunState).kind === 'closed' &&
+            root.generating === true &&
+            record(root.generationRunState).kind === 'open' &&
+            side.generating === true &&
+            record(side.generationRunState).kind === 'open'
+          );
+        } catch (error: unknown) {
+          if (
+            error !== null &&
+            typeof error === 'object' &&
+            'code' in error &&
+            error.code === 'ENOENT'
+          )
+            return false;
+          throw error;
+        }
+      },
+      4000,
+      'both open generations to be physically written before process loss',
+    );
+    assert.equal(
+      (await rawCourse(m.rootB)).filter(
+        (event) => event.type === 'tellask_result_record' && event.callId === m.workCallId,
+      ).length,
+      0,
+      'side reply has not already arrived before the crash',
+    );
+    assert.equal(
+      (await rawCourse(m.rootB, m.sideB)).filter(
+        (event) => event.type === 'func_result_record' && event.id === m.replyCallId,
+      ).length,
+      0,
+    );
+    assert.equal(
+      seed.kill('SIGKILL'),
+      true,
+      'terminate only the owned seed process at the observed durable boundary',
+    );
+    assert.equal((await closed).signal, 'SIGKILL');
+    clearTimeout(timer);
+    assert.equal(readyCount, 1);
+    const recovered = await promisify(execFile)(process.execPath, workerArgs('recover'), {
+      cwd: rtws,
+      env: { ...process.env, TSX_TSCONFIG_PATH: path.resolve(__dirname, 'tsconfig.json') },
+      timeout: 15000,
+      maxBuffer: 2 * 1024 * 1024,
+    });
+    process.stdout.write(recovered.stdout);
+    process.stderr.write(recovered.stderr);
+    const packets = recovered.stdout.split('\n').flatMap((line) => {
+      try {
+        const value: unknown = JSON.parse(line);
+        return value !== null &&
+          typeof value === 'object' &&
+          'probe' in value &&
+          value.probe === 'generation-recovered'
+          ? [value]
+          : [];
+      } catch {
+        return [];
+      }
+    });
+    assert.equal(packets.length, 1);
+    const packet = packets[0];
+    assert.ok(packet && 'pid' in packet && 'requests' in packet);
+    assert.notEqual(packet.pid, pid);
+    assert.notEqual(packet.pid, process.pid);
+    assert.equal(packet.requests, 3);
+    const rootEvents = await rawCourse(m.rootA),
+      callerEvents = await rawCourse(m.rootB),
+      sideEvents = await rawCourse(m.rootB, m.sideB);
+    assert.equal(
+      rootEvents.filter((event) => event.type === 'human_text_record' && event.content === m.inputA)
+        .length,
+      1,
+    );
+    assert.equal(
+      rootEvents.filter((event) => event.type === 'agent_words_record' && event.content === m.ackA)
+        .length,
+      1,
+    );
+    assert.equal(
+      callerEvents.filter(
+        (event) => event.type === 'agent_words_record' && event.content === m.ackB,
+      ).length,
+      1,
+    );
+    const results = callerEvents.filter(
+      (event) => event.type === 'tellask_result_record' && event.callId === m.workCallId,
+    );
+    assert.equal(results.length, 1);
+    assert.ok(typeof results[0]?.content === 'string' && results[0].content.includes(m.replyBody));
+    const outputs = sideEvents.filter(
+      (event) => event.type === 'func_result_record' && event.id === m.replyCallId,
+    );
+    assert.equal(outputs.length, 1);
+    assert.equal(
+      sideEvents.filter(
+        (event) =>
+          event.type === 'tellask_reply_resolution_record' && event.callId === m.replyCallId,
+      ).length,
+      1,
+    );
+    for (const [root, self] of [
+      [m.rootA, m.rootA],
+      [m.rootB, m.sideB],
+      [m.rootB, m.rootB],
+    ]) {
+      assert.ok(root && self);
+      const latest = await rawLatest(root, self);
+      assert.equal(latest.generating, false);
+      assert.deepEqual(latest.displayState, { kind: 'idle_waiting_user' });
+      assert.equal(latest.executionMarker, undefined);
+      assert.equal(record(latest.generationRunState).kind, 'closed');
+      assert.deepEqual(record(latest.nextStep).triggers, []);
+    }
+    const pendingWork = await DialogPersistence.loadActiveCalleeDispatches(
+      new DialogID(m.rootA),
+      'running',
+    );
+    assert.equal(pendingWork.length, 1);
+    assert.equal(pendingWork[0]?.calleeDialogId, m.workerA);
+    assert.deepEqual(
+      await DialogPersistence.loadActiveCalleeDispatches(new DialogID(m.rootB), 'running'),
+      [],
+    );
+    assert.ok(typeof outputs[0]?.content === 'string');
+    evidence.record({
+      id: 'cold-generation-side-ack',
+      scenario:
+        'An owned process is killed while a root and a side dialog are awaiting provider responses. A new process restores both; the side replies once and its real caller consumes the result.',
+      businessValue:
+        'Resume durable collaboration after actual process loss without treating a reply delivered before the crash as recovered work.',
+      context: {
+        language: 'en',
+        seedTerminatedBy: 'SIGKILL',
+        seedPid: pid,
+        recoveryPid: typeof packet.pid === 'number' ? packet.pid : 'invalid',
+        verifierPid: process.pid,
+        deliveryCount: 1,
+        localReplyResultCount: 1,
+        replyBeforeCrash: false,
+        scope:
+          'Real driver, persistence, backend and owned-process termination; controlled provider. Not power loss, fsync or live-provider compliance.',
+      },
+      reviewQuestions: [
+        'Does the actual acknowledgement accurately describe the observed single delivery without suggesting another reply or claiming task quality?',
+      ],
+      actualText: outputs[0].content,
+    });
+  } catch (error: unknown) {
+    process.stdout.write(stdout);
+    process.stderr.write(stderr);
+    throw error;
+  } finally {
+    clearTimeout(timer);
+    if (seed.exitCode === null && seed.signalCode === null) seed.kill('SIGKILL');
+    await closed;
+  }
 }
 
-function emptyTellaskIndexes(): {
-  tellaskCalls: ReturnType<typeof createEmptyDialogTellaskCallState>;
-  tellaskResults: ReturnType<typeof createEmptyDialogTellaskResultState>;
-} {
-  return {
+const timestamp = '2026-10-31 00:00:00';
+async function seedRoot(id: string, patch: Partial<DialogLatestFile> = {}): Promise<void> {
+  await writeYaml(path.join('.dialogs/run', id, 'dialog.yaml'), {
+    id,
+    agentId: 'tester',
+    taskDocPath: 'test-scenario.tsk',
+    createdAt: timestamp,
+  });
+  await writeYaml(path.join('.dialogs/run', id, 'latest.yaml'), {
+    currentCourse: 1,
+    lastModified: timestamp,
+    status: 'active',
+    nextStep: createEmptyDialogNextStepState(),
     tellaskCalls: createEmptyDialogTellaskCallState(),
     tellaskResults: createEmptyDialogTellaskResultState(),
+    ...patch,
+  } satisfies DialogLatestFile);
+}
+function assignment(root: string, callId: string): SideDialogAssignmentFromAsker {
+  return {
+    callName: 'tellask',
+    mentionList: ['@worker'],
+    tellaskContent: 'assignment-data',
+    originMemberId: 'tester',
+    askerDialogId: root,
+    callId,
+    callSiteCourse: toCallSiteCourseNo(1),
+    callSiteGenseq: toCallSiteGenseqNo(1),
+    collectiveTargets: ['worker'],
   };
 }
-
-function hasPendingNextStepTriggers(
-  latest: Awaited<ReturnType<typeof DialogPersistence.loadDialogLatest>>,
-): boolean {
-  return (latest?.nextStep.triggers.length ?? 0) > 0;
-}
-
-async function writeSideDialogAskerStack(args: {
-  sideDialogId: DialogID;
-  assignment: SideDialogAssignmentFromAsker;
-}): Promise<void> {
-  await DialogPersistence.saveSideDialogAskerStackState(
-    args.sideDialogId,
-    {
-      askerStack: [
-        {
-          kind: 'asker_dialog_stack_frame',
-          askerDialogId: args.assignment.askerDialogId,
-          assignmentFromAsker: args.assignment,
-          tellaskReplyObligation: {
-            expectedReplyCallName:
-              args.assignment.callName === 'tellask' ? 'replyTellask' : 'replyTellaskSessionless',
-            targetDialogId: args.assignment.askerDialogId,
-            targetCallId: args.assignment.callId,
-            tellaskContent: args.assignment.tellaskContent,
-          },
+async function seedSide(
+  root: string,
+  self: string,
+  patch: Partial<DialogLatestFile>,
+  completed: boolean,
+): Promise<void> {
+  const id = new DialogID(self, root),
+    task = assignment(root, `call-${self}`);
+  const directory = path.join('.dialogs/run', root, 'sideDialogs', self);
+  await writeYaml(path.join(directory, 'dialog.yaml'), {
+    id: self,
+    agentId: 'worker',
+    taskDocPath: 'test-scenario.tsk',
+    createdAt: timestamp,
+  });
+  await DialogPersistence.saveSideDialogAskerStackState(id, {
+    askerStack: [
+      {
+        kind: 'asker_dialog_stack_frame',
+        askerDialogId: root,
+        assignmentFromAsker: task,
+        tellaskReplyObligation: {
+          expectedReplyCallName: 'replyTellask',
+          targetDialogId: root,
+          targetCallId: task.callId,
+          tellaskContent: task.tellaskContent,
         },
-      ],
-    },
-    'running',
-  );
-}
-
-async function main(): Promise<void> {
-  const oldCwd = process.cwd();
-  const tmpRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'dominds-interrupt-'));
-
-  try {
-    process.chdir(tmpRoot);
-    installRecordingGlobalDialogEventBroadcaster({ label: 'interruption-resumption' });
-    await writeStandardMinds(tmpRoot, { includePangu: true });
-
-    // Dialog A: was actively generating when server crashed => remains proceeding and is queued
-    // for automatic backend drive after restart.
-    const rootA = await createMainDialog('tester');
-    rootA.disableDiligencePush = true;
-    const aRoot = rootA.id.rootId;
-    await DialogPersistence.mutateDialogLatest(rootA.id, () => ({
-      kind: 'patch',
-      patch: {
-        generating: true,
-        generationRunState: {
-          kind: 'open',
-          course: 1,
-          genseq: 1,
-          phase: 'streaming',
-          acceptedTriggerIds: [],
-          openedAt: new Date().toISOString(),
-        },
-        displayState: { kind: 'proceeding' },
-        disableDiligencePush: true,
       },
-    }));
+    ],
+  });
+  await writeYaml(path.join(directory, 'latest.yaml'), {
+    currentCourse: 1,
+    lastModified: timestamp,
+    status: 'active',
+    nextStep: createEmptyDialogNextStepState(),
+    tellaskCalls: createEmptyDialogTellaskCallState(),
+    tellaskResults: createEmptyDialogTellaskResultState(),
+    ...(completed
+      ? {
+          sideDialogFinalResponse: {
+            callId: task.callId,
+            responseCourse: toDialogCourseNumber(1),
+            responseGenseq: toCalleeGenerationSeqNumber(3),
+            askerDialogId: root,
+            askerCourse: toAskerCourseNumber(1),
+          },
+        }
+      : {}),
+    ...patch,
+  } satisfies DialogLatestFile);
+  if (completed)
     await fs.writeFile(
-      path.join(tmpRoot, '.dialogs', 'run', aRoot, 'course-001.jsonl'),
-      `${JSON.stringify({
-        ts: new Date().toISOString(),
-        type: 'gen_start_record',
-        genseq: 1,
-        rootCourse: 1,
-        rootGenseq: 1,
-      })}\n${JSON.stringify({
-        ts: new Date().toISOString(),
-        type: 'human_text_record',
-        genseq: 1,
-        content: 'Continue the already-started generation after restart.',
-        msgId: 'prompt-a',
-        grammar: 'markdown',
-        origin: 'user',
-        userLanguageCode: 'en',
-        rootCourse: 1,
-        rootGenseq: 1,
-      })}\n`,
-      'utf-8',
+      path.join(directory, 'course-001.jsonl'),
+      `${JSON.stringify({ ts: timestamp, type: 'tellask_anchor_record', anchorRole: 'response', callId: task.callId, genseq: 3, rootCourse: 1, rootGenseq: 3, askerDialogId: root, askerCourse: 1, assignmentCourse: 1, assignmentGenseq: 1 })}\n`,
     );
-    await DialogPersistence.saveActiveCalleeDispatches(new DialogID(aRoot), [
+}
+async function finalizedVariants(root: string): Promise<string[]> {
+  await seedRoot(root, { displayState: { kind: 'idle_waiting_user' } });
+  const ids = [`${root}-generating`, `${root}-projection`, `${root}-human-projection`];
+  for (const [index, self] of ids.entries()) {
+    await seedSide(
+      root,
+      self,
       {
-        calleeDialogId: 'sub-a',
-        createdAt: new Date().toISOString(),
-        batchId: `dispatch:${aRoot}:${aRoot}:c1:g1`,
-        callName: 'tellask',
-        mentionList: ['@worker'],
-        tellaskContent: 'Still pending while the root generation was in flight',
-        targetAgentId: 'worker',
-        callId: 'call-sub-a',
-        callSiteCourse: 1,
-        callSiteGenseq: 1,
-        callType: 'B',
-        sessionSlug: 'session-a',
+        generating: index === 0,
+        nextStep:
+          index === 0
+            ? {
+                nextSeq: 2,
+                triggers: [
+                  {
+                    triggerId: 'stale-final-followup',
+                    kind: 'followup',
+                    sourceGeneration: {
+                      course: toDialogCourseNumber(1),
+                      genseq: toCallSiteGenseqNo(3),
+                    },
+                    reasons: [{ kind: 'runtime_guidance', msgId: 'guidance-data' }],
+                    createdAt: timestamp,
+                    seq: 1,
+                  },
+                ],
+              }
+            : createEmptyDialogNextStepState(),
+        displayState:
+          index === 2
+            ? { kind: 'blocked', reason: { kind: 'needs_human_input' } }
+            : { kind: 'stopped', reason: { kind: 'server_restart' }, continueEnabled: true },
+        ...(index === 2
+          ? {}
+          : { executionMarker: { kind: 'interrupted', reason: { kind: 'server_restart' } } }),
       },
-    ]);
-    globalDialogRegistry.unregister(aRoot);
-    const sideRoot = await createMainDialog('tester');
-    sideRoot.disableDiligencePush = true;
-    const sideTrigger = 'Create side dialog for restart recovery.';
-    const sideTellaskBody = 'Finish from a side dialog after restart.';
-    const sideSessionSlug = 'side-restart-recovery';
-    const language = getWorkLanguage();
-    const sidePrompt = wrapPromptWithExpectedReplyTool({
-      prompt: formatAssignmentFromAskerDialog({
-        callName: 'tellask',
-        fromAgentId: 'tester',
-        toAgentId: 'pangu',
-        mentionList: ['@pangu'],
-        tellaskContent: sideTellaskBody,
-        language,
-        sessionSlug: sideSessionSlug,
-        collectiveTargets: ['pangu'],
-      }),
-      expectedReplyToolName: 'replyTellask',
-      language,
-    });
-    await writeMockDb(tmpRoot, [
-      {
-        message: 'Continue the already-started generation after restart.',
-        role: 'user',
-        response: 'Restart recovery drove the in-progress root generation.',
-      },
-      {
-        message: sideTrigger,
-        role: 'user',
-        response: 'Creating side dialog.',
-        funcCalls: [
-          {
-            id: 'side-restart-call',
-            name: 'tellask',
-            arguments: {
-              targetAgentId: 'pangu',
-              sessionSlug: sideSessionSlug,
-              tellaskContent: sideTellaskBody,
-            },
-          },
-        ],
-      },
-      {
-        message: sidePrompt,
-        role: 'user',
-        response: 'Side dialog recovered and replies after restart.',
-        funcCalls: [
-          {
-            id: 'side-restart-reply',
-            name: 'replyTellask',
-            arguments: {
-              replyContent: 'Side dialog recovered and replies after restart.',
-            },
-          },
-        ],
-      },
-    ]);
-    await driveDialogStream(
-      sideRoot,
-      makeUserPrompt(sideTrigger, 'side-trigger', { userLanguageCode: language }),
       true,
-      makeDriveOptions(),
     );
-    await waitForAllDialogsUnlocked(sideRoot, 3_000);
-    const sideDialog = sideRoot
-      .getLoadedDialogTreeSnapshot()
-      .find((dialog) => dialog.id.selfId !== dialog.id.rootId);
-    assert.ok(sideDialog, 'expected side dialog to be created before restart simulation');
-    await DialogPersistence.mutateDialogLatest(sideDialog.id, () => ({
-      kind: 'patch',
-      patch: {
-        generating: true,
-        displayState: { kind: 'proceeding' },
-      },
-    }));
-    globalDialogRegistry.unregister(sideRoot.id.rootId);
-
-    // Dialog B: was proceeding, but not actively generating. It is still reconciled from durable
-    // blocker facts rather than auto-driven.
-    const bRoot = 'dlg-b';
-    await writeYaml(path.join(tmpRoot, '.dialogs', 'run', bRoot, 'dialog.yaml'), { id: bRoot });
-    await writeYaml(path.join(tmpRoot, '.dialogs', 'run', bRoot, 'latest.yaml'), {
-      currentCourse: 1,
-      lastModified: new Date().toISOString(),
-      status: 'active',
+    // Preserve the old histories: a finished turn followed by reminder sync, and anchor-only
+    // histories whose generation finish was not recorded. Completion is the formal final fact.
+    if (index === 0) {
+      await fs.appendFile(
+        path.join('.dialogs/run', root, 'sideDialogs', self, 'course-001.jsonl'),
+        `${JSON.stringify({ ts: timestamp, type: 'gen_finish_record', genseq: 3, rootCourse: 1, rootGenseq: 3 })}\n${JSON.stringify({ ts: timestamp, type: 'reminders_reconciled_record', rootCourse: 1, rootGenseq: 3, reminders: [] })}\n`,
+      );
+    }
+    // Public snapshot/restart actions must receive the stale state, not a pre-healed mutation.
+    assert.equal((await rawLatest(root, self)).generating, index === 0);
+  }
+  return ids;
+}
+async function assertFinalized(root: string, ids: string[]): Promise<void> {
+  for (const self of ids) {
+    const latest = await DialogPersistence.loadDialogLatest(new DialogID(self, root), 'running');
+    assert.ok(
+      latest,
+      'a completed side dialog remains in the running tree rather than being quarantined',
+    );
+    assert.equal(latest.generating, false);
+    assert.deepEqual(latest.displayState, { kind: 'idle_waiting_user' });
+    assert.deepEqual(latest.nextStep.triggers, []);
+    assert.equal(latest.executionMarker, undefined);
+    assert.equal(latest.sideDialogFinalResponse?.callId, `call-${self}`);
+    assert.equal(
+      await DialogPersistence.loadActiveTellaskReplyObligation(new DialogID(self, root), 'running'),
+      undefined,
+    );
+  }
+}
+async function projectionRecovery(rtws: string): Promise<void> {
+  await writeStandardMinds(rtws, { extraMembers: ['worker'], diligencePushMax: 0 });
+  const snapshots = await finalizedVariants('snapshot-finalized');
+  await getRunControlCountsSnapshot();
+  await assertFinalized('snapshot-finalized', snapshots);
+  // Independent fresh fixtures prevent snapshot healing from concealing a broken startup path.
+  const startup = await finalizedVariants('startup-finalized');
+  const notifications: DialogsQuarantinedMessage[] = [];
+  setDialogsQuarantinedBroadcaster((message) => notifications.push(message));
+  try {
+    await seedRoot('human-wait', {
       generating: false,
-      nextStep: createEmptyDialogNextStepState(),
-      ...emptyTellaskIndexes(),
       displayState: { kind: 'proceeding' },
       userWait: {
         kind: 'awaiting_user_answer',
-        questionId: 'q1',
-        callId: 'call-q1',
-        course: 1,
-        askedAt: new Date().toISOString(),
+        questionId: 'question-data',
+        callId: 'ask-human-data',
+        course: toDialogCourseNumber(1),
+        askedAt: timestamp,
       },
     });
-    await writeYaml(path.join(tmpRoot, '.dialogs', 'run', bRoot, 'q4h.yaml'), {
+    await writeYaml('.dialogs/run/human-wait/q4h.yaml', {
       questions: [
         {
-          id: 'q1',
-          tellaskContent: 'Answer me',
-          askedAt: new Date().toISOString(),
-          callId: 'call-q1',
-          callSiteRef: { course: 1, messageIndex: 0 },
+          id: 'question-data',
+          tellaskContent: 'question-body-data',
+          askedAt: timestamp,
+          callId: 'ask-human-data',
+          callSiteRef: { course: 1, messageIndex: 0, callSiteGenseq: 1 },
         },
       ],
-      updatedAt: new Date().toISOString(),
+      updatedAt: timestamp,
     });
-
-    // Dialog I: generating=true without generationRunState is malformed even when an explicit
-    // non-restart interruption marker is present; runtime must not scan history to guess.
-    const iRoot = 'dlg-i';
-    await writeYaml(path.join(tmpRoot, '.dialogs', 'run', iRoot, 'dialog.yaml'), { id: iRoot });
-    await writeYaml(path.join(tmpRoot, '.dialogs', 'run', iRoot, 'latest.yaml'), {
-      currentCourse: 1,
-      lastModified: new Date().toISOString(),
-      status: 'active',
-      generating: true,
-      nextStep: createEmptyDialogNextStepState(),
-      ...emptyTellaskIndexes(),
-      displayState: { kind: 'proceeding' },
-      executionMarker: {
-        kind: 'interrupted',
-        reason: { kind: 'user_stop', detail: 'operator paused before restart' },
-      },
-    });
-
-    // Dialog L: generating=true alone is only a projection. Without generationRunState,
-    // restart recovery must quarantine instead of auto-driving or scanning history to guess.
-    const lRoot = 'dlg-l';
-    await writeYaml(path.join(tmpRoot, '.dialogs', 'run', lRoot, 'dialog.yaml'), { id: lRoot });
-    await writeYaml(path.join(tmpRoot, '.dialogs', 'run', lRoot, 'latest.yaml'), {
-      currentCourse: 1,
-      lastModified: new Date().toISOString(),
-      status: 'active',
-      generating: true,
-      nextStep: createEmptyDialogNextStepState(),
-      ...emptyTellaskIndexes(),
-      displayState: { kind: 'proceeding' },
-    });
-
-    // Dialog C: malformed q4h detail must not affect run-control recovery when no durable
-    // suspension fact points at it. Q4H detail consumers still fail loudly when they need payload.
-    const cRoot = 'dlg-c';
-    await writeYaml(path.join(tmpRoot, '.dialogs', 'run', cRoot, 'dialog.yaml'), { id: cRoot });
-    await writeYaml(path.join(tmpRoot, '.dialogs', 'run', cRoot, 'latest.yaml'), {
-      currentCourse: 1,
-      lastModified: new Date().toISOString(),
-      status: 'active',
+    for (const id of ['malformed-stopped', 'malformed-open']) {
+      await seedRoot(id, {
+        generating: true,
+        displayState: { kind: 'proceeding' },
+        ...(id === 'malformed-stopped'
+          ? {
+              executionMarker: {
+                kind: 'interrupted',
+                reason: { kind: 'user_stop' },
+              },
+            }
+          : {}),
+      });
+      await fs.writeFile(
+        path.join('.dialogs/run', id, 'forensic.bin'),
+        Buffer.from([0, 1, 2, 255]),
+      );
+    }
+    await seedRoot('unfinished-side-root', {
       generating: false,
-      nextStep: createEmptyDialogNextStepState(),
-      ...emptyTellaskIndexes(),
       displayState: { kind: 'idle_waiting_user' },
     });
-    await fs.writeFile(
-      path.join(tmpRoot, '.dialogs', 'run', cRoot, 'q4h.yaml'),
-      'questions: [',
-      'utf-8',
+    await seedSide(
+      'unfinished-side-root',
+      'unfinished-side',
+      { generating: true, displayState: { kind: 'proceeding' } },
+      false,
     );
-
-    // Dialog D: healthy idle dialog without displayState should still be backfilled after C quarantines.
-    const dRoot = 'dlg-d';
-    await writeYaml(path.join(tmpRoot, '.dialogs', 'run', dRoot, 'dialog.yaml'), { id: dRoot });
-    await writeYaml(path.join(tmpRoot, '.dialogs', 'run', dRoot, 'latest.yaml'), {
-      currentCourse: 1,
-      lastModified: new Date().toISOString(),
-      status: 'active',
+    await fs.writeFile(
+      '.dialogs/run/unfinished-side-root/forensic.bin',
+      Buffer.from([0, 1, 2, 255]),
+    );
+    await seedRoot('irrelevant-detail', {
       generating: false,
-      nextStep: createEmptyDialogNextStepState(),
-      ...emptyTellaskIndexes(),
+      displayState: { kind: 'idle_waiting_user' },
     });
-
-    // Dialog E: stale stopped projection should keep the explicit interruption when only
-    // background callee dialogs remain pending.
-    const eRoot = 'dlg-e';
-    await writeYaml(path.join(tmpRoot, '.dialogs', 'run', eRoot, 'dialog.yaml'), { id: eRoot });
-    await writeYaml(path.join(tmpRoot, '.dialogs', 'run', eRoot, 'latest.yaml'), {
-      currentCourse: 1,
-      lastModified: new Date().toISOString(),
-      status: 'active',
-      generating: false,
-      nextStep: createEmptyDialogNextStepState(),
-      ...emptyTellaskIndexes(),
-      displayState: {
-        kind: 'stopped',
-        reason: { kind: 'system_stop', detail: 'upstream failed' },
-        continueEnabled: true,
-      },
-      executionMarker: {
-        kind: 'interrupted',
-        reason: { kind: 'system_stop', detail: 'upstream failed' },
-      },
-    });
-    await DialogPersistence.saveActiveCalleeDispatches(new DialogID(eRoot), [
+    await fs.writeFile('.dialogs/run/irrelevant-detail/q4h.yaml', 'questions: [');
+    await seedRoot('missing-projection', { generating: false });
+    const stop = { kind: 'system_stop', detail: 'upstream-stop-data' } as const;
+    for (const id of ['stopped-with-background', 'stale-human-projection'])
+      await seedRoot(id, {
+        generating: false,
+        displayState:
+          id === 'stale-human-projection'
+            ? { kind: 'blocked', reason: { kind: 'needs_human_input' } }
+            : { kind: 'stopped', reason: stop, continueEnabled: true },
+        executionMarker: { kind: 'interrupted', reason: stop },
+      });
+    await DialogPersistence.saveActiveCalleeDispatches(new DialogID('stopped-with-background'), [
       {
-        calleeDialogId: 'sub-e',
-        createdAt: new Date().toISOString(),
-        batchId: `dispatch:${eRoot}:${eRoot}:c1:g1`,
+        calleeDialogId: 'background-data',
+        createdAt: timestamp,
+        batchId: 'batch-data',
         callName: 'tellask',
         mentionList: ['@worker'],
-        tellaskContent: 'Keep going',
+        tellaskContent: 'work-data',
         targetAgentId: 'worker',
-        callId: 'call-sub-e',
-        callSiteCourse: 1,
-        callSiteGenseq: 1,
+        callId: 'background-call-data',
+        callSiteCourse: toCallSiteCourseNo(1),
+        callSiteGenseq: toCallSiteGenseqNo(1),
         callType: 'B',
-        sessionSlug: 'session-e',
+        sessionSlug: 'session-data',
       },
     ]);
-
-    // Dialog F: stale Q4H projection should self-heal back to stopped when interruption remains
-    // but the underlying Q4H suspension is already gone.
-    const fRoot = 'dlg-f';
-    await writeYaml(path.join(tmpRoot, '.dialogs', 'run', fRoot, 'dialog.yaml'), { id: fRoot });
-    await writeYaml(path.join(tmpRoot, '.dialogs', 'run', fRoot, 'latest.yaml'), {
-      currentCourse: 1,
-      lastModified: new Date().toISOString(),
-      status: 'active',
+    await seedRoot('healthy-idle', {
       generating: false,
-      nextStep: createEmptyDialogNextStepState(),
-      ...emptyTellaskIndexes(),
-      displayState: { kind: 'blocked', reason: { kind: 'needs_human_input' } },
-      executionMarker: {
-        kind: 'interrupted',
-        reason: { kind: 'system_stop', detail: 'upstream failed' },
-      },
-    });
-
-    // Dialog G: a stale queued drive with no active generation/proceeding projection becomes a
-    // resumable server-restart interruption and should be counted as resumable.
-    const gRoot = 'dlg-g';
-    await writeYaml(path.join(tmpRoot, '.dialogs', 'run', gRoot, 'dialog.yaml'), { id: gRoot });
-    await writeYaml(path.join(tmpRoot, '.dialogs', 'run', gRoot, 'latest.yaml'), {
-      currentCourse: 1,
-      lastModified: new Date().toISOString(),
-      status: 'active',
-      generating: false,
-      nextStep: createEmptyDialogNextStepState(),
-      ...emptyTellaskIndexes(),
       displayState: { kind: 'idle_waiting_user' },
     });
-
-    // Dialog J: sideDialogs already delivered their final responses, but latest.yaml still has
-    // stale run-control flags/projections. Restart reconciliation must heal the stale queue instead
-    // of presenting a false "interrupted by server restart" state.
-    const jRoot = 'dlg-j';
-    const jSide = 'side-j';
-    const jProjectionOnlySide = 'side-j-projection-only';
-    const jQ4hProjectionSide = 'side-j-q4h-projection';
-    const jSideAssignment: SideDialogAssignmentFromAsker = {
-      callName: 'tellask',
-      mentionList: ['@pangu'],
-      tellaskContent: 'Finalize stale generated side dialog J.',
-      originMemberId: 'tester',
-      askerDialogId: jRoot,
-      callId: 'call-side-j',
-      callSiteCourse: toCallSiteCourseNo(1),
-      callSiteGenseq: toCallSiteGenseqNo(1),
-      collectiveTargets: ['pangu'],
-    };
-    const jProjectionOnlyAssignment: SideDialogAssignmentFromAsker = {
-      callName: 'tellask',
-      mentionList: ['@pangu'],
-      tellaskContent: 'Finalize stale projection-only side dialog J.',
-      originMemberId: 'tester',
-      askerDialogId: jRoot,
-      callId: 'call-side-j-projection-only',
-      callSiteCourse: toCallSiteCourseNo(1),
-      callSiteGenseq: toCallSiteGenseqNo(1),
-      collectiveTargets: ['pangu'],
-    };
-    const jQ4hProjectionAssignment: SideDialogAssignmentFromAsker = {
-      callName: 'tellask',
-      mentionList: ['@pangu'],
-      tellaskContent: 'Finalize stale q4h-projection side dialog J.',
-      originMemberId: 'tester',
-      askerDialogId: jRoot,
-      callId: 'call-side-j-q4h-projection',
-      callSiteCourse: toCallSiteCourseNo(1),
-      callSiteGenseq: toCallSiteGenseqNo(1),
-      collectiveTargets: ['pangu'],
-    };
-    await writeYaml(path.join(tmpRoot, '.dialogs', 'run', jRoot, 'dialog.yaml'), { id: jRoot });
-    await writeYaml(path.join(tmpRoot, '.dialogs', 'run', jRoot, 'latest.yaml'), {
-      currentCourse: 1,
-      lastModified: new Date().toISOString(),
-      status: 'active',
+    await seedRoot('pending-obligation', {
       generating: false,
-      nextStep: createEmptyDialogNextStepState(),
-      ...emptyTellaskIndexes(),
       displayState: { kind: 'idle_waiting_user' },
     });
-    const jSideDir = path.join(tmpRoot, '.dialogs', 'run', jRoot, 'sideDialogs', jSide);
-    await writeYaml(path.join(jSideDir, 'dialog.yaml'), { id: jSide });
-    await writeSideDialogAskerStack({
-      sideDialogId: new DialogID(jSide, jRoot),
-      assignment: jSideAssignment,
-    });
-    await writeYaml(path.join(jSideDir, 'latest.yaml'), {
-      currentCourse: 1,
-      lastModified: new Date().toISOString(),
-      status: 'active',
-      generating: true,
-      nextStep: {
-        nextSeq: 2,
-        triggers: [
-          {
-            triggerId: 'stale-side-final-response-followup',
-            kind: 'followup',
-            sourceGeneration: { course: 1, genseq: 3 },
-            reasons: [{ kind: 'runtime_guidance', msgId: 'stale-side-final-response-guidance' }],
-            createdAt: new Date().toISOString(),
-            seq: 1,
-          },
-        ],
-      },
-      ...emptyTellaskIndexes(),
-      displayState: {
-        kind: 'stopped',
-        reason: { kind: 'server_restart' },
-        continueEnabled: true,
-      },
-      executionMarker: {
-        kind: 'interrupted',
-        reason: { kind: 'server_restart' },
-      },
-      sideDialogFinalResponse: {
-        callId: 'call-side-j',
-        responseCourse: 1,
-        responseGenseq: 3,
-        askerDialogId: jRoot,
-        askerCourse: 1,
-      },
-    });
-    await fs.writeFile(
-      path.join(jSideDir, 'course-001.jsonl'),
-      `${JSON.stringify({
-        ts: new Date().toISOString(),
-        type: 'tellask_anchor_record',
-        anchorRole: 'response',
-        callId: 'call-side-j',
-        genseq: 3,
-        rootCourse: 1,
-        rootGenseq: 3,
-        askerDialogId: jRoot,
-        askerCourse: 1,
-        assignmentCourse: 1,
-        assignmentGenseq: 1,
-      })}\n${JSON.stringify({
-        ts: new Date().toISOString(),
-        type: 'gen_finish_record',
-        genseq: 3,
-        rootCourse: 1,
-        rootGenseq: 3,
-      })}\n${JSON.stringify({
-        ts: new Date().toISOString(),
-        type: 'reminders_reconciled_record',
-        rootCourse: 1,
-        rootGenseq: 3,
-        reminders: [],
-      })}\n`,
-      'utf-8',
-    );
-    const jProjectionOnlySideDir = path.join(
-      tmpRoot,
-      '.dialogs',
-      'run',
-      jRoot,
-      'sideDialogs',
-      jProjectionOnlySide,
-    );
-    await writeYaml(path.join(jProjectionOnlySideDir, 'dialog.yaml'), { id: jProjectionOnlySide });
-    await writeSideDialogAskerStack({
-      sideDialogId: new DialogID(jProjectionOnlySide, jRoot),
-      assignment: jProjectionOnlyAssignment,
-    });
-    await writeYaml(path.join(jProjectionOnlySideDir, 'latest.yaml'), {
-      currentCourse: 1,
-      lastModified: new Date().toISOString(),
-      status: 'active',
-      generating: false,
-      nextStep: createEmptyDialogNextStepState(),
-      ...emptyTellaskIndexes(),
-      displayState: {
-        kind: 'stopped',
-        reason: { kind: 'server_restart' },
-        continueEnabled: true,
-      },
-      executionMarker: {
-        kind: 'interrupted',
-        reason: { kind: 'server_restart' },
-      },
-      sideDialogFinalResponse: {
-        callId: 'call-side-j-projection-only',
-        responseCourse: 1,
-        responseGenseq: 3,
-        askerDialogId: jRoot,
-        askerCourse: 1,
-      },
-    });
-    await fs.writeFile(
-      path.join(jProjectionOnlySideDir, 'course-001.jsonl'),
-      `${JSON.stringify({
-        ts: new Date().toISOString(),
-        type: 'tellask_anchor_record',
-        anchorRole: 'response',
-        callId: 'call-side-j-projection-only',
-        genseq: 3,
-        rootCourse: 1,
-        rootGenseq: 3,
-        askerDialogId: jRoot,
-        askerCourse: 1,
-        assignmentCourse: 1,
-        assignmentGenseq: 1,
-      })}\n`,
-      'utf-8',
-    );
-    const jQ4hProjectionSideDir = path.join(
-      tmpRoot,
-      '.dialogs',
-      'run',
-      jRoot,
-      'sideDialogs',
-      jQ4hProjectionSide,
-    );
-    await writeYaml(path.join(jQ4hProjectionSideDir, 'dialog.yaml'), {
-      id: jQ4hProjectionSide,
-    });
-    await writeSideDialogAskerStack({
-      sideDialogId: new DialogID(jQ4hProjectionSide, jRoot),
-      assignment: jQ4hProjectionAssignment,
-    });
-    await writeYaml(path.join(jQ4hProjectionSideDir, 'latest.yaml'), {
-      currentCourse: 1,
-      lastModified: new Date().toISOString(),
-      status: 'active',
-      generating: false,
-      nextStep: createEmptyDialogNextStepState(),
-      ...emptyTellaskIndexes(),
-      displayState: { kind: 'blocked', reason: { kind: 'needs_human_input' } },
-      sideDialogFinalResponse: {
-        callId: 'call-side-j-q4h-projection',
-        responseCourse: 1,
-        responseGenseq: 3,
-        askerDialogId: jRoot,
-        askerCourse: 1,
-      },
-    });
-    await fs.writeFile(
-      path.join(jQ4hProjectionSideDir, 'course-001.jsonl'),
-      `${JSON.stringify({
-        ts: new Date().toISOString(),
-        type: 'tellask_anchor_record',
-        anchorRole: 'response',
-        callId: 'call-side-j-q4h-projection',
-        genseq: 3,
-        rootCourse: 1,
-        rootGenseq: 3,
-        askerDialogId: jRoot,
-        askerCourse: 1,
-        assignmentCourse: 1,
-        assignmentGenseq: 1,
-      })}\n`,
-      'utf-8',
-    );
-
-    // Dialog K: pending_reply_obligation is an auto-resumable interrupted marker like
-    // pending_runtime_prompt. Restart reconciliation must preserve the in-flight drive and clear the
-    // marker instead of turning it into a manual server_restart stop.
-    const kRoot = 'dlg-k';
-    const kSide = 'side-k';
-    const kRootId = new DialogID(kRoot);
-    const kSideId = new DialogID(kSide, kRoot);
-    const kSideDir = path.join(tmpRoot, '.dialogs', 'run', kRoot, 'sideDialogs', kSide);
-    const kCreatedAt = new Date().toISOString();
-    const kAssignment: SideDialogAssignmentFromAsker = {
-      callName: 'tellask',
-      mentionList: ['@pangu'],
-      tellaskContent: 'Recover pending reply obligation after restart',
-      originMemberId: 'tester',
-      askerDialogId: kRoot,
-      callId: 'call-side-k',
-      callSiteCourse: 1,
-      callSiteGenseq: 1,
-      collectiveTargets: ['pangu'],
-    };
-    await DialogPersistence.saveMainDialogMetadata(
-      kRootId,
+    const openState = {
+      kind: 'open',
+      course: toDialogCourseNumber(1),
+      genseq: toCallSiteGenseqNo(1),
+      phase: 'streaming',
+      acceptedTriggerIds: [],
+      openedAt: timestamp,
+    } as const;
+    await seedSide(
+      'pending-obligation',
+      'pending-side',
       {
-        id: kRoot,
-        agentId: 'tester',
-        taskDocPath: 'plans/interruption-resumption-k.tsk',
-        createdAt: kCreatedAt,
-      },
-      'running',
-    );
-    await DialogPersistence.mutateDialogLatest(kRootId, () => ({
-      kind: 'replace',
-      next: {
-        currentCourse: 1,
-        lastModified: kCreatedAt,
-        status: 'active',
-        generating: false,
-        nextStep: createEmptyDialogNextStepState(),
-        ...emptyTellaskIndexes(),
-        displayState: { kind: 'idle_waiting_user' },
-      },
-    }));
-    await DialogPersistence.ensureSideDialogDirectory(kSideId, 'running');
-    await DialogPersistence.saveSideDialogMetadata(
-      kSideId,
-      {
-        id: kSide,
-        agentId: 'pangu',
-        taskDocPath: 'plans/interruption-resumption-k.tsk',
-        createdAt: kCreatedAt,
-      },
-      'running',
-    );
-    await DialogPersistence.saveSideDialogAskerStackState(
-      kSideId,
-      {
-        askerStack: [
-          {
-            kind: 'asker_dialog_stack_frame',
-            askerDialogId: kRoot,
-            assignmentFromAsker: kAssignment,
-            tellaskReplyObligation: {
-              expectedReplyCallName: 'replyTellask',
-              targetDialogId: kRoot,
-              targetCallId: kAssignment.callId,
-              tellaskContent: kAssignment.tellaskContent,
-            },
-          },
-        ],
-      },
-      'running',
-    );
-    await DialogPersistence.mutateDialogLatest(kSideId, () => ({
-      kind: 'replace',
-      next: {
-        currentCourse: 1,
-        lastModified: kCreatedAt,
-        status: 'active',
         generating: true,
-        nextStep: createEmptyDialogNextStepState(),
-        ...emptyTellaskIndexes(),
-        generationRunState: {
-          kind: 'open',
-          course: 1,
-          genseq: 1,
-          phase: 'streaming',
-          acceptedTriggerIds: [],
-          openedAt: kCreatedAt,
-        },
+        generationRunState: { ...openState, acceptedTriggerIds: [] },
         displayState: {
           kind: 'stopped',
           reason: { kind: 'pending_reply_obligation' },
           continueEnabled: true,
         },
-        executionMarker: {
-          kind: 'interrupted',
-          reason: { kind: 'pending_reply_obligation' },
-        },
+        executionMarker: { kind: 'interrupted', reason: { kind: 'pending_reply_obligation' } },
       },
-    }));
-    const latestKBeforeRestart = await DialogPersistence.loadDialogLatest(kSideId, 'running');
-    assert.ok(latestKBeforeRestart, 'side-k latest fixture should be readable');
-    await DialogPersistence.syncWakeQueueForDialogLatest(kSideId, latestKBeforeRestart, 'running');
-    const wakeQueueTargetsKBeforeRestart = await DialogPersistence.loadWakeQueueTargetDialogIds(
-      kRootId,
-      'running',
-    );
-    assert.ok(
-      wakeQueueTargetsKBeforeRestart.some((dialogId) => dialogId.selfId === kSide),
-      'side-k restart fixture should be present in root wake queue',
-    );
-
-    await getRunControlCountsSnapshot();
-    const latestJAfterSnapshot = await DialogPersistence.loadDialogLatest(
-      new DialogID(jSide, jRoot),
-      'running',
-    );
-    assert.deepEqual(
-      latestJAfterSnapshot?.displayState,
-      { kind: 'idle_waiting_user' },
-      'run-control snapshot should heal finalized stale sideDialogs before counting proceeding dialogs',
-    );
-    const latestJProjectionOnlyAfterSnapshot = await DialogPersistence.loadDialogLatest(
-      new DialogID(jProjectionOnlySide, jRoot),
-      'running',
-    );
-    assert.deepEqual(
-      latestJProjectionOnlyAfterSnapshot?.displayState,
-      { kind: 'idle_waiting_user' },
-      'run-control snapshot should heal finalized projection-only sideDialogs before counting resumable dialogs',
-    );
-
-    await reconcileDisplayStatesAfterRestart();
-
-    const latestA = await DialogPersistence.loadDialogLatest(new DialogID(aRoot), 'running');
-    assert.ok(latestA, 'latest.yaml for dlg-a should exist');
-    assert.equal(latestA.generating, true);
-    assert.equal(hasPendingNextStepTriggers(latestA), true);
-    assert.ok(latestA.displayState);
-    assert.equal(latestA.displayState.kind, 'proceeding');
-    assert.equal(latestA.executionMarker, undefined);
-    assert.equal(globalDialogRegistry.get(aRoot), undefined);
-
-    const latestK = await DialogPersistence.loadDialogLatest(new DialogID(kSide, kRoot), 'running');
-    assert.ok(latestK, 'latest.yaml for dlg-k sideDialog should exist');
-    assert.equal(
-      latestK.generating,
-      true,
-      'pending_reply_obligation interrupted generation should remain recoverable after restart',
-    );
-    assert.equal(
-      hasPendingNextStepTriggers(latestK),
-      true,
-      'pending_reply_obligation interrupted generation should be queued for recovery',
-    );
-    assert.deepEqual(latestK.displayState, { kind: 'proceeding' });
-    assert.equal(latestK.executionMarker, undefined);
-
-    await recoverOpenGenerationAfterRestart();
-    const recoveredA = globalDialogRegistry.get(aRoot);
-    assert.ok(recoveredA, 'restart recovery should restore dlg-a root');
-    assert.equal(
-      globalDialogRegistry.isRootDriveQueued(aRoot),
-      true,
-      'restart recovery should enqueue dlg-a for backend drive',
-    );
-    const latestKAfterRecovery = await DialogPersistence.loadDialogLatest(kSideId, 'running');
-    assert.equal(
-      latestKAfterRecovery?.generating,
-      true,
-      'Wake Queue pending-reply-obligation sideDialog restart recovery should keep unresolved durable work recoverable',
-    );
-    assert.equal(
-      latestKAfterRecovery?.generationRunState?.kind,
-      'open',
-      'Wake Queue pending-reply-obligation sideDialog restart recovery should preserve open generation state when not yet complete',
-    );
-    const wakeQueueTargetsKAfterRecovery = await DialogPersistence.loadWakeQueueTargetDialogIds(
-      kRootId,
-      'running',
-    );
-    assert.ok(
-      wakeQueueTargetsKAfterRecovery.some((dialogId) => dialogId.selfId === kSide),
-      'unresolved Wake Queue sideDialog recovery should keep the root wake queue entry',
-    );
-    assert.equal(
-      globalDialogRegistry.isRootDriveQueued(kRoot),
-      true,
-      'unresolved Wake Queue sideDialog recovery should keep root backend drive queued for precise wake-queue driving',
-    );
-    globalDialogRegistry.unregister(kRoot);
-
-    await driveQueuedDialogsOnce();
-    await waitFor(
-      async () =>
-        lastAssistantSaying(recoveredA) ===
-        'Restart recovery drove the in-progress root generation.',
-      3_000,
-      'backend loop to resume in-progress generation even while active callee dispatches remain',
-    );
-    await waitForAllDialogsUnlocked(recoveredA, 3_000);
-    const latestAAfterDrive = await DialogPersistence.loadDialogLatest(
-      new DialogID(aRoot),
-      'running',
-    );
-    assert.equal(latestAAfterDrive?.generating, false);
-    assert.deepEqual(latestAAfterDrive?.displayState, { kind: 'idle_waiting_user' });
-
-    await waitFor(
-      async () =>
-        sideRoot.msgs.some(
-          (msg) =>
-            msg.type === 'tellask_result_msg' &&
-            msg.content.includes('Side dialog recovered and replies after restart.'),
-        ),
-      3_000,
-      'restart recovery to directly resume in-progress sideDialog generation',
-    );
-    assert.ok(
-      sideRoot.msgs.some(
-        (msg) =>
-          msg.type === 'tellask_result_msg' &&
-          msg.content.includes('side-restart-call') &&
-          msg.content.includes('Side dialog recovered and replies after restart.'),
-      ),
-      'sideDialog restart recovery should deliver replyTellask back to root',
-    );
-    await waitForAllDialogsUnlocked(sideRoot, 3_000);
-
-    const latestB = await DialogPersistence.loadDialogLatest(new DialogID(bRoot), 'running');
-    assert.ok(latestB, 'latest.yaml for dlg-b should exist');
-    assert.equal(latestB.generating, false);
-    assert.ok(latestB.displayState);
-    assert.equal(latestB.displayState.kind, 'blocked');
-    assert.equal(latestB.displayState.reason.kind, 'needs_human_input');
-
-    await assert.rejects(fs.access(path.join(tmpRoot, '.dialogs', 'run', iRoot)));
-    await fs.access(path.join(tmpRoot, '.dialogs', 'malformed', iRoot));
-
-    await assert.rejects(fs.access(path.join(tmpRoot, '.dialogs', 'run', lRoot)));
-    await fs.access(path.join(tmpRoot, '.dialogs', 'malformed', lRoot));
-
-    const latestC = await DialogPersistence.loadDialogLatest(new DialogID(cRoot), 'running');
-    assert.ok(latestC, 'latest.yaml for dlg-c should remain readable');
-    assert.equal(latestC.displayState?.kind, 'idle_waiting_user');
-    await assert.rejects(fs.access(path.join(tmpRoot, '.dialogs', 'malformed', cRoot)));
-
-    const latestD = await DialogPersistence.loadDialogLatest(new DialogID(dRoot), 'running');
-    assert.ok(latestD, 'latest.yaml for dlg-d should exist');
-    assert.ok(latestD.displayState);
-    assert.equal(latestD.displayState.kind, 'idle_waiting_user');
-
-    const healedE = await refreshRunControlProjectionFromPersistenceFacts(
-      new DialogID(eRoot),
-      'resume_dialog',
-    );
-    assert.ok(healedE, 'latest.yaml for dlg-e should exist');
-    assert.ok(healedE.displayState);
-    assert.equal(healedE.displayState.kind, 'stopped');
-    assert.equal(healedE.displayState.reason.kind, 'system_stop');
-    assert.equal(healedE.displayState.continueEnabled, true);
-    assert.equal(healedE.executionMarker?.kind, 'interrupted');
-
-    const healedF = await refreshRunControlProjectionFromPersistenceFacts(
-      new DialogID(fRoot),
-      'resume_dialog',
-    );
-    assert.ok(healedF, 'latest.yaml for dlg-f should exist');
-    assert.ok(healedF.displayState);
-    assert.equal(healedF.displayState.kind, 'stopped');
-    assert.equal(healedF.displayState.reason.kind, 'system_stop');
-    assert.equal(healedF.displayState.continueEnabled, true);
-    assert.equal(healedF.executionMarker?.kind, 'interrupted');
-
-    const latestG = await DialogPersistence.loadDialogLatest(new DialogID(gRoot), 'running');
-    assert.ok(latestG, 'latest.yaml for dlg-g should exist');
-    assert.ok(latestG.displayState);
-    assert.equal(latestG.displayState.kind, 'idle_waiting_user');
-    assert.equal(latestG.executionMarker, undefined);
-
-    const latestJ = await DialogPersistence.loadDialogLatest(new DialogID(jSide, jRoot), 'running');
-    assert.ok(latestJ, 'latest.yaml for dlg-j sideDialog should exist');
-    assert.equal(
-      latestJ.generating,
       false,
-      'restart reconciliation should clear stale sideDialog generating after final response anchor',
     );
-    assert.equal(
-      hasPendingNextStepTriggers(latestJ),
-      false,
-      'restart reconciliation should clear stale sideDialog pending next-step triggers after final response anchor',
-    );
-    assert.deepEqual(
-      latestJ.displayState,
-      { kind: 'idle_waiting_user' },
-      'stale sideDialog pending next-step triggers must not become a false server_restart interruption',
-    );
-    assert.equal(latestJ.executionMarker, undefined);
-    const latestJProjectionOnly = await DialogPersistence.loadDialogLatest(
-      new DialogID(jProjectionOnlySide, jRoot),
-      'running',
-    );
-    assert.ok(
-      latestJProjectionOnly,
-      'latest.yaml for dlg-j projection-only sideDialog should exist',
-    );
-    assert.equal(
-      hasPendingNextStepTriggers(latestJProjectionOnly),
-      false,
-      'restart reconciliation should not requeue projection-only stale sideDialog state',
-    );
-    assert.deepEqual(
-      latestJProjectionOnly.displayState,
-      { kind: 'idle_waiting_user' },
-      'stale sideDialog interruption projection should clear even when pending next-step triggers is already false',
-    );
-    assert.equal(latestJProjectionOnly.executionMarker, undefined);
-
-    const latestJQ4hProjection = await DialogPersistence.loadDialogLatest(
-      new DialogID(jQ4hProjectionSide, jRoot),
-      'running',
-    );
-    assert.ok(latestJQ4hProjection, 'latest.yaml for dlg-j q4h-projection sideDialog should exist');
-    assert.deepEqual(
-      latestJQ4hProjection.displayState,
-      { kind: 'idle_waiting_user' },
-      'finalized sideDialog should not retain stale Q4H projection after restart',
-    );
-
-    const hRoot = 'dlg-h';
-    await writeYaml(path.join(tmpRoot, '.dialogs', 'run', hRoot, 'dialog.yaml'), { id: hRoot });
-    await writeYaml(path.join(tmpRoot, '.dialogs', 'run', hRoot, 'latest.yaml'), {
-      currentCourse: 1,
-      lastModified: new Date().toISOString(),
-      status: 'active',
-      generating: false,
-      nextStep: createEmptyDialogNextStepState(),
-      ...emptyTellaskIndexes(),
-      displayState: { kind: 'proceeding' },
+    const pendingId = new DialogID('pending-side', 'pending-obligation');
+    const rawPending = await rawLatest('pending-obligation', 'pending-side');
+    assert.deepEqual(rawPending.executionMarker, {
+      kind: 'interrupted',
+      reason: { kind: 'pending_reply_obligation' },
     });
-
-    const healedH = await refreshRunControlProjectionFromPersistenceFacts(
-      new DialogID(hRoot),
-      'resume_dialog',
+    // The public wake writer consumes this supplied storage state without pre-healing latest.yaml.
+    await DialogPersistence.syncWakeQueueForDialogLatest(
+      pendingId,
+      {
+        currentCourse: 1,
+        lastModified: timestamp,
+        status: 'active',
+        generating: true,
+        generationRunState: { ...openState, acceptedTriggerIds: [] },
+        nextStep: createEmptyDialogNextStepState(),
+        tellaskCalls: createEmptyDialogTellaskCallState(),
+        tellaskResults: createEmptyDialogTellaskResultState(),
+      },
+      'running',
     );
-    assert.ok(healedH, 'latest.yaml for dlg-h should exist');
-    assert.ok(healedH.displayState);
-    assert.equal(healedH.displayState.kind, 'idle_waiting_user');
-    assert.equal(healedH.executionMarker, undefined);
-
-    // Let buffered latest.yaml write-backs drain before we restore cwd and remove the temp rtws.
-    await new Promise((resolve) => setTimeout(resolve, 700));
-
-    console.log('✅ interruption-resumption reconcile smoke test passed');
+    assert.deepEqual(
+      (await rawLatest('pending-obligation', 'pending-side')).executionMarker,
+      rawPending.executionMarker,
+      'wake synchronization does not pre-heal the restart input',
+    );
+    await reconcileDisplayStatesAfterRestart();
+    await assertFinalized('startup-finalized', startup);
+    const latest = (id: string) => DialogPersistence.loadDialogLatest(new DialogID(id), 'running');
+    assert.deepEqual((await latest('human-wait'))?.displayState, {
+      kind: 'blocked',
+      reason: { kind: 'needs_human_input' },
+    });
+    assert.equal(
+      (await DialogPersistence.loadQuestions4HumanState(new DialogID('human-wait'))).length,
+      1,
+    );
+    for (const id of ['malformed-stopped', 'malformed-open', 'unfinished-side-root']) {
+      await assert.rejects(fs.access(path.join('.dialogs/run', id)), { code: 'ENOENT' });
+      assert.deepEqual(
+        await fs.readFile(path.join('.dialogs/malformed', id, 'forensic.bin')),
+        Buffer.from([0, 1, 2, 255]),
+      );
+      assert.equal(
+        notifications.filter(
+          (message) =>
+            message.rootId === id &&
+            message.reason === 'restart_reconciliation_missing_generation_run_state',
+        ).length,
+        1,
+      );
+    }
+    assert.deepEqual((await latest('irrelevant-detail'))?.displayState, {
+      kind: 'idle_waiting_user',
+    });
+    await assert.rejects(fs.access('.dialogs/malformed/irrelevant-detail'), { code: 'ENOENT' });
+    assert.deepEqual((await latest('missing-projection'))?.displayState, {
+      kind: 'idle_waiting_user',
+    });
+    for (const id of ['stopped-with-background', 'stale-human-projection']) {
+      const healed = await refreshRunControlProjectionFromPersistenceFacts(
+        new DialogID(id),
+        'resume_dialog',
+      );
+      assert.deepEqual(healed?.displayState, {
+        kind: 'stopped',
+        reason: stop,
+        continueEnabled: true,
+      });
+      assert.deepEqual(healed?.executionMarker, { kind: 'interrupted', reason: stop });
+    }
+    assert.deepEqual((await latest('healthy-idle'))?.displayState, { kind: 'idle_waiting_user' });
+    assert.equal((await latest('healthy-idle'))?.executionMarker, undefined);
+    const pending = await DialogPersistence.loadDialogLatest(pendingId);
+    assert.equal(pending?.generating, true);
+    assert.equal(pending?.generationRunState?.kind, 'open');
+    assert.deepEqual(pending?.displayState, { kind: 'proceeding' });
+    assert.equal(pending?.executionMarker, undefined);
+    assert.ok(
+      pending?.nextStep.triggers.some((trigger) => trigger.kind === 'open_generation_recovery'),
+    );
+    await recoverOpenGenerationAfterRestart();
+    const pendingAfterRecovery = await DialogPersistence.loadDialogLatest(pendingId, 'running');
+    assert.equal(pendingAfterRecovery?.generating, true);
+    assert.equal(pendingAfterRecovery?.generationRunState?.kind, 'open');
+    assert.equal(globalDialogRegistry.isRootDriveQueued('pending-obligation'), true);
+    assert.ok(
+      (
+        await DialogPersistence.loadWakeQueueTargetDialogIds(
+          new DialogID('pending-obligation'),
+          'running',
+        )
+      ).some((id) => id.selfId === 'pending-side'),
+    );
+    globalDialogRegistry.unregister('pending-obligation');
+    await seedRoot('stale-proceeding', { generating: false, displayState: { kind: 'proceeding' } });
+    assert.deepEqual(
+      (
+        await refreshRunControlProjectionFromPersistenceFacts(
+          new DialogID('stale-proceeding'),
+          'resume_dialog',
+        )
+      )?.displayState,
+      { kind: 'idle_waiting_user' },
+    );
+    assert.equal((await latest('stale-proceeding'))?.executionMarker, undefined);
+    let error: unknown;
+    try {
+      await DialogPersistence.loadQuestions4HumanState(new DialogID('irrelevant-detail'));
+    } catch (caught: unknown) {
+      error = caught;
+    }
+    assert.ok(error instanceof Error);
+    await assert.rejects(fs.access('.dialogs/run/irrelevant-detail'), { code: 'ENOENT' });
+    assert.equal(
+      await fs.readFile('.dialogs/malformed/irrelevant-detail/q4h.yaml', 'utf8'),
+      'questions: [',
+    );
+    evidence.record({
+      id: 'malformed-human-question-detail',
+      scenario:
+        'Restart reconciliation ignores malformed question detail when no durable wait requires it; an actual question-detail consumer then refuses it and quarantines the dialog. A valid waiting question is still readable.',
+      businessValue:
+        'Keep unrelated run-control recovery available while refusing corrupt human-question payload when it is needed.',
+      context: {
+        language: 'en',
+        idleBeforePayloadRead: true,
+        validQuestionReadable: true,
+        corruptPayloadRetainedInQuarantine: true,
+        scope:
+          'Real public persistence and run-control APIs on deliberately seeded files; no actual human-answer UI.',
+      },
+      reviewQuestions: [
+        'Does the actual diagnostic accurately identify corrupt stored question data and the affected file without implying that a human answer was received?',
+      ],
+      actualText: error.message,
+    });
   } finally {
-    process.chdir(oldCwd);
-    await fs.rm(tmpRoot, { recursive: true, force: true });
+    setDialogsQuarantinedBroadcaster(null);
   }
 }
-
-main().catch((err) => {
-  console.error('❌ interruption-resumption test failed', err);
-  process.exit(1);
+async function main(): Promise<void> {
+  await withTempRtws(async (rtws) => {
+    setWorkLanguage('en');
+    await coldGenerationRecovery(rtws);
+    await projectionRecovery(rtws);
+    await evidence.write();
+  });
+  console.log('cold generation recovery and run-control projection boundaries: PASS');
+}
+main().catch((error: unknown) => {
+  console.error(error);
+  process.exitCode = 1;
 });

@@ -1091,16 +1091,6 @@ export async function reconcileDisplayStatesAfterRestart(): Promise<void> {
       continue;
     }
 
-    if (latest.generating === true && latest.generationRunState === undefined) {
-      await DialogPersistence.quarantineMalformedRuntimeState(
-        dialogId,
-        'running',
-        'restart_reconciliation_missing_generation_run_state',
-        `Restart reconciliation refused to recover generating dialog without generationRunState (rootId=${dialogId.rootId}, selfId=${dialogId.selfId})`,
-      );
-      continue;
-    }
-
     if (
       dialogId.selfId !== dialogId.rootId &&
       (latest.generating === true ||
@@ -1122,6 +1112,18 @@ export async function reconcileDisplayStatesAfterRestart(): Promise<void> {
       if (latest.generating !== true && !hasPendingNextStepTriggers(latest)) {
         continue;
       }
+    }
+
+    // A canonical final-response closure can establish that a side's generating flag is stale.
+    // Settle that closure before treating a missing open-generation record as corruption.
+    if (latest.generating === true && latest.generationRunState === undefined) {
+      await DialogPersistence.quarantineMalformedRuntimeState(
+        dialogId,
+        'running',
+        'restart_reconciliation_missing_generation_run_state',
+        `Restart reconciliation refused to recover generating dialog without generationRunState (rootId=${dialogId.rootId}, selfId=${dialogId.selfId})`,
+      );
+      continue;
     }
 
     const recoverableGenerationRunState = getRecoverableGenerationRunState(latest);
