@@ -785,7 +785,25 @@
       "status": "reviewed",
       "lane": "packaging",
       "value": "真实kernel/shell tarball在无源码映射的独立原生CJS/ESM与TypeScript消费，私有路径拒绝、版本边及缺包负向对照",
-      "evidence": "Complete original/final/test-diff assertion review and retirement/value mapping: tests/audits/2026-10-31-packaging.json. Only protocol identifiers, package versions, public operations, supplied data, cryptographic matches, HTTP statuses/bytes and compiler/process statuses are oracles. No prose quality verdict or source scan. POSIX tar and existing built outputs/pinned dependencies required; no registry install/publish, browser interaction, live provider or release-policy acceptance."
+      "evidence": "Complete original/final/test-diff assertion review and retirement/value mapping: tests/audits/2026-10-31-packaging.json. Only protocol identifiers, package versions, public operations, supplied data, cryptographic matches, HTTP statuses/bytes and compiler/process statuses are oracles. No prose quality verdict or source scan. POSIX tar and existing built outputs/pinned dependencies required; no registry install/publish, browser interaction, live provider or release-policy acceptance. Public Q4H including answers and named timestamp/id/guide asset calls were subsequently reviewed and executed in the public-contract batch: tests/semantic/reviews/2026-10-31-public-contracts.json; only API/data shape and effects are asserted, no title or fallback prose meaning."
+    },
+    "apps-kernel-package-exports-contract.ts": {
+      "status": "reviewed",
+      "lane": "packaging",
+      "value": "当前兼容manifest公开解析器的无损数据、getter不执行、非法/重复能力拒绝、合法端口边界，以及无dist/paths的独立源类型消费",
+      "evidence": "Complete original/final/test-diff assertion review, value mapping, real cache regression and actual fresh diagnostic evidence: tests/semantic/reviews/2026-10-31-public-contracts.json. Public fields/state, supplied data, actual subprocess effects, Git/cache/archive bytes and flags are machine oracles. Valuable diagnostic text requires independent subjective review; generation and this design ledger do not accept fresh output. No source snippet, fixed prose or keyword detector; current App compatibility retained without App destination architecture. External npm/pnpm are controlled in a closed PATH; no live registry/publish/authentication/browser claim."
+    },
+    "apps-public-version-drift-guard.ts": {
+      "status": "reviewed",
+      "lane": "packaging",
+      "value": "真实同名同版本tar内容相等可接受，而缺失、增加、改字节及改名拒绝并保留原档案",
+      "evidence": "Complete original/final/test-diff assertion review, value mapping, real cache regression and actual fresh diagnostic evidence: tests/semantic/reviews/2026-10-31-public-contracts.json. Public fields/state, supplied data, actual subprocess effects, Git/cache/archive bytes and flags are machine oracles. Valuable diagnostic text requires independent subjective review; generation and this design ledger do not accept fresh output. No source snippet, fixed prose or keyword detector; current App compatibility retained without App destination architecture. External npm/pnpm are controlled in a closed PATH; no live registry/publish/authentication/browser claim."
+    },
+    "apps-public-publish-guard.ts": {
+      "status": "reviewed",
+      "lane": "packaging",
+      "value": "真实声明发布入口与四包prepublish guard，受控npm/pnpm边界下的早拒、顺序/flags、缓存保留复用/换提交重建及确认后清理、已发布版本核对",
+      "evidence": "Complete original/final/test-diff assertion review, value mapping, real cache regression and actual fresh diagnostic evidence: tests/semantic/reviews/2026-10-31-public-contracts.json. Public fields/state, supplied data, actual subprocess effects, Git/cache/archive bytes and flags are machine oracles. Valuable diagnostic text requires independent subjective review; generation and this design ledger do not accept fresh output. No source snippet, fixed prose or keyword detector; current App compatibility retained without App destination architecture. External npm/pnpm are controlled in a closed PATH; no live registry/publish/authentication/browser claim."
     }
   },
   "retired": {

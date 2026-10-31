@@ -54,6 +54,22 @@ async function main() {
   assert.throws(() => require('@longrun-ai/shell/cli'), {
     code: 'ERR_PACKAGE_PATH_NOT_EXPORTED',
   });
+  const { formatUnifiedTimestamp } = require('@longrun-ai/kernel/utils/time');
+  assert.equal(formatUnifiedTimestamp(new Date(2026, 2, 13, 1, 2, 3)), '2026-03-13 01:02:03');
+  const { generateShortId } = require('@longrun-ai/kernel/utils/id');
+  const id = generateShortId();
+  assert.equal(typeof id, 'string');
+  assert.ok(id.length > 0);
+  // These checks protect callable/data export availability only. Guidance/title meaning
+  // is separately reviewed; no word, fixed sentence or asset content is an oracle here.
+  const { DILIGENCE_FALLBACK_TEXT } = require('@longrun-ai/kernel/diligence');
+  for (const language of ['en', 'zh'])
+    assert.equal(typeof DILIGENCE_FALLBACK_TEXT[language], 'string');
+  assert.ok(kernel.TEAM_MGMT_GUIDE_UI_TOPIC_ORDER.length > 0);
+  for (const topic of kernel.TEAM_MGMT_GUIDE_UI_TOPIC_ORDER) {
+    assert.equal(kernel.isTeamMgmtGuideTopicKey(topic), true);
+    assert.equal(typeof kernel.getTeamMgmtGuideTopicTitle('en', topic), 'string');
+  }
   console.log(
     JSON.stringify({ probe: 'packed-consumer-complete', fixture: path.basename(__filename) }),
   );

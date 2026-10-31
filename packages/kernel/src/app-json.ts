@@ -409,7 +409,11 @@ export function parseDomindsAppInstallJson(
   v: unknown,
 ): { ok: true; json: DomindsAppInstallJson } | { ok: false; errorText: string } {
   if (!isRecord(v)) {
-    return { ok: false, errorText: 'Invalid app --dominds-app output: expected object' };
+    return {
+      ok: false,
+      errorText:
+        'Invalid app --dominds-app output: expected a plain JSON object (class instances are not supported)',
+    };
   }
   const unsupportedRootKeys = listUnsupportedProperties(v, [
     'appId',
@@ -522,7 +526,8 @@ export function parseDomindsAppInstallJson(
     ) {
       return {
         ok: false,
-        errorText: 'Invalid app json: frontend.defaultPort must be an integer between 0 and 65535',
+        errorText:
+          'Invalid app json: frontend.defaultPort must be an integer between 0 and 65535; negative zero (-0) is not supported',
       };
     }
     const basePathRaw = frontendRaw['basePath'];

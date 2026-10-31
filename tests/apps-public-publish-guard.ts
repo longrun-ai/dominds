@@ -1,412 +1,253 @@
 import assert from 'node:assert/strict';
-import { spawnSync } from 'node:child_process';
-import { existsSync } from 'node:fs';
-import * as fs from 'node:fs/promises';
-import os from 'node:os';
+import { execFileSync } from 'node:child_process';
+import fs from 'node:fs/promises';
 import path from 'node:path';
+import { type PeerCall, withReleaseFixture } from './helpers/packaging/release-fixture';
+import { semanticEvidenceCollector } from './helpers/semantic-evidence';
 
-type PackageJsonShape = Readonly<{
-  scripts?: unknown;
-}>;
-
-function expectRecord(value: unknown, label: string): Record<string, unknown> {
-  assert.equal(typeof value, 'object', `${label} must be an object.`);
-  assert.notEqual(value, null, `${label} must not be null.`);
-  assert.equal(Array.isArray(value), false, `${label} must not be an array.`);
-  return value as Record<string, unknown>;
+const evidence = semanticEvidenceCollector('dominds-public-release-');
+function diagnostic(
+  id: string,
+  actualText: string,
+  context: Record<string, string | boolean | number>,
+) {
+  evidence.record({
+    id,
+    scenario: `The actual public release entry refuses ${id} in an owned Git workspace.`,
+    businessValue:
+      'Explain the blocked release and the applicable next action without misleading the maintainer into believing an artifact was published.',
+    context: {
+      ...context,
+      scope:
+        'Copied unmodified production release/guard scripts with real Git, tar, cache and filesystem; only external npm/pnpm peers are controlled. No registry, browser authentication or real publishing.',
+    },
+    reviewQuestions: [
+      'Does the actual refusal accurately explain this observed cause and provide an applicable next action, with no false successful-release claim?',
+    ],
+    actualText,
+  });
 }
-
-async function readPackageJson(packageJsonAbs: string): Promise<PackageJsonShape> {
-  const raw = await fs.readFile(packageJsonAbs, 'utf-8');
-  return JSON.parse(raw) as PackageJsonShape;
-}
-
-async function assertPrepublishOnly(
-  packageJsonAbs: string,
-  expectedCommand: string,
-  label: string,
-): Promise<void> {
-  const packageJson = await readPackageJson(packageJsonAbs);
-  const scripts = expectRecord(packageJson.scripts, `${label} scripts`);
-  assert.equal(
-    scripts['prepublishOnly'],
-    expectedCommand,
-    `${label} must enforce the shared pnpm-only publish guard before building.`,
+const callsTo = (calls: PeerCall[], command: string, action: string) =>
+  calls.filter((call) => call.command === command && call.args[0] === action);
+async function cacheFiles(directory: string): Promise<Record<string, Buffer>> {
+  const entries = await fs.readdir(directory).catch((error: NodeJS.ErrnoException) => {
+    if (error.code === 'ENOENT') return [];
+    throw error;
+  });
+  return Object.fromEntries(
+    await Promise.all(
+      entries.map(async (entry) => [entry, await fs.readFile(path.join(directory, entry))]),
+    ),
   );
 }
-
-async function writeExecutable(absPath: string, source: string): Promise<void> {
-  await fs.writeFile(absPath, source, { encoding: 'utf-8', mode: 0o755 });
-}
-
-async function assertPublishScriptFailsBeforePlanWhenNpmLoginMissing(
-  domindsRootAbs: string,
-): Promise<void> {
-  const tempRootAbs = await fs.mkdtemp(path.join(os.tmpdir(), 'dominds-public-publish-login-'));
-  try {
-    const fakeBinAbs = path.join(tempRootAbs, 'bin');
-    const callLogAbs = path.join(tempRootAbs, 'calls.log');
-    await fs.mkdir(fakeBinAbs, { recursive: true });
-
-    await writeExecutable(
-      path.join(fakeBinAbs, 'git'),
-      `#!/usr/bin/env node
-const args = process.argv.slice(2);
-if (args[0] === '-C' && args[2] === 'status') {
-  process.exit(0);
-}
-if (args[0] === '-C' && args[2] === 'rev-parse') {
-  process.stdout.write('aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\\n');
-  process.exit(0);
-}
-process.stderr.write('unexpected git invocation: ' + args.join(' ') + '\\n');
-process.exit(2);
-`,
-    );
-    await writeExecutable(
-      path.join(fakeBinAbs, 'npm'),
-      `#!/usr/bin/env node
-const fs = require('node:fs');
-const args = process.argv.slice(2);
-fs.appendFileSync(${JSON.stringify(callLogAbs)}, ['npm', ...args].join(' ') + '\\n');
-if (args[0] === 'whoami') {
-  process.stderr.write('npm warn Unknown env config "prefer-workspace-packages". This will stop working in the next major version of npm.\\n');
-  process.stderr.write('npm warn Unknown env config "link-workspace-packages". This will stop working in the next major version of npm.\\n');
-  process.stderr.write('npm error code E401\\n');
-  process.stderr.write('npm error 401 Unauthorized - GET https://registry.npmjs.org/-/whoami\\n');
-  process.exit(1);
-}
-process.stderr.write('unexpected npm invocation: ' + args.join(' ') + '\\n');
-process.exit(2);
-`,
-    );
-    await writeExecutable(
-      path.join(fakeBinAbs, 'pnpm'),
-      `#!/usr/bin/env node
-const fs = require('node:fs');
-const args = process.argv.slice(2);
-fs.appendFileSync(${JSON.stringify(callLogAbs)}, ['pnpm', ...args].join(' ') + '\\n');
-process.exit(99);
-`,
-    );
-
-    const result = spawnSync(
-      'node',
-      [path.join(domindsRootAbs, 'scripts', 'publish-public-packages.mjs')],
-      {
-        cwd: domindsRootAbs,
-        encoding: 'utf-8',
-        env: {
-          ...process.env,
-          PATH: `${fakeBinAbs}${path.delimiter}${process.env.PATH ?? ''}`,
-        },
-      },
-    );
-
-    assert.notEqual(
-      result.status,
-      0,
-      'Publish script must fail immediately when npm login is missing.',
-    );
-    const combinedOutput = `${result.stdout ?? ''}\n${result.stderr ?? ''}`;
-    assert.match(
-      combinedOutput,
-      /npm login is required before publishing public packages\./,
-      'Publish script must explain the missing npm login before any publish planning.',
-    );
-    assert.match(
-      combinedOutput,
-      /npm login --registry https:\/\/registry\.npmjs\.org\//,
-      'Publish script must tell the user how to log in to npm.',
-    );
-    assert.doesNotMatch(
-      combinedOutput,
-      /Command failed:/,
-      'Publish script must not leak raw exec failure details for missing npm login.',
-    );
-    assert.doesNotMatch(
-      combinedOutput,
-      /node:internal\/errors:/,
-      'Publish script must not print the Node internal error stack for missing npm login.',
-    );
-    assert.doesNotMatch(
-      combinedOutput,
-      /Unknown env config/,
-      'Publish script must hide pnpm-injected npm config warnings from the login guidance path.',
-    );
-
-    const callLog = await fs.readFile(callLogAbs, 'utf-8');
-    const calls = callLog
-      .split('\n')
-      .map((line) => line.trim())
-      .filter((line) => line !== '');
-    assert.deepEqual(
-      calls,
-      ['npm whoami --registry https://registry.npmjs.org/'],
-      'Publish script must stop at the upfront npm login check and must not continue to npm view or pnpm publish.',
-    );
-  } finally {
-    await fs.rm(tempRootAbs, { recursive: true, force: true });
-  }
-}
-
-async function assertPublishScriptRejectsPresetOtp(domindsRootAbs: string): Promise<void> {
-  const tempRootAbs = await fs.mkdtemp(path.join(os.tmpdir(), 'dominds-public-publish-otp-'));
-  try {
-    const fakeBinAbs = path.join(tempRootAbs, 'bin');
-    await fs.mkdir(fakeBinAbs, { recursive: true });
-
-    await writeExecutable(
-      path.join(fakeBinAbs, 'npm'),
-      `#!/usr/bin/env node
-process.stderr.write('managed release flow must reject --otp before npm runs\\n');
-process.exit(99);
-`,
-    );
-    await writeExecutable(
-      path.join(fakeBinAbs, 'pnpm'),
-      `#!/usr/bin/env node
-process.stderr.write('managed release flow must reject --otp before pnpm runs\\n');
-process.exit(99);
-`,
-    );
-
-    const result = spawnSync(
-      'node',
-      [path.join(domindsRootAbs, 'scripts', 'publish-public-packages.mjs'), '--otp', '123456'],
-      {
-        cwd: domindsRootAbs,
-        encoding: 'utf-8',
-        env: {
-          ...process.env,
-          PATH: `${fakeBinAbs}${path.delimiter}${process.env.PATH ?? ''}`,
-        },
-      },
-    );
-
-    assert.notEqual(
-      result.status,
-      0,
-      'Publish script must reject a preset OTP before release work begins.',
-    );
-    const combinedOutput = `${result.stdout ?? ''}\n${result.stderr ?? ''}`;
-    assert.match(
-      combinedOutput,
-      /--otp is intentionally not accepted by the managed public release flow/,
-      'Publish script must explain why preset OTP values are unsafe.',
-    );
-    assert.match(
-      combinedOutput,
-      /npm browser authentication opens immediately before each publish/,
-      'Publish script must direct users toward publish-time browser authentication.',
-    );
-    assert.doesNotMatch(
-      combinedOutput,
-      /managed release flow must reject --otp before npm runs/,
-      'Publish script must reject preset OTP before invoking npm.',
-    );
-    assert.doesNotMatch(
-      combinedOutput,
-      /managed release flow must reject --otp before pnpm runs/,
-      'Publish script must reject preset OTP before invoking pnpm.',
-    );
-  } finally {
-    await fs.rm(tempRootAbs, { recursive: true, force: true });
-  }
-}
-
-async function assertPublishScriptRequiresCleanWorktree(domindsRootAbs: string): Promise<void> {
-  const tempRootAbs = await fs.mkdtemp(path.join(os.tmpdir(), 'dominds-public-publish-clean-'));
-  try {
-    const fakeBinAbs = path.join(tempRootAbs, 'bin');
-    await fs.mkdir(fakeBinAbs, { recursive: true });
-
-    await writeExecutable(
-      path.join(fakeBinAbs, 'git'),
-      `#!/usr/bin/env node
-const args = process.argv.slice(2);
-if (args[0] === '-C' && args[2] === 'status') {
-  process.stdout.write(' M scripts/publish-public-packages.mjs\\n');
-  process.exit(0);
-}
-if (args[0] === '-C' && args[2] === 'rev-parse') {
-  process.stdout.write('aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\\n');
-  process.exit(0);
-}
-process.stderr.write('unexpected git invocation: ' + args.join(' ') + '\\n');
-process.exit(2);
-`,
-    );
-    await writeExecutable(
-      path.join(fakeBinAbs, 'npm'),
-      `#!/usr/bin/env node
-process.stderr.write('managed release flow must reject dirty worktrees before npm runs\\n');
-process.exit(99);
-`,
-    );
-    await writeExecutable(
-      path.join(fakeBinAbs, 'pnpm'),
-      `#!/usr/bin/env node
-process.stderr.write('managed release flow must reject dirty worktrees before pnpm runs\\n');
-process.exit(99);
-`,
-    );
-
-    const result = spawnSync(
-      'node',
-      [path.join(domindsRootAbs, 'scripts', 'publish-public-packages.mjs')],
-      {
-        cwd: domindsRootAbs,
-        encoding: 'utf-8',
-        env: {
-          ...process.env,
-          PATH: `${fakeBinAbs}${path.delimiter}${process.env.PATH ?? ''}`,
-        },
-      },
-    );
-
-    assert.notEqual(result.status, 0, 'Publish script must reject dirty worktrees.');
-    const combinedOutput = `${result.stdout ?? ''}\n${result.stderr ?? ''}`;
-    assert.match(
-      combinedOutput,
-      /Public release requires a clean dominds git worktree/,
-      'Publish script must explain the clean-worktree requirement.',
-    );
-    assert.match(
-      combinedOutput,
-      /M scripts\/publish-public-packages\.mjs/,
-      'Publish script must include git status details for dirty worktrees.',
-    );
-    assert.doesNotMatch(
-      combinedOutput,
-      /managed release flow must reject dirty worktrees before npm runs/,
-      'Publish script must reject dirty worktrees before invoking npm.',
-    );
-    assert.doesNotMatch(
-      combinedOutput,
-      /managed release flow must reject dirty worktrees before pnpm runs/,
-      'Publish script must reject dirty worktrees before invoking pnpm.',
-    );
-  } finally {
-    await fs.rm(tempRootAbs, { recursive: true, force: true });
-  }
-}
-
-async function assertPublishScriptUsesBrowserPublishAuth(domindsRootAbs: string): Promise<void> {
-  const scriptSource = await fs.readFile(
-    path.join(domindsRootAbs, 'scripts', 'publish-public-packages.mjs'),
-    'utf-8',
-  );
-  assert.match(
-    scriptSource,
-    /'--auth-type', 'web'/,
-    'Managed publish must use npm browser authentication so npm can reuse its short-lived 2FA approval window.',
-  );
-  assert.doesNotMatch(
-    scriptSource,
-    /Enter npm OTP/,
-    'Managed publish must not prompt for raw OTP values itself.',
-  );
-  assert.match(
-    scriptSource,
-    /arg === '--auth-type' \|\| arg\.startsWith\('--auth-type='\)/,
-    'Managed publish must reject caller-provided auth-type overrides.',
-  );
-}
-
-async function assertPublishScriptKeepsReusablePreparedTarballs(
-  domindsRootAbs: string,
-): Promise<void> {
-  const scriptSource = await fs.readFile(
-    path.join(domindsRootAbs, 'scripts', 'publish-public-packages.mjs'),
-    'utf-8',
-  );
-  assert.match(
-    scriptSource,
-    /const releasePackDirAbs = path\.join\(workspaceRootAbs, '\.release-pack'\)/,
-    'Managed publish must keep prepared release tarballs in the workspace cache directory.',
-  );
-  assert.match(
-    scriptSource,
-    /function prepareReleaseTarball\(pkg\)/,
-    'Managed publish must prepare tarballs through a reusable release-pack path.',
-  );
-  assert.match(
-    scriptSource,
-    /Reusing prepared release tarball/,
-    'Managed publish must reuse an already prepared tarball after a failed publish attempt.',
-  );
-  assert.match(
-    scriptSource,
-    /metadata\.gitHead !== gitHead/,
-    'Managed publish must reject stale prepared tarballs when the release commit changed.',
-  );
-  assert.match(
-    scriptSource,
-    /function assertCleanWorktree\(\)/,
-    'Managed publish must require a clean worktree before building and publishing.',
-  );
-  assert.match(
-    scriptSource,
-    /removePreparedReleaseTarball\(pkg\)/,
-    'Managed publish must clean the prepared tarball after registry verification succeeds.',
-  );
-
-  const gitignore = await fs.readFile(path.join(domindsRootAbs, '.gitignore'), 'utf-8');
-  assert.match(
-    gitignore,
-    /^\.release-pack\/$/m,
-    'Prepared release tarball cache must be gitignored.',
-  );
-}
-
 async function main(): Promise<void> {
-  const domindsRootAbs = path.resolve(__dirname, '..');
-  await assertPrepublishOnly(
-    path.join(domindsRootAbs, 'package.json'),
-    'node ./scripts/require-pnpm-publish.mjs && pnpm run build',
-    'dominds root package',
-  );
-  const rootPackageJson = await readPackageJson(path.join(domindsRootAbs, 'package.json'));
-  const rootScripts = expectRecord(rootPackageJson.scripts, 'dominds root package scripts');
-  assert.equal(
-    rootScripts['release:publish-public'],
-    'node ./scripts/publish-public-packages.mjs',
-    'dominds root package must expose the single-entry ordered public publish script.',
-  );
-  assert.equal(
-    rootScripts['release:publish-public:dry-run'],
-    'node ./scripts/publish-public-packages.mjs --dry-run',
-    'dominds root package must expose a dry-run variant of the public publish script.',
-  );
-  assert.equal(
-    existsSync(path.join(domindsRootAbs, 'scripts', 'publish-public-packages.mjs')),
-    true,
-    'dominds root package must keep the public publish script in scripts/.',
-  );
-  await assertPublishScriptRejectsPresetOtp(domindsRootAbs);
-  await assertPublishScriptUsesBrowserPublishAuth(domindsRootAbs);
-  await assertPublishScriptKeepsReusablePreparedTarballs(domindsRootAbs);
-  await assertPublishScriptRequiresCleanWorktree(domindsRootAbs);
-  await assertPublishScriptFailsBeforePlanWhenNpmLoginMissing(domindsRootAbs);
-  await assertPrepublishOnly(
-    path.join(domindsRootAbs, 'packages', 'kernel', 'package.json'),
-    'node ../../scripts/require-pnpm-publish.mjs && pnpm run build',
-    'kernel package',
-  );
-  await assertPrepublishOnly(
-    path.join(domindsRootAbs, 'packages', 'shell', 'package.json'),
-    'node ../../scripts/require-pnpm-publish.mjs && pnpm run build',
-    'shell package',
-  );
-  await assertPrepublishOnly(
-    path.join(domindsRootAbs, 'codex-auth', 'package.json'),
-    'node ../scripts/require-pnpm-publish.mjs && pnpm run build',
-    'codex-auth package',
-  );
+  await withReleaseFixture(async (fixture) => {
+    for (const [id, args] of [
+      ['preset-otp', ['--otp', '123456']],
+      ['preset-otp-equals', ['--otp=123456']],
+      ['auth-override', ['--auth-type', 'legacy']],
+      ['auth-override-equals', ['--auth-type=legacy']],
+    ] as const) {
+      const result = await fixture.invoke({}, [...args]);
+      assert.equal(result.status, 1);
+      assert.deepEqual(result.calls, []);
+      assert.deepEqual(await cacheFiles(fixture.cache), {});
+      diagnostic(id, `${result.stdout}${result.stderr}`, {
+        argv: JSON.stringify(args),
+        externalCommands: 0,
+        cacheCreated: false,
+      });
+    }
+    const packageFile = path.join(fixture.workspace, 'package.json');
+    const before = await fs.readFile(packageFile);
+    await fs.appendFile(packageFile, '\n');
+    const dirty = await fixture.invoke({});
+    assert.equal(dirty.status, 1);
+    assert.deepEqual(dirty.calls, []);
+    diagnostic('dirty-worktree', `${dirty.stdout}${dirty.stderr}`, {
+      dirtyFile: 'package.json',
+      externalCommands: 0,
+      gitStatus: fixture.git(['status', '--porcelain=v1']),
+    });
+    await fs.writeFile(packageFile, before);
+    assert.equal(fixture.git(['status', '--porcelain=v1']), '');
+    const login = await fixture.invoke({ loggedIn: false });
+    assert.equal(login.status, 1);
+    assert.deepEqual(
+      login.calls.map((call) => [call.command, ...call.args]),
+      [['npm', 'whoami', '--registry', 'https://registry.npmjs.org/']],
+    );
+    assert.equal(login.calls[0]?.npmInjectedConfig, null);
+    diagnostic('missing-login', `${login.stdout}${login.stderr}`, {
+      loggedIn: false,
+      externalCallCount: login.calls.length,
+      peerEmittedWarnings: true,
+    });
+    for (const [index, pkg] of fixture.packages.entries()) {
+      for (const [kind, userAgent, managed] of [
+        ['npm', 'npm/11.0.0', '1'],
+        ['unmanaged-pnpm', 'pnpm/11.17.0', '0'],
+      ] as const) {
+        const result = await fixture.prepublish(index, userAgent, managed);
+        assert.equal(result.status, 1);
+        assert.deepEqual(result.calls, []);
+        diagnostic(`direct-${kind}-${index}`, `${result.stdout}${result.stderr}`, {
+          packageName: pkg.name,
+          userAgent,
+          managed,
+          buildOrPublishInvocations: 0,
+        });
+      }
+      const allowed = await fixture.prepublish(index, 'pnpm/11.17.0', '1');
+      assert.equal(allowed.status, 0);
+      assert.deepEqual(
+        allowed.calls.map((call) => [call.command, ...call.args]),
+        [['pnpm', 'run', 'build']],
+      );
+      assert.equal(allowed.calls[0]?.managed, true);
+    }
+    const dry = await fixture.invoke(
+      { loggedIn: false },
+      ['--tag', 'fixture-tag'],
+      'release:publish-public:dry-run',
+    );
+    assert.equal(dry.status, 0);
+    assert.equal(callsTo(dry.calls, 'npm', 'whoami').length, 0);
+    const dryPublish = callsTo(dry.calls, 'npm', 'publish');
+    assert.deepEqual(
+      dryPublish.map((call) => call.packageName),
+      fixture.packages.map((pkg) => pkg.name),
+    );
+    for (const call of dryPublish)
+      assert.deepEqual(call.args.slice(2), [
+        '--access',
+        'public',
+        '--auth-type',
+        'web',
+        '--dry-run',
+        '--tag',
+        'fixture-tag',
+      ]);
+    assert.equal(Object.keys(await cacheFiles(fixture.cache)).length, 8);
+    assert.equal(fixture.git(['status', '--porcelain=v1', '--untracked-files=all']), '');
+    await fs.rm(fixture.cache, { recursive: true }); // Start the next interruption scenario with no prepared artifacts.
+    const failed = await fixture.invoke({ failPublish: true });
+    assert.equal(failed.status, 1);
+    assert.equal(callsTo(failed.calls, 'pnpm', 'pack').length, 1);
+    assert.equal(callsTo(failed.calls, 'npm', 'publish').length, 1);
+    const prepared = await cacheFiles(fixture.cache);
+    assert.equal(Object.keys(prepared).length, 2);
+    assert.equal(fixture.git(['status', '--porcelain=v1', '--untracked-files=all']), '');
+    const retried = await fixture.invoke({ failPublish: true });
+    assert.equal(retried.status, 1);
+    assert.equal(callsTo(retried.calls, 'pnpm', 'run').length, 0);
+    assert.equal(callsTo(retried.calls, 'pnpm', 'pack').length, 0);
+    assert.equal(callsTo(retried.calls, 'npm', 'publish').length, 1);
+    assert.equal(
+      callsTo(retried.calls, 'npm', 'publish')[0]?.archiveSha256,
+      callsTo(failed.calls, 'npm', 'publish')[0]?.archiveSha256,
+    );
+    assert.deepEqual(await cacheFiles(fixture.cache), prepared);
+    const oldHead = fixture.git(['rev-parse', 'HEAD']);
+    await fs.writeFile(
+      path.join(fixture.packages[0]!.root, 'artifact.txt'),
+      'changed-after-commit-data',
+    );
+    const newHead = fixture.commit();
+    assert.notEqual(newHead, oldHead);
+    const changed = await fixture.invoke({ failPublish: true });
+    assert.equal(changed.status, 1);
+    assert.equal(callsTo(changed.calls, 'pnpm', 'pack').length, 1);
+    const archive = callsTo(changed.calls, 'npm', 'publish')[0]?.args[1];
+    assert.ok(archive);
+    assert.equal(
+      execFileSync('tar', ['-xOf', archive, 'package/dist/index.js'], { encoding: 'utf8' }),
+      'changed-after-commit-data',
+    );
+    assert.equal(JSON.parse(await fs.readFile(`${archive}.json`, 'utf8')).gitHead, newHead);
+    const beforeUnconfirmed = await cacheFiles(fixture.cache);
+    const unconfirmed = await fixture.invoke({ failVerification: true }, ['--tag', 'fixture-tag']);
+    assert.equal(unconfirmed.status, 1);
+    assert.equal(callsTo(unconfirmed.calls, 'pnpm', 'pack').length, 0);
+    assert.deepEqual(
+      callsTo(unconfirmed.calls, 'npm', 'publish').map((call) => call.packageName),
+      [fixture.packages[0]!.name],
+    );
+    assert.equal(unconfirmed.calls.at(-1)?.cacheStillPresent, true);
+    assert.deepEqual(await cacheFiles(fixture.cache), beforeUnconfirmed);
+    const beforeDrift = await cacheFiles(fixture.cache);
+    assert.ok(Object.keys(beforeDrift).length > 0);
+    const drift = await fixture.invoke({ publishedDrift: true });
+    assert.equal(drift.status, 1);
+    assert.equal(callsTo(drift.calls, 'npm', 'publish').length, 0);
+    assert.deepEqual(await cacheFiles(fixture.cache), beforeDrift);
+    diagnostic('existing-version-drift', `${drift.stdout}${drift.stderr}`, {
+      packageName: fixture.packages[0]!.name,
+      version: fixture.packages[0]!.version,
+      localBody: 'changed-after-commit-data',
+      registryBody: 'registry-drift-data',
+      thisInvocationPublished: false,
+      preparedCachePreserved: true,
+    });
+    const released = await fixture.invoke({}, ['--tag', 'fixture-tag']);
+    assert.equal(released.status, 0);
+    const publishes = callsTo(released.calls, 'npm', 'publish');
+    assert.deepEqual(
+      publishes.map((call) => call.packageName),
+      fixture.packages.slice(1).map((pkg) => pkg.name),
+    );
+    assert.equal(
+      callsTo(released.calls, 'pnpm', 'pack').length,
+      4,
+      'the already-published first artifact is checked, then the remaining packages are prepared',
+    );
+    for (const publish of publishes) {
+      assert.deepEqual(publish.args.slice(2), [
+        '--access',
+        'public',
+        '--auth-type',
+        'web',
+        '--tag',
+        'fixture-tag',
+      ]);
+      const index = released.calls.indexOf(publish);
+      const verified = released.calls[index + 1];
+      assert.equal(verified?.command, 'npm');
+      assert.equal(verified?.args[0], 'view');
+      assert.equal(
+        verified?.cacheStillPresent,
+        true,
+        'cache remains until successful registry verification',
+      );
+    }
+    assert.ok(
+      released.calls
+        .filter((call) => call.command === 'npm')
+        .every((call) => call.npmInjectedConfig === null),
+    );
+    assert.ok(callsTo(released.calls, 'pnpm', 'run').every((call) => call.managed));
+    assert.deepEqual(await cacheFiles(fixture.cache), {});
+    const unchanged = await fixture.invoke({});
+    assert.equal(unchanged.status, 0);
+    assert.equal(callsTo(unchanged.calls, 'npm', 'publish').length, 0);
+    assert.equal(callsTo(unchanged.calls, 'npm', 'pack').length, 4);
+    assert.equal(callsTo(unchanged.calls, 'pnpm', 'pack').length, 4);
+    const behind = await fixture.invoke({ behind: true });
+    assert.equal(behind.status, 1);
+    assert.equal(callsTo(behind.calls, 'pnpm', 'run').length, 0);
+    assert.equal(callsTo(behind.calls, 'npm', 'publish').length, 0);
+    diagnostic('version-behind-registry', `${behind.stdout}${behind.stderr}`, {
+      packageName: fixture.packages[0]!.name,
+      localVersion: fixture.packages[0]!.version,
+      highestRegistryVersion: '999.0.0',
+      thisInvocationPublished: false,
+    });
+    assert.equal(fixture.git(['status', '--porcelain=v1', '--untracked-files=all']), '');
+    await evidence.write();
+  });
+  console.log('Release refusals, real cache recovery and ordered controlled publish: PASS');
 }
-
 main().catch((error: unknown) => {
-  console.error(error instanceof Error ? (error.stack ?? error.message) : String(error));
-  process.exit(1);
+  console.error(error);
+  process.exitCode = 1;
 });

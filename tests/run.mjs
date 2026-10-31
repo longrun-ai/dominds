@@ -103,8 +103,19 @@ const bootstrap = [
   'env/dotenv.ts',
   'env/env-tools.ts',
 ];
-const packaging = ['apps-dominds-root-packed-contract.ts', 'apps-kernel-shell-packed-contract.ts'];
+const packaging = [
+  'apps-dominds-root-packed-contract.ts',
+  'apps-kernel-shell-packed-contract.ts',
+  'apps-kernel-package-exports-contract.ts',
+  'apps-public-version-drift-guard.ts',
+  'apps-public-publish-guard.ts',
+];
 const semanticSuites = {
+  packaging: [
+    'apps-kernel-package-exports-contract.ts',
+    'apps-public-version-drift-guard.ts',
+    'apps-public-publish-guard.ts',
+  ],
   context: [
     'semantic/context-guidance.ts',
     'diligence-push/diligence-budget-event.ts',
@@ -345,7 +356,7 @@ async function main() {
     ].includes(args[1])
   ) {
     throw new Error(
-      'Usage: node tests/run.mjs --list | --suite smoke | --suite kernel | --suite context [--semantic] | --suite configuration [--semantic] | --suite manual [--semantic] | --suite filesystem [--semantic] | --suite persistence [--semantic] | --suite recovery [--semantic] | --suite bootstrap [--semantic] | --suite packaging',
+      'Usage: node tests/run.mjs --list | --suite smoke | --suite kernel | --suite context [--semantic] | --suite configuration [--semantic] | --suite manual [--semantic] | --suite filesystem [--semantic] | --suite persistence [--semantic] | --suite recovery [--semantic] | --suite bootstrap [--semantic] | --suite packaging [--semantic]',
     );
   }
   const suite = args[1];
@@ -362,7 +373,13 @@ async function main() {
       persistence.includes(file) ||
       recovery.includes(file)
         ? [tsx, path.join(testsRoot, 'cli.ts'), '--', file, ...(semantic ? ['--semantic'] : [])]
-        : [tsx, '--tsconfig', path.join(testsRoot, 'tsconfig.json'), path.join(testsRoot, file)],
+        : [
+            tsx,
+            '--tsconfig',
+            path.join(testsRoot, 'tsconfig.json'),
+            path.join(testsRoot, file),
+            ...(semantic ? ['--semantic'] : []),
+          ],
   }));
   const logDir = await fs.mkdtemp(
     path.join(os.tmpdir(), `dominds-tests-${suite}${semantic ? '-semantic' : ''}-`),

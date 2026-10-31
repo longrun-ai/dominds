@@ -407,7 +407,7 @@ function verifySkippedExactVersionPackageMatchesRegistry(pkg) {
       const detail = error instanceof Error ? error.message : String(error);
       throw new Error(
         `${pkg.packageName}@${pkg.localVersion} already exists on npm, but the current local package contents differ from the published tarball.\n` +
-          `This means the workspace package changed without a version bump. Bump the version before publishing.\n` +
+          `The current local and published artifacts do not match for this version. Check which content is intended; if the local content is an intentional change, bump the version before publishing.\n` +
           `${detail}`,
       );
     } finally {
@@ -540,6 +540,7 @@ async function main() {
         `Verifying skipped exact-version package matches npm: ${item.packageName}@${item.localVersion}`,
       );
       verifySkippedExactVersionPackageMatchesRegistry(item);
+      removePreparedReleaseTarball(item);
     }
   }
 

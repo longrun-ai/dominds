@@ -1,134 +1,70 @@
-import assert from 'node:assert/strict';
-import * as fs from 'node:fs/promises';
-import path from 'node:path';
-
 import {
-  type Q4HDialogContext,
-  TEAM_MGMT_GUIDE_UI_TOPIC_ORDER,
   appToolSuccess,
-  getTeamMgmtGuideTopicTitle,
   isTeamMgmtGuideTopicKey,
   parseDomindsAppInstallJson,
   toolSuccess,
 } from '@longrun-ai/kernel';
-import type { CreateDomindsAppFn } from '@longrun-ai/kernel/app-host-contract';
-import { type DomindsAppInstallJson, isJsonValue } from '@longrun-ai/kernel/app-json';
-import { DILIGENCE_FALLBACK_TEXT } from '@longrun-ai/kernel/diligence';
-import { createPubChan, createSubChan } from '@longrun-ai/kernel/evt';
+import { isJsonValue } from '@longrun-ai/kernel/app-json';
 import { supportedLanguageCodes } from '@longrun-ai/kernel/types/language';
-import { escapeHtml, escapeHtmlAttr } from '@longrun-ai/kernel/utils/html';
-import { generateShortId } from '@longrun-ai/kernel/utils/id';
-import { formatUnifiedTimestamp } from '@longrun-ai/kernel/utils/time';
+import { escapeHtmlAttr } from '@longrun-ai/kernel/utils/html';
+import assert from 'node:assert/strict';
+import fs from 'node:fs/promises';
+import path from 'node:path';
+import { inspect } from 'node:util';
+import { checkConsumerTypes, repository, withConsumer } from './helpers/packaging/consumer';
+import { semanticEvidenceCollector } from './helpers/semantic-evidence';
 
-type PackageJsonShape = Readonly<{
-  name?: unknown;
-  main?: unknown;
-  types?: unknown;
-  exports?: unknown;
-  publishConfig?: unknown;
-}>;
-
-function expectRecord(value: unknown, label: string): Record<string, unknown> {
-  assert.equal(typeof value, 'object', `${label} must be an object.`);
-  assert.notEqual(value, null, `${label} must not be null.`);
-  assert.equal(Array.isArray(value), false, `${label} must not be an array.`);
-  return value as Record<string, unknown>;
+const evidence = semanticEvidenceCollector('dominds-manifest-contract-');
+function rejected(label: string, input: unknown) {
+  const result = parseDomindsAppInstallJson(input);
+  assert.equal(result.ok, false, label);
+  assert.ok(!result.ok);
+  evidence.record({
+    id: label.toLowerCase().replace(/[^a-z0-9]+/g, '-'),
+    scenario: `The public install parser rejects ${label}.`,
+    businessValue:
+      'Help a component author repair an invalid current compatibility manifest without silently losing capability data or executing accessor code.',
+    context: {
+      input: inspect(input, {
+        depth: null,
+        getters: false,
+        customInspect: false,
+        showHidden: true,
+      }),
+      accepted: result.ok,
+      scope:
+        'Public parser boundary only; no component installation, host process or target App architecture claim. Input is an inspection representation so non-JSON values remain visible without invoking getters.',
+    },
+    reviewQuestions: [
+      'Does this actual diagnostic identify the invalid manifest area and the rejected constraint accurately enough to correct it, without implying installation succeeded?',
+    ],
+    actualText: result.errorText,
+  });
+  return result;
 }
 
 async function main(): Promise<void> {
-  const domindsRootAbs = path.resolve(__dirname, '..');
-  const packageJsonText = await fs.readFile(
-    path.join(domindsRootAbs, 'packages', 'kernel', 'package.json'),
-    'utf-8',
-  );
-  const packageJson = JSON.parse(packageJsonText) as PackageJsonShape;
-  const exportsField = expectRecord(packageJson.exports, 'MicroKernel package.json exports');
-  const publishConfig = expectRecord(
-    packageJson.publishConfig,
-    'MicroKernel package.json publishConfig',
-  );
-
-  assert.equal(packageJson.name, '@longrun-ai/kernel', 'MicroKernel package name must be stable.');
-  assert.equal(
-    packageJson.main,
-    'dist/index.js',
-    'MicroKernel package main must point at dist/index.js.',
-  );
-  assert.equal(
-    packageJson.types,
-    'src/index.ts',
-    'MicroKernel package types must point at src/index.ts so workspace consumers can type-check against the formal package surface before prebuilding dist.',
-  );
-  assert.equal(
-    publishConfig['access'],
-    'public',
-    'MicroKernel package must declare publishConfig.access=public for scoped npm publishing.',
-  );
-  assert.deepEqual(
-    Object.keys(exportsField).sort(),
-    [
-      '.',
-      './app-host-contract',
-      './app-json',
-      './diligence',
-      './evt',
-      './team-mgmt-guide',
-      './types',
-      './types/*',
-      './utils/html',
-      './utils/id',
-      './utils/time',
-    ].sort(),
-    'MicroKernel package must expose the first formal contract set used by apps and WebUI.',
-  );
-  const typesExport = expectRecord(exportsField['./types'], 'MicroKernel ./types export');
-  assert.equal(
-    typesExport['types'],
-    './src/types.ts',
-    'MicroKernel ./types export must point type consumers at src/types.ts.',
-  );
-  assert.equal(
-    typesExport['require'],
-    './dist/types.js',
-    'MicroKernel ./types export must resolve to MicroKernel-owned dist/types.js.',
-  );
-  const typesStarExport = expectRecord(exportsField['./types/*'], 'MicroKernel ./types/* export');
-  assert.equal(
-    typesStarExport['types'],
-    './src/types/*.ts',
-    'MicroKernel ./types/* export must point type consumers at src/types/*.ts.',
-  );
-  assert.equal(
-    typesStarExport['require'],
-    './dist/types/*.js',
-    'MicroKernel ./types/* export must resolve to MicroKernel-owned dist/types/*.js.',
-  );
-  const appJsonExport = expectRecord(exportsField['./app-json'], 'MicroKernel ./app-json export');
-  assert.equal(
-    appJsonExport['types'],
-    './src/app-json.ts',
-    'MicroKernel ./app-json export must point type consumers at src/app-json.ts.',
-  );
-  assert.equal(
-    appJsonExport['require'],
-    './dist/app-json.js',
-    'MicroKernel ./app-json export must resolve to MicroKernel-owned dist/app-json.js.',
-  );
-  const appHostExport = expectRecord(
-    exportsField['./app-host-contract'],
-    'MicroKernel ./app-host-contract export',
-  );
-  assert.equal(
-    appHostExport['types'],
-    './src/app-host-contract.ts',
-    'MicroKernel ./app-host-contract export must point type consumers at src/app-host-contract.ts.',
-  );
-  assert.equal(
-    appHostExport['require'],
-    './dist/app-host-contract.js',
-    'MicroKernel ./app-host-contract export must resolve to MicroKernel-owned dist/app-host-contract.js.',
-  );
-
+  // A workspace consumer must type-check before dist exists, without repository path aliases.
+  await withConsumer(async (directory) => {
+    const installed = path.join(directory, 'node_modules/@longrun-ai/kernel');
+    await fs.mkdir(installed, { recursive: true });
+    await fs.cp(path.join(repository, 'packages/kernel/src'), path.join(installed, 'src'), {
+      recursive: true,
+    });
+    await fs.copyFile(
+      path.join(repository, 'packages/kernel/package.json'),
+      path.join(installed, 'package.json'),
+    );
+    await checkConsumerTypes(
+      directory,
+      `import { toolSuccess, type Q4HDialogContext } from '@longrun-ai/kernel';
+import type { CreateDomindsAppFn } from '@longrun-ai/kernel/app-host-contract';
+const attention: Q4HDialogContext = { selfId: 'self', rootId: 'root', agentId: 'agent', taskDocPath: 'task.tsk', questions: [], answers: [] };
+const createApp: CreateDomindsAppFn = async () => ({ tools: {} });
+void [attention, createApp, toolSuccess];
+`,
+    );
+  });
   const installJsonInput = {
     appId: '@demo/example',
     displayName: 'Example',
@@ -145,7 +81,8 @@ async function main(): Promise<void> {
   };
 
   const parsed = parseDomindsAppInstallJson(installJsonInput);
-  assert.equal(parsed.ok, true, 'MicroKernel root export must parse valid app install json.');
+  assert.ok(parsed.ok);
+  assert.deepEqual(parsed.json, installJsonInput);
   const canonicalized = parseDomindsAppInstallJson({
     ...installJsonInput,
     displayName: undefined,
@@ -214,7 +151,7 @@ async function main(): Promise<void> {
     readonly host = installJsonInput.host;
   }
   assert.equal(
-    parseDomindsAppInstallJson(new InstallManifestClass()).ok,
+    rejected('manifest-class', new InstallManifestClass()).ok,
     false,
     'Install json must reject class instances rather than treating them as plain manifests.',
   );
@@ -228,7 +165,7 @@ async function main(): Promise<void> {
     },
   });
   assert.equal(
-    parseDomindsAppInstallJson(getterInstallJson).ok,
+    rejected('manifest-getter', getterInstallJson).ok,
     false,
     'Install json must reject accessor properties.',
   );
@@ -240,28 +177,17 @@ async function main(): Promise<void> {
   const symbolInstallJson: Record<PropertyKey, unknown> = { ...installJsonInput };
   symbolInstallJson[Symbol('hidden')] = true;
   assert.equal(
-    parseDomindsAppInstallJson(symbolInstallJson).ok,
+    rejected('manifest-symbol', symbolInstallJson).ok,
     false,
     'Install json must reject symbol-keyed properties instead of silently discarding them.',
   );
-  const unsupportedContribution = parseDomindsAppInstallJson({
+  rejected('unsupported-contribution', {
     ...installJsonInput,
     contributes: {
       unsupportedExtension: {},
     },
   });
-  assert.equal(
-    unsupportedContribution.ok,
-    false,
-    'Unknown app contributions must fail closed instead of being silently ignored.',
-  );
-  if (!unsupportedContribution.ok) {
-    assert.match(
-      unsupportedContribution.errorText,
-      /contributes contains unsupported properties: unsupportedExtension/,
-    );
-  }
-  const unsupportedReminderOwner = parseDomindsAppInstallJson({
+  rejected('unsupported-reminder-owner', {
     ...installJsonInput,
     contributes: {
       reminderOwners: [
@@ -273,18 +199,6 @@ async function main(): Promise<void> {
       ],
     },
   });
-  assert.equal(
-    unsupportedReminderOwner.ok,
-    false,
-    'Unknown reminder-owner properties must fail closed instead of being silently ignored.',
-  );
-  if (!unsupportedReminderOwner.ok) {
-    assert.match(
-      unsupportedReminderOwner.errorText,
-      /contributes\.reminderOwners\[0\]: contains unsupported properties: managedByTool, updateExample/,
-    );
-  }
-
   const validParameters = {
     type: 'object',
     properties: {
@@ -400,24 +314,14 @@ async function main(): Promise<void> {
     },
   ];
   for (const testCase of invalidParameterCases) {
-    const result = parseDomindsAppInstallJson({
+    rejected(`schema-${testCase.label}`, {
       ...installJsonInput,
       contributes: {
         toolsets: [
-          {
-            id: 'probe',
-            tools: [{ name: 'probe_tool', parameters: testCase.parameters }],
-          },
+          { id: 'probe', tools: [{ name: 'probe_tool', parameters: testCase.parameters }] },
         ],
       },
     });
-    assert.equal(result.ok, false, `${testCase.label} must fail the JsonSchema boundary.`);
-    if (!result.ok) {
-      assert.match(
-        result.errorText,
-        /contributes\.toolsets\[0\]\.tools\[0\]\.parameters: expected lossless JSON object/,
-      );
-    }
   }
   assert.equal(
     getterRead,
@@ -425,13 +329,10 @@ async function main(): Promise<void> {
     'JsonSchema validation must reject accessors without invoking them.',
   );
 
-  const invalidOptionalFieldCases: ReadonlyArray<
-    Readonly<{ label: string; input: unknown; expected: RegExp }>
-  > = [
+  const invalidOptionalFieldCases: ReadonlyArray<Readonly<{ label: string; input: unknown }>> = [
     {
       label: 'displayName wrong type',
       input: { ...installJsonInput, displayName: 42 },
-      expected: /displayName must be a string/,
     },
     {
       label: 'package.version wrong type',
@@ -439,7 +340,6 @@ async function main(): Promise<void> {
         ...installJsonInput,
         package: { ...installJsonInput.package, version: 42 },
       },
-      expected: /package\.version must be string\|null/,
     },
     {
       label: 'frontend.basePath wrong type',
@@ -447,7 +347,6 @@ async function main(): Promise<void> {
         ...installJsonInput,
         frontend: { kind: 'http', basePath: 42 },
       },
-      expected: /frontend\.basePath must be a string/,
     },
     {
       label: 'frontend.wsPath wrong type',
@@ -455,7 +354,6 @@ async function main(): Promise<void> {
         ...installJsonInput,
         frontend: { kind: 'http', wsPath: false },
       },
-      expected: /frontend\.wsPath must be a string/,
     },
     {
       label: 'frontend.defaultPort fractional value',
@@ -463,7 +361,6 @@ async function main(): Promise<void> {
         ...installJsonInput,
         frontend: { kind: 'http', defaultPort: 43123.5 },
       },
-      expected: /frontend\.defaultPort must be an integer between 0 and 65535/,
     },
     {
       label: 'frontend.defaultPort negative zero',
@@ -471,7 +368,6 @@ async function main(): Promise<void> {
         ...installJsonInput,
         frontend: { kind: 'http', defaultPort: -0 },
       },
-      expected: /frontend\.defaultPort must be an integer between 0 and 65535/,
     },
     {
       label: 'frontend.defaultPort above TCP port range',
@@ -479,7 +375,6 @@ async function main(): Promise<void> {
         ...installJsonInput,
         frontend: { kind: 'http', defaultPort: 65_536 },
       },
-      expected: /frontend\.defaultPort must be an integer between 0 and 65535/,
     },
     {
       label: 'teammatesYamlRelPath wrong type',
@@ -487,7 +382,6 @@ async function main(): Promise<void> {
         ...installJsonInput,
         contributes: { teammatesYamlRelPath: 42 },
       },
-      expected: /teammatesYamlRelPath must be a non-empty string/,
     },
     {
       label: 'tool description wrong type',
@@ -502,7 +396,6 @@ async function main(): Promise<void> {
           ],
         },
       },
-      expected: /tools\[0\]\.description: expected string/,
     },
     {
       label: 'descriptionI18n extra language',
@@ -518,7 +411,6 @@ async function main(): Promise<void> {
           ],
         },
       },
-      expected: /descriptionI18n: expected \{zh,en\} string/,
     },
     {
       label: 'duplicate toolset id',
@@ -531,7 +423,6 @@ async function main(): Promise<void> {
           ],
         },
       },
-      expected: /duplicate toolset id 'probe'/,
     },
     {
       label: 'duplicate tool name within one component',
@@ -549,7 +440,6 @@ async function main(): Promise<void> {
           ],
         },
       },
-      expected: /duplicate tool name 'probe_tool'/,
     },
     {
       label: 'duplicate reminder owner ref',
@@ -559,15 +449,10 @@ async function main(): Promise<void> {
           reminderOwners: [{ ref: 'probe_owner' }, { ref: 'probe_owner' }],
         },
       },
-      expected: /duplicate reminder owner ref 'probe_owner'/,
     },
   ];
   for (const testCase of invalidOptionalFieldCases) {
-    const result = parseDomindsAppInstallJson(testCase.input);
-    assert.equal(result.ok, false, `${testCase.label} must fail closed.`);
-    if (!result.ok) {
-      assert.match(result.errorText, testCase.expected);
-    }
+    rejected(`field-${testCase.label}`, testCase.input);
   }
   assert.equal(
     parseDomindsAppInstallJson({
@@ -575,7 +460,7 @@ async function main(): Promise<void> {
       frontend: { kind: 'http', defaultPort: 0 },
     }).ok,
     true,
-    'Port 0 remains the explicit Stage 0 request for automatic port assignment.',
+    'Port 0 remains the explicit request for automatic port assignment.',
   );
   assert.equal(
     parseDomindsAppInstallJson({
@@ -585,93 +470,17 @@ async function main(): Promise<void> {
     true,
     'The highest valid TCP port must remain accepted.',
   );
-  const installJsonContract: DomindsAppInstallJson = installJsonInput;
-  assert.equal(installJsonContract.host.exportName, 'createDomindsApp');
-  assert.deepEqual(
-    TEAM_MGMT_GUIDE_UI_TOPIC_ORDER.slice(0, 3),
-    ['topics', 'team', 'member-properties'],
-    'MicroKernel root export must keep team manual UI ordering stable.',
-  );
-  assert.equal(
-    getTeamMgmtGuideTopicTitle('en', 'topics'),
-    'Index',
-    'MicroKernel root export must expose team manual titles.',
-  );
-  assert.equal(
-    isTeamMgmtGuideTopicKey('topics'),
-    true,
-    'MicroKernel root export must expose topic guard.',
-  );
-  assert.deepEqual(
-    supportedLanguageCodes,
-    ['en', 'zh'],
-    'MicroKernel language contract must stay explicit.',
-  );
-  assert.equal(
-    typeof DILIGENCE_FALLBACK_TEXT.zh,
-    'string',
-    'MicroKernel diligence contract must be consumable by WebUI.',
-  );
-
-  const chan = createPubChan<string>();
-  const sub = createSubChan(chan);
-  chan.write('ok');
-  assert.equal(
-    await sub.read(),
-    'ok',
-    'MicroKernel evt contract must remain consumable outside main private runtime sources.',
-  );
-  assert.equal(
-    formatUnifiedTimestamp(new Date('2026-03-13T01:02:03Z')).length,
-    19,
-    'MicroKernel shared util export must remain callable.',
-  );
-  assert.equal(
-    escapeHtml('<tag>'),
-    '&lt;tag&gt;',
-    'MicroKernel html util export must be part of the public contract.',
-  );
-  assert.equal(
-    escapeHtmlAttr('x"y'),
-    'x&quot;y',
-    'MicroKernel html-attr util export must be part of the public contract.',
-  );
-  assert.equal(
-    generateShortId().length,
-    6,
-    'MicroKernel id util export must be part of the public contract.',
-  );
-  assert.deepEqual(
-    toolSuccess('ok'),
-    { content: 'ok', outcome: 'success' },
-    'MicroKernel tool helpers must omit absent optional fields instead of relying on JSON IPC to erase undefined values.',
-  );
-  assert.deepEqual(
-    appToolSuccess('ok'),
-    { output: { content: 'ok', outcome: 'success' } },
-    'Stage 0 App tool helpers must produce lossless IPC objects without undefined optional fields.',
-  );
-
-  const q4hContext: Q4HDialogContext = {
-    selfId: 'dlg-1',
-    rootId: 'dlg-1',
-    agentId: '@qa',
-    taskDocPath: 'demo.tsk',
-    questions: [],
-  };
-  assert.equal(q4hContext.questions.length, 0, 'MicroKernel root export must carry Q4H typing.');
-
-  const createApp: CreateDomindsAppFn = async () => ({
-    tools: {},
-  });
-  assert.equal(
-    typeof createApp,
-    'function',
-    'MicroKernel app host contract export must stay callable by consumers.',
-  );
+  assert.equal(isTeamMgmtGuideTopicKey('topics'), true);
+  assert.equal(isTeamMgmtGuideTopicKey('unknown-topic-data'), false);
+  assert.deepEqual(supportedLanguageCodes, ['en', 'zh']);
+  assert.equal(escapeHtmlAttr('x"y'), 'x&quot;y');
+  const payload = 'opaque-ipc-data-34f8';
+  assert.deepEqual(toolSuccess(payload), { content: payload, outcome: 'success' });
+  assert.deepEqual(appToolSuccess(payload), { output: { content: payload, outcome: 'success' } });
+  await evidence.write();
+  console.log('Public manifest boundary and source-only consumer: PASS');
 }
-
 main().catch((error: unknown) => {
-  console.error(error instanceof Error ? (error.stack ?? error.message) : String(error));
-  process.exit(1);
+  console.error(error);
+  process.exitCode = 1;
 });

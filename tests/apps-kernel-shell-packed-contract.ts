@@ -21,7 +21,7 @@ async function main(): Promise<void> {
     await runNativeConsumer(directory, 'kernel.cjs');
     await checkConsumerTypes(
       directory,
-      `import { toolSuccess } from '@longrun-ai/kernel';
+      `import { toolSuccess, type Q4HDialogContext } from '@longrun-ai/kernel';
 import type { CreateDomindsAppFn } from '@longrun-ai/kernel/app-host-contract';
 import type { DialogLatestFile } from '@longrun-ai/kernel/types/storage';
 import type { DialogDisplayState } from '@longrun-ai/kernel/types/display-state';
@@ -30,12 +30,13 @@ import type { TypedDialogEvent } from '@longrun-ai/kernel/types/dialog';
 import type { DialogsQuarantinedMessage } from '@longrun-ai/kernel/types/wire';
 import * as shell from '@longrun-ai/shell';
 const createApp: CreateDomindsAppFn = async () => ({ tools: {} });
+const attention: Q4HDialogContext = { selfId: 'self', rootId: 'root', agentId: 'agent', taskDocPath: 'task.tsk', questions: [], answers: [] };
 const language: LanguageCode = 'en';
 const display: DialogDisplayState = { kind: 'idle_waiting_user' };
 const latest: Pick<DialogLatestFile, 'displayState'> = { displayState: display };
 const output = toolSuccess('supplied-data');
 const outcome: 'success' | 'failure' | 'partial_failure' | undefined = output.outcome;
-void [createApp, language, latest, outcome, shell];
+void [attention, createApp, language, latest, outcome, shell];
 const acceptsEvents = (event: TypedDialogEvent | DialogsQuarantinedMessage) => event.type;
 void acceptsEvents;
 `,

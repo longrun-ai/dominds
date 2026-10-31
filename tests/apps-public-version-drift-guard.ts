@@ -1,85 +1,105 @@
 import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
-import * as fs from 'node:fs/promises';
+import fs from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
+import { semanticEvidenceCollector } from './helpers/semantic-evidence';
 
-async function writePackageTree(
-  rootAbs: string,
-  files: Readonly<Record<string, string>>,
-): Promise<void> {
-  for (const [relPath, content] of Object.entries(files)) {
-    const absPath = path.join(rootAbs, relPath);
-    await fs.mkdir(path.dirname(absPath), { recursive: true });
-    await fs.writeFile(absPath, content, 'utf8');
+const evidence = semanticEvidenceCollector('dominds-package-drift-');
+async function archive(directory: string, name: string, files: Record<string, string>) {
+  const source = path.join(directory, name);
+  for (const [file, contents] of Object.entries(files)) {
+    const target = path.join(source, 'package', file);
+    await fs.mkdir(path.dirname(target), { recursive: true });
+    await fs.writeFile(target, contents);
   }
-}
-
-function createTarballFromPackageDir(sourceRootAbs: string, tarballAbs: string): void {
-  execFileSync('tar', ['-czf', tarballAbs, '-C', sourceRootAbs, 'package'], {
-    stdio: 'pipe',
-  });
+  const tarball = `${source}.tgz`;
+  execFileSync('tar', ['-czf', tarball, '-C', source, 'package'], { stdio: 'pipe' });
+  return tarball;
 }
 
 async function main(): Promise<void> {
-  const domindsRootAbs = path.resolve(__dirname, '..');
-  const verifyModule = await import(
-    path.join(domindsRootAbs, 'scripts', 'verify-packed-public-package.mjs')
+  const module = await import(
+    path.resolve(__dirname, '../scripts/verify-packed-public-package.mjs')
   );
-  const assertTarballContentsMatch = verifyModule.assertTarballContentsMatch as (
-    localTarballAbs: string,
-    publishedTarballAbs: string,
+  const check: (
+    local: string,
+    published: string,
     labels: { local: string; published: string },
-  ) => void;
-
-  const tempRootAbs = await fs.mkdtemp(path.join(os.tmpdir(), 'dominds-version-drift-guard-'));
+  ) => void = module.assertTarballContentsMatch;
+  const directory = await fs.mkdtemp(path.join(os.tmpdir(), 'dominds-package-drift-fixture-'));
   try {
-    const localRootAbs = path.join(tempRootAbs, 'local');
-    const publishedRootAbs = path.join(tempRootAbs, 'published');
-    await fs.mkdir(path.join(localRootAbs, 'package'), { recursive: true });
-    await fs.mkdir(path.join(publishedRootAbs, 'package'), { recursive: true });
-
-    const sharedPackageJson = JSON.stringify(
-      {
+    const base = {
+      'package.json': JSON.stringify({
         name: '@longrun-ai/kernel',
         version: '1.8.6',
         main: 'dist/index.js',
-      },
-      null,
-      2,
+      }),
+      'dist/index.js': 'exports.answer = 42;\n',
+      'dist/team-mgmt-guide.js': 'exports.isTeamMgmtGuideTopicKey = () => true;\n',
+    };
+    const local = await archive(directory, 'local', base);
+    const labels = {
+      local: 'local packed @longrun-ai/kernel@1.8.6',
+      published: 'published npm @longrun-ai/kernel@1.8.6',
+    };
+    const equal = await archive(
+      directory,
+      'equal',
+      Object.fromEntries(Object.entries(base).reverse()),
     );
-
-    await writePackageTree(localRootAbs, {
-      'package/package.json': sharedPackageJson,
-      'package/dist/index.js': 'exports.answer = 42;\n',
-      'package/dist/team-mgmt-guide.js': 'exports.isTeamMgmtGuideTopicKey = () => true;\n',
-    });
-    await writePackageTree(publishedRootAbs, {
-      'package/package.json': sharedPackageJson,
-      'package/dist/index.js': 'exports.answer = 42;\n',
-      'package/dist/team-mgmt-manual.js': 'exports.isTeamMgmtManualTopicKey = () => true;\n',
-    });
-
-    const localTarballAbs = path.join(tempRootAbs, 'local.tgz');
-    const publishedTarballAbs = path.join(tempRootAbs, 'published.tgz');
-    createTarballFromPackageDir(localRootAbs, localTarballAbs);
-    createTarballFromPackageDir(publishedRootAbs, publishedTarballAbs);
-
-    assert.throws(
-      () =>
-        assertTarballContentsMatch(localTarballAbs, publishedTarballAbs, {
-          local: 'local packed @longrun-ai/kernel@1.8.6',
-          published: 'published npm @longrun-ai/kernel@1.8.6',
-        }),
-      /differs from/,
-      'The tarball drift guard must reject same-version tarballs with different contents.',
-    );
-  } finally {
-    await fs.rm(tempRootAbs, { recursive: true, force: true });
+    check(local, equal, labels);
+    check(equal, local, labels);
+    const { 'dist/team-mgmt-guide.js': omitted, ...missing } = base;
+    const variants = [
+      { id: 'missing-entry', files: missing },
+      { id: 'added-entry', files: { ...base, 'dist/added.js': 'exports.added = true;\n' } },
+      { id: 'changed-bytes', files: { ...base, 'dist/index.js': 'exports.answer = 43;\n' } },
+      { id: 'renamed-entry', files: { ...missing, 'dist/team-mgmt-manual.js': omitted } },
+    ];
+    for (const variant of variants) {
+      const published = await archive(directory, variant.id, variant.files);
+      const before = await Promise.all([local, published].map((file) => fs.readFile(file)));
+      let failure: unknown;
+      try {
+        check(local, published, labels);
+      } catch (error) {
+        failure = error;
+      }
+      assert.ok(failure instanceof Error, variant.id);
+      assert.deepEqual(
+        await Promise.all([local, published].map((file) => fs.readFile(file))),
+        before,
+      );
+      evidence.record({
+        id: variant.id,
+        scenario: `Valid same-name/version tarballs differ by ${variant.id}; actual content comparison rejects them.`,
+        businessValue:
+          'Prevent treating changed release contents as the already published artifact and help a maintainer identify the drift.',
+        context: {
+          localFiles: JSON.stringify(base),
+          publishedFiles: JSON.stringify(variant.files),
+          equalContentPositiveControlPassed: true,
+          inputsPreserved: true,
+          scope:
+            'Actual local tar files and production digest comparison. No registry access, authentication, publishing or arbitrary tar feature coverage.',
+        },
+        reviewQuestions: [
+          'Does the actual diagnostic accurately identify the two artifacts and whether entries were added, removed, renamed or changed, without claiming a publish happened?',
+        ],
+        actualText: failure.message,
+      });
+    }
+    await evidence.write();
+  } catch (error) {
+    console.error(`Package drift fixture retained: ${directory}`);
+    throw error;
   }
+  if (process.env.DOMINDS_TEST_RTWS_KEEP_TMP !== '1')
+    await fs.rm(directory, { recursive: true, force: true });
+  console.log('Actual package content equality and drift: PASS');
 }
-
 main().catch((error: unknown) => {
-  console.error(error instanceof Error ? (error.stack ?? error.message) : String(error));
-  process.exit(1);
+  console.error(error);
+  process.exitCode = 1;
 });
