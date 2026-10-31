@@ -1,4 +1,6 @@
 import type { UiOnlyMarkdownRecord } from '@longrun-ai/kernel/types/storage';
+import assert from 'node:assert/strict';
+import { recordDialogEvents } from './dialog-events';
 
 import { driveDialogStream } from '../../main/llm/kernel-driver';
 import { DialogPersistence } from '../../main/persistence';
@@ -51,6 +53,7 @@ export async function collectBudgetExhaustion(language: 'zh' | 'en') {
   const dialog = await createMainDialog('tester');
   dialog.disableDiligencePush = false;
   dialog.diligencePushRemainingBudget = 0;
+  const trace = recordDialogEvents(dialog);
   await driveDialogStream(
     dialog,
     {
@@ -63,6 +66,11 @@ export async function collectBudgetExhaustion(language: 'zh' | 'en') {
     true,
   );
   await waitForAllDialogsUnlocked(dialog, 2_000);
+  const streamEvents = await trace.finish();
+  assert.deepEqual(
+    streamEvents.filter((event) => event.type === 'stream_error_evt'),
+    [],
+  );
   const events = await DialogPersistence.loadCourseEvents(
     dialog.id,
     dialog.currentCourse,
@@ -70,6 +78,7 @@ export async function collectBudgetExhaustion(language: 'zh' | 'en') {
   );
   return {
     configuredDefault,
+    streamEvents,
     language: dialog.getLastUserLanguageCode(),
     notices: events.filter(
       (event): event is UiOnlyMarkdownRecord => event.type === 'ui_only_markdown_record',

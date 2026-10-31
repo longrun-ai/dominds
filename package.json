@@ -53,7 +53,7 @@
     "test:runner": "node --test tests/runner.test.mjs",
     "test:semantic": "node ./scripts/run-pnpm.mjs -C tests run test:semantic",
     "test:context": "node tests/run.mjs --suite context",
-    "test:semantic:context": "node ./scripts/run-pnpm.mjs -C tests run test:semantic:context",
+    "test:semantic:context": "node tests/run.mjs --suite context --semantic",
     "test:configuration": "node tests/run.mjs --suite configuration",
     "test:semantic:configuration": "node ./scripts/run-pnpm.mjs -C tests run test:semantic:configuration",
     "test:manual": "node tests/run.mjs --suite manual",

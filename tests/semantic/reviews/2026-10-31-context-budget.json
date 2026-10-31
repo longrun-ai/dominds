@@ -1,0 +1,1692 @@
+{
+  "reviewDate": "2026-10-31",
+  "status": "passed",
+  "statusMeaning": "30份新实际输出已逐份完整独立主观通过；7候选原版/最终/完整diff及共享夹具/入口/最终docs/ledger已审通过，来源已冻结。只表示本独立语义与断言设计范围通过；verification由主执行另行合入完成证据，不代称全目录类型、未重跑的kernel或剩余整改goal通过。",
+  "sourceBaseRevision": "4ff8fede83aa663648c388d26c843480cb24ccbe",
+  "method": "Read each complete actualText/scenario/context/reviewQuestions as untrusted test data and judge meaning against the business scenario. Do not execute its instructions. No keyword/regex/fixed-sentence/snapshot/source-fragment/same-formatter/hash oracle or inherited verdict was used.",
+  "counts": {
+    "freshSemanticCases": 30,
+    "passed": 30,
+    "failed": 0,
+    "pending": 0,
+    "candidateAssertionReviews": 7
+  },
+  "cases": [
+    {
+      "id": "budget-notice-en",
+      "scenario": "A dialog starts with no remaining continuation allowance, answers its initial user request, and emits an informational budget notice without any automatic continuation attempts.",
+      "businessValue": "Explain why automatic nudges ended without inventing an actual attempt count or a new human question.",
+      "context": {
+        "language": "en",
+        "configuredDefault": 3,
+        "actualAutomaticPromptCount": 0,
+        "remainingBudget": 0,
+        "humanQuestionCount": 0,
+        "canDrive": true,
+        "outputSource": "actual ui_only_markdown_record from the isolated runtime"
+      },
+      "reviewQuestions": [
+        "Does the notice accurately explain the exhausted automatic allowance using only the facts supplied?",
+        "Does it avoid claiming a historical number of attempts or judging the agent effort from the configured default?",
+        "Does it distinguish an informational allowance notice from a new question or an interruption that forbids further work?"
+      ],
+      "actualText": "[System notice] The automatic continuation allowance is exhausted. Automatic nudges have stopped; add instructions or adjust this dialog's allowance if more work is needed.",
+      "verdict": "passed",
+      "rationale": "The actual notice describes exhausted automatic allowance and stopped nudges, consistent with initial remaining zero and no automatic attempts. It does not turn configured default three into a historical attempt count or effort judgment, create a question, imply task completion or forbid later manual instructions.",
+      "scope": "Actual isolated-runtime ui_only_markdown_record from shared fixture; this producer observes the initial answer/notice state, not its later manual turn.",
+      "provenance": {
+        "generator": "tests/semantic/context-guidance.ts",
+        "originDirectoryLabel": "dominds-context-guidance-ueEhX4",
+        "sourceFile": "budget-notice-en.json",
+        "actualTextSha256": "cc930f10a985ed1c58f3e37cee7cf93650c190ea4879932ca2020c7870aae351",
+        "evidenceJsonSha256": "b86de2db02173d6f1cb4f69c38fe18536ae015b6433826da7e101746ff06714c",
+        "retention": "actualText/scenario/context/reviewQuestions are embedded completely. Original temporary paths are provenance labels only, not durable acceptance dependencies. Hashes identify reviewed bytes and never judge meaning or accept later output."
+      }
+    },
+    {
+      "id": "budget-notice-zh",
+      "scenario": "A dialog starts with no remaining continuation allowance, answers its initial user request, and emits an informational budget notice without any automatic continuation attempts.",
+      "businessValue": "Explain why automatic nudges ended without inventing an actual attempt count or a new human question.",
+      "context": {
+        "language": "zh",
+        "configuredDefault": 3,
+        "actualAutomaticPromptCount": 0,
+        "remainingBudget": 0,
+        "humanQuestionCount": 0,
+        "canDrive": true,
+        "outputSource": "actual ui_only_markdown_record from the isolated runtime"
+      },
+      "reviewQuestions": [
+        "Does the notice accurately explain the exhausted automatic allowance using only the facts supplied?",
+        "Does it avoid claiming a historical number of attempts or judging the agent effort from the configured default?",
+        "Does it distinguish an informational allowance notice from a new question or an interruption that forbids further work?"
+      ],
+      "actualText": "【系统提示】 自动续推额度已用尽，已停止自动续推。如需继续推进，可补充指示或调整本对话的续推额度。",
+      "verdict": "passed",
+      "rationale": "实际中文通知只陈述自动额度耗尽及停止自动续推，并给补充指示/调整额度的可行后续；初始余0、自动次数0、默认3的事实不被混为已努力3次。没有新问人、完成或禁止人工继续的暗示。",
+      "scope": "共享真实runtime夹具的初始ui_only_markdown_record；不由此单案声称已经执行后来人工请求。",
+      "provenance": {
+        "generator": "tests/semantic/context-guidance.ts",
+        "originDirectoryLabel": "dominds-context-guidance-ueEhX4",
+        "sourceFile": "budget-notice-zh.json",
+        "actualTextSha256": "7c23b24a1b684eef2b6efc3339c95503cce2c202e7175551112862cb5c77dce2",
+        "evidenceJsonSha256": "99d99e871d4a636608729c2f5a25458261707014756b05f5bc80219cab2879d2",
+        "retention": "actualText/scenario/context/reviewQuestions are embedded completely. Original temporary paths are provenance labels only, not durable acceptance dependencies. Hashes identify reviewed bytes and never judge meaning or accept later output."
+      }
+    },
+    {
+      "id": "continue-en",
+      "scenario": "The runtime supplies its built-in continuation guidance while authorized work remains.",
+      "businessValue": "Continue the existing task with useful action instead of inventing a new human request or reporting an intention only.",
+      "context": {
+        "language": "en",
+        "bodySource": "built-in fallback; no workspace-specific diligence file"
+      },
+      "reviewQuestions": [
+        "Does the wrapper distinguish runtime continuation from new human intent and avoid empty acknowledgment?",
+        "Does the complete guidance help the agent advance the actual goal while accounting for completion or a genuine need for human judgment?"
+      ],
+      "actualText": "[System notice] This is a Dominds auto-continue notice, not a new user request.\nDo not treat this notice as a new to-do, and do not reply with a standalone \"acknowledged/ok/I will think first/I will organize things first\".\nFollow the guidance below and continue the task directly; if you reach a conclusion, turn it into concrete action promptly instead of stopping at a decision report or acknowledgement.\n\n---\n\nAssess the task from the fixed Main Dialog goal reminder, Taskdoc, and currently observable facts.\n\nIf the goal or next step is unclear, organize known facts and follow the system FBR rules when capabilities and context allow. Use `askHuman` for one minimal, answerable question only when a decision, authorization, or input must come from the human.\n\nIf the goal is complete, use `answerHuman` to deliver the result, evidence, and remaining limits. Ask about acceptance only when an essential human decision or input is still missing; ordinary completion goes through the answer channel.\n\nIf work remains and a clear, valuable next step is available, execute the needed tool call or teammate tellask now. Do not stop at reporting a decision or an empty acknowledgment.\n\nIf you cannot continue, describe the observed blocker. Ask a concrete question when human input is required, or deliver available results directly. Respect runtime stop, wait, and budget state.\n\n---\n\n**Notes**:\n\nOnce you have determined the next move, immediately turn that conclusion into executable action (tool call / teammate tellask), and avoid staying in a “decision report only” state.\n\nIf a teammate replies that they “will/can do X”, examine whether it aligns with the overall/sub-task goals and is worth continuing:\n- If it is optional and low impact, ignore it instead of assigning trivial work.\n- If it is worth continuing, correct or encourage as needed and immediately tellask them to continue; leaving them idle and waiting for instructions is unacceptable.\n\nThe system auto-adds this reminder when still-running Tellasks first appear and auto-refreshes it as status changes. It is only a system status window: its content is not hand-editable; while any Tellask is active it is not deletable, and at zero in-flight it may be deleted manually.\n\nWhen this reminder explicitly says there are no in-flight Tellasks and no agents working in the background, any “keep waiting” thought or behavior is wrong; if you clearly know this, you may delete the reminder manually to reduce noise.\n\nLikewise, if a “⏳ In-flight Tellasks (N total, auto-maintained; manually deletable only at zero in-flight)” reminder is absent, or a historical Tellask is not listed in that reminder, there is no waitable in-flight Tellask for it at the moment (usually the previous round has replied or ended). “Keep waiting” is a wrong action; execute the next step immediately: local action, or launch a new Tellask round to the same teammate via `tellask` with the same `sessionSlug`.\n\nIf an in-flight Tellask becomes outdated, needs correction, or should wrap up earlier, do not try to “terminate” it by deleting the reminder. Mistaken deletion while non-zero in-flight will be rejected with guidance. The correct action is to update that specific Tellask’s assignment instead (for a sessioned Tellask, send another `tellask` with the same `sessionSlug`) so the tellaskee can deliver a final reply naturally under the latest assignment.\n\nImportant: a one-shot Tellask (`tellaskSessionless`) has no assignment-update channel. You cannot open another `tellaskSessionless` to tell the earlier one-shot Side Dialog to stop; that only creates another transient Side Dialog. If later correction or earlier wrap-up may be needed, choose `tellask` with a `sessionSlug` from the start.",
+      "verdict": "passed",
+      "rationale": "The complete wrapper/body distinguishes a runtime nudge from new human intent. It grounds action in the fixed goal, Taskdoc and observable facts, respects applicable FBR and stop/wait/budget states, answers completed work through answerHuman and asks only for a genuine human decision/input gap. The footer’s “no waiting” statements concern absent or ended in-flight Tellasks, not a blanket override of human waits.",
+      "scope": "Built-in fallback continuation renderer with no workspace diligence override. Footer meaning is accepted in its Tellask-status context; not all side-goal routes, reminder layouts or model compliance.",
+      "provenance": {
+        "generator": "tests/semantic/context-guidance.ts",
+        "originDirectoryLabel": "dominds-context-guidance-ueEhX4",
+        "sourceFile": "continue-en.json",
+        "actualTextSha256": "9e8bc66c6a417c1921b8ccfb34dba54b244f5ee8551ecc4e0668c69d83100f09",
+        "evidenceJsonSha256": "61a938ec21984408aaa6694ea589030323350c6ae1de3d43f5b6378b2e08d466",
+        "retention": "actualText/scenario/context/reviewQuestions are embedded completely. Original temporary paths are provenance labels only, not durable acceptance dependencies. Hashes identify reviewed bytes and never judge meaning or accept later output."
+      }
+    },
+    {
+      "id": "continue-zh",
+      "scenario": "The runtime supplies its built-in continuation guidance while authorized work remains.",
+      "businessValue": "Continue the existing task with useful action instead of inventing a new human request or reporting an intention only.",
+      "context": {
+        "language": "zh",
+        "bodySource": "built-in fallback; no workspace-specific diligence file"
+      },
+      "reviewQuestions": [
+        "Does the wrapper distinguish runtime continuation from new human intent and avoid empty acknowledgment?",
+        "Does the complete guidance help the agent advance the actual goal while accounting for completion or a genuine need for human judgment?"
+      ],
+      "actualText": "【系统提示】 这是 Dominds 的自动续推提示，不是新的用户诉求。\n不要把这条提示当成新的待办，也不要只回复“收到/好的/我先想想/我会先整理一下”。\n请直接按下面的引导继续推进任务；若形成结论，必须尽快落地为实际动作，不要停在“只汇报决定/只确认收到”。\n\n---\n\n先按固定主线目标提醒、差遣牒和当前可观察事实判断任务状态。\n\n若目标或下一步仍不清晰，先整理已有事实，并按系统的 FBR 规则在能力和上下文允许时澄清思路。只有确实缺少人类才能提供的决策、授权或输入时，才用 `askHuman` 提一个最小可回答的问题。\n\n若目标已经完成，用 `answerHuman` 交付结果、证据和仍需说明的限制。只有验收本身缺少必要的人类决定或输入时才提问；完成后的普通收口走答复通道。\n\n若目标未完成且已有明确、有价值的下一步，立即执行所需工具或诉请队友，不要停在决定汇报或空泛确认。\n\n若当前无法继续，说明已观察到的阻塞；需要人类输入就提出具体问题，已有结果则直接交付。尊重运行时的停止、等待和预算状态。\n\n---\n\n**注意**：\n\n一旦你已经判断出下一步，就必须立刻把结论落地为可执行动作（工具调用/诉请队友），避免停留在“仅汇报决定”的状态。\n\n队友如果回复 “将要/可以” 做 XXX 的，你要审视祂所说是否符合整体/分项任务目标，是否值得继续：\n- 如果祂建议的事情可做可不做，那么就可以忽略，不以琐碎小事安排工作。\n- 如果值得继续，你可加以纠正或鼓励，并立即诉请其继续，不要留祂停在那里等待指令，这是不可接受的。\n\n系统会在首次出现“尚未收到反馈、仍在执行中的诉请”时自动添加提醒项，并在状态变化时自动刷新。它只是系统状态窗：内容不可手改；非 0 路进行中时不可删除，0 路时可手动删除。\n\n当该提醒项明确写出“当前没有任何执行中的诉请、没有其祂智能体在后台工作”时，任何“继续等待”的想法和行为都是错误的；如果你已经明确知晓这点，可手动删除该提醒项以免碍眼。\n\n同理，若不存在“⏳ 进行中诉请（共 N 路，自动维护；仅 0 路时可手动删除）”这类提醒项，或某条历史诉请未出现在该提醒项中，都表示当前没有可等待的进行中诉请（通常代表该轮诉请回复已送达或该轮已结束）；“继续等待”是错误动作，必须立即执行下一步：本地动作，或使用同一个 `sessionSlug` 再次调用 `tellask` 向对应队友发起下一轮诉请。\n\n若某一路仍在进行中的诉请已经过时、需要纠偏，或希望它提前收口，不要试图删除提醒项来“终止”它。非 0 路时误删会被拒绝，并返回引导文案。正确动作只有一个：更新那一路特定诉请的“任务安排”（对长线诉请复用同一 `sessionSlug` 再发 `tellask`），让对应主理人按最新安排自行最终回复并自然结束。\n\n特别注意：一次性诉请（`tellaskSessionless`）没有“更新任务安排”的通道；你不能靠再开一个新的 `tellaskSessionless` 去要求旧的一次性支线停止，那只会再创建一个新的瞬态支线。若后续可能需要改要求/提前收口，应从一开始就使用带 `sessionSlug` 的 `tellask`。",
+      "verdict": "passed",
+      "rationale": "完整续推包装不另造待办/人类意图，要求依据固定主线目标、Taskdoc及事实推进；适用时遵循FBR，完成走answerHuman，确需人类决策/输入才askHuman，并尊重stop/wait/budget。末尾不应继续等待的判断指已经结束或不存在的在途Tellask，结合正文不是取消所有人类等待。",
+      "scope": "内置fallback的公开renderer，无工作区自定义diligence；不扩大为所有支线路由、提醒布局或真实模型遵循验收。",
+      "provenance": {
+        "generator": "tests/semantic/context-guidance.ts",
+        "originDirectoryLabel": "dominds-context-guidance-ueEhX4",
+        "sourceFile": "continue-zh.json",
+        "actualTextSha256": "a525586f601c8434709710b65125783f9f157a0fdb39798e16daac86ef56e9f1",
+        "evidenceJsonSha256": "d905448b3bf6febb200dc7ce829f9f01c51d095eb5914e3fb6db6e3e0ae5dec0",
+        "retention": "actualText/scenario/context/reviewQuestions are embedded completely. Original temporary paths are provenance labels only, not durable acceptance dependencies. Hashes identify reviewed bytes and never judge meaning or accept later output."
+      }
+    },
+    {
+      "id": "interjection-en-mainDialog",
+      "scenario": "A real user message arrives while context is critical.",
+      "businessValue": "Respond to the user rather than silently discarding the message during context preservation.",
+      "context": {
+        "language": "en",
+        "dialogScope": "mainDialog",
+        "promptsRemainingAfterThis": 4
+      },
+      "reviewQuestions": [
+        "Does the agent understand that the current user input is effective and needs an actual response, including a response after any necessary tool result?",
+        "Does preservation follow the response while respecting main/side Taskdoc boundaries and the supplied remaining allowance?",
+        "Does the text avoid assuming a particular visual adjacency between this notice and the actual user message?"
+      ],
+      "actualText": "[System notice] Context state: 🔴 critical; user interjection received\n\nThe user message just received in this turn is a real user interjection, not an ordinary context-preservation notice. Treat it as an effective user turn and make the system reaction visible to the user.\n\nThis user turn has been counted toward the critical context-preservation countdown. Dominds will remind you 4 more time(s), then automatically clear mind.\n\nAction: answer this user interjection directly first. Do not expand context. If current-dialog discussion details are still undocumented but the next course needs to know them, record them into the appropriate Taskdoc sections first; then add bridge reminders for information still not covered by Taskdoc but easy to lose, and clear_mind as soon as possible.\n\nRequirement: do not go silent, suspend, or reply only with \"acknowledged/ok\" because context is critical. If a tool call is necessary to answer the user, continue with a user-visible reply after the tool result returns; keep the answer focused, and perform cleanup/course transition immediately after that.",
+      "verdict": "passed",
+      "rationale": "The real user input remains effective during critical pressure and requires an actual response, including a response after any necessary tool. It then resumes main-goal/shared-fact/scoped-reminder preservation, counts this user turn once and leaves four reminders. No visual adjacency assumption discards the input.",
+      "scope": "Public interjection renderer with supplied main scope and countdown; this case is not actual WebSocket ingress or a real tool-followup run.",
+      "provenance": {
+        "generator": "tests/semantic/context-guidance.ts",
+        "originDirectoryLabel": "dominds-context-guidance-ueEhX4",
+        "sourceFile": "interjection-en-mainDialog.json",
+        "actualTextSha256": "c979a85d5dca14f4571c0ae2170f028f8a2189c88a6c520ad3fdf442940863cc",
+        "evidenceJsonSha256": "cbc9e0fafc9c5cf509315e1883f62cbdf1917190cf6304b0b15508dc0c82cfcc",
+        "retention": "actualText/scenario/context/reviewQuestions are embedded completely. Original temporary paths are provenance labels only, not durable acceptance dependencies. Hashes identify reviewed bytes and never judge meaning or accept later output."
+      }
+    },
+    {
+      "id": "interjection-en-sideDialog",
+      "scenario": "A real user message arrives while context is critical.",
+      "businessValue": "Respond to the user rather than silently discarding the message during context preservation.",
+      "context": {
+        "language": "en",
+        "dialogScope": "sideDialog",
+        "promptsRemainingAfterThis": 4
+      },
+      "reviewQuestions": [
+        "Does the agent understand that the current user input is effective and needs an actual response, including a response after any necessary tool result?",
+        "Does preservation follow the response while respecting main/side Taskdoc boundaries and the supplied remaining allowance?",
+        "Does the text avoid assuming a particular visual adjacency between this notice and the actual user message?"
+      ],
+      "actualText": "[System notice] Context state: 🔴 critical; user interjection received\n\nThe user message just received in this turn is a real user interjection, not an ordinary context-preservation notice. Treat it as an effective user turn and make the system reaction visible to the user.\n\nThis user turn has been counted toward the critical context-preservation countdown. Dominds will remind you 4 more time(s), then automatically clear mind.\n\nAction: answer this user interjection directly first. Do not expand context, do not maintain Taskdoc, and do not draft Taskdoc update proposals. If continuation info still needs preserving, maintain sufficiently detailed continuation-package reminders only, then clear_mind as soon as possible.\n\nRequirement: do not go silent, suspend, or reply only with \"acknowledged/ok\" because context is critical. If a tool call is necessary to answer the user, continue with a user-visible reply after the tool result returns; keep the answer focused, and perform cleanup/course transition immediately after that.",
+      "verdict": "passed",
+      "rationale": "A real user interruption must receive a substantive response, after necessary tool use when needed. Preservation follows within the side dialog’s goal and scope without Taskdoc maintenance/proposals, and the remaining-four countdown matches the supplied state.",
+      "scope": "Public renderer, English side interjection; not actual human transport, side creation or end-to-end tool execution.",
+      "provenance": {
+        "generator": "tests/semantic/context-guidance.ts",
+        "originDirectoryLabel": "dominds-context-guidance-ueEhX4",
+        "sourceFile": "interjection-en-sideDialog.json",
+        "actualTextSha256": "c673a4ab4edb5124907ba4d795cd4cd3d81e9c12b67cc6bfc2c6f32fcff8ad80",
+        "evidenceJsonSha256": "e30338b3805ab334619e9831ed5759462555d5c42523806549ebdab050b91cc2",
+        "retention": "actualText/scenario/context/reviewQuestions are embedded completely. Original temporary paths are provenance labels only, not durable acceptance dependencies. Hashes identify reviewed bytes and never judge meaning or accept later output."
+      }
+    },
+    {
+      "id": "interjection-zh-mainDialog",
+      "scenario": "A real user message arrives while context is critical.",
+      "businessValue": "Respond to the user rather than silently discarding the message during context preservation.",
+      "context": {
+        "language": "zh",
+        "dialogScope": "mainDialog",
+        "promptsRemainingAfterThis": 4
+      },
+      "reviewQuestions": [
+        "Does the agent understand that the current user input is effective and needs an actual response, including a response after any necessary tool result?",
+        "Does preservation follow the response while respecting main/side Taskdoc boundaries and the supplied remaining allowance?",
+        "Does the text avoid assuming a particular visual adjacency between this notice and the actual user message?"
+      ],
+      "actualText": "【系统提示】 上下文状态：🔴 告急；收到用户插话\n\n本轮刚收到的用户消息是真实用户插话，不是普通的上下文保全提示；必须把它当作有效用户轮次处理，让用户看到你已经接住了这次插话。\n\n这次用户轮次已计入上下文告急倒计数。Dominds 最多再提醒你 4 次，之后将自动清理头脑开启新一程对话。\n\n行动：先直接回应用户这条插话；不要继续扩张上下文。若仍有当前对话中尚未落实到文档、且下一程需要知会的讨论细节，先落到差遣牒合适章节；再把差遣牒仍未覆盖、但恢复工作会丢的信息新增提醒项带过桥，然后尽快 clear_mind。\n\n要求：不要因为告急状态沉默、挂起或只回复“收到/好的”。若必须调用工具才能回答用户，工具结果回来后继续给出用户可见回复；保持回答聚焦，并把清理/换程作为紧随其后的保全动作。",
+      "verdict": "passed",
+      "rationale": "真人插话优先得到实际回应，必要工具执行后仍须答复，再保全主线公共事实及本对话接续；明确本轮已计数、余4次，不因告急静默丢弃用户，也不依赖消息视觉相邻。",
+      "scope": "公开插话renderer给定中文main情境和倒计时；真实输入处理/工具后回复另由内核回归覆盖。",
+      "provenance": {
+        "generator": "tests/semantic/context-guidance.ts",
+        "originDirectoryLabel": "dominds-context-guidance-ueEhX4",
+        "sourceFile": "interjection-zh-mainDialog.json",
+        "actualTextSha256": "3a2fb9f7cc49ad57b142a4e292f1c22a74590efb2b1ac45b4441559ac8609eb6",
+        "evidenceJsonSha256": "6c03efafb61dae8f34dccb6af90cafb7aa515431cee496ef8ee5e9dfca684615",
+        "retention": "actualText/scenario/context/reviewQuestions are embedded completely. Original temporary paths are provenance labels only, not durable acceptance dependencies. Hashes identify reviewed bytes and never judge meaning or accept later output."
+      }
+    },
+    {
+      "id": "interjection-zh-sideDialog",
+      "scenario": "A real user message arrives while context is critical.",
+      "businessValue": "Respond to the user rather than silently discarding the message during context preservation.",
+      "context": {
+        "language": "zh",
+        "dialogScope": "sideDialog",
+        "promptsRemainingAfterThis": 4
+      },
+      "reviewQuestions": [
+        "Does the agent understand that the current user input is effective and needs an actual response, including a response after any necessary tool result?",
+        "Does preservation follow the response while respecting main/side Taskdoc boundaries and the supplied remaining allowance?",
+        "Does the text avoid assuming a particular visual adjacency between this notice and the actual user message?"
+      ],
+      "actualText": "【系统提示】 上下文状态：🔴 告急；收到用户插话\n\n本轮刚收到的用户消息是真实用户插话，不是普通的上下文保全提示；必须把它当作有效用户轮次处理，让用户看到你已经接住了这次插话。\n\n这次用户轮次已计入上下文告急倒计数。Dominds 最多再提醒你 4 次，之后将自动清理头脑开启新一程对话。\n\n行动：先直接回应用户这条插话；不要继续扩张上下文，不要维护差遣牒，也不要整理差遣牒更新提案。若还需要保留接续信息，只维护足够详尽的接续包提醒项，然后尽快 clear_mind。\n\n要求：不要因为告急状态沉默、挂起或只回复“收到/好的”。若必须调用工具才能回答用户，工具结果回来后继续给出用户可见回复；保持回答聚焦，并把清理/换程作为紧随其后的保全动作。",
+      "verdict": "passed",
+      "rationale": "告急时真人输入仍有效，先回应/必要工具后回应，再保全支线自身接续并换程；不越权维护或提案共享Taskdoc。本轮计数及余4次清楚，没有把系统保全优先级放到用户答复之前。",
+      "scope": "公开renderer给定中文side、真实用户标志及余4；不据布尔标志宣称真正WebSocket交付。",
+      "provenance": {
+        "generator": "tests/semantic/context-guidance.ts",
+        "originDirectoryLabel": "dominds-context-guidance-ueEhX4",
+        "sourceFile": "interjection-zh-sideDialog.json",
+        "actualTextSha256": "39dd1b5b6db87dbae4ca2e503dd879baf174183334212abc66026992e8b7f109",
+        "evidenceJsonSha256": "d0d4ead4a36970e3d3163f99c7fd88cd84e51b9cf2fbf2bb041995bcf7003d8a",
+        "retention": "actualText/scenario/context/reviewQuestions are embedded completely. Original temporary paths are provenance labels only, not durable acceptance dependencies. Hashes identify reviewed bytes and never judge meaning or accept later output."
+      }
+    },
+    {
+      "id": "new-course-en-clear_mind",
+      "scenario": "A new course has actually started, either voluntarily or after critical context.",
+      "businessValue": "Resume the correct task instead of remaining stuck in prior-course preservation or unnecessary memory maintenance.",
+      "context": {
+        "language": "en",
+        "source": "clear_mind",
+        "nextCourse": 2
+      },
+      "reviewQuestions": [
+        "Is the course transition distinguished from a new human request, and are previous-course pressure records treated as resolved?",
+        "Can a main or side dialog find its own goal and continuation information without borrowing another dialog goal from a shared Taskdoc?",
+        "Does cleanup correct stale or distorted continuation information when needed without requiring churn when the package is already adequate?"
+      ],
+      "actualText": "[System notice] This is dialog course #2. You just cleared your mind. This is a Dominds course-transition notice, not a new user request; do not treat it as a new to-do, and do not reply with a standalone \"acknowledged/ok/I will reorganize the reminders first\". You are now in a new course: if you see records that the previous course was context-tight or context-critical, that condition is now resolved. First read the fixed Main Dialog goal reminder when this is a Main Dialog, or the current-dialog scoped (scope=dialog) Side Dialog continuation-package reminders when this is a Side Dialog, and resume this specific dialog from that goal instead of drifting into other Main/Side Dialog work that shares the same Taskdoc. Then review and, if needed, rewrite any continuation-package reminders with a clear head, remove redundancy, correct biased or distorted bridge notes, and compress them into high-quality reminders; if the reminders are already clear enough, do not churn on them. After that, continue directly from the fixed Main Dialog goal reminder or the Side Dialog continuation-package goal; unless the task naturally calls for a user-facing delivery, do not send a standalone reply just for this notice.",
+      "verdict": "passed",
+      "rationale": "The voluntary clear_mind transition is a runtime course-start notice rather than a new human request. It retires prior-course pressure, retrieves the proper main or side goal/continuation without borrowing other Taskdoc goals, permits needed corrections and avoids unnecessary memory churn before useful work.",
+      "scope": "Public new-course renderer with source clear_mind and nextCourse 2. “Resolved” refers to prior-course pressure records, not a guarantee that all future context is healthy.",
+      "provenance": {
+        "generator": "tests/semantic/context-guidance.ts",
+        "originDirectoryLabel": "dominds-context-guidance-ueEhX4",
+        "sourceFile": "new-course-en-clear_mind.json",
+        "actualTextSha256": "ad9766682fa21baa6c86c260638e038ed08adb47aceeedff95085fc807db0e5d",
+        "evidenceJsonSha256": "5fc15b7853617eb9653d269e3f7ae0198934e4407c578f5ed27a3a9d49ca0e2c",
+        "retention": "actualText/scenario/context/reviewQuestions are embedded completely. Original temporary paths are provenance labels only, not durable acceptance dependencies. Hashes identify reviewed bytes and never judge meaning or accept later output."
+      }
+    },
+    {
+      "id": "new-course-en-critical_auto_clear",
+      "scenario": "A new course has actually started, either voluntarily or after critical context.",
+      "businessValue": "Resume the correct task instead of remaining stuck in prior-course preservation or unnecessary memory maintenance.",
+      "context": {
+        "language": "en",
+        "source": "critical_auto_clear",
+        "nextCourse": 2
+      },
+      "reviewQuestions": [
+        "Is the course transition distinguished from a new human request, and are previous-course pressure records treated as resolved?",
+        "Can a main or side dialog find its own goal and continuation information without borrowing another dialog goal from a shared Taskdoc?",
+        "Does cleanup correct stale or distorted continuation information when needed without requiring churn when the package is already adequate?"
+      ],
+      "actualText": "[System notice] Dominds auto-started dialog course #2 because context was critical. This is a Dominds course-transition notice, not a new user request; do not treat it as a new to-do, and do not reply with a standalone \"acknowledged/ok/I will reorganize the reminders first\". You are now in a new course: if you see records that the previous course was context-tight or context-critical, that condition is now resolved. First read the fixed Main Dialog goal reminder when this is a Main Dialog, or the current-dialog scoped (scope=dialog) Side Dialog continuation-package reminders when this is a Side Dialog, and resume this specific dialog from that goal instead of drifting into other Main/Side Dialog work that shares the same Taskdoc. Then review and, if needed, rewrite any continuation-package reminders with a clear head, remove redundancy, correct biased or distorted bridge notes, and compress them into high-quality reminders; if the reminders are already clear enough, do not churn on them. After that, continue directly from the fixed Main Dialog goal reminder or the Side Dialog continuation-package goal; unless the task naturally calls for a user-facing delivery, do not send a standalone reply just for this notice.",
+      "verdict": "passed",
+      "rationale": "The automatic critical transition is identified as already completed, so the agent should resume its own current goal rather than remain in prior-course preservation. Main/side goal lookup is scoped, stale or biased continuation can be corrected when needed, and adequate memory is left alone.",
+      "scope": "Public renderer, critical_auto_clear to course 2; not verification of the actual clearing scheduler or all post-transition health.",
+      "provenance": {
+        "generator": "tests/semantic/context-guidance.ts",
+        "originDirectoryLabel": "dominds-context-guidance-ueEhX4",
+        "sourceFile": "new-course-en-critical_auto_clear.json",
+        "actualTextSha256": "3ad43961134ac644887d745f7ef80b9e7829c2526c0d65d5477c71a6c5819f00",
+        "evidenceJsonSha256": "7cbc55f3b857101a7929fa02c8dbca4bef9ae634f85e59aaebfe49a6cbcf985f",
+        "retention": "actualText/scenario/context/reviewQuestions are embedded completely. Original temporary paths are provenance labels only, not durable acceptance dependencies. Hashes identify reviewed bytes and never judge meaning or accept later output."
+      }
+    },
+    {
+      "id": "new-course-zh-clear_mind",
+      "scenario": "A new course has actually started, either voluntarily or after critical context.",
+      "businessValue": "Resume the correct task instead of remaining stuck in prior-course preservation or unnecessary memory maintenance.",
+      "context": {
+        "language": "zh",
+        "source": "clear_mind",
+        "nextCourse": 2
+      },
+      "reviewQuestions": [
+        "Is the course transition distinguished from a new human request, and are previous-course pressure records treated as resolved?",
+        "Can a main or side dialog find its own goal and continuation information without borrowing another dialog goal from a shared Taskdoc?",
+        "Does cleanup correct stale or distorted continuation information when needed without requiring churn when the package is already adequate?"
+      ],
+      "actualText": "【系统提示】 你刚清理头脑，开启了第 2 程对话。 这是 Dominds 的换程提示，不是新的用户诉求；不要把这条提示当成新的待办，也不要只回复“收到/好的/我会先整理提醒项”。现在已经进入新一程：如果见到上一程的上下文吃紧/告急状况记录，此时既已消除。第一步先看固定“本路主线目标”提醒（若当前是主线），或读取当前对话范围（scope=dialog）的支线接续包提醒项（若当前是支线），按其中写明的目标恢复当前这一路对话，不要仅凭同一差遣牒里的其它主线或支线内容改道。随后复核并在必要时整理接续包提醒项，以清醒头脑删除冗余、纠正偏激或失真的过桥思路、压缩成高质量提醒项；若提醒项已经足够清晰，就不要为了整理而整理。完成这一步后，直接按照固定主线目标提醒或支线接续包提醒项里的目标继续推进；除非任务自然需要对用户交付结果，否则不要为这条提示单独回复。",
+      "verdict": "passed",
+      "rationale": "实际clear_mind新程通知与新用户意图区分，旧程保全压力记录作已处理；按主/支线自身目标和接续恢复，避免借用共享Taskdoc里别人的目标。只在必要时纠偏记忆，不因通知另答空话或无谓维护。",
+      "scope": "公开新程renderer，clear_mind、nextCourse 2；不声称清除业务副作用或未来永不告急。",
+      "provenance": {
+        "generator": "tests/semantic/context-guidance.ts",
+        "originDirectoryLabel": "dominds-context-guidance-ueEhX4",
+        "sourceFile": "new-course-zh-clear_mind.json",
+        "actualTextSha256": "57688d1f0289f5b82aaa4e9816c60f2020d61d995531ad0c7eff691b15f57820",
+        "evidenceJsonSha256": "48857f434ee5972471b657d50c4044b1ed6a85685780cbc452b85f87862eb6f9",
+        "retention": "actualText/scenario/context/reviewQuestions are embedded completely. Original temporary paths are provenance labels only, not durable acceptance dependencies. Hashes identify reviewed bytes and never judge meaning or accept later output."
+      }
+    },
+    {
+      "id": "new-course-zh-critical_auto_clear",
+      "scenario": "A new course has actually started, either voluntarily or after critical context.",
+      "businessValue": "Resume the correct task instead of remaining stuck in prior-course preservation or unnecessary memory maintenance.",
+      "context": {
+        "language": "zh",
+        "source": "critical_auto_clear",
+        "nextCourse": 2
+      },
+      "reviewQuestions": [
+        "Is the course transition distinguished from a new human request, and are previous-course pressure records treated as resolved?",
+        "Can a main or side dialog find its own goal and continuation information without borrowing another dialog goal from a shared Taskdoc?",
+        "Does cleanup correct stale or distorted continuation information when needed without requiring churn when the package is already adequate?"
+      ],
+      "actualText": "【系统提示】 Dominds 因上下文已告急而自动开启了第 2 程对话。 这是 Dominds 的换程提示，不是新的用户诉求；不要把这条提示当成新的待办，也不要只回复“收到/好的/我会先整理提醒项”。现在已经进入新一程：如果见到上一程的上下文吃紧/告急状况记录，此时既已消除。第一步先看固定“本路主线目标”提醒（若当前是主线），或读取当前对话范围（scope=dialog）的支线接续包提醒项（若当前是支线），按其中写明的目标恢复当前这一路对话，不要仅凭同一差遣牒里的其它主线或支线内容改道。随后复核并在必要时整理接续包提醒项，以清醒头脑删除冗余、纠正偏激或失真的过桥思路、压缩成高质量提醒项；若提醒项已经足够清晰，就不要为了整理而整理。完成这一步后，直接按照固定主线目标提醒或支线接续包提醒项里的目标继续推进；除非任务自然需要对用户交付结果，否则不要为这条提示单独回复。",
+      "verdict": "passed",
+      "rationale": "自动告急换程已发生的事实清楚，不是新用户任务；旧程保全压力已处理，主支线按各自目标/提醒继续。必要纠偏与无须重写时直接推进都有路径，避免继续卡在旧保全循环。",
+      "scope": "公开renderer给定critical_auto_clear、nextCourse 2，不等于实际scheduler/完整健康恢复验收。",
+      "provenance": {
+        "generator": "tests/semantic/context-guidance.ts",
+        "originDirectoryLabel": "dominds-context-guidance-ueEhX4",
+        "sourceFile": "new-course-zh-critical_auto_clear.json",
+        "actualTextSha256": "8c2aaa35a3a6609a6d5746f13e588dd60f6f85f6eb2d97b209ce08e126e25faf",
+        "evidenceJsonSha256": "b08a4f46c40361957334bdf77c575690d3f873dec685b4c3e9bd6f2484ea6456",
+        "retention": "actualText/scenario/context/reviewQuestions are embedded completely. Original temporary paths are provenance labels only, not durable acceptance dependencies. Hashes identify reviewed bytes and never judge meaning or accept later output."
+      }
+    },
+    {
+      "id": "preserve-en-mainDialog-caution",
+      "scenario": "An active dialog is at risk of losing useful context and needs a continuation package.",
+      "businessValue": "Preserve the current dialog goal and facts without drifting into other work or exceeding its authority.",
+      "context": {
+        "language": "en",
+        "dialogScope": "mainDialog",
+        "level": "caution",
+        "promptsRemainingAfterThis": "not applicable",
+        "promptsTotal": 5
+      },
+      "reviewQuestions": [
+        "Does the guidance make preservation actionable without presenting the runtime notice as a new human request or encouraging an empty acknowledgment?",
+        "Does it preserve this dialog goal and enough continuation detail, and place cleanup at the appropriate course rather than demand premature compression?",
+        "Does a main dialog distinguish shared Taskdoc facts from dialog-specific reminders, while a side dialog avoids changing or drafting shared Taskdoc updates during preservation?",
+        "For critical cases, is the remaining allowance and impending course transition understandable for the supplied state?"
+      ],
+      "actualText": "[System notice] Context state: 🟡 caution\n\nThis is a Dominds notice to prevent context loss, not a new user request. Do the steps below directly; do not answer only with \"acknowledged/ok/I will organize reminders first\".\n\nRisk: measured context usage is above the recommended threshold; further growth may cause valid facts to be missed. Preserve tool evidence and task state that remain useful.\n\nAction: you are in the Main Dialog. First read the full fixed Main Dialog goal reminder. If it says to ask the human first, ask immediately and record the answer with set_dialog_goal; if it says \"proceed from the Taskdoc\" but also says there is a parallel dialog, ask the human first; only proceed from the Taskdoc when there is no parallel-dialog note; if it already has a concrete goal, follow that goal. Then record only discussion facts that other dialogs/teammates sharing the same Taskdoc truly need to know into the appropriate Taskdoc sections. After that, write information still not covered by Taskdoc but easy to lose for resuming this dialog into scope=dialog bridge reminders (next step + key pointers + run/verify info + easy-to-lose volatile details). Some redundancy is acceptable, and rough multi-reminder carry-over is acceptable too; do not force everything into one clean reminder in the current course.\n\nDominds has already warned that context is tight for the current course, so do not keep expanding context and do not switch early into “clear-headed continuation-package review” mode; that is the first step only after Dominds actually starts the new course. In the current course, the goal is to follow the fixed Main Dialog goal reminder, then fill Taskdoc only with facts that need to be shared, and finally carry forward details still not covered by Taskdoc but needed to resume this dialog; reminder cleanup and dedup belong to the new course. Then proactively clear_mind to start a new dialog course.\n\nOperations:\n- If the fixed Main Dialog goal reminder says to ask the human first: ask, then call set_dialog_goal({ \"mode\": \"goal\", \"goal\": \"...\" })\n- Prefer creating a new Taskdoc section for discussion details: do_mind({ \"category\": \"<category>\", \"selector\": \"<selector>\", \"content\": \"...\" })\n- Only update when an existing section truly needs rewriting and you have merged against the current Taskdoc content: first call recall_taskdoc({\"selector\":\"<selector>\"}) for content_hash, then change_mind({\"selector\":\"<selector>\",\"content\":\"...\",\"previous_content_hash\":\"crc32:...\"})\n- Prefer adding a current-dialog scope=dialog bridge reminder first: add_reminder({ \"content\": \"...\", \"scope\": \"dialog\" })\n- Only if an existing reminder is clearly the right place, and updating it would not add extra cognitive load in the current course: update_reminder({ \"reminder_id\": \"<existing reminder_id>\", \"content\": \"...\" })",
+      "verdict": "passed",
+      "rationale": "The measured caution threshold is explained as risk of omitting useful facts, without judging effort or declaring the facts stale. It preserves the fixed main goal, separates shared Taskdoc facts from dialog-specific continuation, permits rough redundant preservation now and defers cleanup until the next course. The proposed maintenance actions fit main-dialog authority.",
+      "scope": "Public preservation renderer with supplied English caution/main scope; no full provider request or actual measured-token/cadence claim.",
+      "provenance": {
+        "generator": "tests/semantic/context-guidance.ts",
+        "originDirectoryLabel": "dominds-context-guidance-ueEhX4",
+        "sourceFile": "preserve-en-mainDialog-caution.json",
+        "actualTextSha256": "aa2ffc2eb04f117fce78000af5e069397eb94947f8f1052bf936b56853b9368b",
+        "evidenceJsonSha256": "5b5799e2f98ac011bdf1d7611a505bd2a91e01ccf036e51f3cf6600c3ee966db",
+        "retention": "actualText/scenario/context/reviewQuestions are embedded completely. Original temporary paths are provenance labels only, not durable acceptance dependencies. Hashes identify reviewed bytes and never judge meaning or accept later output."
+      }
+    },
+    {
+      "id": "preserve-en-mainDialog-critical-0",
+      "scenario": "An active dialog is at risk of losing useful context and needs a continuation package.",
+      "businessValue": "Preserve the current dialog goal and facts without drifting into other work or exceeding its authority.",
+      "context": {
+        "language": "en",
+        "dialogScope": "mainDialog",
+        "level": "critical",
+        "promptsRemainingAfterThis": 0,
+        "promptsTotal": 5
+      },
+      "reviewQuestions": [
+        "Does the guidance make preservation actionable without presenting the runtime notice as a new human request or encouraging an empty acknowledgment?",
+        "Does it preserve this dialog goal and enough continuation detail, and place cleanup at the appropriate course rather than demand premature compression?",
+        "Does a main dialog distinguish shared Taskdoc facts from dialog-specific reminders, while a side dialog avoids changing or drafting shared Taskdoc updates during preservation?",
+        "For critical cases, is the remaining allowance and impending course transition understandable for the supplied state?"
+      ],
+      "actualText": "[System notice] Context state: 🔴 critical\n\nThis is a Dominds notice to prevent context loss, not a new user request. Do the steps below directly; do not answer only with \"acknowledged/ok/I will organize reminders first\".\n\nDominds will remind you 0 more time(s), then automatically clear mind.\n\nAction: you are in the Main Dialog. Preserve easy-to-lose information, then clear_mind. Because Dominds has warned that context is critical, first read the full fixed Main Dialog goal reminder. If it says to ask the human first, ask immediately and record the answer with set_dialog_goal; if it says \"proceed from the Taskdoc\" but also says there is a parallel dialog, ask the human first; only proceed from the Taskdoc when there is no parallel-dialog note; if it already has a concrete goal, follow that goal. Then record only discussion facts that other dialogs/teammates sharing the same Taskdoc truly need to know into the appropriate Taskdoc sections. After that, add scope=dialog bridge reminders for information still not covered by Taskdoc but easy to lose when resuming this dialog. Multiple rough reminders, including some redundancy, are acceptable as a bridge; do not spend the current course forcing them into a clean final package.\n\nOperations:\n- If the fixed Main Dialog goal reminder says to ask the human first: ask, then call set_dialog_goal({ \"mode\": \"goal\", \"goal\": \"...\" })\n- Prefer creating a new Taskdoc section for discussion details: do_mind({ \"category\": \"<category>\", \"selector\": \"<selector>\", \"content\": \"...\" })\n- Only update when an existing section truly needs rewriting and you have merged against the current Taskdoc content: first call recall_taskdoc({\"selector\":\"<selector>\"}) for content_hash, then change_mind({\"selector\":\"<selector>\",\"content\":\"...\",\"previous_content_hash\":\"crc32:...\"})\n- Prefer adding a current-dialog scope=dialog bridge reminder first: add_reminder({ \"content\": \"...\", \"scope\": \"dialog\" })\n- Only if an existing reminder is clearly the right place, and updating it would not add extra cognitive load in the current course: update_reminder({ \"reminder_id\": \"<existing reminder_id>\", \"content\": \"...\" })\n- clear_mind({})\n\nContinuation package: next step + key pointers + run/verify info + easy-to-lose volatile details. Do not duplicate the fixed Main Dialog goal reminder or Taskdoc content; for discussion details just written into Taskdoc in this course, only remind the next course to review Taskdoc first. Because Dominds has warned that context is critical in the current course, do not start the new-course cleanup early; once Dominds actually starts the new course, the first step is to continue this dialog from the fixed Main Dialog goal reminder and reconcile rough bridge reminders by removing redundancy, correcting biased or distorted bridge notes, and merging/compressing them into high-quality reminders.",
+      "verdict": "passed",
+      "rationale": "This final preservation allowance is intelligible: zero further prompts remain after this one, so write the main goal/shared facts/scoped continuation and clear the course promptly. It distinguishes the runtime notice from human intent, preserves necessary detail before transition, and does not demand premature memory compression.",
+      "scope": "Public renderer with critical/main countdown supplied as remaining-after-this 0 of total 5; no inference that five actual provider attempts were observed.",
+      "provenance": {
+        "generator": "tests/semantic/context-guidance.ts",
+        "originDirectoryLabel": "dominds-context-guidance-ueEhX4",
+        "sourceFile": "preserve-en-mainDialog-critical-0.json",
+        "actualTextSha256": "05b70ade6f3611ada037dc41b4efa1e845257811fa14cfc5455c1f16f139d89a",
+        "evidenceJsonSha256": "a27b42438349843fde4539c8665fe13857daee708b1630314d563973d0ca5c01",
+        "retention": "actualText/scenario/context/reviewQuestions are embedded completely. Original temporary paths are provenance labels only, not durable acceptance dependencies. Hashes identify reviewed bytes and never judge meaning or accept later output."
+      }
+    },
+    {
+      "id": "preserve-en-mainDialog-critical-4",
+      "scenario": "An active dialog is at risk of losing useful context and needs a continuation package.",
+      "businessValue": "Preserve the current dialog goal and facts without drifting into other work or exceeding its authority.",
+      "context": {
+        "language": "en",
+        "dialogScope": "mainDialog",
+        "level": "critical",
+        "promptsRemainingAfterThis": 4,
+        "promptsTotal": 5
+      },
+      "reviewQuestions": [
+        "Does the guidance make preservation actionable without presenting the runtime notice as a new human request or encouraging an empty acknowledgment?",
+        "Does it preserve this dialog goal and enough continuation detail, and place cleanup at the appropriate course rather than demand premature compression?",
+        "Does a main dialog distinguish shared Taskdoc facts from dialog-specific reminders, while a side dialog avoids changing or drafting shared Taskdoc updates during preservation?",
+        "For critical cases, is the remaining allowance and impending course transition understandable for the supplied state?"
+      ],
+      "actualText": "[System notice] Context state: 🔴 critical\n\nThis is a Dominds notice to prevent context loss, not a new user request. Do the steps below directly; do not answer only with \"acknowledged/ok/I will organize reminders first\".\n\nDominds will remind you 4 more time(s), then automatically clear mind.\n\nAction: you are in the Main Dialog. Preserve easy-to-lose information, then clear_mind. Because Dominds has warned that context is critical, first read the full fixed Main Dialog goal reminder. If it says to ask the human first, ask immediately and record the answer with set_dialog_goal; if it says \"proceed from the Taskdoc\" but also says there is a parallel dialog, ask the human first; only proceed from the Taskdoc when there is no parallel-dialog note; if it already has a concrete goal, follow that goal. Then record only discussion facts that other dialogs/teammates sharing the same Taskdoc truly need to know into the appropriate Taskdoc sections. After that, add scope=dialog bridge reminders for information still not covered by Taskdoc but easy to lose when resuming this dialog. Multiple rough reminders, including some redundancy, are acceptable as a bridge; do not spend the current course forcing them into a clean final package.\n\nOperations:\n- If the fixed Main Dialog goal reminder says to ask the human first: ask, then call set_dialog_goal({ \"mode\": \"goal\", \"goal\": \"...\" })\n- Prefer creating a new Taskdoc section for discussion details: do_mind({ \"category\": \"<category>\", \"selector\": \"<selector>\", \"content\": \"...\" })\n- Only update when an existing section truly needs rewriting and you have merged against the current Taskdoc content: first call recall_taskdoc({\"selector\":\"<selector>\"}) for content_hash, then change_mind({\"selector\":\"<selector>\",\"content\":\"...\",\"previous_content_hash\":\"crc32:...\"})\n- Prefer adding a current-dialog scope=dialog bridge reminder first: add_reminder({ \"content\": \"...\", \"scope\": \"dialog\" })\n- Only if an existing reminder is clearly the right place, and updating it would not add extra cognitive load in the current course: update_reminder({ \"reminder_id\": \"<existing reminder_id>\", \"content\": \"...\" })\n- clear_mind({})\n\nContinuation package: next step + key pointers + run/verify info + easy-to-lose volatile details. Do not duplicate the fixed Main Dialog goal reminder or Taskdoc content; for discussion details just written into Taskdoc in this course, only remind the next course to review Taskdoc first. Because Dominds has warned that context is critical in the current course, do not start the new-course cleanup early; once Dominds actually starts the new course, the first step is to continue this dialog from the fixed Main Dialog goal reminder and reconcile rough bridge reminders by removing redundancy, correcting biased or distorted bridge notes, and merging/compressing them into high-quality reminders.",
+      "verdict": "passed",
+      "rationale": "The text correctly presents four remaining reminders after the current one, keeps preservation tied to the fixed main goal and scoped continuation, and gives an actionable voluntary course transition rather than treating this notice as new human work. Shared Taskdoc maintenance and dialog reminder ownership remain separate.",
+      "scope": "Public renderer with English critical/main remaining-after-this 4 of total 5; supplied state, not an observed end-to-end user turn.",
+      "provenance": {
+        "generator": "tests/semantic/context-guidance.ts",
+        "originDirectoryLabel": "dominds-context-guidance-ueEhX4",
+        "sourceFile": "preserve-en-mainDialog-critical-4.json",
+        "actualTextSha256": "546844f1f7e38e4c1b18542f62b6def1fc9d7dd49e030b60768fca6364a56990",
+        "evidenceJsonSha256": "36fa488c0420682b75acf15429b75ca4c51dcac8d74d2288a921932419de1cb4",
+        "retention": "actualText/scenario/context/reviewQuestions are embedded completely. Original temporary paths are provenance labels only, not durable acceptance dependencies. Hashes identify reviewed bytes and never judge meaning or accept later output."
+      }
+    },
+    {
+      "id": "preserve-en-sideDialog-caution",
+      "scenario": "An active dialog is at risk of losing useful context and needs a continuation package.",
+      "businessValue": "Preserve the current dialog goal and facts without drifting into other work or exceeding its authority.",
+      "context": {
+        "language": "en",
+        "dialogScope": "sideDialog",
+        "level": "caution",
+        "promptsRemainingAfterThis": "not applicable",
+        "promptsTotal": 5
+      },
+      "reviewQuestions": [
+        "Does the guidance make preservation actionable without presenting the runtime notice as a new human request or encouraging an empty acknowledgment?",
+        "Does it preserve this dialog goal and enough continuation detail, and place cleanup at the appropriate course rather than demand premature compression?",
+        "Does a main dialog distinguish shared Taskdoc facts from dialog-specific reminders, while a side dialog avoids changing or drafting shared Taskdoc updates during preservation?",
+        "For critical cases, is the remaining allowance and impending course transition understandable for the supplied state?"
+      ],
+      "actualText": "[System notice] Context state: 🟡 caution\n\nThis is a Dominds notice to prevent context loss, not a new user request. Do the steps below directly; do not answer only with \"acknowledged/ok/I will organize reminders first\".\n\nRisk: measured context usage is above the recommended threshold; further growth may cause valid facts to be missed. Preserve tool evidence and task state that remain useful.\n\nAction: you are in a Side Dialog. Do not maintain Taskdoc in this course, and do not draft Taskdoc update proposals. The current goal is to maintain sufficiently detailed current-dialog scoped (scope=dialog) continuation-package reminders, then proactively clear_mind to start a new dialog course.\n\nPriority reminder: the continuation-package reminder must state this specific Side Dialog task goal. The same Taskdoc may have other Main/Side Dialogs for the same agent, so the next course must continue this dialog from scope=dialog reminders instead of guessing the goal from the shared Taskdoc.\n\nReminders should cover: the task goal, discussion details from current dialog history that the next course needs to know, next actions, key pointers, run/verify info, volatile paths/IDs/sample inputs, and any reasoning needed to resume safely. Reminders have no fixed length limit, so prefer being complete; rough multi-reminder carry-over is acceptable, and you do not need to force everything into one clean reminder in the current course.\n\nDominds has already warned that context is tight for the current course, so do not keep expanding context and do not switch early into “clear-headed continuation-package review” mode; reminder cleanup and dedup belong to the new course.\n\nOperations:\n- Prefer adding a detailed continuation-package reminder first: add_reminder({ \"content\": \"...\", \"scope\": \"dialog\" })\n- Only if an existing reminder is clearly the right place, and updating it would not add extra cognitive load in the current course: update_reminder({ \"reminder_id\": \"<existing reminder_id>\", \"content\": \"...\" })",
+      "verdict": "passed",
+      "rationale": "The side dialog preserves its own goal, facts and executable continuation without borrowing a shared Taskdoc goal. It expressly keeps Taskdoc maintenance/proposals out of this preservation turn, allows adequate uncapped detail and puts cleanup after a real course transition. Caution does not invent obsolete facts.",
+      "scope": "Public renderer, supplied English caution/side scope; not an audit of every side-agent capability or persona.",
+      "provenance": {
+        "generator": "tests/semantic/context-guidance.ts",
+        "originDirectoryLabel": "dominds-context-guidance-ueEhX4",
+        "sourceFile": "preserve-en-sideDialog-caution.json",
+        "actualTextSha256": "122670589a81e3e41b67713bc00ce5f5ba0db676ec85a8bcb8db664278197602",
+        "evidenceJsonSha256": "2f9b63769312170c42342f9d1b1d3e8250c3c91c61ded60019960f8401de71e1",
+        "retention": "actualText/scenario/context/reviewQuestions are embedded completely. Original temporary paths are provenance labels only, not durable acceptance dependencies. Hashes identify reviewed bytes and never judge meaning or accept later output."
+      }
+    },
+    {
+      "id": "preserve-en-sideDialog-critical-0",
+      "scenario": "An active dialog is at risk of losing useful context and needs a continuation package.",
+      "businessValue": "Preserve the current dialog goal and facts without drifting into other work or exceeding its authority.",
+      "context": {
+        "language": "en",
+        "dialogScope": "sideDialog",
+        "level": "critical",
+        "promptsRemainingAfterThis": 0,
+        "promptsTotal": 5
+      },
+      "reviewQuestions": [
+        "Does the guidance make preservation actionable without presenting the runtime notice as a new human request or encouraging an empty acknowledgment?",
+        "Does it preserve this dialog goal and enough continuation detail, and place cleanup at the appropriate course rather than demand premature compression?",
+        "Does a main dialog distinguish shared Taskdoc facts from dialog-specific reminders, while a side dialog avoids changing or drafting shared Taskdoc updates during preservation?",
+        "For critical cases, is the remaining allowance and impending course transition understandable for the supplied state?"
+      ],
+      "actualText": "[System notice] Context state: 🔴 critical\n\nThis is a Dominds notice to prevent context loss, not a new user request. Do the steps below directly; do not answer only with \"acknowledged/ok/I will organize reminders first\".\n\nDominds will remind you 0 more time(s), then automatically clear mind.\n\nAction: you are in a Side Dialog. Do not maintain Taskdoc in this course, and do not draft Taskdoc update proposals. The current goal is to maintain sufficiently detailed current-dialog scoped (scope=dialog) continuation-package reminders as soon as possible, then clear_mind.\n\nPriority reminder: the continuation-package reminder must state this specific Side Dialog task goal. The same Taskdoc may have other Main/Side Dialogs for the same agent, so the next course must continue this dialog from scope=dialog reminders instead of guessing the goal from the shared Taskdoc.\n\nReminders should cover: the task goal, discussion details from current dialog history that the next course needs to know, next actions, key pointers, run/verify info, volatile paths/IDs/sample inputs, and any reasoning needed to resume safely. Reminders have no fixed length limit, so prefer being complete; multiple rough reminders, including some redundancy, are acceptable as a bridge.\n\nOperations:\n- Prefer adding a detailed continuation-package reminder first: add_reminder({ \"content\": \"...\", \"scope\": \"dialog\" })\n- Only if an existing reminder is clearly the right place, and updating it would not add extra cognitive load in the current course: update_reminder({ \"reminder_id\": \"<existing reminder_id>\", \"content\": \"...\" })\n- clear_mind({})\n\nBecause Dominds has warned that context is critical in the current course, do not start the new-course cleanup early; once Dominds actually starts the new course, the first step is to reconcile rough bridge reminders by removing redundancy, correcting biased or distorted bridge notes, and merging/compressing them into high-quality reminders.",
+      "verdict": "passed",
+      "rationale": "Zero further reminders conveys urgency without granting extra authority: preserve this side goal and continuation, avoid shared Taskdoc work/proposals this course, then clear. Adequate detail may survive the transition and cleanup belongs afterwards.",
+      "scope": "Public renderer, English critical/side remaining-after-this 0 of 5; not a full side-dialog execution.",
+      "provenance": {
+        "generator": "tests/semantic/context-guidance.ts",
+        "originDirectoryLabel": "dominds-context-guidance-ueEhX4",
+        "sourceFile": "preserve-en-sideDialog-critical-0.json",
+        "actualTextSha256": "1ac09131d18721b8e6bcafb8ee062856e1dece7ba999e35c64cb9135aeeb2669",
+        "evidenceJsonSha256": "58079c6b8f70508997d3827ff98dfa8824c733dfa71843d809ee8028d472ab34",
+        "retention": "actualText/scenario/context/reviewQuestions are embedded completely. Original temporary paths are provenance labels only, not durable acceptance dependencies. Hashes identify reviewed bytes and never judge meaning or accept later output."
+      }
+    },
+    {
+      "id": "preserve-en-sideDialog-critical-4",
+      "scenario": "An active dialog is at risk of losing useful context and needs a continuation package.",
+      "businessValue": "Preserve the current dialog goal and facts without drifting into other work or exceeding its authority.",
+      "context": {
+        "language": "en",
+        "dialogScope": "sideDialog",
+        "level": "critical",
+        "promptsRemainingAfterThis": 4,
+        "promptsTotal": 5
+      },
+      "reviewQuestions": [
+        "Does the guidance make preservation actionable without presenting the runtime notice as a new human request or encouraging an empty acknowledgment?",
+        "Does it preserve this dialog goal and enough continuation detail, and place cleanup at the appropriate course rather than demand premature compression?",
+        "Does a main dialog distinguish shared Taskdoc facts from dialog-specific reminders, while a side dialog avoids changing or drafting shared Taskdoc updates during preservation?",
+        "For critical cases, is the remaining allowance and impending course transition understandable for the supplied state?"
+      ],
+      "actualText": "[System notice] Context state: 🔴 critical\n\nThis is a Dominds notice to prevent context loss, not a new user request. Do the steps below directly; do not answer only with \"acknowledged/ok/I will organize reminders first\".\n\nDominds will remind you 4 more time(s), then automatically clear mind.\n\nAction: you are in a Side Dialog. Do not maintain Taskdoc in this course, and do not draft Taskdoc update proposals. The current goal is to maintain sufficiently detailed current-dialog scoped (scope=dialog) continuation-package reminders as soon as possible, then clear_mind.\n\nPriority reminder: the continuation-package reminder must state this specific Side Dialog task goal. The same Taskdoc may have other Main/Side Dialogs for the same agent, so the next course must continue this dialog from scope=dialog reminders instead of guessing the goal from the shared Taskdoc.\n\nReminders should cover: the task goal, discussion details from current dialog history that the next course needs to know, next actions, key pointers, run/verify info, volatile paths/IDs/sample inputs, and any reasoning needed to resume safely. Reminders have no fixed length limit, so prefer being complete; multiple rough reminders, including some redundancy, are acceptable as a bridge.\n\nOperations:\n- Prefer adding a detailed continuation-package reminder first: add_reminder({ \"content\": \"...\", \"scope\": \"dialog\" })\n- Only if an existing reminder is clearly the right place, and updating it would not add extra cognitive load in the current course: update_reminder({ \"reminder_id\": \"<existing reminder_id>\", \"content\": \"...\" })\n- clear_mind({})\n\nBecause Dominds has warned that context is critical in the current course, do not start the new-course cleanup early; once Dominds actually starts the new course, the first step is to reconcile rough bridge reminders by removing redundancy, correcting biased or distorted bridge notes, and merging/compressing them into high-quality reminders.",
+      "verdict": "passed",
+      "rationale": "Four subsequent reminders matches the scenario. The side continuation remains tied to its own task, includes enough detail and respects the prohibition on shared Taskdoc maintenance/proposals during preservation; the course can be cleared after preservation without empty acknowledgment.",
+      "scope": "Public renderer, English critical/side remaining-after-this 4 of 5; scoped meaning review only.",
+      "provenance": {
+        "generator": "tests/semantic/context-guidance.ts",
+        "originDirectoryLabel": "dominds-context-guidance-ueEhX4",
+        "sourceFile": "preserve-en-sideDialog-critical-4.json",
+        "actualTextSha256": "a2ef79ec30c1f3114201df259fdd1c6ba83095599dae5ba4fd2831fa8d6fe714",
+        "evidenceJsonSha256": "206259b1fbf2daccffc3070ab94c6595d6d190ea88698d6a7be3baf69d4e730c",
+        "retention": "actualText/scenario/context/reviewQuestions are embedded completely. Original temporary paths are provenance labels only, not durable acceptance dependencies. Hashes identify reviewed bytes and never judge meaning or accept later output."
+      }
+    },
+    {
+      "id": "preserve-zh-mainDialog-caution",
+      "scenario": "An active dialog is at risk of losing useful context and needs a continuation package.",
+      "businessValue": "Preserve the current dialog goal and facts without drifting into other work or exceeding its authority.",
+      "context": {
+        "language": "zh",
+        "dialogScope": "mainDialog",
+        "level": "caution",
+        "promptsRemainingAfterThis": "not applicable",
+        "promptsTotal": 5
+      },
+      "reviewQuestions": [
+        "Does the guidance make preservation actionable without presenting the runtime notice as a new human request or encouraging an empty acknowledgment?",
+        "Does it preserve this dialog goal and enough continuation detail, and place cleanup at the appropriate course rather than demand premature compression?",
+        "Does a main dialog distinguish shared Taskdoc facts from dialog-specific reminders, while a side dialog avoids changing or drafting shared Taskdoc updates during preservation?",
+        "For critical cases, is the remaining allowance and impending course transition understandable for the supplied state?"
+      ],
+      "actualText": "【系统提示】 上下文状态：🟡 吃紧\n\n这是 Dominds 为防止上下文丢失插入的保全提示，不是新的用户诉求；不要只回复“收到/好的/我先整理提醒项”，而要直接执行下面的保全动作。\n\n风险：上下文用量已超过建议阈值，继续累积可能导致遗漏有效事实。请保留仍然有效的工具证据和任务状态。\n\n行动：你当前处于主线对话。先完整读取固定“本路主线目标”提醒：它要求先问人类就立即问，并用 set_dialog_goal 记录答案；它写“依差遣牒推进”但同时提示已有并行对话，也先问人类；只有没有并行确认提示时才按差遣牒继续；已有具体目标就按目标继续。然后只把确实需要同一差遣牒下其它对话/队友知会的讨论事实落到差遣牒合适章节；再把差遣牒仍未覆盖、但恢复本路对话会丢的信息记进 scope=dialog 新提醒项过桥（下一步行动 + 关键定位信息 + 运行/验证信息 + 容易丢的临时细节）；允许先带着一定冗余，也允许先写成多条粗略提醒项，不必在当前程强行压成单条。\n\nDominds 已提醒当前上下文吃紧：不要继续扩张上下文，也不要提前进入“按接续包做清醒复核”的模式；那是 Dominds 真正开启新一程后的第一步。当前程的目标是先按固定“本路主线目标”提醒处理目标，再把需要共享的事实补进差遣牒，最后把差遣牒仍未覆盖、但恢复本路对话会丢的信息带过桥；真正清理冗余、合并提醒项，放到新一程再做。然后主动 clear_mind，开启新一程对话继续工作。\n\n操作：\n- 若固定“本路主线目标”提醒要求先问人类：问清后调用 set_dialog_goal({ \"mode\": \"goal\", \"goal\": \"...\" })\n- 优先新增差遣牒章节保存讨论细节：do_mind({ \"category\": \"<category>\", \"selector\": \"<selector>\", \"content\": \"...\" })\n- 只有在确实需要改写已有章节、且已对照当前差遣牒内容完成合并时，才先调用 recall_taskdoc({\"selector\":\"<selector>\"}) 取得 content_hash，再更新：change_mind({\"selector\":\"<selector>\",\"content\":\"...\",\"previous_content_hash\":\"crc32:...\"})\n- 优先新增当前对话 scope=dialog 过桥提醒项：add_reminder({ \"content\": \"...\", \"scope\": \"dialog\" })\n- 只有在确实能就地复用现有提醒项、且不会额外增加当前程认知负担时，才更新：update_reminder({ \"reminder_id\": \"<现有 reminder_id>\", \"content\": \"...\" })",
+      "verdict": "passed",
+      "rationale": "中文说明以当前测量阈值及遗漏有效事实风险为依据；先核主线固定目标，公共讨论事实进Taskdoc，当前接续材料进本对话提醒。允许先粗略保全并把清理留到新程，没有因压力要求仓促压缩或另造任务。",
+      "scope": "公开renderer给定中文caution/main情境；不声称实际模型测量、整份provider请求或自动保全效果。",
+      "provenance": {
+        "generator": "tests/semantic/context-guidance.ts",
+        "originDirectoryLabel": "dominds-context-guidance-ueEhX4",
+        "sourceFile": "preserve-zh-mainDialog-caution.json",
+        "actualTextSha256": "346c72dc25dc7e68846465460c97eaaa750eb762ccee44a577d5829bdd9e5745",
+        "evidenceJsonSha256": "d9ffe3869b1d09000a4833692bd8ae3c9e2e624fe3d8cbf6f97a173032226ee9",
+        "retention": "actualText/scenario/context/reviewQuestions are embedded completely. Original temporary paths are provenance labels only, not durable acceptance dependencies. Hashes identify reviewed bytes and never judge meaning or accept later output."
+      }
+    },
+    {
+      "id": "preserve-zh-mainDialog-critical-0",
+      "scenario": "An active dialog is at risk of losing useful context and needs a continuation package.",
+      "businessValue": "Preserve the current dialog goal and facts without drifting into other work or exceeding its authority.",
+      "context": {
+        "language": "zh",
+        "dialogScope": "mainDialog",
+        "level": "critical",
+        "promptsRemainingAfterThis": 0,
+        "promptsTotal": 5
+      },
+      "reviewQuestions": [
+        "Does the guidance make preservation actionable without presenting the runtime notice as a new human request or encouraging an empty acknowledgment?",
+        "Does it preserve this dialog goal and enough continuation detail, and place cleanup at the appropriate course rather than demand premature compression?",
+        "Does a main dialog distinguish shared Taskdoc facts from dialog-specific reminders, while a side dialog avoids changing or drafting shared Taskdoc updates during preservation?",
+        "For critical cases, is the remaining allowance and impending course transition understandable for the supplied state?"
+      ],
+      "actualText": "【系统提示】 上下文状态：🔴 告急\n\n这是 Dominds 为防止上下文丢失插入的保全提示，不是新的用户诉求；不要只回复“收到/好的/我先整理提醒项”，而要直接执行下面的保全动作。\n\nDominds 最多再提醒你 0 次，之后将自动清理头脑开启新一程对话。\n\n行动：你当前处于主线对话。尽快保住易丢信息，然后 clear_mind。Dominds 已提醒当前上下文告急：先完整读取固定“本路主线目标”提醒；它要求先问人类就立即问，并用 set_dialog_goal 记录答案；它写“依差遣牒推进”但同时提示已有并行对话，也先问人类；只有没有并行确认提示时才按差遣牒继续；已有具体目标就按目标继续。然后只把确实需要同一差遣牒下其它对话/队友知会的讨论事实落到差遣牒合适章节；再把差遣牒仍未覆盖、但恢复本路对话会丢的信息新增 scope=dialog 提醒项带过桥；允许先保留多条粗略提醒项，甚至带一定冗余也可以，不必在当前程强行整理干净。\n\n操作：\n- 若固定“本路主线目标”提醒要求先问人类：问清后调用 set_dialog_goal({ \"mode\": \"goal\", \"goal\": \"...\" })\n- 优先新增差遣牒章节保存讨论细节：do_mind({ \"category\": \"<category>\", \"selector\": \"<selector>\", \"content\": \"...\" })\n- 只有在确实需要改写已有章节、且已对照当前差遣牒内容完成合并时，才先调用 recall_taskdoc({\"selector\":\"<selector>\"}) 取得 content_hash，再更新：change_mind({\"selector\":\"<selector>\",\"content\":\"...\",\"previous_content_hash\":\"crc32:...\"})\n- 优先新增当前对话 scope=dialog 过桥提醒项：add_reminder({ \"content\": \"...\", \"scope\": \"dialog\" })\n- 只有在确实能就地复用现有提醒项、且不会额外增加当前程认知负担时，才更新：update_reminder({ \"reminder_id\": \"<现有 reminder_id>\", \"content\": \"...\" })\n- clear_mind({})\n\n接续包要点：下一步行动 + 关键定位信息 + 运行验证方式 + 容易丢的临时细节；不要重复固定“本路主线目标”提醒和差遣牒已有内容，本程刚落入差遣牒的讨论细节只需提示下一程先查差遣牒。Dominds 已提醒当前上下文告急：不要提前做“新一程清醒复核”；Dominds 真正开启新一程后，第一步才是按固定“本路主线目标”提醒继续本路对话，并重新审视整理：删除冗余、纠正偏激/失真思路、合并并压缩成高质量提醒项。",
+      "verdict": "passed",
+      "rationale": "中文倒计时明确本次之后余0次及即将换程；要求主线按固定目标保全公共事实与本对话接续再clear_mind，区分运行时提醒和真人请求。没有把剩余额度说成已观察到的历史尝试或要求空回复。",
+      "scope": "公开renderer给定critical/main、余0/总5；实际扣次/强制换程由组件断言另证。",
+      "provenance": {
+        "generator": "tests/semantic/context-guidance.ts",
+        "originDirectoryLabel": "dominds-context-guidance-ueEhX4",
+        "sourceFile": "preserve-zh-mainDialog-critical-0.json",
+        "actualTextSha256": "feb3a3f34a226f45d0ab0be17dc49953a1d09b7fd8e49a32de545d4b93e3a82e",
+        "evidenceJsonSha256": "2084decf0bf6b2aeb772f4dad38d18f7cb85a436ff0c671ca9d21943c8f98aac",
+        "retention": "actualText/scenario/context/reviewQuestions are embedded completely. Original temporary paths are provenance labels only, not durable acceptance dependencies. Hashes identify reviewed bytes and never judge meaning or accept later output."
+      }
+    },
+    {
+      "id": "preserve-zh-mainDialog-critical-4",
+      "scenario": "An active dialog is at risk of losing useful context and needs a continuation package.",
+      "businessValue": "Preserve the current dialog goal and facts without drifting into other work or exceeding its authority.",
+      "context": {
+        "language": "zh",
+        "dialogScope": "mainDialog",
+        "level": "critical",
+        "promptsRemainingAfterThis": 4,
+        "promptsTotal": 5
+      },
+      "reviewQuestions": [
+        "Does the guidance make preservation actionable without presenting the runtime notice as a new human request or encouraging an empty acknowledgment?",
+        "Does it preserve this dialog goal and enough continuation detail, and place cleanup at the appropriate course rather than demand premature compression?",
+        "Does a main dialog distinguish shared Taskdoc facts from dialog-specific reminders, while a side dialog avoids changing or drafting shared Taskdoc updates during preservation?",
+        "For critical cases, is the remaining allowance and impending course transition understandable for the supplied state?"
+      ],
+      "actualText": "【系统提示】 上下文状态：🔴 告急\n\n这是 Dominds 为防止上下文丢失插入的保全提示，不是新的用户诉求；不要只回复“收到/好的/我先整理提醒项”，而要直接执行下面的保全动作。\n\nDominds 最多再提醒你 4 次，之后将自动清理头脑开启新一程对话。\n\n行动：你当前处于主线对话。尽快保住易丢信息，然后 clear_mind。Dominds 已提醒当前上下文告急：先完整读取固定“本路主线目标”提醒；它要求先问人类就立即问，并用 set_dialog_goal 记录答案；它写“依差遣牒推进”但同时提示已有并行对话，也先问人类；只有没有并行确认提示时才按差遣牒继续；已有具体目标就按目标继续。然后只把确实需要同一差遣牒下其它对话/队友知会的讨论事实落到差遣牒合适章节；再把差遣牒仍未覆盖、但恢复本路对话会丢的信息新增 scope=dialog 提醒项带过桥；允许先保留多条粗略提醒项，甚至带一定冗余也可以，不必在当前程强行整理干净。\n\n操作：\n- 若固定“本路主线目标”提醒要求先问人类：问清后调用 set_dialog_goal({ \"mode\": \"goal\", \"goal\": \"...\" })\n- 优先新增差遣牒章节保存讨论细节：do_mind({ \"category\": \"<category>\", \"selector\": \"<selector>\", \"content\": \"...\" })\n- 只有在确实需要改写已有章节、且已对照当前差遣牒内容完成合并时，才先调用 recall_taskdoc({\"selector\":\"<selector>\"}) 取得 content_hash，再更新：change_mind({\"selector\":\"<selector>\",\"content\":\"...\",\"previous_content_hash\":\"crc32:...\"})\n- 优先新增当前对话 scope=dialog 过桥提醒项：add_reminder({ \"content\": \"...\", \"scope\": \"dialog\" })\n- 只有在确实能就地复用现有提醒项、且不会额外增加当前程认知负担时，才更新：update_reminder({ \"reminder_id\": \"<现有 reminder_id>\", \"content\": \"...\" })\n- clear_mind({})\n\n接续包要点：下一步行动 + 关键定位信息 + 运行验证方式 + 容易丢的临时细节；不要重复固定“本路主线目标”提醒和差遣牒已有内容，本程刚落入差遣牒的讨论细节只需提示下一程先查差遣牒。Dominds 已提醒当前上下文告急：不要提前做“新一程清醒复核”；Dominds 真正开启新一程后，第一步才是按固定“本路主线目标”提醒继续本路对话，并重新审视整理：删除冗余、纠正偏激/失真思路、合并并压缩成高质量提醒项。",
+      "verdict": "passed",
+      "rationale": "余4次与给定状态一致；主线固定目标、共享事实、接续提醒各有归属，先保全再换程，新程再清理。没有把系统提醒变成新用户任务，也不以倒计时要求无内容确认。",
+      "scope": "公开renderer给定中文critical/main余4/总5，不代称真实WebSocket投递或模型遵循。",
+      "provenance": {
+        "generator": "tests/semantic/context-guidance.ts",
+        "originDirectoryLabel": "dominds-context-guidance-ueEhX4",
+        "sourceFile": "preserve-zh-mainDialog-critical-4.json",
+        "actualTextSha256": "da55ad2d39648dc59ff1cb392ffecaaf4dab901fca31061a1a06cc6a9c76e72b",
+        "evidenceJsonSha256": "3f60062ef0bcf73634dbd55ad94fb904e6bbff48e4d4ae5323acf078e0155885",
+        "retention": "actualText/scenario/context/reviewQuestions are embedded completely. Original temporary paths are provenance labels only, not durable acceptance dependencies. Hashes identify reviewed bytes and never judge meaning or accept later output."
+      }
+    },
+    {
+      "id": "preserve-zh-sideDialog-caution",
+      "scenario": "An active dialog is at risk of losing useful context and needs a continuation package.",
+      "businessValue": "Preserve the current dialog goal and facts without drifting into other work or exceeding its authority.",
+      "context": {
+        "language": "zh",
+        "dialogScope": "sideDialog",
+        "level": "caution",
+        "promptsRemainingAfterThis": "not applicable",
+        "promptsTotal": 5
+      },
+      "reviewQuestions": [
+        "Does the guidance make preservation actionable without presenting the runtime notice as a new human request or encouraging an empty acknowledgment?",
+        "Does it preserve this dialog goal and enough continuation detail, and place cleanup at the appropriate course rather than demand premature compression?",
+        "Does a main dialog distinguish shared Taskdoc facts from dialog-specific reminders, while a side dialog avoids changing or drafting shared Taskdoc updates during preservation?",
+        "For critical cases, is the remaining allowance and impending course transition understandable for the supplied state?"
+      ],
+      "actualText": "【系统提示】 上下文状态：🟡 吃紧\n\n这是 Dominds 为防止上下文丢失插入的保全提示，不是新的用户诉求；不要只回复“收到/好的/我先整理提醒项”，而要直接执行下面的保全动作。\n\n风险：上下文用量已超过建议阈值，继续累积可能导致遗漏有效事实。请保留仍然有效的工具证据和任务状态。\n\n行动：你当前处于支线对话。本程不要维护差遣牒，也不要整理差遣牒更新提案；当前目标是维护足够详尽的当前对话范围（scope=dialog）接续包提醒项，然后主动 clear_mind 开启新一程继续工作。\n\n重点提醒：接续包提醒项必须写明当前这一路支线对话的任务目标；同一差遣牒下可能还有同一智能体的其它主线/支线对话，下一程要靠 scope=dialog 提醒项继续本路对话，不能靠共享差遣牒猜目标。\n\n提醒项应覆盖：当前对话历史中下一程需要知道的任务目标、讨论细节、下一步行动、关键定位信息、运行/验证信息、临时路径/ID/样例输入，以及任何恢复工作容易丢的判断依据。提醒项没有固定长度限制，宁可完整一些；允许写成多条粗略提醒项，不必在当前程强行压成单条。\n\nDominds 已提醒当前上下文吃紧：不要继续扩张上下文，也不要提前进入“按接续包做清醒复核”的模式；真正清理冗余、合并提醒项，放到 Dominds 开启新一程后再做。\n\n操作：\n- 优先新增详尽接续包提醒项：add_reminder({ \"content\": \"...\", \"scope\": \"dialog\" })\n- 只有在确实能就地复用现有提醒项、且不会额外增加当前程认知负担时，才更新：update_reminder({ \"reminder_id\": \"<现有 reminder_id>\", \"content\": \"...\" })",
+      "verdict": "passed",
+      "rationale": "支线指导限定本对话自身目标、事实和恢复步骤，本程不维护或草拟共享Taskdoc；接续材料可充分保留，不以定长/立即清理牺牲细节。压力风险表述客观，与支线权限边界一致。",
+      "scope": "公开renderer给定中文caution/side情境，不代称实际支线执行或完整角色审计。",
+      "provenance": {
+        "generator": "tests/semantic/context-guidance.ts",
+        "originDirectoryLabel": "dominds-context-guidance-ueEhX4",
+        "sourceFile": "preserve-zh-sideDialog-caution.json",
+        "actualTextSha256": "e7ec7c7c16cd8fcf51922bffdd7440710208ca50f79c0b89a5d765cb998cc583",
+        "evidenceJsonSha256": "bad82e4bed17cb125fb555b766f9fbcd175c443c14d02fc184a700118b65a753",
+        "retention": "actualText/scenario/context/reviewQuestions are embedded completely. Original temporary paths are provenance labels only, not durable acceptance dependencies. Hashes identify reviewed bytes and never judge meaning or accept later output."
+      }
+    },
+    {
+      "id": "preserve-zh-sideDialog-critical-0",
+      "scenario": "An active dialog is at risk of losing useful context and needs a continuation package.",
+      "businessValue": "Preserve the current dialog goal and facts without drifting into other work or exceeding its authority.",
+      "context": {
+        "language": "zh",
+        "dialogScope": "sideDialog",
+        "level": "critical",
+        "promptsRemainingAfterThis": 0,
+        "promptsTotal": 5
+      },
+      "reviewQuestions": [
+        "Does the guidance make preservation actionable without presenting the runtime notice as a new human request or encouraging an empty acknowledgment?",
+        "Does it preserve this dialog goal and enough continuation detail, and place cleanup at the appropriate course rather than demand premature compression?",
+        "Does a main dialog distinguish shared Taskdoc facts from dialog-specific reminders, while a side dialog avoids changing or drafting shared Taskdoc updates during preservation?",
+        "For critical cases, is the remaining allowance and impending course transition understandable for the supplied state?"
+      ],
+      "actualText": "【系统提示】 上下文状态：🔴 告急\n\n这是 Dominds 为防止上下文丢失插入的保全提示，不是新的用户诉求；不要只回复“收到/好的/我先整理提醒项”，而要直接执行下面的保全动作。\n\nDominds 最多再提醒你 0 次，之后将自动清理头脑开启新一程对话。\n\n行动：你当前处于支线对话。本程不要维护差遣牒，也不要整理差遣牒更新提案；当前目标是尽快维护足够详尽的当前对话范围（scope=dialog）接续包提醒项，然后 clear_mind。\n\n重点提醒：接续包提醒项必须写明当前这一路支线对话的任务目标；同一差遣牒下可能还有同一智能体的其它主线/支线对话，下一程要靠 scope=dialog 提醒项继续本路对话，不能靠共享差遣牒猜目标。\n\n提醒项应覆盖：当前对话历史中下一程需要知道的任务目标、讨论细节、下一步行动、关键定位信息、运行/验证信息、临时路径/ID/样例输入，以及任何恢复工作容易丢的判断依据。提醒项没有固定长度限制，宁可完整一些；允许写成多条粗略提醒项，甚至带一定冗余也可以，不必在当前程强行整理干净。\n\n操作：\n- 优先新增详尽接续包提醒项：add_reminder({ \"content\": \"...\", \"scope\": \"dialog\" })\n- 只有在确实能就地复用现有提醒项、且不会额外增加当前程认知负担时，才更新：update_reminder({ \"reminder_id\": \"<现有 reminder_id>\", \"content\": \"...\" })\n- clear_mind({})\n\nDominds 已提醒当前上下文告急：不要提前做“新一程清醒复核”；Dominds 真正开启新一程后，第一步才是重新审视并整理：删除冗余、纠正偏激/失真思路、合并并压缩成高质量提醒项。",
+      "verdict": "passed",
+      "rationale": "支线在本次后余0次的紧迫状态下仍只保全自身目标和接续，本程不操作/提案共享Taskdoc，再clear_mind；没有借告急越权或在换程前强压缩重要事实。",
+      "scope": "公开renderer，中文critical/side余0/总5；不声明真实运行时倒计时已经执行。",
+      "provenance": {
+        "generator": "tests/semantic/context-guidance.ts",
+        "originDirectoryLabel": "dominds-context-guidance-ueEhX4",
+        "sourceFile": "preserve-zh-sideDialog-critical-0.json",
+        "actualTextSha256": "77a6198debed3bc164e5b36af151365437f4ba0baee9e646014b7088fc81c5e4",
+        "evidenceJsonSha256": "cc689d107e87f0a4cb60b6630c6b2426d6613f86137d5280dca456a4fe1d3292",
+        "retention": "actualText/scenario/context/reviewQuestions are embedded completely. Original temporary paths are provenance labels only, not durable acceptance dependencies. Hashes identify reviewed bytes and never judge meaning or accept later output."
+      }
+    },
+    {
+      "id": "preserve-zh-sideDialog-critical-4",
+      "scenario": "An active dialog is at risk of losing useful context and needs a continuation package.",
+      "businessValue": "Preserve the current dialog goal and facts without drifting into other work or exceeding its authority.",
+      "context": {
+        "language": "zh",
+        "dialogScope": "sideDialog",
+        "level": "critical",
+        "promptsRemainingAfterThis": 4,
+        "promptsTotal": 5
+      },
+      "reviewQuestions": [
+        "Does the guidance make preservation actionable without presenting the runtime notice as a new human request or encouraging an empty acknowledgment?",
+        "Does it preserve this dialog goal and enough continuation detail, and place cleanup at the appropriate course rather than demand premature compression?",
+        "Does a main dialog distinguish shared Taskdoc facts from dialog-specific reminders, while a side dialog avoids changing or drafting shared Taskdoc updates during preservation?",
+        "For critical cases, is the remaining allowance and impending course transition understandable for the supplied state?"
+      ],
+      "actualText": "【系统提示】 上下文状态：🔴 告急\n\n这是 Dominds 为防止上下文丢失插入的保全提示，不是新的用户诉求；不要只回复“收到/好的/我先整理提醒项”，而要直接执行下面的保全动作。\n\nDominds 最多再提醒你 4 次，之后将自动清理头脑开启新一程对话。\n\n行动：你当前处于支线对话。本程不要维护差遣牒，也不要整理差遣牒更新提案；当前目标是尽快维护足够详尽的当前对话范围（scope=dialog）接续包提醒项，然后 clear_mind。\n\n重点提醒：接续包提醒项必须写明当前这一路支线对话的任务目标；同一差遣牒下可能还有同一智能体的其它主线/支线对话，下一程要靠 scope=dialog 提醒项继续本路对话，不能靠共享差遣牒猜目标。\n\n提醒项应覆盖：当前对话历史中下一程需要知道的任务目标、讨论细节、下一步行动、关键定位信息、运行/验证信息、临时路径/ID/样例输入，以及任何恢复工作容易丢的判断依据。提醒项没有固定长度限制，宁可完整一些；允许写成多条粗略提醒项，甚至带一定冗余也可以，不必在当前程强行整理干净。\n\n操作：\n- 优先新增详尽接续包提醒项：add_reminder({ \"content\": \"...\", \"scope\": \"dialog\" })\n- 只有在确实能就地复用现有提醒项、且不会额外增加当前程认知负担时，才更新：update_reminder({ \"reminder_id\": \"<现有 reminder_id>\", \"content\": \"...\" })\n- clear_mind({})\n\nDominds 已提醒当前上下文告急：不要提前做“新一程清醒复核”；Dominds 真正开启新一程后，第一步才是重新审视并整理：删除冗余、纠正偏激/失真思路、合并并压缩成高质量提醒项。",
+      "verdict": "passed",
+      "rationale": "中文余4次与上下文一致，支线保全自身事实/目标/恢复步骤，Taskdoc职责边界及新程清理顺序清楚；不把提醒当新诉求，也不要求等待到预算耗尽才保全。",
+      "scope": "公开renderer给定中文critical/side余4/总5，不代表整份provider上下文或真实模型服从。",
+      "provenance": {
+        "generator": "tests/semantic/context-guidance.ts",
+        "originDirectoryLabel": "dominds-context-guidance-ueEhX4",
+        "sourceFile": "preserve-zh-sideDialog-critical-4.json",
+        "actualTextSha256": "829afe7c1bd8d599a045fb1b32d26dbdf456f4f1b7710b2af848dbc59eabe0f2",
+        "evidenceJsonSha256": "65d6da7cb7cfac473bbe75e2446b4054cbea2dc18efe9d39b71a07ac62360ce4",
+        "retention": "actualText/scenario/context/reviewQuestions are embedded completely. Original temporary paths are provenance labels only, not durable acceptance dependencies. Hashes identify reviewed bytes and never judge meaning or accept later output."
+      }
+    },
+    {
+      "id": "routing-card-en",
+      "scenario": "A manager authors gofor/nogo to help other teammates and humans route work.",
+      "businessValue": "Route requests to the right member without confusing a routing card with that member operating rules.",
+      "context": {
+        "language": "en",
+        "topic": "team",
+        "machineCoverage": "team-yaml-parsing.ts already checks freeform object/string/list preservation and structured-list warning identity/severity"
+      },
+      "reviewQuestions": [
+        "Can the reader distinguish positive request-routing information, negative routing boundaries, and the member own execution guidance?",
+        "Are the accepted shapes and guidance on labeled lists understandable without imposing a fixed set of object keys?"
+      ],
+      "actualText": "# .minds/team.yaml\n- member_defaults: strongly recommended to set provider/model explicitly (omitting may fall back to built-in defaults)\n- default_responder: not a hard requirement, but strongly recommended to set explicitly to avoid implicit fallback Dialog Responder selection and cross-run drift\n- members: per-agent overrides inherit from member_defaults via prototype fallback\n- after every modification to `.minds/team.yaml`: you must run `team_mgmt_validate_team_cfg({})`; if the output still contains a \"Resolved But Not Yet Cleared\" section, finish with `team_mgmt_clear_problems({ source: \"team\", path: \"team.yaml\" })` before proceeding so runtime state and Problems history stay aligned\n- when changing provider/model: validate provider exists + env var is configured (use `team_mgmt_check_provider({ provider_key: \"<providerKey>\", model: \"\", all_models: false, live: false })`)\n- to discover providers/models: use `team_mgmt_list_providers({})` and `team_mgmt_list_models({ provider_pattern: \"*\", model_pattern: \"*\" })`\n- streaming: Codex providers (apiType=codex) are streaming-only. Setting members.<id>.streaming=false with a Codex provider is a config error and will abort requests.\n- do not write built-in members (e.g. fuxi/pangu) into `.minds/team.yaml` (define only rtws members)\n- `shell_specialists`: optional allow-list of member ids permitted to have shell tools. Toolset `os` currently includes shell tools (`shell_cmd`, `stop_daemon`, `get_daemon_output`). If any member has shell tools, that member must be listed in `shell_specialists`; `null`/empty means “no shell specialists”.\n- hidden: true marks a shadow member (not listed in system prompt)\n- The team definition entrypoint is `.minds/team.yaml` (no `.minds/team.yml` alias today).\n- `default_responder` is not technically required, but strongly recommended in practice: without it, runtime falls back to implementation-defined Dialog Responder selection (for example visible-member/built-in fallback), which can drift across environments/runs.\n- Strongly recommended: for each member, configure `.minds/team/<id>/{persona,knowhow,pitfalls}.*.md` assets to define role ownership, work boundaries, positive knowledge accumulation, and negative lessons/traps. The same `<id>` must exist in `members.<id>` in `team.yaml`.\n- These `.minds/team/<id>/*` files are the team-defined long-lived assets for that role, and should usually stay stable, sparse, and slow-changing. They are not the member’s everyday experience warehouse. Day-to-day lessons, recent debugging clues, and medium-term reusable personal notes should usually go to `personal_memory`; whenever the handbook recommends granting `personal_memory` to a member, it also recommends granting the `skills` and `resources` toolsets so the member can maintain personal skill guidance and read registered resources. Current effective state, key decisions, next steps, and still-active blockers that the team must synchronize on belong in Taskdoc `progress`, the quasi-real-time task bulletin board; personal/current-dialog short-term current-work and bridge details belong in reminders.\n- Typical content examples (use as a starting point, then adapt to your team context):\n- `.minds/team/coder/persona.en.md`\n```markdown\n### Core Identity\n- Professional programmer responsible for implementing approved development specs.\n### Work Boundaries\n- Not responsible for requirement discovery or product strategy.\n- Implements/refactors only against confirmed specs.\n### Delivery Standard\n- Deliver runnable code plus key verification steps.\n```\n- `.minds/team/coder/knowhow.en.md`\n```markdown\n- Knows the repo's main module boundaries, build commands, and common validation entry points.\n- Prefers tracing call chains and data flow to root cause before choosing an edit point.\n- When interfaces, config, or contracts change, also checks docs, types, and regression impact.\n```\n- `.minds/team/coder/pitfalls.en.md`\n```markdown\n- Do not patch only the symptom layer; trace the call chain and data flow first.\n- After changing permissions/config, do not skip the corresponding validators; if only \"Resolved But Not Yet Cleared\" remains, finish with `team_mgmt_clear_problems(...)`.\n- For high-risk changes, do not fan out into a big rewrite immediately; start with a minimal reviewable plan before expansion.\n- When planning or building agentic functionality, do not unconsciously import the traditional software-engineering instinct to \"complete\" unhappy paths with more programmatic fallback logic. For agent-in-the-loop business-process steps, adding more procedural unhappy-path branches should be treated as a negative behavior and a design regression by default, not as extra credit; unlike software-only-in-the-loop business-process steps, it often creates large technical debt while still producing weak business outcomes. Prefer screenshot-based visual confirmation, semantic review, or similar fallback paths that preserve the agent-in-the-loop nature of the step instead.\n```\nFilename rule: rtws member files only read canonical filenames: `persona.*.md` / `knowhow.*.md` / `pitfalls.*.md`; legacy `knowledge/lessons` aliases are no longer accepted.\nAuthoring rule: do not add top-level titles that duplicate the system prompt wrapper. The system prompt already adds: `## Persona` / `## Know-How` / `## Pitfalls` (zh template: `## 角色设定` / `## 经验知识` / `## 避坑指南`).\n- The team mechanism default is long-lived agents (long-lived teammates): `members` is a stable roster of callable teammates, not “on-demand sub-roles”. This is a product mechanism, not a deployment preference.\nTo pick who acts, use `-m/--member <id>` in CLI/TUI.\n`members.<id>.gofor` is a positive routing card for other teammates/humans (≤ 5 lines): write when someone should ask this teammate, what kinds of asks fit, and what help/output to expect.\n`members.<id>.nogo` is an optional negative routing card: write what should not be routed to this teammate and what kind of teammate/path should take it instead. Both fields are external routing metadata; do not dump the member’s own operating rules, work mode, acceptance bar, or full role spec here. Those belong in `.minds/team/<id>/*` or `.minds/team/domains/*.md`.\nBoth fields support three shapes: string (single sentence), YAML list (plain bullets), and YAML object (structured labeled summary; object keys are fully freeform and values must be strings).\nExample (`gofor` / `nogo`):\n```yaml\nmembers:\n  qa_guard:\n    name: QA Guard\n    gofor:\n      - Go to this teammate for pre-release regression gating\n      - Ask this teammate to map high-risk changes and manual checks\n      - Expect a regression verdict, risk list, and recommended next actions\n    nogo:\n      - Do not route net-new feature implementation here\n      - For product copy or information architecture, ask the relevant implementer/designer instead\n```\nExample (object form; rendered in YAML key order, freeform keys):\n```yaml\nmembers:\n  coordinator:\n    name: Coordinator\n    gofor:\n      When: when you need cross-member coordination, task breakdown, or result convergence\n      Ask: route requests, split work, and integrate outcomes\n      Returns: an execution plan, delegation decisions, and acceptance conclusions\n    nogo:\n      Avoid: do not route concrete implementation, test-authoring, or doc-writing directly here\n      RouteTo: send those asks to the relevant specialist teammate instead\n      Note: put the member’s own operating rules in persona/knowhow/pitfalls instead\n```\nIf you write the same structured content as a YAML list like `- When: ...` / `- Ask: ...` or `- Avoid: ...` / `- RouteTo: ...`, it is still accepted, but `team_mgmt_validate_team_cfg({})` will warn and suggest YAML object form for readability.\n- Per-role default models: set global defaults via `member_defaults.provider/model`, then override `members.<id>.provider/model` per member (e.g. use `gpt-5.2` by default, and `gpt-5.2-codex` for code-writing members).\n- Model params (e.g. `reasoning_effort` / `verbosity` / `temperature`) must be nested under `member_defaults.model_params.codex.*` or `members.<id>.model_params.codex.*` (for the built-in `codex` provider). Do not put them directly under `member_defaults`/`members.<id>` root.\n- If you want a visible teammate that behaves close to stock Codex, a practical pattern is to add a member such as `members.codex`, keep `provider: codex`, grant the normal coding toolsets (`ws_read` / `ws_mod` / `codex_inspect_and_patch_tools` unless the human explicitly asks otherwise), and write that teammate persona as clear Dominds-native role boundaries, delivery rules, and team guidance. Even when the teammate does not use `provider: codex`, you should still recommend `codex_inspect_and_patch_tools` for `gpt-5.x` models as an extra inspect-and-patch layer on top of `ws_read` / `ws_mod`.\n- Style reminder: keep `team.yaml` readable. Prefer single blank lines between sections/member blocks; avoid long runs of blank lines. Run `team_mgmt_validate_team_cfg({})` after edits to surface errors and style warnings in the Problems panel.\n- Default policy (override only when requested):\n1) When adding a member, set `diligence-push-max` to `99` unless the user explicitly asks otherwise.\n2) When switching a member’s LLM `provider/model`, keep `ws_read` / `ws_mod` as the baseline; when the target model is in the `gpt-5.x` family, add `codex_inspect_and_patch_tools` on top (not as a replacement), unless the user explicitly asks for a different combination.\n- Deployment/org suggestion (optional): if you do not want a visible team manager, keep `team_mgmt` only on a hidden/shadow member and have a human trigger it when needed; Dominds does not require this organizational setup.\n- If a member is assigned team-management responsibility (especially by granting `team_mgmt`), that member’s `persona.*.md` must explicitly require reading the relevant `man({ \"toolsetId\": \"team_mgmt\" })` chapters before any team-management action, and maintaining `.minds/**` team mind assets by handbook-standard workflow rather than improvising ad hoc edits.\n- Role ownership is not write permission: even if `.minds/team/<id>/*` belongs to a member role, editing it still depends on whether the current actor holds `team_mgmt` or equivalent team-asset maintenance authority. “This is your own persona/knowhow/pitfalls” does not mean “you may rewrite it yourself”.\n- Recommended editing workflow: use `team_mgmt_read_file({ path: \"team.yaml\", range: \"<start~end>\", max_lines: 0, show_linenos: true })` to find line numbers; for precise line-range edits, run `team_mgmt_file_range_edit({ path: \"team.yaml\", range: \"<line~range>\", content: \"<new content>\" })` directly. For multi-point replacement of the same literal, prefer `team_mgmt_prepare_occurrence_replace({ path: \"team.yaml\", find: \"<old>\", content: \"<new>\" })` followed by `team_mgmt_apply_occurrence_replace({ plan_id: \"<plan_id>\" })`; if only one occurrence is selected, the tool still creates a plan but returns `notice: NOT_MULTI_OCCURRENCE`, and `team_mgmt_file_range_edit` or `team_mgmt_file_block_replace` is usually clearer. If you need to review the diff first, pass `preview: true, show_diff: true`, then remove `preview` to write. If you truly need a full overwrite: first `team_mgmt_read_file({ path: \"team.yaml\", range: \"\", max_lines: 0, show_linenos: true })` and read total_lines/size_bytes from the YAML header, then use `team_mgmt_overwrite_entire_file({ path: \"team.yaml\", known_old_total_lines: <n>, known_old_total_bytes: <n>, content_format: \"\", content: \"...\" })`; for large bodies, prepare a pad first and pass `pad_id/pad_range`.\n\n## Schema Snapshot (generated from parser allow-list)\n- Root keys: `member_defaults` / `default_responder` / `shell_specialists` / `members`\n- members.<id> keys: `name` / `from` / `use` / `import` / `provider` / `model` / `gofor` / `nogo` / `toolsets` / `tools` / `model_params` / `fbr-effort` / `fbr_effort` / `fbr_model_params` / `diligence-push-max` / `diligence_push_max` / `read_dirs` / `write_dirs` / `no_read_dirs` / `no_write_dirs` / `read_file_ext_names` / `write_file_ext_names` / `no_read_file_ext_names` / `no_write_file_ext_names` / `icon` / `streaming` / `hidden`\n- model_params keys: `json_response` / `codex` / `openai` / `openai-compatible` / `anthropic` / `anthropic-compatible` / `google`\n- model_params.codex keys: `temperature` / `service_tier` / `top_p` / `reasoning_effort` / `reasoning_summary` / `verbosity` / `parallel_tool_calls` / `web_search` / `json_response`\n- model_params.openai keys: `temperature` / `service_tier` / `top_p` / `reasoning_effort` / `reasoning_summary` / `verbosity` / `parallel_tool_calls` / `safety_identifier` / `text_format` / `text_format_json_schema_name` / `text_format_json_schema` / `text_format_json_schema_strict` / `web_search_tool` / `web_search_context_size` / `web_search_allowed_domains` / `web_search_include_sources`\n- model_params.openai-compatible keys: `temperature` / `service_tier` / `top_p` / `parallel_tool_calls` / `safety_identifier` / `text_format` / `text_format_json_schema_name` / `text_format_json_schema` / `text_format_json_schema_strict` / `reasoning_effort` / `reasoning_split` / `thinking`\n- model_params.anthropic keys: `temperature` / `max_tokens` / `top_p` / `top_k` / `stop_sequences` / `reasoning_split` / `thinking` / `json_response`\n- model_params.anthropic-compatible keys: `temperature` / `max_tokens` / `top_p` / `top_k` / `stop_sequences` / `reasoning_split` / `thinking` / `json_response`\n\nMinimal template:\n```yaml\n# Define only rtws members here (do not copy built-in members like fuxi/pangu).\nmember_defaults:\n  provider: codex\n  model: gpt-5.2\n\ndefault_responder: primary\n\nmembers:\n  team_manager:\n    hidden: true\n    toolsets: ['team_mgmt']\n  primary:\n    hidden: true\n    toolsets:\n      - ws_read\n      - ws_mod\n      - codex_inspect_and_patch_tools\n```\n",
+      "verdict": "passed",
+      "rationale": "The full chapter was read. Within the requested gofor/nogo purpose it distinguishes positive request-routing/expected outputs from negative boundaries/alternate routing, and separates external routing metadata from the member’s persona/operating rules. String, string-list and freeform string-valued object shapes remain understandable; example labels are advisory, and labeled lists warn for readability rather than impose fixed keys.",
+      "scope": "Only gofor/nogo routing-card meaning and accepted shapes are accepted. The complete larger chapter is retained for context; unrelated team/model/tool-policy paragraphs and all linked chapters are not newly accepted by this case.",
+      "provenance": {
+        "generator": "tests/semantic/context-guidance.ts",
+        "originDirectoryLabel": "dominds-context-guidance-ueEhX4",
+        "sourceFile": "routing-card-en.json",
+        "actualTextSha256": "c8e60f80f45aa040b79a52fafd75ba098404bacf279ad7d70084f3b04666dcdb",
+        "evidenceJsonSha256": "2d7f8a4db953d40351a19fe0326d7e4535c22fc0ef470357223437ed25312fd1",
+        "retention": "actualText/scenario/context/reviewQuestions are embedded completely. Original temporary paths are provenance labels only, not durable acceptance dependencies. Hashes identify reviewed bytes and never judge meaning or accept later output."
+      }
+    },
+    {
+      "id": "routing-card-zh",
+      "scenario": "A manager authors gofor/nogo to help other teammates and humans route work.",
+      "businessValue": "Route requests to the right member without confusing a routing card with that member operating rules.",
+      "context": {
+        "language": "zh",
+        "topic": "team",
+        "machineCoverage": "team-yaml-parsing.ts already checks freeform object/string/list preservation and structured-list warning identity/severity"
+      },
+      "reviewQuestions": [
+        "Can the reader distinguish positive request-routing information, negative routing boundaries, and the member own execution guidance?",
+        "Are the accepted shapes and guidance on labeled lists understandable without imposing a fixed set of object keys?"
+      ],
+      "actualText": "# .minds/team.yaml\n- 团队定义入口文件是 `.minds/team.yaml`（当前没有 `.minds/team.yml` / `.minds/team.json` 等别名；也不使用 `.minds/team.yaml` 以外的“等效入口”）。\n- 强烈建议显式设置 `member_defaults.provider` 与 `member_defaults.model`：如果省略，可能会使用实现内置的默认值（以当前实现为准），但可移植性/可复现性会变差，也更容易在环境变量未配置时把系统刷成板砖。\n- `default_responder` 虽然不是技术必填项，但实践上强烈建议显式设置：否则会退回到实现内置的对话主理人选择逻辑（例如按可见成员/内置成员兜底），容易造成跨环境或跨轮次行为漂移。\n- 每次修改 `.minds/team.yaml` 必须运行 `team_mgmt_validate_team_cfg({})`；若输出里还有“已解决但未清理的问题”，继续前可用 `team_mgmt_clear_problems({ source: \"team\", path: \"team.yaml\" })` 收尾，避免运行时状态与 Problems 历史脱节。\n- 强烈建议为每个成员配置 `.minds/team/<id>/{persona,knowhow,pitfalls}.*.md` 三类资产，用来明确角色职责、工作边界、正向知识沉淀与负向避坑教训；同一个 `<id>` 必须在 `team.yaml` 的 `members` 里出现，且在 `.minds/team/<id>/` 下存在对应的 mind 文件。\n- 这些 `.minds/team/<id>/*` 文件属于团队对该角色的长期定义资产，默认应保持稳定、稀疏、慢变；它们不是该成员自己的日常经验仓库。成员在工作中积累的日常经验、近期排障线索、短中期可复用笔记，默认应优先沉淀到 `personal_memory`；凡是推荐给成员配 `personal_memory` 的场景，也默认同时推荐配 `skills` 与 `resources` 工具集，让成员能维护个人技能指引并读取已登记资源。需要向全队同步的当前有效状态、关键决策、下一步与仍成立阻塞，应写入 Taskdoc `progress` 这一准实时任务公告牌；个人/当前对话短期手头工作与临时 bridge 细节则留在 reminders。\n- 如果某成员承担团队管理职责（尤其获得 `team_mgmt`），其 `persona.*.md` 必须明确要求：执行任何团队管理操作前先查看 `man({ \"toolsetId\": \"team_mgmt\" })` 的相关章节，并按手册标准做法维护 `.minds/**` 下的团队心智资产（如 `team.yaml`、成员 mind 文件、skills、priming 等）。\n- “角色归属对象”不等于“写权限”：`.minds/team/<id>/*` 虽然对应某个成员角色，但是否能修改，取决于当前成员是否被授予 `team_mgmt` 或等效团队资产维护权限；“这是你自己的 persona/knowhow/pitfalls” 不等于你可以自己改写它。\n- 典型内容示例（可直接作为起点，按团队语境改写）：\n- `.minds/team/coder/persona.zh.md`\n```markdown\n### 核心身份\n- 专业程序员，负责按规格完成代码开发。\n### 工作边界\n- 不负责需求分析或产品策略决策。\n- 只根据已确认的开发规格进行实现与重构。\n### 交付标准\n- 输出可运行代码，并附关键验证步骤。\n```\n- `.minds/team/coder/knowhow.zh.md`\n```markdown\n- 熟悉本仓库主要模块边界、构建命令与常用验证入口。\n- 优先沿调用链和数据流定位根因，再决定修改点。\n- 遇到接口、配置或契约变更时，要同步检查文档、类型和回归影响。\n```\n- `.minds/team/coder/pitfalls.zh.md`\n```markdown\n- 不要只在症状层打补丁；修改前先定位调用链与数据流。\n- 涉及权限/配置时，不要跳过对应校验工具；若只剩“已解决但未清理的问题”，再用 `team_mgmt_clear_problems(...)` 收尾。\n- 涉及高风险改动时，不要一口气铺开大改；先给最小可审查方案，再逐步扩展。\n- 涉及 agentic 能力规划或开发时，不要不自觉套用传统软件工程里“程序化完善 unhappy path 兜底”的思路。对有智能体在环的业务流程步骤，继续程序化追加 unhappy path 判断，默认应视为负面行为和设计退步，而不是加分项；它不同于仅软件在环的业务流程环节，很容易引入巨量技术债务，而且业务效果往往不理想。此时应优先安排截图视觉确认、语义把关等保留智能体在环特性的兜底路径。\n```\n文件名规则：rtws 成员文件只读取 canonical 文件名：`persona.*.md` / `knowhow.*.md` / `pitfalls.*.md`；旧的 `knowledge/lessons` 别名不再接受。\n写法约束：`persona/knowhow/pitfalls` 文件里不要再写与系统提示模板重复的总标题。系统提示模板会自动添加：`## 角色设定` / `## 经验知识` / `## 避坑指南`（英文模板对应 `## Persona` / `## Know-How` / `## Pitfalls`）。\n- 团队机制默认范式是“长期 agent”（long-lived teammates）：`members` 列表表示稳定存在、可随时被诉请的队友，并非“按需子角色/临时 sub-role”。这是产品机制，而非部署/运行偏好。\n如需切换当前由谁执行/扮演，用 CLI/TUI 的 `-m/--member <id>` 显式选择。\n`members.<id>.gofor` 是给其他队友/人类看的“正向诉请路由卡”（建议 5 行内）：写什么时候应该找这个队友、适合把什么问题交给 TA、以及可以期待什么帮助/产出。\n`members.<id>.nogo` 是可选的“反向路由卡”：写哪些事项不要找这个队友、应改找哪类队友/路径。两者都只服务外部路由；不要把该成员自己的执行守则、工作模式、验收标准或完整职责文档堆在这里；这些应写入 `.minds/team/<id>/*` 或 `.minds/team/domains/*.md`。它们都支持三种形态：string（单句）、YAML list（普通 bullet）、YAML object（带标签的结构化摘要，object key 完全 freeform，value 必须是 string）。\n示例（gofor / nogo）：\n```yaml\nmembers:\n  qa_guard:\n    name: QA Guard\n    gofor:\n      - 适合在发布前需要回归把关时找 TA\n      - 适合让 TA 梳理高风险改动与手工核验点\n      - 可以期待 TA 返回回归结论、风险清单与建议动作\n    nogo:\n      - 不要找 TA 做主实现或新功能开发\n      - 若是产品文案/信息架构问题，应改找对应实现或设计角色\n```\n示例（gofor, object；按 YAML key 顺序渲染，key freeform）：\n```yaml\nmembers:\n  coordinator:\n    name: 协调者\n    gofor:\n      When: 当你需要协调跨成员推进、拆分任务或收口结果时\n      Ask: 让 TA 负责诉请路由、任务拆分与结果集成\n      Returns: 可期待计划主线、委派方案与验收结论\n    nogo:\n      Avoid: 不要把具体实现、测试细节或文档落地直接塞给 TA\n      RouteTo: 这些应改找对应专职队友\n      Note: 若要写该成员自己的执行守则，请改写进 persona/knowhow/pitfalls\n```\n如果你把这类结构化内容写成 `- When: ...` / `- Ask: ...` 或 `- Avoid: ...` / `- RouteTo: ...` 的 YAML list，也仍然允许；但 `team_mgmt_validate_team_cfg({})` 会给 warning，建议改用 object，因为可读性更好。\n- 如何为不同角色指定默认模型：用 `member_defaults.provider/model` 设全局默认；对特定成员在 `members.<id>.provider/model` 里覆盖即可。例如：默认用 `gpt-5.2`，代码编写域成员用 `gpt-5.2-codex`。\n- 模型参数（例如 `reasoning_effort` / `verbosity` / `temperature`）应写在 `member_defaults.model_params.codex.*` 或 `members.<id>.model_params.codex.*` 下（对内置 `codex` provider）。不要把这些参数直接写在 `member_defaults`/`members.<id>` 根上。\n- 若团队需要一个行为接近 stock Codex 的显在队友，可新增如 `members.codex` 这样的成员，保持 `provider: codex`，默认授予 `ws_read` / `ws_mod` / `codex_inspect_and_patch_tools`（除非人类明确要求其他组合），并把该成员 persona 直接写成清晰的角色边界、交付要求与团队规则。即使不是 `provider: codex`，只要目标模型属于 `gpt-5.x` 家族，也默认推荐把 `codex_inspect_and_patch_tools` 叠加在 `ws_read` / `ws_mod` 之上。\n- 重要：Codex provider（`apiType=codex`）仅支持流式输出。若成员解析后的 provider 是 Codex，则 `members.<id>.streaming: false` 属于配置错误，会在校验/运行时作为严重问题上报并中止请求。\n- `shell_specialists`：可选，列出允许拥有 shell 工具的成员 id（string|string[]|null）。toolset `os` 当前包含 `shell_cmd` / `stop_daemon` / `get_daemon_output`。如某成员获得了 shell 工具，则该成员必须出现在 `shell_specialists`；否则会在 Problems 面板提示。这个问题不会让整个 Team.load() 崩掉，但相关成员可能缺少 shell 能力，仍应修复。\n- 风格提醒：保持 `team.yaml` 的可读性。推荐用空行分隔段落/成员块，避免连续多行空行；每次修改后运行 `team_mgmt_validate_team_cfg({})` 以便在 Problems 面板看到错误与风格提醒。\n- 默认策略（可被用户覆盖）：\n1) 新增成员时，`diligence-push-max` 默认设为 `99`（除非用户明确要求其他值）。\n2) 切换成员的 LLM `provider/model` 时，默认保留 `ws_read` / `ws_mod` 作为基线；当目标模型属于 `gpt-5.x` 家族时，在基线上追加 `codex_inspect_and_patch_tools`（而不是替代），除非用户明确要求其他组合。\n- 成员配置通过 prototype 继承 `member_defaults`（省略字段会继承默认值）。\n- 修改 provider/model 前请务必确认该 provider 可用（至少 env var 已配置）。可用 `team_mgmt_check_provider({ provider_key: \"<providerKey>\", model: \"\", all_models: false, live: false })` 做检查，避免把系统刷成板砖。\n- 想快速查看有哪些 provider / models / model_param_options：用 `team_mgmt_list_providers({})` 和 `team_mgmt_list_models({ provider_pattern: \"*\", model_pattern: \"*\" })`。\n- 不要把内置成员（例如 `fuxi` / `pangu`）的定义写入 `.minds/team.yaml`（这里只定义 rtws（运行时工作区）自己的成员）：内置成员通常带有特殊权限/目录访问边界；重复定义可能引入冲突、权限误配或行为不一致。\n- `hidden: true` 表示影子/隐藏成员：不会出现在系统提示的团队目录里，但仍然可以通过 tellask-special 函数诉请。\n- 修改文件推荐流程：先 `team_mgmt_read_file({ path: \"team.yaml\", range: \"<start~end>\", max_lines: 0, show_linenos: true })` 定位行号；精确行号范围改动直接用 `team_mgmt_file_range_edit({ path: \"team.yaml\", range: \"<line~range>\", content: \"<new content>\" })` 写入。同一字面量多点批量替换推荐使用 `team_mgmt_prepare_occurrence_replace({ path: \"team.yaml\", find: \"<old>\", content: \"<new>\" })` 后接 `team_mgmt_apply_occurrence_replace({ plan_id: \"<plan_id>\" })`；若只选中单个 occurrence，工具会成功生成 plan 但返回 `notice: NOT_MULTI_OCCURRENCE`，此时通常改用 `team_mgmt_file_range_edit` 或 `team_mgmt_file_block_replace` 更清晰。若需要先审阅差异，可加 `preview: true, show_diff: true` 做只读预览，确认后再去掉 `preview` 写入。如确实需要整文件覆盖：先 `team_mgmt_read_file({ path: \"team.yaml\", range: \"\", max_lines: 0, show_linenos: true })` 从 YAML header 获取 total_lines/size_bytes，再用 `team_mgmt_overwrite_entire_file({ path: \"team.yaml\", known_old_total_lines: <n>, known_old_total_bytes: <n>, content_format: \"\", content: \"...\" })`；大正文优先把内容准备到 pad，再传 `pad_id/pad_range`。\n- 部署/组织建议（可选）：如果你不希望出现显在“团队管理者”，可由一个影子/隐藏成员持有 `team_mgmt` 负责维护 `.minds/**`（尤其 `team.yaml`），由人类在需要时触发其执行（例如初始化/调整权限/更新模型）。Dominds 不强制这种组织方式；你也可以让显在成员拥有 `team_mgmt` 或由人类直接维护文件。\n\n## Schema Snapshot（自动生成，来自当前解析器白名单）\n- 顶层字段（root）：`member_defaults` / `default_responder` / `shell_specialists` / `members`\n- 成员字段（members.<id>）：`name` / `from` / `use` / `import` / `provider` / `model` / `gofor` / `nogo` / `toolsets` / `tools` / `model_params` / `fbr-effort` / `fbr_effort` / `fbr_model_params` / `diligence-push-max` / `diligence_push_max` / `read_dirs` / `write_dirs` / `no_read_dirs` / `no_write_dirs` / `read_file_ext_names` / `write_file_ext_names` / `no_read_file_ext_names` / `no_write_file_ext_names` / `icon` / `streaming` / `hidden`\n- model_params 顶层字段：`json_response` / `codex` / `openai` / `openai-compatible` / `anthropic` / `anthropic-compatible` / `google`\n- model_params.codex 字段：`temperature` / `service_tier` / `top_p` / `reasoning_effort` / `reasoning_summary` / `verbosity` / `parallel_tool_calls` / `web_search` / `json_response`\n- model_params.openai 字段：`temperature` / `service_tier` / `top_p` / `reasoning_effort` / `reasoning_summary` / `verbosity` / `parallel_tool_calls` / `safety_identifier` / `text_format` / `text_format_json_schema_name` / `text_format_json_schema` / `text_format_json_schema_strict` / `web_search_tool` / `web_search_context_size` / `web_search_allowed_domains` / `web_search_include_sources`\n- model_params.openai-compatible 字段：`temperature` / `service_tier` / `top_p` / `parallel_tool_calls` / `safety_identifier` / `text_format` / `text_format_json_schema_name` / `text_format_json_schema` / `text_format_json_schema_strict` / `reasoning_effort` / `reasoning_split` / `thinking`\n- model_params.anthropic 字段：`temperature` / `max_tokens` / `top_p` / `top_k` / `stop_sequences` / `reasoning_split` / `thinking` / `json_response`\n- model_params.anthropic-compatible 字段：`temperature` / `max_tokens` / `top_p` / `top_k` / `stop_sequences` / `reasoning_split` / `thinking` / `json_response`\n\n最小模板：\n```yaml\n# 这里只放 rtws（运行时工作区）自己的成员；不要把内置成员（例如 fuxi/pangu）写进来。\nmember_defaults:\n  provider: codex\n  model: gpt-5.2\n\ndefault_responder: primary\n\nmembers:\n  team_manager:\n    hidden: true\n    toolsets: ['team_mgmt']\n  primary:\n    hidden: true\n    toolsets:\n      - ws_read\n      - ws_mod\n      - codex_inspect_and_patch_tools\n  qa_guard:\n    name: QA Guard\n    gofor:\n      - Go to this teammate for pre-release regression gating\n      - Ask this teammate to map high-risk changes and manual checks\n      - Expect a regression verdict, risk list, and suggested next actions\n  coder:\n    name: Coder\n    provider: codex\n    model: gpt-5.2-codex\n```\n",
+      "verdict": "passed",
+      "rationale": "已完整阅读整章。路由卡范围内，gofor说明何时/向谁/产出，nogo说明避免及替代路由，与成员自身执行规则分开；字符串、列表及自由键字符串对象的三形态清楚，示例标签不强制，带标签列表只是可读性警告。",
+      "scope": "仅接受gofor/nogo正反路由、自由键三形态及角色规则区分；留存整章不等于其余团队/模型/工具政策或链接章节全部验收。",
+      "provenance": {
+        "generator": "tests/semantic/context-guidance.ts",
+        "originDirectoryLabel": "dominds-context-guidance-ueEhX4",
+        "sourceFile": "routing-card-zh.json",
+        "actualTextSha256": "0f4f8f00c48441f869816f5cb0ab66c99e289b40002efacbae35d7e53e1f70a3",
+        "evidenceJsonSha256": "32d79f01af20f90ed088362d2a8c6b3655bb59b71a4fb4e066c87b3f023940a7",
+        "retention": "actualText/scenario/context/reviewQuestions are embedded completely. Original temporary paths are provenance labels only, not durable acceptance dependencies. Hashes identify reviewed bytes and never judge meaning or accept later output."
+      }
+    },
+    {
+      "id": "consumed-batch",
+      "scenario": "A real initial drive consumes two authorized automatic nudges, reaches zero remaining budget and emits its informational notice.",
+      "businessValue": "Stop automatic continuation at its actual allowance while keeping later human work possible.",
+      "context": {
+        "language": "en",
+        "streaming": false,
+        "configuredDefault": 2,
+        "initialBudget": 2,
+        "automaticPromptCount": 2,
+        "providerRequestsBeforeHumanContinuation": 3,
+        "remainingBudget": 0,
+        "humanQuestionCount": 0,
+        "canDrive": true,
+        "scope": "Real driver, persistence and dialog events; controlled message-only provider. Does not establish task completion or live-provider behavior."
+      },
+      "reviewQuestions": [
+        "Does the actual notice accurately explain exhaustion without implying a human question, blocked manual continuation or an unsupported assessment of agent effort?"
+      ],
+      "actualText": "[System notice] The automatic continuation allowance is exhausted. Automatic nudges have stopped; add instructions or adjust this dialog's allowance if more work is needed.",
+      "verdict": "passed",
+      "rationale": "The batch run actually used two automatic prompts over three provider requests and persisted zero allowance. The notice explains that limit without treating UI snapshot repetitions as extra attempts and leaves manual work possible; the fourth human-request response is observed independently.",
+      "scope": "Real batch driver/persistence/local events, external controlled provider; not live-provider behavior or successful task completion.",
+      "provenance": {
+        "generator": "tests/diligence-push/diligence-budget-event.ts",
+        "originDirectoryLabel": "dominds-budget-consumption-j8F9GT",
+        "sourceFile": "consumed-batch.json",
+        "actualTextSha256": "cc930f10a985ed1c58f3e37cee7cf93650c190ea4879932ca2020c7870aae351",
+        "evidenceJsonSha256": "db57fa841b4a45da6e158e916251efc850f6aa5a2273d56da36b6be74ecc489d",
+        "retention": "actualText/scenario/context/reviewQuestions are embedded completely. Original temporary paths are provenance labels only, not durable acceptance dependencies. Hashes identify reviewed bytes and never judge meaning or accept later output."
+      }
+    },
+    {
+      "id": "consumed-streaming",
+      "scenario": "A real initial drive consumes two authorized automatic nudges, reaches zero remaining budget and emits its informational notice.",
+      "businessValue": "Stop automatic continuation at its actual allowance while keeping later human work possible.",
+      "context": {
+        "language": "en",
+        "streaming": true,
+        "configuredDefault": 2,
+        "initialBudget": 2,
+        "automaticPromptCount": 2,
+        "providerRequestsBeforeHumanContinuation": 3,
+        "remainingBudget": 0,
+        "humanQuestionCount": 0,
+        "canDrive": true,
+        "scope": "Real driver, persistence and dialog events; controlled message-only provider. Does not establish task completion or live-provider behavior."
+      },
+      "reviewQuestions": [
+        "Does the actual notice accurately explain exhaustion without implying a human question, blocked manual continuation or an unsupported assessment of agent effort?"
+      ],
+      "actualText": "[System notice] The automatic continuation allowance is exhausted. Automatic nudges have stopped; add instructions or adjust this dialog's allowance if more work is needed.",
+      "verdict": "passed",
+      "rationale": "After the real initial request and two allowed streaming nudges, remaining zero justifies the exhausted-allowance notice. It accurately stops automatic nudges while allowing additional instructions or an allowance change; no invented effort judgment, Q4H, task-completion claim or barrier to the subsequently observed human turn.",
+      "scope": "Real streaming driver, disk and local events with controlled message-only provider; no live-model, browser or task-quality claim.",
+      "provenance": {
+        "generator": "tests/diligence-push/diligence-budget-event.ts",
+        "originDirectoryLabel": "dominds-budget-consumption-j8F9GT",
+        "sourceFile": "consumed-streaming.json",
+        "actualTextSha256": "cc930f10a985ed1c58f3e37cee7cf93650c190ea4879932ca2020c7870aae351",
+        "evidenceJsonSha256": "20d3e9edfbc050a4d69d1383868c8a62bac5d9ccdf336e237c7cbc101926bcc4",
+        "retention": "actualText/scenario/context/reviewQuestions are embedded completely. Original temporary paths are provenance labels only, not durable acceptance dependencies. Hashes identify reviewed bytes and never judge meaning or accept later output."
+      }
+    },
+    {
+      "id": "empty-budget-en",
+      "scenario": "An initial human request starts with zero automatic allowance, receives its real answer and a budget notice; a later human request also receives its answer without refilling the allowance.",
+      "businessValue": "Explain automatic continuation limits without blocking human work or inventing an unanswered human question.",
+      "context": {
+        "language": "en",
+        "configuredDefault": 3,
+        "initialBudget": 0,
+        "automaticPromptsBeforeNotice": 0,
+        "answersAfterManualContinuation": 2,
+        "remainingBudget": 0,
+        "canDrive": true,
+        "scope": "Actual runtime UI-only notice and durable answers through a controlled provider fixture; no WebSocket/UI or live-model claim."
+      },
+      "reviewQuestions": [
+        "Does this actual notice explain the empty allowance without claiming that the configured default counts previous attempts, requiring a new question or preventing later human continuation?"
+      ],
+      "actualText": "[System notice] The automatic continuation allowance is exhausted. Automatic nudges have stopped; add instructions or adjust this dialog's allowance if more work is needed.",
+      "verdict": "passed",
+      "rationale": "The actual English notice remains factual when there were zero automatic attempts: the allowance is exhausted, rather than three attempts having been made. It permits additional instructions and does not imply an unanswered question, task completion or manual suspension; two actual human answers with budget still zero support that interpretation.",
+      "scope": "Actual runtime notice plus later durable human answer in this specific controlled fixture; no WebSocket/browser or live model.",
+      "provenance": {
+        "generator": "tests/diligence-push/q4h-diligence-push-i18n.ts",
+        "originDirectoryLabel": "dominds-empty-budget-notice-S0J4pM",
+        "sourceFile": "empty-budget-en.json",
+        "actualTextSha256": "cc930f10a985ed1c58f3e37cee7cf93650c190ea4879932ca2020c7870aae351",
+        "evidenceJsonSha256": "ba37076474bab2dd65818e391402f9e2839644a5dafeaa25a95e9d2afddb4f4b",
+        "retention": "actualText/scenario/context/reviewQuestions are embedded completely. Original temporary paths are provenance labels only, not durable acceptance dependencies. Hashes identify reviewed bytes and never judge meaning or accept later output."
+      }
+    },
+    {
+      "id": "empty-budget-zh",
+      "scenario": "An initial human request starts with zero automatic allowance, receives its real answer and a budget notice; a later human request also receives its answer without refilling the allowance.",
+      "businessValue": "Explain automatic continuation limits without blocking human work or inventing an unanswered human question.",
+      "context": {
+        "language": "zh",
+        "configuredDefault": 3,
+        "initialBudget": 0,
+        "automaticPromptsBeforeNotice": 0,
+        "answersAfterManualContinuation": 2,
+        "remainingBudget": 0,
+        "canDrive": true,
+        "scope": "Actual runtime UI-only notice and durable answers through a controlled provider fixture; no WebSocket/UI or live-model claim."
+      },
+      "reviewQuestions": [
+        "Does this actual notice explain the empty allowance without claiming that the configured default counts previous attempts, requiring a new question or preventing later human continuation?"
+      ],
+      "actualText": "【系统提示】 自动续推额度已用尽，已停止自动续推。如需继续推进，可补充指示或调整本对话的续推额度。",
+      "verdict": "passed",
+      "rationale": "中文通知与初始0额度、0次自动续推一致，默认3没有被当成历史次数；只停止自动续推，不冒充新问题/任务完成或阻断人类。后续真实人工请求仍落盘第二个答复、余额仍0，为该解释提供业务事实。",
+      "scope": "实际runtime通知和受控provider下的人工续办持久答复，不声称真实浏览器/真人传输或模型质量。",
+      "provenance": {
+        "generator": "tests/diligence-push/q4h-diligence-push-i18n.ts",
+        "originDirectoryLabel": "dominds-empty-budget-notice-S0J4pM",
+        "sourceFile": "empty-budget-zh.json",
+        "actualTextSha256": "7c23b24a1b684eef2b6efc3339c95503cce2c202e7175551112862cb5c77dce2",
+        "evidenceJsonSha256": "8684c3e076de588cdfe76ae2d9c7b9ff6304baa08279b43e033b1d95d359981e",
+        "retention": "actualText/scenario/context/reviewQuestions are embedded completely. Original temporary paths are provenance labels only, not durable acceptance dependencies. Hashes identify reviewed bytes and never judge meaning or accept later output."
+      }
+    }
+  ],
+  "assertionReview": {
+    "status": "passed",
+    "completeScope": "Complete original/final sources of all7 candidates, complete additions/deletions diff for the4 changed candidates, budget-exhaustion helper, run.mjs/package entries and final AGENTS/README/strategy/ledger. The3 unchanged candidates were independently audited anew. No product file changed in this batch.",
+    "candidates": [
+      {
+        "file": "tests/context-health/caution-cadence.ts",
+        "change": "unchanged; fully reviewed anew",
+        "originalValue": "Prevent preservation spam while immediately responding to entry into risky context; defer injection for real user input/occupied queue without losing the next opportunity and reset cadence after health recovers.",
+        "assertions": [
+          "Undefined/zero cadence uses exported default; fractional positive cadence floors to an integer. The configured/default intervals are derived rather than freezing one incidental default number.",
+          "Given available caution/healthy snapshots, public decision kind/reason/state prove immediate first caution reminder, intervening proceed decisions, exact cadence reminder, delayed-but-not-lost reminder after user/queue blocking and reset after healthy."
+        ],
+        "literalComparisonJustification": "Decision enums, returned state/counters and configured numeric cadence are public machine policy outputs. No prompt text, explanation or keyword is used to judge meaning.",
+        "scope": "Pure public policy with supplied snapshots/boolean ingress flags, not measured token usage, actual user ingress, driver scheduling or provider requests.",
+        "verdict": "passed"
+      },
+      {
+        "file": "tests/context-health/critical-user-interjection.ts",
+        "change": "unchanged; fully reviewed anew",
+        "originalValue": "Count a real-user critical remediation once, avoid wrapping an already applied ingress remediation twice, and force course renewal when the finite critical allowance is gone.",
+        "assertions": [
+          "Already-applied ingress flag returns proceed; real-user flag yields critical_user_prompt_remediation. Exact decision values are machine routing outputs.",
+          "Public countdown consumption reaches remaining 4,3,2,1,0 from allowance5; subsequent {kind:continue,reason:critical_force_new_course} decision prevents indefinite reminders. This is the decision to force renewal, not proof a new course actually ran."
+        ],
+        "literalComparisonJustification": "Kind/reason and integer countdown are execution contracts. The test does not read natural-language warning wording.",
+        "scope": "Component policy with given real-user flags and pressure state; does not itself establish WebSocket/human delivery, necessary tool followup or actual course transition.",
+        "verdict": "passed"
+      },
+      {
+        "file": "tests/diligence-push/auto-continue-prompt-format.ts",
+        "change": "unchanged; fully reviewed anew",
+        "originalValue": "Keep arbitrary supplied continuation content intact when runtime wraps it, and reject an unusable empty body. Small size does not remove this concrete data-fidelity value.",
+        "assertions": [
+          "Both languages wrap the same opaque multiline body, including JSON-looking data; endsWith(body) checks the complete caller-owned suffix remains intact.",
+          "Empty body throws Error; no exception message pattern is enforced."
+        ],
+        "literalComparisonJustification": "The body is opaque caller input, not expected guidance authored as an oracle. Exact suffix is the promised preservation/placement of supplied data. Wrapper meaning is separately judged in continue-en/zh.",
+        "scope": "Public formatter payload/empty-input contract, not a claim that supplied body or wrapper instructions are obeyed by a model.",
+        "verdict": "passed"
+      },
+      {
+        "file": "tests/diligence-push/diligence-budget-event.ts",
+        "change": "rewritten from manually shifted cwd/global recorder/timeout reader and incomplete mock phases to CLI-managed isolated execution and controlled provider boundary",
+        "originalValue": "Show UI consumption reaches exhausted state after actual allowed nudges, keep correct dialog attribution and let later human work continue. Old fixture lacked an explicit automatic-input response and failed before zero.",
+        "assertions": [
+          "For streaming and batch separately, real provider verifies dialog identity/transport; three initial requests/gen_start records and two durable diligence-origin prompts, exact three controlled response payloads, one notice, remaining budget0, Q4H[] and canDrive true establish actual consumption.",
+          "A later human input yields request/generation4 and the fourth original response with automatic prompt count still2 and persisted budget0. This proves manual continuation without refilling.",
+          "Action-before-EOS local recorder rejects any stream_error_evt; messageProvider.assertNoErrors rethrows swallowed fixture assertions. External generator is unregistered in finally.",
+          "UI budget observations contain1 and0, end0, are integer/nonnegative/nonincreasing, and maintain injectedCount=2-remainingCount, max2/disablefalse and root/self attribution. Duplicate zero snapshots are allowed because they are state notifications; requests/prompt count/disk balance, not notification count, prove two charges."
+        ],
+        "literalComparisonJustification": "response-data-N is controlled provider payload data; record/event enums, IDs, counts and persisted balances are public machine effects. Notice meaning is reviewed subjectively as consumed-streaming/batch.",
+        "scope": "Real local driver, persistence and event streams with message-only controlled external provider. Does not establish model reasoning, task completion, network provider behavior or actual rendered WebUI.",
+        "verdict": "passed"
+      },
+      {
+        "file": "tests/diligence-push/q4h-diligence-push-i18n.ts",
+        "change": "retains real shared zero-budget fixture and strengthens local-error/persistent manual-continuation observation; removes redundant type-guard branches",
+        "originalValue": "An empty automatic allowance is informational: original human answer survives, no fabricated question blocks the dialog, and new human work remains possible in each language.",
+        "assertions": [
+          "Each language observes initial durable answer/payload, exactly one generation/no automatic prompts/one notice, budget0, no questions and canDrive true. Exact language code is dialog state, not a sentence-language keyword test.",
+          "Subsequent real human turn persists second answer with its given payload and canDrive true, no stream_error_evt and budget still0. Initial Q4H state is queried explicitly; the later turn does not add a second separate question-state assertion.",
+          "Initial notice and complete scenario facts are emitted in empty-budget-en/zh for subjective review. Shared fixture error observation also protects the original26 producer."
+        ],
+        "literalComparisonJustification": "Given answer payloads, language identifiers, event types, counts and budget state are machine/data contracts. No equality to explanatory notice or keyword-based interpretation remains.",
+        "scope": "Actual isolated runtime and controlled MockGen answer tools, not browser/WebSocket answer handling or both explicit transports in this specific candidate.",
+        "verdict": "passed"
+      },
+      {
+        "file": "tests/diligence-push/q4h-global-broadcast.ts",
+        "change": "reuses CLI-installed recorder; synthetic public bus component inputs replace private recorder lifecycle/cwd drift and incomplete output checks",
+        "originalValue": "Forward global-only Q4H/answer/side-created/background-summary events with original payload/context, touch the dialog list, and avoid local duplicate delivery.",
+        "assertions": [
+          "Five explicit public events are cloned before posting; global four preserve ordered event types and full supplied payloads, root/self identity and nonempty timestamps; explicitly supplied timestamp remains exact.",
+          "Local EOS stream contains only the display-state event. Ordered touched source types cover all five inputs with the same dialog identity. Arrays/counts reject duplicates rather than hiding them in sets.",
+          "Branded assignment location values use public factories; complete nested side node and question data remain original input."
+        ],
+        "literalComparisonJustification": "Event enum names route real public bus traffic; body, assignment, time and identifiers are opaque synthetic input whose exact transmission is the requirement, not an interpretation of their meaning.",
+        "scope": "Public event-forwarding component with synthetic question/answer/side-created inputs. It does not create a real side dialog, answer a real human question, prove human interaction or schedule any work.",
+        "verdict": "passed"
+      },
+      {
+        "file": "tests/diligence-push/retry-recovery-bypasses-budget.ts",
+        "change": "real initialized main dialog and same-root child replace incomplete manual instance/fake self-target obligation; redundant unreachable union branches removed",
+        "originalValue": "Recovery can prepare a prompt at exhausted/zero-default allowance without ordinary deduction, while explicit disable and active reply obligations remain stronger gates. Operator-added balances remain usable independently of member defaults.",
+        "assertions": [
+          "Ordinary remaining0/default2 returns budget_exhausted0; recovery bypass returns prompt/origin diligence_push and leaves0. Explicit disable still blocks.",
+          "Default0/balance0 ordinary is disabled, but balance3/default0 yields prompt next2/max0; balance7/default2 next6/max2. Recovery works with ordinary default0.",
+          "A real same-root child has a durable tellaskBack call and root obligation targeting that call. Recovery is disabled with next budget3 unchanged while this obligation is active.",
+          "Three post-assert impossible kind branches are removed after assert.equal already narrows the public tagged union; no coverage or runtime checks are removed, and no broad type cast weakens the contract."
+        ],
+        "literalComparisonJustification": "Public preparation kind/origin enums, numeric budgets and exact durable call IDs are actual machine policy/data. No prompt meaning is inferred from spelling.",
+        "scope": "Public preparation policy plus real persistence/obligation components, not a complete empty-response recovery generation chain or a genuine reply delivery.",
+        "verdict": "passed"
+      }
+    ],
+    "support": [
+      {
+        "file": "tests/helpers/budget-exhaustion-fixture.ts",
+        "verdict": "passed",
+        "value": "Real initial human answer through answerHuman with member default3 but actual remaining0, one actual UI-only notice, no automatic prompts/questions and driveable dialog; explicit second mock response supports a later human request. New pre-action local recorder drains to EOS and rejects stream errors; no global recorder can substitute for this. Runtime text generation was not replaced with an expected sentence.",
+        "scope": "Shared managed-rtws fixture; context-guidance observes only initial notice, q4h candidate actually invokes the second turn. Fixture is support, not an independently counted passing candidate."
+      },
+      {
+        "file": "tests/semantic/context-guidance.ts",
+        "verdict": "passed",
+        "value": "24 guidance/manual cases call public renderers with explicit language/scope/countdown/transition arguments, while2 budget cases collect actual initial runtime notice. Actual text plus context/questions is emitted through common pending writer. No automated semantic acceptance is added.",
+        "scope": "Renderer evidence is not the full actual provider request, actual measured context health or actual human delivery. Routing chapter review is limited to gofor/nogo despite complete chapter retention."
+      },
+      {
+        "files": ["tests/run.mjs", "package.json", "tests/package.json"],
+        "verdict": "passed",
+        "value": "Context behavior lane expands6→8 by adding budget-event/global-forwarding, retaining existing WS boundary candidate without recounting it as new. Explicit semantic lane runs3 producers for26+2+2 fresh outputs, pending subjective acceptance. Legacy rtws commands delegate to the isolated CLI; pure formatter remains direct tsx. Suite process success cannot accept natural-language meaning.",
+        "scope": "Existing runner orchestration reused; no new dependency/framework, production behavior or generic text detector introduced."
+      },
+      {
+        "files": ["AGENTS.md", "tests/README.md", "docs/testing-strategy.md", "tests/audit.json"],
+        "verdict": "passed",
+        "value": "Final text distinguishes public policy/forwarding from actual user/queued-message driving, preserves the short opaque-body regression value, records missing mock phase and legitimate duplicate snapshots, and states semantic generation pending and whole-test types failure. All7 reviewed ledger entries correspond to this complete independent review; the ledger does not accept future language output."
+      }
+    ],
+    "exactComparisonRule": "The retained string comparisons prove execution enums, event types, branded locations, identity/timestamp, opaque caller/provider payload preservation or exact input placement. None is accepted merely because labeled machine contract. Explanatory guidance and notices are accepted only through this subjective review.",
+    "productionProtocolCrossCheck": "Current drive.ts emits budget state for every non-disabled preparation, including budget_exhausted; another exhausted observation can legitimately repeat zero. It derives max/remaining/injected fields arithmetically. runtime.ts distinguishes actual remaining balance from member creation default, preserves explicit disable and reply obligation gates before recovery bypass, and makes exhausted notice informational rather than Q4H. These implementations support the asserted public effects; they are not a language oracle.",
+    "ledger": {
+      "verdict": "passed",
+      "newlyReviewed": 7,
+      "existingEighthContextCandidate": "websocket-user-msg-generation-boundary.ts; previously audited eligibility/language component, unchanged and not counted anew",
+      "inventoryReportedByParent": {
+        "typescript": 282,
+        "support": 20,
+        "candidates": 262,
+        "reviewed": 127,
+        "remaining": 135,
+        "outsideSuites": 127,
+        "missingDirectScripts": 0,
+        "stale": 0
+      },
+      "scope": "Inventory is bookkeeping, not semantic/behavior coverage or automatic acceptance. Remaining135 candidates stay outside this review."
+    }
+  },
+  "failureHistory": [
+    {
+      "id": "baseline-missing-automatic-phase",
+      "classification": "fixture failure; no product fix claimed",
+      "conclusion": "Baseline7 attempted6passed/1failed. Old budget fixture configured only initial user input; automatic continuation had no configured provider response, raised local stream error and observed remaining snapshots[1] without reaching0. Preserved as failed, not rescued by a wording match or accepting provider error as ordinary response.",
+      "summary": {
+        "total": 7,
+        "passed": 6,
+        "failed": 1,
+        "timedOut": 0,
+        "results": [
+          {
+            "id": "context-health/caution-cadence.ts",
+            "status": "passed",
+            "durationMs": 403,
+            "code": 0,
+            "signal": null,
+            "logPath": "/tmp/dominds-context-budget-baseline-4ff8fede/001-context-health_caution-cadence.ts.log",
+            "tempDir": "/tmp/dominds-context-budget-baseline-4ff8fede/1.tmp"
+          },
+          {
+            "id": "context-health/critical-user-interjection.ts",
+            "status": "passed",
+            "durationMs": 406,
+            "code": 0,
+            "signal": null,
+            "logPath": "/tmp/dominds-context-budget-baseline-4ff8fede/002-context-health_critical-user-interjection.ts.log",
+            "tempDir": "/tmp/dominds-context-budget-baseline-4ff8fede/2.tmp"
+          },
+          {
+            "id": "diligence-push/auto-continue-prompt-format.ts",
+            "status": "passed",
+            "durationMs": 416,
+            "code": 0,
+            "signal": null,
+            "logPath": "/tmp/dominds-context-budget-baseline-4ff8fede/003-diligence-push_auto-continue-prompt-format.ts.log",
+            "tempDir": "/tmp/dominds-context-budget-baseline-4ff8fede/3.tmp"
+          },
+          {
+            "id": "diligence-push/diligence-budget-event.ts",
+            "status": "failed",
+            "durationMs": 4701,
+            "code": 1,
+            "signal": null,
+            "logPath": "/tmp/dominds-context-budget-baseline-4ff8fede/004-diligence-push_diligence-budget-event.ts.log",
+            "tempDir": "/tmp/dominds-context-budget-baseline-4ff8fede/4.tmp"
+          },
+          {
+            "id": "diligence-push/q4h-diligence-push-i18n.ts",
+            "status": "passed",
+            "durationMs": 2613,
+            "code": 0,
+            "signal": null,
+            "logPath": "/tmp/dominds-context-budget-baseline-4ff8fede/005-diligence-push_q4h-diligence-push-i18n.ts.log",
+            "tempDir": "/tmp/dominds-context-budget-baseline-4ff8fede/5.tmp"
+          },
+          {
+            "id": "diligence-push/q4h-global-broadcast.ts",
+            "status": "passed",
+            "durationMs": 1755,
+            "code": 0,
+            "signal": null,
+            "logPath": "/tmp/dominds-context-budget-baseline-4ff8fede/006-diligence-push_q4h-global-broadcast.ts.log",
+            "tempDir": "/tmp/dominds-context-budget-baseline-4ff8fede/6.tmp"
+          },
+          {
+            "id": "diligence-push/retry-recovery-bypasses-budget.ts",
+            "status": "passed",
+            "durationMs": 1770,
+            "code": 0,
+            "signal": null,
+            "logPath": "/tmp/dominds-context-budget-baseline-4ff8fede/007-diligence-push_retry-recovery-bypasses-budget.ts.log",
+            "tempDir": "/tmp/dominds-context-budget-baseline-4ff8fede/7.tmp"
+          }
+        ]
+      },
+      "evidence": {
+        "originalPathLabel": "/tmp/dominds-context-budget-baseline-4ff8fede/004-diligence-push_diligence-budget-event.ts.log",
+        "sha256": "df043f55d96a5876b043723db3cece8603b8c00f3911ffeb7e0f71189130d4cc",
+        "completeText": "[2026/10/31-07:06:25] WARN: LLM request attempt failed\nMockFixtureError: Mock scenario has no configured response.\n\nInput role: \"user\"\nNo assistant response or tool call was generated. Configure an explicit response for this input.\n\nDatabase: `mock-db/default.yaml`\n\nAdd to database:\n```yaml\nresponses:\n  - message: \"[System notice] This is a Dominds auto-continue notice, not a new user request.\\nDo not treat this notice as a new to-do, and do not reply with a standalone \\\"acknowledged/ok/I will think first/I will organize things first\\\".\\nFollow the guidance below and continue the task directly; if you reach a conclusion, turn it into concrete action promptly instead of stopping at a decision report or acknowledgement.\\n\\n---\\n\\nAssess the task from the fixed Main Dialog goal reminder, Taskdoc, and currently observable facts.\\n\\nIf the goal or next step is unclear, organize known facts and follow the system FBR rules when capabilities and context allow. Use `askHuman` for one minimal, answerable question only when a decision, authorization, or input must come from the human.\\n\\nIf the goal is complete, use `answerHuman` to deliver the result, evidence, and remaining limits. Ask about acceptance only when an essential human decision or input is still missing; ordinary completion goes through the answer channel.\\n\\nIf work remains and a clear, valuable next step is available, execute the needed tool call or teammate tellask now. Do not stop at reporting a decision or an empty acknowledgment.\\n\\nIf you cannot continue, describe the observed blocker. Ask a concrete question when human input is required, or deliver available results directly. Respect runtime stop, wait, and budget state.\\n\\n---\\n\\n**Notes**:\\n\\nOnce you have determined the next move, immediately turn that conclusion into executable action (tool call / teammate tellask), and avoid staying in a “decision report only” state.\\n\\nIf a teammate replies that they “will/can do X”, examine whether it aligns with the overall/sub-task goals and is worth continuing:\\n- If it is optional and low impact, ignore it instead of assigning trivial work.\\n- If it is worth continuing, correct or encourage as needed and immediately tellask them to continue; leaving them idle and waiting for instructions is unacceptable.\\n\\nThe system auto-adds this reminder when still-running Tellasks first appear and auto-refreshes it as status changes. It is only a system status window: its content is not hand-editable; while any Tellask is active it is not deletable, and at zero in-flight it may be deleted manually.\\n\\nWhen this reminder explicitly says there are no in-flight Tellasks and no agents working in the background, any “keep waiting” thought or behavior is wrong; if you clearly know this, you may delete the reminder manually to reduce noise.\\n\\nLikewise, if a “⏳ In-flight Tellasks (N total, auto-maintained; manually deletable only at zero in-flight)” reminder is absent, or a historical Tellask is not listed in that reminder, there is no waitable in-flight T...[truncated 1903 chars]\n[2026/10/31-07:06:25] ERROR: Dialog stream error 'Mock scenario has no configured response.\n\nInput role: \"user\"\nNo assistant response or tool call was generated. Configure an explicit response for this input.\n\nDatabase: `mock-db/default.yaml`\n\nAdd to database:\n```yaml\nresponses:\n  - message: \"[System notice] This is a Dominds auto-continue notice, not a new user request.\\nDo not treat this notice as a new to-do, and do not reply with a standalone \\\"acknowledged/ok/I will think first/I will organize things first\\\".\\nFollow the guidance below and continue the task directly; if you reach a conclusion, turn it into concrete action promptly instead of stopping at a decision report or acknowledgement.\\n\\n---\\n\\nAssess the task from the fixed Main Dialog goal reminder, Taskdoc, and currently observable facts.\\n\\nIf the goal or next step is unclear, organize known facts and follow the system FBR rules when capabilities and context allow. Use `askHuman` for one minimal, answerable question only when a decision, authorization, or input must come from the human.\\n\\nIf the goal is complete, use `answerHuman` to deliver the result, evidence, and remaining limits. Ask about acceptance only when an essential human decision or input is still missing; ordinary completion goes through the answer channel.\\n\\nIf work remains and a clear, valuable next step is available, execute the needed tool call or teammate tellask now. Do not stop at reporting a decision or an empty acknowledgment.\\n\\nIf you cannot continue, describe the observed blocker. Ask a concrete question when human input is required, or deliver available results directly. Respect runtime stop, wait, and budget state.\\n\\n---\\n\\n**Notes**:\\n\\nOnce you have determined the next move, immediately turn that conclusion into executable action (tool call / teammate tellask), and avoid staying in a “decision report only” state.\\n\\nIf a teammate replies that they “will/can do X”, examine whether it aligns with the overall/sub-task goals and is worth continuing:\\n- If it is optional and low impact, ignore it instead of assigning trivial work.\\n- If it is worth continuing, correct or encourage as needed and immediately tellask them to continue; leaving them idle and waiting for instructions is unacceptable.\\n\\nThe system auto-adds this reminder when still-running Tellasks first appear and auto-refreshes it as status changes. It is only a system status window: its content is not hand-editable; while any Tellask is active it is not deletable, and at zero in-flight it may be deleted manually.\\n\\nWhen this reminder explicitly says there are no in-flight Tellasks and no agents working in the background, any “keep waiting” thought or behavior is wrong; if you clearly know this, you may delete the reminder manually to reduce noise.\\n\\nLikewise, if a “⏳ In-flight Tellasks (N total, auto-maintained; manually deletable only at zero in-flight)” reminder is absent, or a historical Tellask is not listed in that reminder, there is no waitable in-flight Tellask for it ...[log_line_truncated limit=3072]\nkeep-going diligence budget event (streaming): FAIL\nExpected remainingCount to reach 0 (budget exhausted), got: [1]\n[tests/cli] Keeping isolated rtws at /tmp/dominds-context-budget-baseline-4ff8fede/4.tmp/dominds-tests-rtws-gU2T7c\n",
+        "retention": "Complete original file embedded. Any truncation marker inside the baseline logger output was already present at emission; this review did not reconstruct omitted logger text."
+      }
+    },
+    {
+      "id": "first-rewrite-fixed-event-count",
+      "classification": "test-design correction; legitimate protocol observation rejected by too-specific event-count assumption",
+      "conclusion": "First rewritten budget test failed because actual state snapshots[1,0,0,0] differed from assumed[1,0]. Product protocol may repeat exhausted0. Final test separately proves two real charges by requests/prompts/durable balance and checks UI state/nonnegative monotonicity instead of forcing notification count. No timeout increase/retry-until-green/product fix.",
+      "evidence": {
+        "originalPathLabel": "/tmp/dominds-budget-event-first.log",
+        "sha256": "9d881f80f2d340d8c875f1f0e279b0fe1d22e367ac1aa024e9cacab8fec4c398",
+        "completeText": "$ tsx cli.ts -- --isolated-rtws diligence-push/diligence-budget-event.ts --semantic\nAssertionError [ERR_ASSERTION]: Expected values to be strictly deep-equal:\n+ actual - expected\n\n  [\n    1,\n    0,\n+   0,\n+   0\n  ]\n\n    at <anonymous> (/ws/AiWorks/dominds/tests/diligence-push/diligence-budget-event.ts:157:16)\n    at async withTempRtws (/ws/AiWorks/dominds/tests/kernel-driver/helpers.ts:60:3)\n    at async main (/ws/AiWorks/dominds/tests/diligence-push/diligence-budget-event.ts:17:3) {\n  generatedMessage: true,\n  code: 'ERR_ASSERTION',\n  actual: [Array],\n  expected: [Array],\n  operator: 'deepStrictEqual',\n  diff: 'simple'\n}\n[tests/cli] Keeping isolated rtws at /tmp/dominds-tests-rtws-qLmXki\n[ELIFECYCLE] Command failed with exit code 1.\n",
+        "retention": "Complete original file embedded. Any truncation marker inside the baseline logger output was already present at emission; this review did not reconstruct omitted logger text."
+      }
+    }
+  ],
+  "provenance": {
+    "materialRootLabel": "dominds-tests-context-semantic-0JJ7ME",
+    "runtime": "Parent confirms all commands use /tmp/dominds-pnpm: Node v24.19.0 and Corepack pnpm11.17.0. Default shell runtime is not evidence-generation provenance.",
+    "reproduction": [
+      "Run pinned Corepack pnpm run test:semantic:context from repository root; it runs the three explicit isolated producers.",
+      "Alternatively run each generator through tests/cli.ts with --isolated-rtws and --semantic, matching the generator paths recorded per case.",
+      "Fresh output remains pending; matching IDs or hashes cannot import these verdicts."
+    ],
+    "retention": "All30 complete original semantic evidence bodies and relevant contexts are embedded. Source base plus final source fingerprints and explicit generator identify the reviewed material; temporary directories are labels, not durable dependencies. Hashes are for traceability only.",
+    "sourceFingerprintStatus": "frozen after parent confirmed final ledger/docs/source; report itself is not self-hashed",
+    "sourceFingerprints": [
+      {
+        "file": "AGENTS.md",
+        "role": "changed batch source/document/ledger/entry reviewed in complete diff",
+        "sha256": "551db046359c886e90ae331780bfd003408cbb3e366640690ef45468e20a4ded",
+        "baseSha256": "56183ec6b89b945d1c0accce6de0968fbfc83cb85285f32ad79108d8d6c4bf3f",
+        "changedFromBase": true
+      },
+      {
+        "file": "docs/testing-strategy.md",
+        "role": "changed batch source/document/ledger/entry reviewed in complete diff",
+        "sha256": "0967694a1ef70f4c76e426d1bf23c3520eb8bf201a1a3c12fe933077096d7481",
+        "baseSha256": "dedba293abaff76b1c8212405967cccff90ff8f60b149ab3d27b34b63d6314dc",
+        "changedFromBase": true
+      },
+      {
+        "file": "main/bootstrap/global-dialog-event-broadcaster.ts",
+        "role": "unchanged product dependency relevant to emitted text/public behavior; fingerprint is provenance, not whole-file/full-product acceptance",
+        "sha256": "53a51e466c7cb736266d6b4e6466ce412c7c682afc219d6a5b94ec8197fe0df2",
+        "baseSha256": "53a51e466c7cb736266d6b4e6466ce412c7c682afc219d6a5b94ec8197fe0df2",
+        "changedFromBase": false
+      },
+      {
+        "file": "main/dialog.ts",
+        "role": "unchanged product dependency relevant to emitted text/public behavior; fingerprint is provenance, not whole-file/full-product acceptance",
+        "sha256": "86d52e01fd224791c49c9438dca20e44991c0396bfc0a95738483908cccf6966",
+        "baseSha256": "86d52e01fd224791c49c9438dca20e44991c0396bfc0a95738483908cccf6966",
+        "changedFromBase": false
+      },
+      {
+        "file": "main/evt-registry.ts",
+        "role": "unchanged product dependency relevant to emitted text/public behavior; fingerprint is provenance, not whole-file/full-product acceptance",
+        "sha256": "40660656193c21f57698a6819f3707cd281a0e5d631aa8429388e16a82f75415",
+        "baseSha256": "40660656193c21f57698a6819f3707cd281a0e5d631aa8429388e16a82f75415",
+        "changedFromBase": false
+      },
+      {
+        "file": "main/llm/gen/mock.ts",
+        "role": "unchanged product dependency relevant to emitted text/public behavior; fingerprint is provenance, not whole-file/full-product acceptance",
+        "sha256": "9958c0807818108bf0ff9fdcd692cb53af45ff29c5899693ca292d6ffc73553c",
+        "baseSha256": "9958c0807818108bf0ff9fdcd692cb53af45ff29c5899693ca292d6ffc73553c",
+        "changedFromBase": false
+      },
+      {
+        "file": "main/llm/gen/registry.ts",
+        "role": "unchanged product dependency relevant to emitted text/public behavior; fingerprint is provenance, not whole-file/full-product acceptance",
+        "sha256": "37d40608552950a2d9afe13823d6119f3976fcd3d66ea9d18b9956230a4c4b14",
+        "baseSha256": "37d40608552950a2d9afe13823d6119f3976fcd3d66ea9d18b9956230a4c4b14",
+        "changedFromBase": false
+      },
+      {
+        "file": "main/llm/kernel-driver/context-health.ts",
+        "role": "unchanged product dependency relevant to emitted text/public behavior; fingerprint is provenance, not whole-file/full-product acceptance",
+        "sha256": "af9cbff409807d95d83da24596ae563c0d361cadb31d0e6623429285d3731bb9",
+        "baseSha256": "af9cbff409807d95d83da24596ae563c0d361cadb31d0e6623429285d3731bb9",
+        "changedFromBase": false
+      },
+      {
+        "file": "main/llm/kernel-driver/drive.ts",
+        "role": "unchanged product dependency relevant to emitted text/public behavior; fingerprint is provenance, not whole-file/full-product acceptance",
+        "sha256": "9163ae13323b3f06239d0bdab3d87ca8a5b6fa00653afe07f1f0de53b5126622",
+        "baseSha256": "9163ae13323b3f06239d0bdab3d87ca8a5b6fa00653afe07f1f0de53b5126622",
+        "changedFromBase": false
+      },
+      {
+        "file": "main/llm/kernel-driver/runtime.ts",
+        "role": "unchanged product dependency relevant to emitted text/public behavior; fingerprint is provenance, not whole-file/full-product acceptance",
+        "sha256": "9fff45f1f181b86aada40bbe89807d044155fa140a4b9aefd4d6d271e80c3750",
+        "baseSha256": "9fff45f1f181b86aada40bbe89807d044155fa140a4b9aefd4d6d271e80c3750",
+        "changedFromBase": false
+      },
+      {
+        "file": "main/minds/load.ts",
+        "role": "unchanged product dependency relevant to emitted text/public behavior; fingerprint is provenance, not whole-file/full-product acceptance",
+        "sha256": "8ac5f6cfa10711e1a866022a9d1a6105162a87e12d28aaed0926b5717a0310c5",
+        "baseSha256": "8ac5f6cfa10711e1a866022a9d1a6105162a87e12d28aaed0926b5717a0310c5",
+        "changedFromBase": false
+      },
+      {
+        "file": "main/minds/system-prompt.ts",
+        "role": "unchanged product dependency relevant to emitted text/public behavior; fingerprint is provenance, not whole-file/full-product acceptance",
+        "sha256": "0bc81bbd93cc2eaa67d591ea4e9510a0f3340a15ff0ef984c3915789ec4de718",
+        "baseSha256": "0bc81bbd93cc2eaa67d591ea4e9510a0f3340a15ff0ef984c3915789ec4de718",
+        "changedFromBase": false
+      },
+      {
+        "file": "main/persistence.ts",
+        "role": "unchanged product dependency relevant to emitted text/public behavior; fingerprint is provenance, not whole-file/full-product acceptance",
+        "sha256": "0cec578ad261491aa6437e0c7cc6e21782a9e239e75edc64e962c2175c125baf",
+        "baseSha256": "0cec578ad261491aa6437e0c7cc6e21782a9e239e75edc64e962c2175c125baf",
+        "changedFromBase": false
+      },
+      {
+        "file": "main/runtime/driver-messages.ts",
+        "role": "unchanged product dependency relevant to emitted text/public behavior; fingerprint is provenance, not whole-file/full-product acceptance",
+        "sha256": "9370fb6c21f8aa2afa7646bed3d3e54d91c3f02fba88157243b2c0017de88148",
+        "baseSha256": "9370fb6c21f8aa2afa7646bed3d3e54d91c3f02fba88157243b2c0017de88148",
+        "changedFromBase": false
+      },
+      {
+        "file": "main/team.ts",
+        "role": "unchanged product dependency relevant to emitted text/public behavior; fingerprint is provenance, not whole-file/full-product acceptance",
+        "sha256": "15011ab16f5b36eda146a13201de9fbd9b4c0fde8ece9bc04fd26b0b1aff707c",
+        "baseSha256": "15011ab16f5b36eda146a13201de9fbd9b4c0fde8ece9bc04fd26b0b1aff707c",
+        "changedFromBase": false
+      },
+      {
+        "file": "main/tools/builtins.ts",
+        "role": "unchanged product dependency relevant to emitted text/public behavior; fingerprint is provenance, not whole-file/full-product acceptance",
+        "sha256": "f95578ba821e743d5234ee95553b370477de2cbe7f66f1199d961ad9d1c15ca5",
+        "baseSha256": "f95578ba821e743d5234ee95553b370477de2cbe7f66f1199d961ad9d1c15ca5",
+        "changedFromBase": false
+      },
+      {
+        "file": "main/tools/team_mgmt-manual.ts",
+        "role": "unchanged product dependency relevant to emitted text/public behavior; fingerprint is provenance, not whole-file/full-product acceptance",
+        "sha256": "36bad53a297d34700f442182cdd9a958155a83893b48a3067606557e31c9b584",
+        "baseSha256": "36bad53a297d34700f442182cdd9a958155a83893b48a3067606557e31c9b584",
+        "changedFromBase": false
+      },
+      {
+        "file": "main/tools/team_mgmt.ts",
+        "role": "unchanged product dependency relevant to emitted text/public behavior; fingerprint is provenance, not whole-file/full-product acceptance",
+        "sha256": "7c298ede3f77dc9a22057ea268c197e4fa8c2f5c08985fab093e08204262f24a",
+        "baseSha256": "7c298ede3f77dc9a22057ea268c197e4fa8c2f5c08985fab093e08204262f24a",
+        "changedFromBase": false
+      },
+      {
+        "file": "package.json",
+        "role": "changed batch source/document/ledger/entry reviewed in complete diff",
+        "sha256": "1a9b7d23791312abe83d16282f981d84eef0b980d31ed7b232b3b6875f407507",
+        "baseSha256": "10e06900210cddabb46bc8b7bc5679b4f08bae7754e536efcd1e1e8347ab8e18",
+        "changedFromBase": true
+      },
+      {
+        "file": "packages/kernel/src/diligence.ts",
+        "role": "unchanged product dependency relevant to emitted text/public behavior; fingerprint is provenance, not whole-file/full-product acceptance",
+        "sha256": "9b8e290d76dcaf27a249c44be8cdd65bebb0ede6c2c536cc40c8b1ffc1a96316",
+        "baseSha256": "9b8e290d76dcaf27a249c44be8cdd65bebb0ede6c2c536cc40c8b1ffc1a96316",
+        "changedFromBase": false
+      },
+      {
+        "file": "tests/README.md",
+        "role": "changed batch source/document/ledger/entry reviewed in complete diff",
+        "sha256": "37f0768d967fe494e76372db8bff225405627bd29874767d97a43b7ad4a927cc",
+        "baseSha256": "efe0bba57a44f4f3a9a8c9602d223dc7fd9b5bd4abd6fbe089642c1d3ceb5c10",
+        "changedFromBase": true
+      },
+      {
+        "file": "tests/audit.json",
+        "role": "changed batch source/document/ledger/entry reviewed in complete diff",
+        "sha256": "908c29f1e28be26c487ef595abe7461028503f8531467d958d746522f4611248",
+        "baseSha256": "23d28fefffb952f07540ad7bcbd4fe169ff92b6a278f384d56736bad3e161650",
+        "changedFromBase": true
+      },
+      {
+        "file": "tests/cli.ts",
+        "role": "existing evidence/execution support dependency; identity retained, not a newly counted candidate",
+        "sha256": "b9f9bc1f034a2a70c4b7bfbc2300ae854706f09a9788b7f4ca17b3a263f41598",
+        "baseSha256": "b9f9bc1f034a2a70c4b7bfbc2300ae854706f09a9788b7f4ca17b3a263f41598",
+        "changedFromBase": false
+      },
+      {
+        "file": "tests/context-health/caution-cadence.ts",
+        "role": "unchanged candidate; complete source independently audited anew",
+        "sha256": "44dca62f09fc948775fe54783f99f23e4841ac415a4c31855d3c1cb7ee958cd2",
+        "baseSha256": "44dca62f09fc948775fe54783f99f23e4841ac415a4c31855d3c1cb7ee958cd2",
+        "changedFromBase": false
+      },
+      {
+        "file": "tests/context-health/critical-user-interjection.ts",
+        "role": "unchanged candidate; complete source independently audited anew",
+        "sha256": "8193927bd0f28c2e8b53b05a3711cbdccd9b6638d4870a96d44507d40beb3953",
+        "baseSha256": "8193927bd0f28c2e8b53b05a3711cbdccd9b6638d4870a96d44507d40beb3953",
+        "changedFromBase": false
+      },
+      {
+        "file": "tests/diligence-push/auto-continue-prompt-format.ts",
+        "role": "unchanged candidate; complete source independently audited anew",
+        "sha256": "5482a2d0f02f0cc6bd4baf772168b7b1ba680d724088005df961cebefcc33b61",
+        "baseSha256": "5482a2d0f02f0cc6bd4baf772168b7b1ba680d724088005df961cebefcc33b61",
+        "changedFromBase": false
+      },
+      {
+        "file": "tests/diligence-push/diligence-budget-event.ts",
+        "role": "changed batch source/document/ledger/entry reviewed in complete diff",
+        "sha256": "0c1dc8b5a126dedf589e66040dc9ef680a4eb931af3bb0015e555d4d5221b9ba",
+        "baseSha256": "4f0067def1667d509cf085e8cdf90aed524a2b4b7d9b76c07a8d49489e169213",
+        "changedFromBase": true
+      },
+      {
+        "file": "tests/diligence-push/q4h-diligence-push-i18n.ts",
+        "role": "changed batch source/document/ledger/entry reviewed in complete diff",
+        "sha256": "ef5b25770883ed646e01b2d691ebb4a5640e579fa7c5e70dd75989989f96d83d",
+        "baseSha256": "1cb29366ea5a6b5ddb889520b64cc304ecfe2ec6e2c15028b592b8c126956b2c",
+        "changedFromBase": true
+      },
+      {
+        "file": "tests/diligence-push/q4h-global-broadcast.ts",
+        "role": "changed batch source/document/ledger/entry reviewed in complete diff",
+        "sha256": "561f863895143c892fe29142c4b02db60393f7c9c95a7a42e14f39838666b916",
+        "baseSha256": "ac16577b42360738d0619a4bdf2b0dfeecad759c4441de094a56b4a1bc423a57",
+        "changedFromBase": true
+      },
+      {
+        "file": "tests/diligence-push/retry-recovery-bypasses-budget.ts",
+        "role": "changed batch source/document/ledger/entry reviewed in complete diff",
+        "sha256": "e96bfd16b66e893ad471a283fd379536dd8831748747e84ee1e468e0e15e2fef",
+        "baseSha256": "966d46d822a67b9602b2c8e827201c9ced2ad6f9c33fef59988ce5ef27117878",
+        "changedFromBase": true
+      },
+      {
+        "file": "tests/helpers/budget-exhaustion-fixture.ts",
+        "role": "changed batch source/document/ledger/entry reviewed in complete diff",
+        "sha256": "dbe7637517289c2a7daaa327a91ceeb739ff9688ded90455ef69e0a8f7ce4915",
+        "baseSha256": "2004b1d7add2171ba02c4c901834c7df79ab499f671c895d8c41bd5e372f1ae6",
+        "changedFromBase": true
+      },
+      {
+        "file": "tests/helpers/dialog-events.ts",
+        "role": "existing evidence/execution support dependency; identity retained, not a newly counted candidate",
+        "sha256": "2bd808d4444f7e02a825b18b0664680240d748ea671a65f7dd385ce2d5eb2592",
+        "baseSha256": "2bd808d4444f7e02a825b18b0664680240d748ea671a65f7dd385ce2d5eb2592",
+        "changedFromBase": false
+      },
+      {
+        "file": "tests/helpers/message-provider.ts",
+        "role": "existing evidence/execution support dependency; identity retained, not a newly counted candidate",
+        "sha256": "6fc5484d516ae293024a05cc81ad50fc70de7e0be7eb40ed3682c2db51109495",
+        "baseSha256": "6fc5484d516ae293024a05cc81ad50fc70de7e0be7eb40ed3682c2db51109495",
+        "changedFromBase": false
+      },
+      {
+        "file": "tests/helpers/semantic-evidence.ts",
+        "role": "existing evidence/execution support dependency; identity retained, not a newly counted candidate",
+        "sha256": "a41efd1058ea6d65394059180dabf987e17ef0d219bae95ca67edd33db7e3777",
+        "baseSha256": "a41efd1058ea6d65394059180dabf987e17ef0d219bae95ca67edd33db7e3777",
+        "changedFromBase": false
+      },
+      {
+        "file": "tests/kernel-driver/helpers.ts",
+        "role": "existing evidence/execution support dependency; identity retained, not a newly counted candidate",
+        "sha256": "520b1288cdb2114cb28cb9dcebdf95c7b0f19b1703fe3837a780ffb2d916f9a1",
+        "baseSha256": "520b1288cdb2114cb28cb9dcebdf95c7b0f19b1703fe3837a780ffb2d916f9a1",
+        "changedFromBase": false
+      },
+      {
+        "file": "tests/package.json",
+        "role": "changed batch source/document/ledger/entry reviewed in complete diff",
+        "sha256": "b1930cee960fe313fa2f9d5fe46bc5546146a0c5a923306f9a7a79259cfafb72",
+        "baseSha256": "52f968b572c4748b6cefbb1f72dc94b4f3d40524165e8f904f0a29925fcaf762",
+        "changedFromBase": true
+      },
+      {
+        "file": "tests/run.mjs",
+        "role": "changed batch source/document/ledger/entry reviewed in complete diff",
+        "sha256": "096150fb610526a0eba20234f78a80661ffddcff3eb390d0f2b150c73652a113",
+        "baseSha256": "3bc8fe185a2d49bb61f40374d0cf6837b3f463bb5608a79ba23909d958ce4a75",
+        "changedFromBase": true
+      },
+      {
+        "file": "tests/semantic/context-guidance.ts",
+        "role": "existing evidence/execution support dependency; identity retained, not a newly counted candidate",
+        "sha256": "7dcfc1070c69845549f6884f347c3d1b4e36eddb3ac234ece0161b3b44ee5dbc",
+        "baseSha256": "7dcfc1070c69845549f6884f347c3d1b4e36eddb3ac234ece0161b3b44ee5dbc",
+        "changedFromBase": false
+      }
+    ],
+    "completeTrackedDiffSha256": "83c3a7b464ef2bdc9c7d89e0ae1bafedf478802383ae68d2561d7b38402a72c4",
+    "completeTrackedDiffFiles": [
+      "AGENTS.md",
+      "docs/testing-strategy.md",
+      "package.json",
+      "tests/README.md",
+      "tests/audit.json",
+      "tests/diligence-push/diligence-budget-event.ts",
+      "tests/diligence-push/q4h-diligence-push-i18n.ts",
+      "tests/diligence-push/q4h-global-broadcast.ts",
+      "tests/diligence-push/retry-recovery-bypasses-budget.ts",
+      "tests/helpers/budget-exhaustion-fixture.ts",
+      "tests/package.json",
+      "tests/run.mjs"
+    ],
+    "identityMeaning": "SHA256 is only the identity of reviewed source/material. All30 judgments were made by complete subjective reading before identity capture. No output, test or ledger auto-accepts new text by comparing these hashes. Product dependency hashes do not imply whole-product review."
+  },
+  "limitations": [
+    "Only7 candidates are newly audited here; the existing eighth WS-boundary candidate is not recounted and remaining unaudited tests are not accepted.",
+    "24 public-renderer/manual examples establish the meaning of those supplied scenarios, not full provider requests, real model adherence, actual token measurements or every capability/persona. Six actual runtime notices have observed driver state; repeated text was nevertheless reviewed fresh case by case.",
+    "The two routing outputs retain the complete chapter, but acceptance is limited to gofor/nogo positive/negative routing, freeform shape and separation from member operating rules. Other team/model/manual policy is outside this review.",
+    "Critical/caution and retry preparation candidates are components with supplied states; public global forwarding uses synthetic inputs. They do not by themselves demonstrate WebSocket real-human delivery, actual side creation or the full retry chain.",
+    "Budget runs preserve runtime/driver/persistence/events and replace only external provider; they establish allowance accounting and manual continuation, not live provider/browser/task correctness.",
+    "Whole test-directory type check remains failed (parent reported213 diagnostics); focused type success and passing behavior suites do not make the full remediation goal complete.",
+    "No initial semantic case failed in this batch; baseline and first rewrite failures are execution/fixture/assertion-design history, not invented semantic rejection."
+  ],
+  "verification": {
+    "status": "context_scope_passed_full_types_and_inherited_smoke_business_acceptance_incomplete",
+    "runtime": "Node24.19.0; repository-pinned Corepack pnpm11.17 through /tmp/dominds-pnpm; no dependency/framework changes.",
+    "behavior": {
+      "context": {
+        "total": 8,
+        "passed": 8,
+        "failed": 0,
+        "timedOut": 0,
+        "cases": [
+          {
+            "id": "websocket-user-msg-generation-boundary.ts",
+            "status": "passed",
+            "exitCode": 0
+          },
+          {
+            "id": "context-health/caution-cadence.ts",
+            "status": "passed",
+            "exitCode": 0
+          },
+          {
+            "id": "context-health/critical-user-interjection.ts",
+            "status": "passed",
+            "exitCode": 0
+          },
+          {
+            "id": "diligence-push/auto-continue-prompt-format.ts",
+            "status": "passed",
+            "exitCode": 0
+          },
+          {
+            "id": "diligence-push/retry-recovery-bypasses-budget.ts",
+            "status": "passed",
+            "exitCode": 0
+          },
+          {
+            "id": "diligence-push/q4h-diligence-push-i18n.ts",
+            "status": "passed",
+            "exitCode": 0
+          },
+          {
+            "id": "diligence-push/diligence-budget-event.ts",
+            "status": "passed",
+            "exitCode": 0
+          },
+          {
+            "id": "diligence-push/q4h-global-broadcast.ts",
+            "status": "passed",
+            "exitCode": 0
+          }
+        ]
+      },
+      "smokeProcessResults": {
+        "total": 11,
+        "passed": 11,
+        "failed": 0,
+        "timedOut": 0,
+        "cases": [
+          {
+            "id": "auth.ts",
+            "status": "passed",
+            "exitCode": 0
+          },
+          {
+            "id": "llm-generation-metadata.ts",
+            "status": "passed",
+            "exitCode": 0
+          },
+          {
+            "id": "persistence/latest-writeback.ts",
+            "status": "passed",
+            "exitCode": 0
+          },
+          {
+            "id": "interruption-resumption.ts",
+            "status": "passed",
+            "exitCode": 0
+          },
+          {
+            "id": "access-control/dialogs-root-deny.ts",
+            "status": "passed",
+            "exitCode": 0
+          },
+          {
+            "id": "access-control/file-ext-names.ts",
+            "status": "passed",
+            "exitCode": 0
+          },
+          {
+            "id": "apps-host-ipc-contract.ts",
+            "status": "passed",
+            "exitCode": 0
+          },
+          {
+            "id": "toolsets/tool-availability-snapshot.ts",
+            "status": "passed",
+            "exitCode": 0
+          },
+          {
+            "id": "webapp/create-dialog-flow-ime.ts",
+            "status": "passed",
+            "exitCode": 0
+          },
+          {
+            "id": "webapp/create-dialog-flow-selection.ts",
+            "status": "passed",
+            "exitCode": 0
+          },
+          {
+            "id": "webapp/generation-model-presentation.ts",
+            "status": "passed",
+            "exitCode": 0
+          }
+        ],
+        "meaning": "Eleven zero process exits, not accepted business behavior of all inherited smoke cases. The unaudited interruption-resumption case emits a missing-provider-phase stream error and is being remediated next; it is not accepted by this batch."
+      }
+    },
+    "semanticGeneration": {
+      "producers": 3,
+      "completed": 3,
+      "failedProcesses": 0,
+      "timedOut": 0,
+      "freshCases": 30,
+      "origin": "dominds-tests-context-semantic-0JJ7ME",
+      "meaning": "Only thirty independently read actual outputs above passed. Generation alone is pending, and old verdicts/hashes cannot accept future text."
+    },
+    "runner": {
+      "passed": 5,
+      "failed": 0,
+      "log": {
+        "origin": "/tmp/dominds-context-budget-runner.log",
+        "sha256": "7a43eac637b66e9d55adbcc467f0be3692fcce58562e3f1925677551d6c83542",
+        "tail": [
+          "ℹ fail 0",
+          "ℹ cancelled 0",
+          "ℹ skipped 0",
+          "ℹ todo 0",
+          "ℹ duration_ms 2076.512216"
+        ]
+      }
+    },
+    "build": {
+      "exitCode": 0,
+      "log": {
+        "origin": "/tmp/dominds-context-budget-build.log",
+        "sha256": "dc574c667f5563212892142cf72886400b521b77e24ac04381db93d44361061b",
+        "tail": [
+          "codex-auth build: Done",
+          "packages/shell build$ tsc -p tsconfig.json",
+          "packages/shell build: Done",
+          "$ node ./scripts/run-pnpm.mjs -C webapp run build",
+          "$ node ./scripts/build.mjs"
+        ]
+      }
+    },
+    "appTypes": {
+      "exitCode": 0,
+      "log": {
+        "origin": "/tmp/dominds-context-budget-app-types.log",
+        "sha256": "41aa5be00a3d0c4d2223d9aee1e64fd44a1a074ddc49dbfbb33b30036175e87a",
+        "tail": [
+          "packages/kernel lint:types: Done",
+          "packages/shell lint:types$ tsc -p tsconfig.json --noEmit",
+          "packages/shell lint:types: Done",
+          "webapp lint:types$ tsc -p src/tsconfig.json --noEmit && node ./scripts/check-dom-events.mjs",
+          "webapp lint:types: Done"
+        ]
+      }
+    },
+    "focusedContextBudgetTypes": {
+      "exitCode": 0,
+      "scope": "All context-health/diligence-push candidates and the shared exhaustion fixture/context guidance producer, through an external config extending unchanged tests/tsconfig.json. Does not replace the full-directory check."
+    },
+    "fullTestTypes": {
+      "exitCode": 2,
+      "status": "failed",
+      "diagnostics": 213,
+      "previousDiagnostics": 217,
+      "byFile": {
+        "tests/apps-host-tool-result-contract.ts": 1,
+        "tests/apps-kernel-package-exports-contract.ts": 1,
+        "tests/interruption-resumption.ts": 10,
+        "tests/provider/anthropic-stream-errors.ts": 1,
+        "tests/provider/llm-quirks-retry-handling.ts": 63,
+        "tests/provider/openai-compatible-context-normalization.ts": 3,
+        "tests/provider/openai-compatible-volcengine-coding-plan.ts": 28,
+        "tests/provider/tool-choice-requirement.ts": 1,
+        "tests/provider/tool-result-image-size-fallback.ts": 3,
+        "tests/provider/user-image-model-support.ts": 1,
+        "tests/provider/volcengine-coding-plan-live-smoke.ts": 1,
+        "tests/reminders/app-reminder-render-mode-preserve.ts": 1,
+        "tests/reminders/daemon-exit-wake-event.ts": 19,
+        "tests/reminders/daemon-reminder-gone-exit-snapshot.ts": 1,
+        "tests/reminders/daemon-reminder-no-jitter-without-output-change.ts": 3,
+        "tests/reminders/daemon-reminder-render.ts": 2,
+        "tests/reminders/daemon-reminder-retained-after-exit.ts": 2,
+        "tests/reminders/daemon-start-receipt-lifecycle-card.ts": 2,
+        "tests/reminders/get-daemon-output-stream-selection.ts": 3,
+        "tests/reminders/main-dialog-goal-reminder.ts": 2,
+        "tests/reminders/migrate-reminder-scope.ts": 8,
+        "tests/reminders/pending-tellask-reminder-order.ts": 10,
+        "tests/reminders/pending-tellask-zero-state-no-jitter.ts": 4,
+        "tests/reminders/reminder-format.ts": 21,
+        "tests/reminders/reminder-owner-failure-loud.ts": 1,
+        "tests/reminders/reminder-render-mode.ts": 1,
+        "tests/reminders/shared-daemon-reminder-command-mismatch.ts": 2,
+        "tests/reminders/shared-daemon-reminder-persistence.ts": 2,
+        "tests/reminders/shared-daemon-reminder-wrapper-command-match.ts": 1,
+        "tests/reminders/task-agent-reminder-scope.ts": 10,
+        "tests/ripgrep-streaming.ts": 1,
+        "tests/ripgrep-windows-compat.ts": 1,
+        "tests/task-package.ts": 2,
+        "tests/toolsets/shell-cmd-capture-env.ts": 1
+      },
+      "meaning": "No weakened type assertions or narrowed repository type-check coverage/exclusions."
+    },
+    "knownUnacceptedSmokeBehavior": {
+      "case": "interruption-resumption.ts",
+      "status": "failed_inherited_business_acceptance_despite_zero_process_exit",
+      "observation": "Current smoke log contains a provider mock_response_missing failure on caller continuation and stream_error_evt; the subsequent preserved local-event probe correctly returns nonzero. Original side reply was already complete before the simulated restart. These are next-batch defects, not context acceptance.",
+      "currentSmokeLog": {
+        "origin": "/tmp/dominds-tests-smoke-ubUmXK/004-interruption-resumption.ts.log",
+        "sha256": "31ee0639c0b611f9d13f72d37c4460e51afd6b797dc307b2db7118058419e3e7",
+        "tail": [
+          "  },",
+          "  previousExecutionMarker: null,",
+          "  trigger: 'resume_dialog'",
+          "}",
+          "✅ interruption-resumption reconcile smoke test passed"
+        ]
+      },
+      "separateBaselineSummary": "dominds-interruption-baseline-4ff8fede/summary.json",
+      "localObservationProbeLog": {
+        "origin": "/tmp/dominds-interruption-local-error-red2.log",
+        "sha256": "e4ec67feba64263af4e83fed4c1b9064fd3afb4770821cf4024f27351955d3c1",
+        "tail": [
+          "  operator: 'deepStrictEqual',",
+          "  diff: 'simple'",
+          "}",
+          "[tests/cli] Keeping isolated rtws at /tmp/dominds-tests-rtws-6bF8JS",
+          "[ELIFECYCLE] Command failed with exit code 1."
+        ]
+      },
+      "probeScope": "External copy of the old case, with local event observation and failure-state retention; initial probe module bootstrap failure is not a behavioral regression result."
+    },
+    "inventory": {
+      "typescriptFiles": 282,
+      "supportFiles": 20,
+      "candidates": 262,
+      "reviewed": 127,
+      "remaining": 135,
+      "outsideSuites": 127,
+      "missingDirectScriptTargets": 0,
+      "staleAuditedPaths": 0
+    },
+    "preCommit": {
+      "status": "passed",
+      "trackedDocumentationOfflineLinkCheck": {
+        "trackedMarkdown": 201,
+        "newMarkdown": 0,
+        "canonicalDocuments": 69,
+        "excludedRuntimeSources": 131,
+        "localTargetsAndFragments": 353,
+        "networkLinksIgnored": 9,
+        "failures": []
+      },
+      "formatExitCode": 0,
+      "diffCheckExitCode": 0
+    },
+    "notRun": [
+      "No new kernel, persistence, configuration/manual/filesystem/recovery/bootstrap or other semantic suite acceptance claimed. The changed exhaustion fixture is used only by context candidates and its explicit producer.",
+      "No live-provider, native provider side-channel, real WebSocket/UI, real side creation from synthetic public forwarding events, OS process restart or platform matrix established by this batch."
+    ]
+  }
+}

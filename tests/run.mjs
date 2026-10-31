@@ -27,6 +27,8 @@ const context = [
   'diligence-push/auto-continue-prompt-format.ts',
   'diligence-push/retry-recovery-bypasses-budget.ts',
   'diligence-push/q4h-diligence-push-i18n.ts',
+  'diligence-push/diligence-budget-event.ts',
+  'diligence-push/q4h-global-broadcast.ts',
 ];
 
 const configuration = [
@@ -100,6 +102,11 @@ const bootstrap = [
   'env/env-tools.ts',
 ];
 const semanticSuites = {
+  context: [
+    'semantic/context-guidance.ts',
+    'diligence-push/diligence-budget-event.ts',
+    'diligence-push/q4h-diligence-push-i18n.ts',
+  ],
   bootstrap: ['cli/man-subcommand.ts', 'cli/validate-team-def-subcommand.ts', 'env/env-tools.ts'],
   recovery: recovery.filter((file) => !file.includes('open-generation-recovery-stale')),
   persistence: [
@@ -328,7 +335,7 @@ async function main() {
     ].includes(args[1])
   ) {
     throw new Error(
-      'Usage: node tests/run.mjs --list | --suite smoke | --suite kernel | --suite context | --suite configuration [--semantic] | --suite manual [--semantic] | --suite filesystem [--semantic] | --suite persistence [--semantic] | --suite recovery [--semantic] | --suite bootstrap [--semantic]',
+      'Usage: node tests/run.mjs --list | --suite smoke | --suite kernel | --suite context [--semantic] | --suite configuration [--semantic] | --suite manual [--semantic] | --suite filesystem [--semantic] | --suite persistence [--semantic] | --suite recovery [--semantic] | --suite bootstrap [--semantic]',
     );
   }
   const suite = args[1];

@@ -720,6 +720,48 @@
       "lane": "bootstrap",
       "value": "公开工具对原受限key读取/替换/删除/空值与参数拒绝的真实进程状态，无效请求不改环境，说明文字独立主观审查",
       "evidence": "Complete original/final/diff assertion review and nine fresh actual semantic outputs: tests/semantic/reviews/2026-10-31-bootstrap.json. Initial four misleading CLI availability explanations rejected and corrected; no word oracle. Local processes, controlled Node API proxy boundary and declaration-only MCP checks; no live routing/service availability or OS env persistence claim. Previous verdicts do not accept new output."
+    },
+    "context-health/caution-cadence.ts": {
+      "status": "reviewed",
+      "lane": "context",
+      "value": "公开上下文策略的首次/周期保全、输入/队列阻挡后延迟及恢复健康后的周期重置；组件决策/状态，不冒充实际用户投递",
+      "evidence": "Complete original/final/diff assertion review and thirty newly generated subjective cases: tests/semantic/reviews/2026-10-31-context-budget.json. Baseline missing-provider-phase failure and initial over-specified snapshot count are retained separately. Machine enum/count/state/input fidelity assertions, no semantic word oracle. Runtime budget consumption/answers use controlled external providers; ingress/policy/forwarding components have explicit limits. Previous verdicts never accept fresh output."
+    },
+    "context-health/critical-user-interjection.ts": {
+      "status": "reviewed",
+      "lane": "context",
+      "value": "公开告急策略对用户输入标志、已保全入口、倒计时与强制新程的决策；实际轮次驱动另见内核用例",
+      "evidence": "Complete original/final/diff assertion review and thirty newly generated subjective cases: tests/semantic/reviews/2026-10-31-context-budget.json. Baseline missing-provider-phase failure and initial over-specified snapshot count are retained separately. Machine enum/count/state/input fidelity assertions, no semantic word oracle. Runtime budget consumption/answers use controlled external providers; ingress/policy/forwarding components have explicit limits. Previous verdicts never accept fresh output."
+    },
+    "diligence-push/auto-continue-prompt-format.ts": {
+      "status": "reviewed",
+      "lane": "context",
+      "value": "调用者提供的不透明continuation正文保真、拒绝空正文；不按包装措辞判断语义",
+      "evidence": "Complete original/final/diff assertion review and thirty newly generated subjective cases: tests/semantic/reviews/2026-10-31-context-budget.json. Baseline missing-provider-phase failure and initial over-specified snapshot count are retained separately. Machine enum/count/state/input fidelity assertions, no semantic word oracle. Runtime budget consumption/answers use controlled external providers; ingress/policy/forwarding components have explicit limits. Previous verdicts never accept fresh output."
+    },
+    "diligence-push/diligence-budget-event.ts": {
+      "status": "reviewed",
+      "lane": "context",
+      "value": "streaming/batch真实初始轮次与两次自动提示消耗额度、UI状态快照、磁盘余额为零、局部错误拒绝及后续人工响应",
+      "evidence": "Complete original/final/diff assertion review and thirty newly generated subjective cases: tests/semantic/reviews/2026-10-31-context-budget.json. Baseline missing-provider-phase failure and initial over-specified snapshot count are retained separately. Machine enum/count/state/input fidelity assertions, no semantic word oracle. Runtime budget consumption/answers use controlled external providers; ingress/policy/forwarding components have explicit limits. Previous verdicts never accept fresh output."
+    },
+    "diligence-push/q4h-diligence-push-i18n.ts": {
+      "status": "reviewed",
+      "lane": "context",
+      "value": "中英文空额度实际提示保持信息性，不造问人状态或自动提示，人类答案与后续人工回答真实落盘且额度仍零",
+      "evidence": "Complete original/final/diff assertion review and thirty newly generated subjective cases: tests/semantic/reviews/2026-10-31-context-budget.json. Baseline missing-provider-phase failure and initial over-specified snapshot count are retained separately. Machine enum/count/state/input fidelity assertions, no semantic word oracle. Runtime budget consumption/answers use controlled external providers; ingress/policy/forwarding components have explicit limits. Previous verdicts never accept fresh output."
+    },
+    "diligence-push/q4h-global-broadcast.ts": {
+      "status": "reviewed",
+      "lane": "context",
+      "value": "五类公开事件输入触发touched，四类全局专有事件完整数据/身份/时间戳交付且不重复进入局部频道；不冒称真人/支线创建",
+      "evidence": "Complete original/final/diff assertion review and thirty newly generated subjective cases: tests/semantic/reviews/2026-10-31-context-budget.json. Baseline missing-provider-phase failure and initial over-specified snapshot count are retained separately. Machine enum/count/state/input fidelity assertions, no semantic word oracle. Runtime budget consumption/answers use controlled external providers; ingress/policy/forwarding components have explicit limits. Previous verdicts never accept fresh output."
+    },
+    "diligence-push/retry-recovery-bypasses-budget.ts": {
+      "status": "reviewed",
+      "lane": "context",
+      "value": "公开retry准备策略保持普通/恢复预算、禁用和人工补额边界，真实已初始化对话及同根请求者的回复义务阻挡自动续推",
+      "evidence": "Complete original/final/diff assertion review and thirty newly generated subjective cases: tests/semantic/reviews/2026-10-31-context-budget.json. Baseline missing-provider-phase failure and initial over-specified snapshot count are retained separately. Machine enum/count/state/input fidelity assertions, no semantic word oracle. Runtime budget consumption/answers use controlled external providers; ingress/policy/forwarding components have explicit limits. Previous verdicts never accept fresh output."
     }
   },
   "retired": {

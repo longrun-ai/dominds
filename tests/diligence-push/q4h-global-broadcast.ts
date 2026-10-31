@@ -1,193 +1,126 @@
-#!/usr/bin/env tsx
-
-import '../../main/tools/builtins';
-
-import * as fs from 'fs';
-import * as os from 'os';
-import * as path from 'path';
-
-import type { TypedDialogEvent } from '@longrun-ai/kernel/types/dialog';
-import {
-  clearInstalledGlobalDialogEventBroadcaster,
-  installRecordingGlobalDialogEventBroadcaster,
-  requireRecordingGlobalDialogEventRecorder,
-} from '../../main/bootstrap/global-dialog-event-broadcaster';
-import { DialogID, MainDialog } from '../../main/dialog';
+import type { DialogEvent } from '@longrun-ai/kernel/types/dialog';
+import { toCallSiteCourseNo, toCallSiteGenseqNo } from '@longrun-ai/kernel/types/storage';
+import assert from 'node:assert/strict';
+import { requireRecordingGlobalDialogEventRecorder } from '../../main/bootstrap/global-dialog-event-broadcaster';
 import { postDialogEvent, postDialogEventById } from '../../main/evt-registry';
-import { DiskFileDialogStore } from '../../main/persistence';
+import { recordDialogEvents } from '../helpers/dialog-events';
+import { createMainDialog, withTempRtws } from '../kernel-driver/helpers';
 
 async function main(): Promise<void> {
-  const originalCwd = process.cwd();
-  const tmpBase = await fs.promises.mkdtemp(path.join(os.tmpdir(), 'dominds-q4h-bcast-'));
-  process.chdir(tmpBase);
-
-  try {
-    const dlgId = new DialogID('dlg-q4h-bcast-test');
-    const store = new DiskFileDialogStore(dlgId);
-    const dlg = new MainDialog(store, 'task.md', dlgId, 'tester');
+  await withTempRtws(async () => {
+    const dialog = await createMainDialog();
+    const identity = { selfId: dialog.id.selfId, rootId: dialog.id.rootId };
     const createdAt = '2026-01-29 00:00:01';
-
-    installRecordingGlobalDialogEventBroadcaster({
-      label: 'tests/q4h-global-broadcast',
-    });
-    const recorder = requireRecordingGlobalDialogEventRecorder('q4h-global-broadcast');
-    recorder.clear();
-
-    postDialogEvent(dlg, {
-      type: 'dlg_display_state_evt',
-      displayState: { kind: 'idle_waiting_user' },
-    });
-
-    postDialogEvent(dlg, {
-      type: 'new_q4h_asked',
-      question: {
-        id: 'q1',
-        selfId: dlgId.selfId,
-        tellaskContent: 'Please confirm.',
-        askedAt: '2026-01-29 00:00:00',
-        callId: 'call-q1',
-        callSiteRef: { course: 1, messageIndex: 1 },
-        rootId: dlgId.rootId,
-        agentId: 'tester',
-        taskDocPath: 'task.md',
-      },
-    });
-
-    postDialogEventById(dlgId, {
-      type: 'q4h_answered',
-      questionId: 'q1',
-      selfId: dlgId.selfId,
-    });
-
-    postDialogEvent(dlg, {
-      type: 'sideDialog_created_evt',
-      dialog: {
-        selfId: dlgId.selfId,
-        rootId: dlgId.rootId,
-      },
-      timestamp: createdAt,
-      course: 1,
-      callerDialog: {
-        selfId: dlgId.selfId,
-        rootId: dlgId.rootId,
-      },
-      sideDialog: {
-        selfId: 'sub-1',
-        rootId: dlgId.rootId,
-      },
-      targetAgentId: 'coder',
-      callName: 'tellaskSessionless',
-      mentionList: ['@coder'],
-      tellaskContent: 'Please investigate.',
-      rootSideDialogCount: 1,
-      callerBackgroundCalleeDialogCount: 0,
-      callerBackgroundFreshBootsReasoningCalleeCount: 0,
-      sideDialogNode: {
-        selfId: 'sub-1',
-        rootId: dlgId.rootId,
-        askerDialogId: dlgId.selfId,
-        agentId: 'coder',
-        taskDocPath: 'task.md',
-        status: 'running',
-        currentCourse: 1,
-        createdAt,
-        lastModified: createdAt,
-        displayState: { kind: 'idle_waiting_user' },
-        sessionSlug: 'sess-1',
-        assignmentFromAsker: {
-          callName: 'tellaskSessionless',
-          mentionList: ['@coder'],
-          tellaskContent: 'Please investigate.',
-          originMemberId: 'tester',
-          askerDialogId: dlgId.selfId,
-          callId: 'call-1',
+    const inputs: DialogEvent[] = [
+      { type: 'dlg_display_state_evt', displayState: { kind: 'idle_waiting_user' } },
+      {
+        type: 'new_q4h_asked',
+        question: {
+          id: 'question-id-data',
+          selfId: dialog.id.selfId,
+          rootId: dialog.id.rootId,
+          agentId: dialog.agentId,
+          taskDocPath: dialog.taskDocPath,
+          tellaskContent: 'question-body-data',
+          askedAt: '2026-01-29 00:00:00',
+          callId: 'question-call-data',
+          callSiteRef: { course: 1, messageIndex: 1 },
         },
       },
-    });
-
-    postDialogEvent(dlg, {
-      type: 'dlg_background_callee_summary_evt',
-      backgroundCalleeDialogCount: 0,
-      backgroundFreshBootsReasoningCalleeCount: 0,
-    });
-
-    const received: readonly TypedDialogEvent[] = recorder.snapshot();
-    const q4hAskedEvents = received.filter((evt) => evt.type === 'new_q4h_asked');
-    const q4hAnsweredEvents = received.filter((evt) => evt.type === 'q4h_answered');
-    const sideDialogCreatedEvents = received.filter((evt) => evt.type === 'sideDialog_created_evt');
-    const backgroundCalleeSummaryEvents = received.filter(
-      (evt) => evt.type === 'dlg_background_callee_summary_evt',
+      { type: 'q4h_answered', questionId: 'question-id-data', selfId: dialog.id.selfId },
+      {
+        type: 'sideDialog_created_evt',
+        dialog: identity,
+        timestamp: createdAt,
+        course: 1,
+        callerDialog: identity,
+        sideDialog: { selfId: 'side-id-data', rootId: dialog.id.rootId },
+        targetAgentId: 'worker',
+        callName: 'tellaskSessionless',
+        mentionList: ['@worker'],
+        tellaskContent: 'assignment-body-data',
+        rootSideDialogCount: 1,
+        callerBackgroundCalleeDialogCount: 0,
+        callerBackgroundFreshBootsReasoningCalleeCount: 0,
+        sideDialogNode: {
+          selfId: 'side-id-data',
+          rootId: dialog.id.rootId,
+          askerDialogId: dialog.id.selfId,
+          agentId: 'worker',
+          taskDocPath: dialog.taskDocPath,
+          status: 'running',
+          currentCourse: 1,
+          createdAt,
+          lastModified: createdAt,
+          displayState: { kind: 'idle_waiting_user' },
+          sessionSlug: 'session-data',
+          assignmentFromAsker: {
+            callName: 'tellaskSessionless',
+            mentionList: ['@worker'],
+            tellaskContent: 'assignment-body-data',
+            originMemberId: dialog.agentId,
+            askerDialogId: dialog.id.selfId,
+            callId: 'assignment-call-data',
+            callSiteCourse: toCallSiteCourseNo(1),
+            callSiteGenseq: toCallSiteGenseqNo(1),
+          },
+        },
+      },
+      {
+        type: 'dlg_background_callee_summary_evt',
+        backgroundCalleeDialogCount: 0,
+        backgroundFreshBootsReasoningCalleeCount: 0,
+      },
+    ];
+    const expected = structuredClone(inputs);
+    const recorder = requireRecordingGlobalDialogEventRecorder('global-forwarding-component');
+    recorder.clear();
+    const local = recordDialogEvents(dialog);
+    for (const input of inputs) {
+      if (input.type === 'q4h_answered') postDialogEventById(dialog.id, input);
+      else postDialogEvent(dialog, input);
+    }
+    const global = recorder.snapshot();
+    const localEvents = await local.finish();
+    assert.deepEqual(
+      localEvents.map((event) => event.type),
+      ['dlg_display_state_evt'],
+      'global-only events are not duplicated onto the local stream',
     );
-    const touchedEvents = received.filter((evt) => evt.type === 'dlg_touched_evt');
-
-    if (q4hAskedEvents.length !== 1) {
-      throw new Error(`Expected 1 new_q4h_asked event, got ${q4hAskedEvents.length}`);
-    }
-    if (q4hAnsweredEvents.length !== 1) {
-      throw new Error(`Expected 1 q4h_answered event, got ${q4hAnsweredEvents.length}`);
-    }
-    if (sideDialogCreatedEvents.length !== 1) {
-      throw new Error(
-        `Expected 1 sideDialog_created_evt event, got ${sideDialogCreatedEvents.length}`,
-      );
-    }
-    if (backgroundCalleeSummaryEvents.length !== 1) {
-      throw new Error(
-        `Expected 1 dlg_background_callee_summary_evt event, got ${backgroundCalleeSummaryEvents.length}`,
-      );
-    }
-    if (touchedEvents.length !== 5) {
-      throw new Error(`Expected 5 dlg_touched_evt events, got ${touchedEvents.length}`);
-    }
-
-    const asked = q4hAskedEvents[0]!;
-    const subCreated = sideDialogCreatedEvents[0]!;
-    const backgroundCalleeSummary = backgroundCalleeSummaryEvents[0]!;
-    if (asked.dialog.selfId !== dlgId.selfId || asked.dialog.rootId !== dlgId.rootId) {
-      throw new Error('Expected typed dialog context on new_q4h_asked broadcast');
-    }
-    if (subCreated.dialog.selfId !== dlgId.selfId || subCreated.dialog.rootId !== dlgId.rootId) {
-      throw new Error('Expected typed dialog context on sideDialog_created_evt broadcast');
-    }
-    if (
-      backgroundCalleeSummary.dialog.selfId !== dlgId.selfId ||
-      backgroundCalleeSummary.dialog.rootId !== dlgId.rootId
-    ) {
-      throw new Error(
-        'Expected typed dialog context on dlg_background_callee_summary_evt broadcast',
-      );
-    }
-
-    const touchedSourceTypes = new Set(
-      touchedEvents.map((evt) => (evt.type === 'dlg_touched_evt' ? evt.sourceType : 'unexpected')),
+    const forwarded = global.filter((event) => event.type !== 'dlg_touched_evt');
+    assert.deepEqual(
+      forwarded.map((event) => event.type),
+      expected.slice(1).map((event) => event.type),
     );
-    const expectedTouchedSources = new Set([
-      'dlg_display_state_evt',
-      'new_q4h_asked',
-      'q4h_answered',
-      'sideDialog_created_evt',
-      'dlg_background_callee_summary_evt',
-    ]);
-    if (touchedSourceTypes.size !== expectedTouchedSources.size) {
-      throw new Error(
-        `Unexpected dlg_touched_evt sourceType set size: got ${touchedSourceTypes.size}, expected ${expectedTouchedSources.size}`,
+    const all = [...localEvents, ...forwarded];
+    const payload = (event: object) => ({ ...event, dialog: undefined, timestamp: undefined });
+    for (const [index, wanted] of expected.entries()) {
+      const actual = all[index];
+      assert.ok(actual);
+      assert.deepEqual(actual.dialog, identity);
+      assert.ok(actual.timestamp.length > 0);
+      if ('timestamp' in wanted) assert.equal(actual.timestamp, wanted.timestamp);
+      assert.deepEqual(
+        payload(actual),
+        payload(wanted),
+        'provided event data reaches the public destination intact',
       );
     }
-    for (const sourceType of expectedTouchedSources) {
-      if (!touchedSourceTypes.has(sourceType)) {
-        throw new Error(`Missing dlg_touched_evt sourceType: ${sourceType}`);
-      }
-    }
-
-    console.log('global dialog event broadcast: PASS');
-  } finally {
-    clearInstalledGlobalDialogEventBroadcaster();
-    process.chdir(originalCwd);
-  }
+    const touched = global.filter((event) => event.type === 'dlg_touched_evt');
+    assert.deepEqual(
+      touched.map((event) => event.sourceType),
+      expected.map((event) => event.type),
+    );
+    assert.ok(
+      touched.every(
+        (event) =>
+          event.dialog.selfId === identity.selfId && event.dialog.rootId === identity.rootId,
+      ),
+    );
+  });
+  console.log('public global event forwarding, payload fidelity and local de-duplication: PASS');
 }
-
-void main().catch((err: unknown) => {
-  const message = err instanceof Error ? err.message : String(err);
-  console.error(`global dialog event broadcast: FAIL\n${message}`);
-  process.exit(1);
+main().catch((error: unknown) => {
+  console.error(error);
+  process.exitCode = 1;
 });

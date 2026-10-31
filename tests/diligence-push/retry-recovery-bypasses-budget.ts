@@ -1,19 +1,15 @@
 import assert from 'node:assert/strict';
 
-import { DialogID, MainDialog } from '../../main/dialog';
+import { toCallSiteCourseNo, toCallSiteGenseqNo } from '@longrun-ai/kernel/types/storage';
 import { maybePrepareDiligenceAutoContinuePrompt } from '../../main/llm/kernel-driver/runtime';
-import { DialogPersistence, DiskFileDialogStore } from '../../main/persistence';
+import { DialogPersistence } from '../../main/persistence';
 
-import { withTempRtws } from '../kernel-driver/helpers';
+import { createMainDialog, withTempRtws, writeStandardMinds } from '../kernel-driver/helpers';
 
 async function main(): Promise<void> {
-  await withTempRtws(async () => {
-    const dlg = new MainDialog(
-      new DiskFileDialogStore(new DialogID('diligence-retry-recovery-budget-test')),
-      'task.md',
-      new DialogID('diligence-retry-recovery-budget-test'),
-      'tester',
-    );
+  await withTempRtws(async (rtws) => {
+    await writeStandardMinds(rtws, { extraMembers: ['worker'] });
+    const dlg = await createMainDialog();
     dlg.disableDiligencePush = false;
 
     const ordinary = await maybePrepareDiligenceAutoContinuePrompt({
@@ -31,9 +27,6 @@ async function main(): Promise<void> {
       ignoreBudgetExhaustion: true,
     });
     assert.equal(recovery.kind, 'prompt');
-    if (recovery.kind !== 'prompt') {
-      throw new Error(`Expected retry recovery to prepare a prompt, got ${recovery.kind}`);
-    }
     assert.equal(recovery.nextRemainingBudget, 0);
     assert.equal(recovery.prompt.origin, 'diligence_push');
 
@@ -61,11 +54,6 @@ async function main(): Promise<void> {
       diligencePushMax: 0,
     });
     assert.equal(manuallyRefilledWithZeroDefault.kind, 'prompt');
-    if (manuallyRefilledWithZeroDefault.kind !== 'prompt') {
-      throw new Error(
-        `Expected manual dialog budget to prepare a prompt, got ${manuallyRefilledWithZeroDefault.kind}`,
-      );
-    }
     assert.equal(manuallyRefilledWithZeroDefault.maxInjectCount, 0);
     assert.equal(manuallyRefilledWithZeroDefault.nextRemainingBudget, 2);
 
@@ -75,11 +63,6 @@ async function main(): Promise<void> {
       diligencePushMax: 2,
     });
     assert.equal(manuallyExpandedAbovePositiveDefault.kind, 'prompt');
-    if (manuallyExpandedAbovePositiveDefault.kind !== 'prompt') {
-      throw new Error(
-        `Expected expanded dialog budget to prepare a prompt, got ${manuallyExpandedAbovePositiveDefault.kind}`,
-      );
-    }
     assert.equal(manuallyExpandedAbovePositiveDefault.maxInjectCount, 2);
     assert.equal(manuallyExpandedAbovePositiveDefault.nextRemainingBudget, 6);
 
@@ -91,11 +74,27 @@ async function main(): Promise<void> {
     });
     assert.equal(recoveryWithOrdinaryKeepGoingDisabled.kind, 'prompt');
 
-    await DialogPersistence.setActiveTellaskReplyObligation(dlg.id, {
+    const requester = await dlg.createSideDialog('worker', ['@worker'], 'work-data', {
+      callName: 'tellask',
+      originMemberId: 'tester',
+      askerDialogId: dlg.id.selfId,
+      callId: 'work-call',
+      callSiteCourse: toCallSiteCourseNo(1),
+      callSiteGenseq: toCallSiteGenseqNo(1),
+      sessionSlug: 'budget-gate',
+      collectiveTargets: ['worker'],
+    });
+    await requester.persistTellaskCall(
+      'active-reply-obligation-blocks-diligence',
+      'tellaskBack',
+      JSON.stringify({ tellaskContent: 'question-data' }),
+      1,
+    );
+    await DialogPersistence.pushTellaskReplyObligation(dlg.id, {
       expectedReplyCallName: 'replyTellaskBack',
-      targetDialogId: dlg.id.selfId,
+      targetDialogId: requester.id.selfId,
       targetCallId: 'active-reply-obligation-blocks-diligence',
-      tellaskContent: 'Finish this reply obligation before any Diligence Push.',
+      tellaskContent: 'question-data',
     });
     const activeReplyObligation = await maybePrepareDiligenceAutoContinuePrompt({
       dlg,
