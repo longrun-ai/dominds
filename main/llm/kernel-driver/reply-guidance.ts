@@ -55,6 +55,9 @@ function buildPromptContentWithExactReplyToolName(args: {
   const isFbrSideDialog =
     args.dlg instanceof SideDialog &&
     args.dlg.assignmentFromAsker.callName === 'freshBootsReasoning';
+  // FBR closes through its own conclusion channel; keep durable delivery routing,
+  // but do not instruct its model to call an unavailable ordinary reply tool.
+  if (isFbrSideDialog) return args.prompt.content;
   const noActivePrefix =
     args.language === 'zh' ? NO_ACTIVE_REPLY_PREFIX_ZH : NO_ACTIVE_REPLY_PREFIX_EN;
   const activePrefix =
@@ -79,9 +82,6 @@ function buildPromptContentWithExactReplyToolName(args: {
             'This runtime reply reminder is obsolete: Dominds found no unfinished reply obligation for this turn.',
             'Do not resend the earlier result. Continue only with other current work; if none remains, end this turn.',
           ].join('\n');
-    }
-    if (isFbrSideDialog) {
-      return args.prompt.content;
     }
     if (!(args.dlg instanceof SideDialog)) {
       return args.prompt.content;

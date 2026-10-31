@@ -396,6 +396,30 @@
       "lane": "kernel",
       "value": "FBR模型参数覆盖保留各供应商未覆盖字段，覆盖冲突值而不丢失其他供应商命名空间；本项是局部配置契约，不冒充真实供应商执行",
       "evidence": "Context pressure batch: complete assertion review, actual provider requests/persisted effects or explicit Boolean/configuration data contracts. tests/semantic/reviews/2026-10-30-context-pressure.json; fresh semantic output always starts pending."
+    },
+    "kernel-driver/fbr-internal-conclusion-flow.ts": {
+      "status": "reviewed",
+      "lane": "kernel",
+      "value": "真实FBR阶段与能力隔离、模型覆盖、任务正文/私有历史隔离、禁止工具无副作用、普通及吃紧重试上限、原生/程序化收束与唯一耐久交付",
+      "evidence": "FBR/delivery batch: complete assertion design review, real isolated runtime and durable effects or explicit component contracts. tests/semantic/reviews/2026-10-31-fbr-delivery.json. This ledger does not accept fresh semantic output."
+    },
+    "kernel-driver/retry-recovery-diligence-push-with-keep-going-disabled.ts": {
+      "status": "reviewed",
+      "lane": "kernel",
+      "value": "真实streaming空响应quirk达到重试边界后，普通续推预算为0仍只安排一次恢复，交付一份A2H并保留预算与输入保真；不冒充batch/live供应商覆盖",
+      "evidence": "FBR/delivery batch: complete assertion design review, real isolated runtime and durable effects or explicit component contracts. tests/semantic/reviews/2026-10-31-fbr-delivery.json. This ledger does not accept fresh semantic output."
+    },
+    "kernel-driver/update-reminder-immediate-followup.ts": {
+      "status": "reviewed",
+      "lane": "kernel",
+      "value": "真实提醒项变更后持久内容与渲染数据更新，实际供应商仅续办一次且消费触发器；用状态和opaque数据代替成功措辞判定",
+      "evidence": "FBR/delivery batch: complete assertion design review, real isolated runtime and durable effects or explicit component contracts. tests/semantic/reviews/2026-10-31-fbr-delivery.json. This ledger does not accept fresh semantic output."
+    },
+    "kernel-driver/sideDialog-reply-missing-assignment-anchor.ts": {
+      "status": "reviewed",
+      "lane": "kernel",
+      "value": "旧状态缺少渲染锚点时默认不交付；显式兜底参数允许有效回复，重复调用只保留一份正式结果并清除准确义务/UI状态",
+      "evidence": "FBR/delivery batch: complete assertion design review, real isolated runtime and durable effects or explicit component contracts. tests/semantic/reviews/2026-10-31-fbr-delivery.json. This ledger does not accept fresh semantic output."
     }
   },
   "retired": {
@@ -501,6 +525,11 @@
       "decision": "merge",
       "replacement": "kernel-driver/critical-queued-user-interjection.ts",
       "reason": "旧夹具预先拼装指导并以同源formatter裁判措辞，缺少真实压力入口；改用真实WS入站、实际测量、宽限计数和工具后回复，语言切换/正文保真与语义指导分别验收。命名脚本重定向替代入口。"
+    },
+    "kernel-driver/fbr-context-health-closure.ts": {
+      "decision": "merge",
+      "replacement": "kernel-driver/fbr-internal-conclusion-flow.ts",
+      "reason": "保留真实吃紧提前收口、告急停止、调用方消费和持久状态；删除同源formatter期望与指导文字路由，并增加有界吃紧重试、能力隔离及两种传输。旧命名脚本重定向替代入口。"
     }
   }
 }

@@ -130,21 +130,20 @@ function buildFbrContextHealthScopeRule(
 }
 
 function buildFbrPhaseContract(language: LanguageCode): string {
-  const lines = pickLocalized(language, {
+  return pickLocalized(language, {
     zh: [
-      '- FBR 必须按“发起 → 逐轮推理 → 向诉请者回复”三段执行：发起 `freshBootsReasoning` 只代表发起，不代表你已完成推理。',
-      '- 发出 `freshBootsReasoning` 后，必须在该 FBR 支线对话内按序走完整个 N 轮流程；只有最后一轮才会向诉请者发送诉请回复。',
-      '- 若 `fbr-effort = N`（力度 N，内部映射为 N 次串行推理），等待该 FBR 支线对话一次性送达完整诉请回复；收到完整诉请回复后完成提炼并据此做下游决策；不得基于未完成中间轮次提前定稿。',
-      '- 每一轮都应给出与此前不同的增量观点；每轮均不得复述前文结论。程序会把该 FBR 全量支线正文在最后一轮合并后作为诉请回复送达诉请者。',
+      '- FBR 按“发起 → 支线内部推演与收口 → 向诉请者交付”执行；调用 freshBootsReasoning 只表示发起，不能据此声称已完成推理。',
+      '- 力度 N 通常对应同一支线中的 N 轮发散、N 轮收敛和最多 N 次收口尝试；上下文吃紧可提前收口，告急会停止后续模型请求。',
+      '- 等待一次正式交付：运行时只转交已接纳的结论正文，或说明尚未获得正式结论的资源/收口边界通知；不转储支线私有推演。',
+      '- 根据交付内容和实际证据决定下一步；遇到边界通知应核查真实缺口，不能把压力或未调用结论函数当作任务复杂度、推理质量的结论。',
     ],
     en: [
-      '- FBR MUST follow three phases: “initiate -> serial reasoning rounds -> send the Tellask reply”. Calling `freshBootsReasoning` means initiation only, not completed reasoning.',
-      '- After calling `freshBootsReasoning`, run all required rounds in that single FBR Side Dialog window; only the final round may send the Tellask reply to the tellasker.',
-      '- If `fbr-effort = N` (intensity N, internally mapped to N serial passes), wait for the complete FBR Tellask reply from the final pass; after receiving it, distill it before downstream action. Do not finalize based on partial passes.',
-      '- Every round must add a distinct incremental view. Every round, including the final one, must not repeat conclusions from earlier rounds. Runtime will relay the full accumulated FBR Side Dialog output to the tellasker as one Tellask reply.',
+      '- FBR proceeds through initiation, private reasoning and closure in the Side Dialog, then delivery to the caller. Calling freshBootsReasoning initiates work; it does not establish completed reasoning.',
+      '- Effort N normally provides N divergence rounds, N convergence rounds and at most N finalization attempts in one Side Dialog. Tight context can trigger early closure; critical usage stops further model requests.',
+      '- Wait for one formal delivery: runtime relays the accepted conclusion body or a resource/finalization-limit notice explaining that no formal conclusion was accepted. It does not dump private round output.',
+      '- Choose the next step from the delivered content and actual evidence. For a limit notice, examine real gaps; pressure or a missing conclusion call does not establish task complexity or reasoning quality.',
     ],
-  });
-  return lines.join('\n');
+  }).join('\n');
 }
 
 function buildTeammateTellaskPhaseContract(language: LanguageCode): string {

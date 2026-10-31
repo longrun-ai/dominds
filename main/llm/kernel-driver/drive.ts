@@ -4584,13 +4584,15 @@ export async function driveDialogStreamCore(
           pubRemindersVer = dlg.remindersVer;
 
           const taskDocMsg =
-            dlg.taskDocPath && !skipTaskdocForThisDrive
+            policy.mode === 'default' && dlg.taskDocPath && !skipTaskdocForThisDrive
               ? await formatTaskDocContent(dlg)
               : undefined;
 
-          const renderedReminders = await renderRemindersForContext(dlg);
+          const renderedReminders =
+            policy.mode === 'default' ? await renderRemindersForContext(dlg) : [];
           const dialogMsgsForContext = await buildDialogMsgsForContext(dlg);
-          const activeReplyObligationContext = await buildActiveReplyObligationContext(dlg);
+          const activeReplyObligationContext =
+            policy.mode === 'default' ? await buildActiveReplyObligationContext(dlg) : [];
           const splitDialogMsgs = splitDialogMsgsForReminderInsertion({
             msgs: dialogMsgsForContext,
             currentPrompt,
@@ -4617,7 +4619,7 @@ export async function driveDialogStreamCore(
           const ctxMsgs: ChatMessage[] = assembleDriveContextMessages({
             base: {
               prependedContextMessages: policy.prependedContextMessages,
-              memories: minds.memories,
+              memories: policy.mode === 'default' ? minds.memories : [],
               taskDocMsg,
               coursePrefixMsgs: dlg.getCoursePrefixMsgs(),
               historicalDialogMsgsForContext: splitDialogMsgs.historicalDialogMsgsForContext,

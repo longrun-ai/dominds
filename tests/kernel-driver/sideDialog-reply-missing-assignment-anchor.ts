@@ -1,168 +1,138 @@
-import type {
-  ActiveCalleeDispatchRecord,
-  MainDialogMetadataFile,
-} from '@longrun-ai/kernel/types/storage';
+import assert from 'node:assert/strict';
+
 import { toCallSiteCourseNo, toCallSiteGenseqNo } from '@longrun-ai/kernel/types/storage';
 import type { WebSocketMessage } from '@longrun-ai/kernel/types/wire';
 import { formatUnifiedTimestamp } from '@longrun-ai/kernel/utils/time';
-import assert from 'node:assert/strict';
-import * as fs from 'node:fs/promises';
-import * as os from 'node:os';
-import * as path from 'node:path';
-import {
-  clearInstalledGlobalDialogEventBroadcaster,
-  installRecordingGlobalDialogEventBroadcaster,
-} from '../../main/bootstrap/global-dialog-event-broadcaster';
-import { DialogID, MainDialog } from '../../main/dialog';
 import { setDisplayStateBroadcaster } from '../../main/dialog-display-state';
-import {
-  createEmptyDialogNextStepState,
-  createEmptyDialogTellaskCallState,
-  createEmptyDialogTellaskResultState,
-} from '../../main/dialog-latest-state';
 import { supplySideDialogResponseToAssignedAskerIfPendingV2 } from '../../main/llm/kernel-driver/sideDialog';
-import { DialogPersistence, DiskFileDialogStore } from '../../main/persistence';
-
-async function withTempCwd<T>(fn: () => Promise<T>): Promise<T> {
-  const sandboxDir = await fs.mkdtemp(path.join(os.tmpdir(), 'dominds-reply-anchor-'));
-  const previousCwd = process.cwd();
-  process.chdir(sandboxDir);
-  installRecordingGlobalDialogEventBroadcaster({
-    label: 'tests/side-dialog/reply-missing-assignment-anchor',
-  });
-  try {
-    return await fn();
-  } finally {
-    clearInstalledGlobalDialogEventBroadcaster();
-    process.chdir(previousCwd);
-    await fs.rm(sandboxDir, { recursive: true, force: true });
-  }
-}
+import { DialogPersistence } from '../../main/persistence';
+import { setWorkLanguage } from '../../main/runtime/work-language';
+import { createMainDialog, withTempRtws, writeStandardMinds } from './helpers';
 
 async function main(): Promise<void> {
-  await withTempCwd(async () => {
-    const rootId = new DialogID('11/22/replyanchor');
-    const now = formatUnifiedTimestamp(new Date('2026-04-12T00:00:00.000Z'));
-    const main = new MainDialog(
-      new DiskFileDialogStore(rootId),
-      'plans/reply-anchor.tsk',
-      rootId,
-      'mentor',
-    );
-    const metadata: MainDialogMetadataFile = {
-      id: rootId.selfId,
-      agentId: 'mentor',
-      taskDocPath: 'plans/reply-anchor.tsk',
-      createdAt: now,
-    };
-    await DialogPersistence.saveMainDialogMetadata(rootId, metadata, 'running');
-    await DialogPersistence.mutateDialogLatest(rootId, () => ({
-      kind: 'replace',
-      next: {
-        currentCourse: 1,
-        lastModified: now,
-        status: 'active',
-        generating: false,
-        nextStep: createEmptyDialogNextStepState(),
-        tellaskCalls: createEmptyDialogTellaskCallState(),
-        tellaskResults: createEmptyDialogTellaskResultState(),
-      },
-    }));
-
-    const side = await main.createSideDialog('fullstack', ['@fullstack'], 'please finish', {
-      callName: 'tellask',
-      originMemberId: 'mentor',
-      askerDialogId: rootId.selfId,
-      callId: 'call-root-asks-side',
-      callSiteCourse: toCallSiteCourseNo(1),
-      callSiteGenseq: toCallSiteGenseqNo(1),
-      sessionSlug: 'reply-anchor',
-    });
-    const activeDispatch: ActiveCalleeDispatchRecord = {
-      batchId: 'dispatch:reply-anchor',
-      calleeDialogId: side.id.selfId,
-      callId: 'call-root-asks-side',
-      callName: 'tellask',
-      mentionList: ['@fullstack'],
-      tellaskContent: 'please finish',
-      targetAgentId: 'fullstack',
-      createdAt: now,
-      callSiteCourse: toCallSiteCourseNo(1),
-      callSiteGenseq: toCallSiteGenseqNo(1),
-      callType: 'B',
-      sessionSlug: 'reply-anchor',
-    };
-    await DialogPersistence.appendActiveCalleeDispatch(rootId, activeDispatch);
-    await DialogPersistence.setActiveTellaskReplyObligation(side.id, {
-      expectedReplyCallName: 'replyTellask',
-      targetDialogId: rootId.selfId,
-      targetCallId: 'call-root-asks-side',
-      tellaskContent: 'please finish',
-    });
-    await side.persistTellaskCall(
-      'call-side-replies-root',
-      'replyTellask',
-      JSON.stringify({ replyContent: 'done' }),
-      2,
-    );
-
-    const latestBefore = await DialogPersistence.loadDialogLatest(side.id, side.status);
-    assert.ok(latestBefore, 'Expected side latest before reply delivery');
-    assert.equal(latestBefore.latestAssignmentAnchor, undefined);
-    assert.equal(latestBefore.replyDelivery?.status, 'pending');
-    const activeObligationBefore = await DialogPersistence.loadActiveTellaskReplyObligation(
-      side.id,
-      side.status,
-    );
-    assert.equal(activeObligationBefore?.targetCallId, 'call-root-asks-side');
-    const displayStateMessages: WebSocketMessage[] = [];
-    setDisplayStateBroadcaster((message) => {
-      displayStateMessages.push(message);
-    });
-
-    let supplied = false;
-    try {
-      supplied = await supplySideDialogResponseToAssignedAskerIfPendingV2({
-        sideDialog: side,
-        responseText: 'done',
-        responseGenseq: 2,
-        deliveryMode: 'reply_tool',
-        replyResolution: {
-          callId: 'call-side-replies-root',
-          replyCallName: 'replyTellask',
-        },
-        allowExplicitReplyWithoutAssignmentAnchor: true,
-        scheduleDrive: () => undefined,
+  await withTempRtws(async (rtws) => {
+    await writeStandardMinds(rtws, { includePangu: true });
+    for (const language of ['en', 'zh'] as const) {
+      setWorkLanguage(language);
+      const root = await createMainDialog();
+      const callId = `assignment-without-anchor-${language}`;
+      const replyId = `explicit-reply-${language}`;
+      const body = `assignment-data-${language}`;
+      const answer = `reply-data-${language}`;
+      const side = await root.createSideDialog('pangu', ['@pangu'], body, {
+        callName: 'tellask',
+        originMemberId: 'tester',
+        askerDialogId: root.id.selfId,
+        callId,
+        callSiteCourse: toCallSiteCourseNo(1),
+        callSiteGenseq: toCallSiteGenseqNo(1),
+        sessionSlug: `anchor-recovery-${language}`,
       });
-    } finally {
-      setDisplayStateBroadcaster(null);
+      await DialogPersistence.appendActiveCalleeDispatch(root.id, {
+        batchId: `batch-${language}`,
+        calleeDialogId: side.id.selfId,
+        callId,
+        callName: 'tellask',
+        mentionList: ['@pangu'],
+        tellaskContent: body,
+        targetAgentId: 'pangu',
+        createdAt: formatUnifiedTimestamp(new Date()),
+        callSiteCourse: toCallSiteCourseNo(1),
+        callSiteGenseq: toCallSiteGenseqNo(1),
+        callType: 'B',
+        sessionSlug: `anchor-recovery-${language}`,
+      });
+      await DialogPersistence.setActiveTellaskReplyObligation(side.id, {
+        expectedReplyCallName: 'replyTellask',
+        targetDialogId: root.id.selfId,
+        targetCallId: callId,
+        tellaskContent: body,
+      });
+      await side.persistTellaskCall(
+        replyId,
+        'replyTellask',
+        JSON.stringify({ replyContent: answer }),
+        2,
+      );
+      const before = await DialogPersistence.loadDialogLatest(side.id, side.status);
+      assert.equal(before?.latestAssignmentAnchor, undefined);
+      assert.equal(before?.replyDelivery?.status, 'pending');
+      assert.equal(
+        (await DialogPersistence.loadActiveTellaskReplyObligation(side.id, side.status))
+          ?.targetCallId,
+        callId,
+      );
+      const deliveries: WebSocketMessage[] = [];
+      const request = {
+        sideDialog: side,
+        responseText: answer,
+        responseGenseq: 2,
+        deliveryMode: 'reply_tool' as const,
+        replyResolution: { callId: replyId, replyCallName: 'replyTellask' as const },
+        scheduleDrive: () => undefined,
+      };
+      setDisplayStateBroadcaster((message) => deliveries.push(message));
+      try {
+        assert.equal(
+          await supplySideDialogResponseToAssignedAskerIfPendingV2(request),
+          false,
+          'a missing rendered assignment anchor requires the explicit fallback authorization',
+        );
+        const pending = await DialogPersistence.loadDialogLatest(side.id, side.status);
+        assert.equal(pending?.replyDelivery?.status, 'pending');
+        assert.equal(
+          (await DialogPersistence.loadActiveCalleeDispatches(root.id, root.status)).length,
+          1,
+        );
+        assert.equal(
+          (await DialogPersistence.loadCourseEvents(root.id, 1, root.status)).filter(
+            (event) => event.type === 'tellask_result_record',
+          ).length,
+          0,
+        );
+        const authorized = { ...request, allowExplicitReplyWithoutAssignmentAnchor: true };
+        assert.equal(await supplySideDialogResponseToAssignedAskerIfPendingV2(authorized), true);
+        await supplySideDialogResponseToAssignedAskerIfPendingV2(authorized);
+      } finally {
+        setDisplayStateBroadcaster(null);
+      }
+      const results = (await DialogPersistence.loadCourseEvents(root.id, 1, root.status))
+        .filter((event) => event.type === 'tellask_result_record')
+        .filter((event) => event.callId === callId);
+      assert.equal(
+        results.length,
+        1,
+        'repeated delivery cannot duplicate the canonical caller result',
+      );
+      assert.equal(results[0].status, 'completed');
+      assert.ok(
+        results[0].content.includes(answer),
+        'the supplied opaque answer body survives delivery',
+      );
+      assert.equal(
+        (await DialogPersistence.loadActiveCalleeDispatches(root.id, root.status)).length,
+        0,
+      );
+      assert.equal(
+        await DialogPersistence.loadActiveTellaskReplyObligation(side.id, side.status),
+        undefined,
+      );
+      const after = await DialogPersistence.loadDialogLatest(side.id, side.status);
+      assert.equal(after?.replyDelivery?.status, 'delivered');
+      assert.equal(after?.replyDelivery?.toolResultStatus, 'pending');
+      assert.equal(after?.sideDialogFinalResponse?.callId, callId);
+      const events = deliveries.filter((event) => event.type === 'dlg_display_state_evt');
+      assert.equal(events.length, 1);
+      assert.equal(events[0].dialog.rootId, root.id.rootId);
+      assert.equal(events[0].dialog.selfId, side.id.selfId);
+      assert.deepEqual(events[0].displayState, { kind: 'idle_waiting_user' });
     }
-
-    assert.equal(supplied, true);
-    const activeAfter = await DialogPersistence.loadActiveCalleeDispatches(rootId, 'running');
-    assert.equal(activeAfter.length, 0);
-    const activeObligationAfter = await DialogPersistence.loadActiveTellaskReplyObligation(
-      side.id,
-      side.status,
-    );
-    assert.equal(activeObligationAfter, undefined);
-    const sideLatestAfter = await DialogPersistence.loadDialogLatest(side.id, side.status);
-    assert.equal(sideLatestAfter?.replyDelivery?.status, 'delivered');
-    assert.equal(sideLatestAfter?.replyDelivery?.toolResultStatus, 'pending');
-    assert.equal(sideLatestAfter?.sideDialogFinalResponse?.callId, 'call-root-asks-side');
-    const displayStateEvents = displayStateMessages.filter(
-      (event) => event.type === 'dlg_display_state_evt',
-    );
-    assert.equal(displayStateEvents.length, 1);
-    const [displayStateEvent] = displayStateEvents;
-    assert.ok(displayStateEvent);
-    assert.equal(displayStateEvent.dialog.rootId, side.id.rootId);
-    assert.equal(displayStateEvent.dialog.selfId, side.id.selfId);
-    assert.deepEqual(displayStateEvent.displayState, { kind: 'idle_waiting_user' });
   });
+  console.log(
+    'explicit missing-anchor recovery delivers once and clears the exact obligation: passed',
+  );
 }
-
 main().catch((error: unknown) => {
   console.error(error);
-  process.exit(1);
+  process.exitCode = 1;
 });

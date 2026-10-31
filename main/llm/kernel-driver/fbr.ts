@@ -42,12 +42,12 @@ function buildFbrConclusionToolDescription(args: {
 }): string {
   if (args.language === 'zh') {
     return args.kind === 'low_noise'
-      ? '仅在 FBR 已完成发散与收敛后使用。提交最终低噪高信息结论：只保留跨轮稳定共识、正文可支撑信息、必要未知项与最关键下一步；把孤立离谱想法当噪音丢弃。'
-      : '仅在 FBR 已完成发散与收敛后使用。提交“当前现状无法被合理看待”的最终结论：明确说明为什么还不能形成负责的低噪结论，以及主要矛盾/缺口。';
+      ? '仅在运行时已进入 FBR 最终收口阶段（包括上下文压力触发的提前收口）时使用。提交最终低噪高信息结论：只保留跨轮稳定共识、正文可支撑信息、必要未知项与最关键下一步；把孤立离谱想法当噪音丢弃。'
+      : '仅在运行时已进入 FBR 最终收口阶段（包括上下文压力触发的提前收口）时使用。提交“当前现状无法被合理看待”的最终结论：明确说明为什么还不能形成负责的低噪结论，以及主要矛盾/缺口。';
   }
   return args.kind === 'low_noise'
-    ? 'Use only after FBR divergence and convergence are complete. Submit the final low-noise, high-information conclusion: keep only stable cross-round consensus, body-grounded evidence, necessary unknowns, and the most important next step; discard isolated wild ideas as noise.'
-    : 'Use only after FBR divergence and convergence are complete. Submit the final conclusion that the current situation cannot yet be viewed reasonably: state why a responsible low-noise conclusion is still not possible, and name the main contradictions or gaps.';
+    ? 'Use when the runtime has entered FBR finalization, including early closure under context pressure. Submit the final low-noise, high-information conclusion: keep only stable cross-round consensus, body-grounded evidence, necessary unknowns, and the most important next step; discard isolated wild ideas as noise.'
+    : 'Use when the runtime has entered FBR finalization, including early closure under context pressure. Submit the final conclusion that the current situation cannot yet be viewed reasonably: state why a responsible low-noise conclusion is still not possible, and name the main contradictions or gaps.';
 }
 
 function extractFbrConclusionToolArgs(rawArgs: ToolArguments): FbrConclusionToolArgs {
@@ -262,15 +262,15 @@ export function buildFbrContextCautionFinalizationPrompt(args: {
     return [
       retryLine,
       '',
-      '当前 FBR 已经因为上下文压力提前进入最终收口。把这视为问题复杂度、推理成本或噪音累积已经不适合继续发散/收敛的信号。',
+      '当前 FBR 因实测上下文吃紧提前进入最终收口，计划的发散或收敛轮可能尚未完成。以实际完成的推演和诉请正文为依据；压力测量说明当前上下文资源受限。',
       '',
       `现在必须且只能调用以下两个函数之一结束本次 FBR：`,
       `- \`${FBR_LOW_NOISE_CONCLUSION_TOOL_NAME}({ content })\``,
       `- \`${FBR_UNREASONABLE_SITUATION_TOOL_NAME}({ content })\``,
       '',
       '选择规则：',
-      '- 如果基于已经完成的发散、收敛推演，仍能形成稳定共识：调用低噪高信息结论函数。',
-      '- 如果已有推演仍相互矛盾、证据不足、关键上下文缺失，或上下文吃紧本身说明问题过于复杂：调用“不合理现状”函数。',
+      '- 如果基于实际已完成的推演和诉请正文，能够形成有充分依据的稳定共识：调用低噪高信息结论函数。',
+      '- 如果实际观察到的矛盾、证据不足或关键上下文缺失仍阻止形成负责的结论：调用“不合理现状”函数。',
       '',
       '强制要求：',
       '- 不要 clear_mind，不要继续发散/收敛，不要调用其它函数，不要输出普通文本。',
@@ -286,15 +286,15 @@ export function buildFbrContextCautionFinalizationPrompt(args: {
   return [
     retryLine,
     '',
-    'This FBR is entering final closure early because of context pressure. Treat that as a signal that problem complexity, reasoning cost, or accumulated noise is no longer suitable for continued divergence/convergence.',
+    'This FBR is entering final closure early because measured context usage is tight. Planned divergence or convergence rounds may be incomplete. Use the reasoning actually performed and the supplied body as evidence; the pressure measurement establishes a current context resource limit.',
     '',
     'You must now end this FBR by calling exactly one of:',
     `- \`${FBR_LOW_NOISE_CONCLUSION_TOOL_NAME}({ content })\``,
     `- \`${FBR_UNREASONABLE_SITUATION_TOOL_NAME}({ content })\``,
     '',
     'Choose as follows:',
-    '- If the divergence/convergence already performed still supports stable consensus, call the low-noise highly-informative conclusion function.',
-    '- If the existing reasoning remains contradictory, under-evidenced, missing key context, or context pressure itself shows the problem is too complex, call the unreasonable-situation function.',
+    '- If the reasoning actually performed and the supplied body support a grounded, stable consensus, call the low-noise highly-informative conclusion function.',
+    '- If observed contradictions, insufficient evidence, or missing key context still block a responsible conclusion, call the unreasonable-situation function.',
     '',
     'Hard requirements:',
     '- Do not clear_mind, do not keep diverging/converging, do not call any other function, and do not output plain text.',
@@ -306,62 +306,42 @@ export function buildFbrContextCautionFinalizationPrompt(args: {
 export function buildProgrammaticFbrContextCriticalContent(args: {
   language: LanguageCode;
 }): string {
-  if (args.language === 'zh') {
-    return [
-      '当前 FBR 问题过于复杂，不能继续负责地扩展推理，也不能在剩余上下文内形成可靠的低噪结论。',
-      '',
-      '原因：',
-      '- 上下文已经达到告急水平；这本身应视为问题复杂度、证据需求或推理分支数量超过当前 FBR 可控范围的信号。',
-      '- Dominds 不会在告急状态下程序化总结对话、抽取已有推演或替模型转译结论；那会显著提高遗漏、失真和幻觉风险。',
-      '',
-      '建议：',
-      '- 将诉请拆解为更小、更清晰的子问题。',
-      '- 为每个子问题分别固定 Goal / Facts / Constraints / Evidence / Unknowns 后，各自重新发起 FBR。',
-    ].join('\n');
-  }
-
-  return [
-    'This FBR problem is too complex to keep expanding reasoning responsibly or produce a reliable low-noise conclusion within the remaining context.',
-    '',
-    'Reasons:',
-    '- Context has reached the critical level; this should itself be treated as a signal that problem complexity, evidence needs, or branch count exceeded what the current FBR can control.',
-    '- Dominds will not programmatically summarize the dialog, extract existing reasoning, or translate it into a conclusion under critical context pressure; doing so would materially increase omission, distortion, and hallucination risk.',
-    '',
-    'Suggested next steps:',
-    '- Split the request into smaller, clearer subproblems.',
-    '- For each subproblem, stabilize Goal / Facts / Constraints / Evidence / Unknowns, then run its own FBR pass.',
-  ].join('\n');
+  return args.language === 'zh'
+    ? [
+        '运行时因最近一次上下文测量达到告急阈值而停止本次 FBR；尚未接纳正式结论。',
+        '',
+        '本次停止反映当前上下文资源限制。运行时没有替模型总结已有推演或代写结论；任务证据和推演内容需要在后续工作中据事实评估。',
+        '',
+        '后续可根据已知事实和实际缺口决定：缩小下一次诉请、补充必要证据，或在合适的上下文配置下重新运行 FBR。',
+      ].join('\n')
+    : [
+        'The runtime stopped this FBR because the latest context measurement reached the critical threshold; no formal conclusion was accepted.',
+        '',
+        'This stop reflects the current context resource limit. The runtime has not summarized the partial reasoning or written a conclusion for the model. Evaluate the task evidence and reasoning separately in subsequent work.',
+        '',
+        'Use the known facts and actual gaps to choose a follow-up: narrow the next request, obtain needed evidence, or run FBR with suitable context allocation.',
+      ].join('\n');
 }
 
 export function buildProgrammaticFbrUnreasonableSituationContent(args: {
   language: LanguageCode;
   finalizationAttempts: number;
 }): string {
-  if (args.language === 'zh') {
-    return [
-      '当前现状无法被合理看待并收束成负责的低噪结论。',
-      '',
-      '原因：',
-      `- 在完成既定的发散轮与收敛轮之后，模型仍连续 ${args.finalizationAttempts} 次未能按要求调用正式结论函数完成收口。`,
-      '- 这说明当前推理状态仍未稳定到可交付的程度；若强行给出结论，噪音和幻觉风险过高。',
-      '',
-      '建议：',
-      '- 将现有文本重新整理为更清晰的 Goal / Facts / Constraints / Evidence / Unknowns。',
-      '- 补充最关键缺失证据后，再重新发起一次 FBR。',
-    ].join('\n');
-  }
-
-  return [
-    'The current situation cannot yet be viewed reasonably enough to close into a responsible low-noise conclusion.',
-    '',
-    'Reasons:',
-    `- After completing the planned divergence and convergence rounds, the model still failed ${args.finalizationAttempts} times in a row to end via the required conclusion function.`,
-    '- This indicates the reasoning state never stabilized enough for safe delivery; forcing a conclusion would keep too much noise and hallucination risk.',
-    '',
-    'Suggested next steps:',
-    '- Reframe the input more clearly as Goal / Facts / Constraints / Evidence / Unknowns.',
-    '- Add the most critical missing evidence, then run a new FBR pass.',
-  ].join('\n');
+  return args.language === 'zh'
+    ? [
+        `模型在允许的 ${args.finalizationAttempts} 次收口尝试内，没有通过结论函数提交可接纳的正式结论。本次 FBR 已停止。`,
+        '',
+        '运行时只能确认这项交付条件未满足。后续工作需分别核查任务证据、实际推演和调用过程，再决定如何继续。',
+        '',
+        '保留原诉请和已知事实；根据实际缺口选择补充证据、澄清输入或调整调用后再发起 FBR。',
+      ].join('\n')
+    : [
+        `The model did not submit an acceptable formal conclusion through a conclusion function within the ${args.finalizationAttempts} allowed finalization attempts. This FBR has stopped.`,
+        '',
+        'The runtime can establish that this delivery condition was unmet. Check the task evidence, actual reasoning, and invocation process separately before choosing how to continue.',
+        '',
+        'Preserve the original request and known facts. Use actual gaps to decide whether to obtain evidence, clarify input, or adjust the invocation before starting another FBR.',
+      ].join('\n');
 }
 
 function parseFbrConclusionContent(
@@ -524,26 +504,11 @@ export function advanceFbrState(state: DialogFbrState): DialogFbrState | undefin
       };
     }
     case 'finalization': {
-      if (state.finalizationReason === 'context_caution') {
-        return {
-          kind: 'serial',
-          effort: state.effort,
-          phase: 'finalization',
-          iteration: state.iteration + 1,
-          promptDelivered: false,
-          finalizationReason: 'context_caution',
-        };
-      }
-      if (state.iteration >= state.effort) {
-        return undefined;
-      }
+      if (state.iteration >= state.effort) return undefined;
       return {
-        kind: 'serial',
-        effort: state.effort,
-        phase: 'finalization',
+        ...state,
         iteration: state.iteration + 1,
         promptDelivered: false,
-        finalizationReason: 'planned',
       };
     }
     default: {

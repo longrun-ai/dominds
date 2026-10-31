@@ -1,76 +1,25 @@
-# FBR 实现细节（已落地）
+# FBR 实现
 
-英文版：[English](./fbr-implementation.md)
+英文版：[English](./fbr-implementation.md)。行为规范见 [FBR](./fbr.zh.md)。
 
-本文描述当前实现结构与约束。规范以 [fbr.zh.md](fbr.zh.md) 为准。
+诉请者需要一次独立推理、可预期的执行成本和一个可检查的结果。运行时通过现有 MicroKernel 对话驱动与耐久回复交付保留这些价值。
 
-## 实现原则
+## 策略与上下文
 
-- FBR 与非 FBR 共享同一条上下文装配流水线，差异只允许通过显式策略字段声明。
-- system prompt 本体禁止工具说明；工具可用性仅通过独立“无工具提示”表达。
-- 工具/诉请限制在运行时技术上强制，不依赖模型“自觉遵守”。
+[guardrails.ts](../main/llm/kernel-driver/guardrails.ts) 选择 FBR 策略，并在成员普通模型参数上覆盖 `fbr_model_params`。发散、收敛阶段没有可调用工具；最终收口仅开放两个结论函数，普通工具与诉请仍不可用。
 
-## 代码结构
+[drive.ts](../main/llm/kernel-driver/drive.ts) 为普通对话和 FBR 复用上下文装配流水线。FBR 接收专用策略提示、显式诉请正文及本支线自身历史；不注入共享差遣牒、成员记忆、普通提醒项或普通回复义务指导，避免无关工作区状态及不可用工具指令进入独立推理。普通对话继续保留这些上下文来源。
 
-### 1) 统一策略对象（`main/llm/driver.ts`）
+[reply-guidance.ts](../main/llm/kernel-driver/reply-guidance.ts) 保留耐久交付路由，同时不向 FBR 阶段正文添加普通回复工具要求。模型用结论函数收口，运行时再经现有回复通道交付已接纳正文。
 
-驱动阶段先构建 `DrivePolicy`，集中给出：
+## 执行与收束
 
-- `effectiveSystemPrompt`
-- `effectiveAgentTools`
-- `prependedContextMessages`
-- `tellaskPolicy`
-- `allowFunctionCalls`
+[fbr.ts](../main/llm/kernel-driver/fbr.ts) 定义发散、收敛、收口提示，两个结论工具，以及已有的持久化阶段状态。普通路径执行 `N` 轮发散、`N` 轮收敛，最多尝试 `N` 次最终收口。实测吃紧时跳过剩余推演并提前收口，仍遵守相同重试上限；实测告急时停止后续模型请求。
 
-其中 FBR 策略会：
+原生结论接纳后只交付一次。重试上限或告急阈值导致没有正式结论时，运行时返回说明所观察边界的收束通知，不根据函数未调用或用量测量推断任务复杂度和推理质量，也不把私有轮次输出冒充正式结论。
 
-- 切换到 `buildFbrSystemPrompt(...)`（不含工具说明）
-- 注入单独 `buildNoToolsNotice(...)`
-- 强制 `effectiveAgentTools = []`
-- 强制 `tellaskPolicy = deny_all`
-- 强制 `allowFunctionCalls = false`
-- 在需要时对成员应用 `fbr_model_params` 覆盖
+回复消解、已清除义务、执行标记及有效 effort 继续经普通对话存储持久化。已完成对话从磁盘重建后，应保留交付事实，不能重新生成未完成的回复义务。
 
-### 2) 统一上下文装配（`main/llm/driver.ts`）
+## 验收证据
 
-上下文通过 `buildDriveContextMessages(...)` 组装，FBR 与非 FBR 走同一函数；FBR 仅通过 `prependedContextMessages` 体现“无工具可见性”差异，不再在主流程里零散 `unshift/push` 特判。
-
-### 3) 统一违规判定（`main/llm/driver.ts`）
-
-流式与非流式两条路径都调用 `resolveDrivePolicyViolationKind(...)`：
-
-- 违规 tellask-special 函数调用（FBR 技术模式下禁止全部函数调用）
-- 违规 function/tool call（FBR 禁止）
-
-一旦违规，统一产出 `formatDomindsNoteFbrToollessViolation(...)`，保持用户反馈与日志语义一致。
-
-### 4) FBR 隔离不变量硬校验（`main/llm/driver.ts`）
-
-驱动前会执行 `validateDrivePolicyInvariants(...)`，对 FBR 做 fail-fast 校验：
-
-- system prompt 必须严格等于 `buildFbrSystemPrompt(...)`
-- `effectiveAgentTools` 必须为空
-- `allowFunctionCalls` 必须为 `false`
-- `tellaskPolicy` 必须为 `deny_all`
-- `prependedContextMessages` 必须且仅能包含一条 `buildNoToolsNotice(...)`
-
-若任一条件不满足，运行时直接抛出 `FBR policy isolation violation`，防止全局工具手册/工具提示路径回流污染 FBR。
-
-### 5) 单一“无工具提示”源（`main/minds/system-prompt-parts.ts`）
-
-`buildNoToolsNotice(...)` 作为唯一工具可用性文案源，固定声明：
-
-- 不能调用任何工具
-- 不能访问 rtws / 文件 / 浏览器 / shell
-
-## 相关模块
-
-- `main/llm/driver.ts`：策略、上下文装配、违规判定
-- `main/minds/system-prompt-parts.ts`：无工具提示生成
-
-## 验收清单
-
-- FBR system prompt 不包含工具说明。
-- “无工具”文案仅来自独立 `buildNoToolsNotice(...)`。
-- FBR 与非 FBR 的上下文装配主流程一致，差异只来自策略字段。
-- FBR 中任意 tool/function call 或 tellask-special 函数调用都被运行时硬拒绝并给出明确回执。
+隔离的[收束回归](../tests/kernel-driver/fbr-internal-conclusion-flow.ts) 使用真实运行时与持久化，仅替换外部供应商边界；检查阶段能力、模型参数覆盖、正文保真、调用方/工作区/记忆隔离、禁止工具的副作用、收口上限及唯一耐久交付。语义模式输出实际请求和调用方结果，供测试执行智能体主观评审。机器检查、证据生成和语义结论分别记录，见[测试策略](./testing-strategy.md)。

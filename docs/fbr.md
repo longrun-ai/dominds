@@ -45,7 +45,7 @@ Notes:
 - FBR does not use `targetAgentId`, `sessionSlug`, or `mentionList`.
 - `tellaskContent` is the authoritative task context for the FBR Side Dialog.
 - `effort` is optional and sets per-call FBR intensity; when omitted, runtime uses the current member’s `fbr-effort`.
-- Intensity `N` maps to `N` serial FBR passes inside one Side Dialog window.
+- Intensity `N` maps to `N` divergence rounds, `N` convergence rounds and at most `N` finalization attempts, subject to context-pressure early closure.
 
 ### 3.2 Scope
 
@@ -72,8 +72,7 @@ When driving an FBR Side Dialog created by `freshBootsReasoning({ tellaskContent
   - no reading files / running commands / browsing
   - no accessing Memory or rtws (runtime workspace) state
 
-Intuition: “fresh boots” means “fresh relative to the tellasker-side thread”, not “ignores baseline system rules”. Runtime may
-still inject baseline policy/safety/formatting context, but the tellask body remains the authority.
+Intuition: “fresh boots” means “fresh relative to the tellasker-side thread”, not “ignores baseline system rules”. Runtime supplies the dedicated FBR policy and the FBR dialog’s own history. It does not inject shared Taskdoc, member memories, ordinary reminders, or ordinary reply-tool guidance; callers must put required task facts in the supplied body.
 
 ### 4.2 Tool isolation (prompt + technical enforcement)
 
@@ -82,33 +81,13 @@ Tool-less FBR has two layers, both required:
 1. **Prompt contract**: the runtime must communicate the current phase constraints unambiguously.
 2. **API/transport contract**: divergence/convergence must expose no callable Dominds tools; final closure may expose exactly two conclusion functions and nothing else.
 
-#### 4.2.1 System prompt requirements (no tool instructions)
+#### 4.2.1 System prompt requirements
 
-The FBR system prompt MUST communicate (wording may vary, meaning must hold):
+The system prompt must explain the FBR role, the authority of the supplied body, the current phase, and how to report missing evidence. It must respect the actual phase capabilities: no functions during divergence/convergence, and only the two conclusion functions during finalization. It must not require ordinary reply, Taskdoc, memory, filesystem, shell, or teammate tools.
 
-- this is an FBR Side Dialog; the tellask body is the primary context
-- do not assume access to tellasker-side dialog history
-- if critical context is missing, list what is missing and why it blocks reasoning
-- do not emit any tellasks (including `tellaskBack` or `askHuman`)
+#### 4.2.2 Dedicated capability notice
 
-And: the **system prompt body MUST NOT include tool instructions** (no tool lists, allowlists, example commands, “how to
-use tools”, etc.).
-
-#### 4.2.2 Appended “no tools” notice (the only allowed tool-related text)
-
-All tool-availability wording MUST be confined to a separately injected “no tools” notice, and that notice MUST be:
-
-- short, fixed, and non-extensible
-- explicit: no tools available; do not call tools
-- explicit: no access to rtws / files / browser / shell
-- free of any tool lists, allowlists, example commands, or execution guidance
-
-If a provider integration normally injects a tool prompt or schema, then for FBR it MUST either:
-
-- omit it entirely, OR
-- inject text that is identical to the appended “no tools” notice
-
-Under no circumstances should the FBR Side Dialog see any tool definitions.
+A separate short notice states the current phase capability boundary. Divergence/convergence have no tools. Finalization exposes exactly the two conclusion functions. Both phases forbid ordinary tool calls and access to rtws/files/browser/shell. Provider-visible definitions must match that boundary.
 
 #### 4.2.3 Divergence/convergence requests expose no callable tools
 
@@ -140,8 +119,7 @@ An FBR Side Dialog should denoise internally and post only one tellasker-visible
 
 ### 4.5 Violations and errors (loud + debuggable)
 
-- Any teammate Tellask attempt or any tool/function call attempt inside FBR MUST be treated as a hard
-  violation.
+- Ordinary tools and teammate Tellasks must be rejected without execution. During finalization only the two conclusion functions are permitted.
 - The runtime MUST return a clear, user-visible error, and MUST log/emit a debuggable reason string (no silent swallow).
 
 ## 5. Sequential execution: `fbr-effort`
@@ -156,12 +134,13 @@ An FBR Side Dialog should denoise internally and post only one tellasker-visible
 
 When `fbr-effort = N`:
 
-- runtime expands one `freshBootsReasoning({ tellaskContent: "..." })` into **N divergence rounds + N convergence rounds + up to N finalization retries** inside one Side Dialog
+- normal execution expands one `freshBootsReasoning({ tellaskContent: "..." })` into **N divergence rounds + N convergence rounds + up to N finalization retries** inside one Side Dialog
 - divergence rounds must explore distinct angles and stay open to ideas that may later be discarded
 - convergence rounds must denoise autonomously and preserve only stable consensus
-- conclusion functions are exposed only after divergence and convergence are complete
-- if the model still does not end via one of the required conclusion functions after `N` finalization retries, runtime must programmatically produce the `presentUnreasonableSituation` result
-- tellasker receives only the final low-noise conclusion or the final unreasonable-situation conclusion
+- normally, conclusion functions are exposed after divergence and convergence; measured caution can skip remaining reasoning rounds and enter finalization early
+- finalization has at most `N` attempts, including early finalization under caution; if no acceptable conclusion is submitted, runtime closes with a notice that no formal conclusion was accepted
+- critical context stops further model requests and returns an explicit context-limit notice; pressure and missing tool closure do not establish task complexity or reasoning quality
+- tellasker receives one final conclusion or runtime closure notice, rather than a dump of private rounds
 
 ## 6. FBR-only model overrides: `fbr_model_params`
 
@@ -218,7 +197,7 @@ members:
 ## 9. Acceptance checklist
 
 - `freshBootsReasoning({ tellaskContent: "..." })` triggers FBR; divergence/convergence expose no callable tools, and final closure requires one of the two conclusion tools.
-- The system prompt body contains no tool instructions; tool-related wording comes only from the separate fixed notice.
+- System guidance and the dedicated notice match the current phase capabilities; ordinary tool instructions are excluded.
 - FBR Side Dialogs cannot issue teammate Tellasks (including `tellaskBack`).
 - `fbr-effort` defaults to `3`, accepts `0..100`, rejects invalid values, and fails loudly when disabled.
 - `fbr_model_params` applies only to FBR and follows the same schema/merge intent as `model_params`.

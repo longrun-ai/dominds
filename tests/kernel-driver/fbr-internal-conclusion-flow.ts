@@ -2,513 +2,464 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs/promises';
 import path from 'node:path';
 
+import type { DialogFbrState } from '@longrun-ai/kernel/types/storage';
 import { SideDialog } from '../../main/dialog';
+import { globalDialogRegistry } from '../../main/dialog-global-registry';
+import { ensureDialogLoaded, getOrRestoreMainDialog } from '../../main/dialog-instance-registry';
+import type { ChatMessage } from '../../main/llm/client';
+import { registerLlmGenerator, unregisterLlmGenerator } from '../../main/llm/gen/registry';
 import { driveDialogStream } from '../../main/llm/kernel-driver';
 import {
-  buildFbrConclusionTools,
-  buildFbrConvergencePrompt,
-  buildFbrFinalizationPrompt,
-  buildProgrammaticFbrUnreasonableSituationContent,
   FBR_LOW_NOISE_CONCLUSION_TOOL_NAME,
   FBR_UNREASONABLE_SITUATION_TOOL_NAME,
 } from '../../main/llm/kernel-driver/fbr';
 import { DialogPersistence } from '../../main/persistence';
-import { appendDistinctPerspectiveFbrBody } from '../../main/runtime/fbr-body';
-import {
-  formatAssignmentFromAskerDialog,
-  formatTellaskResponseContent,
-} from '../../main/runtime/inter-dialog-format';
-import { NO_ACTIVE_REPLY_PREFIX_ZH } from '../../main/runtime/reply-prompt-copy';
-import { getWorkLanguage, setWorkLanguage } from '../../main/runtime/work-language';
-
+import { setWorkLanguage } from '../../main/runtime/work-language';
+import type { FuncTool } from '../../main/tool';
+import { toolSuccess } from '../../main/tool';
+import { registerTool, unregisterTool } from '../../main/tools/registry';
+import { messageProvider } from '../helpers/message-provider';
+import { semanticEvidenceCollector } from '../helpers/semantic-evidence';
 import {
   createMainDialog,
-  lastAssistantSaying,
-  makeDriveOptions,
   makeUserPrompt,
   waitFor,
   waitForAllDialogsUnlocked,
   withTempRtws,
-  writeMockDb,
   writeStandardMinds,
 } from './helpers';
 
-function buildRoundBody(body: string, iteration: number, total: number): string {
-  return appendDistinctPerspectiveFbrBody({
-    body,
-    iteration,
-    total,
-    language: getWorkLanguage(),
-    isFinalRound: iteration === total,
+const evidence = semanticEvidenceCollector('dominds-fbr-closure-');
+async function main(): Promise<void> {
+  await withTempRtws(async (rtws) => {
+    const apiType = 'controlled-fbr-closure';
+    for (const language of ['en', 'zh'] as const) {
+      setWorkLanguage(language);
+      for (const streaming of [true, false]) {
+        for (const variant of [
+          'low-noise',
+          'unreasonable',
+          'exhausted',
+          'caution',
+          'critical',
+          'caution-exhausted',
+          'forbidden-tools',
+        ] as const) {
+          const caution = variant === 'caution' || variant === 'caution-exhausted';
+          const programmatic =
+            variant === 'exhausted' || variant === 'critical' || variant === 'caution-exhausted';
+          const effort = caution || variant === 'critical' ? 3 : 2;
+          const id = `${variant}-${language}-${streaming ? 'stream' : 'batch'}`;
+          const forbiddenName = 'fbr_forbidden_effect_probe';
+          let forbiddenEffects = 0;
+          let forbiddenAttempts = 0;
+          const effectPath = path.join(rtws, `forbidden-effect-${id}`);
+          const effect: FuncTool = {
+            type: 'func',
+            name: forbiddenName,
+            description: 'Controlled workspace write.',
+            parameters: { type: 'object', properties: {} },
+            argsValidation: 'passthrough',
+            async call() {
+              forbiddenEffects += 1;
+              await fs.writeFile(effectPath, 'forbidden-effect-data');
+              return toolSuccess('forbidden-effect-data');
+            },
+          };
+          registerTool(effect);
+          await writeStandardMinds(rtws, {
+            providerApiType: apiType,
+            memberTools: [forbiddenName],
+            streaming,
+            modelContextLength: 1000,
+            modelOptimalMaxTokens: 500,
+            modelCriticalMaxTokens: 900,
+          });
+          await fs.appendFile(
+            path.join(rtws, '.minds', 'team.yaml'),
+            [
+              '    fbr-effort: 2',
+              '    model_params:',
+              '      json_response: false',
+              '      openai: {temperature: 0.2, top_p: 0.8}',
+              '    fbr_model_params:',
+              '      json_response: true',
+              '      openai: {temperature: 0.6}',
+              '',
+            ].join('\n'),
+          );
+          let root = await createMainDialog();
+          root.disableDiligencePush = true;
+          const callId = `fbr-call-${id}`;
+          const body =
+            language === 'zh'
+              ? '目标：建议下一步排查。事实：两个请求使用同一条写入路径，其中一个失败；尚未采集存储侧 trace。仅根据这些事实分析，说明仍缺的证据。'
+              : 'Goal: recommend the next diagnostic step. Facts: two requests used the same write path; one failed. No storage-side trace has been collected. Work only from these facts and state the missing evidence.';
+          const conclusion = `fbr-conclusion-data-${id}`;
+          const callerPrivate = `caller-private-data-${id}`;
+          const workspacePrivate = `workspace-private-data-${id}`;
+          const memoryPrivate = `memory-private-data-${id}`;
+          await fs.appendFile(
+            path.join(rtws, root.taskDocPath, 'goals.md'),
+            `\n${workspacePrivate}\n`,
+          );
+          await fs.mkdir(path.join(rtws, '.minds', 'memory', 'team_shared'), { recursive: true });
+          await fs.writeFile(
+            path.join(rtws, '.minds', 'memory', 'team_shared', 'fixture.md'),
+            memoryPrivate,
+          );
+          const childPrivate: string[] = [];
+          const phases: Array<{ phase: DialogFbrState['phase']; iteration: number }> = [];
+          const actualRequests: unknown[] = [];
+          let rootRequests = 0;
+          let delivered: Extract<ChatMessage, { type: 'tellask_result_msg' }> | undefined;
+          const provider = messageProvider(
+            apiType,
+            async ({
+              request,
+              context,
+              genseq,
+              tools,
+              systemPrompt,
+              agent,
+              streaming: actualStreaming,
+            }) => {
+              assert.equal(actualStreaming, streaming);
+              const usage = (promptTokens: number) => ({
+                kind: 'available' as const,
+                promptTokens,
+                completionTokens: 10,
+                totalTokens: promptTokens + 10,
+              });
+              if (request.dialogSelfId === root.id.selfId) {
+                assert.equal(tools.filter((tool) => tool.name === forbiddenName).length, 1);
+                rootRequests += 1;
+                assert.ok(rootRequests <= 2);
+                for (const data of [workspacePrivate, memoryPrivate])
+                  assert.ok(
+                    context.some(
+                      (message) => 'content' in message && message.content.includes(data),
+                    ),
+                    'ordinary caller context still receives its own workspace and memory data',
+                  );
+                assert.deepEqual(
+                  {
+                    json_response: agent.model_params?.json_response,
+                    openai: agent.model_params?.openai,
+                  },
+                  {
+                    json_response: false,
+                    openai: { temperature: 0.2, top_p: 0.8 },
+                  },
+                );
+                if (rootRequests === 1)
+                  return {
+                    messages: [
+                      { type: 'thinking_msg', role: 'assistant', genseq, content: callerPrivate },
+                      {
+                        type: 'func_call_msg',
+                        role: 'assistant',
+                        genseq,
+                        id: callId,
+                        name: 'freshBootsReasoning',
+                        arguments: JSON.stringify({ tellaskContent: body, effort }),
+                      },
+                    ],
+                    usage: usage(100),
+                  };
+                const results = context
+                  .filter((message) => message.type === 'tellask_result_msg')
+                  .filter((message) => message.callId === callId);
+                assert.equal(results.length, 1);
+                delivered = results[0];
+                assert.equal(delivered.status, 'completed');
+                if (!programmatic)
+                  assert.ok(
+                    delivered.content.includes(conclusion),
+                    'the provider-supplied conclusion body reaches its caller unchanged',
+                  );
+                for (const privateData of childPrivate)
+                  assert.equal(
+                    delivered.content.includes(privateData),
+                    false,
+                    'private round data is not the delivered conclusion',
+                  );
+                return {
+                  messages: [
+                    {
+                      type: 'saying_msg',
+                      role: 'assistant',
+                      genseq,
+                      content: `caller-consumed-data-${id}`,
+                    },
+                  ],
+                  usage: usage(100),
+                };
+              }
+              const side = root.lookupDialog(request.dialogSelfId);
+              assert.ok(side instanceof SideDialog);
+              assert.equal(side.assignmentFromAsker.callName, 'freshBootsReasoning');
+              assert.equal(side.assignmentFromAsker.effectiveFbrEffort, effort);
+              assert.equal(side.assignmentFromAsker.tellaskContent, body);
+              assert.deepEqual(
+                {
+                  json_response: agent.model_params?.json_response,
+                  openai: agent.model_params?.openai,
+                },
+                {
+                  json_response: true,
+                  openai: { temperature: 0.6, top_p: 0.8 },
+                },
+              );
+              for (const message of context.filter((message) => 'content' in message))
+                for (const data of [callerPrivate, workspacePrivate, memoryPrivate])
+                  assert.equal(
+                    message.content.includes(data),
+                    false,
+                    'FBR receives the supplied body rather than unrelated caller/workspace/memory data',
+                  );
+              assert.ok(
+                context.some(
+                  (message) => message.type === 'prompting_msg' && message.content.includes(body),
+                ),
+                'the exact supplied task body remains available throughout the reasoning rounds',
+              );
+              const state = (await DialogPersistence.loadDialogLatest(side.id, side.status))
+                ?.fbrState;
+              assert.ok(state);
+              assert.equal(state.effort, effort);
+              phases.push({ phase: state.phase, iteration: state.iteration });
+              assert.ok(
+                phases.length <= (variant === 'caution-exhausted' ? 4 : 6),
+                'configured finalization attempts must remain bounded under caution',
+              );
+              assert.deepEqual(
+                tools.map((tool) => tool.name).sort(),
+                state.phase === 'finalization'
+                  ? [
+                      FBR_LOW_NOISE_CONCLUSION_TOOL_NAME,
+                      FBR_UNREASONABLE_SITUATION_TOOL_NAME,
+                    ].sort()
+                  : [],
+              );
+              for (const tool of tools) assert.equal(tool.followupMode, 'deferred');
+              const prompt = context.filter((message) => message.type === 'prompting_msg').at(-1);
+              assert.ok(prompt);
+              actualRequests.push({
+                state,
+                systemPrompt,
+                currentPrompt: prompt.content,
+                environment: context.filter((message) => message.type === 'environment_msg'),
+                resultsAndResponses: context.filter(
+                  (message) =>
+                    message.type === 'func_result_msg' ||
+                    message.type === 'saying_msg' ||
+                    message.type === 'transient_guide_msg',
+                ),
+                tools: tools.map(({ name, description, parameters, followupMode }) => ({
+                  name,
+                  description,
+                  parameters,
+                  followupMode,
+                })),
+              });
+              if (
+                variant === 'forbidden-tools' &&
+                state.iteration === 1 &&
+                (state.phase === 'divergence' || state.phase === 'finalization')
+              ) {
+                forbiddenAttempts += 1;
+                return {
+                  messages: [
+                    {
+                      type: 'func_call_msg',
+                      role: 'assistant',
+                      genseq,
+                      id: `forbidden-${state.phase}-${id}`,
+                      name: forbiddenName,
+                      arguments: '{}',
+                    },
+                  ],
+                  usage: usage(100),
+                };
+              }
+              if (
+                state.phase === 'finalization' &&
+                !programmatic &&
+                (variant !== 'caution' || state.iteration === 2)
+              ) {
+                const name =
+                  variant === 'unreasonable'
+                    ? FBR_UNREASONABLE_SITUATION_TOOL_NAME
+                    : FBR_LOW_NOISE_CONCLUSION_TOOL_NAME;
+                return {
+                  messages: [
+                    {
+                      type: 'func_call_msg',
+                      role: 'assistant',
+                      genseq,
+                      id: `conclusion-${id}`,
+                      name,
+                      arguments: JSON.stringify({ content: conclusion }),
+                    },
+                  ],
+                  usage: usage(caution ? 620 : 100),
+                };
+              }
+              const privateData = `fbr-private-round-data-${id}-${phases.length}`;
+              childPrivate.push(privateData);
+              return {
+                messages: [{ type: 'saying_msg', role: 'assistant', genseq, content: privateData }],
+                usage: usage(variant === 'critical' ? 950 : caution ? 600 : 100),
+              };
+            },
+          );
+          registerLlmGenerator(provider);
+          try {
+            await driveDialogStream(root, makeUserPrompt(`caller-input-data-${id}`, id), true);
+            await waitFor(
+              async () => {
+                provider.assertNoErrors();
+                return (await DialogPersistence.loadCourseEvents(root.id, 1, root.status)).some(
+                  (event) =>
+                    event.type === 'agent_words_record' &&
+                    event.content === `caller-consumed-data-${id}`,
+                );
+              },
+              5000,
+              'the caller consumes one final FBR conclusion',
+            );
+            await waitForAllDialogsUnlocked(root, 5000);
+            provider.assertNoErrors();
+            assert.equal(rootRequests, 2);
+            assert.ok(delivered);
+            const expectedPhases =
+              variant === 'critical'
+                ? [['divergence', 1]]
+                : variant === 'caution-exhausted'
+                  ? [
+                      ['divergence', 1],
+                      ['finalization', 1],
+                      ['finalization', 2],
+                      ['finalization', 3],
+                    ]
+                  : variant === 'caution'
+                    ? [
+                        ['divergence', 1],
+                        ['finalization', 1],
+                        ['finalization', 2],
+                      ]
+                    : [
+                        ['divergence', 1],
+                        ['divergence', 2],
+                        ['convergence', 1],
+                        ['convergence', 2],
+                        ['finalization', 1],
+                        ...(['exhausted', 'forbidden-tools'].includes(variant)
+                          ? [['finalization', 2]]
+                          : []),
+                      ];
+            assert.deepEqual(
+              phases.map(({ phase, iteration }) => [phase, iteration]),
+              expectedPhases,
+            );
+            const side = root
+              .getLoadedDialogTreeSnapshot()
+              .find((dialog) => dialog instanceof SideDialog);
+            assert.ok(side instanceof SideDialog);
+            const sideEvents = await DialogPersistence.loadCourseEvents(side.id, 1, side.status);
+            const calls = sideEvents
+              .filter((event) => event.type === 'func_call_record')
+              .filter(
+                (event) =>
+                  event.name === FBR_LOW_NOISE_CONCLUSION_TOOL_NAME ||
+                  event.name === FBR_UNREASONABLE_SITUATION_TOOL_NAME,
+              );
+            assert.equal(forbiddenAttempts, variant === 'forbidden-tools' ? 2 : 0);
+            assert.equal(forbiddenEffects, 0);
+            await assert.rejects(fs.stat(effectPath), { code: 'ENOENT' });
+            assert.equal(calls.length, programmatic ? 0 : 1);
+            const resolutions = sideEvents.filter(
+              (event) => event.type === 'tellask_reply_resolution_record',
+            );
+            assert.equal(resolutions.length, 1);
+            assert.equal(resolutions[0].targetCallId, callId);
+            assert.equal(resolutions[0].replyCallName, 'replyTellaskSessionless');
+            assert.equal(
+              await DialogPersistence.loadActiveTellaskReplyObligation(side.id, side.status),
+              undefined,
+            );
+            const latest = await DialogPersistence.loadDialogLatest(side.id, side.status);
+            assert.equal(latest?.fbrState, undefined);
+            assert.equal(latest?.executionMarker, undefined);
+            assert.deepEqual(latest?.displayState, { kind: 'idle_waiting_user' });
+            const rootEvents = await DialogPersistence.loadCourseEvents(root.id, 1, root.status);
+            const results = rootEvents
+              .filter((event) => event.type === 'tellask_result_record')
+              .filter((event) => event.callId === callId);
+            assert.equal(results.length, 1);
+            assert.equal(results[0].content, delivered.content);
+            const previousRoot = root;
+            globalDialogRegistry.unregister(root.id.rootId);
+            const restored = await getOrRestoreMainDialog(root.id.rootId, root.status);
+            assert.ok(restored);
+            assert.notEqual(restored, previousRoot);
+            root = restored;
+            const restoredSide = await ensureDialogLoaded(root, side.id, side.status);
+            assert.ok(restoredSide instanceof SideDialog);
+            assert.notEqual(restoredSide, side);
+            assert.equal(restoredSide.assignmentFromAsker.effectiveFbrEffort, effort);
+            assert.equal(
+              await DialogPersistence.loadActiveTellaskReplyObligation(
+                restoredSide.id,
+                restoredSide.status,
+              ),
+              undefined,
+            );
+            if (streaming)
+              evidence.record({
+                id,
+                scenario: `A real FBR self-dialog closes through ${variant}; provider usage controls the actual runtime health decisions.`,
+                businessValue:
+                  'Keep independent reasoning isolated, close with one truthful conclusion and preserve caller work and durable delivery.',
+                context: {
+                  language,
+                  variant,
+                  configuredEffort: effort,
+                  contextLength: 1000,
+                  optimalMaxTokens: 500,
+                  criticalMaxTokens: 900,
+                  providerConclusionIsOpaqueFixtureData: true,
+                  nativeConclusionCallCount: calls.length,
+                  actualChildRequests: phases.length,
+                },
+                reviewQuestions: [
+                  'Are the actual stage, body-context and capability instructions internally consistent, including early finalization under caution?',
+                  'Does the actual delivered result truthfully distinguish model-supplied conclusions from runtime inability to obtain one, without unsupported claims about the task or reasoning quality?',
+                  'Does the caller receive only the final conclusion and enough honest context to decide its next step?',
+                ],
+                actualText: JSON.stringify(
+                  { requests: actualRequests, callerResult: delivered.content },
+                  null,
+                  2,
+                ),
+              });
+          } finally {
+            await waitForAllDialogsUnlocked(root, 5000);
+            globalDialogRegistry.unregister(root.id.rootId);
+            unregisterLlmGenerator(apiType);
+            unregisterTool(forbiddenName);
+          }
+        }
+      }
+    }
   });
-}
-
-async function writeFbrTeamYaml(tmpRoot: string, effort: number): Promise<void> {
-  await fs.writeFile(
-    path.join(tmpRoot, '.minds', 'team.yaml'),
-    [
-      'member_defaults:',
-      '  provider: local-mock',
-      '  model: default',
-      `  fbr-effort: ${effort}`,
-      'default_responder: tester',
-      'members:',
-      '  tester:',
-      '    name: Tester',
-      '    provider: local-mock',
-      '    model: default',
-      `    fbr-effort: ${effort}`,
-      '    diligence-push-max: 2',
-      '',
-    ].join('\n'),
-    'utf-8',
+  await evidence.write();
+  console.log(
+    'real FBR phases, capability isolation, native/fallback conclusions and durable one-result delivery: passed',
   );
 }
-
-async function main(): Promise<void> {
-  await withTempRtws(async (tmpRoot) => {
-    setWorkLanguage('zh');
-    await writeStandardMinds(tmpRoot);
-    await writeFbrTeamYaml(tmpRoot, 2);
-
-    const language = getWorkLanguage();
-    assert.deepEqual(
-      buildFbrConclusionTools(language).map((tool) => [tool.name, tool.followupMode]),
-      [
-        [FBR_LOW_NOISE_CONCLUSION_TOOL_NAME, 'deferred'],
-        [FBR_UNREASONABLE_SITUATION_TOOL_NAME, 'deferred'],
-      ],
-      'FBR conclusion tools should not request immediate post-tool follow-up',
-    );
-
-    const successTrigger = '发起一次会正常收口的 FBR。';
-    const successBody = [
-      'Goal: 判断当前现象最可信的解释。',
-      'Facts:',
-      '- 线索 A 更稳定。',
-      '- 线索 B 可能只是偶发噪音。',
-      'Constraint:',
-      '- 只能基于正文推理。',
-    ].join('\n');
-    const successFinalContent = [
-      '低噪结论：当前最可信的判断是线索 A 指向主因，线索 B 暂时只应视作噪音。',
-      '关键未知项：还缺一条直接证据来最终封口。',
-      '下一步：优先补那条直接证据，而不是继续扩写边缘猜想。',
-    ].join('\n');
-    const successMirroredResponse = formatTellaskResponseContent({
-      callName: 'freshBootsReasoning',
-      callId: 'fbr-success-call',
-      responderId: 'tester',
-      tellaskerId: 'tester',
-      tellaskContent: successBody,
-      responseBody: successFinalContent,
-      status: 'completed',
-      language,
-    });
-    const successRootFinalAnswer = '主线已收到低噪 FBR 结论。';
-
-    const fallbackTrigger = '发起一次会走程序化兜底的 FBR。';
-    const fallbackBody = [
-      'Goal: 判断当前现象是否已经足够可解释。',
-      'Facts:',
-      '- 线索互相打架。',
-      '- 没有哪条证据足够稳定。',
-      'Constraint:',
-      '- 只能基于正文推理。',
-    ].join('\n');
-    const fallbackFinalContent = buildProgrammaticFbrUnreasonableSituationContent({
-      language,
-      finalizationAttempts: 2,
-    });
-    const fallbackMirroredResponse = formatTellaskResponseContent({
-      callName: 'freshBootsReasoning',
-      callId: 'fbr-fallback-call',
-      responderId: 'tester',
-      tellaskerId: 'tester',
-      tellaskContent: fallbackBody,
-      responseBody: fallbackFinalContent,
-      status: 'completed',
-      language,
-    });
-    const fallbackRootFinalAnswer = '主线已收到程序化不合理现状结论。';
-
-    const successDivergence1 = formatAssignmentFromAskerDialog({
-      callName: 'freshBootsReasoning',
-      fromAgentId: 'tester',
-      toAgentId: 'tester',
-      tellaskContent: buildRoundBody(successBody, 1, 2),
-      language,
-      collectiveTargets: ['tester'],
-      fbrRound: { iteration: 1, total: 2 },
-    });
-    const successDivergence2 = formatAssignmentFromAskerDialog({
-      callName: 'freshBootsReasoning',
-      fromAgentId: 'tester',
-      toAgentId: 'tester',
-      tellaskContent: buildRoundBody(successBody, 2, 2),
-      language,
-      collectiveTargets: ['tester'],
-      fbrRound: { iteration: 2, total: 2 },
-    });
-
-    const fallbackDivergence1 = formatAssignmentFromAskerDialog({
-      callName: 'freshBootsReasoning',
-      fromAgentId: 'tester',
-      toAgentId: 'tester',
-      tellaskContent: buildRoundBody(fallbackBody, 1, 2),
-      language,
-      collectiveTargets: ['tester'],
-      fbrRound: { iteration: 1, total: 2 },
-    });
-    const fallbackDivergence2 = formatAssignmentFromAskerDialog({
-      callName: 'freshBootsReasoning',
-      fromAgentId: 'tester',
-      toAgentId: 'tester',
-      tellaskContent: buildRoundBody(fallbackBody, 2, 2),
-      language,
-      collectiveTargets: ['tester'],
-      fbrRound: { iteration: 2, total: 2 },
-    });
-
-    const convergence1 = buildFbrConvergencePrompt({ iteration: 1, total: 2, language });
-    const convergence2 = buildFbrConvergencePrompt({ iteration: 2, total: 2, language });
-    const finalization1 = buildFbrFinalizationPrompt({ attempt: 1, total: 2, language });
-    const finalization2 = buildFbrFinalizationPrompt({ attempt: 2, total: 2, language });
-
-    await writeMockDb(tmpRoot, [
-      {
-        message: successTrigger,
-        role: 'user',
-        response: '开始做 FBR。',
-        funcCalls: [
-          {
-            id: 'fbr-success-call',
-            name: 'freshBootsReasoning',
-            arguments: { tellaskContent: successBody, effort: 2 },
-          },
-        ],
-      },
-      {
-        message: successDivergence1,
-        role: 'user',
-        response: '发散一：假设最稳定线索已经足够说明主因。',
-      },
-      {
-        message: successDivergence2,
-        role: 'user',
-        response: '发散二：允许 B 是离谱噪音，不急着压掉，但先保留为候选噪音。',
-      },
-      {
-        message: convergence1,
-        role: 'user',
-        response: '收敛一：跨轮稳定部分仍然主要围绕线索 A。',
-        contextContains: [successBody],
-      },
-      {
-        message: convergence2,
-        role: 'user',
-        response: '收敛二：线索 B 缺少独立支撑，应从最终结论里丢弃。',
-        contextContains: [successBody],
-      },
-      {
-        message: finalization1,
-        role: 'user',
-        response: '',
-        contextContains: [successBody],
-        funcCalls: [
-          {
-            id: 'fbr-success-finalizer',
-            name: FBR_LOW_NOISE_CONCLUSION_TOOL_NAME,
-            arguments: { content: successFinalContent },
-          },
-        ],
-      },
-      {
-        message: successMirroredResponse,
-        role: 'tool',
-        response: successRootFinalAnswer,
-      },
-      {
-        message: fallbackTrigger,
-        role: 'user',
-        response: '开始做一轮会失败收口的 FBR。',
-        funcCalls: [
-          {
-            id: 'fbr-fallback-call',
-            name: 'freshBootsReasoning',
-            arguments: { tellaskContent: fallbackBody, effort: 2 },
-          },
-        ],
-      },
-      {
-        message: fallbackDivergence1,
-        role: 'user',
-        response: '发散一：假设所有线索都可能指向不同方向。',
-      },
-      {
-        message: fallbackDivergence2,
-        role: 'user',
-        response: '发散二：允许互相冲突的解释暂时并存。',
-      },
-      {
-        message: convergence1,
-        role: 'user',
-        response: '收敛一：目前仍没有稳定共识。',
-        contextContains: [fallbackBody],
-      },
-      {
-        message: convergence2,
-        role: 'user',
-        response: '收敛二：冲突依旧，噪音过高。',
-        contextContains: [fallbackBody],
-      },
-      {
-        message: finalization1,
-        role: 'user',
-        response: '我还没准备好调用结论函数。',
-        contextContains: [fallbackBody],
-      },
-      {
-        message: finalization2,
-        role: 'user',
-        response: '我还是没有按要求调用结论函数。',
-        contextContains: [fallbackBody],
-      },
-      {
-        message: fallbackMirroredResponse,
-        role: 'tool',
-        response: fallbackRootFinalAnswer,
-      },
-    ]);
-
-    const successRoot = await createMainDialog('tester');
-    successRoot.disableDiligencePush = true;
-
-    await driveDialogStream(
-      successRoot,
-      makeUserPrompt(successTrigger, 'kernel-driver-fbr-internal-conclusion-flow-success'),
-      true,
-      makeDriveOptions({ suppressDiligencePush: true }),
-    );
-    await waitFor(
-      async () => lastAssistantSaying(successRoot) === successRootFinalAnswer,
-      8_000,
-      'successful FBR root final answer',
-    );
-    await waitForAllDialogsUnlocked(successRoot, 8_000);
-
-    const successSideDialog = successRoot
-      .getLoadedDialogTreeSnapshot()
-      .find((dialog): dialog is SideDialog => dialog instanceof SideDialog);
-    assert.ok(successSideDialog, 'expected FBR success sideDialog to exist');
-    assert.equal(
-      successSideDialog.assignmentFromAsker.effectiveFbrEffort,
-      2,
-      'successful FBR sideDialog should record the effective effort on assignment metadata',
-    );
-    const successPersistedMeta = await DialogPersistence.loadDialogMetadata(
-      successSideDialog.id,
-      'running',
-    );
-    assert.ok(successPersistedMeta, 'successful FBR sideDialog metadata should be persisted');
-    assert.equal(
-      'assignmentFromAsker' in successPersistedMeta,
-      false,
-      'successful FBR sideDialog metadata should not store assignmentFromAsker',
-    );
-    const successPersistedAssignment = await DialogPersistence.loadSideDialogAssignmentFromAsker(
-      successSideDialog.id,
-      'running',
-    );
-    assert.equal(
-      successPersistedAssignment.effectiveFbrEffort,
-      2,
-      'successful FBR asker stack persisted to disk should keep the effective effort',
-    );
-
-    const successPromptings = successSideDialog.msgs.filter(
-      (msg) => msg.type === 'prompting_msg' && msg.role === 'user',
-    );
-    assert.equal(
-      successPromptings.length,
-      5,
-      'successful FBR should run 2 divergence rounds + 2 convergence rounds + 1 finalization round before ending',
-    );
-    assert.ok(
-      successPromptings.every(
-        (msg) =>
-          !msg.content.includes(NO_ACTIVE_REPLY_PREFIX_ZH) &&
-          !msg.content.includes('这轮不要调用任何 `reply*`'),
-      ),
-      'FBR prompts should stay isolated from ordinary inter-dialog reply-obligation guidance',
-    );
-    const successFuncCalls = successSideDialog.msgs.filter((msg) => msg.type === 'func_call_msg');
-    assert.equal(
-      successFuncCalls.length,
-      1,
-      'successful FBR should end with exactly one conclusion function call',
-    );
-    assert.equal(
-      successFuncCalls[0]?.name,
-      FBR_LOW_NOISE_CONCLUSION_TOOL_NAME,
-      'successful FBR should close with the low-noise conclusion function',
-    );
-
-    const successTellaskResult = successRoot.msgs.find(
-      (msg): msg is Extract<(typeof successRoot.msgs)[number], { type: 'tellask_result_msg' }> =>
-        msg.type === 'tellask_result_msg' && msg.content === successMirroredResponse,
-    );
-    assert.ok(
-      successTellaskResult,
-      'expected successful FBR tellask result to be mirrored to root',
-    );
-    assert.ok(
-      successTellaskResult.content.includes(successFinalContent),
-      'root should receive the final low-noise conclusion body',
-    );
-    assert.ok(
-      !successTellaskResult.content.includes('FBR 全量诉请回复') &&
-        !successTellaskResult.content.includes('收到全量诉请回复后请提炼'),
-      'main dialog must no longer receive raw all-round FBR dumps or tellasker distill instructions',
-    );
-    assert.equal(
-      await DialogPersistence.loadActiveTellaskReplyObligation(
-        successSideDialog.id,
-        successSideDialog.status,
-      ),
-      undefined,
-      'successful FBR conclusion auto-delivery must clear the sideDialog reply obligation',
-    );
-    const successLatest = await DialogPersistence.loadDialogLatest(
-      successSideDialog.id,
-      successSideDialog.status,
-    );
-    assert.deepEqual(
-      successLatest?.displayState,
-      { kind: 'idle_waiting_user' },
-      'successful FBR conclusion auto-delivery should return the sideDialog display state to idle',
-    );
-    assert.equal(
-      successLatest?.executionMarker,
-      undefined,
-      'successful FBR conclusion auto-delivery should clear the pending-reply execution marker',
-    );
-    const successEvents = await DialogPersistence.loadCourseEvents(
-      successSideDialog.id,
-      successSideDialog.currentCourse,
-      successSideDialog.status,
-    );
-    assert.ok(
-      successEvents.some(
-        (event) =>
-          event.type === 'tellask_reply_resolution_record' &&
-          event.targetCallId === 'fbr-success-call' &&
-          event.replyCallName === 'replyTellaskSessionless',
-      ),
-      'successful FBR conclusion auto-delivery must persist a reply resolution record',
-    );
-
-    const fallbackRoot = await createMainDialog('tester');
-    fallbackRoot.disableDiligencePush = true;
-
-    await driveDialogStream(
-      fallbackRoot,
-      makeUserPrompt(fallbackTrigger, 'kernel-driver-fbr-internal-conclusion-flow-fallback'),
-      true,
-      makeDriveOptions({ suppressDiligencePush: true }),
-    );
-    await waitFor(
-      async () => lastAssistantSaying(fallbackRoot) === fallbackRootFinalAnswer,
-      8_000,
-      'fallback FBR root final answer',
-    );
-    await waitForAllDialogsUnlocked(fallbackRoot, 8_000);
-
-    const fallbackSideDialog = fallbackRoot
-      .getLoadedDialogTreeSnapshot()
-      .find((dialog): dialog is SideDialog => dialog instanceof SideDialog);
-    assert.ok(fallbackSideDialog, 'expected fallback FBR sideDialog to exist');
-    assert.equal(
-      fallbackSideDialog.assignmentFromAsker.effectiveFbrEffort,
-      2,
-      'fallback FBR sideDialog should also record the effective effort on assignment metadata',
-    );
-
-    const fallbackPromptings = fallbackSideDialog.msgs.filter(
-      (msg) => msg.type === 'prompting_msg' && msg.role === 'user',
-    );
-    assert.equal(
-      fallbackPromptings.length,
-      6,
-      'fallback FBR should run 2 divergence rounds + 2 convergence rounds + 2 finalization retries before runtime fallback',
-    );
-    assert.ok(
-      fallbackPromptings.every(
-        (msg) =>
-          !msg.content.includes(NO_ACTIVE_REPLY_PREFIX_ZH) &&
-          !msg.content.includes('这轮不要调用任何 `reply*`'),
-      ),
-      'fallback FBR prompts should also avoid ordinary inter-dialog reply-obligation guidance',
-    );
-    const fallbackFuncCalls = fallbackSideDialog.msgs.filter((msg) => msg.type === 'func_call_msg');
-    assert.equal(
-      fallbackFuncCalls.length,
-      0,
-      'fallback scenario should reach programmatic unreasonable-situation conclusion because the model never called a conclusion function',
-    );
-
-    const fallbackTellaskResult = fallbackRoot.msgs.find(
-      (msg): msg is Extract<(typeof fallbackRoot.msgs)[number], { type: 'tellask_result_msg' }> =>
-        msg.type === 'tellask_result_msg' && msg.content === fallbackMirroredResponse,
-    );
-    assert.ok(fallbackTellaskResult, 'expected fallback tellask result to be mirrored to root');
-    assert.ok(
-      fallbackTellaskResult.content.includes(fallbackFinalContent),
-      'root should receive the runtime-generated unreasonable-situation conclusion',
-    );
-    assert.equal(
-      await DialogPersistence.loadActiveTellaskReplyObligation(
-        fallbackSideDialog.id,
-        fallbackSideDialog.status,
-      ),
-      undefined,
-      'fallback FBR conclusion auto-delivery must clear the sideDialog reply obligation',
-    );
-    const fallbackLatest = await DialogPersistence.loadDialogLatest(
-      fallbackSideDialog.id,
-      fallbackSideDialog.status,
-    );
-    assert.deepEqual(
-      fallbackLatest?.displayState,
-      { kind: 'idle_waiting_user' },
-      'fallback FBR conclusion auto-delivery should return the sideDialog display state to idle',
-    );
-    assert.equal(
-      fallbackLatest?.executionMarker,
-      undefined,
-      'fallback FBR conclusion auto-delivery should clear the pending-reply execution marker',
-    );
-    const fallbackEvents = await DialogPersistence.loadCourseEvents(
-      fallbackSideDialog.id,
-      fallbackSideDialog.currentCourse,
-      fallbackSideDialog.status,
-    );
-    assert.ok(
-      fallbackEvents.some(
-        (event) =>
-          event.type === 'tellask_reply_resolution_record' &&
-          event.targetCallId === 'fbr-fallback-call' &&
-          event.replyCallName === 'replyTellaskSessionless',
-      ),
-      'fallback FBR conclusion auto-delivery must persist a reply resolution record',
-    );
-  });
-
-  console.log('kernel-driver fbr-internal-conclusion-flow: PASS');
-}
-
-void main().catch((err: unknown) => {
-  const message = err instanceof Error ? err.message : String(err);
-  console.error(`kernel-driver fbr-internal-conclusion-flow: FAIL\n${message}`);
-  process.exit(1);
+main().catch((error: unknown) => {
+  console.error(error);
+  process.exitCode = 1;
 });

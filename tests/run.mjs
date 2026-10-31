@@ -48,6 +48,8 @@ const manual = [
 ];
 const semanticSuites = {
   kernel: [
+    'kernel-driver/fbr-internal-conclusion-flow.ts',
+    'kernel-driver/retry-recovery-diligence-push-with-keep-going-disabled.ts',
     'kernel-driver/context-health-large-tool-output-hidden.ts',
     'kernel-driver/context-health-multi-iter-gate.ts',
     'kernel-driver/critical-queued-user-interjection.ts',

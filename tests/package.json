@@ -96,7 +96,7 @@
     "kernel-driver:clear-mind-critical-auto-course": "pnpm run rtws -- kernel-driver/clear-mind-critical-auto-course.ts",
     "kernel-driver:clear-mind-blocks-on-sibling-tool-failure": "pnpm run rtws -- kernel-driver/clear-mind-blocks-on-sibling-tool-failure.ts",
     "kernel-driver:fbr-internal-conclusion-flow": "pnpm run rtws -- kernel-driver/fbr-internal-conclusion-flow.ts",
-    "kernel-driver:fbr-context-health-closure": "pnpm run rtws -- kernel-driver/fbr-context-health-closure.ts",
+    "kernel-driver:fbr-context-health-closure": "pnpm run rtws -- kernel-driver/fbr-internal-conclusion-flow.ts",
     "kernel-driver:llm-request-failure-single-stream-error": "pnpm run rtws -- kernel-driver/llm-request-failure-single-stream-error.ts",
     "kernel-driver:integration": "node run.mjs --suite kernel",
     "task-package": "tsx task-package.ts",

@@ -1,76 +1,25 @@
-# FBR Implementation Details (Implemented)
+# FBR implementation
 
-Chinese version: [中文版](./fbr-implementation.zh.md)
+Chinese version: [中文版](./fbr-implementation.zh.md). The behavior contract is [FBR](./fbr.md).
 
-This doc records the implemented structure and constraints. The normative spec is [fbr.md](fbr.md).
+The caller needs an independent reasoning pass with a finite execution cost and one inspectable result. The runtime preserves that value through the existing MicroKernel dialog driver and durable reply delivery.
 
-## Implementation principles
+## Policy and context
 
-- FBR and non-FBR use the same context assembly pipeline; differences must be explicit policy fields only.
-- The FBR system prompt body must contain no tool instructions; tool availability is expressed only by a separate notice.
-- Tool/tellask restrictions are enforced technically at runtime, not by prompt wording alone.
+[guardrails.ts](../main/llm/kernel-driver/guardrails.ts) selects the FBR policy and overlays `fbr_model_params` on the member’s ordinary model configuration. Divergence and convergence expose no callable tools. Finalization exposes only the two conclusion functions; ordinary tools and tellasks remain unavailable.
 
-## Code structure
+[drive.ts](../main/llm/kernel-driver/drive.ts) uses the same context assembly pipeline for ordinary and FBR dialogs. FBR receives its dedicated policy notice, its supplied task body and its own dialog history. Shared Taskdoc, member memories, ordinary reminders and ordinary reply-obligation instructions are omitted. This prevents unrelated workspace state and instructions for unavailable tools from entering the reasoning pass. Ordinary dialogs retain those context sources.
 
-### 1) Unified drive policy (`main/llm/driver.ts`)
+[reply-guidance.ts](../main/llm/kernel-driver/reply-guidance.ts) preserves durable delivery routing while leaving FBR stage prompts free of ordinary reply-tool requirements. The model closes through a conclusion function; runtime delivers the accepted content through the existing reply channel.
 
-Before each generation, runtime builds a `DrivePolicy` that centralizes:
+## Execution and closure
 
-- `effectiveSystemPrompt`
-- `effectiveAgentTools`
-- `prependedContextMessages`
-- `tellaskPolicy`
-- `allowFunctionCalls`
+[fbr.ts](../main/llm/kernel-driver/fbr.ts) defines divergence, convergence and finalization prompts, the two conclusion tools, and the existing persisted phase state. Normal execution uses `N` divergence rounds, `N` convergence rounds and at most `N` finalization attempts. Measured caution skips remaining reasoning rounds and enters finalization early with the same attempt limit. Critical usage stops further model requests.
 
-For FBR policy, runtime:
+Accepted native conclusions are delivered once. If the attempt limit or critical context prevents a formal conclusion, runtime returns a closure notice stating that observed limit. It does not infer task complexity or reasoning quality from missing function calls or usage measurements. Private round output is not substituted for a formal conclusion.
 
-- uses `buildFbrSystemPrompt(...)` (no tool instructions)
-- injects a separate `buildNoToolsNotice(...)`
-- forces `effectiveAgentTools = []`
-- forces `tellaskPolicy = deny_all`
-- forces `allowFunctionCalls = false`
-- applies `fbr_model_params` override when configured
+Reply resolution, cleared obligations, execution markers and the retained effective effort are persisted through the normal dialog stores. Completed dialog reconstruction must retain delivery and must not recreate an unfinished reply obligation.
 
-### 2) Unified context assembly (`main/llm/driver.ts`)
+## Acceptance evidence
 
-`buildDriveContextMessages(...)` assembles context for both FBR and non-FBR. FBR does not use ad-hoc `unshift/push` special-cases in the main flow; it only differs via policy-provided `prependedContextMessages`.
-
-### 3) Unified violation gate (`main/llm/driver.ts`)
-
-Both streaming and non-streaming paths call `resolveDrivePolicyViolationKind(...)` to detect:
-
-- disallowed tellask-special function calls (FBR technical mode disallows all function calls)
-- disallowed tool/function calls (FBR disallows all)
-
-On violation, runtime emits `formatDomindsNoteFbrToollessViolation(...)` consistently.
-
-### 4) FBR isolation invariant gate (`main/llm/driver.ts`)
-
-Before generation, runtime runs `validateDrivePolicyInvariants(...)` and fail-fast checks:
-
-- system prompt must exactly equal `buildFbrSystemPrompt(...)`
-- `effectiveAgentTools` must be empty
-- `allowFunctionCalls` must be `false`
-- `tellaskPolicy` must be `deny_all`
-- `prependedContextMessages` must contain exactly one `buildNoToolsNotice(...)`
-
-If any check fails, runtime throws `FBR policy isolation violation`, preventing global tool-manual/tool-prompt paths from leaking into FBR.
-
-### 5) Single-source no-tools notice (`main/minds/system-prompt-parts.ts`)
-
-`buildNoToolsNotice(...)` is the only tool-availability wording source, fixed to:
-
-- no tools available / do not call tools
-- no access to rtws / files / browser / shell
-
-## Related modules
-
-- `main/llm/driver.ts`: policy, context assembly, violation enforcement
-- `main/minds/system-prompt-parts.ts`: no-tools notice generator
-
-## Acceptance checklist
-
-- FBR system prompt has no tool instructions.
-- Tool-related wording appears only in the separate `buildNoToolsNotice(...)`.
-- FBR/non-FBR context assembly flow is structurally identical; only policy fields differ.
-- Any FBR tool/function call or tellask-special function call is hard-rejected with explicit feedback.
+The isolated [closure regression](../tests/kernel-driver/fbr-internal-conclusion-flow.ts) drives real runtime/persistence with a provider boundary substitute. It checks phase capabilities, configured model overlays, body fidelity, caller/workspace/memory isolation, forbidden-tool effects, closure limits and one-result durable delivery. Semantic mode emits the actual requests and caller result for subjective test-execution-agent review. Machine checks, generated evidence and semantic verdicts remain separate; see the [test strategy](./testing-strategy.md).

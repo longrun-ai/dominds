@@ -1,102 +1,123 @@
 import assert from 'node:assert/strict';
 
+import { registerLlmGenerator, unregisterLlmGenerator } from '../../main/llm/gen/registry';
 import { driveDialogStream } from '../../main/llm/kernel-driver';
 import { DialogPersistence } from '../../main/persistence';
-
+import { setWorkLanguage } from '../../main/runtime/work-language';
+import { messageProvider } from '../helpers/message-provider';
 import {
   createMainDialog,
   hasPendingNextStepTriggers,
   makeUserPrompt,
   waitForAllDialogsUnlocked,
   withTempRtws,
-  writeMockDb,
   writeStandardMinds,
 } from './helpers';
 
 async function main(): Promise<void> {
-  await withTempRtws(async (tmpRoot) => {
-    await writeStandardMinds(tmpRoot);
-    const dlg = await createMainDialog('tester');
-    const reminder = dlg.addReminder('Initial bridge note.', undefined, undefined, undefined, {
-      scope: 'dialog',
-      renderMode: 'markdown',
-    });
-    const reminderId = reminder.id;
-
-    await writeMockDb(tmpRoot, [
-      {
-        message: 'Please update the reminder and keep going.',
-        role: 'user',
-        response: 'Updating the reminder now.',
-        funcCalls: [
-          {
-            id: 'update-reminder-call',
-            name: 'update_reminder',
-            arguments: {
-              reminder_id: reminderId,
-              content: 'Refined continuation note.',
-            },
+  await withTempRtws(async (rtws) => {
+    const apiType = 'controlled-reminder-followup';
+    for (const language of ['en', 'zh'] as const) {
+      setWorkLanguage(language);
+      for (const streaming of [true, false]) {
+        await writeStandardMinds(rtws, { providerApiType: apiType, streaming });
+        const root = await createMainDialog();
+        root.disableDiligencePush = true;
+        const id = `reminder-${language}-${streaming ? 'stream' : 'batch'}`;
+        const original = `initial-reminder-data-${id}`;
+        const updated = `updated-reminder-data-${id}`;
+        const reminder = root.addReminder(original, undefined, undefined, undefined, {
+          scope: 'dialog',
+          renderMode: 'markdown',
+        });
+        let requests = 0;
+        const provider = messageProvider(
+          apiType,
+          ({ request, context, genseq, streaming: actualStreaming }) => {
+            assert.equal(request.dialogSelfId, root.id.selfId);
+            assert.equal(actualStreaming, streaming);
+            requests += 1;
+            assert.ok(requests <= 2);
+            const body = requests === 1 ? original : updated;
+            assert.ok(
+              context.some((message) => 'content' in message && message.content.includes(body)),
+              'the actual provider context contains the current opaque reminder body',
+            );
+            if (requests === 1)
+              return {
+                messages: [
+                  {
+                    type: 'func_call_msg',
+                    role: 'assistant',
+                    genseq,
+                    id,
+                    name: 'update_reminder',
+                    arguments: JSON.stringify({ reminder_id: reminder.id, content: updated }),
+                  },
+                ],
+                usage: { kind: 'unavailable' },
+              };
+            const results = context
+              .filter((message) => message.type === 'func_result_msg')
+              .filter((message) => message.id === id);
+            assert.equal(results.length, 1);
+            assert.equal(results[0].name, 'update_reminder');
+            assert.equal(root.reminders.find((item) => item.id === reminder.id)?.content, updated);
+            return {
+              messages: [
+                {
+                  type: 'saying_msg',
+                  role: 'assistant',
+                  genseq,
+                  content: `reminder-consumed-data-${id}`,
+                },
+              ],
+              usage: { kind: 'unavailable' },
+            };
           },
-        ],
-      },
-      {
-        message: 'Updated',
-        role: 'tool',
-        response: 'Continuing after the reminder update.',
-      },
-    ]);
-
-    await driveDialogStream(
-      dlg,
-      makeUserPrompt(
-        'Please update the reminder and keep going.',
-        'update-reminder-immediate-followup',
-      ),
-      true,
-    );
-
-    await waitForAllDialogsUnlocked(dlg, 3_000);
-
-    const events = await DialogPersistence.loadCourseEvents(dlg.id, dlg.currentCourse, dlg.status);
-    const genStartCount = events.filter((event) => event.type === 'gen_start_record').length;
-    assert.equal(
-      genStartCount >= 2,
-      true,
-      'update_reminder should trigger an immediate follow-up generation',
-    );
-    assert.ok(
-      dlg.msgs.some(
-        (msg) =>
-          msg.type === 'saying_msg' &&
-          msg.role === 'assistant' &&
-          msg.content === 'Continuing after the reminder update.',
-      ),
-      'expected the follow-up generation to run after update_reminder',
-    );
-    assert.ok(
-      dlg.msgs.some(
-        (msg) =>
-          msg.type === 'func_result_msg' &&
-          msg.name === 'update_reminder' &&
-          (msg.content.includes('已更新') || msg.content.includes('Updated')),
-      ),
-      'expected update_reminder result to be persisted before the follow-up',
-    );
-
-    const latest = await DialogPersistence.loadDialogLatest(dlg.id, dlg.status);
-    assert.ok(latest, 'expected latest dialog state to exist');
-    assert.equal(
-      hasPendingNextStepTriggers(latest),
-      false,
-      'immediate follow-up should be consumed once the next generation starts',
-    );
+        );
+        registerLlmGenerator(provider);
+        try {
+          await driveDialogStream(root, makeUserPrompt(`reminder-input-data-${id}`, id), true);
+          await waitForAllDialogsUnlocked(root, 3000);
+          provider.assertNoErrors();
+          assert.equal(requests, 2);
+          const events = await DialogPersistence.loadCourseEvents(root.id, 1, root.status);
+          assert.equal(events.filter((event) => event.type === 'gen_start_record').length, 2);
+          assert.equal(
+            events.filter((event) => event.type === 'func_result_record' && event.id === id).length,
+            1,
+          );
+          assert.equal(
+            events.filter(
+              (event) =>
+                event.type === 'agent_words_record' &&
+                event.content === `reminder-consumed-data-${id}`,
+            ).length,
+            1,
+          );
+          const restored = await DialogPersistence.restoreDialog(root.id, root.status);
+          assert.ok(restored);
+          const durable = restored.reminders.filter((item) => item.id === reminder.id);
+          assert.equal(durable.length, 1);
+          assert.equal(durable[0].content, updated);
+          assert.equal(durable[0].scope, 'dialog');
+          assert.equal(durable[0].renderMode, 'markdown');
+          assert.equal(
+            hasPendingNextStepTriggers(
+              await DialogPersistence.loadDialogLatest(root.id, root.status),
+            ),
+            false,
+          );
+        } finally {
+          unregisterLlmGenerator(apiType);
+        }
+      }
+    }
   });
-
-  console.log('kernel-driver update-reminder-immediate-followup: PASS');
+  console.log('reminder mutation is durable and resumes once with the current body: passed');
 }
-
-void main().catch((err: unknown) => {
-  const message = err instanceof Error ? err.message : String(err);
-  console.error(`kernel-driver update-reminder-immediate-followup: FAIL\n${message}`);
-  process.exit(1);
+main().catch((error: unknown) => {
+  console.error(error);
+  process.exitCode = 1;
 });
