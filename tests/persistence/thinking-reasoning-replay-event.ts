@@ -1,9 +1,8 @@
 import assert from 'node:assert/strict';
+import { recordDialogEvents } from '../helpers/dialog-events';
 
-import { EndOfStream } from '@longrun-ai/kernel/evt';
 import type { TypedDialogEvent } from '@longrun-ai/kernel/types/dialog';
 import type { ReasoningPayload } from '@longrun-ai/kernel/types/storage';
-import { dialogEventRegistry } from '../../main/evt-registry';
 import { emitThinkingEvents } from '../../main/llm/kernel-driver/events';
 import { DialogPersistence, DiskFileDialogStore } from '../../main/persistence';
 
@@ -25,29 +24,17 @@ function parseReplayPacket(payload: string): TypedDialogEvent {
   return JSON.parse(payload) as TypedDialogEvent;
 }
 
-async function readNextEventWithTimeout(
-  ch: ReturnType<typeof dialogEventRegistry.createSubChan>,
-  timeoutMs: number,
-): Promise<TypedDialogEvent | null> {
-  const timer = new Promise<null>((resolve) => {
-    setTimeout(() => resolve(null), timeoutMs);
-  });
-  const ev = await Promise.race([ch.read(), timer]);
-  if (ev === null || ev === EndOfStream) return null;
-  return ev;
-}
-
-async function readThroughThinkingFinish(
-  ch: ReturnType<typeof dialogEventRegistry.createSubChan>,
-): Promise<TypedDialogEvent[]> {
-  const events: TypedDialogEvent[] = [];
-  for (let i = 0; i < 20; i++) {
-    const event = await readNextEventWithTimeout(ch, 500);
-    if (!event) break;
-    events.push(event);
-    if (event.type === 'thinking_finish_evt') return events;
-  }
-  return events;
+function isThinkingEvent(
+  event: TypedDialogEvent,
+): event is Extract<
+  TypedDialogEvent,
+  { type: 'thinking_start_evt' | 'thinking_chunk_evt' | 'thinking_finish_evt' }
+> {
+  return (
+    event.type === 'thinking_start_evt' ||
+    event.type === 'thinking_chunk_evt' ||
+    event.type === 'thinking_finish_evt'
+  );
 }
 
 async function main(): Promise<void> {
@@ -63,7 +50,7 @@ async function main(): Promise<void> {
         status: 'completed',
       },
     };
-    const liveSubChan = dialogEventRegistry.createSubChan(dlg.id);
+    const liveSubChan = recordDialogEvents(dlg);
 
     await DialogPersistence.mutateDialogLatest(dlg.id, () => ({
       kind: 'patch',
@@ -72,9 +59,9 @@ async function main(): Promise<void> {
     await dlg.notifyGeneratingStart();
     await emitThinkingEvents(dlg, '', reasoning);
 
-    const liveEvents = (await readThroughThinkingFinish(liveSubChan)).filter(
-      (event) => event.genseq === dlg.activeGenSeq && event.course === dlg.currentCourse,
-    );
+    const liveEvents = (await liveSubChan.finish())
+      .filter(isThinkingEvent)
+      .filter((event) => event.genseq === dlg.activeGenSeq && event.course === dlg.currentCourse);
     assert.equal(
       liveEvents.filter((event) => event.type === 'thinking_start_evt').length,
       1,
@@ -84,6 +71,10 @@ async function main(): Promise<void> {
       liveEvents.filter(isThinkingChunkEvent).length,
       0,
       'expected encrypted-only reasoning to skip live thinking_chunk_evt',
+    );
+    assert.deepEqual(
+      liveEvents.map((event) => event.type),
+      ['thinking_start_evt', 'thinking_finish_evt'],
     );
     const liveFinishEvents = liveEvents.filter(isThinkingFinishEvent);
     assert.equal(
@@ -108,7 +99,8 @@ async function main(): Promise<void> {
       dlg.status,
     );
     const persistedThoughts = persistedEvents.filter(
-      (event) => event.type === 'agent_thought_record' && event.genseq === dlg.activeGenSeq,
+      (event): event is Extract<typeof event, { type: 'agent_thought_record' }> =>
+        event.type === 'agent_thought_record' && event.genseq === dlg.activeGenSeq,
     );
     assert.equal(
       persistedThoughts.length,
@@ -148,9 +140,9 @@ async function main(): Promise<void> {
       dlg.status,
     );
 
-    const replayedThinkingEvents = replayedPackets.filter(
-      (event) => event.genseq === dlg.activeGenSeq && event.course === dlg.currentCourse,
-    );
+    const replayedThinkingEvents = replayedPackets
+      .filter(isThinkingEvent)
+      .filter((event) => event.genseq === dlg.activeGenSeq && event.course === dlg.currentCourse);
     assert.equal(
       replayedThinkingEvents.filter((event) => event.type === 'thinking_start_evt').length,
       1,
@@ -160,6 +152,10 @@ async function main(): Promise<void> {
       replayedThinkingEvents.filter(isThinkingChunkEvent).length,
       0,
       'expected replay to skip thinking_chunk_evt for encrypted-only reasoning',
+    );
+    assert.deepEqual(
+      replayedThinkingEvents.map((event) => event.type),
+      ['thinking_start_evt', 'thinking_finish_evt'],
     );
     const replayedFinishEvents = replayedThinkingEvents.filter(isThinkingFinishEvent);
     assert.equal(
@@ -179,7 +175,7 @@ async function main(): Promise<void> {
     );
 
     const emptyBoundaryDlg = await createMainDialog('tester');
-    const emptyBoundarySubChan = dialogEventRegistry.createSubChan(emptyBoundaryDlg.id);
+    const emptyBoundarySubChan = recordDialogEvents(emptyBoundaryDlg);
     await DialogPersistence.mutateDialogLatest(emptyBoundaryDlg.id, () => ({
       kind: 'patch',
       patch: { displayState: { kind: 'proceeding' } },
@@ -188,11 +184,13 @@ async function main(): Promise<void> {
     await emptyBoundaryDlg.thinkingStart();
     await emptyBoundaryDlg.thinkingFinish();
 
-    const liveEmptyBoundaryEvents = (await readThroughThinkingFinish(emptyBoundarySubChan)).filter(
-      (event) =>
-        event.genseq === emptyBoundaryDlg.activeGenSeq &&
-        event.course === emptyBoundaryDlg.currentCourse,
-    );
+    const liveEmptyBoundaryEvents = (await emptyBoundarySubChan.finish())
+      .filter(isThinkingEvent)
+      .filter(
+        (event) =>
+          event.genseq === emptyBoundaryDlg.activeGenSeq &&
+          event.course === emptyBoundaryDlg.currentCourse,
+      );
     assert.equal(
       liveEmptyBoundaryEvents.filter((event) => event.type === 'thinking_start_evt').length,
       1,
@@ -209,13 +207,17 @@ async function main(): Promise<void> {
       'expected explicit empty thinking boundary to emit one live thinking_finish_evt',
     );
 
+    assert.deepEqual(
+      liveEmptyBoundaryEvents.map((event) => event.type),
+      ['thinking_start_evt', 'thinking_finish_evt'],
+    );
     const emptyBoundaryPersistedEvents = await DialogPersistence.loadCourseEvents(
       emptyBoundaryDlg.id,
       emptyBoundaryDlg.currentCourse,
       emptyBoundaryDlg.status,
     );
     const persistedEmptyBoundaryThoughts = emptyBoundaryPersistedEvents.filter(
-      (event) =>
+      (event): event is Extract<typeof event, { type: 'agent_thought_record' }> =>
         event.type === 'agent_thought_record' && event.genseq === emptyBoundaryDlg.activeGenSeq,
     );
     assert.equal(
@@ -248,11 +250,13 @@ async function main(): Promise<void> {
       emptyBoundaryDlg.currentCourse,
       emptyBoundaryDlg.status,
     );
-    const replayedEmptyBoundaryEvents = emptyBoundaryReplayPackets.filter(
-      (event) =>
-        event.genseq === emptyBoundaryDlg.activeGenSeq &&
-        event.course === emptyBoundaryDlg.currentCourse,
-    );
+    const replayedEmptyBoundaryEvents = emptyBoundaryReplayPackets
+      .filter(isThinkingEvent)
+      .filter(
+        (event) =>
+          event.genseq === emptyBoundaryDlg.activeGenSeq &&
+          event.course === emptyBoundaryDlg.currentCourse,
+      );
     assert.equal(
       replayedEmptyBoundaryEvents.filter((event) => event.type === 'thinking_start_evt').length,
       1,
@@ -269,24 +273,26 @@ async function main(): Promise<void> {
       'expected explicit empty thinking boundary replay to emit one thinking_finish_evt',
     );
 
+    assert.deepEqual(
+      replayedEmptyBoundaryEvents.map((event) => event.type),
+      ['thinking_start_evt', 'thinking_finish_evt'],
+    );
     const synthesizedEmptyDlg = await createMainDialog('tester');
     await DialogPersistence.mutateDialogLatest(synthesizedEmptyDlg.id, () => ({
       kind: 'patch',
       patch: { displayState: { kind: 'proceeding' } },
     }));
     await synthesizedEmptyDlg.notifyGeneratingStart();
+    const synthesizedLive = recordDialogEvents(synthesizedEmptyDlg);
     await emitThinkingEvents(synthesizedEmptyDlg, '', undefined);
+    assert.deepEqual((await synthesizedLive.finish()).filter(isThinkingEvent), []);
     const synthesizedEvents = await DialogPersistence.loadCourseEvents(
       synthesizedEmptyDlg.id,
       synthesizedEmptyDlg.currentCourse,
       synthesizedEmptyDlg.status,
     );
     assert.equal(
-      synthesizedEvents.some(
-        (event) =>
-          event.type === 'agent_thought_record' &&
-          event.genseq === synthesizedEmptyDlg.activeGenSeq,
-      ),
+      synthesizedEvents.some((event) => event.type === 'agent_thought_record'),
       false,
       'expected helper empty content without reasoning to avoid synthesizing agent_thought_record',
     );

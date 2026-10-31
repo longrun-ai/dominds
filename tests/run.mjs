@@ -62,7 +62,19 @@ const filesystem = [
   'file-range-edit.ts',
   'edit-output-truncation.ts',
 ];
+const persistence = [
+  'persistence/latest-writeback.ts',
+  'persistence/thinking-reasoning-replay-event.ts',
+  'persistence/asker-stack-jsonl.ts',
+  'persistence/sideDialog-reconciled-course.ts',
+  'persistence/move-dialog-status.ts',
+  'persistence/reminders-owner-meta.ts',
+  'persistence/reminders-status-path.ts',
+  'persistence/runtime-guide-fork-anchor.ts',
+  'persistence/priming-reminders.ts',
+];
 const semanticSuites = {
+  persistence: ['persistence/asker-stack-jsonl.ts', 'persistence/move-dialog-status.ts'],
   filesystem: filesystem.filter((file) => !file.startsWith('access-control/')),
   kernel: [
     'kernel-driver/sideDialog-askback-auto-resume-while-pending-registered-sideDialog.ts',
@@ -154,7 +166,7 @@ export async function inventory() {
     ].includes(file);
   const candidates = files.filter((file) => !support(file));
   const kernel = candidates.filter((file) => file.startsWith('kernel-driver/'));
-  const suites = { smoke, kernel, context, configuration, manual, filesystem };
+  const suites = { smoke, kernel, context, configuration, manual, filesystem, persistence };
   const included = new Set(Object.values(suites).flat());
   const audit = JSON.parse(await fs.readFile(path.join(testsRoot, 'audit.json'), 'utf8'));
   const unauditedCandidates = candidates.filter((file) => audit.cases[file]?.status !== 'reviewed');
@@ -260,10 +272,18 @@ async function main() {
   if (
     args.length !== 2 ||
     args[0] !== '--suite' ||
-    !['smoke', 'kernel', 'context', 'configuration', 'manual', 'filesystem'].includes(args[1])
+    ![
+      'smoke',
+      'kernel',
+      'context',
+      'configuration',
+      'manual',
+      'filesystem',
+      'persistence',
+    ].includes(args[1])
   ) {
     throw new Error(
-      'Usage: node tests/run.mjs --list | --suite smoke | --suite kernel | --suite context | --suite configuration [--semantic] | --suite manual [--semantic] | --suite filesystem [--semantic]',
+      'Usage: node tests/run.mjs --list | --suite smoke | --suite kernel | --suite context | --suite configuration [--semantic] | --suite manual [--semantic] | --suite filesystem [--semantic] | --suite persistence [--semantic]',
     );
   }
   const suite = args[1];
@@ -276,7 +296,7 @@ async function main() {
   const cases = files.map((file) => ({
     id: file,
     args:
-      suite !== 'smoke'
+      suite !== 'smoke' || persistence.includes(file)
         ? [tsx, path.join(testsRoot, 'cli.ts'), '--', file, ...(semantic ? ['--semantic'] : [])]
         : [tsx, '--tsconfig', path.join(testsRoot, 'tsconfig.json'), path.join(testsRoot, file)],
   }));

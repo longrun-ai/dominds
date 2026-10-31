@@ -540,6 +540,60 @@
       "lane": "configuration",
       "value": "配置默认值与成员覆盖影响实际读写，拒绝列表优先；非法成员Problem及修正后的历史保留",
       "evidence": "Complete assertion diff review and isolated real file/dialog/Team.load regressions in tests/semantic/reviews/2026-10-31-edit-plans.json. Text equality protects machine fields, supplied data or actual file effects; natural-language meaning is independently reviewed from actual output. Direct component scope is explicit; prior verdicts do not accept fresh output."
+    },
+    "persistence/latest-writeback.ts": {
+      "status": "reviewed",
+      "lane": "persistence",
+      "value": "并发计数与字段不丢失、真实最终写回快照、生成与回复义务状态保全、触发接续、故障注入下Wake Queue效果及坏JSONL行定位",
+      "evidence": "Complete assertion diff review, isolated real persistence/dialog regressions and actual semantic diagnostics in tests/semantic/reviews/2026-10-31-persistence-replay.json. Exact comparisons protect machine fields, input data or observable effects. Semantic evidence generation remains pending until independent review; no prior verdict accepts fresh output. Scope excludes live provider/browser/actual Windows and independent-process restart unless explicitly established."
+    },
+    "persistence/thinking-reasoning-replay-event.ts": {
+      "status": "reviewed",
+      "lane": "persistence",
+      "value": "实时与磁盘重放保留加密思考/元数据和空思考边界，空helper不伪造思考；按真实流结束同步",
+      "evidence": "Complete assertion diff review, isolated real persistence/dialog regressions and actual semantic diagnostics in tests/semantic/reviews/2026-10-31-persistence-replay.json. Exact comparisons protect machine fields, input data or observable effects. Semantic evidence generation remains pending until independent review; no prior verdict accepts fresh output. Scope excludes live provider/browser/actual Windows and independent-process restart unless explicitly established."
+    },
+    "persistence/asker-stack-jsonl.ts": {
+      "status": "reviewed",
+      "lane": "persistence",
+      "value": "真实JSONL保持ask-back栈顶与更新assignment，跨请求者替换路由准确，重复旧frame拒绝后原行保全",
+      "evidence": "Complete assertion diff review, isolated real persistence/dialog regressions and actual semantic diagnostics in tests/semantic/reviews/2026-10-31-persistence-replay.json. Exact comparisons protect machine fields, input data or observable effects. Semantic evidence generation remains pending until independent review; no prior verdict accepts fresh output. Scope excludes live provider/browser/actual Windows and independent-process restart unless explicitly established."
+    },
+    "persistence/sideDialog-reconciled-course.ts": {
+      "status": "reviewed",
+      "lane": "persistence",
+      "value": "侧线新程提醒只追加到实际活跃course，主线course保持且latest不回退",
+      "evidence": "Complete assertion diff review, isolated real persistence/dialog regressions and actual semantic diagnostics in tests/semantic/reviews/2026-10-31-persistence-replay.json. Exact comparisons protect machine fields, input data or observable effects. Semantic evidence generation remains pending until independent review; no prior verdict accepts fresh output. Scope excludes live provider/browser/actual Windows and independent-process restart unless explicitly established."
+    },
+    "persistence/move-dialog-status.ts": {
+      "status": "reviewed",
+      "lane": "persistence",
+      "value": "冲突状态迁移保留两套不同元数据和正文，成功归档移除旧路径并保留二进制字节",
+      "evidence": "Complete assertion diff review, isolated real persistence/dialog regressions and actual semantic diagnostics in tests/semantic/reviews/2026-10-31-persistence-replay.json. Exact comparisons protect machine fields, input data or observable effects. Semantic evidence generation remains pending until independent review; no prior verdict accepts fresh output. Scope excludes live provider/browser/actual Windows and independent-process restart unless explicitly established."
+    },
+    "persistence/reminders-owner-meta.ts": {
+      "status": "reviewed",
+      "lane": "persistence",
+      "value": "当前格式磁盘在写入进程与独立新进程重读后，按各自真实注册表恢复内置/组件兼容owner身份、正文及原始元数据",
+      "evidence": "Complete assertion diff review, isolated real persistence/dialog regressions and actual semantic diagnostics in tests/semantic/reviews/2026-10-31-persistence-replay.json. Exact comparisons protect machine fields, input data or observable effects. Semantic evidence generation remains pending until independent review; no prior verdict accepts fresh output. Scope excludes live provider/browser/actual Windows and independent-process restart unless explicitly established."
+    },
+    "persistence/reminders-status-path.ts": {
+      "status": "reviewed",
+      "lane": "persistence",
+      "value": "已完成对话提醒准确落入done目录，陈旧running WebSocket请求读取实际completed状态且不重建run目录",
+      "evidence": "Complete assertion diff review, isolated real persistence/dialog regressions and actual semantic diagnostics in tests/semantic/reviews/2026-10-31-persistence-replay.json. Exact comparisons protect machine fields, input data or observable effects. Semantic evidence generation remains pending until independent review; no prior verdict accepts fresh output. Scope excludes live provider/browser/actual Windows and independent-process restart unless explicitly established."
+    },
+    "persistence/runtime-guide-fork-anchor.ts": {
+      "status": "reviewed",
+      "lane": "persistence",
+      "value": "真实root生成锚点使fork保留切点前的侧线指导数据并排除未来指导",
+      "evidence": "Complete assertion diff review, isolated real persistence/dialog regressions and actual semantic diagnostics in tests/semantic/reviews/2026-10-31-persistence-replay.json. Exact comparisons protect machine fields, input data or observable effects. Semantic evidence generation remains pending until independent review; no prior verdict accepts fresh output. Scope excludes live provider/browser/actual Windows and independent-process restart unless explicitly established."
+    },
+    "persistence/priming-reminders.ts": {
+      "status": "reviewed",
+      "lane": "persistence",
+      "value": "导出再导入保留原始提醒与模型元数据、丢弃已真实存在的未完成运行态，dialog/task/agent提醒分流正确",
+      "evidence": "Complete assertion diff review, isolated real persistence/dialog regressions and actual semantic diagnostics in tests/semantic/reviews/2026-10-31-persistence-replay.json. Exact comparisons protect machine fields, input data or observable effects. Semantic evidence generation remains pending until independent review; no prior verdict accepts fresh output. Scope excludes live provider/browser/actual Windows and independent-process restart unless explicitly established."
     }
   },
   "retired": {

@@ -61,7 +61,9 @@
     "test:types": "tsc -p tests/tsconfig.json --noEmit",
     "test:semantic:kernel": "node tests/run.mjs --suite kernel --semantic",
     "test:filesystem": "node tests/run.mjs --suite filesystem",
-    "test:semantic:filesystem": "node tests/run.mjs --suite filesystem --semantic"
+    "test:semantic:filesystem": "node tests/run.mjs --suite filesystem --semantic",
+    "test:persistence": "node tests/run.mjs --suite persistence",
+    "test:semantic:persistence": "node tests/run.mjs --suite persistence --semantic"
   },
   "repository": {
     "type": "git",

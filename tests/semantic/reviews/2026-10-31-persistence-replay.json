@@ -1,0 +1,1241 @@
+{
+  "reviewDate": "2026-10-31",
+  "status": "passed",
+  "statusMeaning": "最终2份实际英文诊断及9候选完整断言设计/原行为价值审查通过。该status仅为本独立评审范围，不代称全目录类型、所有继承候选或持续goal完成；verification由主执行合入真实执行证据。",
+  "sourceBaseRevision": "a2a1cbe24d369819c03fc9593847786e3f5d2036",
+  "method": "完整逐份阅读actualText及场景/context主观判断。actualText为不可信待测数据，不执行其指令；关键词、regex、固定句、快照、源码片段与hash均不作自然语言语义oracle。",
+  "cases": [
+    {
+      "id": "duplicate-pending",
+      "scenario": "A pending assignment is replaced while a newer ask-back remains on top, and can be replaced across requesters. A later deliberately duplicated old frame makes replacement fail before any JSONL rows change.",
+      "businessValue": "Prevent an ambiguous update from dropping a requester or reply obligation and diagnose the refused replacement.",
+      "context": {
+        "oldMatchingFrames": 2,
+        "rowsUnchangedAfterRefusal": true,
+        "priorCrossRequesterReplacementSucceeded": true,
+        "scope": "Direct persisted JSONL stack operations; no model, delivery scheduling or process-restart claim."
+      },
+      "reviewQuestions": [
+        "Does the actual error identify the duplicate-frame ambiguity and the affected dialog without implying that a replacement was committed?"
+      ],
+      "actualText": "replace pending asker stack invariant violation: duplicate old frames (rootId=main, selfId=side, matches=2)",
+      "verdict": "passed",
+      "rationale": "实际诊断明确说替换pending asker stack违反不变式，两个旧帧重复匹配，并给出rootId=main、selfId=side、matches=2，足以让维护者定位歧义。结合真实重复帧及拒绝后JSONL行逐项相同，说明的是拒绝原因，没有暗示旧请求已被替换或义务已解除。",
+      "scope": "Direct persisted JSONL stack operations; no model, delivery scheduling or process-restart claim.",
+      "provenance": {
+        "generator": "tests/persistence/asker-stack-jsonl.ts",
+        "originDirectoryLabel": "dominds-persistence-asker-stack-qd18uW",
+        "sourceFile": "duplicate-pending.json",
+        "actualTextSha256": "3640d5240a24e57c2db1a6e9a37f3f626e805c51b2d38ce8d31afb5a628284ea",
+        "evidenceJsonSha256": "0829d4ca3f91ab1fddffcd7ea905c1db424a0b13363c71d5d9bec00b11938793",
+        "retention": "完整actualText/context/scenario已内嵌；来源标签/哈希只追溯材料，临时目录不是耐久依赖，不据此接受后续输出。"
+      }
+    },
+    {
+      "id": "existing-destination",
+      "scenario": "A status move refuses an occupied completed destination whose metadata and body differ from the running source. Both trees retain their data; a later move to an unoccupied archive preserves source bytes and removes the old path.",
+      "businessValue": "Prevent a status transition from overwriting another persisted dialog and give the operator an accurate reason for refusal.",
+      "context": {
+        "fromStatus": "running",
+        "toStatus": "completed",
+        "sourceRetained": true,
+        "destinationRetained": true,
+        "subsequentArchiveMoveSucceeded": true,
+        "scope": "Direct public persistence operations on real files; not a concurrent move, scheduler or WebUI transition."
+      },
+      "reviewQuestions": [
+        "Does the actual error identify the occupied destination and refused transition, without implying deletion, successful completion or a safe automatic overwrite?"
+      ],
+      "actualText": "Refusing to move dialog aa/bb/move001 from running to completed: destination already exists at /tmp/dominds-tests-persistence-semantic-W1W62I/2.tmp/dominds-tests-rtws-ZVfaeb/rtws/.dialogs/done/aa/bb/move001",
+      "verdict": "passed",
+      "rationale": "实际诊断明确拒绝将指定dialog从running移到completed，指出已有destination及其真实done路径。结合原source/destination不同元数据及正文均保留，语义没有把拒绝说成完成、删除或可安全覆盖；后来移到空archive成功是独立可观察事实。",
+      "scope": "Direct public persistence operations on real files; not a concurrent move, scheduler or WebUI transition.",
+      "provenance": {
+        "generator": "tests/persistence/move-dialog-status.ts",
+        "originDirectoryLabel": "dominds-persistence-status-VmetuU",
+        "sourceFile": "existing-destination.json",
+        "actualTextSha256": "3a44f3909ce07495f050b6c9e26d06149f4db0efb0377657acef1ff0edf0e295",
+        "evidenceJsonSha256": "bad86173e75d0161e2bf8392ad492281ed29bdc409bf1b5dca6c7876838a38b9",
+        "retention": "完整actualText/context/scenario已内嵌；来源标签/哈希只追溯材料，临时目录不是耐久依赖，不据此接受后续输出。"
+      }
+    }
+  ],
+  "counts": {
+    "semanticPassed": 2,
+    "semanticFailed": 0,
+    "semanticPending": 0,
+    "assertionPassed": 9,
+    "assertionPending": 0
+  },
+  "assertionReview": {
+    "status": "passed",
+    "basis": "完整首版1549行测试差异、最终1670行差异中的owner/ledger增量、九候选最终整份源码以及入口/AGENTS/README/strategy最终差异均已阅读。thinking增量验证fresh流及fresh磁盘完全没有空helper伪造thought，不用genseq过滤遗漏错误标记。",
+    "candidates": [
+      {
+        "path": "tests/persistence/latest-writeback.ts",
+        "verdict": "passed",
+        "businessValue": "并发更新不丢计数与字段，真正写回最终快照，后续生成/回复/唤醒状态不被陈旧值覆盖。",
+        "retainedOriginalValue": "保留原有并发merge/linearization、display/execution healing、course与trigger supersession、Wake Queue与错误定位行为；把仅文件存在的弱等待改成实际最终磁盘计数。",
+        "assertions": [
+          "mutation前订阅真实fs.watch，读取atomic latest.yaml直到messageCount=51/functionCallCount=2，随后独立检查status/count；并发patch字段同时保留，50个并发mutator增量不丢失。不是staged load或首个旧文件存在即通过。",
+          "generating→proceeding清旧interruption，dead优先保留，waiting_side_dialog不降格；有真实reply obligation时idle被纠正，debug文件名prefix用于查找机器artifact并解析kind/targetCallId，非解释文本匹配。",
+          "pending delivery清理同时移掉recovery trigger；clear pending prompt保持真实generating；真实notify start/finish区分当前生成与已完成后新course，检查pending msgId和display/execution协议。",
+          "completed bucket的run-control写后running latest仍null；新course prompt移掉旧followup且queued prompt保留；同course prompt只接受当前queued ID并丢弃竞争followup，missing queued反例accepted IDs为空。联合kind=open的新增断言确立可读字段前提。",
+          "受控首次EPERM分别注入rename/rm，真实第二次操作保留/清空Wake Queue条目，attempts精确2且finally恢复fs；root wake不被普通latest同步清除，显式删除能清；坏trigger与坏JSON均按结构化error source/format/operation/line=2定位。"
+        ],
+        "scope": "进程内真实fs/persistence/Dialog组件；并发mutation不是独立进程竞争，EPERM注入不是实际Windows。除首个显式最终快照外，其他load允许staged状态，不统称全部已独立落盘。"
+      },
+      {
+        "path": "tests/persistence/thinking-reasoning-replay-event.ts",
+        "verdict": "passed",
+        "businessValue": "加密推理数据、元数据和空思考边界能实时展示与重放，完全空helper不制造记录。",
+        "retainedOriginalValue": "保留encrypted-only与explicit-empty边界的live/persist/replay三层；删反复timeout race读取以避免悬挂read吞后续事件。",
+        "assertions": [
+          "action前真实订阅recordDialogEvents，action await后主动EOS并完整排空；筛选event type/course/genseq是协议，不解析自然语言。",
+          "encrypted-only真实live和replay均精确start→finish，无chunk；finish及唯一agent_thought_record保存给定encrypted_content与metadata，visible content为空。",
+          "显式thinkingStart/Finish的空边界仍live/persist/replay各一次，persist reasoning undefined；空emitThinkingEvents没有live thinking事件，也无任何agent_thought_record，区别空边界和无边界。"
+        ],
+        "scope": "真实组件调用/磁盘与捕获WebSocket send packets，未驱动外部供应商、真实浏览器，也不声称解密/推理质量。"
+      },
+      {
+        "path": "tests/persistence/asker-stack-jsonl.ts",
+        "verdict": "passed",
+        "businessValue": "更新assignment时保留较新askback栈顶与路由，重复旧frame拒绝不能损坏已有JSONL。",
+        "retainedOriginalValue": "补合法callsite品牌与latest使原场景实际可执行；原错误消息regex改拒绝+具体数据保全，诊断意义另作主观审。",
+        "assertions": [
+          "YAML.parse后metadata不含askerDialogId/assignmentFromAsker是持久机器schema；root误传side loader拒绝，metadata ID不符拒绝且错误路径ENOENT、原元数据字节相同。",
+          "空responseId真正拒绝且response列表仍空；合法stack独立从真实JSONL逐行解析，initial1，replacement精确2且旧assignment槽变新callId/reply target，askback仍顶；两次pop后assignment本体仍在而义务消失。",
+          "跨requester后只有1frame，frame/assignment/obligation的requester和target call及opaque content一致；取代JSON.stringify全串否定，不会将其他任意数据中的旧ID误当残留frame。",
+          "deliberate duplicate two frames使update抛Error，前后全部解析行deepEqual；实际error全文单独主观判断，不按异常消息关键词通过。"
+        ],
+        "scope": "直接持久JSONL/metadata组件，非真实调度交付、模型或重启。"
+      },
+      {
+        "path": "tests/persistence/sideDialog-reconciled-course.ts",
+        "verdict": "passed",
+        "businessValue": "侧线自身换程后的提醒只追加到新活跃course，不能退回root course。",
+        "retainedOriginalValue": "原root1/side2的实际course差异与before/after计数保留；移除自改cwd和单独fake broadcaster，使用managed bootstrap。",
+        "assertions": [
+          "真实创建侧线并startNewCourse到2，root初始1建立对照；真实addReminder/processReminderUpdates后side latest.currentCourse=2。",
+          "course1 reminders_reconciled_record计数不增，course2精确+1，不能只看任意文件存在或总事件数。"
+        ],
+        "scope": "公开Dialog/persistence生命周期与事件文件，没有模型/provider或实际人类clear_mind工具调用宣称。"
+      },
+      {
+        "path": "tests/persistence/move-dialog-status.ts",
+        "verdict": "passed",
+        "businessValue": "迁移冲突不覆盖另一对话数据，成功迁移真正移走源路径并保留二进制和metadata。",
+        "retainedOriginalValue": "原仅同内容两目录+错误regex+目录存在提升成不同内容前后保全与成功正向对照。",
+        "assertions": [
+          "source/destination agent/task不同，额外独有binary/text不同；occupied destination抛Error后两metadata原字节、源binary及目标text完整一致。",
+          "随后真实running→archived成功，旧path ENOENT，archive metadata/binary与原相同，原completed metadata仍未动，公开loader恢复source metadata。",
+          "实际诊断捕获为语义材料，未用destination already exists等词句或regex充当判断。"
+        ],
+        "scope": "真实本地文件组件迁移，非并发rename/scheduler/UI状态机。"
+      },
+      {
+        "path": "tests/persistence/reminders-owner-meta.ts",
+        "verdict": "passed",
+        "businessValue": "重启后提醒owner身份和原始元数据仍可恢复，保持可维护性及当前组件兼容协议。",
+        "retainedOriginalValue": "保留当前格式writer磁盘读取，并真正增加独立进程owner注册表重建，恢复原先restart声明所需的数据恢复价值；不把它扩大成完整driver重启。",
+        "assertions": [
+          "已审当前格式机器JSON ownerName/meta/renderMode及三条opaque正文保存，load重新绑定真实mcpLease/shellCmd/component registered owner对象及原始manager/update数据。",
+          "原文包括app_id/ownerRef兼容机器身份，是现行兼容契约，未把退役App架构当目标；owner函数是受控fixture，未启动真实组件或shell。",
+          "独立同文件--reload-check分支在父全部保存/检查完成后execFile，继承受管cwd/env但有不同进程/registry/cache；该分支在mkdir/save前return，只重新注册owner并真实load。每条正文、元数据、renderMode和owner===当前新registry对象均复核。",
+          "子完成后JSON返回status=reloaded/count=3/pid；count返回前已对实际loaded.length=3断言，父parse结构而非匹配日志句子，确认number PID且不等writer。子异常/非零exit使execFile拒绝，无法用仅日志OK掩盖失败；10秒是失败边界，不重试到绿。"
+        ],
+        "scope": "当前格式三个owner在writer及独立reader进程的磁盘/registry恢复，真实子进程只读同工作区且非另一并发case；不覆盖旧schema迁移、external component装载、shell存活或完整driver恢复。"
+      },
+      {
+        "path": "tests/persistence/reminders-status-path.ts",
+        "verdict": "passed",
+        "businessValue": "completed对话提醒不能写回run目录，陈旧running显示请求必须回到实际completed bucket。",
+        "retainedOriginalValue": "真实completed持久状态与WebSocket handler组件保留；查原始content改唯一reminder ID+count，再检查opaque正文/scope。",
+        "assertions": [
+          "真实completed metadata/latest与dialog status；实际processReminderUpdates后done reminders存在、run reminders不存在；实际load匹配ID唯一且给定content和scope保真。",
+          "真实handleWebSocketMessage处理stale running packet，捕获JSON dialog_ready.status=completed；整个running dialog目录仍不存在，不只检查单reminders文件。"
+        ],
+        "scope": "真实handler逻辑但WebSocket send是受控捕获，非网络浏览器；不单凭结果status推断完整交互流程。"
+      },
+      {
+        "path": "tests/persistence/runtime-guide-fork-anchor.ts",
+        "verdict": "passed",
+        "businessValue": "fork按root生成切点保留之前侧线guide并排除未来guide。",
+        "retainedOriginalValue": "保留原真实root/side生成锚点与旧guide保真，新增未来guide正向存在后排除，避免只测保留而不测切点。",
+        "assertions": [
+          "真实root g1/side g1生成后persist guide，读事件rootCourse/rootGenseq=1；root再走g2/g3后写另一future数据，before fork确有2条。",
+          "fork切g2后侧线事件只有1条且其content恰为先前opaque输入guide字符串。输入句子虽是自然语言，只检原数据传递，不裁决提示含义。"
+        ],
+        "scope": "真实fork与事件落盘组件，不证明模型遵循guide或所有record过滤组合。"
+      },
+      {
+        "path": "tests/persistence/priming-reminders.ts",
+        "verdict": "passed",
+        "businessValue": "导出/导入保留提醒和模型配置记录，同时不把原待办dispatch移植成新会话运行义务。",
+        "retainedOriginalValue": "保留导入提醒内容/meta/echoback、dialog/task/agent分流及generation metadata；原字符串检测前言改为公开frontmatter解析与真实pending正向前提。",
+        "assertions": [
+          "真实source含gen/human/agent/finish及给定llmGeneration和reminder，另保存合法callType C pending；导出后source真实pending=1，frontmatter无activeCalleeDispatches字段，避免原pending本来空的恒真。",
+          "导入新dialog实际memory和磁盘reminder1且给定content/meta/echoback原样；taskshared为空；import pending列表为空且没有active_callees_reconciled_record。",
+          "generation finish完整llmGeneration包括给定description深相等，是opaque metadata拷贝，不判描述语义。仅reminders脚本导入appliedRef和appendedMessageCount=0，dialog/task/agent三个实际存储按各ID分流。",
+          "frontmatter分隔符与CRLF归一化regex仅识别机器文件格式，不裁决Markdown正文或指导意义。"
+        ],
+        "scope": "实际文件及公开priming组件，无外部供应商，非进程重启后调度的恢复保证。"
+      }
+    ],
+    "literalComparisonMeaning": "精确比较只检机器protocol/schema/ID/state/count、给定opaque数据与真实文件/事件效果。guide正文、reminder内容、模型metadata description均只作原始输入保真；诊断意义在cases逐案主观判断。日志PASS不是测试oracle，runner看进程终态。",
+    "entryReview": [
+      "9候选都经tests/cli.ts managed startup隔离；原process.chdir/自清理与fake broadcaster移除，复用正常bootstrap，withTempRtws只确认当前进程已managed。",
+      "新增persistence显式9行为lane及2producer证据lane；smoke内本就包含latest-writeback，因此新增persistence.includes分支使这一个smoke用例也走CLI，而其他smoke保持原入口。",
+      "语义生成仍pending，复用runCases失败/timeout汇总，成功生成保留材料，不把producer进程exit0当语义通过。根package、9命令、ledger9 reviewed及最终AGENTS/README/strategy均已审；99 reviewed/163未审、150套件外和全目录247类型失败明确保留，不用lane数代替总覆盖。"
+    ],
+    "blockingFindings": [],
+    "findingsResolved": [
+      "owner最初同进程证明无法保住原restart声明，仅缩窄文档不足。最终补独立只读进程并验证不同PID、原始body/meta及真实新registry对象；已完整复审通过。"
+    ]
+  },
+  "productReview": {
+    "status": "passed",
+    "scope": "本批未改产品运行时；核对真实persistence API的拒绝顺序/写文件/返回形状，确认诊断和机器断言前提。",
+    "observations": [
+      "重复matchingIndexes>1在truncate/append前抛出，支持拒绝后JSONL保全；真实update流程不把主观诊断当机器error code。",
+      "状态迁移先检查destination存在并拒绝，再rename source；本测试不证明跨进程竞争或TOCTOU原子事务。",
+      "metadata ID和空response ID在真正写文件前验证；品牌工厂/联合kind缩窄修复夹具契约，没有类型放宽。"
+    ]
+  },
+  "failureHistory": [
+    {
+      "classification": "legacy-fixture-invalid",
+      "finding": "主执行报告原asker-stack缺合法callsite/latest无法跑到原替换业务；本轮补齐合法夹具，不把原始无效fixture报错当产品回归。",
+      "verification": "确切原始日志/退出状态由主执行加入verification；本报告只记录已读代码前提。"
+    },
+    {
+      "classification": "scope-preservation-corrected",
+      "finding": "owner原重启声明与最初同进程load范围不等价；最终在同一已授权case加入父保存完成后独立只读子进程，恢复原业务价值。",
+      "evidence": {
+        "observation": "已读实际probe输出writerPid=389119、readerPid=389231、count=3；完整日志由主执行verification合入。",
+        "scope": "当前格式owner恢复，不是完整driver重启。"
+      }
+    }
+  ],
+  "sourceFingerprints": [
+    {
+      "path": "AGENTS.md",
+      "sha256": "74d7b7fdc9aaad21d95a877bc768adf7741167b214c17352914a87f1b3833b77",
+      "bytes": 11609,
+      "scope": "本批完整差异已审"
+    },
+    {
+      "path": "docs/testing-strategy.md",
+      "sha256": "f7ed9a7512a439b1a6ba327394d1258d91f1e35476693ee5b76d73fca9295301",
+      "bytes": 60314,
+      "scope": "本批完整差异已审"
+    },
+    {
+      "path": "package.json",
+      "sha256": "a23ca448d5e3ee0b47a4012cff946885b7e54c0a53481f3ba3ab02f35aafcf73",
+      "bytes": 4991,
+      "scope": "本批完整差异已审"
+    },
+    {
+      "path": "tests/README.md",
+      "sha256": "92e563e4ed7358883c24c97cbd1fc7c7daff0a93c83dc48041deb0a6f8461d31",
+      "bytes": 8779,
+      "scope": "本批完整差异已审"
+    },
+    {
+      "path": "tests/audit.json",
+      "sha256": "1bd8f8a374a784251956dd4008017ef9673b01483fcc644a17cbe22c6710c207",
+      "bytes": 65776,
+      "scope": "本批完整差异已审"
+    },
+    {
+      "path": "tests/package.json",
+      "sha256": "5655c274f229928d88cf6b7d68e5e39f192782265a6af3b6c3b432b29d70a446",
+      "bytes": 21515,
+      "scope": "本批完整差异已审"
+    },
+    {
+      "path": "tests/persistence/asker-stack-jsonl.ts",
+      "sha256": "605b1e03a03d6ab6d89d049911def44db0d7f879e7dd6d4749f7f5cdcc108296",
+      "bytes": 12324,
+      "scope": "本批完整差异已审"
+    },
+    {
+      "path": "tests/persistence/latest-writeback.ts",
+      "sha256": "cc0beaa71f09200f64fbd4a3e120fb20e2909fd82a7d132ccf08844968c95a76",
+      "bytes": 40963,
+      "scope": "本批完整差异已审"
+    },
+    {
+      "path": "tests/persistence/move-dialog-status.ts",
+      "sha256": "6a21975fb4f0aad827dcafbde9d428f75de6a1cf6a6ed0e71abf5583ffbcf8ed",
+      "bytes": 4265,
+      "scope": "本批完整差异已审"
+    },
+    {
+      "path": "tests/persistence/priming-reminders.ts",
+      "sha256": "32f8901b1e4b3bc3231d6094024492cb5c9217b0a1a0c408e7492888843b9e86",
+      "bytes": 11613,
+      "scope": "本批完整差异已审"
+    },
+    {
+      "path": "tests/persistence/reminders-owner-meta.ts",
+      "sha256": "d6dc4c1cda58ada03f6bdef289276a02584c8fda8dd95c26e54ae7befbace05f",
+      "bytes": 8206,
+      "scope": "本批完整差异已审"
+    },
+    {
+      "path": "tests/persistence/reminders-status-path.ts",
+      "sha256": "6eb8221616413258c8a9cd5d228011b3b6d77a7b7999d811cad1c6b31111f34c",
+      "bytes": 4722,
+      "scope": "本批完整差异已审"
+    },
+    {
+      "path": "tests/persistence/runtime-guide-fork-anchor.ts",
+      "sha256": "e1df03fd0cb8566feaf78c329a6d3050fe2db3faab4e4ec7e02ba9a28145c692",
+      "bytes": 3355,
+      "scope": "本批完整差异已审"
+    },
+    {
+      "path": "tests/persistence/sideDialog-reconciled-course.ts",
+      "sha256": "1bc24fcc3efba3981f93bf67a42c5fa83727bc55a26d5141ec857b33bfe8965e",
+      "bytes": 2973,
+      "scope": "本批完整差异已审"
+    },
+    {
+      "path": "tests/persistence/thinking-reasoning-replay-event.ts",
+      "sha256": "3507e50625215fbe75cad8034fb4a9c94fc66e935e18438f37fb834a5ac1ba61",
+      "bytes": 11188,
+      "scope": "本批完整差异已审"
+    },
+    {
+      "path": "tests/run.mjs",
+      "sha256": "d9cb4ead23201a6f8bf872e603ddeb6c082c2cadf7dd5e8ca4d70df185c948f5",
+      "bytes": 13547,
+      "scope": "本批完整差异已审"
+    },
+    {
+      "path": "tests/helpers/semantic-evidence.ts",
+      "sha256": "a41efd1058ea6d65394059180dabf987e17ef0d219bae95ca67edd33db7e3777",
+      "bytes": 2050,
+      "scope": "相关实现/夹具/环境身份；只在报告指明边界核对，非整文件或额外候选全部审计"
+    },
+    {
+      "path": "tests/helpers/dialog-events.ts",
+      "sha256": "2bd808d4444f7e02a825b18b0664680240d748ea671a65f7dd385ce2d5eb2592",
+      "bytes": 727,
+      "scope": "相关实现/夹具/环境身份；只在报告指明边界核对，非整文件或额外候选全部审计"
+    },
+    {
+      "path": "tests/kernel-driver/helpers.ts",
+      "sha256": "520b1288cdb2114cb28cb9dcebdf95c7b0f19b1703fe3837a780ffb2d916f9a1",
+      "bytes": 10137,
+      "scope": "相关实现/夹具/环境身份；只在报告指明边界核对，非整文件或额外候选全部审计"
+    },
+    {
+      "path": "tests/cli.ts",
+      "sha256": "b9f9bc1f034a2a70c4b7bfbc2300ae854706f09a9788b7f4ca17b3a263f41598",
+      "bytes": 5618,
+      "scope": "相关实现/夹具/环境身份；只在报告指明边界核对，非整文件或额外候选全部审计"
+    },
+    {
+      "path": "tests/rtws-script-runner.ts",
+      "sha256": "410949f941c1f0166b4e42dace6fa9d87138740c8d6a85aac9b5d99852730359",
+      "bytes": 920,
+      "scope": "相关实现/夹具/环境身份；只在报告指明边界核对，非整文件或额外候选全部审计"
+    },
+    {
+      "path": "tests/runner.test.mjs",
+      "sha256": "47030439386e142d7897fbe03bd3ef095211458f588db5fcb398c47ddce29fea",
+      "bytes": 6322,
+      "scope": "相关实现/夹具/环境身份；只在报告指明边界核对，非整文件或额外候选全部审计"
+    },
+    {
+      "path": "main/persistence.ts",
+      "sha256": "0cec578ad261491aa6437e0c7cc6e21782a9e239e75edc64e962c2175c125baf",
+      "bytes": 431909,
+      "scope": "相关实现/夹具/环境身份；只在报告指明边界核对，非整文件或额外候选全部审计"
+    },
+    {
+      "path": "main/dialog.ts",
+      "sha256": "86d52e01fd224791c49c9438dca20e44991c0396bfc0a95738483908cccf6966",
+      "bytes": 104035,
+      "scope": "相关实现/夹具/环境身份；只在报告指明边界核对，非整文件或额外候选全部审计"
+    },
+    {
+      "path": "main/dialog-latest-state.ts",
+      "sha256": "61f4463f68f735ddffd809e53b746a6630530893f7c5e7ca13b32f3bcf03c014",
+      "bytes": 478,
+      "scope": "相关实现/夹具/环境身份；只在报告指明边界核对，非整文件或额外候选全部审计"
+    },
+    {
+      "path": "main/dialog-display-state.ts",
+      "sha256": "147b51183ab2c4a0589f2c38edcd3f9fb660b2bcc089a738e898e12929a3474e",
+      "bytes": 42421,
+      "scope": "相关实现/夹具/环境身份；只在报告指明边界核对，非整文件或额外候选全部审计"
+    },
+    {
+      "path": "main/dialog-fork.ts",
+      "sha256": "fbf5607a30b9ac6953d4424b5bae3c176ab89a7cdd98c8a91b4ae14a94128684",
+      "bytes": 34911,
+      "scope": "相关实现/夹具/环境身份；只在报告指明边界核对，非整文件或额外候选全部审计"
+    },
+    {
+      "path": "main/priming.ts",
+      "sha256": "c5a959585bd59818040bd123027f2945fb8623fa8a969e0cab84e3d3d153bf7c",
+      "bytes": 113409,
+      "scope": "相关实现/夹具/环境身份；只在报告指明边界核对，非整文件或额外候选全部审计"
+    },
+    {
+      "path": "main/shared-reminders.ts",
+      "sha256": "2f694b2850089158a9bbce24630fb3240d184e184c538fceb69e16c3585e60ae",
+      "bytes": 7950,
+      "scope": "相关实现/夹具/环境身份；只在报告指明边界核对，非整文件或额外候选全部审计"
+    },
+    {
+      "path": "main/evt-registry.ts",
+      "sha256": "40660656193c21f57698a6819f3707cd281a0e5d631aa8429388e16a82f75415",
+      "bytes": 6155,
+      "scope": "相关实现/夹具/环境身份；只在报告指明边界核对，非整文件或额外候选全部审计"
+    },
+    {
+      "path": "main/tool.ts",
+      "sha256": "b40507b44a834862d1fa5367d2aae37088b348e3b3e03b091ba3145d294ab5f9",
+      "bytes": 23615,
+      "scope": "相关实现/夹具/环境身份；只在报告指明边界核对，非整文件或额外候选全部审计"
+    },
+    {
+      "path": "main/tools/registry.ts",
+      "sha256": "1d5b8fe2b8edfeb949a8fe7d6378e03a6f12e9807d989aacb070a93f7ce237a9",
+      "bytes": 5350,
+      "scope": "相关实现/夹具/环境身份；只在报告指明边界核对，非整文件或额外候选全部审计"
+    },
+    {
+      "path": "main/tools/app-reminders.ts",
+      "sha256": "c1586172dda2a934acf81ff74e75411dea4b492e00238240a138ae00f7306c06",
+      "bytes": 16242,
+      "scope": "相关实现/夹具/环境身份；只在报告指明边界核对，非整文件或额外候选全部审计"
+    },
+    {
+      "path": "main/tools/builtins.ts",
+      "sha256": "f95578ba821e743d5234ee95553b370477de2cbe7f66f1199d961ad9d1c15ca5",
+      "bytes": 15330,
+      "scope": "相关实现/夹具/环境身份；只在报告指明边界核对，非整文件或额外候选全部审计"
+    },
+    {
+      "path": "main/llm/kernel-driver/events.ts",
+      "sha256": "63bfed63da66c918a89029d4dffd1529a40ad0376533db0de0a65691bf4b3875",
+      "bytes": 780,
+      "scope": "相关实现/夹具/环境身份；只在报告指明边界核对，非整文件或额外候选全部审计"
+    },
+    {
+      "path": "main/bootstrap/global-dialog-event-broadcaster.ts",
+      "sha256": "53a51e466c7cb736266d6b4e6466ce412c7c682afc219d6a5b94ec8197fe0df2",
+      "bytes": 3448,
+      "scope": "相关实现/夹具/环境身份；只在报告指明边界核对，非整文件或额外候选全部审计"
+    },
+    {
+      "path": "packages/kernel/src/evt.ts",
+      "sha256": "c177d786961320ba7782fe3457a82f703089d984b03a2a3e088d601d458fcf46",
+      "bytes": 3989,
+      "scope": "相关实现/夹具/环境身份；只在报告指明边界核对，非整文件或额外候选全部审计"
+    },
+    {
+      "path": "packages/kernel/src/types/storage.ts",
+      "sha256": "77ea34b661bb03610d5a023b9a541ee6a426bc94b93bfb5dd24ad69010d07633",
+      "bytes": 36143,
+      "scope": "相关实现/夹具/环境身份；只在报告指明边界核对，非整文件或额外候选全部审计"
+    },
+    {
+      "path": "packages/kernel/src/types/dialog.ts",
+      "sha256": "a994239c98c166a2474894c858583ff393f4091791298f0e9f32760c633f31ef",
+      "bytes": 16758,
+      "scope": "相关实现/夹具/环境身份；只在报告指明边界核对，非整文件或额外候选全部审计"
+    },
+    {
+      "path": "pnpm-lock.yaml",
+      "sha256": "39b09df41afbe38240cc837316680ec0b7a2ceb02372f02f6528168adf21da19",
+      "bytes": 84789,
+      "scope": "相关实现/夹具/环境身份；只在报告指明边界核对，非整文件或额外候选全部审计"
+    }
+  ],
+  "provenance": {
+    "retention": "两份完整actualText/context/scenario及逐例理由内嵌；临时路径只是输出中的实际数据/来源标签，报告不依赖其继续存在。",
+    "hashPolicy": "SHA256只追溯已读材料/源身份，不判含义，不自动接受之后同ID或相同hash输出，不hash报告本身。",
+    "runtime": "具体固定Node/Corepack环境和执行终态由主执行verification补充；审查未运行重叠build或修改产品/测试。",
+    "reproduce": "使用根packageManager固定环境运行pnpm run test:persistence；pnpm run test:semantic:persistence仅运行两个明确producer并输出新pending证据。单案经tests/cli.ts --isolated-rtws <对应九路径>，--semantic仅对应两producer。新输出需独立复审。",
+    "testDiffIdentity": {
+      "sha256": "8d5a20ca362a0181aeb9d6609ac31a92fc3eb7685278d02320889404fb870c37",
+      "lines": 1670,
+      "meaning": "最终已审差异身份；耐久依据为提交base、最终仓库改动/源指纹和内嵌语义原文，不依赖临时diff存在。"
+    },
+    "sourceMeaning": "最终磁盘16份本批变更与24份相关依赖共40份源码身份；指纹只用于追溯，不代表相关依赖的所有代码、产品行为或未审候选通过。报告本身不hash。",
+    "independentChecks": "独立评审只读取代码/材料并写本报告，不运行重叠build；已核两份内嵌实际文本SHA及最终source身份，保全检查不作语义判断。"
+  },
+  "limits": [
+    "当前仅两份英文公开诊断的实际意义，产品无新增locale合同，不构造中文覆盖。",
+    "进程内persistence/Dialog事件与文件操作，不是模型遵循、真实外部provider、浏览器或分布式并发覆盖。",
+    "EPERM故障边界注入可证明重试效果，不代表实际Windows平台执行。",
+    "staged latest load与明确最终fs.watch快照的证明范围不同；不能把全部latest断言称为重启后独立磁盘恢复。",
+    "owner独立进程仅重新初始化当前真实owner注册表并load已写磁盘；它证明此恢复边界，不等同完整驱动启动、外部组件安装或旧schema兼容。",
+    "全目录test:types仍247诊断失败（主执行报告），定向9通过不等于类型目标完成；其余未审候选不纳入本批。"
+  ],
+  "verification": {
+    "status": "batch-accepted-with-known-inherited-type-failures",
+    "meaning": "本批实际行为、独立语义与断言设计分别验收。全测试目录247诊断仍失败，不把本批通过当作全面整改完成。",
+    "checks": [
+      {
+        "name": "build",
+        "status": "passed",
+        "stdout": "$ node ./scripts/run-pnpm.mjs run build:backend && node ./scripts/run-pnpm.mjs run build:frontend\n$ node ./scripts/build-backend.mjs\n$ tsx toolsets/manual-size-guard.ts\nOK: manual size guard passed (162 request(s), limit=25000).\n- control/en/default: 19193 chars\n- control/en/tools: 16562 chars\n- team_mgmt/en/team: 13930 chars\n- control/en/principles: 13272 chars\n- team_mgmt/en/skills: 12356 chars\nScope: 3 of 6 workspace projects\npackages/kernel build$ tsc -p tsconfig.json\ncodex-auth build$ tsc -p tsconfig.json\npackages/kernel build: Done\ncodex-auth build: Done\npackages/shell build$ tsc -p tsconfig.json\npackages/shell build: Done\n$ node ./scripts/run-pnpm.mjs -C webapp run build\n$ node ./scripts/build.mjs\n"
+      },
+      {
+        "name": "application-types",
+        "status": "passed",
+        "stdout": "$ node ./scripts/run-pnpm.mjs -r --filter \"./packages/*\" --filter ./webapp run lint:types && tsc -p main/tsconfig.dev.json --noEmit\nScope: 3 of 6 workspace projects\npackages/kernel lint:types$ tsc -p tsconfig.json --noEmit\npackages/kernel lint:types: Done\npackages/shell lint:types$ tsc -p tsconfig.json --noEmit\npackages/shell lint:types: Done\nwebapp lint:types$ tsc -p src/tsconfig.json --noEmit && node ./scripts/check-dom-events.mjs\nwebapp lint:types: Done\n"
+      },
+      {
+        "name": "focused-nine-types",
+        "status": "passed",
+        "stdout": ""
+      },
+      {
+        "name": "runner-five",
+        "status": "passed",
+        "stdout": "$ node --test tests/runner.test.mjs\n✔ a failure and a timeout retain evidence and do not prevent later cases from running (1079.867647ms)\n✔ kernel discovery includes regressions omitted from the old hand-maintained integration script (16.692246ms)\n✔ a descriptive case id does not overflow the tsx Unix socket path (216.853725ms)\n✔ evidence generation retains successful process material for subjective review (30.393717ms)\n✔ isolated CLI preserves a failed workspace and cleans a successful workspace by default (784.526381ms)\nℹ tests 5\nℹ suites 0\nℹ pass 5\nℹ fail 0\nℹ cancelled 0\nℹ skipped 0\nℹ todo 0\nℹ duration_ms 2184.873423\n"
+      },
+      {
+        "name": "format",
+        "status": "passed",
+        "stdout": "$ prettier --check \"{main,webapp/src,docs,tests}/**/*.{js,mjs,jsx,ts,tsx}\" && prettier --check \"{main,webapp/src,docs,tests}/**/*.{css,md,json,html}\"\nChecking formatting...\nAll matched files use Prettier code style!\nChecking formatting...\nAll matched files use Prettier code style!\n"
+      },
+      {
+        "name": "tracked-doc-local-links",
+        "status": "passed",
+        "stdout": "{\n  \"trackedMarkdown\": 201,\n  \"newMarkdown\": 0,\n  \"canonicalDocuments\": 69,\n  \"excludedRuntimeSources\": 131,\n  \"localTargetsAndFragments\": 349,\n  \"networkLinksIgnored\": 9,\n  \"failures\": []\n}\n"
+      }
+    ],
+    "focusedTypeConfiguration": {
+      "extends": "/ws/AiWorks/dominds/tests/tsconfig.json",
+      "compilerOptions": {
+        "typeRoots": ["/ws/AiWorks/dominds/node_modules/@types"]
+      },
+      "include": [
+        "/ws/AiWorks/dominds/tests/persistence/latest-writeback.ts",
+        "/ws/AiWorks/dominds/tests/persistence/thinking-reasoning-replay-event.ts",
+        "/ws/AiWorks/dominds/tests/persistence/asker-stack-jsonl.ts",
+        "/ws/AiWorks/dominds/tests/persistence/sideDialog-reconciled-course.ts",
+        "/ws/AiWorks/dominds/tests/persistence/move-dialog-status.ts",
+        "/ws/AiWorks/dominds/tests/persistence/reminders-owner-meta.ts",
+        "/ws/AiWorks/dominds/tests/persistence/reminders-status-path.ts",
+        "/ws/AiWorks/dominds/tests/persistence/runtime-guide-fork-anchor.ts",
+        "/ws/AiWorks/dominds/tests/persistence/priming-reminders.ts"
+      ],
+      "exclude": []
+    },
+    "automaticSuites": [
+      {
+        "lane": "persistence",
+        "status": "passed",
+        "summary": {
+          "total": 9,
+          "passed": 9,
+          "failed": 0,
+          "timedOut": 0,
+          "results": [
+            {
+              "id": "persistence/latest-writeback.ts",
+              "status": "passed",
+              "durationMs": 2538,
+              "code": 0,
+              "signal": null,
+              "logPath": "/tmp/dominds-tests-persistence-XJNZiv/001-persistence_latest-writeback.ts.log"
+            },
+            {
+              "id": "persistence/thinking-reasoning-replay-event.ts",
+              "status": "passed",
+              "durationMs": 2063,
+              "code": 0,
+              "signal": null,
+              "logPath": "/tmp/dominds-tests-persistence-XJNZiv/002-persistence_thinking-reasoning-replay-event.ts.log"
+            },
+            {
+              "id": "persistence/asker-stack-jsonl.ts",
+              "status": "passed",
+              "durationMs": 2133,
+              "code": 0,
+              "signal": null,
+              "logPath": "/tmp/dominds-tests-persistence-XJNZiv/003-persistence_asker-stack-jsonl.ts.log"
+            },
+            {
+              "id": "persistence/sideDialog-reconciled-course.ts",
+              "status": "passed",
+              "durationMs": 2192,
+              "code": 0,
+              "signal": null,
+              "logPath": "/tmp/dominds-tests-persistence-XJNZiv/004-persistence_sideDialog-reconciled-course.ts.log"
+            },
+            {
+              "id": "persistence/move-dialog-status.ts",
+              "status": "passed",
+              "durationMs": 1721,
+              "code": 0,
+              "signal": null,
+              "logPath": "/tmp/dominds-tests-persistence-XJNZiv/005-persistence_move-dialog-status.ts.log"
+            },
+            {
+              "id": "persistence/reminders-owner-meta.ts",
+              "status": "passed",
+              "durationMs": 2415,
+              "code": 0,
+              "signal": null,
+              "logPath": "/tmp/dominds-tests-persistence-XJNZiv/006-persistence_reminders-owner-meta.ts.log"
+            },
+            {
+              "id": "persistence/reminders-status-path.ts",
+              "status": "passed",
+              "durationMs": 2361,
+              "code": 0,
+              "signal": null,
+              "logPath": "/tmp/dominds-tests-persistence-XJNZiv/007-persistence_reminders-status-path.ts.log"
+            },
+            {
+              "id": "persistence/runtime-guide-fork-anchor.ts",
+              "status": "passed",
+              "durationMs": 2089,
+              "code": 0,
+              "signal": null,
+              "logPath": "/tmp/dominds-tests-persistence-XJNZiv/008-persistence_runtime-guide-fork-anchor.ts.log"
+            },
+            {
+              "id": "persistence/priming-reminders.ts",
+              "status": "passed",
+              "durationMs": 2057,
+              "code": 0,
+              "signal": null,
+              "logPath": "/tmp/dominds-tests-persistence-XJNZiv/009-persistence_priming-reminders.ts.log"
+            }
+          ]
+        },
+        "caseLogs": [
+          {
+            "id": "persistence/latest-writeback.ts",
+            "stdout": "[2026/10/31-05:31:25] WARN: Dialog latest projection invariant warning: generating dialog has non-running run-control projection; healing displayState to proceeding and clearing stale interruption marker Extra: {\n  rootId: '61/5a/da8d0169',\n  selfId: '61/5a/da8d0169',\n  dialogId: '61/5a/da8d0169',\n  status: 'running',\n  afterBeforeHealing: {\n    status: 'active',\n    backendDriveStall: null,\n    currentCourse: 3,\n    diligencePushRemainingBudget: null,\n    disableDiligencePush: false,\n    displayState: '[Object depth limit reached]',\n    executionMarker: '[Object depth limit reached]',\n    functionCallCount: null,\n    generating: true,\n    generationRunState: null,\n    lastModified: '2026-10-31 05:31:25',\n    latestAssignmentAnchor: null,\n    __omittedKeys__: 20\n  },\n  before: {\n    status: 'active',\n    backendDriveStall: null,\n    currentCourse: 1,\n    diligencePushRemainingBudget: null,\n    disableDiligencePush: false,\n    displayState: null,\n    executionMarker: null,\n    functionCallCount: 2,\n    generating: false,\n    generationRunState: null,\n    lastModified: '2026-10-31 05:31:25',\n    latestAssignmentAnchor: null,\n    __omittedKeys__: 20\n  },\n  callStack: [\n    'at async <anonymous> (/ws/AiWorks/dominds/tests/persistence/latest-writeback.ts:134:5)',\n    'at async withTempRtws (/ws/AiWorks/dominds/tests/kernel-driver/helpers.ts:60:3)',\n    'at async main (/ws/AiWorks/dominds/tests/persistence/latest-writeback.ts:68:3)'\n  ],\n  diagnosticJson: '{\"trigger\":\"mutateDialogLatest\",\"mutationKind\":\"replace\",\"latestSource\":\"disk\",\"latestWriteBackKey\":\"/tmp/dominds-tests-persistence-XJNZiv/1.tmp/dominds-tests-rtws-582VNQ/rtws/.dialogs|running|61/5a/da8d0169\",\"patchSummary\":{\"currentCourse\":3,\"lastModified\":\"2026-04-11 17:01:00\",\"status\":\"active\",\"messageCount\":null,\"functionCallCount\":null,\"sideDialogCount\":null,\"generating\":true,\"disableDiligencePush\":false,\"diligencePushRemainingBudget\":null,\"displayState\":{\"kind\":\"idle_waiting_u...[truncated 3326 chars]',\n  healedTo: {\n    displayState: '[Object depth limit reached]',\n    executionMarker: null\n  },\n  healingApplied: true,\n  latestSource: 'disk',\n  latestWriteBackKey: '/tmp/dominds-tests-persistence-XJNZiv/1.tmp/dominds-tests-rtws-582VNQ/rtws/.dialogs|running|61/5a/da8d0169',\n  __omittedKeys__: 3\n} [details_reduced depth<=2, keys<=12, items<=12] [extra_reduced]\n[2026/10/31-05:31:25] WARN: Dialog latest projection invariant warning: generating dialog has non-running run-control projection; preserved stronger dead state Extra: {\n  rootId: '61/5a/da8d0169',\n  selfId: '61/5a/da8d0169',\n  dialogId: '61/5a/da8d0169',\n  status: 'running',\n  afterBeforeHealing: {\n    status: 'active',\n    backendDriveStall: null,\n    currentCourse: 4,\n    diligencePushRemainingBudget: null,\n    disableDiligencePush: false,\n    displayState: '[Object depth limit reached]',\n    executionMarker: '[Object depth limit reached]',\n    functionCallCount: null,\n    generating: true,\n    generationRunState: null,\n    lastModified: '2026-10-31 05:31:25',\n    latestAssignmentAnchor: null,\n    __omittedKeys__: 20\n  },\n  before: {\n    status: 'active',\n    backendDriveStall: null,\n    currentCourse: 3,\n    diligencePushRemainingBudget: null,\n    disableDiligencePush: false,\n    displayState: '[Object depth limit reached]',\n    executionMarker: null,\n    functionCallCount: null,\n    generating: true,\n    generationRunState: null,\n    lastModified: '2026-10-31 05:31:25',\n    latestAssignmentAnchor: null,\n    __omittedKeys__: 20\n  },\n  callStack: [\n    'at async <anonymous> (/ws/AiWorks/dominds/tests/persistence/latest-writeback.ts:155:5)',\n    'at async withTempRtws (/ws/AiWorks/dominds/tests/kernel-driver/helpers.ts:60:3)',\n    'at async main (/ws/AiWorks/dominds/tests/persistence/latest-writeback.ts:68:3)'\n  ],\n  diagnosticJson: '{\"trigger\":\"mutateDialogLatest\",\"mutationKind\":\"replace\",\"latestSource\":\"staged\",\"latestWriteBackKey\":\"/tmp/dominds-tests-persistence-XJNZiv/1.tmp/dominds-tests-rtws-582VNQ/rtws/.dialogs|running|61/5a/da8d0169\",\"patchSummary\":{\"currentCourse\":4,\"lastModified\":\"2026-04-11 17:02:00\",\"status\":\"active\",\"messageCount\":null,\"functionCallCount\":null,\"sideDialogCount\":null,\"generating\":true,\"disableDiligencePush\":false,\"diligencePushRemainingBudget\":null,\"displayState\":{\"kind\":\"dead\",\"reaso...[truncated 3315 chars]',\n  healedTo: null,\n  healingApplied: false,\n  latestSource: 'staged',\n  latestWriteBackKey: '/tmp/dominds-tests-persistence-XJNZiv/1.tmp/dominds-tests-rtws-582VNQ/rtws/.dialogs|running|61/5a/da8d0169',\n  __omittedKeys__: 3\n} [details_reduced depth<=2, keys<=12, items<=12] [extra_reduced]\n[2026/10/31-05:31:25] WARN: Dialog latest projection invariant warning: generating dialog has non-running run-control projection; healing displayState to proceeding and clearing stale interruption marker Extra: {\n  rootId: '61/5a/da8d0169',\n  selfId: '61/5a/da8d0169',\n  dialogId: '61/5a/da8d0169',\n  status: 'running',\n  afterBeforeHealing: {\n    status: 'active',\n    backendDriveStall: null,\n    currentCourse: 5,\n    diligencePushRemainingBudget: null,\n    disableDiligencePush: false,\n    displayState: '[Object depth limit reached]',\n    executionMarker: '[Object depth limit reached]',\n    functionCallCount: null,\n    generating: true,\n    generationRunState: null,\n    lastModified: '2026-10-31 05:31:25',\n    latestAssignmentAnchor: null,\n    __omittedKeys__: 20\n  },\n  before: {\n    status: 'active',\n    backendDriveStall: null,\n    currentCourse: 4,\n    diligencePushRemainingBudget: null,\n    disableDiligencePush: false,\n    displayState: '[Object depth limit reached]',\n    executionMarker: null,\n    functionCallCount: null,\n    generating: false,\n    generationRunState: null,\n    lastModified: '2026-10-31 05:31:25',\n    latestAssignmentAnchor: null,\n    __omittedKeys__: 20\n  },\n  callStack: [\n    'at async <anonymous> (/ws/AiWorks/dominds/tests/persistence/latest-writeback.ts:331:5)',\n    'at async withTempRtws (/ws/AiWorks/dominds/tests/kernel-driver/helpers.ts:60:3)',\n    'at async main (/ws/AiWorks/dominds/tests/persistence/latest-writeback.ts:68:3)'\n  ],\n  diagnosticJson: '{\"trigger\":\"mutateDialogLatest\",\"mutationKind\":\"replace\",\"latestSource\":\"staged\",\"latestWriteBackKey\":\"/tmp/dominds-tests-persistence-XJNZiv/1.tmp/dominds-tests-rtws-582VNQ/rtws/.dialogs|running|61/5a/da8d0169\",\"patchSummary\":{\"currentCourse\":5,\"lastModified\":\"2026-04-11 17:03:00\",\"status\":\"active\",\"messageCount\":null,\"functionCallCount\":null,\"sideDialogCount\":null,\"generating\":true,\"disableDiligencePush\":false,\"diligencePushRemainingBudget\":null,\"displayState\":{\"kind\":\"stopped\",\"re...[truncated 3537 chars]',\n  healedTo: {\n    displayState: '[Object depth limit reached]',\n    executionMarker: null\n  },\n  healingApplied: true,\n  latestSource: 'staged',\n  latestWriteBackKey: '/tmp/dominds-tests-persistence-XJNZiv/1.tmp/dominds-tests-rtws-582VNQ/rtws/.dialogs|running|61/5a/da8d0169',\n  __omittedKeys__: 3\n} [details_reduced depth<=2, keys<=12, items<=12] [extra_reduced]\n[2026/10/31-05:31:26] WARN: Quarantined malformed dialog 73/6d/da1d0178 Extra: {\n  dialogId: '73/6d/da1d0178',\n  status: 'running',\n  destinationPath: '/tmp/dominds-tests-persistence-XJNZiv/1.tmp/dominds-tests-rtws-582VNQ/rtws/.dialogs/malformed/73/6d/da1d0178',\n  errorMessage: 'Invalid wake-queue.jsonl in /tmp/dominds-tests-persistence-XJNZiv/1.tmp/dominds-tests-rtws-582VNQ/rtws/.dialogs/run/73/6d/da1d0178/wake-queue.jsonl',\n  mainDialogId: '73/6d/da1d0178',\n  reason: 'loadWakeQueueEntries',\n  sourcePath: '/tmp/dominds-tests-persistence-XJNZiv/1.tmp/dominds-tests-rtws-582VNQ/rtws/.dialogs/run/73/6d/da1d0178'\n}\n[2026/10/31-05:31:26] WARN: Quarantined malformed dialog 73/6d/da1d0177 Extra: {\n  dialogId: '73/6d/da1d0177',\n  status: 'running',\n  destinationPath: '/tmp/dominds-tests-persistence-XJNZiv/1.tmp/dominds-tests-rtws-582VNQ/rtws/.dialogs/malformed/73/6d/da1d0177',\n  errorMessage: 'Invalid wake-queue.jsonl in /tmp/dominds-tests-persistence-XJNZiv/1.tmp/dominds-tests-rtws-582VNQ/rtws/.dialogs/run/73/6d/da1d0177/wake-queue.jsonl',\n  mainDialogId: '73/6d/da1d0177',\n  reason: 'loadWakeQueueEntries',\n  sourcePath: '/tmp/dominds-tests-persistence-XJNZiv/1.tmp/dominds-tests-rtws-582VNQ/rtws/.dialogs/run/73/6d/da1d0177'\n}\nOK\n[tests/cli] Keeping isolated rtws at /tmp/dominds-tests-persistence-XJNZiv/1.tmp/dominds-tests-rtws-582VNQ\n"
+          },
+          {
+            "id": "persistence/thinking-reasoning-replay-event.ts",
+            "stdout": "persistence thinking reasoning replay event: PASS\n[tests/cli] Keeping isolated rtws at /tmp/dominds-tests-persistence-XJNZiv/2.tmp/dominds-tests-rtws-HfLmKU\n"
+          },
+          {
+            "id": "persistence/asker-stack-jsonl.ts",
+            "stdout": "[2026/10/31-05:31:30] ERROR: Failed to save sideDialog YAML for different-side under main dialog main:\nError: sideDialog metadata id mismatch: dialogId=different-side metadataId=side\n    at DialogPersistence.saveSideDialogMetadata (/ws/AiWorks/dominds/main/persistence.ts:10383:15)\n    at <anonymous> (/ws/AiWorks/dominds/tests/persistence/asker-stack-jsonl.ts:120:25)\n    at async withTempRtws (/ws/AiWorks/dominds/tests/kernel-driver/helpers.ts:60:3)\n    at async main (/ws/AiWorks/dominds/tests/persistence/asker-stack-jsonl.ts:46:3)\n[2026/10/31-05:31:30] ERROR: Failed to save sideDialog responses for dialog main:\nError: sideDialog responses empty responseId invariant violation: save rootId=main\n    at assertUniqueSideDialogResponseIds (/ws/AiWorks/dominds/main/persistence.ts:2659:13)\n    at DialogPersistence.saveSideDialogResponses (/ws/AiWorks/dominds/main/persistence.ts:9969:7)\n    at <anonymous> (/ws/AiWorks/dominds/tests/persistence/asker-stack-jsonl.ts:149:25)\n    at async withTempRtws (/ws/AiWorks/dominds/tests/kernel-driver/helpers.ts:60:3)\n    at async main (/ws/AiWorks/dominds/tests/persistence/asker-stack-jsonl.ts:46:3)\nOK\n[tests/cli] Keeping isolated rtws at /tmp/dominds-tests-persistence-XJNZiv/3.tmp/dominds-tests-rtws-LaxEZJ\n"
+          },
+          {
+            "id": "persistence/sideDialog-reconciled-course.ts",
+            "stdout": "OK\n[tests/cli] Keeping isolated rtws at /tmp/dominds-tests-persistence-XJNZiv/4.tmp/dominds-tests-rtws-kXDcil\n"
+          },
+          {
+            "id": "persistence/move-dialog-status.ts",
+            "stdout": "[2026/10/31-05:31:34] ERROR: Failed to move dialog aa/bb/move001 from running to completed:\nError: Refusing to move dialog aa/bb/move001 from running to completed: destination already exists at /tmp/dominds-tests-persistence-XJNZiv/5.tmp/dominds-tests-rtws-41ng06/rtws/.dialogs/done/aa/bb/move001\n    at DialogPersistence.moveDialogStatus (/ws/AiWorks/dominds/main/persistence.ts:12364:15)\n    at async waitForActual (node:assert:646:5)\n    at async strict.rejects (node:assert:769:25)\n    at async <anonymous> (/ws/AiWorks/dominds/tests/persistence/move-dialog-status.ts:35:5)\n    at async withTempRtws (/ws/AiWorks/dominds/tests/kernel-driver/helpers.ts:60:3)\n    at async main (/ws/AiWorks/dominds/tests/persistence/move-dialog-status.ts:13:3)\nstatus refusal preserves distinct trees; successful move preserves binary and metadata: passed\n[tests/cli] Keeping isolated rtws at /tmp/dominds-tests-persistence-XJNZiv/5.tmp/dominds-tests-rtws-41ng06\n"
+          },
+          {
+            "id": "persistence/reminders-owner-meta.ts",
+            "stdout": "{\"probe\":\"independent-reminder-owner-reload\",\"writerPid\":390637,\"readerPid\":390678,\"count\":3}\nOK\n[tests/cli] Keeping isolated rtws at /tmp/dominds-tests-persistence-XJNZiv/6.tmp/dominds-tests-rtws-cMaZAu\n"
+          },
+          {
+            "id": "persistence/reminders-status-path.ts",
+            "stdout": "OK\n[tests/cli] Keeping isolated rtws at /tmp/dominds-tests-persistence-XJNZiv/7.tmp/dominds-tests-rtws-pwr5Qd\n"
+          },
+          {
+            "id": "persistence/runtime-guide-fork-anchor.ts",
+            "stdout": "OK\n[tests/cli] Keeping isolated rtws at /tmp/dominds-tests-persistence-XJNZiv/8.tmp/dominds-tests-rtws-CcvUIv\n"
+          },
+          {
+            "id": "persistence/priming-reminders.ts",
+            "stdout": "OK\n[tests/cli] Keeping isolated rtws at /tmp/dominds-tests-persistence-XJNZiv/9.tmp/dominds-tests-rtws-OmAVwM\n"
+          }
+        ]
+      },
+      {
+        "lane": "smoke",
+        "status": "passed",
+        "summary": {
+          "total": 11,
+          "passed": 11,
+          "failed": 0,
+          "timedOut": 0,
+          "results": [
+            {
+              "id": "auth.ts",
+              "status": "passed",
+              "durationMs": 204,
+              "code": 0,
+              "signal": null,
+              "logPath": "/tmp/dominds-tests-smoke-J9yvDF/001-auth.ts.log"
+            },
+            {
+              "id": "llm-generation-metadata.ts",
+              "status": "passed",
+              "durationMs": 206,
+              "code": 0,
+              "signal": null,
+              "logPath": "/tmp/dominds-tests-smoke-J9yvDF/002-llm-generation-metadata.ts.log"
+            },
+            {
+              "id": "persistence/latest-writeback.ts",
+              "status": "passed",
+              "durationMs": 2572,
+              "code": 0,
+              "signal": null,
+              "logPath": "/tmp/dominds-tests-smoke-J9yvDF/003-persistence_latest-writeback.ts.log"
+            },
+            {
+              "id": "interruption-resumption.ts",
+              "status": "passed",
+              "durationMs": 3240,
+              "code": 0,
+              "signal": null,
+              "logPath": "/tmp/dominds-tests-smoke-J9yvDF/004-interruption-resumption.ts.log"
+            },
+            {
+              "id": "access-control/dialogs-root-deny.ts",
+              "status": "passed",
+              "durationMs": 354,
+              "code": 0,
+              "signal": null,
+              "logPath": "/tmp/dominds-tests-smoke-J9yvDF/005-access-control_dialogs-root-deny.ts.log"
+            },
+            {
+              "id": "access-control/file-ext-names.ts",
+              "status": "passed",
+              "durationMs": 357,
+              "code": 0,
+              "signal": null,
+              "logPath": "/tmp/dominds-tests-smoke-J9yvDF/006-access-control_file-ext-names.ts.log"
+            },
+            {
+              "id": "apps-host-ipc-contract.ts",
+              "status": "passed",
+              "durationMs": 231,
+              "code": 0,
+              "signal": null,
+              "logPath": "/tmp/dominds-tests-smoke-J9yvDF/007-apps-host-ipc-contract.ts.log"
+            },
+            {
+              "id": "toolsets/tool-availability-snapshot.ts",
+              "status": "passed",
+              "durationMs": 1801,
+              "code": 0,
+              "signal": null,
+              "logPath": "/tmp/dominds-tests-smoke-J9yvDF/008-toolsets_tool-availability-snapshot.ts.log"
+            },
+            {
+              "id": "webapp/create-dialog-flow-ime.ts",
+              "status": "passed",
+              "durationMs": 212,
+              "code": 0,
+              "signal": null,
+              "logPath": "/tmp/dominds-tests-smoke-J9yvDF/009-webapp_create-dialog-flow-ime.ts.log"
+            },
+            {
+              "id": "webapp/create-dialog-flow-selection.ts",
+              "status": "passed",
+              "durationMs": 216,
+              "code": 0,
+              "signal": null,
+              "logPath": "/tmp/dominds-tests-smoke-J9yvDF/010-webapp_create-dialog-flow-selection.ts.log"
+            },
+            {
+              "id": "webapp/generation-model-presentation.ts",
+              "status": "passed",
+              "durationMs": 186,
+              "code": 0,
+              "signal": null,
+              "logPath": "/tmp/dominds-tests-smoke-J9yvDF/011-webapp_generation-model-presentation.ts.log"
+            }
+          ]
+        },
+        "caseLogs": [
+          {
+            "id": "auth.ts",
+            "stdout": "auth tests: ok\n"
+          },
+          {
+            "id": "llm-generation-metadata.ts",
+            "stdout": "LLM generation metadata: PASS\n"
+          },
+          {
+            "id": "persistence/latest-writeback.ts",
+            "stdout": "[2026/10/31-05:31:26] WARN: Dialog latest projection invariant warning: generating dialog has non-running run-control projection; healing displayState to proceeding and clearing stale interruption marker Extra: {\n  rootId: '61/5a/da8d0169',\n  selfId: '61/5a/da8d0169',\n  dialogId: '61/5a/da8d0169',\n  status: 'running',\n  afterBeforeHealing: {\n    status: 'active',\n    backendDriveStall: null,\n    currentCourse: 3,\n    diligencePushRemainingBudget: null,\n    disableDiligencePush: false,\n    displayState: '[Object depth limit reached]',\n    executionMarker: '[Object depth limit reached]',\n    functionCallCount: null,\n    generating: true,\n    generationRunState: null,\n    lastModified: '2026-10-31 05:31:26',\n    latestAssignmentAnchor: null,\n    __omittedKeys__: 20\n  },\n  before: {\n    status: 'active',\n    backendDriveStall: null,\n    currentCourse: 1,\n    diligencePushRemainingBudget: null,\n    disableDiligencePush: false,\n    displayState: null,\n    executionMarker: null,\n    functionCallCount: 2,\n    generating: false,\n    generationRunState: null,\n    lastModified: '2026-10-31 05:31:26',\n    latestAssignmentAnchor: null,\n    __omittedKeys__: 20\n  },\n  callStack: [\n    'at async <anonymous> (/ws/AiWorks/dominds/tests/persistence/latest-writeback.ts:134:5)',\n    'at async withTempRtws (/ws/AiWorks/dominds/tests/kernel-driver/helpers.ts:60:3)',\n    'at async main (/ws/AiWorks/dominds/tests/persistence/latest-writeback.ts:68:3)'\n  ],\n  diagnosticJson: '{\"trigger\":\"mutateDialogLatest\",\"mutationKind\":\"replace\",\"latestSource\":\"disk\",\"latestWriteBackKey\":\"/tmp/dominds-tests-smoke-J9yvDF/3.tmp/dominds-tests-rtws-G6Xscc/rtws/.dialogs|running|61/5a/da8d0169\",\"patchSummary\":{\"currentCourse\":3,\"lastModified\":\"2026-04-11 17:01:00\",\"status\":\"active\",\"messageCount\":null,\"functionCallCount\":null,\"sideDialogCount\":null,\"generating\":true,\"disableDiligencePush\":false,\"diligencePushRemainingBudget\":null,\"displayState\":{\"kind\":\"idle_waiting_user\"},...[truncated 3320 chars]',\n  healedTo: {\n    displayState: '[Object depth limit reached]',\n    executionMarker: null\n  },\n  healingApplied: true,\n  latestSource: 'disk',\n  latestWriteBackKey: '/tmp/dominds-tests-smoke-J9yvDF/3.tmp/dominds-tests-rtws-G6Xscc/rtws/.dialogs|running|61/5a/da8d0169',\n  __omittedKeys__: 3\n} [details_reduced depth<=2, keys<=12, items<=12] [extra_reduced]\n[2026/10/31-05:31:26] WARN: Dialog latest projection invariant warning: generating dialog has non-running run-control projection; preserved stronger dead state Extra: {\n  rootId: '61/5a/da8d0169',\n  selfId: '61/5a/da8d0169',\n  dialogId: '61/5a/da8d0169',\n  status: 'running',\n  afterBeforeHealing: {\n    status: 'active',\n    backendDriveStall: null,\n    currentCourse: 4,\n    diligencePushRemainingBudget: null,\n    disableDiligencePush: false,\n    displayState: '[Object depth limit reached]',\n    executionMarker: '[Object depth limit reached]',\n    functionCallCount: null,\n    generating: true,\n    generationRunState: null,\n    lastModified: '2026-10-31 05:31:26',\n    latestAssignmentAnchor: null,\n    __omittedKeys__: 20\n  },\n  before: {\n    status: 'active',\n    backendDriveStall: null,\n    currentCourse: 3,\n    diligencePushRemainingBudget: null,\n    disableDiligencePush: false,\n    displayState: '[Object depth limit reached]',\n    executionMarker: null,\n    functionCallCount: null,\n    generating: true,\n    generationRunState: null,\n    lastModified: '2026-10-31 05:31:26',\n    latestAssignmentAnchor: null,\n    __omittedKeys__: 20\n  },\n  callStack: [\n    'at async <anonymous> (/ws/AiWorks/dominds/tests/persistence/latest-writeback.ts:155:5)',\n    'at async withTempRtws (/ws/AiWorks/dominds/tests/kernel-driver/helpers.ts:60:3)',\n    'at async main (/ws/AiWorks/dominds/tests/persistence/latest-writeback.ts:68:3)'\n  ],\n  diagnosticJson: '{\"trigger\":\"mutateDialogLatest\",\"mutationKind\":\"replace\",\"latestSource\":\"staged\",\"latestWriteBackKey\":\"/tmp/dominds-tests-smoke-J9yvDF/3.tmp/dominds-tests-rtws-G6Xscc/rtws/.dialogs|running|61/5a/da8d0169\",\"patchSummary\":{\"currentCourse\":4,\"lastModified\":\"2026-04-11 17:02:00\",\"status\":\"active\",\"messageCount\":null,\"functionCallCount\":null,\"sideDialogCount\":null,\"generating\":true,\"disableDiligencePush\":false,\"diligencePushRemainingBudget\":null,\"displayState\":{\"kind\":\"dead\",\"reason\":{\"k...[truncated 3309 chars]',\n  healedTo: null,\n  healingApplied: false,\n  latestSource: 'staged',\n  latestWriteBackKey: '/tmp/dominds-tests-smoke-J9yvDF/3.tmp/dominds-tests-rtws-G6Xscc/rtws/.dialogs|running|61/5a/da8d0169',\n  __omittedKeys__: 3\n} [details_reduced depth<=2, keys<=12, items<=12] [extra_reduced]\n[2026/10/31-05:31:26] WARN: Dialog latest projection invariant warning: generating dialog has non-running run-control projection; healing displayState to proceeding and clearing stale interruption marker Extra: {\n  rootId: '61/5a/da8d0169',\n  selfId: '61/5a/da8d0169',\n  dialogId: '61/5a/da8d0169',\n  status: 'running',\n  afterBeforeHealing: {\n    status: 'active',\n    backendDriveStall: null,\n    currentCourse: 5,\n    diligencePushRemainingBudget: null,\n    disableDiligencePush: false,\n    displayState: '[Object depth limit reached]',\n    executionMarker: '[Object depth limit reached]',\n    functionCallCount: null,\n    generating: true,\n    generationRunState: null,\n    lastModified: '2026-10-31 05:31:26',\n    latestAssignmentAnchor: null,\n    __omittedKeys__: 20\n  },\n  before: {\n    status: 'active',\n    backendDriveStall: null,\n    currentCourse: 4,\n    diligencePushRemainingBudget: null,\n    disableDiligencePush: false,\n    displayState: '[Object depth limit reached]',\n    executionMarker: null,\n    functionCallCount: null,\n    generating: false,\n    generationRunState: null,\n    lastModified: '2026-10-31 05:31:26',\n    latestAssignmentAnchor: null,\n    __omittedKeys__: 20\n  },\n  callStack: [\n    'at async <anonymous> (/ws/AiWorks/dominds/tests/persistence/latest-writeback.ts:331:5)',\n    'at async withTempRtws (/ws/AiWorks/dominds/tests/kernel-driver/helpers.ts:60:3)',\n    'at async main (/ws/AiWorks/dominds/tests/persistence/latest-writeback.ts:68:3)'\n  ],\n  diagnosticJson: '{\"trigger\":\"mutateDialogLatest\",\"mutationKind\":\"replace\",\"latestSource\":\"staged\",\"latestWriteBackKey\":\"/tmp/dominds-tests-smoke-J9yvDF/3.tmp/dominds-tests-rtws-G6Xscc/rtws/.dialogs|running|61/5a/da8d0169\",\"patchSummary\":{\"currentCourse\":5,\"lastModified\":\"2026-04-11 17:03:00\",\"status\":\"active\",\"messageCount\":null,\"functionCallCount\":null,\"sideDialogCount\":null,\"generating\":true,\"disableDiligencePush\":false,\"diligencePushRemainingBudget\":null,\"displayState\":{\"kind\":\"stopped\",\"reason\":...[truncated 3531 chars]',\n  healedTo: {\n    displayState: '[Object depth limit reached]',\n    executionMarker: null\n  },\n  healingApplied: true,\n  latestSource: 'staged',\n  latestWriteBackKey: '/tmp/dominds-tests-smoke-J9yvDF/3.tmp/dominds-tests-rtws-G6Xscc/rtws/.dialogs|running|61/5a/da8d0169',\n  __omittedKeys__: 3\n} [details_reduced depth<=2, keys<=12, items<=12] [extra_reduced]\n[2026/10/31-05:31:26] WARN: Quarantined malformed dialog 73/6d/da1d0178 Extra: {\n  dialogId: '73/6d/da1d0178',\n  status: 'running',\n  destinationPath: '/tmp/dominds-tests-smoke-J9yvDF/3.tmp/dominds-tests-rtws-G6Xscc/rtws/.dialogs/malformed/73/6d/da1d0178',\n  errorMessage: 'Invalid wake-queue.jsonl in /tmp/dominds-tests-smoke-J9yvDF/3.tmp/dominds-tests-rtws-G6Xscc/rtws/.dialogs/run/73/6d/da1d0178/wake-queue.jsonl',\n  mainDialogId: '73/6d/da1d0178',\n  reason: 'loadWakeQueueEntries',\n  sourcePath: '/tmp/dominds-tests-smoke-J9yvDF/3.tmp/dominds-tests-rtws-G6Xscc/rtws/.dialogs/run/73/6d/da1d0178'\n}\n[2026/10/31-05:31:26] WARN: Quarantined malformed dialog 73/6d/da1d0177 Extra: {\n  dialogId: '73/6d/da1d0177',\n  status: 'running',\n  destinationPath: '/tmp/dominds-tests-smoke-J9yvDF/3.tmp/dominds-tests-rtws-G6Xscc/rtws/.dialogs/malformed/73/6d/da1d0177',\n  errorMessage: 'Invalid wake-queue.jsonl in /tmp/dominds-tests-smoke-J9yvDF/3.tmp/dominds-tests-rtws-G6Xscc/rtws/.dialogs/run/73/6d/da1d0177/wake-queue.jsonl',\n  mainDialogId: '73/6d/da1d0177',\n  reason: 'loadWakeQueueEntries',\n  sourcePath: '/tmp/dominds-tests-smoke-J9yvDF/3.tmp/dominds-tests-rtws-G6Xscc/rtws/.dialogs/run/73/6d/da1d0177'\n}\nOK\n[tests/cli] Keeping isolated rtws at /tmp/dominds-tests-smoke-J9yvDF/3.tmp/dominds-tests-rtws-G6Xscc\n"
+          },
+          {
+            "id": "interruption-resumption.ts",
+            "stdout": "[2026/10/31-05:31:29] WARN: LLM request attempt failed\nMockFixtureError: Mock scenario has no configured response.\n\nInput role: \"tool\"\nNo assistant response or tool call was generated. Configure an explicit response for this input.\n\nDatabase: `mock-db/default.yaml`\n\nAdd to database:\n```yaml\nresponses:\n  - message: \"[Dominds Tellask result | callId: side-restart-call]\\n\\n【Completed】\\n\\n@pangu provided a Tellask reply:\\n\\n> Side dialog recovered and replies after restart.\\n\\nregarding the original tellask: @pangu • side-restart-recovery\\n\\n> Finish from a side dialog after restart.\\n\\n[Dominds Tellask result status]\\n- Function: `tellask`\\n- callId: side-restart-call\\n- Note: This is a result fact for an earlier Tellask, not a new user request or a newly initiated function call in the current course.\"\n    role: \"tool\"\n    response: \"Your response here\"\n```\n    at MockGen.missingResponseError (/ws/AiWorks/dominds/main/llm/gen/mock.ts:551:12)\n    at MockGen.genToReceiver (/ws/AiWorks/dominds/main/llm/gen/mock.ts:595:30)\n    at async Object.doRequest (/ws/AiWorks/dominds/main/llm/kernel-driver/drive.ts:5032:38)\n    at async runLlmRequestWithRetry (/ws/AiWorks/dominds/main/llm/kernel-driver/runtime.ts:976:19)\n    at async streamOrBatch (/ws/AiWorks/dominds/main/llm/kernel-driver/drive.ts:4992:25)\n    at async driveDialogStreamCore (/ws/AiWorks/dominds/main/llm/kernel-driver/drive.ts:5105:29)\n    at async executeDriveRound (/ws/AiWorks/dominds/main/llm/kernel-driver/flow.ts:2058:19)\n    at async driveDialogStream (/ws/AiWorks/dominds/main/llm/kernel-driver/engine.ts:33:10) Extra: {\n  rootId: '6b/ad/91f18b37',\n  selfId: '6b/ad/91f18b37',\n  dialogId: '6b/ad/91f18b37',\n  provider: 'local-mock',\n  status: undefined,\n  code: 'mock_response_missing',\n  aggressiveRetryCount: 0,\n  aggressiveRetryMaxRetries: 3,\n  attemptNumber: 1,\n  causeCode: undefined,\n  causeMessage: undefined,\n  debugCaptureError: undefined,\n  __omittedKeys__: 9\n} [details_reduced depth<=2, keys<=12, items<=12] [extra_reduced]\n[2026/10/31-05:31:29] ERROR: Dialog stream error 'Mock scenario has no configured response.\n\nInput role: \"tool\"\nNo assistant response or tool call was generated. Configure an explicit response for this input.\n\nDatabase: `mock-db/default.yaml`\n\nAdd to database:\n```yaml\nresponses:\n  - message: \"[Dominds Tellask result | callId: side-restart-call]\\n\\n【Completed】\\n\\n@pangu provided a Tellask reply:\\n\\n> Side dialog recovered and replies after restart.\\n\\nregarding the original tellask: @pangu • side-restart-recovery\\n\\n> Finish from a side dialog after restart.\\n\\n[Dominds Tellask result status]\\n- Function: `tellask`\\n- callId: side-restart-call\\n- Note: This is a result fact for an earlier Tellask, not a new user request or a newly initiated function call in the current course.\"\n    role: \"tool\"\n    response: \"Your response here\"\n```'\nError\n    at DiskFileDialogStore.streamError (/ws/AiWorks/dominds/main/persistence.ts:4016:49)\n    at MainDialog.streamError (/ws/AiWorks/dominds/main/dialog.ts:2217:27)\n    at runLlmRequestWithRetry (/ws/AiWorks/dominds/main/llm/kernel-driver/runtime.ts:1182:28)\n    at async streamOrBatch (/ws/AiWorks/dominds/main/llm/kernel-driver/drive.ts:4992:25)\n    at async driveDialogStreamCore (/ws/AiWorks/dominds/main/llm/kernel-driver/drive.ts:5105:29)\n    at async executeDriveRound (/ws/AiWorks/dominds/main/llm/kernel-driver/flow.ts:2058:19)\n    at async driveDialogStream (/ws/AiWorks/dominds/main/llm/kernel-driver/engine.ts:33:10) Extra: {\n  rootId: '6b/ad/91f18b37',\n  selfId: '6b/ad/91f18b37',\n  dialogId: '6b/ad/91f18b37',\n  course: 1,\n  genseq: 2,\n  agentId: 'tester',\n  dialogClass: 'MainDialog',\n  status: 'running',\n  activeGeneration: true,\n  dialogSnapshot: {\n    __class__: 'MainDialog',\n    agentId: 'tester',\n    diligencePushRemainingBudget: 0,\n    disableDiligencePush: true,\n    dlgStore: '[DiskFileDialogStore depth limit reached]',\n    id: '[DialogID depth limit reached]',\n    msgs: '[Array depth limit reached]',\n    reminders: '[Array depth limit reached]',\n    taskDocPath: 'test-scenario.tsk',\n    _activeCalleeDialogIds: '[Array depth limit reached]',\n    _activeGenCourse: 1,\n    _activeGenSeq: 2,\n    _coursePrefixMsgs: '[Array depth limit reached]',\n    __omittedKeys__: 21\n  }\n} [details_reduced depth<=2, keys<=12, items<=12] [extra_reduced]\n[2026/10/31-05:31:29] WARN: Dialog latest projection invariant warning: generating dialog has non-running run-control projection; healing displayState to proceeding and clearing stale interruption marker Extra: {\n  rootId: 'dlg-k',\n  selfId: 'side-k',\n  dialogId: 'dlg-k#side-k',\n  status: 'running',\n  afterBeforeHealing: {\n    status: 'active',\n    backendDriveStall: null,\n    currentCourse: 1,\n    diligencePushRemainingBudget: null,\n    disableDiligencePush: false,\n    displayState: '[Object depth limit reached]',\n    executionMarker: '[Object depth limit reached]',\n    functionCallCount: null,\n    generating: true,\n    generationRunState: '[Object depth limit reached]',\n    lastModified: '2026-10-31 05:31:29',\n    latestAssignmentAnchor: null,\n    __omittedKeys__: 20\n  },\n  before: {\n    status: 'active',\n    backendDriveStall: null,\n    currentCourse: 1,\n    diligencePushRemainingBudget: null,\n    disableDiligencePush: false,\n    displayState: null,\n    executionMarker: null,\n    functionCallCount: null,\n    generating: false,\n    generationRunState: null,\n    lastModified: '2026-10-31 05:31:29',\n    latestAssignmentAnchor: null,\n    __omittedKeys__: 20\n  },\n  callStack: [\n    'at async main (/ws/AiWorks/dominds/tests/interruption-resumption.ts:694:5)'\n  ],\n  diagnosticJson: '{\"trigger\":\"mutateDialogLatest\",\"mutationKind\":\"replace\",\"latestSource\":\"default_bootstrap\",\"latestWriteBackKey\":\"/tmp/dominds-tests-smoke-J9yvDF/4.tmp/dominds-interrupt-eN2Tlh/.dialogs|running|dlg-k#side-k\",\"patchSummary\":{\"currentCourse\":1,\"lastModified\":\"2026-10-31T12:31:29.081Z\",\"status\":\"active\",\"messageCount\":null,\"functionCallCount\":null,\"sideDialogCount\":null,\"generating\":true,\"disableDiligencePush\":false,\"diligencePushRemainingBudget\":null,\"displayState\":{\"kind\":\"stopped\",\"...[truncated 3491 chars]',\n  healedTo: {\n    displayState: '[Object depth limit reached]',\n    executionMarker: null\n  },\n  healingApplied: true,\n  latestSource: 'default_bootstrap',\n  latestWriteBackKey: '/tmp/dominds-tests-smoke-J9yvDF/4.tmp/dominds-interrupt-eN2Tlh/.dialogs|running|dlg-k#side-k',\n  __omittedKeys__: 3\n} [details_reduced depth<=2, keys<=12, items<=12] [extra_reduced]\n[2026/10/31-05:31:29] [dialog-display-state] WARN: Healing stale sideDialog run-control flags after final response anchor Extra: {\n  dialogId: '6b/ad/91f18b37#bf/5d/91f18c23',\n  clearedReplyObligation: false,\n  previousDisplayState: {\n    kind: 'proceeding'\n  },\n  previousExecutionMarker: null,\n  previousGenerating: true,\n  previousNextStepTriggerCount: 0,\n  responseCallId: 'side-restart-call',\n  trigger: 'run_control_snapshot'\n}\n[2026/10/31-05:31:29] [dialog-display-state] WARN: Healing stale sideDialog run-control flags after final response anchor Extra: {\n  dialogId: 'dlg-j#side-j',\n  clearedReplyObligation: true,\n  previousDisplayState: {\n    continueEnabled: true,\n    kind: 'stopped',\n    reason: {\n      kind: 'server_restart'\n    }\n  },\n  previousExecutionMarker: {\n    kind: 'interrupted',\n    reason: {\n      kind: 'server_restart'\n    }\n  },\n  previousGenerating: true,\n  previousNextStepTriggerCount: 1,\n  responseCallId: 'call-side-j',\n  trigger: 'run_control_snapshot'\n}\n[2026/10/31-05:31:29] [dialog-display-state] WARN: Healing stale sideDialog run-control flags after final response anchor Extra: {\n  dialogId: 'dlg-j#side-j-projection-only',\n  clearedReplyObligation: true,\n  previousDisplayState: {\n    continueEnabled: true,\n    kind: 'stopped',\n    reason: {\n      kind: 'server_restart'\n    }\n  },\n  previousExecutionMarker: {\n    kind: 'interrupted',\n    reason: {\n      kind: 'server_restart'\n    }\n  },\n  previousGenerating: false,\n  previousNextStepTriggerCount: 0,\n  responseCallId: 'call-side-j-projection-only',\n  trigger: 'run_control_snapshot'\n}\n[2026/10/31-05:31:29] [dialog-display-state] WARN: Healing stale sideDialog run-control flags after final response anchor Extra: {\n  dialogId: 'dlg-j#side-j-q4h-projection',\n  clearedReplyObligation: true,\n  previousDisplayState: {\n    kind: 'blocked',\n    reason: {\n      kind: 'needs_human_input'\n    }\n  },\n  previousExecutionMarker: null,\n  previousGenerating: false,\n  previousNextStepTriggerCount: 0,\n  responseCallId: 'call-side-j-q4h-projection',\n  trigger: 'run_control_snapshot'\n}\n[2026/10/31-05:31:29] [dialog-display-state] WARN: Healing stale run-control projection from persistence facts Extra: {\n  dialogId: 'dlg-b',\n  healedDisplayState: {\n    kind: 'blocked',\n    reason: {\n      kind: 'needs_human_input'\n    }\n  },\n  previousDisplayState: {\n    kind: 'proceeding'\n  },\n  previousExecutionMarker: null,\n  trigger: 'restart_reconciliation'\n}\n[2026/10/31-05:31:29] [dialog-display-state] WARN: Healing stale run-control projection from persistence facts Extra: {\n  dialogId: 'dlg-f',\n  healedDisplayState: {\n    continueEnabled: true,\n    kind: 'stopped',\n    reason: {\n      detail: 'upstream failed',\n      kind: 'system_stop'\n    }\n  },\n  previousDisplayState: {\n    kind: 'blocked',\n    reason: {\n      kind: 'needs_human_input'\n    }\n  },\n  previousExecutionMarker: {\n    kind: 'interrupted',\n    reason: {\n      detail: 'upstream failed',\n      kind: 'system_stop'\n    }\n  },\n  trigger: 'restart_reconciliation'\n}\n[2026/10/31-05:31:29] WARN: Quarantined malformed dialog dlg-i Extra: {\n  dialogId: 'dlg-i',\n  status: 'running',\n  destinationPath: '/tmp/dominds-tests-smoke-J9yvDF/4.tmp/dominds-interrupt-eN2Tlh/.dialogs/malformed/dlg-i',\n  errorMessage: 'Restart reconciliation refused to recover generating dialog without generationRunState (rootId=dlg-i, selfId=dlg-i)',\n  mainDialogId: 'dlg-i',\n  reason: 'restart_reconciliation_missing_generation_run_state',\n  sourcePath: '/tmp/dominds-tests-smoke-J9yvDF/4.tmp/dominds-interrupt-eN2Tlh/.dialogs/run/dlg-i'\n}\n[2026/10/31-05:31:29] WARN: Quarantined malformed dialog dlg-l Extra: {\n  dialogId: 'dlg-l',\n  status: 'running',\n  destinationPath: '/tmp/dominds-tests-smoke-J9yvDF/4.tmp/dominds-interrupt-eN2Tlh/.dialogs/malformed/dlg-l',\n  errorMessage: 'Restart reconciliation refused to recover generating dialog without generationRunState (rootId=dlg-l, selfId=dlg-l)',\n  mainDialogId: 'dlg-l',\n  reason: 'restart_reconciliation_missing_generation_run_state',\n  sourcePath: '/tmp/dominds-tests-smoke-J9yvDF/4.tmp/dominds-interrupt-eN2Tlh/.dialogs/run/dlg-l'\n}\n[2026/10/31-05:31:29] [dialog-display-state] WARN: Healing stale run-control projection from persistence facts Extra: {\n  dialogId: 'dlg-h',\n  healedDisplayState: {\n    kind: 'idle_waiting_user'\n  },\n  previousDisplayState: {\n    kind: 'proceeding'\n  },\n  previousExecutionMarker: null,\n  trigger: 'resume_dialog'\n}\n✅ interruption-resumption reconcile smoke test passed\n"
+          },
+          {
+            "id": "access-control/dialogs-root-deny.ts",
+            "stdout": "access-control dialogs root deny tests: ok\n"
+          },
+          {
+            "id": "access-control/file-ext-names.ts",
+            "stdout": "access-control file ext names tests: ok\n"
+          },
+          {
+            "id": "apps-host-ipc-contract.ts",
+            "stdout": "apps-host IPC contract tests passed\n"
+          },
+          {
+            "id": "toolsets/tool-availability-snapshot.ts",
+            "stdout": "OK\n"
+          },
+          {
+            "id": "webapp/create-dialog-flow-ime.ts",
+            "stdout": "webapp create dialog flow IME: PASS\n"
+          },
+          {
+            "id": "webapp/create-dialog-flow-selection.ts",
+            "stdout": "webapp create dialog flow selection: PASS\n"
+          },
+          {
+            "id": "webapp/generation-model-presentation.ts",
+            "stdout": "webapp generation model presentation: PASS\n"
+          }
+        ]
+      },
+      {
+        "lane": "legacy-package-aliases",
+        "status": "passed",
+        "summary": {
+          "total": 9,
+          "passed": 9,
+          "failed": 0,
+          "timedOut": 0,
+          "results": [
+            {
+              "id": "persistence-latest-writeback",
+              "status": "passed",
+              "durationMs": 3544,
+              "code": 0,
+              "signal": null,
+              "logPath": "/tmp/dominds-persistence-aliases/001-persistence-latest-writeback.log"
+            },
+            {
+              "id": "persistence-move-dialog-status",
+              "status": "passed",
+              "durationMs": 2764,
+              "code": 0,
+              "signal": null,
+              "logPath": "/tmp/dominds-persistence-aliases/002-persistence-move-dialog-status.log"
+            },
+            {
+              "id": "persistence-reminders-owner-meta",
+              "status": "passed",
+              "durationMs": 3431,
+              "code": 0,
+              "signal": null,
+              "logPath": "/tmp/dominds-persistence-aliases/003-persistence-reminders-owner-meta.log"
+            },
+            {
+              "id": "persistence-reminders-status-path",
+              "status": "passed",
+              "durationMs": 3277,
+              "code": 0,
+              "signal": null,
+              "logPath": "/tmp/dominds-persistence-aliases/004-persistence-reminders-status-path.log"
+            },
+            {
+              "id": "persistence-sideDialog-reconciled-course",
+              "status": "passed",
+              "durationMs": 3112,
+              "code": 0,
+              "signal": null,
+              "logPath": "/tmp/dominds-persistence-aliases/005-persistence-sideDialog-reconciled-course.log"
+            },
+            {
+              "id": "persistence-asker-stack-jsonl",
+              "status": "passed",
+              "durationMs": 3193,
+              "code": 0,
+              "signal": null,
+              "logPath": "/tmp/dominds-persistence-aliases/006-persistence-asker-stack-jsonl.log"
+            },
+            {
+              "id": "persistence-runtime-guide-fork-anchor",
+              "status": "passed",
+              "durationMs": 3183,
+              "code": 0,
+              "signal": null,
+              "logPath": "/tmp/dominds-persistence-aliases/007-persistence-runtime-guide-fork-anchor.log"
+            },
+            {
+              "id": "persistence-priming-reminders",
+              "status": "passed",
+              "durationMs": 3211,
+              "code": 0,
+              "signal": null,
+              "logPath": "/tmp/dominds-persistence-aliases/008-persistence-priming-reminders.log"
+            },
+            {
+              "id": "persistence-thinking-reasoning-replay-event",
+              "status": "passed",
+              "durationMs": 3176,
+              "code": 0,
+              "signal": null,
+              "logPath": "/tmp/dominds-persistence-aliases/009-persistence-thinking-reasoning-replay-event.log"
+            }
+          ]
+        },
+        "caseLogs": [
+          {
+            "id": "persistence-latest-writeback",
+            "stdout": "$ pnpm run rtws -- --isolated-rtws persistence/latest-writeback.ts\n$ tsx cli.ts -- --isolated-rtws persistence/latest-writeback.ts\n[2026/10/31-05:32:48] WARN: Dialog latest projection invariant warning: generating dialog has non-running run-control projection; healing displayState to proceeding and clearing stale interruption marker Extra: {\n  rootId: '61/5a/da8d0169',\n  selfId: '61/5a/da8d0169',\n  dialogId: '61/5a/da8d0169',\n  status: 'running',\n  afterBeforeHealing: {\n    status: 'active',\n    backendDriveStall: null,\n    currentCourse: 3,\n    diligencePushRemainingBudget: null,\n    disableDiligencePush: false,\n    displayState: '[Object depth limit reached]',\n    executionMarker: '[Object depth limit reached]',\n    functionCallCount: null,\n    generating: true,\n    generationRunState: null,\n    lastModified: '2026-10-31 05:32:48',\n    latestAssignmentAnchor: null,\n    __omittedKeys__: 20\n  },\n  before: {\n    status: 'active',\n    backendDriveStall: null,\n    currentCourse: 1,\n    diligencePushRemainingBudget: null,\n    disableDiligencePush: false,\n    displayState: null,\n    executionMarker: null,\n    functionCallCount: 2,\n    generating: false,\n    generationRunState: null,\n    lastModified: '2026-10-31 05:32:48',\n    latestAssignmentAnchor: null,\n    __omittedKeys__: 20\n  },\n  callStack: [\n    'at async <anonymous> (/ws/AiWorks/dominds/tests/persistence/latest-writeback.ts:134:5)',\n    'at async withTempRtws (/ws/AiWorks/dominds/tests/kernel-driver/helpers.ts:60:3)',\n    'at async main (/ws/AiWorks/dominds/tests/persistence/latest-writeback.ts:68:3)'\n  ],\n  diagnosticJson: '{\"trigger\":\"mutateDialogLatest\",\"mutationKind\":\"replace\",\"latestSource\":\"disk\",\"latestWriteBackKey\":\"/tmp/dominds-persistence-aliases/1.tmp/dominds-tests-rtws-C8U76O/rtws/.dialogs|running|61/5a/da8d0169\",\"patchSummary\":{\"currentCourse\":3,\"lastModified\":\"2026-04-11 17:01:00\",\"status\":\"active\",\"messageCount\":null,\"functionCallCount\":null,\"sideDialogCount\":null,\"generating\":true,\"disableDiligencePush\":false,\"diligencePushRemainingBudget\":null,\"displayState\":{\"kind\":\"idle_waiting_user\"}...[truncated 3321 chars]',\n  healedTo: {\n    displayState: '[Object depth limit reached]',\n    executionMarker: null\n  },\n  healingApplied: true,\n  latestSource: 'disk',\n  latestWriteBackKey: '/tmp/dominds-persistence-aliases/1.tmp/dominds-tests-rtws-C8U76O/rtws/.dialogs|running|61/5a/da8d0169',\n  __omittedKeys__: 3\n} [details_reduced depth<=2, keys<=12, items<=12] [extra_reduced]\n[2026/10/31-05:32:48] WARN: Dialog latest projection invariant warning: generating dialog has non-running run-control projection; preserved stronger dead state Extra: {\n  rootId: '61/5a/da8d0169',\n  selfId: '61/5a/da8d0169',\n  dialogId: '61/5a/da8d0169',\n  status: 'running',\n  afterBeforeHealing: {\n    status: 'active',\n    backendDriveStall: null,\n    currentCourse: 4,\n    diligencePushRemainingBudget: null,\n    disableDiligencePush: false,\n    displayState: '[Object depth limit reached]',\n    executionMarker: '[Object depth limit reached]',\n    functionCallCount: null,\n    generating: true,\n    generationRunState: null,\n    lastModified: '2026-10-31 05:32:48',\n    latestAssignmentAnchor: null,\n    __omittedKeys__: 20\n  },\n  before: {\n    status: 'active',\n    backendDriveStall: null,\n    currentCourse: 3,\n    diligencePushRemainingBudget: null,\n    disableDiligencePush: false,\n    displayState: '[Object depth limit reached]',\n    executionMarker: null,\n    functionCallCount: null,\n    generating: true,\n    generationRunState: null,\n    lastModified: '2026-10-31 05:32:48',\n    latestAssignmentAnchor: null,\n    __omittedKeys__: 20\n  },\n  callStack: [\n    'at async <anonymous> (/ws/AiWorks/dominds/tests/persistence/latest-writeback.ts:155:5)',\n    'at async withTempRtws (/ws/AiWorks/dominds/tests/kernel-driver/helpers.ts:60:3)',\n    'at async main (/ws/AiWorks/dominds/tests/persistence/latest-writeback.ts:68:3)'\n  ],\n  diagnosticJson: '{\"trigger\":\"mutateDialogLatest\",\"mutationKind\":\"replace\",\"latestSource\":\"staged\",\"latestWriteBackKey\":\"/tmp/dominds-persistence-aliases/1.tmp/dominds-tests-rtws-C8U76O/rtws/.dialogs|running|61/5a/da8d0169\",\"patchSummary\":{\"currentCourse\":4,\"lastModified\":\"2026-04-11 17:02:00\",\"status\":\"active\",\"messageCount\":null,\"functionCallCount\":null,\"sideDialogCount\":null,\"generating\":true,\"disableDiligencePush\":false,\"diligencePushRemainingBudget\":null,\"displayState\":{\"kind\":\"dead\",\"reason\":{\"...[truncated 3310 chars]',\n  healedTo: null,\n  healingApplied: false,\n  latestSource: 'staged',\n  latestWriteBackKey: '/tmp/dominds-persistence-aliases/1.tmp/dominds-tests-rtws-C8U76O/rtws/.dialogs|running|61/5a/da8d0169',\n  __omittedKeys__: 3\n} [details_reduced depth<=2, keys<=12, items<=12] [extra_reduced]\n[2026/10/31-05:32:48] WARN: Dialog latest projection invariant warning: generating dialog has non-running run-control projection; healing displayState to proceeding and clearing stale interruption marker Extra: {\n  rootId: '61/5a/da8d0169',\n  selfId: '61/5a/da8d0169',\n  dialogId: '61/5a/da8d0169',\n  status: 'running',\n  afterBeforeHealing: {\n    status: 'active',\n    backendDriveStall: null,\n    currentCourse: 5,\n    diligencePushRemainingBudget: null,\n    disableDiligencePush: false,\n    displayState: '[Object depth limit reached]',\n    executionMarker: '[Object depth limit reached]',\n    functionCallCount: null,\n    generating: true,\n    generationRunState: null,\n    lastModified: '2026-10-31 05:32:48',\n    latestAssignmentAnchor: null,\n    __omittedKeys__: 20\n  },\n  before: {\n    status: 'active',\n    backendDriveStall: null,\n    currentCourse: 4,\n    diligencePushRemainingBudget: null,\n    disableDiligencePush: false,\n    displayState: '[Object depth limit reached]',\n    executionMarker: null,\n    functionCallCount: null,\n    generating: false,\n    generationRunState: null,\n    lastModified: '2026-10-31 05:32:48',\n    latestAssignmentAnchor: null,\n    __omittedKeys__: 20\n  },\n  callStack: [\n    'at async <anonymous> (/ws/AiWorks/dominds/tests/persistence/latest-writeback.ts:331:5)',\n    'at async withTempRtws (/ws/AiWorks/dominds/tests/kernel-driver/helpers.ts:60:3)',\n    'at async main (/ws/AiWorks/dominds/tests/persistence/latest-writeback.ts:68:3)'\n  ],\n  diagnosticJson: '{\"trigger\":\"mutateDialogLatest\",\"mutationKind\":\"replace\",\"latestSource\":\"staged\",\"latestWriteBackKey\":\"/tmp/dominds-persistence-aliases/1.tmp/dominds-tests-rtws-C8U76O/rtws/.dialogs|running|61/5a/da8d0169\",\"patchSummary\":{\"currentCourse\":5,\"lastModified\":\"2026-04-11 17:03:00\",\"status\":\"active\",\"messageCount\":null,\"functionCallCount\":null,\"sideDialogCount\":null,\"generating\":true,\"disableDiligencePush\":false,\"diligencePushRemainingBudget\":null,\"displayState\":{\"kind\":\"stopped\",\"reason\"...[truncated 3532 chars]',\n  healedTo: {\n    displayState: '[Object depth limit reached]',\n    executionMarker: null\n  },\n  healingApplied: true,\n  latestSource: 'staged',\n  latestWriteBackKey: '/tmp/dominds-persistence-aliases/1.tmp/dominds-tests-rtws-C8U76O/rtws/.dialogs|running|61/5a/da8d0169',\n  __omittedKeys__: 3\n} [details_reduced depth<=2, keys<=12, items<=12] [extra_reduced]\n[2026/10/31-05:32:48] WARN: Quarantined malformed dialog 73/6d/da1d0178 Extra: {\n  dialogId: '73/6d/da1d0178',\n  status: 'running',\n  destinationPath: '/tmp/dominds-persistence-aliases/1.tmp/dominds-tests-rtws-C8U76O/rtws/.dialogs/malformed/73/6d/da1d0178',\n  errorMessage: 'Invalid wake-queue.jsonl in /tmp/dominds-persistence-aliases/1.tmp/dominds-tests-rtws-C8U76O/rtws/.dialogs/run/73/6d/da1d0178/wake-queue.jsonl',\n  mainDialogId: '73/6d/da1d0178',\n  reason: 'loadWakeQueueEntries',\n  sourcePath: '/tmp/dominds-persistence-aliases/1.tmp/dominds-tests-rtws-C8U76O/rtws/.dialogs/run/73/6d/da1d0178'\n}\n[2026/10/31-05:32:48] WARN: Quarantined malformed dialog 73/6d/da1d0177 Extra: {\n  dialogId: '73/6d/da1d0177',\n  status: 'running',\n  destinationPath: '/tmp/dominds-persistence-aliases/1.tmp/dominds-tests-rtws-C8U76O/rtws/.dialogs/malformed/73/6d/da1d0177',\n  errorMessage: 'Invalid wake-queue.jsonl in /tmp/dominds-persistence-aliases/1.tmp/dominds-tests-rtws-C8U76O/rtws/.dialogs/run/73/6d/da1d0177/wake-queue.jsonl',\n  mainDialogId: '73/6d/da1d0177',\n  reason: 'loadWakeQueueEntries',\n  sourcePath: '/tmp/dominds-persistence-aliases/1.tmp/dominds-tests-rtws-C8U76O/rtws/.dialogs/run/73/6d/da1d0177'\n}\nOK\n[tests/cli] Keeping isolated rtws at /tmp/dominds-persistence-aliases/1.tmp/dominds-tests-rtws-C8U76O\n"
+          },
+          {
+            "id": "persistence-move-dialog-status",
+            "stdout": "$ pnpm run rtws -- --isolated-rtws persistence/move-dialog-status.ts\n$ tsx cli.ts -- --isolated-rtws persistence/move-dialog-status.ts\n[2026/10/31-05:32:51] ERROR: Failed to move dialog aa/bb/move001 from running to completed:\nError: Refusing to move dialog aa/bb/move001 from running to completed: destination already exists at /tmp/dominds-persistence-aliases/2.tmp/dominds-tests-rtws-xyy2gV/rtws/.dialogs/done/aa/bb/move001\n    at DialogPersistence.moveDialogStatus (/ws/AiWorks/dominds/main/persistence.ts:12364:15)\n    at async waitForActual (node:assert:646:5)\n    at async strict.rejects (node:assert:769:25)\n    at async <anonymous> (/ws/AiWorks/dominds/tests/persistence/move-dialog-status.ts:35:5)\n    at async withTempRtws (/ws/AiWorks/dominds/tests/kernel-driver/helpers.ts:60:3)\n    at async main (/ws/AiWorks/dominds/tests/persistence/move-dialog-status.ts:13:3)\nstatus refusal preserves distinct trees; successful move preserves binary and metadata: passed\n[tests/cli] Keeping isolated rtws at /tmp/dominds-persistence-aliases/2.tmp/dominds-tests-rtws-xyy2gV\n"
+          },
+          {
+            "id": "persistence-reminders-owner-meta",
+            "stdout": "$ pnpm run rtws -- --isolated-rtws persistence/reminders-owner-meta.ts\n$ tsx cli.ts -- --isolated-rtws persistence/reminders-owner-meta.ts\n{\"probe\":\"independent-reminder-owner-reload\",\"writerPid\":391391,\"readerPid\":391434,\"count\":3}\nOK\n[tests/cli] Keeping isolated rtws at /tmp/dominds-persistence-aliases/3.tmp/dominds-tests-rtws-iYsID1\n"
+          },
+          {
+            "id": "persistence-reminders-status-path",
+            "stdout": "$ pnpm run rtws -- --isolated-rtws persistence/reminders-status-path.ts\n$ tsx cli.ts -- --isolated-rtws persistence/reminders-status-path.ts\nOK\n[tests/cli] Keeping isolated rtws at /tmp/dominds-persistence-aliases/4.tmp/dominds-tests-rtws-jCSaG8\n"
+          },
+          {
+            "id": "persistence-sideDialog-reconciled-course",
+            "stdout": "$ pnpm run rtws -- --isolated-rtws persistence/sideDialog-reconciled-course.ts\n$ tsx cli.ts -- --isolated-rtws persistence/sideDialog-reconciled-course.ts\nOK\n[tests/cli] Keeping isolated rtws at /tmp/dominds-persistence-aliases/5.tmp/dominds-tests-rtws-8EFGS1\n"
+          },
+          {
+            "id": "persistence-asker-stack-jsonl",
+            "stdout": "$ pnpm run rtws -- --isolated-rtws persistence/asker-stack-jsonl.ts\n$ tsx cli.ts -- --isolated-rtws persistence/asker-stack-jsonl.ts\n[2026/10/31-05:33:04] ERROR: Failed to save sideDialog YAML for different-side under main dialog main:\nError: sideDialog metadata id mismatch: dialogId=different-side metadataId=side\n    at DialogPersistence.saveSideDialogMetadata (/ws/AiWorks/dominds/main/persistence.ts:10383:15)\n    at <anonymous> (/ws/AiWorks/dominds/tests/persistence/asker-stack-jsonl.ts:120:25)\n    at async withTempRtws (/ws/AiWorks/dominds/tests/kernel-driver/helpers.ts:60:3)\n    at async main (/ws/AiWorks/dominds/tests/persistence/asker-stack-jsonl.ts:46:3)\n[2026/10/31-05:33:04] ERROR: Failed to save sideDialog responses for dialog main:\nError: sideDialog responses empty responseId invariant violation: save rootId=main\n    at assertUniqueSideDialogResponseIds (/ws/AiWorks/dominds/main/persistence.ts:2659:13)\n    at DialogPersistence.saveSideDialogResponses (/ws/AiWorks/dominds/main/persistence.ts:9969:7)\n    at <anonymous> (/ws/AiWorks/dominds/tests/persistence/asker-stack-jsonl.ts:149:25)\n    at async withTempRtws (/ws/AiWorks/dominds/tests/kernel-driver/helpers.ts:60:3)\n    at async main (/ws/AiWorks/dominds/tests/persistence/asker-stack-jsonl.ts:46:3)\nOK\n[tests/cli] Keeping isolated rtws at /tmp/dominds-persistence-aliases/6.tmp/dominds-tests-rtws-kFqKbT\n"
+          },
+          {
+            "id": "persistence-runtime-guide-fork-anchor",
+            "stdout": "$ pnpm run rtws -- --isolated-rtws persistence/runtime-guide-fork-anchor.ts\n$ tsx cli.ts -- --isolated-rtws persistence/runtime-guide-fork-anchor.ts\nOK\n[tests/cli] Keeping isolated rtws at /tmp/dominds-persistence-aliases/7.tmp/dominds-tests-rtws-RsI1iX\n"
+          },
+          {
+            "id": "persistence-priming-reminders",
+            "stdout": "$ pnpm run rtws -- --isolated-rtws persistence/priming-reminders.ts\n$ tsx cli.ts -- --isolated-rtws persistence/priming-reminders.ts\nOK\n[tests/cli] Keeping isolated rtws at /tmp/dominds-persistence-aliases/8.tmp/dominds-tests-rtws-CsgCX0\n"
+          },
+          {
+            "id": "persistence-thinking-reasoning-replay-event",
+            "stdout": "$ pnpm run rtws -- persistence/thinking-reasoning-replay-event.ts\n$ tsx cli.ts -- persistence/thinking-reasoning-replay-event.ts\npersistence thinking reasoning replay event: PASS\n[tests/cli] Keeping isolated rtws at /tmp/dominds-persistence-aliases/9.tmp/dominds-tests-rtws-9F33oe\n"
+          }
+        ]
+      }
+    ],
+    "semanticGeneration": {
+      "scope": "仅生成进程完成，不代替报告cases内独立主观verdict",
+      "summary": {
+        "total": 2,
+        "passed": 2,
+        "failed": 0,
+        "timedOut": 0,
+        "results": [
+          {
+            "id": "persistence/asker-stack-jsonl.ts",
+            "status": "passed",
+            "durationMs": 2052,
+            "code": 0,
+            "signal": null,
+            "logPath": "/tmp/dominds-tests-persistence-semantic-W1W62I/001-persistence_asker-stack-jsonl.ts.log",
+            "tempDir": "/tmp/dominds-tests-persistence-semantic-W1W62I/1.tmp"
+          },
+          {
+            "id": "persistence/move-dialog-status.ts",
+            "status": "passed",
+            "durationMs": 1789,
+            "code": 0,
+            "signal": null,
+            "logPath": "/tmp/dominds-tests-persistence-semantic-W1W62I/002-persistence_move-dialog-status.ts.log",
+            "tempDir": "/tmp/dominds-tests-persistence-semantic-W1W62I/2.tmp"
+          }
+        ],
+        "scope": "evidence-generation-processes",
+        "semanticAcceptance": "pending"
+      },
+      "stdout": "$ node tests/run.mjs --suite persistence --semantic\nEvidence generation processes: persistence; cases: 2; evidence: /tmp/dominds-tests-persistence-semantic-W1W62I\nGENERATION PROCESS PASSED persistence/asker-stack-jsonl.ts (2052ms)\nGENERATION PROCESS PASSED persistence/move-dialog-status.ts (1789ms)\nGeneration processes: 2 completed, 0 failed, 0 timed out. Semantic acceptance: PENDING subjective review. Evidence: /tmp/dominds-tests-persistence-semantic-W1W62I\n"
+    },
+    "independentOwnerProbe": {
+      "scope": "同一测试保存结束后在新PID读取真实文件，并重新注册/解析owner，不等同完整驱动重启",
+      "stdout": "$ tsx cli.ts -- --isolated-rtws persistence/reminders-owner-meta.ts\n{\"probe\":\"independent-reminder-owner-reload\",\"writerPid\":389119,\"readerPid\":389231,\"count\":3}\nOK\n"
+    },
+    "originalTestBaselines": [
+      {
+        "scope": "原测试执行基线，不接受旧断言/语义；原asker-stack失败如实保留",
+        "summary": {
+          "total": 6,
+          "passed": 6,
+          "failed": 0,
+          "timedOut": 0,
+          "results": [
+            {
+              "id": "persistence/latest-writeback.ts",
+              "status": "passed",
+              "durationMs": 1418,
+              "code": 0,
+              "signal": null,
+              "logPath": "/tmp/dominds-persistence-baseline-first-six/001-persistence_latest-writeback.ts.log",
+              "tempDir": "/tmp/dominds-persistence-baseline-first-six/1.tmp"
+            },
+            {
+              "id": "persistence/reminders-owner-meta.ts",
+              "status": "passed",
+              "durationMs": 1704,
+              "code": 0,
+              "signal": null,
+              "logPath": "/tmp/dominds-persistence-baseline-first-six/002-persistence_reminders-owner-meta.ts.log",
+              "tempDir": "/tmp/dominds-persistence-baseline-first-six/2.tmp"
+            },
+            {
+              "id": "persistence/move-dialog-status.ts",
+              "status": "passed",
+              "durationMs": 622,
+              "code": 0,
+              "signal": null,
+              "logPath": "/tmp/dominds-persistence-baseline-first-six/003-persistence_move-dialog-status.ts.log",
+              "tempDir": "/tmp/dominds-persistence-baseline-first-six/3.tmp"
+            },
+            {
+              "id": "persistence/sideDialog-reconciled-course.ts",
+              "status": "passed",
+              "durationMs": 2056,
+              "code": 0,
+              "signal": null,
+              "logPath": "/tmp/dominds-persistence-baseline-first-six/004-persistence_sideDialog-reconciled-course.ts.log",
+              "tempDir": "/tmp/dominds-persistence-baseline-first-six/4.tmp"
+            },
+            {
+              "id": "persistence/reminders-status-path.ts",
+              "status": "passed",
+              "durationMs": 2163,
+              "code": 0,
+              "signal": null,
+              "logPath": "/tmp/dominds-persistence-baseline-first-six/005-persistence_reminders-status-path.ts.log",
+              "tempDir": "/tmp/dominds-persistence-baseline-first-six/5.tmp"
+            },
+            {
+              "id": "persistence/runtime-guide-fork-anchor.ts",
+              "status": "passed",
+              "durationMs": 2115,
+              "code": 0,
+              "signal": null,
+              "logPath": "/tmp/dominds-persistence-baseline-first-six/006-persistence_runtime-guide-fork-anchor.ts.log",
+              "tempDir": "/tmp/dominds-persistence-baseline-first-six/6.tmp"
+            }
+          ]
+        },
+        "caseLogs": [
+          {
+            "id": "persistence/latest-writeback.ts",
+            "stdout": "[2026/10/31-05:17:25] WARN: Dialog latest projection invariant warning: generating dialog has non-running run-control projection; healing displayState to proceeding and clearing stale interruption marker Extra: {\n  rootId: '61/5a/da8d0169',\n  selfId: '61/5a/da8d0169',\n  dialogId: '61/5a/da8d0169',\n  status: 'running',\n  afterBeforeHealing: {\n    status: 'active',\n    backendDriveStall: null,\n    currentCourse: 3,\n    diligencePushRemainingBudget: null,\n    disableDiligencePush: false,\n    displayState: '[Object depth limit reached]',\n    executionMarker: '[Object depth limit reached]',\n    functionCallCount: null,\n    generating: true,\n    generationRunState: null,\n    lastModified: '2026-10-31 05:17:25',\n    latestAssignmentAnchor: null,\n    __omittedKeys__: 20\n  },\n  before: {\n    status: 'active',\n    backendDriveStall: null,\n    currentCourse: 1,\n    diligencePushRemainingBudget: null,\n    disableDiligencePush: false,\n    displayState: null,\n    executionMarker: null,\n    functionCallCount: 2,\n    generating: false,\n    generationRunState: null,\n    lastModified: '2026-10-31 05:17:25',\n    latestAssignmentAnchor: null,\n    __omittedKeys__: 20\n  },\n  callStack: [\n    'at async <anonymous> (/ws/AiWorks/dominds/tests/persistence/latest-writeback.ts:141:5)',\n    'at async withTempCwd (/ws/AiWorks/dominds/tests/persistence/latest-writeback.ts:56:12)',\n    'at async main (/ws/AiWorks/dominds/tests/persistence/latest-writeback.ts:70:3)'\n  ],\n  diagnosticJson: '{\"trigger\":\"mutateDialogLatest\",\"mutationKind\":\"replace\",\"latestSource\":\"disk\",\"latestWriteBackKey\":\"/tmp/dominds-persistence-baseline-first-six/1.tmp/dominds-latest-writeback-CG49AQ/.dialogs|running|61/5a/da8d0169\",\"patchSummary\":{\"currentCourse\":3,\"lastModified\":\"2026-04-11 17:01:00\",\"status\":\"active\",\"messageCount\":null,\"functionCallCount\":null,\"sideDialogCount\":null,\"generating\":true,\"disableDiligencePush\":false,\"diligencePushRemainingBudget\":null,\"displayState\":{\"kind\":\"idle_wa...[truncated 3340 chars]',\n  healedTo: {\n    displayState: '[Object depth limit reached]',\n    executionMarker: null\n  },\n  healingApplied: true,\n  latestSource: 'disk',\n  latestWriteBackKey: '/tmp/dominds-persistence-baseline-first-six/1.tmp/dominds-latest-writeback-CG49AQ/.dialogs|running|61/5a/da8d0169',\n  __omittedKeys__: 3\n} [details_reduced depth<=2, keys<=12, items<=12] [extra_reduced]\n[2026/10/31-05:17:25] WARN: Dialog latest projection invariant warning: generating dialog has non-running run-control projection; preserved stronger dead state Extra: {\n  rootId: '61/5a/da8d0169',\n  selfId: '61/5a/da8d0169',\n  dialogId: '61/5a/da8d0169',\n  status: 'running',\n  afterBeforeHealing: {\n    status: 'active',\n    backendDriveStall: null,\n    currentCourse: 4,\n    diligencePushRemainingBudget: null,\n    disableDiligencePush: false,\n    displayState: '[Object depth limit reached]',\n    executionMarker: '[Object depth limit reached]',\n    functionCallCount: null,\n    generating: true,\n    generationRunState: null,\n    lastModified: '2026-10-31 05:17:25',\n    latestAssignmentAnchor: null,\n    __omittedKeys__: 20\n  },\n  before: {\n    status: 'active',\n    backendDriveStall: null,\n    currentCourse: 3,\n    diligencePushRemainingBudget: null,\n    disableDiligencePush: false,\n    displayState: '[Object depth limit reached]',\n    executionMarker: null,\n    functionCallCount: null,\n    generating: true,\n    generationRunState: null,\n    lastModified: '2026-10-31 05:17:25',\n    latestAssignmentAnchor: null,\n    __omittedKeys__: 20\n  },\n  callStack: [\n    'at async <anonymous> (/ws/AiWorks/dominds/tests/persistence/latest-writeback.ts:162:5)',\n    'at async withTempCwd (/ws/AiWorks/dominds/tests/persistence/latest-writeback.ts:56:12)',\n    'at async main (/ws/AiWorks/dominds/tests/persistence/latest-writeback.ts:70:3)'\n  ],\n  diagnosticJson: '{\"trigger\":\"mutateDialogLatest\",\"mutationKind\":\"replace\",\"latestSource\":\"staged\",\"latestWriteBackKey\":\"/tmp/dominds-persistence-baseline-first-six/1.tmp/dominds-latest-writeback-CG49AQ/.dialogs|running|61/5a/da8d0169\",\"patchSummary\":{\"currentCourse\":4,\"lastModified\":\"2026-04-11 17:02:00\",\"status\":\"active\",\"messageCount\":null,\"functionCallCount\":null,\"sideDialogCount\":null,\"generating\":true,\"disableDiligencePush\":false,\"diligencePushRemainingBudget\":null,\"displayState\":{\"kind\":\"dead\"...[truncated 3329 chars]',\n  healedTo: null,\n  healingApplied: false,\n  latestSource: 'staged',\n  latestWriteBackKey: '/tmp/dominds-persistence-baseline-first-six/1.tmp/dominds-latest-writeback-CG49AQ/.dialogs|running|61/5a/da8d0169',\n  __omittedKeys__: 3\n} [details_reduced depth<=2, keys<=12, items<=12] [extra_reduced]\n[2026/10/31-05:17:25] WARN: Dialog latest projection invariant warning: generating dialog has non-running run-control projection; healing displayState to proceeding and clearing stale interruption marker Extra: {\n  rootId: '61/5a/da8d0169',\n  selfId: '61/5a/da8d0169',\n  dialogId: '61/5a/da8d0169',\n  status: 'running',\n  afterBeforeHealing: {\n    status: 'active',\n    backendDriveStall: null,\n    currentCourse: 5,\n    diligencePushRemainingBudget: null,\n    disableDiligencePush: false,\n    displayState: '[Object depth limit reached]',\n    executionMarker: '[Object depth limit reached]',\n    functionCallCount: null,\n    generating: true,\n    generationRunState: null,\n    lastModified: '2026-10-31 05:17:25',\n    latestAssignmentAnchor: null,\n    __omittedKeys__: 20\n  },\n  before: {\n    status: 'active',\n    backendDriveStall: null,\n    currentCourse: 4,\n    diligencePushRemainingBudget: null,\n    disableDiligencePush: false,\n    displayState: '[Object depth limit reached]',\n    executionMarker: null,\n    functionCallCount: null,\n    generating: false,\n    generationRunState: null,\n    lastModified: '2026-10-31 05:17:25',\n    latestAssignmentAnchor: null,\n    __omittedKeys__: 20\n  },\n  callStack: [\n    'at async <anonymous> (/ws/AiWorks/dominds/tests/persistence/latest-writeback.ts:338:5)',\n    'at async withTempCwd (/ws/AiWorks/dominds/tests/persistence/latest-writeback.ts:56:12)',\n    'at async main (/ws/AiWorks/dominds/tests/persistence/latest-writeback.ts:70:3)'\n  ],\n  diagnosticJson: '{\"trigger\":\"mutateDialogLatest\",\"mutationKind\":\"replace\",\"latestSource\":\"staged\",\"latestWriteBackKey\":\"/tmp/dominds-persistence-baseline-first-six/1.tmp/dominds-latest-writeback-CG49AQ/.dialogs|running|61/5a/da8d0169\",\"patchSummary\":{\"currentCourse\":5,\"lastModified\":\"2026-04-11 17:03:00\",\"status\":\"active\",\"messageCount\":null,\"functionCallCount\":null,\"sideDialogCount\":null,\"generating\":true,\"disableDiligencePush\":false,\"diligencePushRemainingBudget\":null,\"displayState\":{\"kind\":\"stopp...[truncated 3551 chars]',\n  healedTo: {\n    displayState: '[Object depth limit reached]',\n    executionMarker: null\n  },\n  healingApplied: true,\n  latestSource: 'staged',\n  latestWriteBackKey: '/tmp/dominds-persistence-baseline-first-six/1.tmp/dominds-latest-writeback-CG49AQ/.dialogs|running|61/5a/da8d0169',\n  __omittedKeys__: 3\n} [details_reduced depth<=2, keys<=12, items<=12] [extra_reduced]\n[2026/10/31-05:17:25] WARN: Quarantined malformed dialog 73/6d/da1d0178 Extra: {\n  dialogId: '73/6d/da1d0178',\n  status: 'running',\n  destinationPath: '/tmp/dominds-persistence-baseline-first-six/1.tmp/dominds-latest-writeback-CG49AQ/.dialogs/malformed/73/6d/da1d0178',\n  errorMessage: 'Invalid wake-queue.jsonl in /tmp/dominds-persistence-baseline-first-six/1.tmp/dominds-latest-writeback-CG49AQ/.dialogs/run/73/6d/da1d0178/wake-queue.jsonl',\n  mainDialogId: '73/6d/da1d0178',\n  reason: 'loadWakeQueueEntries',\n  sourcePath: '/tmp/dominds-persistence-baseline-first-six/1.tmp/dominds-latest-writeback-CG49AQ/.dialogs/run/73/6d/da1d0178'\n}\n[2026/10/31-05:17:25] WARN: Quarantined malformed dialog 73/6d/da1d0177 Extra: {\n  dialogId: '73/6d/da1d0177',\n  status: 'running',\n  destinationPath: '/tmp/dominds-persistence-baseline-first-six/1.tmp/dominds-latest-writeback-CG49AQ/.dialogs/malformed/73/6d/da1d0177',\n  errorMessage: 'Invalid wake-queue.jsonl in /tmp/dominds-persistence-baseline-first-six/1.tmp/dominds-latest-writeback-CG49AQ/.dialogs/run/73/6d/da1d0177/wake-queue.jsonl',\n  mainDialogId: '73/6d/da1d0177',\n  reason: 'loadWakeQueueEntries',\n  sourcePath: '/tmp/dominds-persistence-baseline-first-six/1.tmp/dominds-latest-writeback-CG49AQ/.dialogs/run/73/6d/da1d0177'\n}\nOK\n[tests/cli] Keeping isolated rtws at /tmp/dominds-persistence-baseline-first-six/1.tmp/dominds-tests-rtws-g0wQ5N\n"
+          },
+          {
+            "id": "persistence/reminders-owner-meta.ts",
+            "stdout": "OK\n[tests/cli] Keeping isolated rtws at /tmp/dominds-persistence-baseline-first-six/2.tmp/dominds-tests-rtws-rKuxaF\n"
+          },
+          {
+            "id": "persistence/move-dialog-status.ts",
+            "stdout": "[2026/10/31-05:17:28] ERROR: Failed to move dialog aa/bb/move001 from running to completed:\nError: Refusing to move dialog aa/bb/move001 from running to completed: destination already exists at /tmp/dominds-persistence-baseline-first-six/3.tmp/dominds-move-dialog-status-3Gl6T0/.dialogs/done/aa/bb/move001\n    at DialogPersistence.moveDialogStatus (/ws/AiWorks/dominds/main/persistence.ts:12364:15)\n    at async waitForActual (node:assert:646:5)\n    at async strict.rejects (node:assert:769:25)\n    at async <anonymous> (/ws/AiWorks/dominds/tests/persistence/move-dialog-status.ts:40:5)\n    at async withTempCwd (/ws/AiWorks/dominds/tests/persistence/move-dialog-status.ts:16:12)\n    at async main (/ws/AiWorks/dominds/tests/persistence/move-dialog-status.ts:24:3)\nOK\n[tests/cli] Keeping isolated rtws at /tmp/dominds-persistence-baseline-first-six/3.tmp/dominds-tests-rtws-D6x6ZF\n"
+          },
+          {
+            "id": "persistence/sideDialog-reconciled-course.ts",
+            "stdout": "OK\n[tests/cli] Keeping isolated rtws at /tmp/dominds-persistence-baseline-first-six/4.tmp/dominds-tests-rtws-0Hhda4\n"
+          },
+          {
+            "id": "persistence/reminders-status-path.ts",
+            "stdout": "OK\n[tests/cli] Keeping isolated rtws at /tmp/dominds-persistence-baseline-first-six/5.tmp/dominds-tests-rtws-peg0fl\n"
+          },
+          {
+            "id": "persistence/runtime-guide-fork-anchor.ts",
+            "stdout": "OK\n[tests/cli] Keeping isolated rtws at /tmp/dominds-persistence-baseline-first-six/6.tmp/dominds-tests-rtws-pozS7w\n"
+          }
+        ]
+      },
+      {
+        "scope": "原测试执行基线，不接受旧断言/语义；原asker-stack失败如实保留",
+        "summary": {
+          "total": 3,
+          "passed": 2,
+          "failed": 1,
+          "timedOut": 0,
+          "results": [
+            {
+              "id": "persistence/thinking-reasoning-replay-event.ts",
+              "status": "passed",
+              "durationMs": 2220,
+              "code": 0,
+              "signal": null,
+              "logPath": "/tmp/dominds-persistence-baseline-last-three/001-persistence_thinking-reasoning-replay-event.ts.log",
+              "tempDir": "/tmp/dominds-persistence-baseline-last-three/1.tmp"
+            },
+            {
+              "id": "persistence/asker-stack-jsonl.ts",
+              "status": "failed",
+              "durationMs": 637,
+              "code": 1,
+              "signal": null,
+              "logPath": "/tmp/dominds-persistence-baseline-last-three/002-persistence_asker-stack-jsonl.ts.log",
+              "tempDir": "/tmp/dominds-persistence-baseline-last-three/2.tmp"
+            },
+            {
+              "id": "persistence/priming-reminders.ts",
+              "status": "passed",
+              "durationMs": 977,
+              "code": 0,
+              "signal": null,
+              "logPath": "/tmp/dominds-persistence-baseline-last-three/003-persistence_priming-reminders.ts.log",
+              "tempDir": "/tmp/dominds-persistence-baseline-last-three/3.tmp"
+            }
+          ]
+        },
+        "caseLogs": [
+          {
+            "id": "persistence/thinking-reasoning-replay-event.ts",
+            "stdout": "persistence thinking reasoning replay event: PASS\n[tests/cli] Keeping isolated rtws at /tmp/dominds-persistence-baseline-last-three/1.tmp/dominds-tests-rtws-5JxKtv\n"
+          },
+          {
+            "id": "persistence/asker-stack-jsonl.ts",
+            "stdout": "Error: Invalid asker stack for dialog side\n    at DialogPersistence.saveSideDialogAskerStackState (/ws/AiWorks/dominds/main/persistence.ts:10417:13)\n    at <anonymous> (/ws/AiWorks/dominds/tests/persistence/asker-stack-jsonl.ts:86:29)\n    at async withTempCwd (/ws/AiWorks/dominds/tests/persistence/asker-stack-jsonl.ts:22:12)\n    at async main (/ws/AiWorks/dominds/tests/persistence/asker-stack-jsonl.ts:46:3)\n[tests/cli] Keeping isolated rtws at /tmp/dominds-persistence-baseline-last-three/2.tmp/dominds-tests-rtws-fjfRFr\n"
+          },
+          {
+            "id": "persistence/priming-reminders.ts",
+            "stdout": "OK\n[tests/cli] Keeping isolated rtws at /tmp/dominds-persistence-baseline-last-three/3.tmp/dominds-tests-rtws-RmTTGa\n"
+          }
+        ]
+      }
+    ],
+    "investigationEvidence": [
+      {
+        "name": "first-rewrite",
+        "summary": {
+          "total": 9,
+          "passed": 7,
+          "failed": 2,
+          "timedOut": 0,
+          "results": [
+            {
+              "id": "persistence/latest-writeback.ts",
+              "status": "passed",
+              "durationMs": 2529,
+              "code": 0,
+              "signal": null,
+              "logPath": "/tmp/dominds-persistence-first/001-persistence_latest-writeback.ts.log",
+              "tempDir": "/tmp/dominds-persistence-first/1.tmp"
+            },
+            {
+              "id": "persistence/thinking-reasoning-replay-event.ts",
+              "status": "passed",
+              "durationMs": 2140,
+              "code": 0,
+              "signal": null,
+              "logPath": "/tmp/dominds-persistence-first/002-persistence_thinking-reasoning-replay-event.ts.log",
+              "tempDir": "/tmp/dominds-persistence-first/2.tmp"
+            },
+            {
+              "id": "persistence/asker-stack-jsonl.ts",
+              "status": "failed",
+              "durationMs": 1788,
+              "code": 1,
+              "signal": null,
+              "logPath": "/tmp/dominds-persistence-first/003-persistence_asker-stack-jsonl.ts.log",
+              "tempDir": "/tmp/dominds-persistence-first/3.tmp"
+            },
+            {
+              "id": "persistence/sideDialog-reconciled-course.ts",
+              "status": "passed",
+              "durationMs": 2110,
+              "code": 0,
+              "signal": null,
+              "logPath": "/tmp/dominds-persistence-first/004-persistence_sideDialog-reconciled-course.ts.log",
+              "tempDir": "/tmp/dominds-persistence-first/4.tmp"
+            },
+            {
+              "id": "persistence/move-dialog-status.ts",
+              "status": "passed",
+              "durationMs": 1792,
+              "code": 0,
+              "signal": null,
+              "logPath": "/tmp/dominds-persistence-first/005-persistence_move-dialog-status.ts.log",
+              "tempDir": "/tmp/dominds-persistence-first/5.tmp"
+            },
+            {
+              "id": "persistence/reminders-owner-meta.ts",
+              "status": "passed",
+              "durationMs": 1667,
+              "code": 0,
+              "signal": null,
+              "logPath": "/tmp/dominds-persistence-first/006-persistence_reminders-owner-meta.ts.log",
+              "tempDir": "/tmp/dominds-persistence-first/6.tmp"
+            },
+            {
+              "id": "persistence/reminders-status-path.ts",
+              "status": "failed",
+              "durationMs": 2333,
+              "code": 1,
+              "signal": null,
+              "logPath": "/tmp/dominds-persistence-first/007-persistence_reminders-status-path.ts.log",
+              "tempDir": "/tmp/dominds-persistence-first/7.tmp"
+            },
+            {
+              "id": "persistence/runtime-guide-fork-anchor.ts",
+              "status": "passed",
+              "durationMs": 2097,
+              "code": 0,
+              "signal": null,
+              "logPath": "/tmp/dominds-persistence-first/008-persistence_runtime-guide-fork-anchor.ts.log",
+              "tempDir": "/tmp/dominds-persistence-first/8.tmp"
+            },
+            {
+              "id": "persistence/priming-reminders.ts",
+              "status": "passed",
+              "durationMs": 2107,
+              "code": 0,
+              "signal": null,
+              "logPath": "/tmp/dominds-persistence-first/009-persistence_priming-reminders.ts.log",
+              "tempDir": "/tmp/dominds-persistence-first/9.tmp"
+            }
+          ]
+        },
+        "failedCaseLogs": [
+          {
+            "id": "persistence/asker-stack-jsonl.ts",
+            "stdout": "ReferenceError: toCallSiteCourseNo is not defined\n    at <anonymous> (/ws/AiWorks/dominds/tests/persistence/asker-stack-jsonl.ts:59:23)\n    at withTempRtws (/ws/AiWorks/dominds/tests/kernel-driver/helpers.ts:60:9)\n    at main (/ws/AiWorks/dominds/tests/persistence/asker-stack-jsonl.ts:41:9)\n    at assert (/ws/AiWorks/dominds/tests/persistence/asker-stack-jsonl.ts:310:1)\n    at Object.<anonymous> (/ws/AiWorks/dominds/tests/persistence/asker-stack-jsonl.ts:317:4)\n    at Module._compile (node:internal/modules/cjs/loader:1872:14)\n    at Object.transformer (/ws/AiWorks/dominds/node_modules/.pnpm/tsx@4.22.4/node_modules/tsx/dist/register-BOkp8V6j.cjs:9:3176)\n    at Module.load (node:internal/modules/cjs/loader:1594:32)\n    at Module._load (node:internal/modules/cjs/loader:1396:12)\n    at wrapModuleLoad (node:internal/modules/cjs/loader:255:19)\n[tests/cli] Keeping isolated rtws at /tmp/dominds-persistence-first/3.tmp/dominds-tests-rtws-Iw6AOh\n"
+          },
+          {
+            "id": "persistence/reminders-status-path.ts",
+            "stdout": "AssertionError [ERR_ASSERTION]: Expected values to be strictly equal:\n\n2 !== 1\n\n    at <anonymous> (/ws/AiWorks/dominds/tests/persistence/reminders-status-path.ts:89:12)\n    at async withTempRtws (/ws/AiWorks/dominds/tests/kernel-driver/helpers.ts:60:3)\n    at async main (/ws/AiWorks/dominds/tests/persistence/reminders-status-path.ts:35:3)\n[tests/cli] Keeping isolated rtws at /tmp/dominds-persistence-first/7.tmp/dominds-tests-rtws-U9mtRC\n"
+          }
+        ]
+      },
+      {
+        "name": "missing-factory-import-during-rewrite",
+        "stdout": "tests/persistence/asker-stack-jsonl.ts(59,23): error TS2304: Cannot find name 'toCallSiteCourseNo'.\ntests/persistence/asker-stack-jsonl.ts(60,23): error TS2304: Cannot find name 'toCallSiteGenseqNo'.\n"
+      },
+      {
+        "name": "asker-fixture-missing-initial-latest",
+        "stdout": "$ tsx cli.ts -- --isolated-rtws persistence/asker-stack-jsonl.ts --semantic\n[2026/10/31-05:24:46] ERROR: Failed to save sideDialog YAML for different-side under main dialog main:\nError: sideDialog metadata id mismatch: dialogId=different-side metadataId=side\n    at DialogPersistence.saveSideDialogMetadata (/ws/AiWorks/dominds/main/persistence.ts:10383:15)\n    at <anonymous> (/ws/AiWorks/dominds/tests/persistence/asker-stack-jsonl.ts:102:25)\n    at async withTempRtws (/ws/AiWorks/dominds/tests/kernel-driver/helpers.ts:60:3)\n    at async main (/ws/AiWorks/dominds/tests/persistence/asker-stack-jsonl.ts:41:3)\n[2026/10/31-05:24:46] ERROR: Failed to save sideDialog responses for dialog main:\nError: sideDialog responses empty responseId invariant violation: save rootId=main\n    at assertUniqueSideDialogResponseIds (/ws/AiWorks/dominds/main/persistence.ts:2659:13)\n    at DialogPersistence.saveSideDialogResponses (/ws/AiWorks/dominds/main/persistence.ts:9969:7)\n    at <anonymous> (/ws/AiWorks/dominds/tests/persistence/asker-stack-jsonl.ts:131:25)\n    at async withTempRtws (/ws/AiWorks/dominds/tests/kernel-driver/helpers.ts:60:3)\n    at async main (/ws/AiWorks/dominds/tests/persistence/asker-stack-jsonl.ts:41:3)\n[2026/10/31-05:24:46] WARN: Quarantined malformed dialog main Extra: {\n  dialogId: 'main#side',\n  status: 'running',\n  destinationPath: '/tmp/dominds-tests-rtws-9qKGeN/rtws/.dialogs/malformed/main',\n  errorMessage: 'Missing latest.yaml for non-initial latest mutation (dialogId=main#side, status=running, mutationKind=patch, filePath=/tmp/dominds-tests-rtws-9qKGeN/rtws/.dialogs/run/main/sideDialogs/side/latest.yaml)',\n  mainDialogId: 'main',\n  reason: 'mutateDialogLatest:missingLatest',\n  sourcePath: '/tmp/dominds-tests-rtws-9qKGeN/rtws/.dialogs/run/main'\n}\nError: Missing latest.yaml for non-initial latest mutation (dialogId=main#side, status=running, mutationKind=patch, filePath=/tmp/dominds-tests-rtws-9qKGeN/rtws/.dialogs/run/main/sideDialogs/side/latest.yaml)\n    at DialogPersistence.mutateDialogLatest (/ws/AiWorks/dominds/main/persistence.ts:11275:15)\n    at async DialogPersistence.updateSideDialogAssignment (/ws/AiWorks/dominds/main/persistence.ts:10956:5)\n    at async <anonymous> (/ws/AiWorks/dominds/tests/persistence/asker-stack-jsonl.ts:156:5)\n    at async withTempRtws (/ws/AiWorks/dominds/tests/kernel-driver/helpers.ts:60:3)\n    at async main (/ws/AiWorks/dominds/tests/persistence/asker-stack-jsonl.ts:41:3)\n[tests/cli] Keeping isolated rtws at /tmp/dominds-tests-rtws-9qKGeN\n[ELIFECYCLE] Command failed with exit code 1.\n"
+      }
+    ],
+    "knownFailure": {
+      "name": "full-test-directory-types",
+      "status": "failed",
+      "diagnostics": 247,
+      "previousDiagnostics": 285,
+      "stdout": "$ tsc -p tests/tsconfig.json --noEmit\ntests/apps-host-tool-result-contract.ts(454,63): error TS2339: Property 'position' does not exist on type 'DomindsAppReminderApplyRequest'.\n  Property 'position' does not exist on type 'Readonly<{ kind: \"delete\"; ownerRef: string; meta?: JsonValue | undefined; }>'.\ntests/apps-kernel-package-exports-contract.ts(655,9): error TS2741: Property 'answers' is missing in type '{ selfId: string; rootId: string; agentId: string; taskDocPath: string; questions: never[]; }' but required in type 'HumanAttentionDialogContext'.\ntests/cli/env-proxy-support.ts(54,5): error TS2322: Type '(env?: NodeJS.ProcessEnv) => void' is not assignable to type '((proxyEnv?: ProxyEnv | undefined) => () => void) & ((env?: ProcessEnv | undefined) => void)'.\n  Type '(env?: NodeJS.ProcessEnv) => void' is not assignable to type '(proxyEnv?: ProxyEnv | undefined) => () => void'.\n    Type 'void' is not assignable to type '() => void'.\ntests/diligence-push/q4h-global-broadcast.ts(97,9): error TS2739: Type '{ callName: \"tellaskSessionless\"; mentionList: string[]; tellaskContent: string; originMemberId: string; askerDialogId: string; callId: string; }' is missing the following properties from type 'SideDialogAssignmentFromAsker': callSiteCourse, callSiteGenseq\ntests/diligence-push/retry-recovery-bypasses-budget.ts(35,84): error TS2339: Property 'kind' does not exist on type 'never'.\ntests/diligence-push/retry-recovery-bypasses-budget.ts(66,99): error TS2339: Property 'kind' does not exist on type 'never'.\ntests/diligence-push/retry-recovery-bypasses-budget.ts(80,106): error TS2339: Property 'kind' does not exist on type 'never'.\ntests/interruption-resumption.ts(106,11): error TS2322: Type 'number' is not assignable to type 'DialogCourseNumber'.\n  Type 'number' is not assignable to type '{ readonly __dialogCourseBrand: unique symbol; }'.\ntests/interruption-resumption.ts(107,11): error TS2322: Type 'number' is not assignable to type 'CallSiteGenseqNo'.\n  Type 'number' is not assignable to type '{ readonly __callSiteGenseqBrand: unique symbol; }'.\ntests/interruption-resumption.ts(148,9): error TS2322: Type 'number' is not assignable to type 'CallSiteCourseNo'.\n  Type 'number' is not assignable to type '{ readonly __callSiteCourseBrand: unique symbol; }'.\ntests/interruption-resumption.ts(149,9): error TS2322: Type 'number' is not assignable to type 'CallSiteGenseqNo'.\n  Type 'number' is not assignable to type '{ readonly __callSiteGenseqBrand: unique symbol; }'.\ntests/interruption-resumption.ts(359,9): error TS2322: Type 'number' is not assignable to type 'CallSiteCourseNo'.\n  Type 'number' is not assignable to type '{ readonly __callSiteCourseBrand: unique symbol; }'.\ntests/interruption-resumption.ts(360,9): error TS2322: Type 'number' is not assignable to type 'CallSiteGenseqNo'.\n  Type 'number' is not assignable to type '{ readonly __callSiteGenseqBrand: unique symbol; }'.\ntests/interruption-resumption.ts(638,7): error TS2322: Type 'number' is not assignable to type 'CallSiteCourseNo'.\n  Type 'number' is not assignable to type '{ readonly __callSiteCourseBrand: unique symbol; }'.\ntests/interruption-resumption.ts(639,7): error TS2322: Type 'number' is not assignable to type 'CallSiteGenseqNo'.\n  Type 'number' is not assignable to type '{ readonly __callSiteGenseqBrand: unique symbol; }'.\ntests/interruption-resumption.ts(705,11): error TS2322: Type 'number' is not assignable to type 'DialogCourseNumber'.\n  Type 'number' is not assignable to type '{ readonly __dialogCourseBrand: unique symbol; }'.\ntests/interruption-resumption.ts(706,11): error TS2322: Type 'number' is not assignable to type 'CallSiteGenseqNo'.\n  Type 'number' is not assignable to type '{ readonly __callSiteGenseqBrand: unique symbol; }'.\ntests/persistence/dialog-fork.ts(87,7): error TS2322: Type 'number' is not assignable to type 'CallSiteCourseNo'.\n  Type 'number' is not assignable to type '{ readonly __callSiteCourseBrand: unique symbol; }'.\ntests/persistence/dialog-fork.ts(88,7): error TS2322: Type 'number' is not assignable to type 'CallSiteGenseqNo'.\n  Type 'number' is not assignable to type '{ readonly __callSiteGenseqBrand: unique symbol; }'.\ntests/persistence/dialog-fork.ts(122,7): error TS2322: Type 'number' is not assignable to type 'CallSiteCourseNo'.\n  Type 'number' is not assignable to type '{ readonly __callSiteCourseBrand: unique symbol; }'.\ntests/persistence/dialog-fork.ts(123,7): error TS2322: Type 'number' is not assignable to type 'CallSiteGenseqNo'.\n  Type 'number' is not assignable to type '{ readonly __callSiteGenseqBrand: unique symbol; }'.\ntests/persistence/dialog-fork.ts(174,7): error TS2739: Type '{ callName: \"tellaskSessionless\"; mentionList: string[]; tellaskContent: string; originMemberId: string; askerDialogId: string; callId: string; }' is missing the following properties from type 'SideDialogAssignmentFromAsker': callSiteCourse, callSiteGenseq\ntests/persistence/dialog-fork.ts(220,7): error TS2739: Type '{ callName: \"freshBootsReasoning\"; tellaskContent: string; originMemberId: string; askerDialogId: string; callId: string; effectiveFbrEffort: number; }' is missing the following properties from type 'SideDialogAssignmentFromAsker': callSiteCourse, callSiteGenseq\ntests/persistence/dialog-fork.ts(270,11): error TS2322: Type 'number' is not assignable to type 'CallSiteCourseNo'.\n  Type 'number' is not assignable to type '{ readonly __callSiteCourseBrand: unique symbol; }'.\ntests/persistence/dialog-fork.ts(271,11): error TS2322: Type 'number' is not assignable to type 'CallSiteGenseqNo'.\n  Type 'number' is not assignable to type '{ readonly __callSiteGenseqBrand: unique symbol; }'.\ntests/persistence/fork-sideDialog-creation.ts(86,13): error TS2322: Type '{ callName: \"tellaskSessionless\"; mentionList: string[]; tellaskContent: string; originMemberId: string; askerDialogId: string; callId: string; callSiteCourse: number; callSiteGenseq: number; }' is not assignable to type 'SideDialogAssignmentFromAsker'.\n  Types of property 'callSiteCourse' are incompatible.\n    Type 'number' is not assignable to type 'CallSiteCourseNo'.\n      Type 'number' is not assignable to type '{ readonly __callSiteCourseBrand: unique symbol; }'.\ntests/persistence/fork-sideDialog-creation.ts(115,7): error TS2322: Type '{ callName: \"tellaskSessionless\"; mentionList: string[]; tellaskContent: string; originMemberId: string; askerDialogId: string; callId: string; callSiteCourse: number; callSiteGenseq: number; }' is not assignable to type 'SideDialogAssignmentFromAsker'.\n  Types of property 'callSiteCourse' are incompatible.\n    Type 'number' is not assignable to type 'CallSiteCourseNo'.\n      Type 'number' is not assignable to type '{ readonly __callSiteCourseBrand: unique symbol; }'.\ntests/persistence/nested-sideDialog-created-parent-context.ts(47,11): error TS2322: Type 'number' is not assignable to type 'CallSiteCourseNo'.\n  Type 'number' is not assignable to type '{ readonly __callSiteCourseBrand: unique symbol; }'.\ntests/persistence/nested-sideDialog-created-parent-context.ts(48,11): error TS2322: Type 'number' is not assignable to type 'CallSiteGenseqNo'.\n  Type 'number' is not assignable to type '{ readonly __callSiteGenseqBrand: unique symbol; }'.\ntests/persistence/nested-sideDialog-created-parent-context.ts(63,11): error TS2322: Type 'number' is not assignable to type 'CallSiteCourseNo'.\n  Type 'number' is not assignable to type '{ readonly __callSiteCourseBrand: unique symbol; }'.\ntests/persistence/nested-sideDialog-created-parent-context.ts(64,11): error TS2322: Type 'number' is not assignable to type 'CallSiteGenseqNo'.\n  Type 'number' is not assignable to type '{ readonly __callSiteGenseqBrand: unique symbol; }'.\ntests/persistence/tellask-result-duplicate-callid-loud.ts(14,7): error TS2353: Object literal may only specify known properties, and 'genseq' does not exist in type 'Readonly<{ type: \"tellask_result_msg\"; role: \"tool\"; callId: string; callName: string; status: \"completed\" | \"pending\" | \"failed\"; content: string; contentItems?: FuncResultContentItem[] | undefined; ... 13 more ...; route?: Readonly<...> | undefined; }>'.\ntests/persistence/tellask-result-duplicate-callid-loud.ts(33,9): error TS2353: Object literal may only specify known properties, and 'genseq' does not exist in type 'Readonly<{ type: \"tellask_result_msg\"; role: \"tool\"; callId: string; callName: string; status: \"completed\" | \"pending\" | \"failed\"; content: string; contentItems?: FuncResultContentItem[] | undefined; ... 13 more ...; route?: Readonly<...> | undefined; }>'.\ntests/persistence/tellask-result-duplicate-callid-loud.ts(61,26): error TS2339: Property 'content' does not exist on type 'PersistedDialogRecord'.\n  Property 'content' does not exist on type 'FuncCallRecord'.\ntests/persistence/tellask-result-requires-canonical-fields.ts(15,9): error TS2353: Object literal may only specify known properties, and 'genseq' does not exist in type 'Readonly<{ type: \"tellask_result_msg\"; role: \"tool\"; callId: string; callName: string; status: \"completed\" | \"pending\" | \"failed\"; content: string; contentItems?: FuncResultContentItem[] | undefined; ... 13 more ...; route?: Readonly<...> | undefined; }>'.\ntests/persistence/tellask-result-requires-canonical-fields.ts(44,9): error TS2353: Object literal may only specify known properties, and 'genseq' does not exist in type 'Readonly<{ type: \"tellask_result_msg\"; role: \"tool\"; callId: string; callName: string; status: \"completed\" | \"pending\" | \"failed\"; content: string; contentItems?: FuncResultContentItem[] | undefined; ... 13 more ...; route?: Readonly<...> | undefined; }>'.\ntests/persistence/tellask-result-requires-canonical-fields.ts(76,9): error TS2353: Object literal may only specify known properties, and 'genseq' does not exist in type 'Readonly<{ type: \"tellask_result_msg\"; role: \"tool\"; callId: string; callName: string; status: \"completed\" | \"pending\" | \"failed\"; content: string; contentItems?: FuncResultContentItem[] | undefined; ... 13 more ...; route?: Readonly<...> | undefined; }>'.\ntests/persistence/ui-only-markdown-replay-event.ts(22,9): error TS2322: Type 'number' is not assignable to type 'RootCourseNumber'.\n  Type 'number' is not assignable to type '{ readonly __rootCourseBrand: unique symbol; }'.\ntests/persistence/ui-only-markdown-replay-event.ts(23,9): error TS2322: Type 'number' is not assignable to type 'RootGenerationSeqNumber'.\n  Type 'number' is not assignable to type '{ readonly __rootGenerationSeqBrand: unique symbol; }'.\ntests/provider/anthropic-stream-errors.ts(46,7): error TS2345: Argument of type '{ id: string; name: string; model: string; }' is not assignable to parameter of type 'Member'.\n  Type '{ id: string; name: string; model: string; }' is missing the following properties from type 'Member': setName, setProvider, setModel, setGofor, and 20 more.\ntests/provider/llm-quirks-retry-handling.ts(308,26): error TS2339: Property 'type' does not exist on type 'TypedDialogEvent | unique symbol'.\n  Property 'type' does not exist on type 'unique symbol'.\ntests/provider/llm-quirks-retry-handling.ts(309,19): error TS2345: Argument of type 'TypedDialogEvent | unique symbol' is not assignable to parameter of type 'LlmRetryEvent'.\n  Type 'DialogDisplayStateEvent & DialogEventBase' is not assignable to type 'LlmRetryEvent'.\n    Type 'DialogDisplayStateEvent & DialogEventBase' is missing the following properties from type '{ type: \"llm_retry_evt\"; course: number; genseq: number; phase: \"stopped\"; continueEnabled: boolean; reason: DialogLlmRetryExhaustedReason; }': course, genseq, phase, continueEnabled, reason\ntests/provider/llm-quirks-retry-handling.ts(331,62): error TS2339: Property 'kind' does not exist on type 'never'.\ntests/provider/llm-quirks-retry-handling.ts(392,61): error TS2339: Property 'kind' does not exist on type 'never'.\ntests/provider/llm-quirks-retry-handling.ts(429,73): error TS2339: Property 'kind' does not exist on type 'never'.\ntests/provider/llm-quirks-retry-handling.ts(446,77): error TS2339: Property 'kind' does not exist on type 'never'.\ntests/provider/llm-quirks-retry-handling.ts(462,75): error TS2339: Property 'kind' does not exist on type 'never'.\ntests/provider/llm-quirks-retry-handling.ts(478,82): error TS2339: Property 'kind' does not exist on type 'never'.\ntests/provider/llm-quirks-retry-handling.ts(520,104): error TS2339: Property 'kind' does not exist on type 'never'.\ntests/provider/llm-quirks-retry-handling.ts(593,60): error TS2339: Property 'phase' does not exist on type 'never'.\ntests/provider/llm-quirks-retry-handling.ts(665,60): error TS2339: Property 'phase' does not exist on type 'never'.\ntests/provider/llm-quirks-retry-handling.ts(694,62): error TS2339: Property 'kind' does not exist on type 'never'.\ntests/provider/llm-quirks-retry-handling.ts(713,77): error TS2339: Property 'kind' does not exist on type 'never'.\ntests/provider/llm-quirks-retry-handling.ts(797,11): error TS7022: 'handling' implicitly has type 'any' because it does not have a type annotation and is referenced directly or indirectly in its own initializer.\ntests/provider/llm-quirks-retry-handling.ts(837,60): error TS2339: Property 'kind' does not exist on type 'never'.\ntests/provider/llm-quirks-retry-handling.ts(1002,25): error TS2339: Property 'display' does not exist on type 'LlmRetryEvent'.\n  Property 'display' does not exist on type '{ type: \"llm_retry_evt\"; course: number; genseq: number; phase: \"stopped\"; continueEnabled: boolean; reason: DialogLlmRetryExhaustedReason; }'.\ntests/provider/llm-quirks-retry-handling.ts(1003,25): error TS2339: Property 'error' does not exist on type 'LlmRetryEvent'.\n  Property 'error' does not exist on type 'LlmGenDlgEvent & { type: \"llm_retry_evt\"; display: DialogRetryDisplay; } & { phase: \"resolved\"; }'.\ntests/provider/llm-quirks-retry-handling.ts(1069,93): error TS2339: Property 'kind' does not exist on type 'never'.\ntests/provider/llm-quirks-retry-handling.ts(1071,16): error TS18048: 'firstGiveUp.recoveryAction' is possibly 'undefined'.\ntests/provider/llm-quirks-retry-handling.ts(1074,5): error TS2322: Type 'DialogLlmRetryRecoveryAction | undefined' is not assignable to type 'DialogLlmRetryRecoveryAction'.\n  Type 'undefined' is not assignable to type 'DialogLlmRetryRecoveryAction'.\ntests/provider/llm-quirks-retry-handling.ts(1091,81): error TS2339: Property 'kind' does not exist on type 'never'.\ntests/provider/llm-quirks-retry-handling.ts(1094,16): error TS18048: 'secondGiveUp.recoveryAction' is possibly 'undefined'.\ntests/provider/llm-quirks-retry-handling.ts(1117,9): error TS2322: Type '(reason: DialogLlmRetryExhaustedReason) => Promise<string>' is not assignable to type '(reason: DialogLlmRetryExhaustedReason) => \"stop\" | \"continue\" | Promise<\"stop\" | \"continue\">'.\n  Type 'Promise<string>' is not assignable to type '\"stop\" | \"continue\" | Promise<\"stop\" | \"continue\">'.\n    Type 'Promise<string>' is not assignable to type 'Promise<\"stop\" | \"continue\">'.\n      Type 'string' is not assignable to type '\"stop\" | \"continue\"'.\ntests/provider/llm-quirks-retry-handling.ts(1311,9): error TS2322: Type '(reason: DialogLlmRetryExhaustedReason) => Promise<string>' is not assignable to type '(reason: DialogLlmRetryExhaustedReason) => \"stop\" | \"continue\" | Promise<\"stop\" | \"continue\">'.\n  Type 'Promise<string>' is not assignable to type '\"stop\" | \"continue\" | Promise<\"stop\" | \"continue\">'.\n    Type 'Promise<string>' is not assignable to type 'Promise<\"stop\" | \"continue\">'.\n      Type 'string' is not assignable to type '\"stop\" | \"continue\"'.\ntests/provider/llm-quirks-retry-handling.ts(1375,62): error TS2339: Property 'phase' does not exist on type 'never'.\ntests/provider/llm-quirks-retry-handling.ts(1419,25): error TS2339: Property 'display' does not exist on type 'LlmRetryEvent'.\n  Property 'display' does not exist on type '{ type: \"llm_retry_evt\"; course: number; genseq: number; phase: \"stopped\"; continueEnabled: boolean; reason: DialogLlmRetryExhaustedReason; }'.\ntests/provider/llm-quirks-retry-handling.ts(1420,25): error TS2339: Property 'display' does not exist on type 'LlmRetryEvent'.\n  Property 'display' does not exist on type '{ type: \"llm_retry_evt\"; course: number; genseq: number; phase: \"stopped\"; continueEnabled: boolean; reason: DialogLlmRetryExhaustedReason; }'.\ntests/provider/llm-quirks-retry-handling.ts(1421,25): error TS2339: Property 'display' does not exist on type 'LlmRetryEvent'.\n  Property 'display' does not exist on type '{ type: \"llm_retry_evt\"; course: number; genseq: number; phase: \"stopped\"; continueEnabled: boolean; reason: DialogLlmRetryExhaustedReason; }'.\ntests/provider/llm-quirks-retry-handling.ts(1422,25): error TS2339: Property 'display' does not exist on type 'LlmRetryEvent'.\n  Property 'display' does not exist on type '{ type: \"llm_retry_evt\"; course: number; genseq: number; phase: \"stopped\"; continueEnabled: boolean; reason: DialogLlmRetryExhaustedReason; }'.\ntests/provider/llm-quirks-retry-handling.ts(1423,25): error TS2339: Property 'error' does not exist on type 'LlmRetryEvent'.\n  Property 'error' does not exist on type 'LlmGenDlgEvent & { type: \"llm_retry_evt\"; display: DialogRetryDisplay; } & { phase: \"resolved\"; }'.\ntests/provider/llm-quirks-retry-handling.ts(1424,26): error TS2339: Property 'display' does not exist on type 'LlmRetryEvent'.\n  Property 'display' does not exist on type '{ type: \"llm_retry_evt\"; course: number; genseq: number; phase: \"stopped\"; continueEnabled: boolean; reason: DialogLlmRetryExhaustedReason; }'.\ntests/provider/llm-quirks-retry-handling.ts(1425,26): error TS2339: Property 'display' does not exist on type 'LlmRetryEvent'.\n  Property 'display' does not exist on type '{ type: \"llm_retry_evt\"; course: number; genseq: number; phase: \"stopped\"; continueEnabled: boolean; reason: DialogLlmRetryExhaustedReason; }'.\ntests/provider/llm-quirks-retry-handling.ts(1720,25): error TS2339: Property 'display' does not exist on type 'LlmRetryEvent'.\n  Property 'display' does not exist on type '{ type: \"llm_retry_evt\"; course: number; genseq: number; phase: \"stopped\"; continueEnabled: boolean; reason: DialogLlmRetryExhaustedReason; }'.\ntests/provider/llm-quirks-retry-handling.ts(1789,25): error TS2339: Property 'display' does not exist on type 'LlmRetryEvent'.\n  Property 'display' does not exist on type '{ type: \"llm_retry_evt\"; course: number; genseq: number; phase: \"stopped\"; continueEnabled: boolean; reason: DialogLlmRetryExhaustedReason; }'.\ntests/provider/llm-quirks-retry-handling.ts(1790,25): error TS2339: Property 'display' does not exist on type 'LlmRetryEvent'.\n  Property 'display' does not exist on type '{ type: \"llm_retry_evt\"; course: number; genseq: number; phase: \"stopped\"; continueEnabled: boolean; reason: DialogLlmRetryExhaustedReason; }'.\ntests/provider/llm-quirks-retry-handling.ts(1791,25): error TS2339: Property 'error' does not exist on type 'LlmRetryEvent'.\n  Property 'error' does not exist on type 'LlmGenDlgEvent & { type: \"llm_retry_evt\"; display: DialogRetryDisplay; } & { phase: \"resolved\"; }'.\ntests/provider/llm-quirks-retry-handling.ts(1792,26): error TS2339: Property 'display' does not exist on type 'LlmRetryEvent'.\n  Property 'display' does not exist on type '{ type: \"llm_retry_evt\"; course: number; genseq: number; phase: \"stopped\"; continueEnabled: boolean; reason: DialogLlmRetryExhaustedReason; }'.\ntests/provider/llm-quirks-retry-handling.ts(1793,26): error TS2339: Property 'display' does not exist on type 'LlmRetryEvent'.\n  Property 'display' does not exist on type '{ type: \"llm_retry_evt\"; course: number; genseq: number; phase: \"stopped\"; continueEnabled: boolean; reason: DialogLlmRetryExhaustedReason; }'.\ntests/provider/llm-quirks-retry-handling.ts(1831,25): error TS2339: Property 'display' does not exist on type 'LlmRetryEvent'.\n  Property 'display' does not exist on type '{ type: \"llm_retry_evt\"; course: number; genseq: number; phase: \"stopped\"; continueEnabled: boolean; reason: DialogLlmRetryExhaustedReason; }'.\ntests/provider/llm-quirks-retry-handling.ts(1832,25): error TS2339: Property 'display' does not exist on type 'LlmRetryEvent'.\n  Property 'display' does not exist on type '{ type: \"llm_retry_evt\"; course: number; genseq: number; phase: \"stopped\"; continueEnabled: boolean; reason: DialogLlmRetryExhaustedReason; }'.\ntests/provider/llm-quirks-retry-handling.ts(1833,25): error TS2339: Property 'error' does not exist on type 'LlmRetryEvent'.\n  Property 'error' does not exist on type 'LlmGenDlgEvent & { type: \"llm_retry_evt\"; display: DialogRetryDisplay; } & { phase: \"resolved\"; }'.\ntests/provider/llm-quirks-retry-handling.ts(1834,26): error TS2339: Property 'display' does not exist on type 'LlmRetryEvent'.\n  Property 'display' does not exist on type '{ type: \"llm_retry_evt\"; course: number; genseq: number; phase: \"stopped\"; continueEnabled: boolean; reason: DialogLlmRetryExhaustedReason; }'.\ntests/provider/llm-quirks-retry-handling.ts(1835,26): error TS2339: Property 'display' does not exist on type 'LlmRetryEvent'.\n  Property 'display' does not exist on type '{ type: \"llm_retry_evt\"; course: number; genseq: number; phase: \"stopped\"; continueEnabled: boolean; reason: DialogLlmRetryExhaustedReason; }'.\ntests/provider/llm-quirks-retry-handling.ts(1873,25): error TS2339: Property 'display' does not exist on type 'LlmRetryEvent'.\n  Property 'display' does not exist on type '{ type: \"llm_retry_evt\"; course: number; genseq: number; phase: \"stopped\"; continueEnabled: boolean; reason: DialogLlmRetryExhaustedReason; }'.\ntests/provider/llm-quirks-retry-handling.ts(1874,25): error TS2339: Property 'display' does not exist on type 'LlmRetryEvent'.\n  Property 'display' does not exist on type '{ type: \"llm_retry_evt\"; course: number; genseq: number; phase: \"stopped\"; continueEnabled: boolean; reason: DialogLlmRetryExhaustedReason; }'.\ntests/provider/llm-quirks-retry-handling.ts(1875,25): error TS2339: Property 'error' does not exist on type 'LlmRetryEvent'.\n  Property 'error' does not exist on type 'LlmGenDlgEvent & { type: \"llm_retry_evt\"; display: DialogRetryDisplay; } & { phase: \"resolved\"; }'.\ntests/provider/llm-quirks-retry-handling.ts(1876,26): error TS2339: Property 'display' does not exist on type 'LlmRetryEvent'.\n  Property 'display' does not exist on type '{ type: \"llm_retry_evt\"; course: number; genseq: number; phase: \"stopped\"; continueEnabled: boolean; reason: DialogLlmRetryExhaustedReason; }'.\ntests/provider/llm-quirks-retry-handling.ts(1877,26): error TS2339: Property 'display' does not exist on type 'LlmRetryEvent'.\n  Property 'display' does not exist on type '{ type: \"llm_retry_evt\"; course: number; genseq: number; phase: \"stopped\"; continueEnabled: boolean; reason: DialogLlmRetryExhaustedReason; }'.\ntests/provider/llm-quirks-retry-handling.ts(1915,25): error TS2339: Property 'display' does not exist on type 'LlmRetryEvent'.\n  Property 'display' does not exist on type '{ type: \"llm_retry_evt\"; course: number; genseq: number; phase: \"stopped\"; continueEnabled: boolean; reason: DialogLlmRetryExhaustedReason; }'.\ntests/provider/llm-quirks-retry-handling.ts(1916,25): error TS2339: Property 'display' does not exist on type 'LlmRetryEvent'.\n  Property 'display' does not exist on type '{ type: \"llm_retry_evt\"; course: number; genseq: number; phase: \"stopped\"; continueEnabled: boolean; reason: DialogLlmRetryExhaustedReason; }'.\ntests/provider/llm-quirks-retry-handling.ts(1917,25): error TS2339: Property 'error' does not exist on type 'LlmRetryEvent'.\n  Property 'error' does not exist on type 'LlmGenDlgEvent & { type: \"llm_retry_evt\"; display: DialogRetryDisplay; } & { phase: \"resolved\"; }'.\ntests/provider/llm-quirks-retry-handling.ts(1918,26): error TS2339: Property 'display' does not exist on type 'LlmRetryEvent'.\n  Property 'display' does not exist on type '{ type: \"llm_retry_evt\"; course: number; genseq: number; phase: \"stopped\"; continueEnabled: boolean; reason: DialogLlmRetryExhaustedReason; }'.\ntests/provider/llm-quirks-retry-handling.ts(1919,26): error TS2339: Property 'display' does not exist on type 'LlmRetryEvent'.\n  Property 'display' does not exist on type '{ type: \"llm_retry_evt\"; course: number; genseq: number; phase: \"stopped\"; continueEnabled: boolean; reason: DialogLlmRetryExhaustedReason; }'.\ntests/provider/llm-quirks-retry-handling.ts(1958,25): error TS2339: Property 'display' does not exist on type 'LlmRetryEvent'.\n  Property 'display' does not exist on type '{ type: \"llm_retry_evt\"; course: number; genseq: number; phase: \"stopped\"; continueEnabled: boolean; reason: DialogLlmRetryExhaustedReason; }'.\ntests/provider/llm-quirks-retry-handling.ts(1959,25): error TS2339: Property 'error' does not exist on type 'LlmRetryEvent'.\n  Property 'error' does not exist on type 'LlmGenDlgEvent & { type: \"llm_retry_evt\"; display: DialogRetryDisplay; } & { phase: \"resolved\"; }'.\ntests/provider/llm-quirks-retry-handling.ts(1960,26): error TS2339: Property 'display' does not exist on type 'LlmRetryEvent'.\n  Property 'display' does not exist on type '{ type: \"llm_retry_evt\"; course: number; genseq: number; phase: \"stopped\"; continueEnabled: boolean; reason: DialogLlmRetryExhaustedReason; }'.\ntests/provider/llm-quirks-retry-handling.ts(2002,25): error TS2339: Property 'display' does not exist on type 'LlmRetryEvent'.\n  Property 'display' does not exist on type '{ type: \"llm_retry_evt\"; course: number; genseq: number; phase: \"stopped\"; continueEnabled: boolean; reason: DialogLlmRetryExhaustedReason; }'.\ntests/provider/llm-quirks-retry-handling.ts(2003,26): error TS2339: Property 'display' does not exist on type 'LlmRetryEvent'.\n  Property 'display' does not exist on type '{ type: \"llm_retry_evt\"; course: number; genseq: number; phase: \"stopped\"; continueEnabled: boolean; reason: DialogLlmRetryExhaustedReason; }'.\ntests/provider/llm-quirks-retry-handling.ts(2042,25): error TS2339: Property 'display' does not exist on type 'LlmRetryEvent'.\n  Property 'display' does not exist on type '{ type: \"llm_retry_evt\"; course: number; genseq: number; phase: \"stopped\"; continueEnabled: boolean; reason: DialogLlmRetryExhaustedReason; }'.\ntests/provider/llm-quirks-retry-handling.ts(2043,26): error TS2339: Property 'display' does not exist on type 'LlmRetryEvent'.\n  Property 'display' does not exist on type '{ type: \"llm_retry_evt\"; course: number; genseq: number; phase: \"stopped\"; continueEnabled: boolean; reason: DialogLlmRetryExhaustedReason; }'.\ntests/provider/llm-quirks-retry-handling.ts(2086,30): error TS2339: Property 'display' does not exist on type 'LlmRetryEvent'.\n  Property 'display' does not exist on type '{ type: \"llm_retry_evt\"; course: number; genseq: number; phase: \"stopped\"; continueEnabled: boolean; reason: DialogLlmRetryExhaustedReason; }'.\ntests/provider/llm-quirks-retry-handling.ts(2087,31): error TS2339: Property 'display' does not exist on type 'LlmRetryEvent'.\n  Property 'display' does not exist on type '{ type: \"llm_retry_evt\"; course: number; genseq: number; phase: \"stopped\"; continueEnabled: boolean; reason: DialogLlmRetryExhaustedReason; }'.\ntests/provider/llm-quirks-retry-handling.ts(2088,31): error TS2339: Property 'display' does not exist on type 'LlmRetryEvent'.\n  Property 'display' does not exist on type '{ type: \"llm_retry_evt\"; course: number; genseq: number; phase: \"stopped\"; continueEnabled: boolean; reason: DialogLlmRetryExhaustedReason; }'.\ntests/provider/openai-compatible-context-normalization.ts(274,20): error TS2339: Property 'reasoning_details' does not exist on type 'ChatCompletionMessageParam'.\n  Property 'reasoning_details' does not exist on type 'ChatCompletionDeveloperMessageParam'.\ntests/provider/openai-compatible-context-normalization.ts(275,31): error TS2339: Property 'reasoning_details' does not exist on type 'ChatCompletionMessageParam'.\n  Property 'reasoning_details' does not exist on type 'ChatCompletionDeveloperMessageParam'.\ntests/provider/openai-compatible-context-normalization.ts(276,22): error TS2339: Property 'reasoning_details' does not exist on type 'ChatCompletionMessageParam'.\n  Property 'reasoning_details' does not exist on type 'ChatCompletionDeveloperMessageParam'.\ntests/provider/openai-compatible-volcengine-coding-plan.ts(506,5): error TS18048: 'thinkingOutput' is possibly 'undefined'.\ntests/provider/openai-compatible-volcengine-coding-plan.ts(506,42): error TS18048: 'thinkingOutput' is possibly 'undefined'.\ntests/provider/openai-compatible-volcengine-coding-plan.ts(506,57): error TS2339: Property 'message' does not exist on type 'LlmBatchOutput'.\n  Property 'message' does not exist on type '{ kind: \"answering\"; content: string; }'.\ntests/provider/openai-compatible-volcengine-coding-plan.ts(510,5): error TS18048: 'thinkingOutput' is possibly 'undefined'.\ntests/provider/openai-compatible-volcengine-coding-plan.ts(510,20): error TS2339: Property 'message' does not exist on type 'LlmBatchOutput'.\n  Property 'message' does not exist on type '{ kind: \"answering\"; content: string; }'.\ntests/provider/openai-compatible-volcengine-coding-plan.ts(514,19): error TS18048: 'thinkingOutput' is possibly 'undefined'.\ntests/provider/openai-compatible-volcengine-coding-plan.ts(514,34): error TS2339: Property 'message' does not exist on type 'LlmBatchOutput'.\n  Property 'message' does not exist on type '{ kind: \"answering\"; content: string; }'.\ntests/provider/openai-compatible-volcengine-coding-plan.ts(524,11): error TS2353: Object literal may only specify known properties, and 'index' does not exist in type 'ChatCompletionMessageFunctionToolCall'.\ntests/provider/openai-compatible-volcengine-coding-plan.ts(530,11): error TS2353: Object literal may only specify known properties, and 'index' does not exist in type 'ChatCompletionMessageFunctionToolCall'.\ntests/provider/openai-compatible-volcengine-coding-plan.ts(535,11): error TS2353: Object literal may only specify known properties, and 'index' does not exist in type 'ChatCompletionMessageToolCall'.\ntests/provider/openai-compatible-volcengine-coding-plan.ts(559,11): error TS2353: Object literal may only specify known properties, and 'index' does not exist in type 'ChatCompletionMessageFunctionToolCall'.\ntests/provider/openai-compatible-volcengine-coding-plan.ts(571,5): error TS18048: 'invalid' is possibly 'undefined'.\ntests/provider/openai-compatible-volcengine-coding-plan.ts(572,51): error TS18048: 'invalid' is possibly 'undefined'.\ntests/provider/openai-compatible-volcengine-coding-plan.ts(574,10): error TS18048: 'invalid' is possibly 'undefined'.\ntests/provider/openai-compatible-volcengine-coding-plan.ts(704,77): error TS2339: Property 'default' does not exist on type 'ModelParamOption'.\n  Property 'default' does not exist on type 'ModelParamOptionBase & { type: \"object\"; }'.\ntests/provider/openai-compatible-volcengine-coding-plan.ts(740,30): error TS2339: Property 'type' does not exist on type 'boolean | Record<string, unknown>'.\n  Property 'type' does not exist on type 'false'.\ntests/provider/openai-compatible-volcengine-coding-plan.ts(804,41): error TS2339: Property 'type' does not exist on type 'boolean | Record<string, unknown>'.\n  Property 'type' does not exist on type 'false'.\ntests/provider/openai-compatible-volcengine-coding-plan.ts(836,42): error TS2339: Property 'type' does not exist on type 'boolean | Record<string, unknown>'.\n  Property 'type' does not exist on type 'false'.\ntests/provider/openai-compatible-volcengine-coding-plan.ts(922,12): error TS18048: 'failure' is possibly 'undefined'.\ntests/provider/openai-compatible-volcengine-coding-plan.ts(922,71): error TS18048: 'failure' is possibly 'undefined'.\ntests/provider/openai-compatible-volcengine-coding-plan.ts(924,7): error TS18048: 'failure' is possibly 'undefined'.\ntests/provider/openai-compatible-volcengine-coding-plan.ts(925,53): error TS18048: 'failure' is possibly 'undefined'.\ntests/provider/openai-compatible-volcengine-coding-plan.ts(928,7): error TS18048: 'failure' is possibly 'undefined'.\ntests/provider/openai-compatible-volcengine-coding-plan.ts(932,8): error TS18048: 'failure' is possibly 'undefined'.\ntests/provider/openai-compatible-volcengine-coding-plan.ts(941,43): error TS2769: No overload matches this call.\n  Overload 1 of 3, '(path: PathLike | FileHandle, options?: ({ encoding?: null | undefined; flag?: OpenMode | undefined; } & Abortable) | null | undefined): Promise<...>', gave the following error.\n    Argument of type 'string | undefined' is not assignable to parameter of type 'PathLike | FileHandle'.\n      Type 'undefined' is not assignable to type 'PathLike | FileHandle'.\n  Overload 2 of 3, '(path: PathLike | FileHandle, options: ({ encoding: BufferEncoding; flag?: OpenMode | undefined; } & Abortable) | BufferEncoding): Promise<...>', gave the following error.\n    Argument of type 'string | undefined' is not assignable to parameter of type 'PathLike | FileHandle'.\n      Type 'undefined' is not assignable to type 'PathLike | FileHandle'.\n  Overload 3 of 3, '(path: PathLike | FileHandle, options?: BufferEncoding | (ObjectEncodingOptions & Abortable & { flag?: OpenMode | undefined; }) | null | undefined): Promise<...>', gave the following error.\n    Argument of type 'string | undefined' is not assignable to parameter of type 'PathLike | FileHandle'.\n      Type 'undefined' is not assignable to type 'PathLike | FileHandle'.\ntests/provider/openai-compatible-volcengine-coding-plan.ts(993,12): error TS18048: 'failure' is possibly 'undefined'.\ntests/provider/openai-compatible-volcengine-coding-plan.ts(993,71): error TS18048: 'failure' is possibly 'undefined'.\ntests/provider/openai-compatible-volcengine-coding-plan.ts(995,7): error TS18048: 'failure' is possibly 'undefined'.\ntests/provider/tool-choice-requirement.ts(23,7): error TS2322: Type '{ type: \"function\"; name: string; description: string; parameters: { type: string; properties: {}; additionalProperties: boolean; }; }' is not assignable to type 'ChatGptTool'.\n  Property 'strict' is missing in type '{ type: \"function\"; name: string; description: string; parameters: { type: string; properties: {}; additionalProperties: boolean; }; }' but required in type 'ChatGptFunctionTool'.\ntests/provider/tool-result-image-size-fallback.ts(87,78): error TS2339: Property 'contentItems' does not exist on type 'ChatMessage'.\ntests/provider/tool-result-image-size-fallback.ts(128,35): error TS2339: Property 'contentItems' does not exist on type 'ChatMessage'.\n  Property 'contentItems' does not exist on type 'Readonly<{ type: \"environment_msg\"; role: \"user\"; content: string; }>'.\ntests/provider/tool-result-image-size-fallback.ts(129,35): error TS2339: Property 'contentItems' does not exist on type 'ChatMessage'.\n  Property 'contentItems' does not exist on type 'Readonly<{ type: \"environment_msg\"; role: \"user\"; content: string; }>'.\ntests/provider/user-image-model-support.ts(31,67): error TS2339: Property 'contentItems' does not exist on type 'ChatMessage'.\ntests/provider/volcengine-coding-plan-live-smoke.ts(305,27): error TS2339: Property 'name' does not exist on type 'never'.\ntests/recovery/open-generation-recovery-stale-clears-on-backend-loop.ts(23,11): error TS2322: Type 'number' is not assignable to type 'DialogCourseNumber'.\n  Type 'number' is not assignable to type '{ readonly __dialogCourseBrand: unique symbol; }'.\ntests/recovery/open-generation-recovery-stale-clears-on-backend-loop.ts(24,11): error TS2322: Type 'number' is not assignable to type 'CallSiteGenseqNo'.\n  Type 'number' is not assignable to type '{ readonly __callSiteGenseqBrand: unique symbol; }'.\ntests/recovery/open-generation-recovery-stale-clears-on-backend-loop.ts(35,15): error TS2322: Type 'number' is not assignable to type 'DialogCourseNumber'.\n  Type 'number' is not assignable to type '{ readonly __dialogCourseBrand: unique symbol; }'.\ntests/recovery/open-generation-recovery-stale-clears-on-backend-loop.ts(36,15): error TS2322: Type 'number' is not assignable to type 'CallSiteGenseqNo'.\n  Type 'number' is not assignable to type '{ readonly __callSiteGenseqBrand: unique symbol; }'.\ntests/recovery/open-generation-recovery-stale-clears-on-backend-loop.ts(59,15): error TS2322: Type 'number' is not assignable to type 'DialogCourseNumber'.\n  Type 'number' is not assignable to type '{ readonly __dialogCourseBrand: unique symbol; }'.\ntests/recovery/open-generation-recovery-stale-clears-on-backend-loop.ts(60,15): error TS2322: Type 'number' is not assignable to type 'CallSiteGenseqNo'.\n  Type 'number' is not assignable to type '{ readonly __callSiteGenseqBrand: unique symbol; }'.\ntests/recovery/reply-delivery-recovery-waits-for-q4h.ts(97,50): error TS2322: Type 'number' is not assignable to type 'CallSiteGenseqNo'.\n  Type 'number' is not assignable to type '{ readonly __callSiteGenseqBrand: unique symbol; }'.\ntests/reminders/app-reminder-render-mode-preserve.ts(21,5): error TS2511: Cannot create an instance of an abstract class.\ntests/reminders/daemon-exit-wake-event.ts(9,25): error TS2511: Cannot create an instance of an abstract class.\ntests/reminders/daemon-exit-wake-event.ts(50,22): error TS2339: Property 'reminderId' does not exist on type 'Readonly<{ eventId: string; reminderId: string; content: string; updatedContent?: string | undefined; updatedMeta?: JsonValue | undefined; }> | readonly Readonly<{ eventId: string; reminderId: string; content: string; updatedContent?: string | undefined; updatedMeta?: JsonValue | undefined; }>[]'.\n  Property 'reminderId' does not exist on type 'readonly Readonly<{ eventId: string; reminderId: string; content: string; updatedContent?: string | undefined; updatedMeta?: JsonValue | undefined; }>[]'.\ntests/reminders/daemon-exit-wake-event.ts(51,22): error TS2339: Property 'eventId' does not exist on type 'Readonly<{ eventId: string; reminderId: string; content: string; updatedContent?: string | undefined; updatedMeta?: JsonValue | undefined; }> | readonly Readonly<{ eventId: string; reminderId: string; content: string; updatedContent?: string | undefined; updatedMeta?: JsonValue | undefined; }>[]'.\n  Property 'eventId' does not exist on type 'readonly Readonly<{ eventId: string; reminderId: string; content: string; updatedContent?: string | undefined; updatedMeta?: JsonValue | undefined; }>[]'.\ntests/reminders/daemon-exit-wake-event.ts(52,22): error TS2339: Property 'content' does not exist on type 'Readonly<{ eventId: string; reminderId: string; content: string; updatedContent?: string | undefined; updatedMeta?: JsonValue | undefined; }> | readonly Readonly<{ eventId: string; reminderId: string; content: string; updatedContent?: string | undefined; updatedMeta?: JsonValue | undefined; }>[]'.\n  Property 'content' does not exist on type 'readonly Readonly<{ eventId: string; reminderId: string; content: string; updatedContent?: string | undefined; updatedMeta?: JsonValue | undefined; }>[]'.\ntests/reminders/daemon-exit-wake-event.ts(53,22): error TS2339: Property 'updatedContent' does not exist on type 'Readonly<{ eventId: string; reminderId: string; content: string; updatedContent?: string | undefined; updatedMeta?: JsonValue | undefined; }> | readonly Readonly<{ eventId: string; reminderId: string; content: string; updatedContent?: string | undefined; updatedMeta?: JsonValue | undefined; }>[]'.\n  Property 'updatedContent' does not exist on type 'readonly Readonly<{ eventId: string; reminderId: string; content: string; updatedContent?: string | undefined; updatedMeta?: JsonValue | undefined; }>[]'.\ntests/reminders/daemon-exit-wake-event.ts(54,29): error TS2339: Property 'updatedMeta' does not exist on type 'Readonly<{ eventId: string; reminderId: string; content: string; updatedContent?: string | undefined; updatedMeta?: JsonValue | undefined; }> | readonly Readonly<{ eventId: string; reminderId: string; content: string; updatedContent?: string | undefined; updatedMeta?: JsonValue | undefined; }>[]'.\n  Property 'updatedMeta' does not exist on type 'readonly Readonly<{ eventId: string; reminderId: string; content: string; updatedContent?: string | undefined; updatedMeta?: JsonValue | undefined; }>[]'.\ntests/reminders/daemon-exit-wake-event.ts(55,25): error TS2339: Property 'updatedMeta' does not exist on type 'Readonly<{ eventId: string; reminderId: string; content: string; updatedContent?: string | undefined; updatedMeta?: JsonValue | undefined; }> | readonly Readonly<{ eventId: string; reminderId: string; content: string; updatedContent?: string | undefined; updatedMeta?: JsonValue | undefined; }>[]'.\n  Property 'updatedMeta' does not exist on type 'readonly Readonly<{ eventId: string; reminderId: string; content: string; updatedContent?: string | undefined; updatedMeta?: JsonValue | undefined; }>[]'.\ntests/reminders/daemon-exit-wake-event.ts(56,36): error TS2339: Property 'updatedMeta' does not exist on type 'Readonly<{ eventId: string; reminderId: string; content: string; updatedContent?: string | undefined; updatedMeta?: JsonValue | undefined; }> | readonly Readonly<{ eventId: string; reminderId: string; content: string; updatedContent?: string | undefined; updatedMeta?: JsonValue | undefined; }>[]'.\n  Property 'updatedMeta' does not exist on type 'readonly Readonly<{ eventId: string; reminderId: string; content: string; updatedContent?: string | undefined; updatedMeta?: JsonValue | undefined; }>[]'.\ntests/reminders/daemon-exit-wake-event.ts(58,18): error TS2339: Property 'updatedMeta' does not exist on type 'Readonly<{ eventId: string; reminderId: string; content: string; updatedContent?: string | undefined; updatedMeta?: JsonValue | undefined; }> | readonly Readonly<{ eventId: string; reminderId: string; content: string; updatedContent?: string | undefined; updatedMeta?: JsonValue | undefined; }>[]'.\n  Property 'updatedMeta' does not exist on type 'readonly Readonly<{ eventId: string; reminderId: string; content: string; updatedContent?: string | undefined; updatedMeta?: JsonValue | undefined; }>[]'.\ntests/reminders/daemon-exit-wake-event.ts(59,11): error TS2339: Property 'updatedMeta' does not exist on type 'Readonly<{ eventId: string; reminderId: string; content: string; updatedContent?: string | undefined; updatedMeta?: JsonValue | undefined; }> | readonly Readonly<{ eventId: string; reminderId: string; content: string; updatedContent?: string | undefined; updatedMeta?: JsonValue | undefined; }>[]'.\n  Property 'updatedMeta' does not exist on type 'readonly Readonly<{ eventId: string; reminderId: string; content: string; updatedContent?: string | undefined; updatedMeta?: JsonValue | undefined; }>[]'.\ntests/reminders/daemon-exit-wake-event.ts(60,25): error TS2339: Property 'updatedMeta' does not exist on type 'Readonly<{ eventId: string; reminderId: string; content: string; updatedContent?: string | undefined; updatedMeta?: JsonValue | undefined; }> | readonly Readonly<{ eventId: string; reminderId: string; content: string; updatedContent?: string | undefined; updatedMeta?: JsonValue | undefined; }>[]'.\n  Property 'updatedMeta' does not exist on type 'readonly Readonly<{ eventId: string; reminderId: string; content: string; updatedContent?: string | undefined; updatedMeta?: JsonValue | undefined; }>[]'.\ntests/reminders/daemon-exit-wake-event.ts(64,22): error TS2339: Property 'updatedMeta' does not exist on type 'Readonly<{ eventId: string; reminderId: string; content: string; updatedContent?: string | undefined; updatedMeta?: JsonValue | undefined; }> | readonly Readonly<{ eventId: string; reminderId: string; content: string; updatedContent?: string | undefined; updatedMeta?: JsonValue | undefined; }>[]'.\n  Property 'updatedMeta' does not exist on type 'readonly Readonly<{ eventId: string; reminderId: string; content: string; updatedContent?: string | undefined; updatedMeta?: JsonValue | undefined; }>[]'.\ntests/reminders/daemon-exit-wake-event.ts(65,22): error TS2339: Property 'updatedMeta' does not exist on type 'Readonly<{ eventId: string; reminderId: string; content: string; updatedContent?: string | undefined; updatedMeta?: JsonValue | undefined; }> | readonly Readonly<{ eventId: string; reminderId: string; content: string; updatedContent?: string | undefined; updatedMeta?: JsonValue | undefined; }>[]'.\n  Property 'updatedMeta' does not exist on type 'readonly Readonly<{ eventId: string; reminderId: string; content: string; updatedContent?: string | undefined; updatedMeta?: JsonValue | undefined; }>[]'.\ntests/reminders/daemon-exit-wake-event.ts(65,60): error TS2339: Property 'eventId' does not exist on type 'Readonly<{ eventId: string; reminderId: string; content: string; updatedContent?: string | undefined; updatedMeta?: JsonValue | undefined; }> | readonly Readonly<{ eventId: string; reminderId: string; content: string; updatedContent?: string | undefined; updatedMeta?: JsonValue | undefined; }>[]'.\n  Property 'eventId' does not exist on type 'readonly Readonly<{ eventId: string; reminderId: string; content: string; updatedContent?: string | undefined; updatedMeta?: JsonValue | undefined; }>[]'.\ntests/reminders/daemon-exit-wake-event.ts(66,29): error TS2339: Property 'updatedMeta' does not exist on type 'Readonly<{ eventId: string; reminderId: string; content: string; updatedContent?: string | undefined; updatedMeta?: JsonValue | undefined; }> | readonly Readonly<{ eventId: string; reminderId: string; content: string; updatedContent?: string | undefined; updatedMeta?: JsonValue | undefined; }>[]'.\n  Property 'updatedMeta' does not exist on type 'readonly Readonly<{ eventId: string; reminderId: string; content: string; updatedContent?: string | undefined; updatedMeta?: JsonValue | undefined; }>[]'.\ntests/reminders/daemon-exit-wake-event.ts(67,22): error TS2339: Property 'updatedMeta' does not exist on type 'Readonly<{ eventId: string; reminderId: string; content: string; updatedContent?: string | undefined; updatedMeta?: JsonValue | undefined; }> | readonly Readonly<{ eventId: string; reminderId: string; content: string; updatedContent?: string | undefined; updatedMeta?: JsonValue | undefined; }>[]'.\n  Property 'updatedMeta' does not exist on type 'readonly Readonly<{ eventId: string; reminderId: string; content: string; updatedContent?: string | undefined; updatedMeta?: JsonValue | undefined; }>[]'.\ntests/reminders/daemon-exit-wake-event.ts(71,20): error TS2339: Property 'updatedContent' does not exist on type 'Readonly<{ eventId: string; reminderId: string; content: string; updatedContent?: string | undefined; updatedMeta?: JsonValue | undefined; }> | readonly Readonly<{ eventId: string; reminderId: string; content: string; updatedContent?: string | undefined; updatedMeta?: JsonValue | undefined; }>[]'.\n  Property 'updatedContent' does not exist on type 'readonly Readonly<{ eventId: string; reminderId: string; content: string; updatedContent?: string | undefined; updatedMeta?: JsonValue | undefined; }>[]'.\ntests/reminders/daemon-exit-wake-event.ts(75,17): error TS2339: Property 'updatedMeta' does not exist on type 'Readonly<{ eventId: string; reminderId: string; content: string; updatedContent?: string | undefined; updatedMeta?: JsonValue | undefined; }> | readonly Readonly<{ eventId: string; reminderId: string; content: string; updatedContent?: string | undefined; updatedMeta?: JsonValue | undefined; }>[]'.\n  Property 'updatedMeta' does not exist on type 'readonly Readonly<{ eventId: string; reminderId: string; content: string; updatedContent?: string | undefined; updatedMeta?: JsonValue | undefined; }>[]'.\ntests/reminders/daemon-exit-wake-event.ts(86,20): error TS2339: Property 'updatedContent' does not exist on type 'Readonly<{ eventId: string; reminderId: string; content: string; updatedContent?: string | undefined; updatedMeta?: JsonValue | undefined; }> | readonly Readonly<{ eventId: string; reminderId: string; content: string; updatedContent?: string | undefined; updatedMeta?: JsonValue | undefined; }>[]'.\n  Property 'updatedContent' does not exist on type 'readonly Readonly<{ eventId: string; reminderId: string; content: string; updatedContent?: string | undefined; updatedMeta?: JsonValue | undefined; }>[]'.\ntests/reminders/daemon-reminder-gone-exit-snapshot.ts(10,5): error TS2511: Cannot create an instance of an abstract class.\ntests/reminders/daemon-reminder-no-jitter-without-output-change.ts(17,5): error TS2511: Cannot create an instance of an abstract class.\ntests/reminders/daemon-reminder-no-jitter-without-output-change.ts(50,9): error TS2322: Type 'string | undefined' is not assignable to type 'JsonValue'.\n  Type 'undefined' is not assignable to type 'JsonValue'.\ntests/reminders/daemon-reminder-no-jitter-without-output-change.ts(62,34): error TS2339: Property 'pid' does not exist on type 'string | number | boolean | JsonObject | JsonArray'.\n  Property 'pid' does not exist on type 'string'.\ntests/reminders/daemon-reminder-render.ts(36,25): error TS2511: Cannot create an instance of an abstract class.\ntests/reminders/daemon-reminder-render.ts(72,9): error TS2322: Type 'string | undefined' is not assignable to type 'JsonValue'.\n  Type 'undefined' is not assignable to type 'JsonValue'.\ntests/reminders/daemon-reminder-retained-after-exit.ts(17,5): error TS2511: Cannot create an instance of an abstract class.\ntests/reminders/daemon-reminder-retained-after-exit.ts(59,9): error TS2322: Type 'string | undefined' is not assignable to type 'JsonValue'.\n  Type 'undefined' is not assignable to type 'JsonValue'.\ntests/reminders/daemon-start-receipt-lifecycle-card.ts(11,5): error TS2511: Cannot create an instance of an abstract class.\ntests/reminders/daemon-start-receipt-lifecycle-card.ts(46,9): error TS2322: Type 'string | undefined' is not assignable to type 'JsonValue'.\n  Type 'undefined' is not assignable to type 'JsonValue'.\ntests/reminders/get-daemon-output-stream-selection.ts(16,5): error TS2511: Cannot create an instance of an abstract class.\ntests/reminders/get-daemon-output-stream-selection.ts(50,5): error TS2322: Type 'string | undefined' is not assignable to type 'JsonValue'.\n  Type 'undefined' is not assignable to type 'JsonValue'.\ntests/reminders/get-daemon-output-stream-selection.ts(117,9): error TS2322: Type 'string | undefined' is not assignable to type 'JsonValue'.\n  Type 'undefined' is not assignable to type 'JsonValue'.\ntests/reminders/main-dialog-goal-reminder.ts(119,11): error TS2322: Type 'number' is not assignable to type 'CallSiteCourseNo'.\n  Type 'number' is not assignable to type '{ readonly __callSiteCourseBrand: unique symbol; }'.\ntests/reminders/main-dialog-goal-reminder.ts(120,11): error TS2322: Type 'number' is not assignable to type 'CallSiteGenseqNo'.\n  Type 'number' is not assignable to type '{ readonly __callSiteGenseqBrand: unique symbol; }'.\ntests/reminders/migrate-reminder-scope.ts(46,11): error TS2322: Type 'number' is not assignable to type 'CallSiteCourseNo'.\n  Type 'number' is not assignable to type '{ readonly __callSiteCourseBrand: unique symbol; }'.\ntests/reminders/migrate-reminder-scope.ts(47,11): error TS2322: Type 'number' is not assignable to type 'CallSiteGenseqNo'.\n  Type 'number' is not assignable to type '{ readonly __callSiteGenseqBrand: unique symbol; }'.\ntests/reminders/migrate-reminder-scope.ts(59,11): error TS2322: Type 'number' is not assignable to type 'CallSiteCourseNo'.\n  Type 'number' is not assignable to type '{ readonly __callSiteCourseBrand: unique symbol; }'.\ntests/reminders/migrate-reminder-scope.ts(60,11): error TS2322: Type 'number' is not assignable to type 'CallSiteGenseqNo'.\n  Type 'number' is not assignable to type '{ readonly __callSiteGenseqBrand: unique symbol; }'.\ntests/reminders/migrate-reminder-scope.ts(76,11): error TS2322: Type 'number' is not assignable to type 'CallSiteCourseNo'.\n  Type 'number' is not assignable to type '{ readonly __callSiteCourseBrand: unique symbol; }'.\ntests/reminders/migrate-reminder-scope.ts(77,11): error TS2322: Type 'number' is not assignable to type 'CallSiteGenseqNo'.\n  Type 'number' is not assignable to type '{ readonly __callSiteGenseqBrand: unique symbol; }'.\ntests/reminders/migrate-reminder-scope.ts(93,11): error TS2322: Type 'number' is not assignable to type 'CallSiteCourseNo'.\n  Type 'number' is not assignable to type '{ readonly __callSiteCourseBrand: unique symbol; }'.\ntests/reminders/migrate-reminder-scope.ts(94,11): error TS2322: Type 'number' is not assignable to type 'CallSiteGenseqNo'.\n  Type 'number' is not assignable to type '{ readonly __callSiteGenseqBrand: unique symbol; }'.\ntests/reminders/pending-tellask-reminder-order.ts(47,5): error TS2322: Type 'number' is not assignable to type 'CallSiteCourseNo'.\n  Type 'number' is not assignable to type '{ readonly __callSiteCourseBrand: unique symbol; }'.\ntests/reminders/pending-tellask-reminder-order.ts(48,5): error TS2322: Type 'number' is not assignable to type 'CallSiteGenseqNo'.\n  Type 'number' is not assignable to type '{ readonly __callSiteGenseqBrand: unique symbol; }'.\ntests/reminders/pending-tellask-reminder-order.ts(163,11): error TS2322: Type 'number' is not assignable to type 'CallSiteCourseNo'.\n  Type 'number' is not assignable to type '{ readonly __callSiteCourseBrand: unique symbol; }'.\ntests/reminders/pending-tellask-reminder-order.ts(164,11): error TS2322: Type 'number' is not assignable to type 'CallSiteGenseqNo'.\n  Type 'number' is not assignable to type '{ readonly __callSiteGenseqBrand: unique symbol; }'.\ntests/reminders/pending-tellask-reminder-order.ts(176,11): error TS2322: Type 'number' is not assignable to type 'CallSiteCourseNo'.\n  Type 'number' is not assignable to type '{ readonly __callSiteCourseBrand: unique symbol; }'.\ntests/reminders/pending-tellask-reminder-order.ts(177,11): error TS2322: Type 'number' is not assignable to type 'CallSiteGenseqNo'.\n  Type 'number' is not assignable to type '{ readonly __callSiteGenseqBrand: unique symbol; }'.\ntests/reminders/pending-tellask-reminder-order.ts(238,13): error TS2322: Type 'number' is not assignable to type 'CallSiteCourseNo'.\n  Type 'number' is not assignable to type '{ readonly __callSiteCourseBrand: unique symbol; }'.\ntests/reminders/pending-tellask-reminder-order.ts(239,13): error TS2322: Type 'number' is not assignable to type 'CallSiteGenseqNo'.\n  Type 'number' is not assignable to type '{ readonly __callSiteGenseqBrand: unique symbol; }'.\ntests/reminders/pending-tellask-reminder-order.ts(252,13): error TS2322: Type 'number' is not assignable to type 'CallSiteCourseNo'.\n  Type 'number' is not assignable to type '{ readonly __callSiteCourseBrand: unique symbol; }'.\ntests/reminders/pending-tellask-reminder-order.ts(253,13): error TS2322: Type 'number' is not assignable to type 'CallSiteGenseqNo'.\n  Type 'number' is not assignable to type '{ readonly __callSiteGenseqBrand: unique symbol; }'.\ntests/reminders/pending-tellask-zero-state-no-jitter.ts(41,5): error TS2322: Type 'number' is not assignable to type 'CallSiteCourseNo'.\n  Type 'number' is not assignable to type '{ readonly __callSiteCourseBrand: unique symbol; }'.\ntests/reminders/pending-tellask-zero-state-no-jitter.ts(42,5): error TS2322: Type 'number' is not assignable to type 'CallSiteGenseqNo'.\n  Type 'number' is not assignable to type '{ readonly __callSiteGenseqBrand: unique symbol; }'.\ntests/reminders/pending-tellask-zero-state-no-jitter.ts(121,11): error TS2322: Type 'number' is not assignable to type 'CallSiteCourseNo'.\n  Type 'number' is not assignable to type '{ readonly __callSiteCourseBrand: unique symbol; }'.\ntests/reminders/pending-tellask-zero-state-no-jitter.ts(122,11): error TS2322: Type 'number' is not assignable to type 'CallSiteGenseqNo'.\n  Type 'number' is not assignable to type '{ readonly __callSiteGenseqBrand: unique symbol; }'.\ntests/reminders/reminder-format.ts(390,5): error TS18048: 'zhMaintenanceReference' is possibly 'undefined'.\ntests/reminders/reminder-format.ts(394,5): error TS18048: 'zhMaintenanceReference' is possibly 'undefined'.\ntests/reminders/reminder-format.ts(398,6): error TS18048: 'zhMaintenanceReference' is possibly 'undefined'.\ntests/reminders/reminder-format.ts(402,6): error TS18048: 'zhMaintenanceReference' is possibly 'undefined'.\ntests/reminders/reminder-format.ts(406,5): error TS18048: 'zhMaintenanceReference' is possibly 'undefined'.\ntests/reminders/reminder-format.ts(410,5): error TS18048: 'zhMaintenanceReference' is possibly 'undefined'.\ntests/reminders/reminder-format.ts(414,5): error TS18048: 'zhMaintenanceReference' is possibly 'undefined'.\ntests/reminders/reminder-format.ts(420,5): error TS18048: 'zhMaintenanceReference' is possibly 'undefined'.\ntests/reminders/reminder-format.ts(424,5): error TS18048: 'zhMaintenanceReference' is possibly 'undefined'.\ntests/reminders/reminder-format.ts(428,5): error TS18048: 'zhMaintenanceReference' is possibly 'undefined'.\ntests/reminders/reminder-format.ts(434,5): error TS18048: 'zhMaintenanceReference' is possibly 'undefined'.\ntests/reminders/reminder-format.ts(934,5): error TS18048: 'enMaintenanceReference' is possibly 'undefined'.\ntests/reminders/reminder-format.ts(940,5): error TS18048: 'enMaintenanceReference' is possibly 'undefined'.\ntests/reminders/reminder-format.ts(944,6): error TS18048: 'enMaintenanceReference' is possibly 'undefined'.\ntests/reminders/reminder-format.ts(950,5): error TS18048: 'enMaintenanceReference' is possibly 'undefined'.\ntests/reminders/reminder-format.ts(954,5): error TS18048: 'enMaintenanceReference' is possibly 'undefined'.\ntests/reminders/reminder-format.ts(958,5): error TS18048: 'enMaintenanceReference' is possibly 'undefined'.\ntests/reminders/reminder-format.ts(964,5): error TS18048: 'enMaintenanceReference' is possibly 'undefined'.\ntests/reminders/reminder-format.ts(970,5): error TS18048: 'enMaintenanceReference' is possibly 'undefined'.\ntests/reminders/reminder-format.ts(974,5): error TS18048: 'enMaintenanceReference' is possibly 'undefined'.\ntests/reminders/reminder-format.ts(978,5): error TS18048: 'enMaintenanceReference' is possibly 'undefined'.\ntests/reminders/reminder-owner-failure-loud.ts(48,5): error TS2511: Cannot create an instance of an abstract class.\ntests/reminders/reminder-render-mode.ts(12,25): error TS2511: Cannot create an instance of an abstract class.\ntests/reminders/shared-daemon-reminder-command-mismatch.ts(33,5): error TS2511: Cannot create an instance of an abstract class.\ntests/reminders/shared-daemon-reminder-command-mismatch.ts(85,9): error TS2322: Type 'string | undefined' is not assignable to type 'JsonValue'.\n  Type 'undefined' is not assignable to type 'JsonValue'.\ntests/reminders/shared-daemon-reminder-persistence.ts(34,5): error TS2511: Cannot create an instance of an abstract class.\ntests/reminders/shared-daemon-reminder-persistence.ts(73,9): error TS2322: Type 'string | undefined' is not assignable to type 'JsonValue'.\n  Type 'undefined' is not assignable to type 'JsonValue'.\ntests/reminders/shared-daemon-reminder-wrapper-command-match.ts(28,5): error TS2511: Cannot create an instance of an abstract class.\ntests/reminders/task-agent-reminder-scope.ts(144,11): error TS2322: Type 'number' is not assignable to type 'CallSiteCourseNo'.\n  Type 'number' is not assignable to type '{ readonly __callSiteCourseBrand: unique symbol; }'.\ntests/reminders/task-agent-reminder-scope.ts(145,11): error TS2322: Type 'number' is not assignable to type 'CallSiteGenseqNo'.\n  Type 'number' is not assignable to type '{ readonly __callSiteGenseqBrand: unique symbol; }'.\ntests/reminders/task-agent-reminder-scope.ts(174,11): error TS2322: Type 'number' is not assignable to type 'CallSiteCourseNo'.\n  Type 'number' is not assignable to type '{ readonly __callSiteCourseBrand: unique symbol; }'.\ntests/reminders/task-agent-reminder-scope.ts(175,11): error TS2322: Type 'number' is not assignable to type 'CallSiteGenseqNo'.\n  Type 'number' is not assignable to type '{ readonly __callSiteGenseqBrand: unique symbol; }'.\ntests/reminders/task-agent-reminder-scope.ts(187,11): error TS2322: Type 'number' is not assignable to type 'CallSiteCourseNo'.\n  Type 'number' is not assignable to type '{ readonly __callSiteCourseBrand: unique symbol; }'.\ntests/reminders/task-agent-reminder-scope.ts(188,11): error TS2322: Type 'number' is not assignable to type 'CallSiteGenseqNo'.\n  Type 'number' is not assignable to type '{ readonly __callSiteGenseqBrand: unique symbol; }'.\ntests/reminders/task-agent-reminder-scope.ts(203,11): error TS2322: Type 'number' is not assignable to type 'CallSiteCourseNo'.\n  Type 'number' is not assignable to type '{ readonly __callSiteCourseBrand: unique symbol; }'.\ntests/reminders/task-agent-reminder-scope.ts(204,11): error TS2322: Type 'number' is not assignable to type 'CallSiteGenseqNo'.\n  Type 'number' is not assignable to type '{ readonly __callSiteGenseqBrand: unique symbol; }'.\ntests/reminders/task-agent-reminder-scope.ts(219,11): error TS2322: Type 'number' is not assignable to type 'CallSiteCourseNo'.\n  Type 'number' is not assignable to type '{ readonly __callSiteCourseBrand: unique symbol; }'.\ntests/reminders/task-agent-reminder-scope.ts(220,11): error TS2322: Type 'number' is not assignable to type 'CallSiteGenseqNo'.\n  Type 'number' is not assignable to type '{ readonly __callSiteGenseqBrand: unique symbol; }'.\ntests/ripgrep-streaming.ts(29,23): error TS2835: Relative import paths need explicit file extensions in ECMAScript imports when '--moduleResolution' is 'node16' or 'nodenext'. Did you mean '../main/tools/ripgrep.js'?\ntests/ripgrep-windows-compat.ts(29,23): error TS2835: Relative import paths need explicit file extensions in ECMAScript imports when '--moduleResolution' is 'node16' or 'nodenext'. Did you mean '../main/tools/ripgrep.js'?\ntests/task-package.ts(174,7): error TS2322: Type 'number' is not assignable to type 'CallSiteCourseNo'.\n  Type 'number' is not assignable to type '{ readonly __callSiteCourseBrand: unique symbol; }'.\ntests/task-package.ts(175,7): error TS2322: Type 'number' is not assignable to type 'CallSiteGenseqNo'.\n  Type 'number' is not assignable to type '{ readonly __callSiteGenseqBrand: unique symbol; }'.\ntests/toolsets/shell-cmd-capture-env.ts(73,5): error TS2322: Type 'unknown' is not assignable to type 'boolean'.\n[ELIFECYCLE] Command failed with exit code 2.\n",
+      "scope": "未放宽类型或排除测试；本批九项定向编译通过。"
+    },
+    "inventory": {
+      "typescriptFiles": 279,
+      "supportFiles": 17,
+      "candidateCases": 262,
+      "reviewedCandidates": 99,
+      "remainingUnauditedCandidates": 163,
+      "outsideSuites": 150,
+      "missingDirectPackageScriptTargets": 0,
+      "staleAuditEntries": 0
+    },
+    "unexecutedScope": "本批未改生产运行时或共享驱动夹具，没有重跑完整kernel/context/configuration/manual/filesystem套件；未执行真实供应商、网络浏览器、实际Windows平台或完整驱动重启。当前nine/component范围见各项断言审查。"
+  }
+}

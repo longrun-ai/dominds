@@ -22,6 +22,8 @@ pnpm run test:semantic:manual
 pnpm run test:semantic:kernel
 pnpm run test:filesystem
 pnpm run test:semantic:filesystem
+pnpm run test:persistence
+pnpm run test:semantic:persistence
 ```
 
 - `test`: a small local smoke suite; not full product, browser, packaging, or provider coverage.
@@ -41,6 +43,9 @@ pnpm run test:semantic:filesystem
 
 - `test:filesystem`: public path/extension decision APIs and direct tools against real files, symlinks and dialog pad objects; includes preview non-effects, pad lifecycle/scope, occurrence-plan ownership and drift guards, scoped team edits, exact editing results and output budgets. These cases use the host filesystem and do not establish a full sandbox, other-platform behavior or provider compliance.
 - `test:semantic:filesystem`: emits actual creation/overwrite refusal and recovery, link operations, edit plans, pad projection/cleanup, proposed edits and clipped tool output. Generation success leaves every semantic case pending subjective review.
+
+- `test:persistence`: nine isolated cases for actual final disk snapshots, thinking/reasoning stream and replay, requester JSONL stacks, status moves, reminder owner recovery in an independent process, active-course reminder writes, fork anchors and priming data. Other component cases do not claim full driver restart, live providers or actual Windows behavior; I/O fault injection is explicit.
+- `test:semantic:persistence`: emits actual ambiguous-stack-update and occupied-status-destination diagnostics after preserving the corresponding state. Both outputs start pending subjective review.
 
 The [assertion audit ledger](./audit.json) records which candidate tests have actually been reviewed, their business value, lane and evidence. Inventory exposes unaudited candidates and stale ledger paths. Neither suite membership nor a prior ledger entry decides the meaning of freshly generated output.
 

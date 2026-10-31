@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import * as fs from 'node:fs/promises';
-import * as os from 'node:os';
 import * as path from 'node:path';
+import { withTempRtws } from '../kernel-driver/helpers';
 
 import type { MainDialogMetadataFile } from '@longrun-ai/kernel/types/storage';
 import { formatUnifiedTimestamp } from '@longrun-ai/kernel/utils/time';
@@ -14,18 +14,6 @@ import {
 import { DialogPersistence, DiskFileDialogStore } from '../../main/persistence';
 import { handleWebSocketMessage } from '../../main/server/websocket-handler';
 import { materializeReminder } from '../../main/tool';
-
-async function withTempCwd<T>(fn: () => Promise<T>): Promise<T> {
-  const sandboxDir = await fs.mkdtemp(path.join(os.tmpdir(), 'dominds-reminders-status-path-'));
-  const previousCwd = process.cwd();
-  process.chdir(sandboxDir);
-  try {
-    return await fn();
-  } finally {
-    process.chdir(previousCwd);
-    await fs.rm(sandboxDir, { recursive: true, force: true });
-  }
-}
 
 async function pathExists(filePath: string): Promise<boolean> {
   try {
@@ -44,7 +32,7 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 }
 
 async function main(): Promise<void> {
-  await withTempCwd(async () => {
+  await withTempRtws(async () => {
     const dialogId = new DialogID('aa/bb/remstatus');
     const metadata: MainDialogMetadataFile = {
       id: dialogId.selfId,
@@ -78,6 +66,7 @@ async function main(): Promise<void> {
     dialog.setPersistenceStatus('completed');
     dialog.reminders.push(
       materializeReminder({
+        id: 'completed-reminder-data',
         content: 'Completed dialog reminder',
         scope: 'dialog',
         renderMode: 'markdown',
@@ -98,10 +87,14 @@ async function main(): Promise<void> {
     assert.equal(await pathExists(runningReminderPath), false);
 
     const restored = await DialogPersistence.loadReminderState(dialogId, 'completed');
-    const completedReminder = restored.find(
-      (reminder) => reminder.content === 'Completed dialog reminder',
+    const completedMatches = restored.filter(
+      (reminder) => reminder.id === 'completed-reminder-data',
     );
+    assert.equal(completedMatches.length, 1);
+    const completedReminder = completedMatches[0];
     assert.ok(completedReminder, 'Expected completed dialog reminder to be restored');
+    assert.equal(completedReminder.content, 'Completed dialog reminder');
+    assert.equal(completedReminder.scope, 'dialog');
 
     const sent: unknown[] = [];
     const ws = {
@@ -126,6 +119,7 @@ async function main(): Promise<void> {
     assert.ok(isRecord(ready));
     assert.ok(isRecord(ready['dialog']));
     assert.equal(ready['dialog']['status'], 'completed');
+    assert.equal(await pathExists(DialogPersistence.getMainDialogPath(dialogId, 'running')), false);
     assert.equal(await pathExists(runningReminderPath), false);
   });
 }

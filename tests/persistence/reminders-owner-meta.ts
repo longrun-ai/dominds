@@ -1,14 +1,18 @@
 /**
  * reminders.json owner/meta persistence regression script
  *
- * Ensures owned reminders survive restarts:
+ * Checks current-format disk reload and registry rehydration in the writer and a fresh process:
  * - reminder ownerName is persisted and rehydrated
  * - reminder meta is persisted and rehydrated
  */
+import { execFile } from 'node:child_process';
+import { promisify } from 'node:util';
+import { installRecordingGlobalDialogEventBroadcaster } from '../../main/bootstrap/global-dialog-event-broadcaster';
+
+import { withTempRtws } from '../kernel-driver/helpers';
 
 import assert from 'node:assert/strict';
 import * as fs from 'node:fs/promises';
-import * as os from 'node:os';
 import * as path from 'node:path';
 import { DialogID } from '../../main/dialog';
 import { DialogPersistence } from '../../main/persistence';
@@ -17,26 +21,17 @@ import { buildAppReminderOwnerRegistryName } from '../../main/tools/app-reminder
 import '../../main/tools/builtins';
 import { getReminderOwner, registerReminderOwner } from '../../main/tools/registry';
 
-async function withTempCwd<T>(fn: (sandboxDir: string) => Promise<T>): Promise<T> {
-  const sandboxDir = await fs.mkdtemp(path.join(os.tmpdir(), 'dominds-reminders-persist-'));
-  const previousCwd = process.cwd();
-  process.chdir(sandboxDir);
-  try {
-    return await fn(sandboxDir);
-  } finally {
-    process.chdir(previousCwd);
-    await fs.rm(sandboxDir, { recursive: true, force: true });
-  }
-}
-
 function assertRecord(value: unknown): asserts value is Record<string, unknown> {
   assert.equal(typeof value, 'object');
   assert.notEqual(value, null);
   assert.equal(Array.isArray(value), false);
 }
 
+const reloadChild = process.argv.includes('--reload-check');
 async function main(): Promise<void> {
-  await withTempCwd(async (sandboxDir) => {
+  if (reloadChild)
+    installRecordingGlobalDialogEventBroadcaster({ label: 'tests/reminder-owner-reload-child' });
+  await withTempRtws(async (sandboxDir) => {
     const appId = '@tests/reminder-owner-package';
     const ownerRef = 'probe_session';
     const managerTool = 'probe_session_status';
@@ -63,6 +58,39 @@ async function main(): Promise<void> {
     assert.ok(registeredAppOwner, 'Expected Application Component reminder owner to be registered');
 
     const dialogId = new DialogID('11/22/33334444');
+    const checkLoaded = async (): Promise<void> => {
+      const loaded = await DialogPersistence.loadReminderState(dialogId);
+      assert.equal(loaded.length, 3);
+      assert.ok(loaded[0].owner, 'Expected owner to be rehydrated for reminder[0]');
+      assert.equal(loaded[0].owner.name, 'mcpLease');
+      assert.ok(loaded[1].owner, 'Expected owner to be rehydrated for reminder[1]');
+      assert.equal(loaded[1].owner.name, 'shellCmd');
+      assertRecord(loaded[1].meta);
+      assert.equal(loaded[1].meta['kind'], 'daemon');
+      assert.equal(loaded[1].meta['pid'], 123);
+      assert.ok(loaded[2].owner, 'Expected owner to be rehydrated for reminder[2]');
+      assert.equal(loaded[2].owner.name, appOwnerName);
+      assert.equal(loaded[0].owner, mcpLeaseOwner);
+      assert.equal(loaded[1].owner, shellCmdOwner);
+      assert.equal(loaded[2].owner, registeredAppOwner);
+      assert.deepEqual(
+        loaded.map(({ content }) => content),
+        ['MCP lease reminder', 'Daemon reminder', 'Component-owned reminder'],
+      );
+      assert.equal(loaded[2].renderMode, 'plain');
+      assertRecord(loaded[2].meta);
+      assert.equal(loaded[2].meta['appId'], appId);
+      assert.equal(loaded[2].meta['ownerRef'], ownerRef);
+      assertRecord(loaded[2].meta['manager']);
+      assert.equal(loaded[2].meta['manager']['tool'], managerTool);
+      assertRecord(loaded[2].meta['update']);
+      assert.equal(loaded[2].meta['update']['altInstruction'], 'probe_session_status({})');
+      assert.equal(loaded[2].meta['componentState'], 'active');
+    };
+    if (reloadChild) {
+      await checkLoaded();
+      return;
+    }
     // This test writes reminder state directly for a synthetic dialog id without going through
     // the normal dialog persistence bootstrap. Create the fixture directory explicitly here;
     // production reminder persistence must not recreate missing dialog directories on demand.
@@ -135,26 +163,33 @@ async function main(): Promise<void> {
     assert.equal(reminders[2]['meta']['update']['altInstruction'], 'probe_session_status({})');
     assert.equal(reminders[2]['meta']['componentState'], 'active');
 
-    const loaded = await DialogPersistence.loadReminderState(dialogId);
-    assert.equal(loaded.length, 3);
-    assert.ok(loaded[0].owner, 'Expected owner to be rehydrated for reminder[0]');
-    assert.equal(loaded[0].owner.name, 'mcpLease');
-    assert.ok(loaded[1].owner, 'Expected owner to be rehydrated for reminder[1]');
-    assert.equal(loaded[1].owner.name, 'shellCmd');
-    assertRecord(loaded[1].meta);
-    assert.equal(loaded[1].meta['kind'], 'daemon');
-    assert.equal(loaded[1].meta['pid'], 123);
-    assert.ok(loaded[2].owner, 'Expected owner to be rehydrated for reminder[2]');
-    assert.equal(loaded[2].owner.name, appOwnerName);
-    assert.equal(loaded[2].renderMode, 'plain');
-    assertRecord(loaded[2].meta);
-    assert.equal(loaded[2].meta['appId'], appId);
-    assert.equal(loaded[2].meta['ownerRef'], ownerRef);
-    assertRecord(loaded[2].meta['manager']);
-    assert.equal(loaded[2].meta['manager']['tool'], managerTool);
-    assertRecord(loaded[2].meta['update']);
-    assert.equal(loaded[2].meta['update']['altInstruction'], 'probe_session_status({})');
-    assert.equal(loaded[2].meta['componentState'], 'active');
+    await checkLoaded();
+    // Read-only restart probe after all parent saves settle; it shares no registry or cache objects.
+    const { stdout } = await promisify(execFile)(
+      process.execPath,
+      [
+        require.resolve('tsx/cli'),
+        '--tsconfig',
+        path.resolve(__dirname, '../tsconfig.json'),
+        __filename,
+        '--reload-check',
+      ],
+      { cwd: sandboxDir, env: process.env, timeout: 10000 },
+    );
+    const child: unknown = JSON.parse(stdout.trim());
+    assertRecord(child);
+    assert.equal(child['status'], 'reloaded');
+    assert.equal(child['count'], 3);
+    assert.equal(typeof child['pid'], 'number');
+    assert.notEqual(child['pid'], process.pid);
+    console.log(
+      JSON.stringify({
+        probe: 'independent-reminder-owner-reload',
+        writerPid: process.pid,
+        readerPid: child['pid'],
+        count: child['count'],
+      }),
+    );
 
     // No backward-compat: old reminders.json data (missing ownerName/meta) is assumed cleared.
     // This script intentionally tests only the current on-disk schema.
@@ -163,7 +198,9 @@ async function main(): Promise<void> {
 
 main()
   .then(() => {
-    console.log('OK');
+    console.log(
+      reloadChild ? JSON.stringify({ status: 'reloaded', pid: process.pid, count: 3 }) : 'OK',
+    );
   })
   .catch((error: unknown) => {
     console.error(error);

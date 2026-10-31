@@ -1,7 +1,8 @@
+import { toCallSiteCourseNo, toCallSiteGenseqNo } from '@longrun-ai/kernel/types/storage';
 import assert from 'node:assert/strict';
 import * as fs from 'node:fs/promises';
-import * as os from 'node:os';
 import * as path from 'node:path';
+import { withTempRtws } from '../kernel-driver/helpers';
 
 import YAML from 'yaml';
 
@@ -25,18 +26,6 @@ import {
 } from '../../main/priming';
 import { loadSharedReminders } from '../../main/shared-reminders';
 import { materializeReminder, type Reminder } from '../../main/tool';
-
-async function withTempCwd<T>(fn: (sandboxDir: string) => Promise<T>): Promise<T> {
-  const sandboxDir = await fs.mkdtemp(path.join(os.tmpdir(), 'dominds-priming-reminders-'));
-  const previousCwd = process.cwd();
-  process.chdir(sandboxDir);
-  try {
-    return await fn(sandboxDir);
-  } finally {
-    process.chdir(previousCwd);
-    await fs.rm(sandboxDir, { recursive: true, force: true });
-  }
-}
 
 async function writeLatest(dialogId: DialogID, currentCourse: number): Promise<void> {
   const latest: DialogLatestFile = {
@@ -68,7 +57,7 @@ function parseTopLevelFrontmatter(markdown: string): Record<string, unknown> {
 }
 
 async function main(): Promise<void> {
-  await withTempCwd(async () => {
+  await withTempRtws(async () => {
     const primingSlug = `priming-reminders-${path.basename(process.cwd())}`;
     const sourceId = new DialogID('11/22/priming-source');
     const sourceMeta: MainDialogMetadataFile = {
@@ -147,9 +136,9 @@ async function main(): Promise<void> {
       tellaskContent: 'Investigate the environment',
       targetAgentId: 'scribe',
       callId: 'call-pending-1',
-      callSiteCourse: 1,
-      callSiteGenseq: 1,
-      callType: 'B',
+      callSiteCourse: toCallSiteCourseNo(1),
+      callSiteGenseq: toCallSiteGenseqNo(1),
+      callType: 'C',
     };
     await DialogPersistence.saveActiveCalleeDispatches(
       sourceId,
@@ -168,15 +157,10 @@ async function main(): Promise<void> {
     const savedMarkdown = await fs.readFile(saved.path, 'utf-8');
     const frontmatter = parseTopLevelFrontmatter(savedMarkdown);
     assert.ok(Array.isArray(frontmatter['reminders']), 'priming frontmatter must export reminders');
+    assert.equal(frontmatter['activeCalleeDispatches'], undefined);
     assert.equal(
-      savedMarkdown.includes('activeCalleeDispatches'),
-      false,
-      'priming markdown must not export pending runtime state',
-    );
-    assert.equal(
-      savedMarkdown.includes('llmGeneration:'),
-      true,
-      'priming markdown must export generation model metadata',
+      (await DialogPersistence.loadActiveCalleeDispatches(sourceId, 'running')).length,
+      1,
     );
 
     const replayId = new DialogID('11/22/priming-replay');

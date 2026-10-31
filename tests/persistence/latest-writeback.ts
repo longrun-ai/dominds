@@ -6,8 +6,14 @@
  * - mutator callbacks are linearized (no lost increments)
  * - write-back eventually flushes a correct snapshot to disk
  *
- * This script is intentionally small and self-contained; it runs against a temp rtws.
+ * Runs through the managed isolated test workspace.
  */
+import {
+  toCallSiteCourseNo,
+  toCallSiteGenseqNo,
+  toDialogCourseNumber,
+} from '@longrun-ai/kernel/types/storage';
+import { withTempRtws } from '../kernel-driver/helpers';
 
 import type {
   ActiveCalleeDispatchRecord,
@@ -17,7 +23,6 @@ import { formatUnifiedTimestamp } from '@longrun-ai/kernel/utils/time';
 import assert from 'node:assert/strict';
 import * as fsNode from 'node:fs';
 import * as fs from 'node:fs/promises';
-import * as os from 'node:os';
 import * as path from 'node:path';
 import * as yaml from 'yaml';
 import { DialogID, MainDialog } from '../../main/dialog';
@@ -30,33 +35,26 @@ import {
 import { DialogPersistence, DiskFileDialogStore } from '../../main/persistence';
 import { DomindsPersistenceFileError } from '../../main/persistence-errors';
 
-const sleep = async (ms: number): Promise<void> =>
-  await new Promise((resolve) => setTimeout(resolve, ms));
-
-async function waitForFile(filePath: string, timeoutMs: number): Promise<void> {
-  const start = Date.now();
-  for (;;) {
-    try {
-      await fs.access(filePath);
-      return;
-    } catch {
-      if (Date.now() - start > timeoutMs) {
-        throw new Error(`Timed out waiting for file: ${filePath}`);
-      }
-      await sleep(50);
-    }
-  }
-}
-
-async function withTempCwd<T>(fn: (sandboxDir: string) => Promise<T>): Promise<T> {
-  const sandboxDir = await fs.mkdtemp(path.join(os.tmpdir(), 'dominds-latest-writeback-'));
-  const previousCwd = process.cwd();
-  process.chdir(sandboxDir);
+// Watch the atomic destination before mutations; file existence alone can observe an older flush.
+async function waitForFinalSnapshot(
+  directory: string,
+  messageCount: number,
+): Promise<Record<string, unknown>> {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), 2000);
   try {
-    return await fn(sandboxDir);
+    for await (const event of fs.watch(directory, { signal: controller.signal })) {
+      if (event.filename !== 'latest.yaml') continue;
+      const value: unknown = yaml.parse(
+        await fs.readFile(path.join(directory, 'latest.yaml'), 'utf8'),
+      );
+      assertRecord(value, 'actual disk snapshot');
+      if (value.messageCount === messageCount && value.functionCallCount === 2) return value;
+    }
+    throw new Error('Latest snapshot watcher ended before the final counters were persisted');
   } finally {
-    process.chdir(previousCwd);
-    await fs.rm(sandboxDir, { recursive: true, force: true });
+    clearTimeout(timer);
+    controller.abort();
   }
 }
 
@@ -67,7 +65,7 @@ function assertRecord(value: unknown, label: string): asserts value is Record<st
 }
 
 async function main(): Promise<void> {
-  await withTempCwd(async (sandboxDir) => {
+  await withTempRtws(async (sandboxDir) => {
     const dialogId = new DialogID('61/5a/da8d0169');
     const metadata: MainDialogMetadataFile = {
       id: dialogId.selfId,
@@ -76,6 +74,11 @@ async function main(): Promise<void> {
       createdAt: formatUnifiedTimestamp(new Date('2026-04-12T00:00:00.000Z')),
     };
     await DialogPersistence.saveMainDialogMetadata(dialogId, metadata, 'running');
+    const increments = 50;
+    const finalSnapshot = waitForFinalSnapshot(
+      DialogPersistence.getDialogEventsPath(dialogId),
+      1 + increments,
+    );
     await DialogPersistence.mutateDialogLatest(dialogId, () => ({
       kind: 'replace',
       next: {
@@ -108,7 +111,6 @@ async function main(): Promise<void> {
 
     // Invariant 2: mutator callbacks observe a linearized previous state.
     // If this regresses, concurrent increments may collapse.
-    const increments = 50;
     await Promise.all(
       Array.from({ length: increments }, () =>
         DialogPersistence.mutateDialogLatest(dialogId, (prev) => ({
@@ -122,17 +124,8 @@ async function main(): Promise<void> {
     assert.ok(afterIncrements, 'Expected staged latest after increments');
     assert.equal(afterIncrements.messageCount, 1 + increments);
 
-    // Invariant 3: write-back eventually flushes a correct snapshot to disk.
-    // Wait long enough for at least one write-back cycle to complete.
-    const latestPath = path.join(sandboxDir, '.dialogs', 'run', dialogId.selfId, 'latest.yaml');
-    await waitForFile(latestPath, 2000);
-
-    const content = await fs.readFile(latestPath, 'utf-8');
-    const parsed: unknown = yaml.parse(content);
-    assert.equal(typeof parsed, 'object');
-    assert.ok(parsed !== null);
-
-    const record = parsed as Record<string, unknown>;
+    // Invariant 3: observe the expected write-back snapshot, not a staged read or old file.
+    const record = await finalSnapshot;
     assert.equal(record['status'], 'active');
     assert.equal(record['messageCount'], 1 + increments);
     assert.equal(record['functionCallCount'], 2);
@@ -264,8 +257,8 @@ async function main(): Promise<void> {
       tellaskContent: 'Finish the side work before the root can answer.',
       targetAgentId: 'helper',
       callId: 'root-waits-side-dialog-call',
-      callSiteCourse: 4,
-      callSiteGenseq: 1,
+      callSiteCourse: toCallSiteCourseNo(4),
+      callSiteGenseq: toCallSiteGenseqNo(1),
       callType: 'C',
     };
     await DialogPersistence.appendActiveCalleeDispatch(dialogId, rootPendingSideDialog);
@@ -307,7 +300,7 @@ async function main(): Promise<void> {
           targetDialogId: 'aa/bb/asker-dialog',
           targetCallId: 'asker-call-stale',
           replyCallId: 'reply-call-stale',
-          replyGenseq: 44,
+          replyGenseq: toCallSiteGenseqNo(44),
           replyContent: 'This reply no longer has a valid asker target.',
           createdAt: formatUnifiedTimestamp(new Date('2026-04-12T00:02:55.000Z')),
         },
@@ -570,10 +563,16 @@ async function main(): Promise<void> {
               triggerId: 'followup:c1:g1',
               kind: 'followup',
               sourceGeneration: {
-                course: 1,
-                genseq: 1,
+                course: toDialogCourseNumber(1),
+                genseq: toCallSiteGenseqNo(1),
               },
-              reasons: [{ kind: 'reply_delivery_result', replyDeliveryId: 'reply-delivery:old' }],
+              reasons: [
+                {
+                  kind: 'reply_delivery_result',
+                  replyDeliveryId: 'reply-delivery:old',
+                  replyCallId: 'old-reply-call',
+                },
+              ],
               continuation: { kind: 'none' },
               createdAt: formatUnifiedTimestamp(new Date('2026-04-12T00:05:31.000Z')),
               seq: 1,
@@ -659,7 +658,7 @@ async function main(): Promise<void> {
               triggerId: 'queued-prompt:updated-assignment-msg',
               kind: 'queued_prompt',
               promptId: 'updated-assignment-msg',
-              course: 21,
+              course: toDialogCourseNumber(21),
               createdAt: formatUnifiedTimestamp(new Date('2026-04-12T00:05:41.000Z')),
               seq: 1,
             },
@@ -667,8 +666,8 @@ async function main(): Promise<void> {
               triggerId: 'followup:c21:g1558',
               kind: 'followup',
               sourceGeneration: {
-                course: 21,
-                genseq: 1558,
+                course: toDialogCourseNumber(21),
+                genseq: toCallSiteGenseqNo(1558),
               },
               reasons: [
                 {
@@ -710,7 +709,8 @@ async function main(): Promise<void> {
     const latestAfterSameCoursePrompt =
       await DialogPersistence.loadDialogLatest(sameCoursePromptDialogId);
     assert.ok(latestAfterSameCoursePrompt, 'Expected latest after same-course prompt start');
-    assert.deepEqual(latestAfterSameCoursePrompt.generationRunState?.acceptedTriggerIds, [
+    assert.ok(latestAfterSameCoursePrompt.generationRunState?.kind === 'open');
+    assert.deepEqual(latestAfterSameCoursePrompt.generationRunState.acceptedTriggerIds, [
       'queued-prompt:updated-assignment-msg',
     ]);
     assert.equal(
@@ -747,8 +747,8 @@ async function main(): Promise<void> {
               triggerId: 'followup:c21:g1558',
               kind: 'followup',
               sourceGeneration: {
-                course: 21,
-                genseq: 1558,
+                course: toDialogCourseNumber(21),
+                genseq: toCallSiteGenseqNo(1558),
               },
               reasons: [
                 {
@@ -794,7 +794,8 @@ async function main(): Promise<void> {
       latestAfterMissingQueuedPrompt,
       'Expected latest after missing queued_prompt generation start',
     );
-    assert.deepEqual(latestAfterMissingQueuedPrompt.generationRunState?.acceptedTriggerIds, []);
+    assert.ok(latestAfterMissingQueuedPrompt.generationRunState?.kind === 'open');
+    assert.deepEqual(latestAfterMissingQueuedPrompt.generationRunState.acceptedTriggerIds, []);
     assert.equal(
       latestAfterMissingQueuedPrompt.nextStep.triggers.some(
         (trigger) => trigger.triggerId === 'followup:c21:g1558',
@@ -845,7 +846,7 @@ async function main(): Promise<void> {
     let wakeQueueRmAttempts = 0;
     try {
       fsForPatch.rename = async (source, destination) => {
-        if (path.basename(destination) === 'wake-queue.jsonl') {
+        if (typeof destination === 'string' && path.basename(destination) === 'wake-queue.jsonl') {
           wakeQueueRenameAttempts += 1;
           if (wakeQueueRenameAttempts === 1) {
             const error = new Error('simulated transient EPERM for wake queue');
@@ -867,8 +868,8 @@ async function main(): Promise<void> {
       );
       assert.equal(wakeQueueRenameAttempts, 2);
 
-      fsForPatch.rm = async (target) => {
-        if (path.basename(target) === 'wake-queue.jsonl') {
+      fsForPatch.rm = async (target, options) => {
+        if (typeof target === 'string' && path.basename(target) === 'wake-queue.jsonl') {
           wakeQueueRmAttempts += 1;
           if (wakeQueueRmAttempts === 1) {
             const error = new Error('simulated transient EPERM for wake queue removal');
@@ -876,7 +877,7 @@ async function main(): Promise<void> {
             throw error;
           }
         }
-        return originalRm(target);
+        return originalRm(target, options);
       };
 
       await DialogPersistence.syncWakeQueueForDialogLatest(driveSideId, noDriveLatest, 'running');

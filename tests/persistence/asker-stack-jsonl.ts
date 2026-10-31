@@ -1,7 +1,15 @@
+import { toCallSiteCourseNo, toCallSiteGenseqNo } from '@longrun-ai/kernel/types/storage';
 import assert from 'node:assert/strict';
 import * as fs from 'node:fs/promises';
-import * as os from 'node:os';
 import * as path from 'node:path';
+import YAML from 'yaml';
+import {
+  createEmptyDialogNextStepState,
+  createEmptyDialogTellaskCallState,
+  createEmptyDialogTellaskResultState,
+} from '../../main/dialog-latest-state';
+import { semanticEvidenceCollector } from '../helpers/semantic-evidence';
+import { withTempRtws } from '../kernel-driver/helpers';
 
 import type {
   AskerDialogStackFrame,
@@ -14,18 +22,6 @@ import { formatUnifiedTimestamp } from '@longrun-ai/kernel/utils/time';
 import { DialogID } from '../../main/dialog';
 import { DialogPersistence } from '../../main/persistence';
 
-async function withTempCwd<T>(fn: () => Promise<T>): Promise<T> {
-  const sandboxDir = await fs.mkdtemp(path.join(os.tmpdir(), 'dominds-asker-stack-jsonl-'));
-  const previousCwd = process.cwd();
-  process.chdir(sandboxDir);
-  try {
-    return await fn();
-  } finally {
-    process.chdir(previousCwd);
-    await fs.rm(sandboxDir, { recursive: true, force: true });
-  }
-}
-
 function asRecord(value: unknown): Record<string, unknown> {
   if (typeof value !== 'object' || value === null || Array.isArray(value)) {
     throw new Error('expected JSON object');
@@ -34,7 +30,10 @@ function asRecord(value: unknown): Record<string, unknown> {
 }
 
 async function loadStackRows(dialogId: DialogID): Promise<Record<string, unknown>[]> {
-  const stackPath = DialogPersistence.getDialogAskerStackPath(dialogId, 'running');
+  const stackPath = path.join(
+    DialogPersistence.getSideDialogPath(dialogId, 'running'),
+    'asker-stack.jsonl',
+  );
   const raw = await fs.readFile(stackPath, 'utf-8');
   return raw
     .split('\n')
@@ -42,15 +41,16 @@ async function loadStackRows(dialogId: DialogID): Promise<Record<string, unknown
     .map((line) => asRecord(JSON.parse(line)));
 }
 
+const evidence = semanticEvidenceCollector('dominds-persistence-asker-stack-');
 async function main(): Promise<void> {
-  await withTempCwd(async () => {
+  await withTempRtws(async () => {
     const createdAt = formatUnifiedTimestamp(new Date('2026-04-21T00:00:00.000Z'));
     const mainId = new DialogID('main');
     const sideId = new DialogID('side', mainId.rootId);
     const mainMeta: MainDialogMetadataFile = {
       id: mainId.selfId,
       agentId: 'tester',
-      taskDocPath: 'task.md',
+      taskDocPath: 'plans/asker-stack.tsk',
       createdAt,
     };
     const initialAssignment: SideDialogAssignmentFromAsker = {
@@ -61,11 +61,13 @@ async function main(): Promise<void> {
       askerDialogId: mainId.selfId,
       callId: 'call-sub-1',
       collectiveTargets: ['pangu'],
+      callSiteCourse: toCallSiteCourseNo(1),
+      callSiteGenseq: toCallSiteGenseqNo(1),
     };
     const sideMeta: SideDialogMetadataFile = {
       id: sideId.selfId,
       agentId: 'pangu',
-      taskDocPath: 'task.md',
+      taskDocPath: 'plans/asker-stack.tsk',
       createdAt,
       sessionSlug: 'sticky',
     };
@@ -89,29 +91,44 @@ async function main(): Promise<void> {
       'running',
     );
     await DialogPersistence.saveSideDialogMetadata(sideId, sideMeta, 'running');
+    for (const id of [mainId, sideId]) {
+      await DialogPersistence.mutateDialogLatest(id, () => ({
+        kind: 'replace',
+        next: {
+          currentCourse: 1,
+          lastModified: createdAt,
+          status: 'active',
+          nextStep: createEmptyDialogNextStepState(),
+          tellaskCalls: createEmptyDialogTellaskCallState(),
+          tellaskResults: createEmptyDialogTellaskResultState(),
+        },
+      }));
+    }
     const sideMetadataYaml = await fs.readFile(
       path.join(DialogPersistence.getSideDialogPath(sideId, 'running'), 'dialog.yaml'),
       'utf-8',
     );
-    assert.ok(
-      !sideMetadataYaml.includes('askerDialogId'),
-      'sideDialog dialog.yaml must not persist askerDialogId',
-    );
-    assert.ok(
-      !sideMetadataYaml.includes('assignmentFromAsker'),
-      'sideDialog dialog.yaml must not persist assignmentFromAsker',
-    );
+    const savedMetadata = asRecord(YAML.parse(sideMetadataYaml));
+    assert.equal(savedMetadata.askerDialogId, undefined);
+    assert.equal(savedMetadata.assignmentFromAsker, undefined);
     await assert.rejects(
       DialogPersistence.loadSideDialogAssignmentFromAsker(mainId, 'running'),
-      /expects a sideDialog id/,
+      Error,
     );
+    const wrongId = new DialogID('different-side', mainId.rootId);
     await assert.rejects(
-      DialogPersistence.saveSideDialogMetadata(
-        new DialogID('different-side', mainId.rootId),
-        sideMeta,
-        'running',
+      DialogPersistence.saveSideDialogMetadata(wrongId, sideMeta, 'running'),
+      Error,
+    );
+    await assert.rejects(fs.stat(DialogPersistence.getSideDialogPath(wrongId, 'running')), {
+      code: 'ENOENT',
+    });
+    assert.equal(
+      await fs.readFile(
+        path.join(DialogPersistence.getSideDialogPath(sideId, 'running'), 'dialog.yaml'),
+        'utf8',
       ),
-      /metadata id mismatch/,
+      sideMetadataYaml,
     );
 
     const blankResponseIdRecord: SideDialogResponseStateRecord = {
@@ -129,10 +146,16 @@ async function main(): Promise<void> {
       callId: 'blank-response-id-call',
     };
     await assert.rejects(
-      DialogPersistence.saveSideDialogResponses(mainId, [blankResponseIdRecord], 'running'),
-      /empty responseId/,
+      DialogPersistence.saveSideDialogResponses(
+        mainId,
+        [blankResponseIdRecord],
+        undefined,
+        'running',
+      ),
+      Error,
     );
 
+    assert.deepEqual(await DialogPersistence.loadSideDialogResponses(mainId, 'running'), []);
     const initialRows = await loadStackRows(sideId);
     assert.equal(initialRows.length, 1);
     assert.equal(asRecord(initialRows[0]['assignmentFromAsker'])['callId'], 'call-sub-1');
@@ -167,11 +190,6 @@ async function main(): Promise<void> {
       asRecord(replacedRows[1]['tellaskReplyObligation'])['targetCallId'],
       'call-back-1',
     );
-    assert.ok(
-      !JSON.stringify(replacedRows).includes('call-sub-1'),
-      'replace pending must remove the old frame instead of retaining stale JSONL rows',
-    );
-
     const activeUpdated = await DialogPersistence.loadActiveTellaskReplyObligation(
       sideId,
       'running',
@@ -198,6 +216,7 @@ async function main(): Promise<void> {
     const assignmentOnlyFrame = assignmentOnlyStack.askerStack[0];
     assert.ok(assignmentOnlyFrame);
     assert.equal(assignmentOnlyFrame.tellaskReplyObligation, undefined);
+    assert.ok(assignmentOnlyFrame.assignmentFromAsker);
     assert.equal(assignmentOnlyFrame.assignmentFromAsker.callId, 'call-sub-2');
 
     const previousAskerAssignment: SideDialogAssignmentFromAsker = {
@@ -243,11 +262,11 @@ async function main(): Promise<void> {
       asRecord(crossAskerRows[0]['assignmentFromAsker'])['callId'],
       'call-from-new-asker',
     );
-    assert.ok(
-      !JSON.stringify(crossAskerRows).includes(previousAskerAssignment.callId),
-      'cross-asker replacement must remove the old asker frame',
-    );
-
+    assert.equal(crossAskerRows[0]['askerDialogId'], 'side-asker');
+    const crossObligation = asRecord(crossAskerRows[0]['tellaskReplyObligation']);
+    assert.equal(crossObligation['targetCallId'], 'call-from-new-asker');
+    assert.equal(crossObligation['targetDialogId'], 'side-asker');
+    assert.equal(crossObligation['tellaskContent'], 'New asker assignment');
     const duplicateAssignment: SideDialogAssignmentFromAsker = {
       ...initialAssignment,
       tellaskContent: 'Duplicate pending assignment',
@@ -269,6 +288,8 @@ async function main(): Promise<void> {
       { askerStack: [duplicateFrame, duplicateFrame] },
       'running',
     );
+    const beforeDuplicate = await loadStackRows(sideId);
+    let actualError = '';
     await assert.rejects(
       DialogPersistence.updateSideDialogAssignment(
         sideId,
@@ -280,9 +301,33 @@ async function main(): Promise<void> {
         'running',
         { replacePendingCallId: duplicateAssignment.callId },
       ),
-      /duplicate old frames/,
+      (error: unknown) => {
+        assert.ok(error instanceof Error);
+        actualError = error.message;
+        return true;
+      },
     );
+    assert.deepEqual(await loadStackRows(sideId), beforeDuplicate);
+    evidence.record({
+      id: 'duplicate-pending',
+      scenario:
+        'A pending assignment is replaced while a newer ask-back remains on top, and can be replaced across requesters. A later deliberately duplicated old frame makes replacement fail before any JSONL rows change.',
+      businessValue:
+        'Prevent an ambiguous update from dropping a requester or reply obligation and diagnose the refused replacement.',
+      context: {
+        oldMatchingFrames: 2,
+        rowsUnchangedAfterRefusal: true,
+        priorCrossRequesterReplacementSucceeded: true,
+        scope:
+          'Direct persisted JSONL stack operations; no model, delivery scheduling or process-restart claim.',
+      },
+      reviewQuestions: [
+        'Does the actual error identify the duplicate-frame ambiguity and the affected dialog without implying that a replacement was committed?',
+      ],
+      actualText: actualError,
+    });
   });
+  await evidence.write();
 }
 
 main()
