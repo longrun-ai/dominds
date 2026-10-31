@@ -804,6 +804,24 @@
       "lane": "packaging",
       "value": "真实声明发布入口与四包prepublish guard，受控npm/pnpm边界下的早拒、顺序/flags、缓存保留复用/换提交重建及确认后清理、已发布版本核对",
       "evidence": "Complete original/final/test-diff assertion review, value mapping, real cache regression and actual fresh diagnostic evidence: tests/semantic/reviews/2026-10-31-public-contracts.json. Public fields/state, supplied data, actual subprocess effects, Git/cache/archive bytes and flags are machine oracles. Valuable diagnostic text requires independent subjective review; generation and this design ledger do not accept fresh output. No source snippet, fixed prose or keyword detector; current App compatibility retained without App destination architecture. External npm/pnpm are controlled in a closed PATH; no live registry/publish/authentication/browser claim."
+    },
+    "provider/llm-quirks-retry-handling.ts": {
+      "status": "reviewed",
+      "lane": "retry",
+      "value": "保留原21个公开quirk/classifier组件边界：异常分类/429优先级/本地文件排除、连续空响应与跨context恢复额度、两次复核预算",
+      "evidence": "Full 2141-line original/42-value mapping, three final candidates, two helpers, production guidance and complete test diff review: tests/semantic/reviews/2026-10-31-provider-retry.json. Actual timers/Dialogs/persistence/events and controlled external request callbacks; no fake Dialog, guessed event-count reader, prose/unique-wording oracle or global timer replacement. 38 actual policy/UI/recovery texts require independent subjective review. Baseline monolith timed out at the same60s bound; individual generation success/ledger design scope never accepts fresh semantic output or claims a live provider."
+    },
+    "provider/retry-request-lifecycle.ts": {
+      "status": "reviewed",
+      "lane": "retry",
+      "value": "真实Dialog/磁盘生命周期中的实际重试时间与次数、策略降级/限频上限、拒绝/取消/Problems收尾、恢复预留与真实Kimi两输入后三请求停止",
+      "evidence": "Full 2141-line original/42-value mapping, three final candidates, two helpers, production guidance and complete test diff review: tests/semantic/reviews/2026-10-31-provider-retry.json. Actual timers/Dialogs/persistence/events and controlled external request callbacks; no fake Dialog, guessed event-count reader, prose/unique-wording oracle or global timer replacement. 38 actual policy/UI/recovery texts require independent subjective review. Baseline monolith timed out at the same60s bound; individual generation success/ledger design scope never accepts fresh semantic output or claims a live provider."
+    },
+    "provider/retry-empty-recovery.ts": {
+      "status": "reviewed",
+      "lane": "retry",
+      "value": "四个真实五请求空响应burst：一次恢复预留、第二次预算拒绝、成功复位和same-context路径；保留三秒实际退避、事件路由/错误保真与磁盘闭合",
+      "evidence": "Full 2141-line original/42-value mapping, three final candidates, two helpers, production guidance and complete test diff review: tests/semantic/reviews/2026-10-31-provider-retry.json. Actual timers/Dialogs/persistence/events and controlled external request callbacks; no fake Dialog, guessed event-count reader, prose/unique-wording oracle or global timer replacement. 38 actual policy/UI/recovery texts require independent subjective review. Baseline monolith timed out at the same60s bound; individual generation success/ledger design scope never accepts fresh semantic output or claims a live provider."
     }
   },
   "retired": {

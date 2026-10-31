@@ -110,7 +110,13 @@ const packaging = [
   'apps-public-version-drift-guard.ts',
   'apps-public-publish-guard.ts',
 ];
+const retry = [
+  'provider/llm-quirks-retry-handling.ts',
+  'provider/retry-request-lifecycle.ts',
+  'provider/retry-empty-recovery.ts',
+];
 const semanticSuites = {
+  retry,
   packaging: [
     'apps-kernel-package-exports-contract.ts',
     'apps-public-version-drift-guard.ts',
@@ -196,7 +202,11 @@ export async function inventory() {
   const files = await sourceFiles();
   const { scripts } = JSON.parse(await fs.readFile(path.join(testsRoot, 'package.json'), 'utf8'));
   const registrations = Object.entries(scripts).flatMap(([script, command]) =>
-    [...command.matchAll(/(?:tsx|--)\s+([\w./-]+\.ts)(?:\s|$)/g)].map((match) => ({
+    [
+      ...command.matchAll(
+        /(?:tsx|--)\s+(?:(?:--isolated-rtws|--shared-rtws)\s+)*([\w./-]+\.ts)(?:\s|$)/g,
+      ),
+    ].map((match) => ({
       script,
       target: match[1],
     })),
@@ -236,6 +246,7 @@ export async function inventory() {
     recovery,
     bootstrap,
     packaging,
+    retry,
   };
   const included = new Set(Object.values(suites).flat());
   const audit = JSON.parse(await fs.readFile(path.join(testsRoot, 'audit.json'), 'utf8'));
@@ -250,7 +261,7 @@ export async function inventory() {
     missingPackageScriptTargets,
     unauditedCandidates,
     missingAuditedFiles: Object.keys(audit.cases).filter((file) => !candidates.includes(file)),
-    note: 'Discovery and script registration are not measurements of behavior or line coverage. Missing package-script targets cover direct tsx/rtws TypeScript paths, not arbitrary shell composition. Outside-suite candidates include live probes and external integrations; audit prerequisites before running them.',
+    note: 'Discovery and script registration are not measurements of behavior or line coverage. Missing package-script targets cover direct tsx/rtws TypeScript paths, including explicit shared/isolated flags, not arbitrary shell composition. Outside-suite candidates include live probes and external integrations; audit prerequisites before running them.',
   };
 }
 
@@ -353,10 +364,11 @@ async function main() {
       'recovery',
       'bootstrap',
       'packaging',
+      'retry',
     ].includes(args[1])
   ) {
     throw new Error(
-      'Usage: node tests/run.mjs --list | --suite smoke | --suite kernel | --suite context [--semantic] | --suite configuration [--semantic] | --suite manual [--semantic] | --suite filesystem [--semantic] | --suite persistence [--semantic] | --suite recovery [--semantic] | --suite bootstrap [--semantic] | --suite packaging [--semantic]',
+      'Usage: node tests/run.mjs --list | --suite smoke | --suite kernel | --suite context [--semantic] | --suite configuration [--semantic] | --suite manual [--semantic] | --suite filesystem [--semantic] | --suite persistence [--semantic] | --suite recovery [--semantic] | --suite bootstrap [--semantic] | --suite packaging [--semantic] | --suite retry [--semantic]',
     );
   }
   const suite = args[1];

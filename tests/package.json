@@ -233,7 +233,12 @@
     "cli-rtws-cli": "pnpm run rtws -- --isolated-rtws cli/rtws-cli.ts",
     "interruption-llm-retry-stopped-resumable": "pnpm run rtws -- --isolated-rtws interruption-llm-retry-stopped-resumable.ts",
     "test:packaging": "node run.mjs --suite packaging",
-    "test:semantic:packaging": "node run.mjs --suite packaging --semantic"
+    "test:semantic:packaging": "node run.mjs --suite packaging --semantic",
+    "test:retry": "node run.mjs --suite retry",
+    "test:semantic:retry": "node run.mjs --suite retry --semantic",
+    "provider-llm-quirks-retry-handling": "pnpm run rtws -- --isolated-rtws provider/llm-quirks-retry-handling.ts",
+    "provider-retry-request-lifecycle": "pnpm run rtws -- --isolated-rtws provider/retry-request-lifecycle.ts",
+    "provider-retry-empty-recovery": "pnpm run rtws -- --isolated-rtws provider/retry-empty-recovery.ts"
   },
   "devDependencies": {
     "tsx": "^4.22.4",

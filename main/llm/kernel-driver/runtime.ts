@@ -1468,15 +1468,15 @@ function buildRetryExhaustedSummaryTextI18n(args: {
     `llm_retry_conservative_delay_ms=${args.retryConservativeDelayMs}，` +
     `llm_retry_backoff_multiplier=${args.retryBackoffMultiplier}，` +
     `llm_retry_max_delay_ms=${args.retryMaxDelayMs}。` +
-    'Dominds 只会在高置信度判断继续原样自动重试已无真实进展时停止自动重试。';
+    '本轮请求未满足继续自动重试的条件。请结合原始错误和当前停止条件决定下一步。';
   const zhTuningHint = args.suppressRetryTuningHint
     ? ''
-    : `若想调整前期快速重试窗口或后续慢速退避节奏，请编辑 \`.minds/llm.yaml\` 中的 ` +
+    : `如需调整未来请求的快速重试窗口或慢速退避节奏，请编辑 \`.minds/llm.yaml\` 中的 ` +
       `\`${providerPath}.llm_retry_aggressive_max_retries\`、` +
       `\`${providerPath}.llm_retry_initial_delay_ms\`、` +
       `\`${providerPath}.llm_retry_conservative_delay_ms\`、` +
       `\`${providerPath}.llm_retry_backoff_multiplier\`、` +
-      `\`${providerPath}.llm_retry_max_delay_ms\`，并检查 provider / network 稳定性。`;
+      `\`${providerPath}.llm_retry_max_delay_ms\`。退避参数不会撤销外部停止条件；请检查 provider / network 状态。`;
   const enBase =
     `LLM automatic retries stopped: provider=${args.provider}, ${args.attemptsMade} attempts total ` +
     `(1 initial request + ${actualRetryCount} retries), elapsed ${durationTextEn}. ` +
@@ -1485,15 +1485,15 @@ function buildRetryExhaustedSummaryTextI18n(args: {
     `llm_retry_conservative_delay_ms=${args.retryConservativeDelayMs}, ` +
     `llm_retry_backoff_multiplier=${args.retryBackoffMultiplier}, ` +
     `llm_retry_max_delay_ms=${args.retryMaxDelayMs}. ` +
-    `Dominds stops automatic retry only when it has high confidence that repeating the same retry path is no longer making real progress. `;
+    `This request did not meet the conditions for further automatic retry. Review the original error and the current stop conditions before deciding the next step. `;
   const enTuningHint = args.suppressRetryTuningHint
     ? ''
-    : `If you want to tune the front-loaded fast retry burst or the later slow backoff cadence, edit ` +
+    : `To adjust backoff timing for future requests, edit ` +
       `\`.minds/llm.yaml\`: \`${providerPath}.llm_retry_aggressive_max_retries\`, ` +
       `\`${providerPath}.llm_retry_initial_delay_ms\`, ` +
       `\`${providerPath}.llm_retry_conservative_delay_ms\`, ` +
       `\`${providerPath}.llm_retry_backoff_multiplier\`, ` +
-      `\`${providerPath}.llm_retry_max_delay_ms\`, and verify provider/network stability. `;
+      `\`${providerPath}.llm_retry_max_delay_ms\`. Backoff settings do not override external stop conditions; inspect provider/network state. `;
   return buildRetryDisplayTextI18n({
     zh: zhBase + zhTuningHint,
     en: enBase + enTuningHint,

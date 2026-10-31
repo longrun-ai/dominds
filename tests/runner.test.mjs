@@ -5,6 +5,7 @@ import { createRequire } from 'node:module';
 import os from 'node:os';
 import path from 'node:path';
 import test from 'node:test';
+import { pathToFileURL } from 'node:url';
 
 import { inventory, runCases } from './run.mjs';
 
@@ -168,4 +169,33 @@ test('isolated CLI preserves a failed workspace and cleans a successful workspac
   } finally {
     await fs.rm(sandbox, { recursive: true, force: true });
   }
+});
+
+test('inventory recognizes rtws flags and reports their missing script targets', async () => {
+  const directory = await fs.mkdtemp(path.join(os.tmpdir(), 'dominds-inventory-flags-'));
+  try {
+    await fs.copyFile(path.join(import.meta.dirname, 'run.mjs'), path.join(directory, 'run.mjs'));
+    const scripts = {
+      plain: 'tsx plain.ts',
+      isolated: 'pnpm run rtws -- --isolated-rtws isolated.ts',
+      shared: 'pnpm run rtws -- --shared-rtws shared.ts',
+      missingIsolated: 'pnpm run rtws -- --isolated-rtws missing-isolated.ts',
+      missingShared: 'pnpm run rtws -- --shared-rtws missing-shared.ts',
+    };
+    await fs.writeFile(path.join(directory, 'package.json'), JSON.stringify({ scripts }));
+    await fs.writeFile(path.join(directory, 'audit.json'), JSON.stringify({ cases: {} }));
+    for (const file of ['plain.ts', 'isolated.ts', 'shared.ts'])
+      await fs.writeFile(path.join(directory, file), '');
+    const copied = await import(pathToFileURL(path.join(directory, 'run.mjs')).href);
+    const catalog = await copied.inventory();
+    assert.deepEqual(catalog.withoutPackageScript, []);
+    assert.deepEqual(catalog.missingPackageScriptTargets, [
+      { script: 'missingIsolated', target: 'missing-isolated.ts' },
+      { script: 'missingShared', target: 'missing-shared.ts' },
+    ]);
+  } catch (error) {
+    console.error(`Inventory fixture retained: ${directory}`);
+    throw error;
+  }
+  await fs.rm(directory, { recursive: true, force: true });
 });
