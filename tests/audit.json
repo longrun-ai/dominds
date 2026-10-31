@@ -966,6 +966,60 @@
       "lane": "kernel",
       "value": "后台异步预检之后另一真实drive已消费工作时不再空跑模型；后续新输入仍被执行且原结果保留",
       "evidence": "2026-10-31 backend preflight batch: real canDrive is event-gated after its observed result; real mutex/driver/persistence, finite boundary provider and assertions outside callbacks. Old product deterministically makes two requests instead of one; fixed path makes one, then a later queued source makes exactly one more. Full test/assertion diff and durable failure/effects: tests/semantic/reviews/2026-10-31-backend-preflight-revalidation.json. No semantic wording oracle."
+    },
+    "reminders/daemon-exit-wake-event.ts": {
+      "status": "reviewed",
+      "lane": "daemon",
+      "value": "实际子进程与runner退出后，owner生成一次带真实ID/origin/完成信息的事件；显式反馈通知状态或给定已完成状态均不重复",
+      "evidence": "Complete original10/helper1409 lines and final9/native helpers/assertion diff review. tests/semantic/reviews/2026-10-31-daemon-lifecycle.json retains original value mapping, actual process/runner evidence, fixture corrections and24 fresh bilingual outputs with independent subjective verdicts. Exact assertions cover public enums/IDs, parsed JSON, complete supplied opaque data, versions and effects. AltInstruction, lifecycle/receipt/refusal/timeout meaning are never literal oracles. Registry reset is not an independent process restart; runner exits with daemon and only actually saved last-known snapshots are promised. Local observed platform only; no browser/provider/backend wake delivery or unseen final-byte/numeric-exit-code guarantee."
+    },
+    "reminders/daemon-reminder-gone-exit-snapshot.ts": {
+      "status": "reviewed",
+      "lane": "daemon",
+      "value": "真实tracked runner丢失后转completed保同ID及实际已保存的last-known输出，运行解释由全文主观评审",
+      "evidence": "Complete original10/helper1409 lines and final9/native helpers/assertion diff review. tests/semantic/reviews/2026-10-31-daemon-lifecycle.json retains original value mapping, actual process/runner evidence, fixture corrections and24 fresh bilingual outputs with independent subjective verdicts. Exact assertions cover public enums/IDs, parsed JSON, complete supplied opaque data, versions and effects. AltInstruction, lifecycle/receipt/refusal/timeout meaning are never literal oracles. Registry reset is not an independent process restart; runner exits with daemon and only actually saved last-known snapshots are promised. Local observed platform only; no browser/provider/backend wake delivery or unseen final-byte/numeric-exit-code guarantee."
+    },
+    "reminders/daemon-reminder-no-jitter-without-output-change.ts": {
+      "status": "reviewed",
+      "lane": "daemon",
+      "value": "无输出时完整可见数据/共享JSON/公开version/更新时间稳定；明确新输出推进版本并保存，再次无变化稳定",
+      "evidence": "Complete original10/helper1409 lines and final9/native helpers/assertion diff review. tests/semantic/reviews/2026-10-31-daemon-lifecycle.json retains original value mapping, actual process/runner evidence, fixture corrections and24 fresh bilingual outputs with independent subjective verdicts. Exact assertions cover public enums/IDs, parsed JSON, complete supplied opaque data, versions and effects. AltInstruction, lifecycle/receipt/refusal/timeout meaning are never literal oracles. Registry reset is not an independent process restart; runner exits with daemon and only actually saved last-known snapshots are promised. Local observed platform only; no browser/provider/backend wake delivery or unseen final-byte/numeric-exit-code guarantee."
+    },
+    "reminders/daemon-reminder-render.ts": {
+      "status": "reviewed",
+      "lane": "daemon",
+      "value": "真实超时转后台、metadata身份/运行和双流保真，手工删除实际拒绝且进程与文件不变；启动回执及维护指导并入同一语义证据",
+      "evidence": "Complete original10/helper1409 lines and final9/native helpers/assertion diff review. tests/semantic/reviews/2026-10-31-daemon-lifecycle.json retains original value mapping, actual process/runner evidence, fixture corrections and24 fresh bilingual outputs with independent subjective verdicts. Exact assertions cover public enums/IDs, parsed JSON, complete supplied opaque data, versions and effects. AltInstruction, lifecycle/receipt/refusal/timeout meaning are never literal oracles. Registry reset is not an independent process restart; runner exits with daemon and only actually saved last-known snapshots are promised. Local observed platform only; no browser/provider/backend wake delivery or unseen final-byte/numeric-exit-code guarantee."
+    },
+    "reminders/daemon-reminder-retained-after-exit.ts": {
+      "status": "reviewed",
+      "lane": "daemon",
+      "value": "真实进程和runner退出后保同ID/已保存双流/共享终态，无新变化不推进版本；实际手工删除成功并移除文件；真实已退出runner的读取失败保留完整文件/version，手工改写拒绝不丢快照，再显式删除成功",
+      "evidence": "Complete original10/helper1409 lines and final9/native helpers/assertion diff review. tests/semantic/reviews/2026-10-31-daemon-lifecycle.json retains original value mapping, actual process/runner evidence, fixture corrections and24 fresh bilingual outputs with independent subjective verdicts. Exact assertions cover public enums/IDs, parsed JSON, complete supplied opaque data, versions and effects. AltInstruction, lifecycle/receipt/refusal/timeout meaning are never literal oracles. Registry reset is not an independent process restart; runner exits with daemon and only actually saved last-known snapshots are promised. Local observed platform only; no browser/provider/backend wake delivery or unseen final-byte/numeric-exit-code guarantee. Initial24 subjective review rejected6 terminal maintenance paths; final regression reproduces original read-side deletion before product fix. Revised24 require new full subjective review."
+    },
+    "reminders/get-daemon-output-stream-selection.ts": {
+      "status": "reviewed",
+      "lane": "daemon",
+      "value": "真实双流及单流数据隔离、参数拒绝；透明IPC见证真实wait请求/响应，实际目标新输出唤醒/非目标持续输出仍超时",
+      "evidence": "Complete original10/helper1409 lines and final9/native helpers/assertion diff review. tests/semantic/reviews/2026-10-31-daemon-lifecycle.json retains original value mapping, actual process/runner evidence, fixture corrections and24 fresh bilingual outputs with independent subjective verdicts. Exact assertions cover public enums/IDs, parsed JSON, complete supplied opaque data, versions and effects. AltInstruction, lifecycle/receipt/refusal/timeout meaning are never literal oracles. Registry reset is not an independent process restart; runner exits with daemon and only actually saved last-known snapshots are promised. Local observed platform only; no browser/provider/backend wake delivery or unseen final-byte/numeric-exit-code guarantee."
+    },
+    "reminders/shared-daemon-reminder-command-mismatch.ts": {
+      "status": "reviewed",
+      "lane": "daemon",
+      "value": "损坏command身份时实际拒绝停止且子进程继续产生输出；显式恢复原metadata后实际同agent读取/停止正控",
+      "evidence": "Complete original10/helper1409 lines and final9/native helpers/assertion diff review. tests/semantic/reviews/2026-10-31-daemon-lifecycle.json retains original value mapping, actual process/runner evidence, fixture corrections and24 fresh bilingual outputs with independent subjective verdicts. Exact assertions cover public enums/IDs, parsed JSON, complete supplied opaque data, versions and effects. AltInstruction, lifecycle/receipt/refusal/timeout meaning are never literal oracles. Registry reset is not an independent process restart; runner exits with daemon and only actually saved last-known snapshots are promised. Local observed platform only; no browser/provider/backend wake delivery or unseen final-byte/numeric-exit-code guarantee."
+    },
+    "reminders/shared-daemon-reminder-persistence.ts": {
+      "status": "reviewed",
+      "lane": "daemon",
+      "value": "真实agent共享文件字段、同agent数据保真/异agent不可见，清内存registry后用真实runner读取双流并停止/移除",
+      "evidence": "Complete original10/helper1409 lines and final9/native helpers/assertion diff review. tests/semantic/reviews/2026-10-31-daemon-lifecycle.json retains original value mapping, actual process/runner evidence, fixture corrections and24 fresh bilingual outputs with independent subjective verdicts. Exact assertions cover public enums/IDs, parsed JSON, complete supplied opaque data, versions and effects. AltInstruction, lifecycle/receipt/refusal/timeout meaning are never literal oracles. Registry reset is not an independent process restart; runner exits with daemon and only actually saved last-known snapshots are promised. Local observed platform only; no browser/provider/backend wake delivery or unseen final-byte/numeric-exit-code guarantee."
+    },
+    "reminders/shared-daemon-reminder-wrapper-command-match.ts": {
+      "status": "reviewed",
+      "lane": "daemon",
+      "value": "自有真实Node wrapper的PID/实际命令/start身份匹配，缺runner历史记录触发实际进程清理与drop，非虚构保活恢复",
+      "evidence": "Complete original10/helper1409 lines and final9/native helpers/assertion diff review. tests/semantic/reviews/2026-10-31-daemon-lifecycle.json retains original value mapping, actual process/runner evidence, fixture corrections and24 fresh bilingual outputs with independent subjective verdicts. Exact assertions cover public enums/IDs, parsed JSON, complete supplied opaque data, versions and effects. AltInstruction, lifecycle/receipt/refusal/timeout meaning are never literal oracles. Registry reset is not an independent process restart; runner exits with daemon and only actually saved last-known snapshots are promised. Local observed platform only; no browser/provider/backend wake delivery or unseen final-byte/numeric-exit-code guarantee."
     }
   },
   "retired": {
@@ -1132,6 +1186,11 @@
       "lane": "semantic:reminders",
       "value": "Delete1170-line natural-language literal oracle and redundant same-input/voice/vocabulary checks. Preserve43 distinct valuable formatter inputs as actual pending subjective evidence, add English migration counterpart; full supplied body fidelity also survives in real reminder-render tool/projection/store checks.",
       "evidence": "tests/semantic/reviews/2026-10-31-reminder-core.json; replacement producer semantic/reminder-guidance.ts is support, not a passing automatic test. Old process success was not semantic acceptance."
+    },
+    "reminders/daemon-start-receipt-lifecycle-card.ts": {
+      "reason": "Only froze semantic start-receipt wording and parsed a cleanup PID from prose. The actual startup, live identity and deletion guard are exercised by daemon-reminder-render; its full actual start receipt is independently reviewed there. No duplicate automatic pass is counted.",
+      "replacement": "reminders/daemon-reminder-render.ts",
+      "evidence": "tests/semantic/reviews/2026-10-31-daemon-lifecycle.json"
     }
   }
 }

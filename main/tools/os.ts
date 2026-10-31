@@ -479,7 +479,9 @@ function buildShellCmdReminderMeta(
     shell: previousMeta.shell,
     startTime: previousMeta.startTime,
     update: {
-      altInstruction: `get_daemon_output({ "pid": ${daemon.pid} })`,
+      altInstruction: options?.completed
+        ? formatCompletedDaemonMaintenance(getWorkLanguage())
+        : `get_daemon_output({ "pid": ${daemon.pid} })`,
     },
   };
   if (!options?.completed) {
@@ -574,9 +576,15 @@ function buildShellCmdFinalizedMeta(
     completed: true,
     lastUpdated,
     update: {
-      altInstruction: `get_daemon_output({ "pid": ${previousMeta.pid} })`,
+      altInstruction: formatCompletedDaemonMaintenance(getWorkLanguage()),
     },
   };
+}
+
+function formatCompletedDaemonMaintenance(language: LanguageCode): string {
+  return language === 'zh'
+    ? '请阅读本提醒中最后一次已保存的快照。runner 已退出，无法继续拉取新输出；无需保留时，可用本提醒的 ID 调用 delete_reminder。'
+    : 'Read the last saved snapshot in this reminder. The runner has exited, so no new output can be fetched. When this reminder is no longer needed, call delete_reminder with its ID.';
 }
 
 type DaemonLifecyclePhase = 'running' | 'exited';
@@ -700,7 +708,7 @@ function formatShellCmdDaemonExitWakeContent(args: {
 - 命令: ${args.command}
 - 退出状态: ${status}
 
-请根据当前任务上下文判断是否需要查看最终 stdout/stderr 或向用户汇报结果；不要只回复“收到”。`
+请根据当前任务判断是否需要阅读生命周期提醒中最后一次已保存的 stdout/stderr 快照或向用户汇报结果。runner 随进程退出，不要假定还能继续拉取输出；不要只回复“收到”。`
     : `${prefix}
 A background process has exited. This is a runtime environment event, not a new user instruction.
 
@@ -708,7 +716,7 @@ A background process has exited. This is a runtime environment event, not a new 
 - Command: ${args.command}
 - Exit status: ${status}
 
-Decide from the current task context whether you need to inspect final stdout/stderr or report the result to the user; do not reply with a standalone acknowledgement.`;
+Decide from the current task context whether you need to read the last saved stdout/stderr snapshot in the lifecycle reminder or report the result to the user. The runner exits with the process; do not assume further output can be fetched. Do not reply with a standalone acknowledgement.`;
 }
 
 function abortableDelay(ms: number, signal: AbortSignal): Promise<void> {
@@ -3700,6 +3708,20 @@ export const getDaemonOutputTool: FuncTool = {
 
     const resolved = await resolveDaemonOutputFromMeta(reminder.meta, parsedArgs);
     if (resolved.kind === 'gone') {
+      if (
+        reminder.meta.completed === true ||
+        reminder.meta.runnerEndpoint !== undefined ||
+        reminder.meta.runnerPid !== undefined
+      ) {
+        // A read cannot recover the exited runner, but it must not discard the
+        // lifecycle owner's saved last-known state. Explicit deletion/stop is
+        // still responsible for removing that reminder.
+        return toolFailure(
+          language === 'zh'
+            ? `PID ${pid} 的 runner 已不可用，无法拉取新输出。最后一次已保存的快照仍保留在生命周期提醒 [${reminder.id}] 中，请阅读该提醒。`
+            : `The runner for PID ${pid} is unavailable, so no new output can be fetched. The last saved snapshot remains in lifecycle reminder [${reminder.id}]; read that reminder.`,
+        );
+      }
       await removeDaemonRemindersForPid(dlg, pid);
       return toolFailure(t.noDaemonFound(pid));
     }

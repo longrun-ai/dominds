@@ -77,7 +77,9 @@
     "test:compatible": "node tests/run.mjs --suite compatible",
     "test:semantic:compatible": "node tests/run.mjs --suite compatible --semantic",
     "test:reminders": "node tests/run.mjs --suite reminders",
-    "test:semantic:reminders": "node tests/run.mjs --suite reminders --semantic"
+    "test:semantic:reminders": "node tests/run.mjs --suite reminders --semantic",
+    "test:daemon": "node tests/run.mjs --suite daemon",
+    "test:semantic:daemon": "node tests/run.mjs --suite daemon --semantic"
   },
   "repository": {
     "type": "git",

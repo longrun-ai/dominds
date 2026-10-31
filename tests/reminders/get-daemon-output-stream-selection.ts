@@ -1,266 +1,236 @@
 import assert from 'node:assert/strict';
-import { DialogStore, MainDialog } from '../../main/dialog';
-import { setWorkLanguage } from '../../main/runtime/work-language';
-import type { Team } from '../../main/team';
-import {
-  getDaemonOutputTool,
-  shellCmdReminderOwner,
-  shellCmdTool,
-  stopDaemonTool,
-} from '../../main/tools/os';
-import { registerReminderOwner, unregisterReminderOwner } from '../../main/tools/registry';
-import { daemonScriptShell, withTempCwd, writeDaemonScriptCommand } from './daemon-test-utils';
-
-function createDialog(): MainDialog {
-  return new MainDialog(
-    new DialogStore(),
-    'get-daemon-output-stream-selection.tsk',
-    undefined,
-    'tester',
-  );
-}
-
-function requireDaemonPid(reminderMeta: unknown): number {
-  assert.equal(typeof reminderMeta, 'object');
-  assert.notEqual(reminderMeta, null);
-  assert.equal(Array.isArray(reminderMeta), false);
-  const meta = reminderMeta as Record<string, unknown>;
-  assert.equal(meta['kind'], 'daemon');
-  assert.equal(typeof meta['pid'], 'number');
-  return meta['pid'] as number;
-}
-
-async function listShellDaemonPids(dialog: MainDialog): Promise<Set<number>> {
-  const reminders = await dialog.listVisibleReminders();
-  return new Set(
-    reminders
-      .filter((candidate) => candidate.owner?.name === shellCmdReminderOwner.name)
-      .map((candidate) => requireDaemonPid(candidate.meta)),
-  );
-}
-
-async function startDaemonAndGetNewPid(
-  dialog: MainDialog,
-  caller: Team.Member,
-  command: string,
-): Promise<number> {
-  const before = await listShellDaemonPids(dialog);
-  await shellCmdTool.call(dialog, caller, {
-    command,
-    shell: daemonScriptShell(),
-    timeoutSeconds: 1,
-  });
-  const after = await listShellDaemonPids(dialog);
-  const newPids = [...after].filter((pid) => !before.has(pid));
-  assert.equal(newPids.length, 1, 'Expected exactly one new daemon reminder to exist');
-  const newPid = newPids[0];
-  assert.equal(typeof newPid, 'number');
-  return newPid;
-}
-
-function buildDelayedOutputDaemonCommand(): { nodeSource: string; powershellSource: string } {
-  return {
-    nodeSource: `
-console.log('stdout-initial');
-setTimeout(() => {
-  console.log('stdout-delayed');
-}, 2500);
-setInterval(() => {}, 10000);
-`,
-    powershellSource: `
-Write-Output 'stdout-initial'
-Start-Sleep -Milliseconds 2500
-Write-Output 'stdout-delayed'
-while ($true) { Start-Sleep -Seconds 10 }
-`,
-  };
-}
-
-function buildStdoutDuringStderrWaitDaemonCommand(): {
-  nodeSource: string;
-  powershellSource: string;
-} {
-  return {
-    nodeSource: `
-setTimeout(() => {
-  console.log('stdout-during-stderr-wait');
-}, 1500);
-setInterval(() => {}, 10000);
-`,
-    powershellSource: `
-Start-Sleep -Milliseconds 1500
-Write-Output 'stdout-during-stderr-wait'
-while ($true) { Start-Sleep -Seconds 10 }
-`,
-  };
-}
-
-async function main(): Promise<void> {
-  await withTempCwd('dominds-get-daemon-output-stream-selection-', async (sandboxDir) => {
-    setWorkLanguage('en');
-    registerReminderOwner(shellCmdReminderOwner);
-    try {
-      const dialog = createDialog();
-      const caller = {} as Team.Member;
-      const command = await writeDaemonScriptCommand(
-        sandboxDir,
-        'stdout-stderr-daemon.js',
-        `
-console.log('stdout-line');
-console.error('stderr-line');
-setInterval(() => {}, 10000);
-`,
-        `Write-Output 'stdout-line'; [Console]::Error.WriteLine('stderr-line'); while ($true) { Start-Sleep -Seconds 10 }`,
-      );
-      await shellCmdTool.call(dialog, caller, {
-        command,
-        shell: daemonScriptShell(),
-        timeoutSeconds: 1,
+import fs from 'node:fs/promises';
+import type { ToolArguments } from '../../main/tool';
+import { getDaemonOutputTool } from '../../main/tools/os';
+import { withDaemonFixture } from '../helpers/daemon-reminders';
+import { observeRunner } from '../helpers/daemon-runner-observer';
+import { semanticEvidenceCollector } from '../helpers/semantic-evidence';
+const evidence = semanticEvidenceCollector('dominds-daemon-output-');
+async function main() {
+  for (const language of ['en', 'zh'] as const)
+    await withDaemonFixture(language, async (fixture) => {
+      const { root, caller } = fixture;
+      const handle = await fixture.start();
+      const stdout = 'selected-stdout-data:7a2e';
+      const stderr = 'selected-stderr-data:49c1';
+      await handle.send({ stdout, stderr });
+      await handle.waitOutput('stdout', stdout);
+      await handle.waitOutput('stderr', stderr);
+      const both = await getDaemonOutputTool.call(root, caller, { pid: handle.meta.pid });
+      const onlyStdout = await getDaemonOutputTool.call(root, caller, {
+        pid: handle.meta.pid,
+        stdout: true,
+        stderr: false,
+      });
+      const onlyStderr = await getDaemonOutputTool.call(root, caller, {
+        pid: handle.meta.pid,
+        stdout: false,
+        stderr: true,
+      });
+      for (const output of [both, onlyStdout, onlyStderr]) assert.equal(output.outcome, 'success');
+      assert.ok(both.content.includes(stdout) && both.content.includes(stderr));
+      assert.ok(onlyStdout.content.includes(stdout) && !onlyStdout.content.includes(stderr));
+      assert.ok(onlyStderr.content.includes(stderr) && !onlyStderr.content.includes(stdout));
+      const rejections = [];
+      const invalidInputs: ToolArguments[] = [
+        { pid: handle.meta.pid, stdout: false, stderr: false },
+        { pid: handle.meta.pid, wait_for_new_output: false, timeout_ms: 100 },
+        { pid: handle.meta.pid, timeout_ms: 86_400_001 },
+      ];
+      for (const input of invalidInputs) {
+        let failure: unknown;
+        try {
+          await getDaemonOutputTool.call(root, caller, input);
+        } catch (error) {
+          failure = error;
+        }
+        assert.ok(failure instanceof Error);
+        rejections.push({ input, error: failure.message });
+      }
+      evidence.record({
+        id: language + '-selected-output-refusals',
+        scenario:
+          'A real owned daemon produced distinct supplied stdout and stderr. Public tool calls select both or either stream, then three invalid argument combinations are rejected.',
+        businessValue:
+          'Deliver only requested data and explain invalid waiting/stream selection without implying an action succeeded.',
+        context: {
+          language,
+          stdout,
+          stderr,
+          actualStatus: JSON.stringify(await handle.status()),
+          scope:
+            'Actual local child, runner IPC and public tool parser. Given opaque child payloads are data, not generated meaning.',
+        },
+        reviewQuestions: [
+          'Do the actual headings/stream selection and argument diagnostics accurately explain the observed data and refused combinations without mixing streams or promising an unperformed action?',
+        ],
+        actualText: JSON.stringify({ both, onlyStdout, onlyStderr, rejections }, null, 2),
       });
 
-      const reminder = (await dialog.listVisibleReminders()).find(
-        (candidate) => candidate.owner?.name === shellCmdReminderOwner.name,
-      );
-      assert.ok(reminder, 'Expected daemon reminder to exist');
-      const pid = requireDaemonPid(reminder.meta);
-
+      const observer = await observeRunner(handle.meta.runnerEndpoint);
+      const original = JSON.parse(await fs.readFile(handle.sharedPath, 'utf8'));
+      const redirected = structuredClone(original);
+      redirected.meta.runnerEndpoint = observer.endpoint;
+      await fs.writeFile(handle.sharedPath, JSON.stringify(redirected) + '\n');
       try {
-        const both = (await getDaemonOutputTool.call(dialog, caller, { pid })).content;
-        assert.match(both, /stdout/);
-        assert.match(both, /stderr/);
-        assert.match(both, /stdout-line/);
-        assert.match(both, /stderr-line/);
+        // No new selected-stream output: actual timeout status is observed at the real
+        // runner boundary; no natural-language timeout phrase is an oracle.
+        let observed = observer.nextWait();
+        const started = performance.now();
+        let outputPromise = getDaemonOutputTool.call(root, caller, {
+          pid: handle.meta.pid,
+          stdout: false,
+          stderr: true,
+          wait_for_new_output: true,
+          timeout_ms: 100,
+        });
+        let observation = await observed;
+        assert.deepEqual(observation.request, {
+          type: 'get_output',
+          stdout: false,
+          stderr: true,
+          waitForNewOutput: true,
+          timeoutMs: 100,
+        });
+        let output = await outputPromise;
+        let actual = await observation.response;
+        assert.ok(actual.ok && actual.type === 'output');
+        assert.equal(actual.waitStatus, 'timeout');
+        assert.ok(performance.now() - started >= 100);
+        assert.ok(!output.content.includes(stdout));
+        evidence.record({
+          id: language + '-selected-empty-timeout',
+          scenario:
+            'The stderr buffer is unchanged. A real public wait for new stderr uses timeout100ms and the actual runner returns timeout.',
+          businessValue:
+            'Preserve bounded waiting on the requested stream rather than treating existing output or a different stream as a new event.',
+          context: {
+            language,
+            actualRequest: JSON.stringify(observation.request),
+            actualResponse: JSON.stringify(actual),
+            scope:
+              'Transparent owned IPC observer forwards the exact public tool request and real runner reply. No synthetic response or installed-waiter claim.',
+          },
+          reviewQuestions: [
+            'Does the actual tool output accurately report the timeout and requested stderr snapshot without implying new stdout/stderr was received?',
+          ],
+          actualText: output.content,
+        });
 
-        const onlyStdout = (
-          await getDaemonOutputTool.call(dialog, caller, {
-            pid,
-            stdout: true,
-            stderr: false,
-          })
-        ).content;
-        assert.match(onlyStdout, /stdout/);
-        assert.doesNotMatch(onlyStdout, /stderr-line/);
-        assert.match(onlyStdout, /stdout-line/);
+        // The request observation is not a waiter-installed acknowledgment. Start
+        // an ongoing controlled child stream, so genuine changes continue after
+        // the actual runner installs its waiter, without a test-side sleep.
+        observed = observer.nextWait();
+        outputPromise = getDaemonOutputTool.call(root, caller, {
+          pid: handle.meta.pid,
+          stdout: true,
+          stderr: false,
+          wait_for_new_output: true,
+          timeout_ms: 8000,
+        });
+        observation = await observed;
+        assert.deepEqual(observation.request, {
+          type: 'get_output',
+          stdout: true,
+          stderr: false,
+          waitForNewOutput: true,
+          timeoutMs: 8000,
+        });
+        const newStdout = 'new-waited-stdout-data:51ae';
+        await handle.send({ stdout: newStdout, repeat: true });
+        output = await outputPromise;
+        actual = await observation.response;
+        await handle.send({ stopRepeat: true });
+        assert.ok(actual.ok && actual.type === 'output');
+        assert.equal(actual.waitStatus, 'output');
+        assert.ok(output.content.includes(newStdout));
+        assert.ok(!output.content.includes(stderr));
+        evidence.record({
+          id: language + '-selected-new-output',
+          scenario:
+            'After the public wait request is observed, a controlled real child starts an ongoing stdout stream. The actual runner resolves the requested-stream wait with output and the tool returns the new supplied data.',
+          businessValue: 'Resume monitoring on actual requested data instead of a timed guess.',
+          context: {
+            language,
+            newStdout,
+            excludedStderr: stderr,
+            actualRequest: JSON.stringify(observation.request),
+            actualResponse: JSON.stringify(actual),
+            scope:
+              'Real tool/runner/child through a transparent IPC observer. Observation is request forwarding, not proof of the exact waiter installation instant.',
+          },
+          reviewQuestions: [
+            'Does the returned text accurately represent the requested new stdout data and avoid mixing the excluded stderr or falsely reporting timeout/exit?',
+          ],
+          actualText: output.content,
+        });
 
-        const onlyStderr = (
-          await getDaemonOutputTool.call(dialog, caller, {
-            pid,
-            stdout: false,
-            stderr: true,
-          })
-        ).content;
-        assert.match(onlyStderr, /stderr/);
-        assert.doesNotMatch(onlyStderr, /stdout-line/);
-        assert.match(onlyStderr, /stderr-line/);
-
-        await assert.rejects(
-          async () =>
-            await getDaemonOutputTool.call(dialog, caller, {
-              pid,
-              stdout: false,
-              stderr: false,
-            }),
-          /at least one of stdout\/stderr to be true/,
-        );
-        await assert.rejects(
-          async () =>
-            await getDaemonOutputTool.call(dialog, caller, {
-              pid,
-              wait_for_new_output: false,
-              timeout_ms: 100,
-            }),
-          /timeout_ms cannot be provided when wait_for_new_output is false/,
-        );
-        await assert.rejects(
-          async () =>
-            await getDaemonOutputTool.call(dialog, caller, {
-              pid,
-              timeout_ms: 86_400_001,
-            }),
-          /timeout_ms must be a non-negative integer <= 86400000/,
-        );
-
-        const delayed = buildDelayedOutputDaemonCommand();
-        const delayedCommand = await writeDaemonScriptCommand(
-          sandboxDir,
-          'delayed-stdout-daemon.js',
-          delayed.nodeSource,
-          delayed.powershellSource,
-        );
-        const delayedPid = await startDaemonAndGetNewPid(dialog, caller, delayedCommand);
-
-        try {
-          const waitedStdout = (
-            await getDaemonOutputTool.call(dialog, caller, {
-              pid: delayedPid,
-              stdout: true,
-              stderr: false,
-              wait_for_new_output: true,
-              timeout_ms: 8000,
-            })
-          ).content;
-          assert.match(waitedStdout, /stdout-delayed/);
-
-          const stderrTimeout = (
-            await getDaemonOutputTool.call(dialog, caller, {
-              pid: delayedPid,
-              stdout: false,
-              stderr: true,
-              wait_for_new_output: true,
-              timeout_ms: 100,
-            })
-          ).content;
-          assert.match(stderrTimeout, /Timed out waiting for new stderr output/);
-          assert.doesNotMatch(stderrTimeout, /stdout-delayed/);
-        } finally {
-          await stopDaemonTool.call(dialog, caller, { pid: delayedPid });
-        }
-
-        const stdoutDuringStderrWait = buildStdoutDuringStderrWaitDaemonCommand();
-        const stdoutDuringStderrWaitCommand = await writeDaemonScriptCommand(
-          sandboxDir,
-          'stdout-during-stderr-wait-daemon.js',
-          stdoutDuringStderrWait.nodeSource,
-          stdoutDuringStderrWait.powershellSource,
-        );
-        const stdoutDuringStderrWaitPid = await startDaemonAndGetNewPid(
-          dialog,
-          caller,
-          stdoutDuringStderrWaitCommand,
-        );
-
-        try {
-          const startedAt = Date.now();
-          const stderrWait = (
-            await getDaemonOutputTool.call(dialog, caller, {
-              pid: stdoutDuringStderrWaitPid,
-              stdout: false,
-              stderr: true,
-              wait_for_new_output: true,
-              timeout_ms: 1200,
-            })
-          ).content;
-          const elapsedMs = Date.now() - startedAt;
-          assert.ok(elapsedMs >= 1000, `stderr wait returned too early after ${elapsedMs}ms`);
-          assert.match(stderrWait, /Timed out waiting for new stderr output/);
-          assert.doesNotMatch(stderrWait, /stdout-during-stderr-wait/);
-        } finally {
-          await stopDaemonTool.call(dialog, caller, { pid: stdoutDuringStderrWaitPid });
-        }
+        observed = observer.nextWait();
+        const unrelatedWaitStarted = performance.now();
+        outputPromise = getDaemonOutputTool.call(root, caller, {
+          pid: handle.meta.pid,
+          stdout: false,
+          stderr: true,
+          wait_for_new_output: true,
+          timeout_ms: 1200,
+        });
+        observation = await observed;
+        assert.deepEqual(observation.request, {
+          type: 'get_output',
+          stdout: false,
+          stderr: true,
+          waitForNewOutput: true,
+          timeoutMs: 1200,
+        });
+        const unrelated = 'unrequested-stdout-data:8c4d';
+        await handle.send({ stdout: unrelated, repeat: true });
+        await handle.waitOutput('stdout', unrelated);
+        output = await outputPromise;
+        const unrelatedWaitElapsedMs = performance.now() - unrelatedWaitStarted;
+        assert.ok(unrelatedWaitElapsedMs >= 1000);
+        actual = await observation.response;
+        await handle.send({ stopRepeat: true });
+        assert.ok(actual.ok && actual.type === 'output');
+        assert.equal(actual.waitStatus, 'timeout');
+        assert.ok(!output.content.includes(unrelated));
+        assert.ok(!output.content.includes(stdout));
+        evidence.record({
+          id: language + '-unrequested-output-timeout',
+          scenario:
+            'While the public request waits for new stderr, the controlled real child continuously writes only stdout. The runner still returns timeout for stderr and the adapter excludes stdout.',
+          businessValue:
+            'Keep an unrelated noisy stream from prematurely satisfying a requested-stream wait.',
+          context: {
+            language,
+            actualRequest: JSON.stringify(observation.request),
+            actualResponse: JSON.stringify(actual),
+            unrelatedWaitElapsedMs,
+            actualChildStdoutWitness: JSON.stringify((await handle.status()).stdout),
+            unrelated,
+            scope:
+              'Actual real runner wait status and controlled ongoing stdout. No arbitrary test sleep or natural-language timeout oracle.',
+          },
+          reviewQuestions: [
+            'Does the actual output clearly describe the stderr timeout and its retained snapshot without presenting unrelated stdout as new requested output?',
+          ],
+          actualText: output.content,
+        });
       } finally {
-        await stopDaemonTool.call(dialog, caller, { pid });
+        await fs.writeFile(handle.sharedPath, JSON.stringify(original) + '\n');
+        await observer.close();
       }
-    } finally {
-      unregisterReminderOwner(shellCmdReminderOwner.name);
-    }
-  });
+    });
+  await evidence.write();
+  console.log('Daemon selected output and real waiting: PASS');
 }
-
-void main()
-  .then(() => {
-    console.log('OK');
-  })
-  .catch((error: unknown) => {
-    console.error(error instanceof Error ? (error.stack ?? error.message) : String(error));
-    process.exit(1);
-  });
+const watchdog = setTimeout(() => {
+  throw new Error('Daemon stream case did not complete within60 seconds');
+}, 60_000);
+main().then(
+  () => clearTimeout(watchdog),
+  (error: unknown) => {
+    clearTimeout(watchdog);
+    console.error(error);
+    process.exitCode = 1;
+  },
+);

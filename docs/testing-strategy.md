@@ -477,3 +477,19 @@ registered owner的等价nested对象key序更新确实被调用一次；完整m
 回归同时核原输入在实际provider请求中保真、已完成结果不丢、没有新generation，并以随后真正新到达的queued prompt作为正控：后台必须再次执行，最终恰两次请求/两次generation/两份给定response数据。原active-run blocker用例保留真实后台延期、清阻塞唤醒、结果单次消费的检查，把次数/数据断言移至停止后台后，避免测试断言落入真实provider重试策略；没有放宽最终root两次、Side一次的要求。完整原失败、断言审查、修复范围及验证见[本批记录](../tests/semantic/reviews/2026-10-31-backend-preflight-revalidation.json)。这些是请求数、事件、状态和给定opaque数据合同；不以生成诊断措辞判断语义，也不重用历史语义verdict接受新输出。
 
 当前287个TypeScript文件、32个辅助/证据模块、255个候选，审查161项，余94项；套件外87项、无单独脚本43项，失效直接目标和陈旧账本路径均零。新增案例自动进入kernel发现，并有隔离rtws单独入口。全目录47条继承类型诊断仍明确失败，未弱化类型或排除文件。本批广义内核64项全部通过，build、应用类型、格式、六项runner及375个本地文档目标/fragment均通过；上批超时记录仍作为历史失败证据保留。
+
+### 后台进程提醒与输出等待批次
+
+原十项及旧helper共1409行、真实os owner/身份恢复/runner输出链路全文审阅；旧基线十项都通过，但仍以生命周期标题、禁止回应句、快照标题、维护命令提示、停止/超时/参数错误句等作为语义oracle。现删除独立start-receipt措辞案例，把实际回执并入真实超时转后台、双流、运行状态与手工删除拒绝场景，语义材料仍完整保留。九项行为使用CLI管理的隔离rtws、真实MainDialog/Disk/Member/共享JSON和自有进程，不再中途chdir、实例化抽象Store或强转空Member。
+
+子进程通过原子文件事件接收明确输出/退出命令；父侧按真实ACK、runner buffer或OS进程状态同步。没有输出时完整可见数据/共享JSON、公开version和更新时间不变；新opaque输出后版本推进、数据保存，再无变化时稳定。真实启动元数据给出PID作控制，回执文本不再承担机器解析合同。运行提醒实际拒绝手工删除且共享文件/进程保持；退出后同ID保留、维护限制解除，实际手工删除成功并删除物理共享文件。
+
+最初新夹具的三个失败完整保留：把行缓冲快照当成尾换行字节流；子进程ACK直接覆盖文件导致读取半份JSON；假定daemon退出后runner仍可查询。前两者改为无分隔符的完整opaque哨兵与原子ACK；仓库既有合同明确runner随child退出，所以真实退出用两个自有进程终态观察，先以真实owner刷新保存last-known快照，再核保真、完成状态和删除效果。不虚构观测code7，亦不为未观测的最后字节引入新的持久化架构。缺runner终态另有真实runner停止/端点退出案例；owner返回的exit事件以显式反馈状态核不重复，这不是backend投递或执行智能体消费。
+
+输出选择按完整给定stdout/stderr数据核双流和单流隔离，三个无效参数输入核真实异常类型，完整诊断另评。透明自有IPC peer只转发真实tool请求与runner响应，记录waitStatus机器枚举。它不假称请求已安装waiter：目标新输出通过事件启用的持续子进程输出覆盖真实等待阶段；非目标stdout持续输出仍须stderr timeout，另有无新输出的100ms真实超时下界；非目标流分支保留原至少1000ms下界，防止错误地提前返回却标成timeout。未用超时句或标题排序判断含义，未增加60秒case上限或重试直到绿。
+
+共享恢复解析实际文件字段，核同agent完整数据一致、异agent不可见；清内存registry后用实际runner读取双流及停止移除。损坏command身份时核failure且实际进程仍活并能继续输出，显式恢复原metadata后实际读取/停止作正控，不把损坏本身当可恢复。缺runner历史wrapper用真实自有Node包装进程/PID/命令/startTime，核匹配清理及drop，不冒称保活恢复。新dialog/registry reset不是独立进程重启，当前平台也不代表Windows进程树已验证。
+
+独立全文评审初二十四份为十八通过、六拒绝：真实已退出且runner已不可用的wake/gone/retained两种语言都仍保存get_daemon_output维护建议；该真实读调用还会删除终态提醒。补入最终retained回归，在未修产品上明确复现读取后ID消失（false≠true）。现只修终态维护建议和退出notice，让维护路径指向已保存快照及按需手工删除；get_daemon_output遇已追踪runner不可用时返回实际失败说明并保留既有提醒，不改变正常流选择、runner生命周期或显式stop/delete清理。回归另核读取失败后公开version/完整文件字节不变，手工改写仍拒绝，最后显式delete成功。全部新二十四份须重新输出、逐份主观重审，初六拒绝全文与真实旧产品失败保留。
+
+新增显式test:daemon九项与test:semantic:daemon九个producer，共二十四份双语实际文本，生成与主观接受分开。原值映射、所有失败、完整新输出、独立理由与最终断言审查见[本批记录](../tests/semantic/reviews/2026-10-31-daemon-lifecycle.json)。当前287个TypeScript文件、33个辅助/证据模块、254个候选，审查170项，余84项，套件外77项、无单独脚本43项、失效直接入口与陈旧账本路径均零。旧daemon契约类型错误已自然修复或随纯措辞案例退役，全测试仍10条继承诊断，明确失败；没有放宽类型或排除文件。

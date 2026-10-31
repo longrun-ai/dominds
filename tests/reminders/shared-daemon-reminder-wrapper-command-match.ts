@@ -1,118 +1,105 @@
+import { formatUnifiedTimestamp } from '@longrun-ai/kernel/utils/time';
 import assert from 'node:assert/strict';
 import { execFile, spawn } from 'node:child_process';
-import * as fs from 'node:fs/promises';
-import * as os from 'node:os';
-import * as path from 'node:path';
+import { once } from 'node:events';
+import fs from 'node:fs/promises';
+import path from 'node:path';
 import { promisify } from 'node:util';
-
-import { formatUnifiedTimestamp } from '@longrun-ai/kernel/utils/time';
-import { DialogStore, MainDialog } from '../../main/dialog';
 import { materializeReminder } from '../../main/tool';
 import { resetTrackedDaemonsForTests, shellCmdReminderOwner } from '../../main/tools/os';
-
+import { processIsRunning, withDaemonFixture } from '../helpers/daemon-reminders';
+import { semanticEvidenceCollector } from '../helpers/semantic-evidence';
+const evidence = semanticEvidenceCollector('dominds-daemon-legacy-');
 const execFileAsync = promisify(execFile);
-
-async function withTempDir<T>(fn: (sandboxDir: string) => Promise<T>): Promise<T> {
-  const sandboxDir = await fs.mkdtemp(
-    path.join(os.tmpdir(), 'dominds-daemon-wrapper-command-match-'),
-  );
-  try {
-    return await fn(sandboxDir);
-  } finally {
-    await fs.rm(sandboxDir, { recursive: true, force: true });
-  }
-}
-
-function createDialog(agentId: string): MainDialog {
-  return new MainDialog(
-    new DialogStore(),
-    'shared-daemon-reminder-wrapper-command-match.tsk',
-    undefined,
-    agentId,
-  );
-}
-
-async function readProcessCommandLine(pid: number): Promise<string> {
+async function commandLine(pid: number) {
   if (process.platform === 'win32') {
-    const command = `$p = Get-CimInstance Win32_Process -Filter "ProcessId = ${pid}"; if ($null -ne $p) { [Console]::Out.Write($p.CommandLine) }`;
-    const { stdout } = await execFileAsync('powershell.exe', ['-NoProfile', '-Command', command], {
-      windowsHide: true,
-      maxBuffer: 1024 * 1024,
-    });
+    const { stdout } = await execFileAsync('powershell.exe', [
+      '-NoProfile',
+      '-Command',
+      `$p = Get-CimInstance Win32_Process -Filter "ProcessId = ${pid}"; if ($null -ne $p) { [Console]::Out.Write($p.CommandLine) }`,
+    ]);
     return stdout.trim();
   }
-
-  const { stdout } = await execFileAsync('ps', ['-p', String(pid), '-o', 'args='], {
-    maxBuffer: 1024 * 1024,
-  });
-  return stdout.trim();
+  return (await execFileAsync('ps', ['-p', String(pid), '-o', 'args='])).stdout.trim();
 }
-
-async function main(): Promise<void> {
-  await withTempDir(async (sandboxDir) => {
-    const wrapperPath = path.join(sandboxDir, 'pnpm.cjs');
-    await fs.writeFile(wrapperPath, 'setInterval(() => {}, 10000);\n', 'utf-8');
-
-    const child = spawn(process.execPath, [wrapperPath, 'dev'], {
-      stdio: 'ignore',
-      detached: process.platform !== 'win32',
-    });
-    const pid = child.pid;
-    assert.equal(typeof pid, 'number', 'Expected wrapper process pid to exist');
-    if (typeof pid !== 'number') {
-      throw new Error('Expected wrapper process pid to exist');
-    }
-    child.unref();
-    const actualCommandLine = await readProcessCommandLine(pid);
-    assert.notEqual(actualCommandLine, '', 'Expected wrapper process command line to be readable');
-
-    const reminder = materializeReminder({
-      id: 'wrapcmd1',
-      content: 'wrapper daemon reminder',
-      owner: shellCmdReminderOwner,
-      meta: {
-        kind: 'daemon',
-        pid,
-        initialCommandLine: 'pnpm dev',
-        daemonCommandLine: actualCommandLine,
-        shell: 'bash',
-        startTime: formatUnifiedTimestamp(new Date()),
-        delete: { altInstruction: `stop_daemon({ "pid": ${String(pid)} })` },
-        ...(process.platform === 'win32' ? {} : { processGroupId: pid }),
-      },
-      scope: 'runtime',
-      renderMode: 'markdown',
-    });
-
-    try {
-      resetTrackedDaemonsForTests();
-      const dialog = createDialog('tester');
-
-      const update = await shellCmdReminderOwner.updateReminder(dialog, reminder);
-      assert.equal(
-        update.treatment,
-        'drop',
-        'Expected legacy wrapper-backed daemon reminder without runner metadata to be dropped',
-      );
-
-      const rendered = await shellCmdReminderOwner.renderReminder(dialog, reminder);
-      if (!('content' in rendered) || typeof rendered.content !== 'string') {
-        throw new Error('Expected rendered reminder to contain string content');
-      }
-      assert.match(rendered.content, /terminated|已结束/);
-    } finally {
+async function main() {
+  for (const language of ['en', 'zh'] as const)
+    await withDaemonFixture(language, async ({ rtws, root }) => {
+      const wrapper = path.join(rtws, `legacy-pnpm-${language}.cjs`);
+      await fs.writeFile(wrapper, "process.send({ready:true}); process.on('message',()=>{});\n");
+      const startedAt = new Date();
+      const child = spawn(process.execPath, [wrapper, 'dev'], {
+        stdio: ['ignore', 'ignore', 'ignore', 'ipc'],
+        detached: process.platform !== 'win32',
+      });
+      const closed = once(child, 'exit');
       try {
-        process.kill(process.platform === 'win32' ? pid : -pid, 'SIGTERM');
-      } catch {
-        // best effort cleanup only
+        assert.deepEqual((await once(child, 'message'))[0], { ready: true });
+        const pid = child.pid;
+        assert.ok(typeof pid === 'number');
+        assert.equal(await processIsRunning(pid), true);
+        const actualCommandLine = await commandLine(pid);
+        assert.ok(actualCommandLine.length > 0);
+        const reminder = materializeReminder({
+          id: 'legacy-wrapper-' + language,
+          content: 'legacy-wrapper-state-data:7a4f',
+          owner: shellCmdReminderOwner,
+          scope: 'runtime',
+          renderMode: 'markdown',
+          meta: {
+            kind: 'daemon',
+            pid,
+            initialCommandLine: 'pnpm dev',
+            daemonCommandLine: actualCommandLine,
+            shell: process.platform === 'win32' ? 'cmd.exe' : 'bash',
+            startTime: formatUnifiedTimestamp(startedAt),
+            ...(process.platform === 'win32' ? {} : { processGroupId: pid }),
+          },
+        });
+        resetTrackedDaemonsForTests();
+        const update = await shellCmdReminderOwner.updateReminder(root, reminder);
+        assert.equal(update.treatment, 'drop');
+        await closed;
+        assert.equal(await processIsRunning(pid), false);
+        const rendered = await shellCmdReminderOwner.renderReminder(root, reminder);
+        assert.equal(rendered.type, 'environment_msg');
+        assert.equal(rendered.role, 'user');
+        evidence.record({
+          id: language + '-legacy-wrapper-cleanup',
+          scenario:
+            'An owned real Node wrapper is ready and running. A legacy reminder has the actual PID/command/start identity but no runner metadata. The owner cleans up the matched stale process and drops that legacy record.',
+          businessValue:
+            'Handle pre-runner records without pretending they provide a recoverable live output channel or leaving an abandoned matching process running.',
+          context: {
+            language,
+            pid,
+            actualCommandLine,
+            givenLegacyMeta: JSON.stringify(reminder.meta),
+            observedProcessRunningAfterUpdate: false,
+            scope:
+              'Real owned Node wrapper and OS process inspection/termination; a pnpm-like fixture filename, not an actual pnpm dev service or successful daemon recovery.',
+          },
+          reviewQuestions: [
+            'Does the actual rendered terminal notice accurately describe the now-stopped legacy process without claiming recovered monitoring or an unperformed action?',
+          ],
+          actualText: JSON.stringify({ update, rendered }, null, 2),
+        });
+      } finally {
+        if (child.pid && (await processIsRunning(child.pid))) child.kill('SIGTERM');
+        await closed;
       }
-    }
-  });
-
-  console.log('OK');
+    });
+  await evidence.write();
+  console.log('Legacy wrapper identity cleanup: PASS');
 }
-
-void main().catch((error: unknown) => {
-  console.error(error instanceof Error ? (error.stack ?? error.message) : String(error));
-  process.exit(1);
-});
+const watchdog = setTimeout(() => {
+  throw new Error('Legacy wrapper case did not complete within60 seconds');
+}, 60_000);
+main().then(
+  () => clearTimeout(watchdog),
+  (error: unknown) => {
+    clearTimeout(watchdog);
+    console.error(error);
+    process.exitCode = 1;
+  },
+);

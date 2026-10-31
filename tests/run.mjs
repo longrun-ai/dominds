@@ -144,7 +144,19 @@ const reminders = [
   'reminders/pending-tellask-reminder-order.ts',
   'reminders/pending-tellask-zero-state-no-jitter.ts',
 ];
+const daemon = [
+  'reminders/daemon-exit-wake-event.ts',
+  'reminders/daemon-reminder-gone-exit-snapshot.ts',
+  'reminders/daemon-reminder-no-jitter-without-output-change.ts',
+  'reminders/daemon-reminder-render.ts',
+  'reminders/daemon-reminder-retained-after-exit.ts',
+  'reminders/get-daemon-output-stream-selection.ts',
+  'reminders/shared-daemon-reminder-command-mismatch.ts',
+  'reminders/shared-daemon-reminder-persistence.ts',
+  'reminders/shared-daemon-reminder-wrapper-command-match.ts',
+];
 const semanticSuites = {
+  daemon,
   reminders: [
     'semantic/reminder-guidance.ts',
     'reminders/main-dialog-goal-reminder.ts',
@@ -276,7 +288,6 @@ export async function inventory() {
       'cli.ts',
       'rtws-script-runner.ts',
       'kernel-driver/helpers.ts',
-      'reminders/daemon-test-utils.ts',
       'semantic/evidence.ts',
       'semantic/context-guidance.ts',
     ].includes(file);
@@ -297,6 +308,7 @@ export async function inventory() {
     projection,
     compatible,
     reminders,
+    daemon,
   };
   const included = new Set(Object.values(suites).flat());
   const audit = JSON.parse(await fs.readFile(path.join(testsRoot, 'audit.json'), 'utf8'));
@@ -418,10 +430,11 @@ async function main() {
       'projection',
       'compatible',
       'reminders',
+      'daemon',
     ].includes(args[1])
   ) {
     throw new Error(
-      'Usage: node tests/run.mjs --list | --suite smoke | --suite kernel | --suite context [--semantic] | --suite configuration [--semantic] | --suite manual [--semantic] | --suite filesystem [--semantic] | --suite persistence [--semantic] | --suite recovery [--semantic] | --suite bootstrap [--semantic] | --suite packaging [--semantic] | --suite retry [--semantic] | --suite projection [--semantic] | --suite compatible [--semantic] | --suite reminders [--semantic]',
+      'Usage: node tests/run.mjs --list | --suite smoke | --suite kernel | --suite context [--semantic] | --suite configuration [--semantic] | --suite manual [--semantic] | --suite filesystem [--semantic] | --suite persistence [--semantic] | --suite recovery [--semantic] | --suite bootstrap [--semantic] | --suite packaging [--semantic] | --suite retry [--semantic] | --suite projection [--semantic] | --suite compatible [--semantic] | --suite reminders [--semantic] | --suite daemon [--semantic]',
     );
   }
   const suite = args[1];

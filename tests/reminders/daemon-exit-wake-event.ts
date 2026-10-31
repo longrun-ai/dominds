@@ -1,114 +1,93 @@
 import assert from 'node:assert/strict';
-
-import { DialogStore, MainDialog } from '../../main/dialog';
-import { setWorkLanguage } from '../../main/runtime/work-language';
 import { materializeReminder } from '../../main/tool';
 import { shellCmdReminderOwner } from '../../main/tools/os';
-
-function createDialog(): MainDialog {
-  return new MainDialog(new DialogStore(), 'daemon-exit-wake-event.tsk', undefined, 'tester');
-}
-
-async function main(): Promise<void> {
-  setWorkLanguage('zh');
-  const dialog = createDialog();
-  const reminder = materializeReminder({
-    id: 'daemon001',
-    content: `🟢 pnpm dev 运行中（系统维护 / 实时真源）
-
-后台进程 PID: 999999
-命令: pnpm dev
-Shell: bash
-生命周期状态: 运行中
-已运行: 5s
-启动时间: 2026-04-16 20:00:00`,
-    owner: shellCmdReminderOwner,
-    scope: 'dialog',
-    renderMode: 'markdown',
-    meta: {
-      kind: 'daemon',
-      pid: 999999,
-      runnerEndpoint: 'unix:/tmp/dominds-missing-runner.sock',
-      initialCommandLine: 'pnpm dev',
-      daemonCommandLine: 'pnpm dev',
-      shell: 'bash',
-      startTime: '2026-04-16T12:00:00.000Z',
-      originDialogId: 'dialog-self',
-      originRootId: 'dialog-root',
-    },
-  });
-
-  const first = await shellCmdReminderOwner.waitForReminderWakeEvent?.(
-    dialog,
-    [reminder],
-    new AbortController().signal,
-  );
-  assert.ok(first && !Array.isArray(first), 'Expected one daemon exit wake event');
-  if (!first || Array.isArray(first)) {
-    throw new Error('Expected one daemon exit wake event');
+import {
+  currentDaemon,
+  jsonObject,
+  processIsRunning,
+  withDaemonFixture,
+} from '../helpers/daemon-reminders';
+import { semanticEvidenceCollector } from '../helpers/semantic-evidence';
+import { waitFor } from '../kernel-driver/helpers';
+const evidence = semanticEvidenceCollector('dominds-daemon-daemon-exit-wake-event-');
+async function main() {
+  for (const language of ['en', 'zh'] as const) {
+    await withDaemonFixture(language, async (fixture) => {
+      const { root } = fixture;
+      const handle = await fixture.start();
+      const payload = 'exit-output-data:9c3f';
+      await handle.send({ stdout: payload });
+      await handle.waitOutput('stdout', payload);
+      await root.processReminderUpdates();
+      const before = await currentDaemon(root, handle.reminder.id);
+      await handle.send({ exitCode: 7 });
+      await waitFor(
+        async () =>
+          !(await processIsRunning(handle.meta.pid)) &&
+          !(await processIsRunning(handle.meta.runnerPid)),
+        3_000,
+        'actual daemon and runner exit',
+      );
+      const wake = shellCmdReminderOwner.waitForReminderWakeEvent;
+      assert.ok(wake);
+      const observed = await wake(root, [before], new AbortController().signal);
+      assert.ok(observed && 'eventId' in observed);
+      const first = observed;
+      assert.equal(first.reminderId, before.id);
+      assert.equal(
+        first.eventId,
+        `shellCmd:daemonExited:${handle.meta.pid}:${handle.meta.startTime}`,
+      );
+      const meta = jsonObject(first.updatedMeta);
+      assert.equal(meta.completed, true);
+      assert.equal(meta.exitWakeEventId, first.eventId);
+      assert.equal(typeof meta.exitWakeNotifiedAt, 'string');
+      assert.equal(meta.originRootId, root.id.rootId);
+      assert.equal(meta.originDialogId, root.id.selfId);
+      assert.ok(first.updatedContent?.includes(payload));
+      const delivered = materializeReminder({ ...before, content: first.updatedContent!, meta });
+      assert.equal(await wake(root, [delivered], new AbortController().signal), null);
+      const alreadyComplete = materializeReminder({
+        ...before,
+        meta: { ...jsonObject(before.meta), completed: true },
+      });
+      assert.equal(await wake(root, [alreadyComplete], new AbortController().signal), null);
+      evidence.record({
+        id: language + '-exit-wake',
+        scenario:
+          'A real owned daemon writes the supplied stdout data, its running snapshot is actually saved, and both child and runner exit after a declared code7 request. The OS observations prove exit, not its numeric code. The owner emits one exit event; feeding its completed/delivered state back produces no repeat.',
+        businessValue:
+          'Observe terminal state without duplicate continuation prompts or losing final output.',
+        context: {
+          language,
+          pid: handle.meta.pid,
+          startTime: handle.meta.startTime,
+          observedDaemonRunning: await processIsRunning(handle.meta.pid),
+          observedRunnerRunning: await processIsRunning(handle.meta.runnerPid),
+          declaredExitCode: 7,
+          payload,
+          eventId: first.eventId,
+          scope:
+            'Real runner/owner component. Feeding returned event state back is explicit fixture acknowledgment, not backend delivery or agent execution.',
+        },
+        reviewQuestions: [
+          'Does the actual exit notification and retained terminal snapshot accurately describe the observed exit and output, with appropriate maintenance/response guidance and no false claim that a follow-up action ran?',
+        ],
+        actualText: JSON.stringify(first, null, 2),
+      });
+    });
   }
-  assert.equal(first.reminderId, 'daemon001');
-  assert.equal(first.eventId, 'shellCmd:daemonExited:999999:2026-04-16T12:00:00.000Z');
-  assert.match(first.content, /^【系统提示】\n后台进程已退出。/);
-  assert.match(first.updatedContent, /🟡 pnpm dev 已退出/);
-  assert.equal(typeof first.updatedMeta, 'object');
-  assert.notEqual(first.updatedMeta, null);
-  assert.equal(Array.isArray(first.updatedMeta), false);
-  if (
-    typeof first.updatedMeta !== 'object' ||
-    first.updatedMeta === null ||
-    Array.isArray(first.updatedMeta)
-  ) {
-    throw new Error('Expected updatedMeta object');
-  }
-  assert.equal(first.updatedMeta['completed'], true);
-  assert.equal(first.updatedMeta['exitWakeEventId'], first.eventId);
-  assert.equal(typeof first.updatedMeta['exitWakeNotifiedAt'], 'string');
-  assert.equal(first.updatedMeta['originRootId'], 'dialog-root');
-
-  const deliveredReminder = materializeReminder({
-    id: reminder.id,
-    content: first.updatedContent ?? reminder.content,
-    owner: shellCmdReminderOwner,
-    scope: 'dialog',
-    renderMode: 'markdown',
-    meta: first.updatedMeta,
-  });
-  const second = await shellCmdReminderOwner.waitForReminderWakeEvent?.(
-    dialog,
-    [deliveredReminder],
-    new AbortController().signal,
-  );
-  assert.equal(second, null, 'Delivered daemon exit wake event must not repeat');
-
-  const alreadyCompletedReminder = materializeReminder({
-    id: 'daemon002',
-    content: first.updatedContent ?? reminder.content,
-    owner: shellCmdReminderOwner,
-    scope: 'dialog',
-    renderMode: 'markdown',
-    meta: {
-      kind: 'daemon',
-      pid: 999998,
-      runnerEndpoint: 'unix:/tmp/dominds-missing-runner-2.sock',
-      initialCommandLine: 'pnpm test',
-      daemonCommandLine: 'pnpm test',
-      shell: 'bash',
-      startTime: '2026-04-16T12:00:01.000Z',
-      completed: true,
-    },
-  });
-  const staleCompleted = await shellCmdReminderOwner.waitForReminderWakeEvent?.(
-    dialog,
-    [alreadyCompletedReminder],
-    new AbortController().signal,
-  );
-  assert.equal(staleCompleted, null, 'Already-completed daemon reminders must not wake later');
-
-  console.log('OK');
+  await evidence.write();
+  console.log('Daemon daemon-exit-wake-event: PASS');
 }
-
-void main().catch((error: unknown) => {
-  console.error(error instanceof Error ? (error.stack ?? error.message) : String(error));
-  process.exit(1);
-});
+const watchdog = setTimeout(() => {
+  throw new Error('Daemon case did not complete within60 seconds');
+}, 60_000);
+main().then(
+  () => clearTimeout(watchdog),
+  (error: unknown) => {
+    clearTimeout(watchdog);
+    console.error(error);
+    process.exitCode = 1;
+  },
+);
