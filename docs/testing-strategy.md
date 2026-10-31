@@ -503,3 +503,15 @@ registered owner的等价nested对象key序更新确实被调用一次；完整m
 模型compactLabel/tooltip和context title没有下游机器parser合同，原整句/标点快照及“推理/输入”等含义字面匹配全部退役。价值移入两个semantic支持producer：原模型突出参数/未设置/文档默认的实际全文，另给配置/报告模型不同、结构值、无突出参数；上下文按中英给known带reasoning/缺reasoning、unknown带usage/全缺/显式零、caution/critical共十四份，合计十八份。完整输入及当前实际输出交测试执行智能体主观判断；配置值、报告身份、文档默认和缺失/零必须明确区分。给定health/百分比/阈值来源不冒充本测试的压力计算或实时usage测量。
 
 新增test:presentation六项与test:semantic:presentation两个证据入口，原UI措辞案例移出smoke且不算自动通过；实际metadata配置案例在smoke与单项入口也走隔离CLI。完整原值映射、断言审查与新十八份主观评审见[本批记录](../tests/semantic/reviews/2026-10-31-state-presentation.json)。当前287个TypeScript文件、35个辅助/证据模块、252个候选，审查176项，余76项，套件外73项、无单独脚本43项、失效直接入口与陈旧账本路径均零。全测试仍10条继承类型错误，继续明确失败；本批没有产品代码、类型放宽、源码排除、依赖或框架变更。
+
+### 组件提醒桥接与当前Host IPC边界批次
+
+原提醒216行与Host798行共1014行及实际bridge/client/host/lossless JSON调用链完整审阅，旧基线两项均通过。本批保现有兼容价值，不把旧App作为目标架构，也不按名称删除仍工作的能力边界。提醒案改真实隔离rtws、成员、磁盘和事件通道，仅外部AppsHostClient受控；ownedIndex委派只含该owner的实际数据，真实更新保同ID/plain及scope，补meta/echoback/公开version、物理状态与一次full发布保真。回传body/ID是给定数据，自动维护wrapper含义单独全文评。host更新异常核同一Error身份；坏wrapper的update/render/collect与NaN/-0位置拒绝均保完整公开/磁盘状态，collect在实际组件调用前停止。
+
+真实本地Host案保合法现代output/outcome、text/image内容项完整字段、跨realm plain对象/数组、apply noop/update keep/render原payload及两条fraction -1.5原值通过；IPC不擅自改成整数，真正插入仍由MicroKernel floor/clamp。所有原拒绝输入保留：NaN/-0/accessor参数、legacy输出、各层未知字段、NaN/Date/class元数据、坏内容项、非法apply输入与apply/update/render结果。30次调用拒绝不匹配诊断句，核真实Error及委派阶段；自有组件只记录handler route，不读取参数/getter，client侧非法输入零进入，host返回非法结果的handler恰进入一次。getter参数reads=0保留，host输出getter另有独有副作用文件，handler已执行而getter文件必须不存在，不再靠错误句推断未执行。
+
+五类readiness反例保未知instance字段、缺声明handlers、undeclared工具、单独owner缺失及未知start-result字段。每个实际fixture有factory进入标记，最后一种还核实际start标记；相同包入口和host链路先有合法启动/完整IPC正控，意外ready先清理再失败。实际父侧收到的fatal IPC日志全文与Error共同发语义材料，不筛选关键词充当判据。声明URL没有启动HTTP/WebSocket前端；image artifact是payload结构，不是假称文件存在或实际解码。用CLI管理的rtws保失败现场，不再finally无条件删sandbox。
+
+独立全文审查初三十六份为三十三通过、三拒绝：Date、class与NaN元数据都被称为不可JSON序列化，但实际JSON.stringify可把它们变为字符串、普通对象或null；真正失败是当前无损JSON/plain-data契约。现只修四处同类Host诊断，明确primitives/arrays/plain数据及class/accessor/非有限数/负零限制，不改isJsonValue验证。另用三个真实tool/owner返回反例分别覆盖delete.meta、apply返回state.meta与update.updatedMeta，均有真实handler路由标记且仍拒绝；让四条修正提示都有实际全文材料可评。新三十九份须全新逐份审查，不沿用初三十三的verdict，三份原拒绝全文保留。
+
+两个入口新增test:components及test:semantic:components；语义四份双语提醒wrapper/不变量与三十五份实际IPC/启动诊断，共三十九份，生成不自动接受。完整原值映射、全部断言/作用域审查和独立新输出结论见[本批记录](../tests/semantic/reviews/2026-10-31-component-boundaries.json)。两个原类型错误分别用真实Disk与原生kind窄化修复；仅特意非法Date参数显式越过JsonValue以测JS边界，没有扩大生产类型或排除源码。当前287个TypeScript文件、35个辅助/证据模块、252个候选，审查178项，余74项，套件外71项、无单独脚本43项、失效直接入口及陈旧账本路径均零。全测试仍8条继承错误，继续明确失败；本批只修实际Host诊断措辞，没有改变拒绝边界、类型、依赖、框架或架构。

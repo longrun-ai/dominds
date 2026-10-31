@@ -184,7 +184,7 @@ function parseReminderRequest(value: unknown): DomindsAppReminderApplyRequest {
     const meta = value['meta'];
     if (meta !== undefined && !isJsonValue(meta)) {
       throw new Error(
-        'Invalid Application Component tool reminder request: delete.meta must be JSON-serializable',
+        'Invalid Application Component tool reminder request: delete.meta must be a lossless JSON value (primitives, arrays or plain data objects; no class instances, accessors, non-finite numbers or negative zero)',
       );
     }
     return {
@@ -208,7 +208,7 @@ function parseReminderRequest(value: unknown): DomindsAppReminderApplyRequest {
     const meta = value['meta'];
     if (meta !== undefined && !isJsonValue(meta)) {
       throw new Error(
-        'Invalid Application Component tool reminder request: upsert.meta must be JSON-serializable',
+        'Invalid Application Component tool reminder request: upsert.meta must be a lossless JSON value (primitives, arrays or plain data objects; no class instances, accessors, non-finite numbers or negative zero)',
       );
     }
     const positionRaw = value['position'];
@@ -327,7 +327,9 @@ function parseReminderState(value: unknown, label: string): DomindsAppReminderSt
   if (typeof content !== 'string') throw new Error(`${label}.content must be string`);
   const meta = value['meta'];
   if (meta !== undefined && !isJsonValue(meta)) {
-    throw new Error(`${label}.meta must be JSON-serializable`);
+    throw new Error(
+      `${label}.meta must be a lossless JSON value (primitives, arrays or plain data objects; no class instances, accessors, non-finite numbers or negative zero)`,
+    );
   }
   const echoback = value['echoback'];
   if (echoback !== undefined && typeof echoback !== 'boolean') {
@@ -408,7 +410,9 @@ function parseReminderUpdateResult(value: unknown): DomindsAppHostReminderUpdate
   }
   const updatedMeta = value['updatedMeta'];
   if (updatedMeta !== undefined && !isJsonValue(updatedMeta)) {
-    throw new Error(`${label}.updatedMeta must be JSON-serializable`);
+    throw new Error(
+      `${label}.updatedMeta must be a lossless JSON value (primitives, arrays or plain data objects; no class instances, accessors, non-finite numbers or negative zero)`,
+    );
   }
   return {
     treatment,

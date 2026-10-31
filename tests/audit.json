@@ -1056,6 +1056,18 @@
       "lane": "presentation",
       "value": "可见/隐藏成员初选、默认/未知ID/无可见成员回退及preset trim，不冒称权限或实际弹窗提交",
       "evidence": "Full original8(605lines)/final6 and retired2 formatter-oracle review: tests/semantic/reviews/2026-10-31-state-presentation.json. Input IDs/configuration descriptions/labels, public enums/counts, structured JSON and bounded output ordering are machine/data contracts; generated UI compact/tooltip/title meaning is moved to explicit support evidence and must be judged subjectively. Metadata extension API comes from actual isolated LlmConfig.load with unique provider identity checks; no ProviderConfig widening, unknown double cast, actual generator/provider request or browser claim."
+    },
+    "reminders/app-reminder-render-mode-preserve.ts": {
+      "status": "reviewed",
+      "lane": "components",
+      "value": "真实registry/owned update保持plain、完整数据/磁盘/发布结果；host错误身份传播及错误wrapper/NaN/-0不改公开状态，不让损坏owned collect调用外部组件",
+      "evidence": "Complete original2(1014lines)/final2/runtime/client/host and assertion review: tests/semantic/reviews/2026-10-31-component-boundaries.json. Public protocol/IDs, supplied component payloads, native disk/version/events, entry markers, getter counter and readiness effects are machine/data contracts.35 actual IPC diagnostics and4 bilingual owner-wrapper/invariant cases require independent subjective review; no regex/fixed error sentence is an oracle. Current App host/owner compatibility is preserved, not a destination architecture requirement. External AppsHostClient is controlled only in the kernel owner case; IPC case uses an actual owned host process and package entry. Declared URLs are not frontend listeners, artifacts are payload references not image files, and the one invalid Date cast explicitly exercises data outside JsonValue, without type weakening/exclusions."
+    },
+    "apps-host-tool-result-contract.ts": {
+      "status": "reviewed",
+      "lane": "components",
+      "value": "真实本地Host IPC无损JSON/内容项/跨realm/分数位置通过；35类拒绝保边界路由证据，accessor零执行及五类readiness拒绝有真实factory/start标记，保失败现场",
+      "evidence": "Complete original2(1014lines)/final2/runtime/client/host and assertion review: tests/semantic/reviews/2026-10-31-component-boundaries.json. Public protocol/IDs, supplied component payloads, native disk/version/events, entry markers, getter counter and readiness effects are machine/data contracts.35 actual IPC diagnostics and4 bilingual owner-wrapper/invariant cases require independent subjective review; no regex/fixed error sentence is an oracle. Current App host/owner compatibility is preserved, not a destination architecture requirement. External AppsHostClient is controlled only in the kernel owner case; IPC case uses an actual owned host process and package entry. Declared URLs are not frontend listeners, artifacts are payload references not image files, and the one invalid Date cast explicitly exercises data outside JsonValue, without type weakening/exclusions. Initial36 retained33passed/3failed lossy-metadata wording; all39 revised outputs require fresh subjective review. Four diagnostic-only product edits keep lossless validation unchanged and three added actual metadata-return cases exercise those sibling branches."
     }
   },
   "retired": {

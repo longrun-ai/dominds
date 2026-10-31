@@ -81,7 +81,9 @@
     "test:daemon": "node tests/run.mjs --suite daemon",
     "test:semantic:daemon": "node tests/run.mjs --suite daemon --semantic",
     "test:presentation": "node tests/run.mjs --suite presentation",
-    "test:semantic:presentation": "node tests/run.mjs --suite presentation --semantic"
+    "test:semantic:presentation": "node tests/run.mjs --suite presentation --semantic",
+    "test:components": "node tests/run.mjs --suite components",
+    "test:semantic:components": "node tests/run.mjs --suite components --semantic"
   },
   "repository": {
     "type": "git",

@@ -162,7 +162,12 @@ const presentation = [
   'webapp/create-dialog-flow-ime.ts',
   'webapp/create-dialog-flow-selection.ts',
 ];
+const components = [
+  'reminders/app-reminder-render-mode-preserve.ts',
+  'apps-host-tool-result-contract.ts',
+];
 const semanticSuites = {
+  components,
   presentation: ['semantic/model-presentation.ts', 'semantic/context-usage-title.ts'],
   daemon,
   reminders: [
@@ -318,6 +323,7 @@ export async function inventory() {
     reminders,
     daemon,
     presentation,
+    components,
   };
   const included = new Set(Object.values(suites).flat());
   const audit = JSON.parse(await fs.readFile(path.join(testsRoot, 'audit.json'), 'utf8'));
@@ -441,10 +447,11 @@ async function main() {
       'reminders',
       'daemon',
       'presentation',
+      'components',
     ].includes(args[1])
   ) {
     throw new Error(
-      'Usage: node tests/run.mjs --list | --suite smoke | --suite kernel | --suite context [--semantic] | --suite configuration [--semantic] | --suite manual [--semantic] | --suite filesystem [--semantic] | --suite persistence [--semantic] | --suite recovery [--semantic] | --suite bootstrap [--semantic] | --suite packaging [--semantic] | --suite retry [--semantic] | --suite projection [--semantic] | --suite compatible [--semantic] | --suite reminders [--semantic] | --suite daemon [--semantic] | --suite presentation [--semantic]',
+      'Usage: node tests/run.mjs --list | --suite smoke | --suite kernel | --suite context [--semantic] | --suite configuration [--semantic] | --suite manual [--semantic] | --suite filesystem [--semantic] | --suite persistence [--semantic] | --suite recovery [--semantic] | --suite bootstrap [--semantic] | --suite packaging [--semantic] | --suite retry [--semantic] | --suite projection [--semantic] | --suite compatible [--semantic] | --suite reminders [--semantic] | --suite daemon [--semantic] | --suite presentation [--semantic] | --suite components [--semantic]',
     );
   }
   const suite = args[1];
