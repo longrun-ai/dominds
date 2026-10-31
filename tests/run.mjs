@@ -18,7 +18,6 @@ const smoke = [
   'toolsets/tool-availability-snapshot.ts',
   'webapp/create-dialog-flow-ime.ts',
   'webapp/create-dialog-flow-selection.ts',
-  'webapp/generation-model-presentation.ts',
 ];
 const context = [
   'websocket-user-msg-generation-boundary.ts',
@@ -155,7 +154,16 @@ const daemon = [
   'reminders/shared-daemon-reminder-persistence.ts',
   'reminders/shared-daemon-reminder-wrapper-command-match.ts',
 ];
+const presentation = [
+  'kernel/unified-timestamp-ordering.ts',
+  'llm-generation-metadata.ts',
+  'log-priority-fields.ts',
+  'webapp/run-control-visual.ts',
+  'webapp/create-dialog-flow-ime.ts',
+  'webapp/create-dialog-flow-selection.ts',
+];
 const semanticSuites = {
+  presentation: ['semantic/model-presentation.ts', 'semantic/context-usage-title.ts'],
   daemon,
   reminders: [
     'semantic/reminder-guidance.ts',
@@ -309,6 +317,7 @@ export async function inventory() {
     compatible,
     reminders,
     daemon,
+    presentation,
   };
   const included = new Set(Object.values(suites).flat());
   const audit = JSON.parse(await fs.readFile(path.join(testsRoot, 'audit.json'), 'utf8'));
@@ -431,10 +440,11 @@ async function main() {
       'compatible',
       'reminders',
       'daemon',
+      'presentation',
     ].includes(args[1])
   ) {
     throw new Error(
-      'Usage: node tests/run.mjs --list | --suite smoke | --suite kernel | --suite context [--semantic] | --suite configuration [--semantic] | --suite manual [--semantic] | --suite filesystem [--semantic] | --suite persistence [--semantic] | --suite recovery [--semantic] | --suite bootstrap [--semantic] | --suite packaging [--semantic] | --suite retry [--semantic] | --suite projection [--semantic] | --suite compatible [--semantic] | --suite reminders [--semantic] | --suite daemon [--semantic]',
+      'Usage: node tests/run.mjs --list | --suite smoke | --suite kernel | --suite context [--semantic] | --suite configuration [--semantic] | --suite manual [--semantic] | --suite filesystem [--semantic] | --suite persistence [--semantic] | --suite recovery [--semantic] | --suite bootstrap [--semantic] | --suite packaging [--semantic] | --suite retry [--semantic] | --suite projection [--semantic] | --suite compatible [--semantic] | --suite reminders [--semantic] | --suite daemon [--semantic] | --suite presentation [--semantic]',
     );
   }
   const suite = args[1];
@@ -449,7 +459,8 @@ async function main() {
     args:
       (suite !== 'smoke' && suite !== 'packaging') ||
       persistence.includes(file) ||
-      recovery.includes(file)
+      recovery.includes(file) ||
+      presentation.includes(file)
         ? [tsx, path.join(testsRoot, 'cli.ts'), '--', file, ...(semantic ? ['--semantic'] : [])]
         : [
             tsx,

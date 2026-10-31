@@ -5,6 +5,13 @@ import { Logger } from '../main/log';
 const captured: string[] = [];
 const originalError = console.error;
 
+const traceIdentity = {
+  rootId: 'bd/86/0d197a16',
+  selfId: '60/5f/17a5cbde',
+  dialogId: 'bd/86/0d197a16/sideDialogs/60/5f/17a5cbde',
+  callId: 'call_45f92658de4a44d398278b0e',
+};
+
 try {
   console.error = (message?: unknown, ...optionalParams: unknown[]): void => {
     captured.push([message, ...optionalParams].map((part) => String(part)).join(' '));
@@ -28,12 +35,9 @@ try {
     _queuedPrompts: [],
     agentId: 'fullstack',
     askerStack: { askerStack: [] },
-    rootId: 'bd/86/0d197a16',
-    selfId: '60/5f/17a5cbde',
-    dialogId: 'bd/86/0d197a16/sideDialogs/60/5f/17a5cbde',
+    ...traceIdentity,
     course: 1,
     genseq: 49,
-    callId: 'call_45f92658de4a44d398278b0e',
   };
   for (let index = 0; index < 80; index += 1) {
     noisyDialogLike[`_internalNoise${String(index).padStart(2, '0')}`] = {
@@ -44,15 +48,33 @@ try {
   new Logger('log-priority-test').error('priority field probe', new Error('probe'), {
     dialog: noisyDialogLike,
   });
+
+  // In the complete record root/self IDs also occur inside dialogId. Probe each
+  // field alone so losing its value cannot pass through that other field.
+  const withoutIdentity = { ...noisyDialogLike };
+  for (const field of Object.keys(traceIdentity)) delete withoutIdentity[field];
+  for (const [field, value] of Object.entries(traceIdentity)) {
+    new Logger('log-priority-test').error('priority field probe', new Error('probe'), {
+      dialog: { ...withoutIdentity, [field]: value },
+    });
+  }
 } finally {
   console.error = originalError;
 }
 
-const line = captured.join('\n');
-assert.match(line, /rootId: 'bd\/86\/0d197a16'/u);
-assert.match(line, /selfId: '60\/5f\/17a5cbde'/u);
-assert.match(line, /dialogId: 'bd\/86\/0d197a16\/sideDialogs\/60\/5f\/17a5cbde'/u);
-assert.match(line, /callId: 'call_45f92658de4a44d398278b0e'/u);
+assert.equal(captured.length, 1 + Object.keys(traceIdentity).length);
+const line = captured[0]!;
+for (const id of Object.values(traceIdentity))
+  assert.ok(line.includes(id), 'Given tracing data must survive bounded diagnostic rendering');
+for (const [index, [field, value]] of Object.entries(traceIdentity).entries()) {
+  const standalone = captured[index + 1]!;
+  assert.ok(
+    standalone.includes(value),
+    'The independently supplied ' + field + ' value must survive',
+  );
+}
+for (const record of captured)
+  assert.ok(record.length <= 3 * 1024, 'Each diagnostic must fit the existing log-line budget');
 
 const rootIdIndex = line.indexOf('rootId');
 const internalIndex = line.indexOf('_activeGenCourse');

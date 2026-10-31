@@ -79,7 +79,9 @@
     "test:reminders": "node tests/run.mjs --suite reminders",
     "test:semantic:reminders": "node tests/run.mjs --suite reminders --semantic",
     "test:daemon": "node tests/run.mjs --suite daemon",
-    "test:semantic:daemon": "node tests/run.mjs --suite daemon --semantic"
+    "test:semantic:daemon": "node tests/run.mjs --suite daemon --semantic",
+    "test:presentation": "node tests/run.mjs --suite presentation",
+    "test:semantic:presentation": "node tests/run.mjs --suite presentation --semantic"
   },
   "repository": {
     "type": "git",

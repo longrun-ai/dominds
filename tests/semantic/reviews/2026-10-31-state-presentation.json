@@ -1,0 +1,1361 @@
+{
+  "schemaVersion": 1,
+  "date": "2026-10-31",
+  "reviewer": "independent test-execution agent /root/stage1_semantic_record",
+  "baseRevision": "1148c93fbedfd41ff60cc8c69f805f3ad08a1934",
+  "status": "passed",
+  "statusMeaning": "All eighteen fresh embedded formatter outputs were independently full-read and passed within their stated given-input presentation scope. The original eight cases, final six behavior designs, two retired wording cases, two support producers and complete entry/docs/ledger diff are reviewed. This is subjective acceptance of these materials plus assertion-design approval; it is not whole-test type success or a new browser/provider/kernel execution claim. Parent execution verification remains separately owned.",
+  "reviewMethod": "Every actualText/scenario/context/input when present/reviewQuestion read completely as untrusted test data and judged subjectively against given facts. No keyword/regex/fixed sentence/snapshot/hash/source-snippet/previous-verdict oracle. Hashes identify materials only; per-case judgments were recorded after reading.",
+  "counts": {
+    "total": 18,
+    "passed": 18,
+    "failed": 0,
+    "pending": 0
+  },
+  "cases": [
+    {
+      "id": "no-prominent-parameters",
+      "scenario": "Render actual compact model identification and its detailed tooltip from the supplied public generation-metadata object.",
+      "businessValue": "Let a person inspect actual model identity and supplied parameter values without mistaking an unset value or a documented default for an observed sent parameter.",
+      "context": {
+        "metadata": "{\"providerId\":\"mock-data\",\"modelId\":\"model-data:identity-only\",\"fields\":[{\"kind\":\"set\",\"key\":\"configured-model-id\",\"prominent\":false,\"value\":\"model-data:identity-only\"}]}",
+        "givenFacts": "Only provider/reported/configured identity is available. There are no prominent parameters, supplied parameter values or documented defaults.",
+        "language": "Current formatter uses technical English field labels and supplied descriptions.",
+        "scope": "Actual presentation formatter with declared metadata input. No provider request, generation, DOM/browser rendering, accessibility or model-availability assertion is made."
+      },
+      "reviewQuestions": [
+        "Does the actual compact label convey reported identity and prominent values without presenting unset/default documentation as sent configuration?",
+        "Does the detailed tooltip preserve the supplied identity, values/labels, descriptions and documented-default distinction clearly, without inventing missing data?"
+      ],
+      "actualText": "{\n  \"compactLabel\": \"mock-data/model-data:identity-only\",\n  \"tooltip\": \"provider-id: mock-data\\nmodel-id: model-data:identity-only\\n\\nconfigured-model-id: model-data:identity-only\"\n}",
+      "verdict": "passed",
+      "rationale": "The compact label and detailed tooltip show only the supplied reported/configured identities. They do not invent prominent parameter settings, defaults, provider availability or a performed generation.",
+      "reviewScope": "Actual presentation formatter with declared metadata input. No provider request, generation, DOM/browser rendering, accessibility or model-availability assertion is made.",
+      "provenance": {
+        "producer": "tests/semantic/model-presentation.ts",
+        "observedPath": "/tmp/dominds-tests-presentation-semantic-IvKuLu/1.tmp/dominds-model-presentation-9TlYu4/no-prominent-parameters.json",
+        "evidenceJsonSha256": "156c44a7a186a7730a226145f0e4c3ed92589860e55182301a41ead8227c29cf",
+        "actualTextSha256": "acaa697341d461ddd6fdfc343becc88d67a6cdf190c16d17309da46c6bfa8092",
+        "durableEvidence": "All original fields including full actualText/scenario/context/questions embedded. Temporary observation path is not the durable acceptance evidence."
+      }
+    },
+    {
+      "id": "original-prominent-and-unset",
+      "scenario": "Render actual compact model identification and its detailed tooltip from the supplied public generation-metadata object.",
+      "businessValue": "Let a person inspect actual model identity and supplied parameter values without mistaking an unset value or a documented default for an observed sent parameter.",
+      "context": {
+        "metadata": "{\"providerId\":\"codex\",\"modelId\":\"gpt-5.6-sol\",\"fields\":[{\"kind\":\"set\",\"key\":\"configured-model-id\",\"prominent\":false,\"value\":\"gpt-5.6-sol\"},{\"kind\":\"set\",\"key\":\"codex.reasoning_effort\",\"prominent\":true,\"value\":\"high\",\"description\":\"Reasoning effort level.\"},{\"kind\":\"unset\",\"key\":\"codex.service_tier\",\"prominent\":true,\"documentedDefault\":\"auto\",\"documentedDefaultLabel\":\"Standard\",\"description\":\"Processing tier.\"},{\"kind\":\"set\",\"key\":\"codex.verbosity\",\"prominent\":true,\"value\":\"medium\",\"description\":\"Response detail level.\"}]}",
+        "givenFacts": "Reported/configured model is gpt-5.6-sol. Reasoning effort=high and verbosity=medium are supplied values. service_tier is unset; auto/Standard is only its documented default, never evidence of a sent parameter.",
+        "language": "Current formatter uses technical English field labels and supplied descriptions.",
+        "scope": "Actual presentation formatter with declared metadata input. No provider request, generation, DOM/browser rendering, accessibility or model-availability assertion is made."
+      },
+      "reviewQuestions": [
+        "Does the actual compact label convey reported identity and prominent values without presenting unset/default documentation as sent configuration?",
+        "Does the detailed tooltip preserve the supplied identity, values/labels, descriptions and documented-default distinction clearly, without inventing missing data?"
+      ],
+      "actualText": "{\n  \"compactLabel\": \"codex/gpt-5.6-sol·high·unset·medium\",\n  \"tooltip\": \"provider-id: codex\\nmodel-id: gpt-5.6-sol\\n\\nconfigured-model-id: gpt-5.6-sol\\n\\ncodex.reasoning_effort: high\\nReasoning effort level.\\n\\ncodex.service_tier: unset\\nProcessing tier.\\ndocumented-default: auto (Standard)\\n\\ncodex.verbosity: medium\\nResponse detail level.\"\n}",
+      "verdict": "passed",
+      "rationale": "The compact label shows the supplied model and prominent high/unset/medium values. The tooltip keeps service_tier unset while separately identifying auto/Standard as documented-default information, preserving the given descriptions rather than presenting the default as an observed sent setting.",
+      "reviewScope": "Actual presentation formatter with declared metadata input. No provider request, generation, DOM/browser rendering, accessibility or model-availability assertion is made.",
+      "provenance": {
+        "producer": "tests/semantic/model-presentation.ts",
+        "observedPath": "/tmp/dominds-tests-presentation-semantic-IvKuLu/1.tmp/dominds-model-presentation-9TlYu4/original-prominent-and-unset.json",
+        "evidenceJsonSha256": "de13270a9dd8160e65294423350715a4b47877c94e9811259eaa0e9446ca3795",
+        "actualTextSha256": "4b5f6ba03701bf7585568674f2dc365ebd0bea7523011ffcff066f010d6e7f7e",
+        "durableEvidence": "All original fields including full actualText/scenario/context/questions embedded. Temporary observation path is not the durable acceptance evidence."
+      }
+    },
+    {
+      "id": "reported-versus-configured",
+      "scenario": "Render actual compact model identification and its detailed tooltip from the supplied public generation-metadata object.",
+      "businessValue": "Let a person inspect actual model identity and supplied parameter values without mistaking an unset value or a documented default for an observed sent parameter.",
+      "context": {
+        "metadata": "{\"providerId\":\"provider-data:67b3\",\"modelId\":\"reported-model-data:ab4f\",\"fields\":[{\"kind\":\"set\",\"key\":\"configured-model-id\",\"prominent\":false,\"value\":\"configured-model-data:d82e\"},{\"kind\":\"set\",\"key\":\"parameter-data:choice\",\"prominent\":true,\"value\":\"priority-data\",\"valueLabel\":\"Supplied choice label\",\"description\":\"Description supplied as configuration data.\"},{\"kind\":\"set\",\"key\":\"parameter-data:secondary\",\"prominent\":false,\"value\":\"secondary-data:44c2\"}]}",
+        "givenFacts": "The reported and configured model identifiers differ. The supplied choice is prominent and has its supplied label; the secondary parameter is available for detailed inspection, not prominent display.",
+        "language": "Current formatter uses technical English field labels and supplied descriptions.",
+        "scope": "Actual presentation formatter with declared metadata input. No provider request, generation, DOM/browser rendering, accessibility or model-availability assertion is made."
+      },
+      "reviewQuestions": [
+        "Does the actual compact label convey reported identity and prominent values without presenting unset/default documentation as sent configuration?",
+        "Does the detailed tooltip preserve the supplied identity, values/labels, descriptions and documented-default distinction clearly, without inventing missing data?"
+      ],
+      "actualText": "{\n  \"compactLabel\": \"provider-data:67b3/reported-model-data:ab4f·priority-data\",\n  \"tooltip\": \"provider-id: provider-data:67b3\\nmodel-id: reported-model-data:ab4f\\n\\nconfigured-model-id: configured-model-data:d82e\\n\\nparameter-data:choice: priority-data (Supplied choice label)\\nDescription supplied as configuration data.\\n\\nparameter-data:secondary: secondary-data:44c2\"\n}",
+      "verdict": "passed",
+      "rationale": "The compact label uses the supplied reported model; the tooltip separately retains the different configured model. The prominent choice and its given label/description remain visible, while the nonprominent secondary parameter is available only in detail. No new provider fact is invented.",
+      "reviewScope": "Actual presentation formatter with declared metadata input. No provider request, generation, DOM/browser rendering, accessibility or model-availability assertion is made.",
+      "provenance": {
+        "producer": "tests/semantic/model-presentation.ts",
+        "observedPath": "/tmp/dominds-tests-presentation-semantic-IvKuLu/1.tmp/dominds-model-presentation-9TlYu4/reported-versus-configured.json",
+        "evidenceJsonSha256": "36143290b44a2a153ceab106782d64eebadbbc12c5aad1a89177ddfdb4997875",
+        "actualTextSha256": "72e7f1d9f34abd83fef70f1c0211406dcca81f326e499bc70212dd0189e4a5e9",
+        "durableEvidence": "All original fields including full actualText/scenario/context/questions embedded. Temporary observation path is not the durable acceptance evidence."
+      }
+    },
+    {
+      "id": "structured-supplied-value",
+      "scenario": "Render actual compact model identification and its detailed tooltip from the supplied public generation-metadata object.",
+      "businessValue": "Let a person inspect actual model identity and supplied parameter values without mistaking an unset value or a documented default for an observed sent parameter.",
+      "context": {
+        "metadata": "{\"providerId\":\"compatible-data\",\"modelId\":\"model-data:structured\",\"fields\":[{\"kind\":\"set\",\"key\":\"configured-model-id\",\"prominent\":false,\"value\":\"model-data:structured\"},{\"kind\":\"set\",\"key\":\"openai-compatible.thinking\",\"prominent\":true,\"value\":\"{\\\"type\\\":\\\"adaptive\\\",\\\"budget\\\":[2,8]}\",\"description\":\"Supplied structured thinking configuration.\"},{\"kind\":\"unset\",\"key\":\"openai-compatible.optional\",\"prominent\":true}]}",
+        "givenFacts": "The structured thinking value is supplied JSON data containing type=adaptive and budget=[2,8]. optional is unset and has no documented default; do not invent one.",
+        "language": "Current formatter uses technical English field labels and supplied descriptions.",
+        "scope": "Actual presentation formatter with declared metadata input. No provider request, generation, DOM/browser rendering, accessibility or model-availability assertion is made."
+      },
+      "reviewQuestions": [
+        "Does the actual compact label convey reported identity and prominent values without presenting unset/default documentation as sent configuration?",
+        "Does the detailed tooltip preserve the supplied identity, values/labels, descriptions and documented-default distinction clearly, without inventing missing data?"
+      ],
+      "actualText": "{\n  \"compactLabel\": \"compatible-data/model-data:structured·{\\\"type\\\":\\\"adaptive\\\",\\\"budget\\\":[2,8]}·unset\",\n  \"tooltip\": \"provider-id: compatible-data\\nmodel-id: model-data:structured\\n\\nconfigured-model-id: model-data:structured\\n\\nopenai-compatible.thinking: {\\\"type\\\":\\\"adaptive\\\",\\\"budget\\\":[2,8]}\\nSupplied structured thinking configuration.\\n\\nopenai-compatible.optional: unset\"\n}",
+      "verdict": "passed",
+      "rationale": "The actual display preserves the supplied structured JSON, including ordered budget data, and clearly leaves the optional field unset without adding a default. Compact and detailed displays agree with the given metadata; no claim about executing this thinking configuration is made.",
+      "reviewScope": "Actual presentation formatter with declared metadata input. No provider request, generation, DOM/browser rendering, accessibility or model-availability assertion is made.",
+      "provenance": {
+        "producer": "tests/semantic/model-presentation.ts",
+        "observedPath": "/tmp/dominds-tests-presentation-semantic-IvKuLu/1.tmp/dominds-model-presentation-9TlYu4/structured-supplied-value.json",
+        "evidenceJsonSha256": "bd142ce84a15ce53846733a7be56fbec74d7c142b4db36f8657f32dd861b07e7",
+        "actualTextSha256": "5e84015b52fc195665d4ed1bb0dec08fda55e9e95f3363ba747eadc712744c31",
+        "durableEvidence": "All original fields including full actualText/scenario/context/questions embedded. Temporary observation path is not the durable acceptance evidence."
+      }
+    },
+    {
+      "id": "en-known-caution",
+      "scenario": "Format the actual context-usage title from supplied availability, counts, health and threshold facts.",
+      "businessValue": "Show available prompt/reasoning usage and context boundaries accurately without confusing missing data, zero usage, threshold configuration and current measured usage.",
+      "context": {
+        "language": "en",
+        "args": "{\"kind\":\"known\",\"promptTokens\":210000,\"reasoningTokens\":516,\"hardPercentText\":\"77%\",\"modelContextLimitTokens\":272000,\"modelContextWindowText\":\"272K\",\"level\":\"caution\",\"optimalTokens\":200000,\"optimalPercentText\":\"74%\",\"optimalConfigured\":true,\"criticalTokens\":244800,\"criticalPercentText\":\"90%\",\"criticalConfigured\":false}",
+        "givenFacts": "Supplied caution state: prompt210000, reasoning516, hard usage77%, window272K. Soft configured200000/74%; critical default244800/90%.",
+        "scope": "Actual title formatter only. Counts, percentages, levels and threshold provenance are declared inputs, not calculated pressure, live provider measurement, DOM rendering or a browser interaction."
+      },
+      "reviewQuestions": [
+        "Does the actual title accurately convey known/unknown state and the supplied prompt/reasoning facts, preserving the distinction between missing and explicitly zero usage?",
+        "Where thresholds are supplied, are current usage, model limit, soft/critical boundaries and configured/default provenance understandable and consistent with the input, without inventing additional observations?"
+      ],
+      "actualText": "Context status • caution\nPrompt: 210K (77%; limit 272K)\nReasoning: 516\nSoft: 200K (74%; config)\nCritical: 245K (90%; default)",
+      "verdict": "passed",
+      "rationale": "The title communicates the supplied caution state and210K/77% prompt facts while retaining reasoning516 and the separate soft/critical boundaries. Their provenance and model limit are understandable without implying that this formatter measured or classified pressure.",
+      "reviewScope": "Actual title formatter only. Counts, percentages, levels and threshold provenance are declared inputs, not calculated pressure, live provider measurement, DOM rendering or a browser interaction.",
+      "provenance": {
+        "producer": "tests/semantic/context-usage-title.ts",
+        "observedPath": "/tmp/dominds-tests-presentation-semantic-IvKuLu/2.tmp/dominds-context-title-FW1ib4/en-known-caution.json",
+        "evidenceJsonSha256": "401a89bcb8013ae183894bc48aa9d9303166001583e0a857401efe32412b6258",
+        "actualTextSha256": "babcce2f01427c65afb336f9bc432e2dd638bda44d466c7d2a595ab473670ab0",
+        "durableEvidence": "All original fields including full actualText/scenario/context/questions embedded. Temporary observation path is not the durable acceptance evidence."
+      }
+    },
+    {
+      "id": "en-known-critical",
+      "scenario": "Format the actual context-usage title from supplied availability, counts, health and threshold facts.",
+      "businessValue": "Show available prompt/reasoning usage and context boundaries accurately without confusing missing data, zero usage, threshold configuration and current measured usage.",
+      "context": {
+        "language": "en",
+        "args": "{\"kind\":\"known\",\"promptTokens\":250000,\"reasoningTokens\":516,\"hardPercentText\":\"92%\",\"modelContextLimitTokens\":272000,\"modelContextWindowText\":\"272K\",\"level\":\"critical\",\"optimalTokens\":200000,\"optimalPercentText\":\"74%\",\"optimalConfigured\":true,\"criticalTokens\":244800,\"criticalPercentText\":\"90%\",\"criticalConfigured\":false}",
+        "givenFacts": "Supplied critical state: prompt250000, reasoning516, hard usage92%, window272K. Soft configured200000/74%; critical default244800/90%.",
+        "scope": "Actual title formatter only. Counts, percentages, levels and threshold provenance are declared inputs, not calculated pressure, live provider measurement, DOM rendering or a browser interaction."
+      },
+      "reviewQuestions": [
+        "Does the actual title accurately convey known/unknown state and the supplied prompt/reasoning facts, preserving the distinction between missing and explicitly zero usage?",
+        "Where thresholds are supplied, are current usage, model limit, soft/critical boundaries and configured/default provenance understandable and consistent with the input, without inventing additional observations?"
+      ],
+      "actualText": "Context status • critical\nPrompt: 250K (92%; limit 272K)\nReasoning: 516\nSoft: 200K (74%; config)\nCritical: 245K (90%; default)",
+      "verdict": "passed",
+      "rationale": "The title correctly conveys the supplied critical state and250K/92% input, with the given reasoning and threshold provenance. It distinguishes current usage from the critical boundary and does not invent a further action or measurement.",
+      "reviewScope": "Actual title formatter only. Counts, percentages, levels and threshold provenance are declared inputs, not calculated pressure, live provider measurement, DOM rendering or a browser interaction.",
+      "provenance": {
+        "producer": "tests/semantic/context-usage-title.ts",
+        "observedPath": "/tmp/dominds-tests-presentation-semantic-IvKuLu/2.tmp/dominds-context-title-FW1ib4/en-known-critical.json",
+        "evidenceJsonSha256": "b66288af71220deb7159a1fa354c519acbd38f7af256e11df23f8d18f85e0ac5",
+        "actualTextSha256": "998705bcb103cbe8771bee0c54ede9ee80b175a2d9f7dbff135d9b0f957f451c",
+        "durableEvidence": "All original fields including full actualText/scenario/context/questions embedded. Temporary observation path is not the durable acceptance evidence."
+      }
+    },
+    {
+      "id": "en-known-no-reasoning",
+      "scenario": "Format the actual context-usage title from supplied availability, counts, health and threshold facts.",
+      "businessValue": "Show available prompt/reasoning usage and context boundaries accurately without confusing missing data, zero usage, threshold configuration and current measured usage.",
+      "context": {
+        "language": "en",
+        "args": "{\"kind\":\"known\",\"promptTokens\":42000,\"hardPercentText\":\"15%\",\"modelContextLimitTokens\":272000,\"modelContextWindowText\":\"272K\",\"level\":\"healthy\",\"optimalTokens\":200000,\"optimalPercentText\":\"74%\",\"optimalConfigured\":true,\"criticalTokens\":244800,\"criticalPercentText\":\"90%\",\"criticalConfigured\":false}",
+        "givenFacts": "The known-state prompt/window/threshold facts remain. No reasoning usage was supplied; absence must not become an observed zero.",
+        "scope": "Actual title formatter only. Counts, percentages, levels and threshold provenance are declared inputs, not calculated pressure, live provider measurement, DOM rendering or a browser interaction."
+      },
+      "reviewQuestions": [
+        "Does the actual title accurately convey known/unknown state and the supplied prompt/reasoning facts, preserving the distinction between missing and explicitly zero usage?",
+        "Where thresholds are supplied, are current usage, model limit, soft/critical boundaries and configured/default provenance understandable and consistent with the input, without inventing additional observations?"
+      ],
+      "actualText": "Context status • healthy\nPrompt: 42K (15%; limit 272K)\nSoft: 200K (74%; config)\nCritical: 245K (90%; default)",
+      "verdict": "passed",
+      "rationale": "The title retains the supplied known-state prompt, limit and thresholds but omits missing reasoning instead of inventing zero. Configuration/default labels describe thresholds, not additional observed usage.",
+      "reviewScope": "Actual title formatter only. Counts, percentages, levels and threshold provenance are declared inputs, not calculated pressure, live provider measurement, DOM rendering or a browser interaction.",
+      "provenance": {
+        "producer": "tests/semantic/context-usage-title.ts",
+        "observedPath": "/tmp/dominds-tests-presentation-semantic-IvKuLu/2.tmp/dominds-context-title-FW1ib4/en-known-no-reasoning.json",
+        "evidenceJsonSha256": "9fe4ca3ddf44754f239731be2d36f7dab221f2dd4f98f2d2b537cab0d5088c24",
+        "actualTextSha256": "5d254a30963b38d03ca6e61cd5085169971c62f44136edc9cd7f5280bb4c7ff5",
+        "durableEvidence": "All original fields including full actualText/scenario/context/questions embedded. Temporary observation path is not the durable acceptance evidence."
+      }
+    },
+    {
+      "id": "en-known-reasoning",
+      "scenario": "Format the actual context-usage title from supplied availability, counts, health and threshold facts.",
+      "businessValue": "Show available prompt/reasoning usage and context boundaries accurately without confusing missing data, zero usage, threshold configuration and current measured usage.",
+      "context": {
+        "language": "en",
+        "args": "{\"kind\":\"known\",\"promptTokens\":42000,\"reasoningTokens\":516,\"hardPercentText\":\"15%\",\"modelContextLimitTokens\":272000,\"modelContextWindowText\":\"272K\",\"level\":\"healthy\",\"optimalTokens\":200000,\"optimalPercentText\":\"74%\",\"optimalConfigured\":true,\"criticalTokens\":244800,\"criticalPercentText\":\"90%\",\"criticalConfigured\":false}",
+        "givenFacts": "Prompt=42000, reasoning=516, supplied hard usage15%, window272K, healthy. Soft threshold200000/74% is configured; critical threshold244800/90% is default.",
+        "scope": "Actual title formatter only. Counts, percentages, levels and threshold provenance are declared inputs, not calculated pressure, live provider measurement, DOM rendering or a browser interaction."
+      },
+      "reviewQuestions": [
+        "Does the actual title accurately convey known/unknown state and the supplied prompt/reasoning facts, preserving the distinction between missing and explicitly zero usage?",
+        "Where thresholds are supplied, are current usage, model limit, soft/critical boundaries and configured/default provenance understandable and consistent with the input, without inventing additional observations?"
+      ],
+      "actualText": "Context status • healthy\nPrompt: 42K (15%; limit 272K)\nReasoning: 516\nSoft: 200K (74%; config)\nCritical: 245K (90%; default)",
+      "verdict": "passed",
+      "rationale": "The title accurately presents supplied healthy state,42K prompt and516 reasoning separately, with15% current usage and272K limit. Soft and critical boundaries are distinct from usage and their configured/default provenance remains clear.245K is a reasonable compact rounding of244800, not a claim of a newly calculated threshold.",
+      "reviewScope": "Actual title formatter only. Counts, percentages, levels and threshold provenance are declared inputs, not calculated pressure, live provider measurement, DOM rendering or a browser interaction.",
+      "provenance": {
+        "producer": "tests/semantic/context-usage-title.ts",
+        "observedPath": "/tmp/dominds-tests-presentation-semantic-IvKuLu/2.tmp/dominds-context-title-FW1ib4/en-known-reasoning.json",
+        "evidenceJsonSha256": "8dcdd7bdf2423718b8b96b93e0359ecd3b9c69ebfb885a5422a34e195e89ad1a",
+        "actualTextSha256": "d4904d3c605cae878e5d41813be51e852cd3eaba86182da395872f4558775928",
+        "durableEvidence": "All original fields including full actualText/scenario/context/questions embedded. Temporary observation path is not the durable acceptance evidence."
+      }
+    },
+    {
+      "id": "en-unknown-no-usage",
+      "scenario": "Format the actual context-usage title from supplied availability, counts, health and threshold facts.",
+      "businessValue": "Show available prompt/reasoning usage and context boundaries accurately without confusing missing data, zero usage, threshold configuration and current measured usage.",
+      "context": {
+        "language": "en",
+        "args": "{\"kind\":\"unknown\"}",
+        "givenFacts": "No context status/window/threshold or usage numbers were supplied. Do not invent zero or an observed healthy state.",
+        "scope": "Actual title formatter only. Counts, percentages, levels and threshold provenance are declared inputs, not calculated pressure, live provider measurement, DOM rendering or a browser interaction."
+      },
+      "reviewQuestions": [
+        "Does the actual title accurately convey known/unknown state and the supplied prompt/reasoning facts, preserving the distinction between missing and explicitly zero usage?",
+        "Where thresholds are supplied, are current usage, model limit, soft/critical boundaries and configured/default provenance understandable and consistent with the input, without inventing additional observations?"
+      ],
+      "actualText": "Context status: unknown",
+      "verdict": "passed",
+      "rationale": "The title reports only unknown context state. It does not fabricate zero counts, healthy pressure, limits or thresholds when none were supplied.",
+      "reviewScope": "Actual title formatter only. Counts, percentages, levels and threshold provenance are declared inputs, not calculated pressure, live provider measurement, DOM rendering or a browser interaction.",
+      "provenance": {
+        "producer": "tests/semantic/context-usage-title.ts",
+        "observedPath": "/tmp/dominds-tests-presentation-semantic-IvKuLu/2.tmp/dominds-context-title-FW1ib4/en-unknown-no-usage.json",
+        "evidenceJsonSha256": "8d459336f50a7838d61c350dfec8c19e753aa7d0565bb5597256fe48544b3873",
+        "actualTextSha256": "55c0fd29e3a8dae2748212ffc0d23618aa377f7c00d686091bd8d945570c8b27",
+        "durableEvidence": "All original fields including full actualText/scenario/context/questions embedded. Temporary observation path is not the durable acceptance evidence."
+      }
+    },
+    {
+      "id": "en-unknown-observed-zero",
+      "scenario": "Format the actual context-usage title from supplied availability, counts, health and threshold facts.",
+      "businessValue": "Show available prompt/reasoning usage and context boundaries accurately without confusing missing data, zero usage, threshold configuration and current measured usage.",
+      "context": {
+        "language": "en",
+        "args": "{\"kind\":\"unknown\",\"promptTokens\":0,\"reasoningTokens\":0}",
+        "givenFacts": "Context limits/status remain unavailable. Both prompt and reasoning usage were explicitly observed as zero, distinct from missing usage.",
+        "scope": "Actual title formatter only. Counts, percentages, levels and threshold provenance are declared inputs, not calculated pressure, live provider measurement, DOM rendering or a browser interaction."
+      },
+      "reviewQuestions": [
+        "Does the actual title accurately convey known/unknown state and the supplied prompt/reasoning facts, preserving the distinction between missing and explicitly zero usage?",
+        "Where thresholds are supplied, are current usage, model limit, soft/critical boundaries and configured/default provenance understandable and consistent with the input, without inventing additional observations?"
+      ],
+      "actualText": "Context status: unknown\nPrompt: 0\nReasoning: 0",
+      "verdict": "passed",
+      "rationale": "The title keeps context status unknown while explicitly displaying both supplied zero counts. It therefore distinguishes present zero data from missing usage and does not infer a known or healthy window.",
+      "reviewScope": "Actual title formatter only. Counts, percentages, levels and threshold provenance are declared inputs, not calculated pressure, live provider measurement, DOM rendering or a browser interaction.",
+      "provenance": {
+        "producer": "tests/semantic/context-usage-title.ts",
+        "observedPath": "/tmp/dominds-tests-presentation-semantic-IvKuLu/2.tmp/dominds-context-title-FW1ib4/en-unknown-observed-zero.json",
+        "evidenceJsonSha256": "a0b4143174092e94094cfeb6df81c3ffb4ea085c97cb9bf9a6c2c5ef2de3ffc5",
+        "actualTextSha256": "66864df7f1f257955f9bc14ee77ef6e8db8001fe294b9ccbd0ff2b8d723e9961",
+        "durableEvidence": "All original fields including full actualText/scenario/context/questions embedded. Temporary observation path is not the durable acceptance evidence."
+      }
+    },
+    {
+      "id": "en-unknown-with-usage",
+      "scenario": "Format the actual context-usage title from supplied availability, counts, health and threshold facts.",
+      "businessValue": "Show available prompt/reasoning usage and context boundaries accurately without confusing missing data, zero usage, threshold configuration and current measured usage.",
+      "context": {
+        "language": "en",
+        "args": "{\"kind\":\"unknown\",\"promptTokens\":42000,\"reasoningTokens\":516}",
+        "givenFacts": "The context status/window/thresholds are unavailable, but prompt42000 and reasoning516 were supplied.",
+        "scope": "Actual title formatter only. Counts, percentages, levels and threshold provenance are declared inputs, not calculated pressure, live provider measurement, DOM rendering or a browser interaction."
+      },
+      "reviewQuestions": [
+        "Does the actual title accurately convey known/unknown state and the supplied prompt/reasoning facts, preserving the distinction between missing and explicitly zero usage?",
+        "Where thresholds are supplied, are current usage, model limit, soft/critical boundaries and configured/default provenance understandable and consistent with the input, without inventing additional observations?"
+      ],
+      "actualText": "Context status: unknown\nPrompt: 42K\nReasoning: 516",
+      "verdict": "passed",
+      "rationale": "The actual title correctly combines unknown context availability with the supplied42K prompt and516 reasoning facts. It neither discards available usage nor invents unavailable capacity, health or thresholds.",
+      "reviewScope": "Actual title formatter only. Counts, percentages, levels and threshold provenance are declared inputs, not calculated pressure, live provider measurement, DOM rendering or a browser interaction.",
+      "provenance": {
+        "producer": "tests/semantic/context-usage-title.ts",
+        "observedPath": "/tmp/dominds-tests-presentation-semantic-IvKuLu/2.tmp/dominds-context-title-FW1ib4/en-unknown-with-usage.json",
+        "evidenceJsonSha256": "826fffb98a11252951b9982741d72ece8c6233beb39c22afbfe7cd714b03daa8",
+        "actualTextSha256": "d34ed0dfda8753fdfe92bb8fe84910e5ab7703ac5f71de8efe908f06b35c37d5",
+        "durableEvidence": "All original fields including full actualText/scenario/context/questions embedded. Temporary observation path is not the durable acceptance evidence."
+      }
+    },
+    {
+      "id": "zh-known-caution",
+      "scenario": "Format the actual context-usage title from supplied availability, counts, health and threshold facts.",
+      "businessValue": "Show available prompt/reasoning usage and context boundaries accurately without confusing missing data, zero usage, threshold configuration and current measured usage.",
+      "context": {
+        "language": "zh",
+        "args": "{\"kind\":\"known\",\"promptTokens\":210000,\"reasoningTokens\":516,\"hardPercentText\":\"77%\",\"modelContextLimitTokens\":272000,\"modelContextWindowText\":\"272K\",\"level\":\"caution\",\"optimalTokens\":200000,\"optimalPercentText\":\"74%\",\"optimalConfigured\":true,\"criticalTokens\":244800,\"criticalPercentText\":\"90%\",\"criticalConfigured\":false}",
+        "givenFacts": "Supplied caution state: prompt210000, reasoning516, hard usage77%, window272K. Soft configured200000/74%; critical default244800/90%.",
+        "scope": "Actual title formatter only. Counts, percentages, levels and threshold provenance are declared inputs, not calculated pressure, live provider measurement, DOM rendering or a browser interaction."
+      },
+      "reviewQuestions": [
+        "Does the actual title accurately convey known/unknown state and the supplied prompt/reasoning facts, preserving the distinction between missing and explicitly zero usage?",
+        "Where thresholds are supplied, are current usage, model limit, soft/critical boundaries and configured/default provenance understandable and consistent with the input, without inventing additional observations?"
+      ],
+      "actualText": "上下文情况 • 吃紧\n输入：210K（77%；上限 272K）\n推理：516\n软线：200K（74%；配置）\n红线：245K（90%；默认）",
+      "verdict": "passed",
+      "rationale": "标题将给定caution表示为吃紧，210K/77%输入、516推理量和独立软/红边界清楚，阈值来源与模型上限保留；未额外宣称formatter实测或分类压力。",
+      "reviewScope": "Actual title formatter only. Counts, percentages, levels and threshold provenance are declared inputs, not calculated pressure, live provider measurement, DOM rendering or a browser interaction.",
+      "provenance": {
+        "producer": "tests/semantic/context-usage-title.ts",
+        "observedPath": "/tmp/dominds-tests-presentation-semantic-IvKuLu/2.tmp/dominds-context-title-FW1ib4/zh-known-caution.json",
+        "evidenceJsonSha256": "ca9cd5bf702469c0638953512f8f2ca95c001bf75de6d80ffd84afeb4b3ae906",
+        "actualTextSha256": "bb26cb72492f7ae81bc9875be83dab9ead51503c9db9a87c9cde757664f1c91a",
+        "durableEvidence": "All original fields including full actualText/scenario/context/questions embedded. Temporary observation path is not the durable acceptance evidence."
+      }
+    },
+    {
+      "id": "zh-known-critical",
+      "scenario": "Format the actual context-usage title from supplied availability, counts, health and threshold facts.",
+      "businessValue": "Show available prompt/reasoning usage and context boundaries accurately without confusing missing data, zero usage, threshold configuration and current measured usage.",
+      "context": {
+        "language": "zh",
+        "args": "{\"kind\":\"known\",\"promptTokens\":250000,\"reasoningTokens\":516,\"hardPercentText\":\"92%\",\"modelContextLimitTokens\":272000,\"modelContextWindowText\":\"272K\",\"level\":\"critical\",\"optimalTokens\":200000,\"optimalPercentText\":\"74%\",\"optimalConfigured\":true,\"criticalTokens\":244800,\"criticalPercentText\":\"90%\",\"criticalConfigured\":false}",
+        "givenFacts": "Supplied critical state: prompt250000, reasoning516, hard usage92%, window272K. Soft configured200000/74%; critical default244800/90%.",
+        "scope": "Actual title formatter only. Counts, percentages, levels and threshold provenance are declared inputs, not calculated pressure, live provider measurement, DOM rendering or a browser interaction."
+      },
+      "reviewQuestions": [
+        "Does the actual title accurately convey known/unknown state and the supplied prompt/reasoning facts, preserving the distinction between missing and explicitly zero usage?",
+        "Where thresholds are supplied, are current usage, model limit, soft/critical boundaries and configured/default provenance understandable and consistent with the input, without inventing additional observations?"
+      ],
+      "actualText": "上下文情况 • 告急\n输入：250K（92%；上限 272K）\n推理：516\n软线：200K（74%；配置）\n红线：245K（90%；默认）",
+      "verdict": "passed",
+      "rationale": "标题准确呈现给定告急状态及250K/92%输入，保留推理量和阈值来源，并区分当前使用量与红线，没有虚构额外动作或测量。",
+      "reviewScope": "Actual title formatter only. Counts, percentages, levels and threshold provenance are declared inputs, not calculated pressure, live provider measurement, DOM rendering or a browser interaction.",
+      "provenance": {
+        "producer": "tests/semantic/context-usage-title.ts",
+        "observedPath": "/tmp/dominds-tests-presentation-semantic-IvKuLu/2.tmp/dominds-context-title-FW1ib4/zh-known-critical.json",
+        "evidenceJsonSha256": "78ed3a51079f4ab1d468e59da82603edc5b7142777fa47150a1a403b6ef36ffb",
+        "actualTextSha256": "97497d3277c4ca19445dea76ad855f97fa2c695b59c866b64d68c5dcf4b42ff5",
+        "durableEvidence": "All original fields including full actualText/scenario/context/questions embedded. Temporary observation path is not the durable acceptance evidence."
+      }
+    },
+    {
+      "id": "zh-known-no-reasoning",
+      "scenario": "Format the actual context-usage title from supplied availability, counts, health and threshold facts.",
+      "businessValue": "Show available prompt/reasoning usage and context boundaries accurately without confusing missing data, zero usage, threshold configuration and current measured usage.",
+      "context": {
+        "language": "zh",
+        "args": "{\"kind\":\"known\",\"promptTokens\":42000,\"hardPercentText\":\"15%\",\"modelContextLimitTokens\":272000,\"modelContextWindowText\":\"272K\",\"level\":\"healthy\",\"optimalTokens\":200000,\"optimalPercentText\":\"74%\",\"optimalConfigured\":true,\"criticalTokens\":244800,\"criticalPercentText\":\"90%\",\"criticalConfigured\":false}",
+        "givenFacts": "The known-state prompt/window/threshold facts remain. No reasoning usage was supplied; absence must not become an observed zero.",
+        "scope": "Actual title formatter only. Counts, percentages, levels and threshold provenance are declared inputs, not calculated pressure, live provider measurement, DOM rendering or a browser interaction."
+      },
+      "reviewQuestions": [
+        "Does the actual title accurately convey known/unknown state and the supplied prompt/reasoning facts, preserving the distinction between missing and explicitly zero usage?",
+        "Where thresholds are supplied, are current usage, model limit, soft/critical boundaries and configured/default provenance understandable and consistent with the input, without inventing additional observations?"
+      ],
+      "actualText": "上下文情况 • 充裕\n输入：42K（15%；上限 272K）\n软线：200K（74%；配置）\n红线：245K（90%；默认）",
+      "verdict": "passed",
+      "rationale": "标题保留给定已知状态的输入、上限及阈值，缺失推理量没有被伪造为零；配置/默认说明针对阈值，没有增加未给定的用量事实。",
+      "reviewScope": "Actual title formatter only. Counts, percentages, levels and threshold provenance are declared inputs, not calculated pressure, live provider measurement, DOM rendering or a browser interaction.",
+      "provenance": {
+        "producer": "tests/semantic/context-usage-title.ts",
+        "observedPath": "/tmp/dominds-tests-presentation-semantic-IvKuLu/2.tmp/dominds-context-title-FW1ib4/zh-known-no-reasoning.json",
+        "evidenceJsonSha256": "c4708140e402ce0f3b744697a5872576e35c64bf01d0ce473e1e6f6a68653df4",
+        "actualTextSha256": "321775a9753ee59158b92219d0271fa774ec197d22e453809a41a676544c83a3",
+        "durableEvidence": "All original fields including full actualText/scenario/context/questions embedded. Temporary observation path is not the durable acceptance evidence."
+      }
+    },
+    {
+      "id": "zh-known-reasoning",
+      "scenario": "Format the actual context-usage title from supplied availability, counts, health and threshold facts.",
+      "businessValue": "Show available prompt/reasoning usage and context boundaries accurately without confusing missing data, zero usage, threshold configuration and current measured usage.",
+      "context": {
+        "language": "zh",
+        "args": "{\"kind\":\"known\",\"promptTokens\":42000,\"reasoningTokens\":516,\"hardPercentText\":\"15%\",\"modelContextLimitTokens\":272000,\"modelContextWindowText\":\"272K\",\"level\":\"healthy\",\"optimalTokens\":200000,\"optimalPercentText\":\"74%\",\"optimalConfigured\":true,\"criticalTokens\":244800,\"criticalPercentText\":\"90%\",\"criticalConfigured\":false}",
+        "givenFacts": "Prompt=42000, reasoning=516, supplied hard usage15%, window272K, healthy. Soft threshold200000/74% is configured; critical threshold244800/90% is default.",
+        "scope": "Actual title formatter only. Counts, percentages, levels and threshold provenance are declared inputs, not calculated pressure, live provider measurement, DOM rendering or a browser interaction."
+      },
+      "reviewQuestions": [
+        "Does the actual title accurately convey known/unknown state and the supplied prompt/reasoning facts, preserving the distinction between missing and explicitly zero usage?",
+        "Where thresholds are supplied, are current usage, model limit, soft/critical boundaries and configured/default provenance understandable and consistent with the input, without inventing additional observations?"
+      ],
+      "actualText": "上下文情况 • 充裕\n输入：42K（15%；上限 272K）\n推理：516\n软线：200K（74%；配置）\n红线：245K（90%；默认）",
+      "verdict": "passed",
+      "rationale": "标题准确分别展示给定充裕状态、42K输入和516推理量，当前15%与272K上限清楚；软线、红线及配置/默认来源与当前用量区分，244800紧凑显示245K是合理舍入，不代表本测试新算阈值。",
+      "reviewScope": "Actual title formatter only. Counts, percentages, levels and threshold provenance are declared inputs, not calculated pressure, live provider measurement, DOM rendering or a browser interaction.",
+      "provenance": {
+        "producer": "tests/semantic/context-usage-title.ts",
+        "observedPath": "/tmp/dominds-tests-presentation-semantic-IvKuLu/2.tmp/dominds-context-title-FW1ib4/zh-known-reasoning.json",
+        "evidenceJsonSha256": "4892c70345df9af61d78018fe71b62f0eeaaa91a50e37e75b71f65a9db3792e7",
+        "actualTextSha256": "3f6f9e83ceb95ca9fa571eed53d408801123c9d770f754aa88ea62fe808dd516",
+        "durableEvidence": "All original fields including full actualText/scenario/context/questions embedded. Temporary observation path is not the durable acceptance evidence."
+      }
+    },
+    {
+      "id": "zh-unknown-no-usage",
+      "scenario": "Format the actual context-usage title from supplied availability, counts, health and threshold facts.",
+      "businessValue": "Show available prompt/reasoning usage and context boundaries accurately without confusing missing data, zero usage, threshold configuration and current measured usage.",
+      "context": {
+        "language": "zh",
+        "args": "{\"kind\":\"unknown\"}",
+        "givenFacts": "No context status/window/threshold or usage numbers were supplied. Do not invent zero or an observed healthy state.",
+        "scope": "Actual title formatter only. Counts, percentages, levels and threshold provenance are declared inputs, not calculated pressure, live provider measurement, DOM rendering or a browser interaction."
+      },
+      "reviewQuestions": [
+        "Does the actual title accurately convey known/unknown state and the supplied prompt/reasoning facts, preserving the distinction between missing and explicitly zero usage?",
+        "Where thresholds are supplied, are current usage, model limit, soft/critical boundaries and configured/default provenance understandable and consistent with the input, without inventing additional observations?"
+      ],
+      "actualText": "上下文情况：未知",
+      "verdict": "passed",
+      "rationale": "标题仅说明上下文未知，没有在缺少输入时编造零用量、充裕状态、窗口上限或阈值。",
+      "reviewScope": "Actual title formatter only. Counts, percentages, levels and threshold provenance are declared inputs, not calculated pressure, live provider measurement, DOM rendering or a browser interaction.",
+      "provenance": {
+        "producer": "tests/semantic/context-usage-title.ts",
+        "observedPath": "/tmp/dominds-tests-presentation-semantic-IvKuLu/2.tmp/dominds-context-title-FW1ib4/zh-unknown-no-usage.json",
+        "evidenceJsonSha256": "1089c855cdb81f8efb8fdc985bd771e79fe86a0d489f93009fb8c039af002f29",
+        "actualTextSha256": "81d2a57a51d0a9d9ed1e7abeaa55a98e5a6a2b016eb661d6cebcde9c4c4b230c",
+        "durableEvidence": "All original fields including full actualText/scenario/context/questions embedded. Temporary observation path is not the durable acceptance evidence."
+      }
+    },
+    {
+      "id": "zh-unknown-observed-zero",
+      "scenario": "Format the actual context-usage title from supplied availability, counts, health and threshold facts.",
+      "businessValue": "Show available prompt/reasoning usage and context boundaries accurately without confusing missing data, zero usage, threshold configuration and current measured usage.",
+      "context": {
+        "language": "zh",
+        "args": "{\"kind\":\"unknown\",\"promptTokens\":0,\"reasoningTokens\":0}",
+        "givenFacts": "Context limits/status remain unavailable. Both prompt and reasoning usage were explicitly observed as zero, distinct from missing usage.",
+        "scope": "Actual title formatter only. Counts, percentages, levels and threshold provenance are declared inputs, not calculated pressure, live provider measurement, DOM rendering or a browser interaction."
+      },
+      "reviewQuestions": [
+        "Does the actual title accurately convey known/unknown state and the supplied prompt/reasoning facts, preserving the distinction between missing and explicitly zero usage?",
+        "Where thresholds are supplied, are current usage, model limit, soft/critical boundaries and configured/default provenance understandable and consistent with the input, without inventing additional observations?"
+      ],
+      "actualText": "上下文情况：未知\n输入：0\n推理：0",
+      "verdict": "passed",
+      "rationale": "标题保持上下文未知，同时明确显示给定的两项零值，区分已有零数据与用量缺失，没有从零推断窗口已知或状态充裕。",
+      "reviewScope": "Actual title formatter only. Counts, percentages, levels and threshold provenance are declared inputs, not calculated pressure, live provider measurement, DOM rendering or a browser interaction.",
+      "provenance": {
+        "producer": "tests/semantic/context-usage-title.ts",
+        "observedPath": "/tmp/dominds-tests-presentation-semantic-IvKuLu/2.tmp/dominds-context-title-FW1ib4/zh-unknown-observed-zero.json",
+        "evidenceJsonSha256": "bf5e171592c913f919cf1f7998c3b50544fa4b194292bb5174f65dc86c41fe9c",
+        "actualTextSha256": "cabb6e56a682febd8d04447543ad795760e6355f1d5a30f782b8ce0f7cfef46a",
+        "durableEvidence": "All original fields including full actualText/scenario/context/questions embedded. Temporary observation path is not the durable acceptance evidence."
+      }
+    },
+    {
+      "id": "zh-unknown-with-usage",
+      "scenario": "Format the actual context-usage title from supplied availability, counts, health and threshold facts.",
+      "businessValue": "Show available prompt/reasoning usage and context boundaries accurately without confusing missing data, zero usage, threshold configuration and current measured usage.",
+      "context": {
+        "language": "zh",
+        "args": "{\"kind\":\"unknown\",\"promptTokens\":42000,\"reasoningTokens\":516}",
+        "givenFacts": "The context status/window/thresholds are unavailable, but prompt42000 and reasoning516 were supplied.",
+        "scope": "Actual title formatter only. Counts, percentages, levels and threshold provenance are declared inputs, not calculated pressure, live provider measurement, DOM rendering or a browser interaction."
+      },
+      "reviewQuestions": [
+        "Does the actual title accurately convey known/unknown state and the supplied prompt/reasoning facts, preserving the distinction between missing and explicitly zero usage?",
+        "Where thresholds are supplied, are current usage, model limit, soft/critical boundaries and configured/default provenance understandable and consistent with the input, without inventing additional observations?"
+      ],
+      "actualText": "上下文情况：未知\n输入：42K\n推理：516",
+      "verdict": "passed",
+      "rationale": "实际标题将上下文未知与已有42K输入、516推理量同时呈现，既未丢弃可用数据，也未编造缺失的容量、健康等级或阈值。",
+      "reviewScope": "Actual title formatter only. Counts, percentages, levels and threshold provenance are declared inputs, not calculated pressure, live provider measurement, DOM rendering or a browser interaction.",
+      "provenance": {
+        "producer": "tests/semantic/context-usage-title.ts",
+        "observedPath": "/tmp/dominds-tests-presentation-semantic-IvKuLu/2.tmp/dominds-context-title-FW1ib4/zh-unknown-with-usage.json",
+        "evidenceJsonSha256": "dac509a1a8e77e5653a1cfb8267cd27aac1c789cf5f124f085656694baa82dcc",
+        "actualTextSha256": "a7e132d2988e122f3fd72a51323617bfb71b28fd8e21e6abbcdd4c6aa70f4f33",
+        "durableEvidence": "All original fields including full actualText/scenario/context/questions embedded. Temporary observation path is not the durable acceptance evidence."
+      }
+    }
+  ],
+  "originalReadScope": {
+    "files": [
+      {
+        "path": "tests/kernel/unified-timestamp-ordering.ts",
+        "lines": 34
+      },
+      {
+        "path": "tests/llm-generation-metadata.ts",
+        "lines": 146
+      },
+      {
+        "path": "tests/log-priority-fields.ts",
+        "lines": 63
+      },
+      {
+        "path": "tests/webapp/generation-model-presentation.ts",
+        "lines": 66
+      },
+      {
+        "path": "tests/webapp/context-usage-title.ts",
+        "lines": 73
+      },
+      {
+        "path": "tests/webapp/run-control-visual.ts",
+        "lines": 63
+      },
+      {
+        "path": "tests/webapp/create-dialog-flow-ime.ts",
+        "lines": 31
+      },
+      {
+        "path": "tests/webapp/create-dialog-flow-selection.ts",
+        "lines": 129
+      }
+    ],
+    "totalLines": 605,
+    "meaning": "All original8 read fully before comparison with final behavior/support replacements. Baseline process success is not semantic acceptance."
+  },
+  "originalValueMapping": [
+    {
+      "path": "tests/kernel/unified-timestamp-ordering.ts",
+      "value": "Newer/older/equal comparisons, selecting newer with undefined input, ISO ordering, deterministic invalid-string fallback and valid timestamp beating invalid cache data.",
+      "disposition": "Retained unchanged as pure public utility data assertions. No natural-language oracle or actual event-replay claim."
+    },
+    {
+      "path": "tests/llm-generation-metadata.ts",
+      "value": "Identity trim and reported/configured distinction; provider-defined field order/prominence; actual supplied values, unset/default/label and configuration-description forwarding; structured data; extension API identity without a built-in namespace.",
+      "disposition": "Preserved exact structured field/description/default data. JSON.parse compares structured data rather than incidental serialization punctuation. Extension doublecast replaced by isolated real YAML/LlmConfig.load with unique provider/API/base/model checks; no ProviderConfig weakening or generator execution."
+    },
+    {
+      "path": "tests/log-priority-fields.ts",
+      "value": "Given tracing identity fields survive large object noise and appear before internal fields within the existing log bound.",
+      "disposition": "Retained real Logger output for the original complete noisy record, plus four field-only positive controls: delete all four identity fields, then independently supply one original named field/value per record. Exact supplied values can no longer pass only through another overlapping ID. All five records retain the existing 3072-character bound; original rootId-before-internal field priority remains checked. Inspect quote/layout matching is removed."
+    },
+    {
+      "path": "tests/webapp/generation-model-presentation.ts",
+      "value": "People can distinguish reported/configured model identity, prominent values, unset values and merely documented defaults, with supplied descriptions/labels visible.",
+      "disposition": "Retired as a two-string automatic wording snapshot. Original input and actual output preserved in semantic/model-presentation.ts plus3 concrete additional states; support, not an automatic pass or browser test."
+    },
+    {
+      "path": "tests/webapp/context-usage-title.ts",
+      "value": "Known/unknown availability retains supplied prompt and reasoning facts; missing reasoning is not zero.",
+      "disposition": "All keyword-based meaning checks moved to actual evidence. New support adds explicit zero, no usage, caution/critical and both-language inputs; supplied percentages/health are not newly calculated measurements."
+    },
+    {
+      "path": "tests/webapp/run-control-visual.ts",
+      "value": "Seven state projections and4 non-FBR-count cases, including subtraction, zero clamp and missing values.",
+      "disposition": "Retained unchanged. Exact enums/numbers are machine data; no actual button/DOM or click behavior is established."
+    },
+    {
+      "path": "tests/webapp/create-dialog-flow-ime.ts",
+      "value": "Ordinary Enter, local composing flag, native composing flag and legacy229 classification.",
+      "disposition": "Retained unchanged pure predicate. Does not establish real native IME interaction or actual create-dialog submission."
+    },
+    {
+      "path": "tests/webapp/create-dialog-flow-selection.ts",
+      "value": "Six initial selection outcomes and3 preset-target resolutions: visible/shadow preference, defaults, shadow-only fallback, invalid IDs and trim.",
+      "disposition": "Retained unchanged exact supplied-ID/boolean/null/enum data. Does not prove DOM controls, permissions or submitted requests."
+    }
+  ],
+  "assertionReview": {
+    "status": "passed",
+    "currentRead": "All original eight files (605 lines), final metadata160/log85, unchanged four machine cases, two semantic supports143/94, complete added/deleted test diff, runner/scripts/AGENTS/README/strategy/ledger diff and relevant real time/log/config/metadata/UI formatter/selector call paths were read. No product source changes are present.",
+    "validDataComparisons": "Native IDs, bools/nulls/enums, timestamp inputs, complete metadata field arrays/order and given descriptions/labels/defaults are machine or supplied-data contracts. Error/assertion labels are not output meaning oracles. Structured provider values must parse back to supplied data.",
+    "semanticProducers": "Both producers only invoke actual exported formatters and emit complete original input/context/output/questions through the common pending evidence writer. They contain no acceptance assertion on generated wording and are registered separately from six behavior cases.",
+    "blockingDesignFinding": {
+      "path": "tests/log-priority-fields.ts",
+      "kind": "static assertion counterexample, not a newly executed product regression",
+      "issue": "Global includes(rootId) and includes(selfId) can succeed only because those strings occur inside the full dialogId. A rootId key with a wrong/missing value can still precede internal fields and all first-rewrite assertions pass. Original key:value checks also protected the association, despite freezing inspect quotes.",
+      "preserveValue": "Check each supplied tracing value in its actual named field without fixing quote style/generated diagnostic prose, or use an appropriate distinct-data positive control. No product change or semantic detector is required.",
+      "status": "resolved by final five actual Logger records and independently supplied field controls; final complete source/diff re-read",
+      "correction": "The original full noisy record still checks all four complete supplied IDs and priority. Four additional records delete all identity fields then add exactly one original field/value. Each must retain its sole supplied identity value, so rootId/selfId cannot be satisfied by dialogId. Captured count is exactly five, and every actual record fits3072 characters. The console interception is restored in finally. This is a data-fidelity correction, without a generated-prose oracle or product fix."
+    },
+    "scope": "Six local machine/data cases plus two explicit support producers; no live provider, real pressure calculation, DOM/browser/IME, accessibility or creation/permission enforcement coverage.",
+    "behaviorCases": [
+      {
+        "path": "tests/kernel/unified-timestamp-ordering.ts",
+        "assertions": "Newer/older/equal, both input orders, undefined, ISO and invalid-string fallback use supplied timestamp data and exact public utility outputs. Unchanged source retains all original checks.",
+        "limits": "No actual event replay or persistence ordering is executed."
+      },
+      {
+        "path": "tests/llm-generation-metadata.ts",
+        "assertions": "Public identity object, field arrays/order, prominence, set/unset/default/label, complete supplied descriptions and parsed structured value are exact data contracts. The extension API is loaded from actual isolated workspace YAML through LlmConfig.load; unique provider/API/baseUrl/model positive checks prevent a fallback configuration from passing. Actual kind narrowing precedes structured-value parsing.",
+        "limits": "No extension generator, SDK request, live provider availability or meaning of the supplied description is asserted."
+      },
+      {
+        "path": "tests/log-priority-fields.ts",
+        "assertions": "Five actual Logger emissions, independently supplied complete tracing values, 3072-character cap for each, and rootId key priority ahead of internal fields protect observable diagnostic data. The quoted inspect-layout regexes are removed. Key labels are machine field names; supplied IDs are opaque data.",
+        "limits": "This does not parse arbitrary log layouts, freeze quote style, validate error prose or establish every possible logger shape."
+      },
+      {
+        "path": "tests/webapp/run-control-visual.ts",
+        "assertions": "Seven public visual-kind projections and four non-FBR badge-count results use actual enums/counts and supplied states; subtraction, clamp and defaults remain. Source unchanged.",
+        "limits": "No button DOM, click, backend state transition or browser styling."
+      },
+      {
+        "path": "tests/webapp/create-dialog-flow-ime.ts",
+        "assertions": "Four boolean classifications preserve ordinary input, local composition, native composition and legacy229 cases. Source unchanged.",
+        "limits": "Pure input-data predicate; no real IME/browser event or dialog creation."
+      },
+      {
+        "path": "tests/webapp/create-dialog-flow-selection.ts",
+        "assertions": "Six initial teammate selections and three target resolutions preserve exact supplied IDs/null/boolean/enum results, trim and fallback. Source unchanged.",
+        "limits": "No authorization, actual selector DOM, request submission or teammate execution."
+      }
+    ],
+    "entryAndLedgerReview": "The six behavior paths are explicitly registered in presentation and inventory. Two retired formatter tests are removed from automatic candidates/smoke and replaced by pending support producers; old named aliases point to those producers, not silent success. Root/tests package commands agree. Actual metadata configuration paths in smoke/presentation/named commands use managed isolated CLI. Runner selection/usage changes are machine entry routing. AGENTS/README/strategy clearly distinguish supplied data and pure components from live provider/usage/pressure/browser/IME behavior. Ledger adds six reviewed mappings and two explicit retirement/replacement mappings, not an oracle for future output.",
+    "deletedAssertions": "Retired whole compact-label/tooltip sentence equality and context-title meaning keywords/absence checks had no downstream machine parser contract. Valuable meaning is retained as actual full-output subjective evidence; no low-value punctuation/inspect-quote stability requirement is introduced."
+  },
+  "baselineHistory": {
+    "summary": {
+      "total": 8,
+      "passed": 8,
+      "failed": 0,
+      "timedOut": 0,
+      "results": [
+        {
+          "id": "kernel/unified-timestamp-ordering.ts",
+          "status": "passed",
+          "durationMs": 415,
+          "code": 0,
+          "signal": null,
+          "logPath": "/tmp/dominds-presentation-baseline/001-kernel_unified-timestamp-ordering.ts.log",
+          "tempDir": "/tmp/dominds-presentation-baseline/1.tmp"
+        },
+        {
+          "id": "llm-generation-metadata.ts",
+          "status": "passed",
+          "durationMs": 423,
+          "code": 0,
+          "signal": null,
+          "logPath": "/tmp/dominds-presentation-baseline/002-llm-generation-metadata.ts.log",
+          "tempDir": "/tmp/dominds-presentation-baseline/2.tmp"
+        },
+        {
+          "id": "log-priority-fields.ts",
+          "status": "passed",
+          "durationMs": 425,
+          "code": 0,
+          "signal": null,
+          "logPath": "/tmp/dominds-presentation-baseline/003-log-priority-fields.ts.log",
+          "tempDir": "/tmp/dominds-presentation-baseline/3.tmp"
+        },
+        {
+          "id": "webapp/generation-model-presentation.ts",
+          "status": "passed",
+          "durationMs": 427,
+          "code": 0,
+          "signal": null,
+          "logPath": "/tmp/dominds-presentation-baseline/004-webapp_generation-model-presentation.ts.log",
+          "tempDir": "/tmp/dominds-presentation-baseline/4.tmp"
+        },
+        {
+          "id": "webapp/context-usage-title.ts",
+          "status": "passed",
+          "durationMs": 416,
+          "code": 0,
+          "signal": null,
+          "logPath": "/tmp/dominds-presentation-baseline/005-webapp_context-usage-title.ts.log",
+          "tempDir": "/tmp/dominds-presentation-baseline/5.tmp"
+        },
+        {
+          "id": "webapp/run-control-visual.ts",
+          "status": "passed",
+          "durationMs": 393,
+          "code": 0,
+          "signal": null,
+          "logPath": "/tmp/dominds-presentation-baseline/006-webapp_run-control-visual.ts.log",
+          "tempDir": "/tmp/dominds-presentation-baseline/6.tmp"
+        },
+        {
+          "id": "webapp/create-dialog-flow-ime.ts",
+          "status": "passed",
+          "durationMs": 430,
+          "code": 0,
+          "signal": null,
+          "logPath": "/tmp/dominds-presentation-baseline/007-webapp_create-dialog-flow-ime.ts.log",
+          "tempDir": "/tmp/dominds-presentation-baseline/7.tmp"
+        },
+        {
+          "id": "webapp/create-dialog-flow-selection.ts",
+          "status": "passed",
+          "durationMs": 428,
+          "code": 0,
+          "signal": null,
+          "logPath": "/tmp/dominds-presentation-baseline/008-webapp_create-dialog-flow-selection.ts.log",
+          "tempDir": "/tmp/dominds-presentation-baseline/8.tmp"
+        }
+      ]
+    },
+    "meaning": "All original8 process attempts passed. No original rendered natural-language output was accepted by that fact."
+  },
+  "generationProvenance": {
+    "summary": {
+      "total": 2,
+      "passed": 2,
+      "failed": 0,
+      "timedOut": 0,
+      "results": [
+        {
+          "id": "semantic/model-presentation.ts",
+          "status": "passed",
+          "durationMs": 508,
+          "code": 0,
+          "signal": null,
+          "logPath": "/tmp/dominds-tests-presentation-semantic-IvKuLu/001-semantic_model-presentation.ts.log",
+          "tempDir": "/tmp/dominds-tests-presentation-semantic-IvKuLu/1.tmp"
+        },
+        {
+          "id": "semantic/context-usage-title.ts",
+          "status": "passed",
+          "durationMs": 482,
+          "code": 0,
+          "signal": null,
+          "logPath": "/tmp/dominds-tests-presentation-semantic-IvKuLu/002-semantic_context-usage-title.ts.log",
+          "tempDir": "/tmp/dominds-tests-presentation-semantic-IvKuLu/2.tmp"
+        }
+      ],
+      "scope": "evidence-generation-processes",
+      "semanticAcceptance": "pending"
+    },
+    "summarySha256": "868d205067093c9254487f8d3016f6ed3650fa11fd6c3f0a3f9be9ffc4eefae1",
+    "meaning": "Two generation processes completed and raw semanticAcceptance is pending. This independent report supplies18 subjective verdicts; producer success alone accepts no meaning."
+  },
+  "sourceFreeze": {
+    "status": "frozen",
+    "meaning": "Final source/docs/ledger read and identity captured after the five-record Logger correction. Two semantic producers and their presentation dependencies were unchanged by that correction; no new outputs were generated or accepted through hash identity. Report itself and parent verification are excluded from source/diff hashes.",
+    "productChanges": false,
+    "unchangedOriginalMachineCases": [
+      "tests/kernel/unified-timestamp-ordering.ts",
+      "tests/webapp/run-control-visual.ts",
+      "tests/webapp/create-dialog-flow-ime.ts",
+      "tests/webapp/create-dialog-flow-selection.ts"
+    ]
+  },
+  "limitations": [
+    "All18 judgments apply only to the embedded fresh given-input formatter outputs; no prior verdict or hash automatically accepts later output.",
+    "Model identities/descriptions/settings are supplied metadata, not live provider availability or a captured request. Documented defaults are not observed sent values.",
+    "Known/unknown health/percentages/threshold provenance are input facts, not a pressure algorithm or provider usage measurement. Compact rounding is assessed as presentation within these samples.",
+    "Pure selectors/predicates do not establish DOM appearance, actual keyboard/IME behavior, browser accessibility, permissions or creation requests.",
+    "Whole-test types retain10 inherited failures, and parent execution verification is not written by this reviewer."
+  ],
+  "executionVerificationOwner": "Explicit handoff to parent after final report formatting and identity check. Parent may append parentVerification with actual execution records; no parentVerification has been written by this reviewer.",
+  "sourceProvenance": {
+    "hashRole": "SHA256 identifies reviewed source/material bytes only. It is not a semantic oracle or automatic acceptance rule for later output. Full actual evidence and judgments are embedded; temporary paths are historical observation locations, not durable dependencies.",
+    "baseRevision": "1148c93fbedfd41ff60cc8c69f805f3ad08a1934",
+    "originalSources": [
+      {
+        "path": "tests/kernel/unified-timestamp-ordering.ts",
+        "revision": "1148c93fbedfd41ff60cc8c69f805f3ad08a1934",
+        "sha256": "bcb20393213bad3baa0ec742a01e5853b040d53249bc562cb9dcdc71f4a5a376",
+        "lines": 34,
+        "originalCopyMatchedRevision": true,
+        "currentUnchanged": true
+      },
+      {
+        "path": "tests/llm-generation-metadata.ts",
+        "revision": "1148c93fbedfd41ff60cc8c69f805f3ad08a1934",
+        "sha256": "bcb6d2b6c496d3ad11625c5563d21b2837ab2e75ac6364adcb194875a447e6df",
+        "lines": 146,
+        "originalCopyMatchedRevision": true,
+        "currentUnchanged": false
+      },
+      {
+        "path": "tests/log-priority-fields.ts",
+        "revision": "1148c93fbedfd41ff60cc8c69f805f3ad08a1934",
+        "sha256": "cf53f2357071654cd930d551756b18b0b2b7574a0e281887b0f70f834566cbeb",
+        "lines": 63,
+        "originalCopyMatchedRevision": true,
+        "currentUnchanged": false
+      },
+      {
+        "path": "tests/webapp/generation-model-presentation.ts",
+        "revision": "1148c93fbedfd41ff60cc8c69f805f3ad08a1934",
+        "sha256": "daf6f18102c899d9aa72b44688dba8b8d7a83e79d69e27bb2cb3b593abceee44",
+        "lines": 66,
+        "originalCopyMatchedRevision": true,
+        "currentUnchanged": false
+      },
+      {
+        "path": "tests/webapp/context-usage-title.ts",
+        "revision": "1148c93fbedfd41ff60cc8c69f805f3ad08a1934",
+        "sha256": "a39f2aaab4c27866bcb64afd04fc205bc7f5867e9f060f9ec08690a46b5c8ff1",
+        "lines": 73,
+        "originalCopyMatchedRevision": true,
+        "currentUnchanged": false
+      },
+      {
+        "path": "tests/webapp/run-control-visual.ts",
+        "revision": "1148c93fbedfd41ff60cc8c69f805f3ad08a1934",
+        "sha256": "a92454bc103a0375af992f03ef7f8c28113da3cfbe75ec22983c6c0d518863ca",
+        "lines": 63,
+        "originalCopyMatchedRevision": true,
+        "currentUnchanged": true
+      },
+      {
+        "path": "tests/webapp/create-dialog-flow-ime.ts",
+        "revision": "1148c93fbedfd41ff60cc8c69f805f3ad08a1934",
+        "sha256": "643454762d8d50ca0bc020852e997cc0344b4d2728bb6a633acda909d0f43502",
+        "lines": 31,
+        "originalCopyMatchedRevision": true,
+        "currentUnchanged": true
+      },
+      {
+        "path": "tests/webapp/create-dialog-flow-selection.ts",
+        "revision": "1148c93fbedfd41ff60cc8c69f805f3ad08a1934",
+        "sha256": "b2509262bfa01505c109c37070215bef2ef790fe3a5c723147bab697692ad589",
+        "lines": 129,
+        "originalCopyMatchedRevision": true,
+        "currentUnchanged": true
+      }
+    ],
+    "currentSources": [
+      {
+        "path": "AGENTS.md",
+        "sha256": "488cfd8c2c4350ccbe12f659e4dc05b3f1c28aa2266bfb7c2c66c0580b569d75",
+        "lines": 64
+      },
+      {
+        "path": "docs/testing-strategy.md",
+        "sha256": "b2faa26c65cb6b2bcfcad3649585ea95f578db1c91db512fc125972af177e7b5",
+        "lines": 505
+      },
+      {
+        "path": "main/llm/client.ts",
+        "sha256": "d4522932503df8c8074d91c74f1ae7ae7568a6a607c7e7270cd538c6a5febd2d",
+        "lines": 232
+      },
+      {
+        "path": "main/llm/generation-metadata.ts",
+        "sha256": "d9900b2ecd04f437ff3d373e05c783fef5314de45b2f8f0e9f3c3f859ee23ed5",
+        "lines": 222
+      },
+      {
+        "path": "main/log.ts",
+        "sha256": "af2663b6bf3865935d9fce6da4a8005b636e5b12f51f4f226d5fd0c17b391cc9",
+        "lines": 759
+      },
+      {
+        "path": "main/team.ts",
+        "sha256": "15011ab16f5b36eda146a13201de9fbd9b4c0fde8ece9bc04fd26b0b1aff707c",
+        "lines": 3352
+      },
+      {
+        "path": "package.json",
+        "sha256": "71e36d7f7f7595ab13fff5429b5c5d897f36a92fe2c4e53061432acb89e9e484",
+        "lines": 126
+      },
+      {
+        "path": "packages/kernel/src/types/display-state.ts",
+        "sha256": "bffbd2e70f7e833fdbd0b00bcd8671c9d2e3be0639da2cee22e12e42e25caf7a",
+        "lines": 56
+      },
+      {
+        "path": "packages/kernel/src/types/storage.ts",
+        "sha256": "77ea34b661bb03610d5a023b9a541ee6a426bc94b93bfb5dd24ad69010d07633",
+        "lines": 1248
+      },
+      {
+        "path": "packages/kernel/src/utils/time.ts",
+        "sha256": "0a39132e6f46f6400db83539b4ed2fd1970f1a7efb0698a2b3fa803cda7638c8",
+        "lines": 51
+      },
+      {
+        "path": "pnpm-lock.yaml",
+        "sha256": "39b09df41afbe38240cc837316680ec0b7a2ceb02372f02f6528168adf21da19",
+        "lines": 2742
+      },
+      {
+        "path": "tests/README.md",
+        "sha256": "2da2b4a26e1fb3d33b4951d82c4b0dfee9b5557cc4d6bff9f9c6bdf549807826",
+        "lines": 130
+      },
+      {
+        "path": "tests/audit.json",
+        "sha256": "747bdc452fb98fd12517912c932075a8eb017e905c21e343f58fd2c49764cefd",
+        "lines": 1242
+      },
+      {
+        "path": "tests/cli.ts",
+        "sha256": "b9f9bc1f034a2a70c4b7bfbc2300ae854706f09a9788b7f4ca17b3a263f41598",
+        "lines": 186
+      },
+      {
+        "path": "tests/helpers/semantic-evidence.ts",
+        "sha256": "a41efd1058ea6d65394059180dabf987e17ef0d219bae95ca67edd33db7e3777",
+        "lines": 57
+      },
+      {
+        "path": "tests/kernel-driver/helpers.ts",
+        "sha256": "520b1288cdb2114cb28cb9dcebdf95c7b0f19b1703fe3837a780ffb2d916f9a1",
+        "lines": 298
+      },
+      {
+        "path": "tests/kernel/unified-timestamp-ordering.ts",
+        "sha256": "bcb20393213bad3baa0ec742a01e5853b040d53249bc562cb9dcdc71f4a5a376",
+        "lines": 34
+      },
+      {
+        "path": "tests/llm-generation-metadata.ts",
+        "sha256": "ef51a20a2a90ae640a18dbdf9a01c6f98801e016e52b1c2a18c9dae7701e03fb",
+        "lines": 160
+      },
+      {
+        "path": "tests/log-priority-fields.ts",
+        "sha256": "1a86bbda16ad1e9fe738ab4dc95a43f9f202a24b04c5712ce81f13b3549ae37d",
+        "lines": 85
+      },
+      {
+        "path": "tests/package.json",
+        "sha256": "37aa15ebdab34212d54994d4f7286341c12bc3e362c37993d5b97c75708d496c",
+        "lines": 262
+      },
+      {
+        "path": "tests/run.mjs",
+        "sha256": "3c66ec4fd6903acf26265dacfbfd085cf70044b38068e5770f2cd84cabf9ab3a",
+        "lines": 505
+      },
+      {
+        "path": "tests/semantic/context-usage-title.ts",
+        "sha256": "90ba97a166cde2832731287c95cc0a7360c7c8de1d2d6fdab0291b832ff7aea9",
+        "lines": 94
+      },
+      {
+        "path": "tests/semantic/evidence.ts",
+        "sha256": "8bc39e1e57b1ff2d81bbc4eee0778f55f38b030e85cf75b1a477b747cfc1596e",
+        "lines": 138
+      },
+      {
+        "path": "tests/semantic/model-presentation.ts",
+        "sha256": "8490e7c4b550ee993e044a757db7b2f30c317e02b8c1fe200bf9ab4e7380d171",
+        "lines": 143
+      },
+      {
+        "path": "tests/tsconfig.json",
+        "sha256": "b5bcec0fba331b397ee453a8ff2bb1ea1eb1cb0f5f61f1a4e968ffc0a55dc1df",
+        "lines": 18
+      },
+      {
+        "path": "tests/webapp/create-dialog-flow-ime.ts",
+        "sha256": "643454762d8d50ca0bc020852e997cc0344b4d2728bb6a633acda909d0f43502",
+        "lines": 31
+      },
+      {
+        "path": "tests/webapp/create-dialog-flow-selection.ts",
+        "sha256": "b2509262bfa01505c109c37070215bef2ef790fe3a5c723147bab697692ad589",
+        "lines": 129
+      },
+      {
+        "path": "tests/webapp/run-control-visual.ts",
+        "sha256": "a92454bc103a0375af992f03ef7f8c28113da3cfbe75ec22983c6c0d518863ca",
+        "lines": 63
+      },
+      {
+        "path": "webapp/src/components/create-dialog-flow.ts",
+        "sha256": "08b114ef013528ff2d359a6698a3d8e0c540f23e68fbf9ac5941d30a89610dbb",
+        "lines": 1417
+      },
+      {
+        "path": "webapp/src/components/generation-model-presentation.ts",
+        "sha256": "a2c1579a943befc6a539188146590019452969cbac93b03e96102608d0b3f110",
+        "lines": 43
+      },
+      {
+        "path": "webapp/src/i18n/ui.ts",
+        "sha256": "2c655348ec71ed2aae4b8a225989310c64b1c662bff3602db79fe655a5e7fcd2",
+        "lines": 1628
+      },
+      {
+        "path": "webapp/src/utils/run-control-visual.ts",
+        "sha256": "437b9b29b557bd74098518fb9cd2171d377b2005bd95f19c44ab3c0e47531150",
+        "lines": 55
+      }
+    ],
+    "completeDiff": {
+      "trackedChangedPaths": [
+        "AGENTS.md",
+        "docs/testing-strategy.md",
+        "package.json",
+        "tests/README.md",
+        "tests/audit.json",
+        "tests/llm-generation-metadata.ts",
+        "tests/log-priority-fields.ts",
+        "tests/package.json",
+        "tests/run.mjs",
+        "tests/webapp/context-usage-title.ts",
+        "tests/webapp/generation-model-presentation.ts"
+      ],
+      "trackedDiffSha256": "d5c30ef58e9222b40ef6e3c4aed6c8ad35dc6666abc4fc8d138787c6c9fd2b9a",
+      "newSupportDiffs": [
+        {
+          "path": "tests/semantic/model-presentation.ts",
+          "diffSha256": "ecc452d216d4909176acff28a832405455d342af35b57b334696baf1b58a9fe9"
+        },
+        {
+          "path": "tests/semantic/context-usage-title.ts",
+          "diffSha256": "a390f3f6fb6279bf9c693013ecc0ac9800396957afb826685859b2b3f00b2965"
+        }
+      ],
+      "combinedTrackedThenNewSupportDiffSha256": "0d9c0c6d5b444887ef5c443057d70c25b8fd94beba324d0dc34cb7d34b35a408",
+      "reproduction": "git diff --no-ext-diff <baseRevision> -- <trackedChangedPaths in listed order>; append git diff --no-index --no-ext-diff -- /dev/null <each new support in listed order>. Report/parent verification excluded; deleted tests included."
+    }
+  },
+  "designCorrectionHistory": [
+    {
+      "kind": "independent static assertion review",
+      "outcome": "first log rewrite rejected for original-value gap; final correction accepted",
+      "evidence": "Original rootId and selfId occur inside dialogId, so global inclusion could pass without their own supplied values. Final source emits the complete original shape plus four independent field-only records and checks each value and each record budget. No runtime red or product defect is claimed for this static counterexample.",
+      "semanticEffect": "No semantic producer or formatter dependency changed; the eighteen already full-read actual records remain the same reviewed materials."
+    }
+  ],
+  "parentVerification": {
+    "owner": "primary /root after explicit independent review/source handoff",
+    "environment": "Pinned Node24.19.0/Corepack pnpm11.17.0 through /tmp/dominds-pnpm; no new dependency/framework/type exclusions or broader ProviderConfig type.",
+    "baseline": {
+      "status": "passed",
+      "summary": {
+        "total": 8,
+        "passed": 8,
+        "failed": 0,
+        "timedOut": 0,
+        "results": [
+          {
+            "id": "kernel/unified-timestamp-ordering.ts",
+            "status": "passed",
+            "durationMs": 415,
+            "code": 0,
+            "signal": null,
+            "logPath": "/tmp/dominds-presentation-baseline/001-kernel_unified-timestamp-ordering.ts.log",
+            "tempDir": "/tmp/dominds-presentation-baseline/1.tmp"
+          },
+          {
+            "id": "llm-generation-metadata.ts",
+            "status": "passed",
+            "durationMs": 423,
+            "code": 0,
+            "signal": null,
+            "logPath": "/tmp/dominds-presentation-baseline/002-llm-generation-metadata.ts.log",
+            "tempDir": "/tmp/dominds-presentation-baseline/2.tmp"
+          },
+          {
+            "id": "log-priority-fields.ts",
+            "status": "passed",
+            "durationMs": 425,
+            "code": 0,
+            "signal": null,
+            "logPath": "/tmp/dominds-presentation-baseline/003-log-priority-fields.ts.log",
+            "tempDir": "/tmp/dominds-presentation-baseline/3.tmp"
+          },
+          {
+            "id": "webapp/generation-model-presentation.ts",
+            "status": "passed",
+            "durationMs": 427,
+            "code": 0,
+            "signal": null,
+            "logPath": "/tmp/dominds-presentation-baseline/004-webapp_generation-model-presentation.ts.log",
+            "tempDir": "/tmp/dominds-presentation-baseline/4.tmp"
+          },
+          {
+            "id": "webapp/context-usage-title.ts",
+            "status": "passed",
+            "durationMs": 416,
+            "code": 0,
+            "signal": null,
+            "logPath": "/tmp/dominds-presentation-baseline/005-webapp_context-usage-title.ts.log",
+            "tempDir": "/tmp/dominds-presentation-baseline/5.tmp"
+          },
+          {
+            "id": "webapp/run-control-visual.ts",
+            "status": "passed",
+            "durationMs": 393,
+            "code": 0,
+            "signal": null,
+            "logPath": "/tmp/dominds-presentation-baseline/006-webapp_run-control-visual.ts.log",
+            "tempDir": "/tmp/dominds-presentation-baseline/6.tmp"
+          },
+          {
+            "id": "webapp/create-dialog-flow-ime.ts",
+            "status": "passed",
+            "durationMs": 430,
+            "code": 0,
+            "signal": null,
+            "logPath": "/tmp/dominds-presentation-baseline/007-webapp_create-dialog-flow-ime.ts.log",
+            "tempDir": "/tmp/dominds-presentation-baseline/7.tmp"
+          },
+          {
+            "id": "webapp/create-dialog-flow-selection.ts",
+            "status": "passed",
+            "durationMs": 428,
+            "code": 0,
+            "signal": null,
+            "logPath": "/tmp/dominds-presentation-baseline/008-webapp_create-dialog-flow-selection.ts.log",
+            "tempDir": "/tmp/dominds-presentation-baseline/8.tmp"
+          }
+        ]
+      },
+      "meaning": "Old8 passed despite the semantic wording oracles; this is execution history, not semantic acceptance."
+    },
+    "build": {
+      "status": "passed",
+      "exitCode": 0,
+      "logPath": "/tmp/dominds-presentation-build.log"
+    },
+    "behavior": {
+      "status": "passed",
+      "exitCode": 0,
+      "summary": {
+        "total": 6,
+        "passed": 6,
+        "failed": 0,
+        "timedOut": 0,
+        "results": [
+          {
+            "id": "kernel/unified-timestamp-ordering.ts",
+            "status": "passed",
+            "durationMs": 470,
+            "code": 0,
+            "signal": null,
+            "logPath": "/tmp/dominds-tests-presentation-wiH1HJ/001-kernel_unified-timestamp-ordering.ts.log"
+          },
+          {
+            "id": "llm-generation-metadata.ts",
+            "status": "passed",
+            "durationMs": 1883,
+            "code": 0,
+            "signal": null,
+            "logPath": "/tmp/dominds-tests-presentation-wiH1HJ/002-llm-generation-metadata.ts.log"
+          },
+          {
+            "id": "log-priority-fields.ts",
+            "status": "passed",
+            "durationMs": 463,
+            "code": 0,
+            "signal": null,
+            "logPath": "/tmp/dominds-tests-presentation-wiH1HJ/003-log-priority-fields.ts.log"
+          },
+          {
+            "id": "webapp/run-control-visual.ts",
+            "status": "passed",
+            "durationMs": 478,
+            "code": 0,
+            "signal": null,
+            "logPath": "/tmp/dominds-tests-presentation-wiH1HJ/004-webapp_run-control-visual.ts.log"
+          },
+          {
+            "id": "webapp/create-dialog-flow-ime.ts",
+            "status": "passed",
+            "durationMs": 507,
+            "code": 0,
+            "signal": null,
+            "logPath": "/tmp/dominds-tests-presentation-wiH1HJ/005-webapp_create-dialog-flow-ime.ts.log"
+          },
+          {
+            "id": "webapp/create-dialog-flow-selection.ts",
+            "status": "passed",
+            "durationMs": 482,
+            "code": 0,
+            "signal": null,
+            "logPath": "/tmp/dominds-tests-presentation-wiH1HJ/006-webapp_create-dialog-flow-selection.ts.log"
+          }
+        ]
+      }
+    },
+    "smoke": {
+      "status": "passed",
+      "exitCode": 0,
+      "summary": {
+        "total": 10,
+        "passed": 10,
+        "failed": 0,
+        "timedOut": 0,
+        "results": [
+          {
+            "id": "auth.ts",
+            "status": "passed",
+            "durationMs": 246,
+            "code": 0,
+            "signal": null,
+            "logPath": "/tmp/dominds-tests-smoke-ggj0iU/001-auth.ts.log"
+          },
+          {
+            "id": "llm-generation-metadata.ts",
+            "status": "passed",
+            "durationMs": 1896,
+            "code": 0,
+            "signal": null,
+            "logPath": "/tmp/dominds-tests-smoke-ggj0iU/002-llm-generation-metadata.ts.log"
+          },
+          {
+            "id": "persistence/latest-writeback.ts",
+            "status": "passed",
+            "durationMs": 2417,
+            "code": 0,
+            "signal": null,
+            "logPath": "/tmp/dominds-tests-smoke-ggj0iU/003-persistence_latest-writeback.ts.log"
+          },
+          {
+            "id": "interruption-resumption.ts",
+            "status": "passed",
+            "durationMs": 5282,
+            "code": 0,
+            "signal": null,
+            "logPath": "/tmp/dominds-tests-smoke-ggj0iU/004-interruption-resumption.ts.log"
+          },
+          {
+            "id": "access-control/dialogs-root-deny.ts",
+            "status": "passed",
+            "durationMs": 325,
+            "code": 0,
+            "signal": null,
+            "logPath": "/tmp/dominds-tests-smoke-ggj0iU/005-access-control_dialogs-root-deny.ts.log"
+          },
+          {
+            "id": "access-control/file-ext-names.ts",
+            "status": "passed",
+            "durationMs": 319,
+            "code": 0,
+            "signal": null,
+            "logPath": "/tmp/dominds-tests-smoke-ggj0iU/006-access-control_file-ext-names.ts.log"
+          },
+          {
+            "id": "apps-host-ipc-contract.ts",
+            "status": "passed",
+            "durationMs": 201,
+            "code": 0,
+            "signal": null,
+            "logPath": "/tmp/dominds-tests-smoke-ggj0iU/007-apps-host-ipc-contract.ts.log"
+          },
+          {
+            "id": "toolsets/tool-availability-snapshot.ts",
+            "status": "passed",
+            "durationMs": 1761,
+            "code": 0,
+            "signal": null,
+            "logPath": "/tmp/dominds-tests-smoke-ggj0iU/008-toolsets_tool-availability-snapshot.ts.log"
+          },
+          {
+            "id": "webapp/create-dialog-flow-ime.ts",
+            "status": "passed",
+            "durationMs": 410,
+            "code": 0,
+            "signal": null,
+            "logPath": "/tmp/dominds-tests-smoke-ggj0iU/009-webapp_create-dialog-flow-ime.ts.log"
+          },
+          {
+            "id": "webapp/create-dialog-flow-selection.ts",
+            "status": "passed",
+            "durationMs": 423,
+            "code": 0,
+            "signal": null,
+            "logPath": "/tmp/dominds-tests-smoke-ggj0iU/010-webapp_create-dialog-flow-selection.ts.log"
+          }
+        ]
+      },
+      "meaning": "Confirms changed smoke routing and metadata workspace setup; the other inherited smoke candidates still need their own design audit."
+    },
+    "semanticGeneration": {
+      "status": "processes-completed",
+      "processes": 2,
+      "actualCases": 18,
+      "summary": {
+        "total": 2,
+        "passed": 2,
+        "failed": 0,
+        "timedOut": 0,
+        "results": [
+          {
+            "id": "semantic/model-presentation.ts",
+            "status": "passed",
+            "durationMs": 508,
+            "code": 0,
+            "signal": null,
+            "logPath": "/tmp/dominds-tests-presentation-semantic-IvKuLu/001-semantic_model-presentation.ts.log",
+            "tempDir": "/tmp/dominds-tests-presentation-semantic-IvKuLu/1.tmp"
+          },
+          {
+            "id": "semantic/context-usage-title.ts",
+            "status": "passed",
+            "durationMs": 482,
+            "code": 0,
+            "signal": null,
+            "logPath": "/tmp/dominds-tests-presentation-semantic-IvKuLu/002-semantic_context-usage-title.ts.log",
+            "tempDir": "/tmp/dominds-tests-presentation-semantic-IvKuLu/2.tmp"
+          }
+        ],
+        "scope": "evidence-generation-processes",
+        "semanticAcceptance": "pending"
+      },
+      "meaning": "Pending meaning until the independent full-text review of these exact embedded18 cases; process exit or a source/hash is not a semantic oracle."
+    },
+    "semanticAcceptance": {
+      "status": "passed",
+      "cases": 18,
+      "reviewer": "independent test-execution agent /root/stage1_semantic_record",
+      "identityCheck": "Parent compared all original JSON fields and material identity for18 retained cases,32 current sources,8 original sources and complete changed/new/deleted diffs. Those checks only identify material; the explicit subjective verdicts/rationales judge meaning. The later logger-only assertion strengthening changes no producer/dependency or observed semantic output."
+    },
+    "applicationTypes": {
+      "status": "passed",
+      "exitCode": 0,
+      "logPath": "/tmp/dominds-presentation-app-types.log"
+    },
+    "testTypes": {
+      "status": "failed",
+      "exitCode": 2,
+      "diagnostics": 10,
+      "changedSourceDiagnostics": 0,
+      "fullLog": "$ tsc -p tests/tsconfig.json --noEmit\ntests/apps-host-tool-result-contract.ts(454,63): error TS2339: Property 'position' does not exist on type 'DomindsAppReminderApplyRequest'.\n  Property 'position' does not exist on type 'Readonly<{ kind: \"delete\"; ownerRef: string; meta?: JsonValue | undefined; }>'.\ntests/provider/anthropic-stream-errors.ts(46,7): error TS2345: Argument of type '{ id: string; name: string; model: string; }' is not assignable to parameter of type 'Member'.\n  Type '{ id: string; name: string; model: string; }' is missing the following properties from type 'Member': setName, setProvider, setModel, setGofor, and 20 more.\ntests/provider/tool-choice-requirement.ts(23,7): error TS2322: Type '{ type: \"function\"; name: string; description: string; parameters: { type: string; properties: {}; additionalProperties: boolean; }; }' is not assignable to type 'ChatGptTool'.\n  Property 'strict' is missing in type '{ type: \"function\"; name: string; description: string; parameters: { type: string; properties: {}; additionalProperties: boolean; }; }' but required in type 'ChatGptFunctionTool'.\ntests/provider/volcengine-coding-plan-live-smoke.ts(305,27): error TS2339: Property 'name' does not exist on type 'never'.\ntests/reminders/app-reminder-render-mode-preserve.ts(21,5): error TS2511: Cannot create an instance of an abstract class.\ntests/ripgrep-streaming.ts(29,23): error TS2835: Relative import paths need explicit file extensions in ECMAScript imports when '--moduleResolution' is 'node16' or 'nodenext'. Did you mean '../main/tools/ripgrep.js'?\ntests/ripgrep-windows-compat.ts(29,23): error TS2835: Relative import paths need explicit file extensions in ECMAScript imports when '--moduleResolution' is 'node16' or 'nodenext'. Did you mean '../main/tools/ripgrep.js'?\ntests/task-package.ts(174,7): error TS2322: Type 'number' is not assignable to type 'CallSiteCourseNo'.\n  Type 'number' is not assignable to type '{ readonly __callSiteCourseBrand: unique symbol; }'.\ntests/task-package.ts(175,7): error TS2322: Type 'number' is not assignable to type 'CallSiteGenseqNo'.\n  Type 'number' is not assignable to type '{ readonly __callSiteGenseqBrand: unique symbol; }'.\ntests/toolsets/shell-cmd-capture-env.ts(73,5): error TS2322: Type 'unknown' is not assignable to type 'boolean'.\n[ELIFECYCLE] Command failed with exit code 2.\n",
+      "meaning": "Still inherited failures; not hidden by weakening/exclusions."
+    },
+    "runner": {
+      "status": "passed",
+      "exitCode": 0,
+      "cases": 6,
+      "fullLog": "$ node --test tests/runner.test.mjs\n✔ a failure and a timeout retain evidence and do not prevent later cases from running (1079.376895ms)\n✔ kernel discovery includes regressions omitted from the old hand-maintained integration script (18.481355ms)\n✔ a descriptive case id does not overflow the tsx Unix socket path (224.622398ms)\n✔ evidence generation retains successful process material for subjective review (33.222719ms)\n✔ isolated CLI preserves a failed workspace and cleans a successful workspace by default (832.376843ms)\n✔ inventory recognizes rtws flags and reports their missing script targets (5.638808ms)\nℹ tests 6\nℹ suites 0\nℹ pass 6\nℹ fail 0\nℹ cancelled 0\nℹ skipped 0\nℹ todo 0\nℹ duration_ms 2255.111441\n"
+    },
+    "format": {
+      "status": "passed",
+      "exitCode": 0,
+      "logPath": "/tmp/dominds-presentation-format.log",
+      "note": "Final logger, merged report, root package/AGENTS/docs checked separately after review handoff."
+    },
+    "documentationLinks": {
+      "status": "passed",
+      "exitCode": 0,
+      "result": {
+        "trackedMarkdown": 201,
+        "newMarkdown": 0,
+        "canonicalDocuments": 69,
+        "excludedRuntimeSources": 131,
+        "localTargetsAndFragments": 379,
+        "networkLinksIgnored": 9,
+        "failures": []
+      },
+      "scope": "Complete repository-tracked documentation Markdown; canonical aliases/local fragments, narrow runtime exclusions and no HTTP requests."
+    },
+    "productionScope": {
+      "changed": false,
+      "priorKernel": {
+        "revision": "1148c93fbedfd41ff60cc8c69f805f3ad08a1934",
+        "summary": "tests/semantic/reviews/2026-10-31-daemon-lifecycle.json parentVerification.kernel;64/64 passed",
+        "meaning": "Historical same-product evidence, not a new kernel run or complete test acceptance for76 remaining candidates."
+      }
+    },
+    "inventory": {
+      "typescriptFiles": 287,
+      "supportFiles": 35,
+      "candidates": 252,
+      "reviewed": 176,
+      "remaining": 76,
+      "outsideSuites": 73,
+      "withoutPackageScript": 43,
+      "missingPackageScriptTargets": 0,
+      "missingAuditedFiles": 0
+    },
+    "completeAssertionReview": "Parent fully read original8(605lines), final6 including4 unchanged machine cases, both pure semantic producers, deleted2 oracles and entire final entry/ledger/docs/test diff. Supplied metadata descriptions/labels are forwarding data, IDs/enums/counts/JSON/trace ordering and budgets are machine/data effects. Logger isolated-field probes preserve value association without an inspect parser; no product red is invented. All18 actual presentation texts are accepted only by independent subjective review. Goal remains active with76 candidates and10 test-type failures."
+  }
+}

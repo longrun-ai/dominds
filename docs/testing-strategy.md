@@ -493,3 +493,13 @@ registered owner的等价nested对象key序更新确实被调用一次；完整m
 独立全文评审初二十四份为十八通过、六拒绝：真实已退出且runner已不可用的wake/gone/retained两种语言都仍保存get_daemon_output维护建议；该真实读调用还会删除终态提醒。补入最终retained回归，在未修产品上明确复现读取后ID消失（false≠true）。现只修终态维护建议和退出notice，让维护路径指向已保存快照及按需手工删除；get_daemon_output遇已追踪runner不可用时返回实际失败说明并保留既有提醒，不改变正常流选择、runner生命周期或显式stop/delete清理。回归另核读取失败后公开version/完整文件字节不变，手工改写仍拒绝，最后显式delete成功。全部新二十四份须重新输出、逐份主观重审，初六拒绝全文与真实旧产品失败保留。
 
 新增显式test:daemon九项与test:semantic:daemon九个producer，共二十四份双语实际文本，生成与主观接受分开。原值映射、所有失败、完整新输出、独立理由与最终断言审查见[本批记录](../tests/semantic/reviews/2026-10-31-daemon-lifecycle.json)。当前287个TypeScript文件、33个辅助/证据模块、254个候选，审查170项，余84项，套件外77项、无单独脚本43项、失效直接入口与陈旧账本路径均零。旧daemon契约类型错误已自然修复或随纯措辞案例退役，全测试仍10条继承诊断，明确失败；没有放宽类型或排除文件。
+
+### 局部状态、模型元数据与展示批次
+
+原八项605行及实际metadata/renderer/title/selector/log/time实现全文审阅，旧基线八项均通过。时间的新旧/相等/undefined、ISO和无效输入回退，七种run-control投影及四种数量，四种IME判定、六种队友初选与三种preset解析均保留；这些是有业务价值的数据和组件结果，原四项不用为了整改而机械重写。不把组件结果宣称成真实事件重放、按钮渲染、输入法、权限或创建请求已验证。
+
+模型metadata保身份trim、配置与报告模型区分、字段顺序/prominent筛选、set/unset及文档默认信息；给定description/default label属于配置数据，其完整保真不是自然语言含义oracle。结构值按有效JSON数据核内容，不冻结偶然序列化写法。扩展API场景改走真实隔离YAML与LlmConfig.load，并核独有provider、apiType、baseUrl和model，防配置读取失败后fallback假绿；不扩大ProviderConfig类型、不双重强转未知值，也不假称执行过扩展generator。日志场景保大量噪声下完整给定追踪ID及优先顺序，并核既有3072字符预算，删除util.inspect单引号布局正则；追踪ID数据不是诊断意义判断。
+
+模型compactLabel/tooltip和context title没有下游机器parser合同，原整句/标点快照及“推理/输入”等含义字面匹配全部退役。价值移入两个semantic支持producer：原模型突出参数/未设置/文档默认的实际全文，另给配置/报告模型不同、结构值、无突出参数；上下文按中英给known带reasoning/缺reasoning、unknown带usage/全缺/显式零、caution/critical共十四份，合计十八份。完整输入及当前实际输出交测试执行智能体主观判断；配置值、报告身份、文档默认和缺失/零必须明确区分。给定health/百分比/阈值来源不冒充本测试的压力计算或实时usage测量。
+
+新增test:presentation六项与test:semantic:presentation两个证据入口，原UI措辞案例移出smoke且不算自动通过；实际metadata配置案例在smoke与单项入口也走隔离CLI。完整原值映射、断言审查与新十八份主观评审见[本批记录](../tests/semantic/reviews/2026-10-31-state-presentation.json)。当前287个TypeScript文件、35个辅助/证据模块、252个候选，审查176项，余76项，套件外73项、无单独脚本43项、失效直接入口与陈旧账本路径均零。全测试仍10条继承类型错误，继续明确失败；本批没有产品代码、类型放宽、源码排除、依赖或框架变更。

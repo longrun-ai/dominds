@@ -1020,6 +1020,42 @@
       "lane": "daemon",
       "value": "自有真实Node wrapper的PID/实际命令/start身份匹配，缺runner历史记录触发实际进程清理与drop，非虚构保活恢复",
       "evidence": "Complete original10/helper1409 lines and final9/native helpers/assertion diff review. tests/semantic/reviews/2026-10-31-daemon-lifecycle.json retains original value mapping, actual process/runner evidence, fixture corrections and24 fresh bilingual outputs with independent subjective verdicts. Exact assertions cover public enums/IDs, parsed JSON, complete supplied opaque data, versions and effects. AltInstruction, lifecycle/receipt/refusal/timeout meaning are never literal oracles. Registry reset is not an independent process restart; runner exits with daemon and only actually saved last-known snapshots are promised. Local observed platform only; no browser/provider/backend wake delivery or unseen final-byte/numeric-exit-code guarantee."
+    },
+    "kernel/unified-timestamp-ordering.ts": {
+      "status": "reviewed",
+      "lane": "presentation",
+      "value": "新旧/相等/undefined/ISO与无效输入的确定性时间排序数据合同，不冒称真实事件重放",
+      "evidence": "Full original8(605lines)/final6 and retired2 formatter-oracle review: tests/semantic/reviews/2026-10-31-state-presentation.json. Input IDs/configuration descriptions/labels, public enums/counts, structured JSON and bounded output ordering are machine/data contracts; generated UI compact/tooltip/title meaning is moved to explicit support evidence and must be judged subjectively. Metadata extension API comes from actual isolated LlmConfig.load with unique provider identity checks; no ProviderConfig widening, unknown double cast, actual generator/provider request or browser claim."
+    },
+    "llm-generation-metadata.ts": {
+      "status": "reviewed",
+      "lane": "presentation",
+      "value": "真实generation metadata身份trim、配置/报告模型区别、prominent顺序筛选、set/unset/文档默认与给定描述保真；结构JSON数据与实际加载扩展API配置，不强转未知类型",
+      "evidence": "Full original8(605lines)/final6 and retired2 formatter-oracle review: tests/semantic/reviews/2026-10-31-state-presentation.json. Input IDs/configuration descriptions/labels, public enums/counts, structured JSON and bounded output ordering are machine/data contracts; generated UI compact/tooltip/title meaning is moved to explicit support evidence and must be judged subjectively. Metadata extension API comes from actual isolated LlmConfig.load with unique provider identity checks; no ProviderConfig widening, unknown double cast, actual generator/provider request or browser claim."
+    },
+    "log-priority-fields.ts": {
+      "status": "reviewed",
+      "lane": "presentation",
+      "value": "实际3072字符日志预算下噪声记录仍保追踪ID和优先顺序，不冻结util.inspect引号样式或诊断措辞",
+      "evidence": "Full original8(605lines)/final6 and retired2 formatter-oracle review: tests/semantic/reviews/2026-10-31-state-presentation.json. Input IDs/configuration descriptions/labels, public enums/counts, structured JSON and bounded output ordering are machine/data contracts; generated UI compact/tooltip/title meaning is moved to explicit support evidence and must be judged subjectively. Metadata extension API comes from actual isolated LlmConfig.load with unique provider identity checks; no ProviderConfig widening, unknown double cast, actual generator/provider request or browser claim."
+    },
+    "webapp/run-control-visual.ts": {
+      "status": "reviewed",
+      "lane": "presentation",
+      "value": "运行/停止/人类阻塞枚举投影、非FBR数量减法/下限/缺省，不冒称实际按钮DOM或点击",
+      "evidence": "Full original8(605lines)/final6 and retired2 formatter-oracle review: tests/semantic/reviews/2026-10-31-state-presentation.json. Input IDs/configuration descriptions/labels, public enums/counts, structured JSON and bounded output ordering are machine/data contracts; generated UI compact/tooltip/title meaning is moved to explicit support evidence and must be judged subjectively. Metadata extension API comes from actual isolated LlmConfig.load with unique provider identity checks; no ProviderConfig widening, unknown double cast, actual generator/provider request or browser claim."
+    },
+    "webapp/create-dialog-flow-ime.ts": {
+      "status": "reviewed",
+      "lane": "presentation",
+      "value": "普通Enter、本地/原生composition与229键盘判定，不冒称真实输入法或创建请求",
+      "evidence": "Full original8(605lines)/final6 and retired2 formatter-oracle review: tests/semantic/reviews/2026-10-31-state-presentation.json. Input IDs/configuration descriptions/labels, public enums/counts, structured JSON and bounded output ordering are machine/data contracts; generated UI compact/tooltip/title meaning is moved to explicit support evidence and must be judged subjectively. Metadata extension API comes from actual isolated LlmConfig.load with unique provider identity checks; no ProviderConfig widening, unknown double cast, actual generator/provider request or browser claim."
+    },
+    "webapp/create-dialog-flow-selection.ts": {
+      "status": "reviewed",
+      "lane": "presentation",
+      "value": "可见/隐藏成员初选、默认/未知ID/无可见成员回退及preset trim，不冒称权限或实际弹窗提交",
+      "evidence": "Full original8(605lines)/final6 and retired2 formatter-oracle review: tests/semantic/reviews/2026-10-31-state-presentation.json. Input IDs/configuration descriptions/labels, public enums/counts, structured JSON and bounded output ordering are machine/data contracts; generated UI compact/tooltip/title meaning is moved to explicit support evidence and must be judged subjectively. Metadata extension API comes from actual isolated LlmConfig.load with unique provider identity checks; no ProviderConfig widening, unknown double cast, actual generator/provider request or browser claim."
     }
   },
   "retired": {
@@ -1191,6 +1227,16 @@
       "reason": "Only froze semantic start-receipt wording and parsed a cleanup PID from prose. The actual startup, live identity and deletion guard are exercised by daemon-reminder-render; its full actual start receipt is independently reviewed there. No duplicate automatic pass is counted.",
       "replacement": "reminders/daemon-reminder-render.ts",
       "evidence": "tests/semantic/reviews/2026-10-31-daemon-lifecycle.json"
+    },
+    "webapp/generation-model-presentation.ts": {
+      "reason": "The formatter output is user-facing presentation text without a downstream machine-parser contract. Retire literal whole-label/tooltip or keyword meaning assertions; preserve valuable actual input/output as pending subjective evidence. This support producer is not counted as an automatic passing case.",
+      "replacement": "semantic/model-presentation.ts",
+      "evidence": "tests/semantic/reviews/2026-10-31-state-presentation.json"
+    },
+    "webapp/context-usage-title.ts": {
+      "reason": "The formatter output is user-facing presentation text without a downstream machine-parser contract. Retire literal whole-label/tooltip or keyword meaning assertions; preserve valuable actual input/output as pending subjective evidence. This support producer is not counted as an automatic passing case.",
+      "replacement": "semantic/context-usage-title.ts",
+      "evidence": "tests/semantic/reviews/2026-10-31-state-presentation.json"
     }
   }
 }
