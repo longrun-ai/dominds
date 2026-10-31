@@ -421,3 +421,15 @@ Kimi 原本已有真实 SDK 到本地 HTTP 的成功请求，保留这条实际�
 拒绝捕获使用真实 CLI 所有的隔离 rtws 文件，完整读取给定 payload，并核实际结构路径、上游 status/code/cause 和分类；捕获根为普通文件时，I/O失败不能覆盖原上游拒绝。删除诊断字符串中的路径/捕获错误 marker 判断，改为实际结构字段、文件效果与主观诊断评审；失败现场不再在 finally 中无条件删除。两个入口保留现有60秒界限，并增加同界限存活 guard，确保未完成 async 主体不能零退出。
 
 清单为283个TypeScript文件、28个辅助模块、255个候选；审查146项，余109项，套件外102项，无单独脚本43项，直接失效与陈旧账本路径均零。兼容候选原28条类型诊断通过真实联合类型窄化、未知网络 JSON 边界和参数选项判别消除；新 HTTP helper 一条 object/Record 类型错误也由实际 JSON record 校验修正。全目录仍有104条继承诊断，明确失败，没有减弱类型或排除源码。无产品变更或 live-vendor 覆盖声明。
+
+### 提醒项参考、目标与显示数据批次
+
+原四项入口全部尝试，三个进程通过、一个排序夹具失败。1,170行 reminder-format 的意义判断全部依靠固定句子、禁词、标题或局部片段，绿灯不是语义验收；整项移除，不把新 producer 伪装成自动测试。四十三个不同的有价值输入经去重后交给实际 formatter，补 English migration 对应项，共四十四份实际说明，保留消息来源、主/支线角色、未回用户/未完成handoff/已完成追问、压力、作用域、所有权/维护及迁出边界。第二/第一人称、workset/技术词禁词、固定头/系统前缀等低价值风格要求直接删除，不设计新oracle。完整给定正文和缩进的数据保真价值进入真实 add/update→可见投影→formatter→磁盘的渲染案例。
+
+目标案例用真实 MainDialog、registry、成员和磁盘，沿袭默认需确认、单路follow、同agent第二Main或Side使follow需要具体goal、并行拒绝/移除后恢复、显式goal/不同agent独立及Side边界；canonical meta.mode/goal/字段集合和人数按数据核对，生成说明、维护hint与receipt另读。渲染案例核默认Markdown、显式plain及两种无mode更新保持，完整给定内容/ID/模式在可见投影和物理存储保留；三个内部doublecast/undefined-as-never防御测试未找到具体调用方需求，删除并改为实际工具的坏scope/mode拒绝与公开数据/磁盘状态不变。字段快照含priority/echoback，owner按稳定name，不冻结函数对象身份。跨语言检查先让固定Goal的合法语言刷新完成再取基线；首轮把该刷新当拒绝副作用的失败现场和解释保留，没有排除Goal或放宽为部分字段。
+
+排序原例把本地统一格式和UTC当成相差一分钟，当前环境实际复现失败。新夹具从两个明确Date分别生成ISO与统一格式，核真实Dialog可见ID次序；updatedAt优先、坏值回退的值保留，不改正确的时间解析产品行为。UTC、America/Los_Angeles、Asia/Shanghai三个受控进程均通过；这些是排序/后台投影结果，不声称浏览器排序或跨平台矩阵。
+
+主观首轮八份材料中四份拒绝：中英坏render_mode实际都被正确拒绝并保全状态，但用法提示完全不列该字段/可选值，无法指导修正显示模式。现只补齐add/update四条usage：markdown/plain、add省略默认markdown、update省略保当前模式；无控制流变更，模式保持有真实两值回归。`test:semantic:reminders` 三个producer最终输出六十二份实际材料，生成仍pending，必须重新逐份主观评审；完整旧四项价值、初轮拒绝全文/理由、新输出与断言审查见[本批记录](../tests/semantic/reviews/2026-10-31-reminder-core.json)。纯formatter状态输入没有被宣传成真实压力分类、真人队列、维护动作或重启恢复。
+
+当前283个TypeScript文件、29个辅助/证据模块、254个候选；审查149项，余105项，套件外98项，无单独脚本43项，直接失效与陈旧账本路径均零。原二十四条类型诊断通过移除语义oracle、真实存储/成员与正确call-site转换修复；新增一条坏args联合推断以实际ToolArguments数组修正。全目录仍有80条继承诊断，继续失败，没有弱化类型或排除源码。

@@ -876,6 +876,24 @@
       "lane": "compatible",
       "value": "沿袭原18项Volc/兼容值：真实流parser组件的回调顺序/给定字节、累计reasoning_details及无效/缺名通道，真实SDK批次坏wire JSON容忍/身份/metadata，声明参数矩阵/零请求拒绝，真实磁盘捕获和失败后的分类/原因保真",
       "evidence": "Complete original26-value/final/helper/full-test-diff review and actual output: tests/semantic/reviews/2026-10-31-compatible-provider-contracts.json. Callback method/order, supplied chunk bytes/JSON, protocol IDs/kinds, request fields/counts, full supplied schema/data and actual file/classifier effects are machine/data oracles. Fixed error/invalid-detail phrases are removed;12 actual diagnostics require independent subjective review. No pending generator/hash/ledger entry accepts fresh semantic output. Incomplete wire batch JSON passes through the actual SDK/local HTTP peer, not a ChatCompletion cast; invalid configuration targets localhost and proves zero received requests. Stream parser components do not establish SDK streaming, live vendors, tool execution or backend persistence/recovery. Existing60s per-case bound retained; completion guards prevent an unfinished async parser from exiting zero."
+    },
+    "reminders/main-dialog-goal-reminder.ts": {
+      "status": "reviewed",
+      "lane": "reminders",
+      "value": "真实MainDialog/registry/工具和磁盘readback保留默认目标、单/多Main与同agent Side并行、follow拒绝/恢复、显式goal给定数据与Side边界、不同agent独立等原8/9条状态价值",
+      "evidence": "Full original4/final3/public formatter evidence-producer and complete test-diff/value review: tests/semantic/reviews/2026-10-31-reminder-core.json. IDs, scopes, renderMode/mode, registry counts, canonical persisted metadata and supplied Markdown/goal/whole disk data fidelity are machine/data oracles; generated reminder/receipt/refusal meaning requires separate subjective review.62 actual cases are expected through3 explicit producers:44 formatter,10 actual-goal and8 actual-render/refusal. Evidence producer is support and never an automatic behavior test. No keyword/phrase/forbidden-vocabulary semantic detector; no fake Member, mid-run cwd switch or missing-bootstrap directory fix. No browser/LLM-following/real pressure classification/restart/fsync claim. Existing60s per-case bound retained."
+    },
+    "reminders/reminder-display-order.ts": {
+      "status": "reviewed",
+      "lane": "reminders",
+      "value": "从明确Date产生ISO/本地统一格式，真实Dialog可见列表中的给定reminder ID排序：updatedAt优先、坏值回退、混合格式按actual instant；修正旧UTC夹具前提，不宣称WebUI渲染",
+      "evidence": "Full original4/final3/public formatter evidence-producer and complete test-diff/value review: tests/semantic/reviews/2026-10-31-reminder-core.json. IDs, scopes, renderMode/mode, registry counts, canonical persisted metadata and supplied Markdown/goal/whole disk data fidelity are machine/data oracles; generated reminder/receipt/refusal meaning requires separate subjective review.62 actual cases are expected through3 explicit producers:44 formatter,10 actual-goal and8 actual-render/refusal. Evidence producer is support and never an automatic behavior test. No keyword/phrase/forbidden-vocabulary semantic detector; no fake Member, mid-run cwd switch or missing-bootstrap directory fix. No browser/LLM-following/real pressure classification/restart/fsync claim. Existing60s per-case bound retained."
+    },
+    "reminders/reminder-render-mode.ts": {
+      "status": "reviewed",
+      "lane": "reminders",
+      "value": "真实add/update工具的默认Markdown/显式plain及两者省略mode更新保持、ID和完整给定内容在可见投影/formatter/磁盘保真；公开坏scope/render_mode拒绝且memory/disk状态不变，未保低价值内部doublecast异常句",
+      "evidence": "Full original4/final3/public formatter evidence-producer and complete test-diff/value review: tests/semantic/reviews/2026-10-31-reminder-core.json. IDs, scopes, renderMode/mode, registry counts, canonical persisted metadata and supplied Markdown/goal/whole disk data fidelity are machine/data oracles; generated reminder/receipt/refusal meaning requires separate subjective review.62 actual cases are expected through3 explicit producers:44 formatter,10 actual-goal and8 actual-render/refusal. Evidence producer is support and never an automatic behavior test. No keyword/phrase/forbidden-vocabulary semantic detector; no fake Member, mid-run cwd switch or missing-bootstrap directory fix. No browser/LLM-following/real pressure classification/restart/fsync claim. Existing60s per-case bound retained."
     }
   },
   "retired": {
@@ -1036,6 +1054,12 @@
       "decision": "merge",
       "replacement": "apps-kernel-shell-packed-contract.ts",
       "reason": "删除description自然语言全文相等的低价值语义反例；删除空运行时导出、内部types/main路径及唯一依赖清单定式。保留真实包CJS/ESM/类型消费、CLI子路径拒绝及可安装kernel版本，未新增App目标架构要求。"
+    },
+    "reminders/reminder-format.ts": {
+      "status": "retired",
+      "lane": "semantic:reminders",
+      "value": "Delete1170-line natural-language literal oracle and redundant same-input/voice/vocabulary checks. Preserve43 distinct valuable formatter inputs as actual pending subjective evidence, add English migration counterpart; full supplied body fidelity also survives in real reminder-render tool/projection/store checks.",
+      "evidence": "tests/semantic/reviews/2026-10-31-reminder-core.json; replacement producer semantic/reminder-guidance.ts is support, not a passing automatic test. Old process success was not semantic acceptance."
     }
   }
 }

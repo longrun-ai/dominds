@@ -555,10 +555,10 @@ function getCtrlMessages(language: LanguageCode): CtrlMessages {
       reminderTargetChanged:
         '错误：提醒项列表已变化，这条提醒项当前不在可见列表中。请重新查看提醒项列表后，用当前的 reminder_id 重试。',
       invalidFormatAdd:
-        '参数格式不对。用法：add_reminder({ content: string, scope?: "dialog" | "task" | "agent" })（省略 scope 表示 task）',
+        '参数格式不对。用法：add_reminder({ content: string, scope?: "dialog" | "task" | "agent", render_mode?: "markdown" | "plain" })（省略 scope 表示 task；省略 render_mode 表示 markdown）',
       reminderContentEmpty: '提醒内容不能为空',
       invalidFormatUpdate:
-        '参数格式不对。用法：update_reminder({ reminder_id: string, content: string })',
+        '参数格式不对。用法：update_reminder({ reminder_id: string, content: string, render_mode?: "markdown" | "plain" })（省略 render_mode 会保留当前模式）',
       invalidFormatMigrate:
         '参数格式不对。用法：migrate_reminder({ reminder_id: string, scope: "dialog" })',
       invalidFormatSetDialogGoal:
@@ -641,10 +641,10 @@ function getCtrlMessages(language: LanguageCode): CtrlMessages {
     reminderTargetChanged:
       'Error: The reminder list changed, and this reminder is no longer visible. Refresh the reminders and retry with the current reminder_id.',
     invalidFormatAdd:
-      'Error: Invalid args. Use: add_reminder({ content: string, scope?: "dialog" | "task" | "agent" }) (omitting scope means task).',
+      'Error: Invalid args. Use: add_reminder({ content: string, scope?: "dialog" | "task" | "agent", render_mode?: "markdown" | "plain" }) (omitting scope means task; omitting render_mode means markdown).',
     reminderContentEmpty: 'Error: Reminder content cannot be empty',
     invalidFormatUpdate:
-      'Error: Invalid args. Use: update_reminder({ reminder_id: string, content: string })',
+      'Error: Invalid args. Use: update_reminder({ reminder_id: string, content: string, render_mode?: "markdown" | "plain" }) (omitting render_mode preserves the current mode).',
     invalidFormatMigrate:
       'Error: Invalid args. Use: migrate_reminder({ reminder_id: string, scope: "dialog" })',
     invalidFormatSetDialogGoal:

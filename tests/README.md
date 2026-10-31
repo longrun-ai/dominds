@@ -36,6 +36,8 @@ pnpm run test:projection
 pnpm run test:semantic:projection
 pnpm run test:compatible
 pnpm run test:semantic:compatible
+pnpm run test:reminders
+pnpm run test:semantic:reminders
 ```
 
 - `test`: a small local smoke suite; not full product, browser, packaging, or provider coverage.
@@ -77,6 +79,9 @@ pnpm run test:semantic:compatible
 
 - `test:compatible`: two isolated cases retain the original eight Kimi and eighteen compatible/Volc values. Kimi uses cloned built-in configuration and the real SDK against a local HTTP peer to check headers, options, full normalized schema, source immutability, usage and supplied response data. Deliberately incomplete batch response JSON crosses the same actual SDK boundary; invalid configuration proves zero received requests. Stream components check callback order, supplied chunks/reasoning metadata and invalid-call channels. Debug-capture cases use actual owned files and preserve classification and source cause through a regular-file capture failure. The existing 60-second case bound stays in place.
 - `test:semantic:compatible`: two producers emit twelve actual configuration refusals, parser/invalid-call details and capture diagnostics. Generation starts pending; the [batch review](./semantic/reviews/2026-10-31-compatible-provider-contracts.json) retains full output/context, independent verdicts, original values and execution scope. Component stream parsing does not establish actual SDK streaming; local peers do not establish live vendors, tool execution or backend durability.
+
+- `test:reminders`: three isolated behavior cases check the actual visible reminder ID order, default/follow/specific goals across same-agent Main/Side Dialogs and independent agents, and real tool/projection/disk preservation of given bodies and markdown/plain modes. Both modes retain their value on ordinary updates. Unsupported public scope/render_mode inputs leave observed public reminder data and disk state unchanged after the locale has been settled. No browser Markdown rendering or restart is claimed.
+- `test:semantic:reminders`: three explicit producers emit 44 actual formatter cases (the 43 distinct original inputs plus English migration), ten actual goal cases and eight actual rendering/receipt/refusal cases. The retired literal formatter test is replaced by `semantic/reminder-guidance.ts`, which is support/evidence only; no automatic behavior pass is counted for it. Actual text/context, the four rejected original render-mode diagnostics and revised subjective judgments are retained in the [batch review](./semantic/reviews/2026-10-31-reminder-core.json). Declared formatter state does not establish runtime classification, real pressure, actual human input, registered capabilities or shared maintenance execution. Generation starts pending.
 
 The [assertion audit ledger](./audit.json) records which candidate tests have actually been reviewed, their business value, lane and evidence. Inventory exposes unaudited candidates and stale ledger paths. Neither suite membership nor a prior ledger entry decides the meaning of freshly generated output.
 

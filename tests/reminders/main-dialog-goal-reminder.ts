@@ -1,179 +1,257 @@
+import { toCallSiteCourseNo, toCallSiteGenseqNo } from '@longrun-ai/kernel/types/storage';
 import assert from 'node:assert/strict';
-
-import { DialogStore, MainDialog } from '../../main/dialog';
+import type { MainDialog } from '../../main/dialog';
 import { globalDialogRegistry } from '../../main/dialog-global-registry';
 import { MAIN_DIALOG_GOAL_REMINDER_ID } from '../../main/main-dialog-goal-reminder';
-import type { Team } from '../../main/team';
-import type { Reminder } from '../../main/tool';
+import { DialogPersistence } from '../../main/persistence';
+import { setWorkLanguage } from '../../main/runtime/work-language';
+import { Team } from '../../main/team';
+import type { Reminder, ToolCallOutput } from '../../main/tool';
 import { setDialogGoalTool } from '../../main/tools/ctrl';
-import { withTempCwd } from './daemon-test-utils';
+import { semanticEvidenceCollector } from '../helpers/semantic-evidence';
+import { createMainDialog, withTempRtws, writeStandardMinds } from '../kernel-driver/helpers';
 
-class MemoryDialogStore extends DialogStore {}
-
-function createDialog(agentId: string, taskDocPath = 'main-dialog-goal-reminder.tsk'): MainDialog {
-  return new MainDialog(new MemoryDialogStore(), taskDocPath, undefined, agentId);
-}
-
-function requireGoalReminder(dialog: MainDialog): Reminder {
+const evidence = semanticEvidenceCollector('dominds-reminder-goal-');
+function goalReminder(dialog: MainDialog): Reminder {
   const reminder = dialog.reminders.find(
-    (candidate) => candidate.id === MAIN_DIALOG_GOAL_REMINDER_ID,
+    (reminder) => reminder.id === MAIN_DIALOG_GOAL_REMINDER_ID,
   );
-  assert.ok(reminder, 'Expected fixed Main Dialog goal reminder to exist');
+  assert.ok(reminder);
   return reminder;
 }
-
-function requireMetaRecord(reminder: Reminder): Record<string, unknown> {
-  const meta = reminder.meta;
-  assert.equal(typeof meta, 'object', 'Expected fixed goal reminder meta to be an object');
-  assert.notEqual(meta, null, 'Expected fixed goal reminder meta to be non-null');
-  assert.equal(Array.isArray(meta), false, 'Expected fixed goal reminder meta to be a record');
-  return meta as Record<string, unknown>;
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return value !== null && typeof value === 'object' && !Array.isArray(value);
 }
-
-function assertGoalMetaKeys(meta: Record<string, unknown>, includesGoal: boolean): void {
+function goalMeta(reminder: Reminder) {
+  assert.ok(isRecord(reminder.meta));
+  return reminder.meta;
+}
+async function capture(
+  id: string,
+  scenario: string,
+  dialog: MainDialog,
+  mode: 'requires_human_confirmation' | 'follow_taskdoc' | 'specific_goal',
+  running: number,
+  receipt?: ToolCallOutput,
+  givenGoal?: string,
+) {
+  const visible = await dialog.listVisibleReminders();
+  assert.equal(
+    visible.filter((reminder) => reminder.id === MAIN_DIALOG_GOAL_REMINDER_ID).length,
+    1,
+  );
+  await dialog.processReminderUpdates();
+  const reminder = goalReminder(dialog),
+    meta = goalMeta(reminder);
+  assert.equal(reminder.scope, 'dialog');
+  assert.equal(meta.kind, 'main_dialog_goal');
+  assert.equal(meta.mode, mode);
   assert.deepEqual(
     Object.keys(meta).sort(),
-    (includesGoal
+    (mode === 'specific_goal'
       ? ['delete', 'goal', 'kind', 'mode', 'update', 'updatedAt']
       : ['delete', 'kind', 'mode', 'update', 'updatedAt']
     ).sort(),
   );
+  assert.equal(meta.goal, givenGoal);
+  assert.equal(globalDialogRegistry.getRunningDialogsByAgent(dialog.agentId).length, running);
+  const stored = await DialogPersistence.loadReminderState(dialog.id, dialog.status);
+  const disk = stored.find((reminder) => reminder.id === MAIN_DIALOG_GOAL_REMINDER_ID);
+  assert.ok(disk);
+  assert.equal(disk.scope, 'dialog');
+  assert.equal(disk.content, reminder.content);
+  assert.deepEqual(disk.meta, reminder.meta);
+  evidence.record({
+    id,
+    scenario,
+    businessValue:
+      'Keep an executing Main Dialog directed by an explicit, correctly scoped goal without silently following a shared Taskdoc when its agent has parallel work.',
+    context: {
+      mode,
+      givenGoal: givenGoal ?? '',
+      runningSameAgentDialogs: running,
+      scope:
+        'Real Dialog, registry, tool handler and physical store read-back. No LLM drive, browser or restart/recovery is established.',
+    },
+    reviewQuestions: [
+      'Do the actual reminder, maintenance hints and tool receipt fit the observed role/parallel state while preserving the supplied explicit goal and avoiding invented permission or a false successful mutation?',
+    ],
+    actualText: JSON.stringify(
+      {
+        reminder: {
+          id: reminder.id,
+          content: reminder.content,
+          scope: reminder.scope,
+          meta: reminder.meta,
+        },
+        receipt,
+      },
+      null,
+      2,
+    ),
+  });
 }
-
-async function main(): Promise<void> {
-  await withTempCwd('dominds-main-dialog-goal-reminder-', async () => {
-    const caller = {} as Team.Member;
-    const registeredDialogs: MainDialog[] = [];
-    const registerDialog = (dialog: MainDialog): void => {
+async function main() {
+  await withTempRtws(async (rtws) => {
+    await writeStandardMinds(rtws, { extraMembers: ['other-agent'] });
+    setWorkLanguage('zh');
+    const caller = new Team.Member({ id: 'tester', name: 'Tester' });
+    const registered: MainDialog[] = [];
+    const register = async (agentId = 'tester') => {
+      const dialog = await createMainDialog(agentId);
+      dialog.setLastUserLanguageCode('zh');
       globalDialogRegistry.register(dialog);
-      registeredDialogs.push(dialog);
+      registered.push(dialog);
+      return dialog;
     };
-
     try {
-      const dialogA = createDialog('tester');
-      registerDialog(dialogA);
-
-      const visibleA = await dialogA.listVisibleReminders();
-      const defaultGoal = visibleA.find(
-        (candidate) => candidate.id === MAIN_DIALOG_GOAL_REMINDER_ID,
+      const a = await register();
+      await capture(
+        'default-main-goal',
+        'A newly created Main Dialog has no explicit goal and requires human confirmation.',
+        a,
+        'requires_human_confirmation',
+        1,
       );
-      assert.ok(defaultGoal, 'Expected fixed goal reminder to be visible in Main Dialog');
-      assert.equal(defaultGoal.scope, 'dialog');
-      assert.match(defaultGoal.content, /未设置|not set/);
-      assert.match(defaultGoal.content, /立即问人类|Ask the human immediately/);
-      const defaultMeta = requireMetaRecord(defaultGoal);
-      assert.equal(defaultMeta['mode'], 'requires_human_confirmation');
-      assertGoalMetaKeys(defaultMeta, false);
-
-      const followOutput = await setDialogGoalTool.call(dialogA, caller, {
-        mode: 'follow_taskdoc',
-      });
-      assert.equal(followOutput.outcome, 'success');
-      const followGoal = requireGoalReminder(dialogA);
-      assert.match(followGoal.content, /依差遣牒推进|proceed from the Taskdoc/);
-      assert.equal(requireMetaRecord(followGoal)['mode'], 'follow_taskdoc');
-
-      const dialogB = createDialog('tester');
-      registerDialog(dialogB);
-
-      const parallelGoal = requireGoalReminder(dialogA);
-      assert.match(parallelGoal.content, /依差遣牒推进|proceed from the Taskdoc/);
-      assert.match(parallelGoal.content, /立即问人类|Ask the human immediately/);
-      assert.match(parallelGoal.content, /Dominds 已确认|Dominds has confirmed/);
-      const parallelMeta = requireMetaRecord(parallelGoal);
-      assert.equal(parallelMeta['mode'], 'follow_taskdoc');
-      assertGoalMetaKeys(parallelMeta, false);
-      const secondDialogGoal = (await dialogB.listVisibleReminders()).find(
-        (candidate) => candidate.id === MAIN_DIALOG_GOAL_REMINDER_ID,
+      const follow = await setDialogGoalTool.call(a, caller, { mode: 'follow_taskdoc' });
+      assert.equal(follow.outcome, 'success');
+      await capture(
+        'single-follow-taskdoc',
+        'Only one dialog runs for this agent, so explicitly following its Taskdoc is accepted.',
+        a,
+        'follow_taskdoc',
+        1,
+        follow,
       );
-      assert.ok(secondDialogGoal, 'Second Main Dialog should display the fixed goal reminder');
-      const secondDialogMeta = requireMetaRecord(secondDialogGoal);
-      assert.equal(secondDialogMeta['mode'], 'requires_human_confirmation');
-      assertGoalMetaKeys(secondDialogMeta, false);
-
-      const rejectedOutput = await setDialogGoalTool.call(dialogA, caller, {
-        mode: 'follow_taskdoc',
-      });
-      assert.equal(rejectedOutput.outcome, 'failure');
-      assert.match(rejectedOutput.content, /并行对话|parallel dialog/);
-      assert.equal(requireMetaRecord(requireGoalReminder(dialogA))['mode'], 'follow_taskdoc');
-      assert.match(requireGoalReminder(dialogA).content, /立即问人类|Ask the human immediately/);
-
-      globalDialogRegistry.unregister(dialogB.id.rootId);
-      await dialogA.processReminderUpdates();
-      const singleAgainGoal = requireGoalReminder(dialogA);
-      const singleAgainMeta = requireMetaRecord(singleAgainGoal);
-      assert.equal(singleAgainMeta['mode'], 'follow_taskdoc');
-      assertGoalMetaKeys(singleAgainMeta, false);
-      assert.match(singleAgainGoal.content, /只有这一条对话|only one dialog/);
-
-      const sideDialog = await dialogA.createSideDialog(
+      const b = await register();
+      await capture(
+        'parallel-original-goal',
+        'A second same-agent root appears. The original follow mode remains stored, but its guidance must request a concrete Main Dialog goal.',
+        a,
+        'follow_taskdoc',
+        2,
+      );
+      await capture(
+        'parallel-new-goal',
+        'The second same-agent root begins without an explicit goal.',
+        b,
+        'requires_human_confirmation',
+        2,
+      );
+      const refused = await setDialogGoalTool.call(a, caller, { mode: 'follow_taskdoc' });
+      assert.equal(refused.outcome, 'failure');
+      await capture(
+        'parallel-follow-refused',
+        'Following a shared Taskdoc alone is refused while another same-agent dialog runs; the previous stored mode is not falsely replaced by a specific goal.',
+        a,
+        'follow_taskdoc',
+        2,
+        refused,
+      );
+      globalDialogRegistry.unregister(b.id.rootId);
+      await capture(
+        'single-again',
+        'After the parallel root is unregistered, the original follow mode is again sufficient for the single running dialog.',
+        a,
+        'follow_taskdoc',
+        1,
+      );
+      const side = await a.createSideDialog(
         'tester',
         ['@tester'],
-        'Verify that Side Dialogs cannot set Main Dialog goals.',
+        'supplied-assignment-data:goal-side-boundary',
         {
           callName: 'tellask',
           originMemberId: 'tester',
-          askerDialogId: dialogA.id.selfId,
-          callId: 'call-side-dialog-goal-main-only',
-          callSiteCourse: 1,
-          callSiteGenseq: 1,
+          askerDialogId: a.id.selfId,
+          callId: 'goal-side-call',
+          callSiteCourse: toCallSiteCourseNo(a.currentCourse),
+          callSiteGenseq: toCallSiteGenseqNo(1),
         },
       );
-      await dialogA.processReminderUpdates();
-      const sameAgentSideParallelGoal = requireGoalReminder(dialogA);
-      assert.match(sameAgentSideParallelGoal.content, /并行对话|parallel dialog/);
-      assert.match(sameAgentSideParallelGoal.content, /立即问人类|Ask the human immediately/);
-      const sameAgentSideParallelMeta = requireMetaRecord(sameAgentSideParallelGoal);
-      assert.equal(sameAgentSideParallelMeta['mode'], 'follow_taskdoc');
-      assertGoalMetaKeys(sameAgentSideParallelMeta, false);
-
-      const goalOutput = await setDialogGoalTool.call(dialogA, caller, {
-        mode: 'goal',
-        goal: '补齐主线目标提醒机制并跑回归测试',
-      });
-      assert.equal(goalOutput.outcome, 'success');
-      const concreteGoal = requireGoalReminder(dialogA);
-      assert.match(concreteGoal.content, /补齐主线目标提醒机制并跑回归测试/);
-      const concreteGoalMeta = requireMetaRecord(concreteGoal);
-      assert.equal(concreteGoalMeta['mode'], 'specific_goal');
-      assertGoalMetaKeys(concreteGoalMeta, true);
-
-      assert.equal(
-        (await sideDialog.listVisibleReminders()).some(
-          (reminder) => reminder.id === MAIN_DIALOG_GOAL_REMINDER_ID,
-        ),
-        false,
-        'Side Dialogs must not show the fixed Main Dialog goal reminder',
+      side.setLastUserLanguageCode('zh');
+      await capture(
+        'same-agent-side-parallel',
+        'A same-agent Side Dialog also constitutes parallel work for the Main Dialog goal decision.',
+        a,
+        'follow_taskdoc',
+        2,
       );
-      const sideOutput = await setDialogGoalTool.call(sideDialog, caller, {
+      const givenGoal = '补齐主线目标提醒机制并跑回归测试';
+      const specific = await setDialogGoalTool.call(a, caller, { mode: 'goal', goal: givenGoal });
+      assert.equal(specific.outcome, 'success');
+      await capture(
+        'explicit-specific-goal',
+        'An explicit specific Main Dialog goal is accepted even with same-agent parallel work.',
+        a,
+        'specific_goal',
+        2,
+        specific,
+        givenGoal,
+      );
+      const sideVisible = await side.listVisibleReminders();
+      assert.equal(
+        sideVisible.some((reminder) => reminder.id === MAIN_DIALOG_GOAL_REMINDER_ID),
+        false,
+      );
+      await side.processReminderUpdates();
+      const sideBefore = await DialogPersistence.loadReminderState(side.id, side.status);
+      const sideOutput = await setDialogGoalTool.call(side, caller, {
         mode: 'goal',
-        goal: 'This should not be accepted from a Side Dialog.',
+        goal: 'must-not-become-a-main-goal',
       });
       assert.equal(sideOutput.outcome, 'failure');
-      assert.match(sideOutput.content, /只用于主线对话|only for Main Dialogs/);
-
-      const otherAgentDialog = createDialog('other-agent');
-      registerDialog(otherAgentDialog);
-      const otherFollowOutput = await setDialogGoalTool.call(otherAgentDialog, caller, {
-        mode: 'follow_taskdoc',
-      });
-      assert.equal(otherFollowOutput.outcome, 'success');
-      assert.match(
-        requireGoalReminder(otherAgentDialog).content,
-        /依差遣牒推进|proceed from the Taskdoc/,
+      assert.equal(
+        side.reminders.some((reminder) => reminder.id === MAIN_DIALOG_GOAL_REMINDER_ID),
+        false,
       );
+      assert.deepEqual(await DialogPersistence.loadReminderState(side.id, side.status), sideBefore);
+      evidence.record({
+        id: 'side-main-goal-refused',
+        scenario:
+          'An actual Side Dialog has no fixed Main Dialog goal reminder and is refused when trying to set one; its physical reminder state is unchanged.',
+        businessValue:
+          'Preserve the Main Dialog goal boundary while leaving side assignments under their requester.',
+        context: {
+          role: 'side_dialog',
+          givenGoal: 'must-not-become-a-main-goal',
+          scope: 'Real Side Dialog/store and tool handler; no actual assignment execution.',
+        },
+        reviewQuestions: [
+          'Does the actual refusal accurately explain this role boundary without claiming a Main Dialog goal was set?',
+        ],
+        actualText: sideOutput.content,
+      });
+      const other = await register('other-agent');
+      const otherOutput = await setDialogGoalTool.call(
+        other,
+        new Team.Member({ id: 'other-agent', name: 'Other' }),
+        { mode: 'follow_taskdoc' },
+      );
+      assert.equal(otherOutput.outcome, 'success');
+      await capture(
+        'different-agent-independent',
+        'Running dialogs of another agent do not block this single-dialog agent from following its Taskdoc.',
+        other,
+        'follow_taskdoc',
+        1,
+        otherOutput,
+      );
+      await evidence.write();
     } finally {
-      for (const dialog of registeredDialogs) {
-        globalDialogRegistry.unregister(dialog.id.rootId);
-      }
+      for (const dialog of registered) globalDialogRegistry.unregister(dialog.id.rootId);
     }
   });
-
-  console.log('OK');
+  console.log('Main Dialog goal, parallel scope, side refusal and disk data: PASS');
 }
-
-void main().catch((error: unknown) => {
-  console.error(error instanceof Error ? (error.stack ?? error.message) : String(error));
-  process.exit(1);
-});
+const watchdog = setTimeout(() => {
+  throw new Error('Main goal case did not complete within60 seconds');
+}, 60_000);
+main().then(
+  () => clearTimeout(watchdog),
+  (error: unknown) => {
+    clearTimeout(watchdog);
+    console.error(error);
+    process.exitCode = 1;
+  },
+);

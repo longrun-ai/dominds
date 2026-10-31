@@ -128,7 +128,17 @@ const compatible = [
   'provider/openai-compatible-kimi-code.ts',
   'provider/openai-compatible-volcengine-coding-plan.ts',
 ];
+const reminders = [
+  'reminders/main-dialog-goal-reminder.ts',
+  'reminders/reminder-display-order.ts',
+  'reminders/reminder-render-mode.ts',
+];
 const semanticSuites = {
+  reminders: [
+    'semantic/reminder-guidance.ts',
+    'reminders/main-dialog-goal-reminder.ts',
+    'reminders/reminder-render-mode.ts',
+  ],
   compatible,
   projection,
   retry,
@@ -264,6 +274,7 @@ export async function inventory() {
     retry,
     projection,
     compatible,
+    reminders,
   };
   const included = new Set(Object.values(suites).flat());
   const audit = JSON.parse(await fs.readFile(path.join(testsRoot, 'audit.json'), 'utf8'));
@@ -384,10 +395,11 @@ async function main() {
       'retry',
       'projection',
       'compatible',
+      'reminders',
     ].includes(args[1])
   ) {
     throw new Error(
-      'Usage: node tests/run.mjs --list | --suite smoke | --suite kernel | --suite context [--semantic] | --suite configuration [--semantic] | --suite manual [--semantic] | --suite filesystem [--semantic] | --suite persistence [--semantic] | --suite recovery [--semantic] | --suite bootstrap [--semantic] | --suite packaging [--semantic] | --suite retry [--semantic] | --suite projection [--semantic] | --suite compatible [--semantic]',
+      'Usage: node tests/run.mjs --list | --suite smoke | --suite kernel | --suite context [--semantic] | --suite configuration [--semantic] | --suite manual [--semantic] | --suite filesystem [--semantic] | --suite persistence [--semantic] | --suite recovery [--semantic] | --suite bootstrap [--semantic] | --suite packaging [--semantic] | --suite retry [--semantic] | --suite projection [--semantic] | --suite compatible [--semantic] | --suite reminders [--semantic]',
     );
   }
   const suite = args[1];

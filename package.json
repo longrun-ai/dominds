@@ -75,7 +75,9 @@
     "test:projection": "node tests/run.mjs --suite projection",
     "test:semantic:projection": "node tests/run.mjs --suite projection --semantic",
     "test:compatible": "node tests/run.mjs --suite compatible",
-    "test:semantic:compatible": "node tests/run.mjs --suite compatible --semantic"
+    "test:semantic:compatible": "node tests/run.mjs --suite compatible --semantic",
+    "test:reminders": "node tests/run.mjs --suite reminders",
+    "test:semantic:reminders": "node tests/run.mjs --suite reminders --semantic"
   },
   "repository": {
     "type": "git",
