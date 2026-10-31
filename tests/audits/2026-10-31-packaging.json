@@ -1,0 +1,559 @@
+{
+  "date": "2026-10-31",
+  "status": "reviewed",
+  "sourceBaseRevision": "69f23d19e6dd6508abb476712666dd5c7aa33799",
+  "scope": "Primary executor read all eleven original candidate sources, both final candidates, three new support/probe files and the full added/removed test diff. Nine low-value structural/metadata candidates retired; two real packed-consumer candidates accepted for the stated effects only. This is an assertion-design/execution review, not a subjective semantic verdict.",
+  "businessValue": "A component author can consume shipped public MicroKernel contracts independently, and a CLI/WebUI user receives runnable artifacts with working declared dependencies. Retain present App compatibility exports as usable contracts without preserving App as the architectural destination or freezing old migration steps.",
+  "counts": {
+    "retired": 9,
+    "acceptedCandidates": 2,
+    "nativeSupportProbes": 2,
+    "semanticRequirementsAccepted": 0
+  },
+  "retirements": [
+    {
+      "file": "apps-kernel-no-main-source-bridge.ts",
+      "decision": "replace",
+      "replacement": "apps-kernel-shell-packed-contract.ts",
+      "reason": "整树源码/tsconfig片段扫描不证明独立消费；改由实际tarball、原生CJS/ESM与无paths的外部TypeScript消费和缺包负对照保护自包含价值。"
+    },
+    {
+      "file": "apps-shell-no-main-source-bridge.ts",
+      "decision": "merge",
+      "replacement": "apps-kernel-shell-packed-contract.ts",
+      "reason": "源码/元数据子串和迁移布局不再固定；shell实际打包导入、类型消费、CLI私有路径拒绝及kernel版本边保留。"
+    },
+    {
+      "file": "apps-main-kernel-stage1-contract.ts",
+      "decision": "merge",
+      "replacement": "apps-kernel-shell-packed-contract.ts",
+      "reason": "删除Stage1指定文件必须出现指定import及已删路径断言；保留公开契约可消费，实际主程序/前端由构建与类型检查验证，不冻结历史切分实施顺序。"
+    },
+    {
+      "file": "apps-tests-no-dominds-root-imports.ts",
+      "decision": "merge",
+      "replacement": "apps-dominds-root-packed-contract.ts",
+      "reason": "删除测试源码import正则扫描；实际独立消费者验证公开CLI可用而根及私有入口确实被exports拒绝。测试内部如何引入源码不作为业务结果。"
+    },
+    {
+      "file": "apps-webapp-kernel-first-batch-contract.ts",
+      "decision": "replace",
+      "replacement": "apps-dominds-root-packed-contract.ts",
+      "reason": "删除指定前端源文件import片段和旧symlink迁移步骤；前端构建、实际打包HTTP主页及其JS/CSS/图标资源交付保留用户可用的分发价值，不声称浏览器交互。"
+    },
+    {
+      "file": "apps-webapp-no-shared-symlink-imports.ts",
+      "decision": "replace",
+      "replacement": "apps-dominds-root-packed-contract.ts",
+      "reason": "删除重复源码片段/路径缺席检查；实际独立包资源交付与前端构建验证交付后果，不锁定仓库目录命名。"
+    },
+    {
+      "file": "apps-public-import-boundary-guardrail.ts",
+      "decision": "merge",
+      "replacement": "apps-kernel-shell-packed-contract.ts",
+      "reason": "删除整树正则导入扫描及兄弟仓库探查；真实包的公开导入与私有入口拒绝、自包含执行和外部类型消费保护运行边界，不用路径规则替代行为。"
+    },
+    {
+      "file": "apps-dominds-root-package-boundary.ts",
+      "decision": "merge",
+      "replacement": "apps-dominds-root-packed-contract.ts",
+      "reason": "固定exports/bins/files/脚本和workspace配方收敛为真实CLI导入/启动、私有入口拒绝、公开CLI类型及具体已打包依赖版本；删除main/index.ts缺席要求。发布认证/策略仍属单独未审计release候选，不声称本批覆盖。"
+    },
+    {
+      "file": "apps-shell-package-contract.ts",
+      "decision": "merge",
+      "replacement": "apps-kernel-shell-packed-contract.ts",
+      "reason": "删除description自然语言全文相等的低价值语义反例；删除空运行时导出、内部types/main路径及唯一依赖清单定式。保留真实包CJS/ESM/类型消费、CLI子路径拒绝及可安装kernel版本，未新增App目标架构要求。"
+    }
+  ],
+  "assertionReview": [
+    {
+      "scope": "packIntoConsumer",
+      "proves": "Real pinned pnpm pack and POSIX tar extraction; one archive per pack directory; packed package names/versions are machine identities. Workspace code is renamed from extracted tarballs into the independent node_modules, never symlinked from checkout. No archive filename or internal main/types/export layout is the success oracle."
+    },
+    {
+      "scope": "linkExternalDependencies",
+      "proves": "Only explicitly supplied existing third-party dependencies are linked. Original workspace: dependency specs cannot enter this fallback. Packed workspace versions must equal their actual dependency artifacts. This is local deterministic supply, not a registry installation."
+    },
+    {
+      "scope": "kernel native CJS and ESM probe",
+      "proves": "Representative existing public root/subpaths load with native require and import; resolved real paths remain inside this consumer. Tool success/parser output is exact supplied data plus protocol fields. Event channel delivers supplied opaque data; HTML escaping is machine serialization. No manual title, fallback prose or package description is judged."
+    },
+    {
+      "scope": "private import refusal",
+      "proves": "Actual Node resolution rejects kernel/dist, shell/cli, dominds root and dominds/dist/server with ERR_PACKAGE_PATH_NOT_EXPORTED. Error code is a resolver machine contract; no diagnostic prose is matched."
+    },
+    {
+      "scope": "external TypeScript consumer",
+      "proves": "Fresh strict NodeNext projects have no extends/paths, no ambient type packages, and skipLibCheck false. They use actual published CLI signatures and representative kernel state/event/language/host compatibility contracts. No source import spelling inside the repository is required."
+    },
+    {
+      "scope": "missing-package controls",
+      "proves": "After positive native and compiler runs, move the whole kernel package aside. A fresh native process must fail status1 and a fresh compiler must fail status2 with no signal. A timeout, signal death or missing executable is not accepted as the expected refusal. These controls test fallback isolation, not diagnostic prose."
+    },
+    {
+      "scope": "CLI execution",
+      "proves": "The packed public dominds/cli exports callable main and the real bin completes --help in a fresh native child. This tests startup and exit only; no meaning claim about the help text. Actual root/kernel/shell/auth resolution is inside the consumer."
+    },
+    {
+      "scope": "certificate effect",
+      "proves": "The actual packed certificate module and its declared selfsigned dependency generate a certificate for a supplied IP and a matching private key. Native X509/IP/key checks judge cryptographic facts. Runtime PATH is empty, so no system OpenSSL executable can satisfy this effect. The user home directory is not changed or used for outputs."
+    },
+    {
+      "scope": "HTTP resource delivery",
+      "proves": "The actual packed static handler serves index and its linked JS/CSS/icon resources through a real local HTTP server. Status and response bytes equal the given packed files. HTML src/href regex extracts machine resource addresses only; it judges no natural-language meaning and is not a semantic-test detector. No browser/rendering/user interaction coverage claimed."
+    },
+    {
+      "scope": "failure reporting and retention",
+      "proves": "Native probes/compiler errors propagate to the case, suite continues and records every attempted case; nonzero or timeout fails. Isolated temporary installations retain failed artifacts. Shared test runner cleans successful state. No retry-until-green or timeout increase."
+    },
+    {
+      "scope": "all retired structural checks",
+      "proves": "Old source snippets/import regexes, vanished paths, exact dependency/script/file recipes and an empty runtime-export set were inspected and removed. Actual public import/packaged effects preserve useful value; no promise that release authentication or every existing kernel diagnostic is covered. The low-value shell description equality is deleted, not converted to a semantic review."
+    },
+    {
+      "scope": "explicit native completion",
+      "proves": "Each native probe emits one machine packet only after every action awaits completion; the parent requires the exact protocol identifier and actual fixture identity. This prevents an unresolved async main with no live Node handles from silently exiting zero. It is an execution protocol, never a prose-quality comparison."
+    }
+  ],
+  "failureHistory": [
+    {
+      "kind": "fixture design overconstraint",
+      "origin": "/tmp/dominds-packed-kernel-first.log",
+      "retainedDirectory": "/tmp/dominds-packed-consumer-YXw4pd",
+      "actualResult": "Missing expected rejection after preferred src/index.ts was moved aside. Native packed consumers and the positive strict compiler had succeeded. TypeScript correctly used packed declaration fallback.",
+      "resolution": "Remove the entire installed kernel package for the negative control; accept legitimate internal declaration layout choices. Real product unchanged."
+    },
+    {
+      "kind": "exploratory scheduling limitation",
+      "actualResult": "Initial root and kernel exploratory processes overlapped; pnpm pack for the root executes its existing prepare lifecycle.",
+      "resolution": "Those outputs are not the final serial acceptance. Formal packaging suite executes root then kernel; final complete suite passed with empty runtime PATH."
+    },
+    {
+      "kind": "review-found zero-exit lifecycle gap",
+      "reproducer": {
+        "exitCode": 0,
+        "signal": null,
+        "stdout": "",
+        "stderr": "",
+        "completionObserved": false
+      },
+      "meaning": "A native async main awaiting an unresolved promise exits zero without reaching its completion write. Exit alone cannot prove the consumer executed its assertions.",
+      "resolution": "Both native probes now send an explicit machine completion packet at the end; the parent requires exactly one. Final full packaging suite and full test type check were rerun after this correction."
+    }
+  ],
+  "baseline": {
+    "structuralCandidates": {
+      "total": 9,
+      "processExitZero": 9,
+      "meaning": "Only original process statuses, not quality or acceptance of their assertions.",
+      "log": {
+        "origin": "/tmp/dominds-package-baseline.log",
+        "sha256": "fd4909430d52efde47747256676bdaa1fa661039d6330eb6259e4a20e26f710e",
+        "tail": [
+          "PASSED apps-main-kernel-stage1-contract.ts (177ms)",
+          "PASSED apps-tests-no-dominds-root-imports.ts (249ms)",
+          "PASSED apps-webapp-kernel-first-batch-contract.ts (186ms)",
+          "PASSED apps-webapp-no-shared-symlink-imports.ts (181ms)",
+          "PASSED apps-public-import-boundary-guardrail.ts (228ms)",
+          "PASSED apps-dominds-root-package-boundary.ts (180ms)",
+          "PASSED apps-shell-package-contract.ts (176ms)",
+          "{\"total\":9,\"passed\":9,\"failed\":0,\"timedOut\":0,\"results\":[{\"id\":\"apps-kernel-no-main-source-bridge.ts\",\"status\":\"passed\",\"durationMs\":172,\"code\":0,\"signal\":null,\"logPath\":\"/tmp/dominds-package-baseline-9d088d8/001-apps-kernel-no-main-source-bridge.ts.log\",\"tempDir\":\"/tmp/dominds-package-baseline-9d088d8/1.tmp\"},{\"id\":\"apps-shell-no-main-source-bridge.ts\",\"status\":\"passed\",\"durationMs\":174,\"code\":0,\"signal\":null,\"logPath\":\"/tmp/dominds-package-baseline-9d088d8/002-apps-shell-no-main-source-bridge.ts.log\",\"tempDir\":\"/tmp/dominds-package-baseline-9d088d8/2.tmp\"},{\"id\":\"apps-main-kernel-stage1-contract.ts\",\"status\":\"passed\",\"durationMs\":177,\"code\":0,\"signal\":null,\"logPath\":\"/tmp/dominds-package-baseline-9d088d8/003-apps-main-kernel-stage1-contract.ts.log\",\"tempDir\":\"/tmp/dominds-package-baseline-9d088d8/3.tmp\"},{\"id\":\"apps-tests-no-dominds-root-imports.ts\",\"status\":\"passed\",\"durationMs\":249,\"code\":0,\"signal\":null,\"logPath\":\"/tmp/dominds-package-baseline-9d088d8/004-apps-tests-no-dominds-root-imports.ts.log\",\"tempDir\":\"/tmp/dominds-package-baseline-9d088d8/4.tmp\"},{\"id\":\"apps-webapp-kernel-first-batch-contract.ts\",\"status\":\"passed\",\"durationMs\":186,\"code\":0,\"signal\":null,\"logPath\":\"/tmp/dominds-package-baseline-9d088d8/005-apps-webapp-kernel-first-batch-contract.ts.log\",\"tempDir\":\"/tmp/dominds-package-baseline-9d088d8/5.tmp\"},{\"id\":\"apps-webapp-no-shared-symlink-imports.ts\",\"status\":\"passed\",\"durationMs\":181,\"code\":0,\"signal\":null,\"logPath\":\"/tmp/dominds-package-baseline-9d088d8/006-apps-webapp-no-shared-symlink-imports.ts.log\",\"tempDir\":\"/tmp/dominds-package-baseline-9d088d8/6.tmp\"},{\"id\":\"apps-public-import-boundary-guardrail.ts\",\"status\":\"passed\",\"durationMs\":228,\"code\":0,\"signal\":null,\"logPath\":\"/tmp/dominds-package-baseline-9d088d8/007-apps-public-import-boundary-guardrail.ts.log\",\"tempDir\":\"/tmp/dominds-package-baseline-9d088d8/7.tmp\"},{\"id\":\"apps-dominds-root-package-boundary.ts\",\"status\":\"passed\",\"durationMs\":180,\"code\":0,\"signal\":null,\"logPath\":\"/tmp/dominds-package-baseline-9d088d8/008-apps-dominds-root-package-boundary.ts.log\",\"tempDir\":\"/tmp/dominds-package-baseline-9d088d8/8.tmp\"},{\"id\":\"apps-shell-package-contract.ts\",\"status\":\"passed\",\"durationMs\":176,\"code\":0,\"signal\":null,\"logPath\":\"/tmp/dominds-package-baseline-9d088d8/009-apps-shell-package-contract.ts.log\",\"tempDir\":\"/tmp/dominds-package-baseline-9d088d8/9.tmp\"}]}"
+        ]
+      }
+    },
+    "originalPackedCandidates": {
+      "total": 2,
+      "processExitZero": 2,
+      "meaning": "Original code only listed archive members/dependency metadata; neither process demonstrated actual standalone consumers.",
+      "log": {
+        "origin": "/tmp/dominds-packed-baseline.log",
+        "sha256": "79d1c47a58e8a17080537eee49ac4aff65a2b5cd96e8ec65301319bd525026af",
+        "tail": [
+          "PASSED apps-dominds-root-packed-contract.ts (6477ms)",
+          "PASSED apps-kernel-shell-packed-contract.ts (1247ms)",
+          "{\"total\":2,\"passed\":2,\"failed\":0,\"timedOut\":0,\"results\":[{\"id\":\"apps-dominds-root-packed-contract.ts\",\"status\":\"passed\",\"durationMs\":6477,\"code\":0,\"signal\":null,\"logPath\":\"/tmp/dominds-packed-baseline-9d088d8/001-apps-dominds-root-packed-contract.ts.log\",\"tempDir\":\"/tmp/dominds-packed-baseline-9d088d8/1.tmp\"},{\"id\":\"apps-kernel-shell-packed-contract.ts\",\"status\":\"passed\",\"durationMs\":1247,\"code\":0,\"signal\":null,\"logPath\":\"/tmp/dominds-packed-baseline-9d088d8/002-apps-kernel-shell-packed-contract.ts.log\",\"tempDir\":\"/tmp/dominds-packed-baseline-9d088d8/2.tmp\"}]}"
+        ]
+      }
+    }
+  },
+  "verification": {
+    "runtime": "Node24.19.0, pinned Corepack pnpm11.17 via /tmp/dominds-pnpm; no repository dependencies/frameworks added.",
+    "packaging": {
+      "total": 2,
+      "passed": 2,
+      "failed": 0,
+      "timedOut": 0,
+      "results": [
+        {
+          "id": "apps-dominds-root-packed-contract.ts",
+          "status": "passed",
+          "durationMs": 9681,
+          "code": 0,
+          "signal": null,
+          "logPath": "/tmp/dominds-tests-packaging-UPzzzv/001-apps-dominds-root-packed-contract.ts.log"
+        },
+        {
+          "id": "apps-kernel-shell-packed-contract.ts",
+          "status": "passed",
+          "durationMs": 3389,
+          "code": 0,
+          "signal": null,
+          "logPath": "/tmp/dominds-tests-packaging-UPzzzv/002-apps-kernel-shell-packed-contract.ts.log"
+        }
+      ]
+    },
+    "packagingScope": "Final serial suite after workspace-link rejection, empty main-probe PATH, explicit completion packets and all negative controls. Completion means the real async actions finished, not merely a zero process exit.",
+    "runner": {
+      "passed": 5,
+      "failed": 0,
+      "log": {
+        "origin": "/tmp/dominds-packaging-runner.log",
+        "sha256": "7460f8062cbe7969e1bebf9f1c279fb2a6b9a037b56004b701cd4343aba5aff0",
+        "tail": [
+          "ℹ tests 5",
+          "ℹ suites 0",
+          "ℹ pass 5",
+          "ℹ fail 0",
+          "ℹ cancelled 0",
+          "ℹ skipped 0",
+          "ℹ todo 0",
+          "ℹ duration_ms 2025.146565"
+        ]
+      }
+    },
+    "appTypes": {
+      "exitCode": 0,
+      "log": {
+        "origin": "/tmp/dominds-packaging-app-types.log",
+        "sha256": "41aa5be00a3d0c4d2223d9aee1e64fd44a1a074ddc49dbfbb33b30036175e87a",
+        "tail": [
+          "$ node ./scripts/run-pnpm.mjs -r --filter \"./packages/*\" --filter ./webapp run lint:types && tsc -p main/tsconfig.dev.json --noEmit",
+          "Scope: 3 of 6 workspace projects",
+          "packages/kernel lint:types$ tsc -p tsconfig.json --noEmit",
+          "packages/kernel lint:types: Done",
+          "packages/shell lint:types$ tsc -p tsconfig.json --noEmit",
+          "packages/shell lint:types: Done",
+          "webapp lint:types$ tsc -p src/tsconfig.json --noEmit && node ./scripts/check-dom-events.mjs",
+          "webapp lint:types: Done"
+        ]
+      }
+    },
+    "fullTestTypes": {
+      "exitCode": 2,
+      "status": "failed",
+      "diagnostics": 203,
+      "previousDiagnostics": 203,
+      "changedCandidateOrSupportDiagnostics": 0,
+      "log": {
+        "origin": "/tmp/dominds-packaging-completion-types.log",
+        "sha256": "60ee540c6402f7386ece76dccff26722f2de7a2e85ceeea73179305ca2fd649e",
+        "tail": [
+          "tests/ripgrep-streaming.ts(29,23): error TS2835: Relative import paths need explicit file extensions in ECMAScript imports when '--moduleResolution' is 'node16' or 'nodenext'. Did you mean '../main/tools/ripgrep.js'?",
+          "tests/ripgrep-windows-compat.ts(29,23): error TS2835: Relative import paths need explicit file extensions in ECMAScript imports when '--moduleResolution' is 'node16' or 'nodenext'. Did you mean '../main/tools/ripgrep.js'?",
+          "tests/task-package.ts(174,7): error TS2322: Type 'number' is not assignable to type 'CallSiteCourseNo'.",
+          "  Type 'number' is not assignable to type '{ readonly __callSiteCourseBrand: unique symbol; }'.",
+          "tests/task-package.ts(175,7): error TS2322: Type 'number' is not assignable to type 'CallSiteGenseqNo'.",
+          "  Type 'number' is not assignable to type '{ readonly __callSiteGenseqBrand: unique symbol; }'.",
+          "tests/toolsets/shell-cmd-capture-env.ts(73,5): error TS2322: Type 'unknown' is not assignable to type 'boolean'.",
+          "[ELIFECYCLE] Command failed with exit code 2."
+        ]
+      },
+      "meaning": "No full-directory type exclusions or weakening. Native JS probes are actual external consumer fixtures, not a workaround for an inherited TypeScript error."
+    },
+    "inventory": {
+      "typescriptFiles": 275,
+      "supportFiles": 22,
+      "candidates": 253,
+      "reviewed": 131,
+      "remaining": 122,
+      "outsideSuites": 115,
+      "missingDirectTargets": 0,
+      "staleLedgerPaths": 0
+    },
+    "preCommit": {
+      "status": "passed",
+      "trackedDocumentationOfflineLinks": {
+        "trackedMarkdown": 201,
+        "newMarkdown": 0,
+        "canonicalDocuments": 69,
+        "excludedRuntimeSources": 131,
+        "localTargetsAndFragments": 356,
+        "networkLinksIgnored": 9,
+        "failures": []
+      },
+      "format": [
+        {
+          "exitCode": 0,
+          "origin": "/tmp/dominds-packaging-final-format.log",
+          "sha256": "b1ea3ae2fe62892cb4e7315068d0b5aa27dc325de6426de93c32837cb79bd2f0",
+          "tail": [
+            "Checking formatting...",
+            "All matched files use Prettier code style!",
+            "Checking formatting...",
+            "All matched files use Prettier code style!"
+          ]
+        },
+        {
+          "exitCode": 0,
+          "origin": "/tmp/dominds-packaging-explicit-format.log",
+          "sha256": "17aa973d3f004560237d9a95171210b0671deff23d61628eecf7322ff5938f20",
+          "tail": ["Checking formatting...", "All matched files use Prettier code style!"]
+        }
+      ],
+      "completeTestDiffAssertionReview": "passed: full added/removed test diff, both final candidates and all three native support sources reviewed; each text comparison has a concrete machine/data contract; no literal semantic oracle retained.",
+      "gitDiffCheck": "passed"
+    },
+    "build": {
+      "exitCode": 0,
+      "log": {
+        "origin": "/tmp/dominds-packaging-build-verified.log",
+        "sha256": "dc574c667f5563212892142cf72886400b521b77e24ac04381db93d44361061b",
+        "tail": [
+          "packages/kernel build$ tsc -p tsconfig.json",
+          "codex-auth build$ tsc -p tsconfig.json",
+          "packages/kernel build: Done",
+          "codex-auth build: Done",
+          "packages/shell build$ tsc -p tsconfig.json",
+          "packages/shell build: Done",
+          "$ node ./scripts/run-pnpm.mjs -C webapp run build",
+          "$ node ./scripts/build.mjs"
+        ]
+      }
+    },
+    "smoke": {
+      "total": 11,
+      "passed": 11,
+      "failed": 0,
+      "timedOut": 0,
+      "results": [
+        {
+          "id": "auth.ts",
+          "status": "passed",
+          "durationMs": 186,
+          "code": 0,
+          "signal": null,
+          "logPath": "/tmp/dominds-tests-smoke-yfuGyV/001-auth.ts.log"
+        },
+        {
+          "id": "llm-generation-metadata.ts",
+          "status": "passed",
+          "durationMs": 179,
+          "code": 0,
+          "signal": null,
+          "logPath": "/tmp/dominds-tests-smoke-yfuGyV/002-llm-generation-metadata.ts.log"
+        },
+        {
+          "id": "persistence/latest-writeback.ts",
+          "status": "passed",
+          "durationMs": 2394,
+          "code": 0,
+          "signal": null,
+          "logPath": "/tmp/dominds-tests-smoke-yfuGyV/003-persistence_latest-writeback.ts.log"
+        },
+        {
+          "id": "interruption-resumption.ts",
+          "status": "passed",
+          "durationMs": 4838,
+          "code": 0,
+          "signal": null,
+          "logPath": "/tmp/dominds-tests-smoke-yfuGyV/004-interruption-resumption.ts.log"
+        },
+        {
+          "id": "access-control/dialogs-root-deny.ts",
+          "status": "passed",
+          "durationMs": 324,
+          "code": 0,
+          "signal": null,
+          "logPath": "/tmp/dominds-tests-smoke-yfuGyV/005-access-control_dialogs-root-deny.ts.log"
+        },
+        {
+          "id": "access-control/file-ext-names.ts",
+          "status": "passed",
+          "durationMs": 313,
+          "code": 0,
+          "signal": null,
+          "logPath": "/tmp/dominds-tests-smoke-yfuGyV/006-access-control_file-ext-names.ts.log"
+        },
+        {
+          "id": "apps-host-ipc-contract.ts",
+          "status": "passed",
+          "durationMs": 201,
+          "code": 0,
+          "signal": null,
+          "logPath": "/tmp/dominds-tests-smoke-yfuGyV/007-apps-host-ipc-contract.ts.log"
+        },
+        {
+          "id": "toolsets/tool-availability-snapshot.ts",
+          "status": "passed",
+          "durationMs": 1811,
+          "code": 0,
+          "signal": null,
+          "logPath": "/tmp/dominds-tests-smoke-yfuGyV/008-toolsets_tool-availability-snapshot.ts.log"
+        },
+        {
+          "id": "webapp/create-dialog-flow-ime.ts",
+          "status": "passed",
+          "durationMs": 211,
+          "code": 0,
+          "signal": null,
+          "logPath": "/tmp/dominds-tests-smoke-yfuGyV/009-webapp_create-dialog-flow-ime.ts.log"
+        },
+        {
+          "id": "webapp/create-dialog-flow-selection.ts",
+          "status": "passed",
+          "durationMs": 196,
+          "code": 0,
+          "signal": null,
+          "logPath": "/tmp/dominds-tests-smoke-yfuGyV/010-webapp_create-dialog-flow-selection.ts.log"
+        },
+        {
+          "id": "webapp/generation-model-presentation.ts",
+          "status": "passed",
+          "durationMs": 171,
+          "code": 0,
+          "signal": null,
+          "logPath": "/tmp/dominds-tests-smoke-yfuGyV/011-webapp_generation-model-presentation.ts.log"
+        }
+      ]
+    },
+    "smokeMeaning": "Eleven original smoke process statuses after the runner dispatch change; no claim of complete coverage or new semantic acceptance for inherited candidates."
+  },
+  "provenance": {
+    "identities": [
+      {
+        "file": "AGENTS.md",
+        "baseSha256": "5c1e40b80570cb41a6476d68bc817a7609c9c413bc189c7b669f1ec91612223b",
+        "sha256": "dfc53f10634a5b70fdc0a0f2026b39d73b22b0c991af9cad15f46b4413316c9a",
+        "disposition": "reviewed source/entry/ledger/document"
+      },
+      {
+        "file": "docs/testing-strategy.md",
+        "baseSha256": "f8f9196a79d448a72548aaaea129a69a6ae1f34cad063375773a9695dd90d1b8",
+        "sha256": "607749b65acdf8160027e7d625b3df9f4d4acb46f2b75bdde59c2ed36d7e529f",
+        "disposition": "reviewed source/entry/ledger/document"
+      },
+      {
+        "file": "tests/README.md",
+        "baseSha256": "d45f126435f7f4db062598a9be49eac697947d053dfb534f4731852543c64f83",
+        "sha256": "247f53015f4df0f54d59eda89f36f5bdfe0eda5fe37d46ee42c6b566ed60438f",
+        "disposition": "reviewed source/entry/ledger/document"
+      },
+      {
+        "file": "package.json",
+        "baseSha256": "1a9b7d23791312abe83d16282f981d84eef0b980d31ed7b232b3b6875f407507",
+        "sha256": "3e9146d7be880665cb6008ffd08b59e20fe0403f13ef61c12a3ad991b62e0d00",
+        "disposition": "reviewed source/entry/ledger/document"
+      },
+      {
+        "file": "tests/package.json",
+        "baseSha256": "894e78af6e23278f1584b78d15d35d4ec1cf28f3d7aa7d8e18234016a4f6d05f",
+        "sha256": "9a1342cb8e38d05cea391b3f5d6d1e5ec5339279c02108931238e4971892dced",
+        "disposition": "reviewed source/entry/ledger/document"
+      },
+      {
+        "file": "tests/run.mjs",
+        "baseSha256": "c04174f9e3d8eeda161642afd6df631868d46a83755ebf1574be9dd08b56ee8d",
+        "sha256": "6d5231b9b8a689ad2976bb7bcdbfbcb58a78fd7b6dee92eb8ce7bbc8b1bf7ed4",
+        "disposition": "reviewed source/entry/ledger/document"
+      },
+      {
+        "file": "tests/audit.json",
+        "baseSha256": "3172a60374acaaa5208a2b67460b87dbc6b1e115b400971810a5d7f0f9f3c733",
+        "sha256": "f75884409a5d7b4bd1a7ebb312887f393c299c0ea734a7132e550c984e2eecb4",
+        "disposition": "reviewed source/entry/ledger/document"
+      },
+      {
+        "file": "tests/apps-dominds-root-packed-contract.ts",
+        "baseSha256": "b143706425efa80f29f30d2022160a2aa43f25b39a18962f1ece45552b887efa",
+        "sha256": "a0535403be03aff5915ff6c2f10b61eef0340ed0c9ce9180478cae2b3c782248",
+        "disposition": "reviewed source/entry/ledger/document"
+      },
+      {
+        "file": "tests/apps-kernel-shell-packed-contract.ts",
+        "baseSha256": "fbb34ac68d69a8e2cbc7f7a150bca389965e4d8517de13394034ad9f30dbe0cf",
+        "sha256": "d66b450dc8457c0a6710818d2e557569a17434000a0b2e0a85aaf8357813457d",
+        "disposition": "reviewed source/entry/ledger/document"
+      },
+      {
+        "file": "tests/helpers/packaging/consumer.ts",
+        "baseSha256": null,
+        "sha256": "392fa05a6d8948dd34258a166332e4bdb92026771c6a576747d2ce23c5245207",
+        "disposition": "reviewed source/entry/ledger/document"
+      },
+      {
+        "file": "tests/helpers/packaging/kernel.cjs",
+        "baseSha256": null,
+        "sha256": "06a4899dc6505b4b6c33451e34465e692e82e69629cde98faf05a94d94c7a45b",
+        "disposition": "reviewed source/entry/ledger/document"
+      },
+      {
+        "file": "tests/helpers/packaging/root.cjs",
+        "baseSha256": null,
+        "sha256": "326a171a5ae1bac09c00b57cd148ab55e9214efe492a5f3b103866286324f046",
+        "disposition": "reviewed source/entry/ledger/document"
+      },
+      {
+        "file": "tests/apps-kernel-no-main-source-bridge.ts",
+        "baseSha256": "a974d04c97b24e213cc67a920ae2872063cb5ac102c573e7d0de2b6fa13d02cd",
+        "sha256": null,
+        "disposition": "retired"
+      },
+      {
+        "file": "tests/apps-shell-no-main-source-bridge.ts",
+        "baseSha256": "288aa8f23a800dc3d6af08223678d533100fda9bc0656a4be5b0f63e3d1e2f45",
+        "sha256": null,
+        "disposition": "retired"
+      },
+      {
+        "file": "tests/apps-main-kernel-stage1-contract.ts",
+        "baseSha256": "362dd56cac40c4a375e4b0d7cb7db59195b6964f981f31a9b2b2e46306fcb164",
+        "sha256": null,
+        "disposition": "retired"
+      },
+      {
+        "file": "tests/apps-tests-no-dominds-root-imports.ts",
+        "baseSha256": "024bedf22af0cf2ce24f3a289437fc772b221d1aeef2e55b88c828c34d85f509",
+        "sha256": null,
+        "disposition": "retired"
+      },
+      {
+        "file": "tests/apps-webapp-kernel-first-batch-contract.ts",
+        "baseSha256": "40d54aca99a82c96b0fc76635ee269a8c0f65d253b3766334f4cc6254903ec91",
+        "sha256": null,
+        "disposition": "retired"
+      },
+      {
+        "file": "tests/apps-webapp-no-shared-symlink-imports.ts",
+        "baseSha256": "5f01b7a37c75f3740c282ecb3e4554dff079a1feabdcebe777e69ea3af5ac6b6",
+        "sha256": null,
+        "disposition": "retired"
+      },
+      {
+        "file": "tests/apps-public-import-boundary-guardrail.ts",
+        "baseSha256": "53f518ce2764d284b4696e21e5d72f13cac0d68cb877dac0f1538b74414eac8b",
+        "sha256": null,
+        "disposition": "retired"
+      },
+      {
+        "file": "tests/apps-dominds-root-package-boundary.ts",
+        "baseSha256": "06b5819ae456ec5278a23839d10fbbebf793a21e80065920756bff24784ff94a",
+        "sha256": null,
+        "disposition": "retired"
+      },
+      {
+        "file": "tests/apps-shell-package-contract.ts",
+        "baseSha256": "464197e40095fe4ac2760e9ad8429f803919f77c787dd77b60ebde4d95ec7f31",
+        "sha256": null,
+        "disposition": "retired"
+      }
+    ],
+    "meaning": "Identity records bind the reviewed source and removals. They are not semantic oracles, automatic future acceptance or evidence of unexecuted behavior."
+  },
+  "limitations": [
+    "Existing POSIX tar, pinned package manager, built backend/frontend and installed dependency set are explicit prerequisites. Missing prerequisites fail instead of passing as skips. Other platforms are unexecuted.",
+    "No registry install/publish, release authentication, prepared-release caching, drift guard, live provider, browser rendering or human UI interaction acceptance.",
+    "The existing apps-public-publish-guard.ts, apps-public-version-drift-guard.ts and apps-kernel-package-exports-contract.ts remain unaudited separate candidates. No fresh semantic requirement is inferred from these consumers.",
+    "Kernel/persistence/context/recovery/filesystem/bootstrap/etc complete suites were not rerun for this test-only batch. Smoke11 ran after runner dispatch changed; prior committed product regression/semantic results are not imported as fresh acceptance."
+  ]
+}

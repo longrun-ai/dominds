@@ -28,6 +28,7 @@ pnpm run test:recovery
 pnpm run test:semantic:recovery
 pnpm run test:bootstrap
 pnpm run test:semantic:bootstrap
+pnpm run test:packaging
 ```
 
 - `test`: a small local smoke suite; not full product, browser, packaging, or provider coverage.
@@ -56,6 +57,8 @@ pnpm run test:semantic:bootstrap
 
 - `test:bootstrap`: seven local cases for actual CLI processes, workspace argument parsing, caller argv identity, forwarding proxy configuration through the Node API boundary, team-validation exit codes, dotenv data/precedence/errors and environment-tool mutations/refusals. It uses isolated workspaces and synthetic environment values; does not prove actual proxy routing, MCP server availability, shell/OS persistence or automatic reload after changing environment variables.
 - `test:semantic:bootstrap`: three producers emit nine actual manual/help, team-validation and environment-tool outputs. Complete texts and their scenarios require subjective review; exit-code success and evidence generation do not judge their meaning.
+
+- `test:packaging`: two sequential cases pack the real root/kernel/shell/auth packages and consume them from independent temporary installations. Native CJS/ESM and TypeScript have no workspace aliases; the CJS/ESM entry probes have no `NODE_PATH`, loader options or executable search path. Public/private import effects, CLI startup, actual certificate/key compatibility and packed WebUI HTTP resource bytes are machine outcomes. Machine completion packets after every native action prevent an unresolved async main from exiting zero and being counted as a pass. Missing-package controls verify that runtime/type consumers cannot silently use checkout sources. Run `pnpm run build` first; pinned pnpm, POSIX `tar` and the existing installed dependency set are required. Third-party dependencies are supplied by explicit links; workspace packages always come from their tarballs. This is not a registry install, release-policy, browser interaction or model-quality test. The [batch assertion review](./audits/2026-10-31-packaging.json) maps the nine retired scans/metadata recipes to their remaining value.
 
 The [assertion audit ledger](./audit.json) records which candidate tests have actually been reviewed, their business value, lane and evidence. Inventory exposes unaudited candidates and stale ledger paths. Neither suite membership nor a prior ledger entry decides the meaning of freshly generated output.
 

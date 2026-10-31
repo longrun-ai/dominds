@@ -774,6 +774,18 @@
       "lane": "recovery",
       "value": "公开llm_retry_stopped恢复资格和最终Continue开关：结束状态可继续，尚未收口的transient状态不可提前继续",
       "evidence": "Complete unchanged 74-line candidate review: tests/semantic/reviews/2026-10-31-interruption.json. Public enum/state eligibility component only, no real click, new retry invocation or display prose judgment. Supplied display/error strings are input data, never a semantic oracle."
+    },
+    "apps-dominds-root-packed-contract.ts": {
+      "status": "reviewed",
+      "lane": "packaging",
+      "value": "独立真实分发包的CLI公开入口/类型、启动、私有导入拒绝、可安装workspace版本、实际证书/密钥和HTTP主页与资源交付",
+      "evidence": "Complete original/final/test-diff assertion review and retirement/value mapping: tests/audits/2026-10-31-packaging.json. Only protocol identifiers, package versions, public operations, supplied data, cryptographic matches, HTTP statuses/bytes and compiler/process statuses are oracles. No prose quality verdict or source scan. POSIX tar and existing built outputs/pinned dependencies required; no registry install/publish, browser interaction, live provider or release-policy acceptance."
+    },
+    "apps-kernel-shell-packed-contract.ts": {
+      "status": "reviewed",
+      "lane": "packaging",
+      "value": "真实kernel/shell tarball在无源码映射的独立原生CJS/ESM与TypeScript消费，私有路径拒绝、版本边及缺包负向对照",
+      "evidence": "Complete original/final/test-diff assertion review and retirement/value mapping: tests/audits/2026-10-31-packaging.json. Only protocol identifiers, package versions, public operations, supplied data, cryptographic matches, HTTP statuses/bytes and compiler/process statuses are oracles. No prose quality verdict or source scan. POSIX tar and existing built outputs/pinned dependencies required; no registry install/publish, browser interaction, live provider or release-policy acceptance."
     }
   },
   "retired": {
@@ -889,6 +901,51 @@
       "decision": "merge",
       "replacement": "fs-symlink-follow.ts",
       "reason": "原header/说明字面检查删除；已知目录entry经真实symlink列出与链接/目标保持的业务价值并入中英真实文件系统回归，原命名入口转发替代用例。"
+    },
+    "apps-kernel-no-main-source-bridge.ts": {
+      "decision": "replace",
+      "replacement": "apps-kernel-shell-packed-contract.ts",
+      "reason": "整树源码/tsconfig片段扫描不证明独立消费；改由实际tarball、原生CJS/ESM与无paths的外部TypeScript消费和缺包负对照保护自包含价值。"
+    },
+    "apps-shell-no-main-source-bridge.ts": {
+      "decision": "merge",
+      "replacement": "apps-kernel-shell-packed-contract.ts",
+      "reason": "源码/元数据子串和迁移布局不再固定；shell实际打包导入、类型消费、CLI私有路径拒绝及kernel版本边保留。"
+    },
+    "apps-main-kernel-stage1-contract.ts": {
+      "decision": "merge",
+      "replacement": "apps-kernel-shell-packed-contract.ts",
+      "reason": "删除Stage1指定文件必须出现指定import及已删路径断言；保留公开契约可消费，实际主程序/前端由构建与类型检查验证，不冻结历史切分实施顺序。"
+    },
+    "apps-tests-no-dominds-root-imports.ts": {
+      "decision": "merge",
+      "replacement": "apps-dominds-root-packed-contract.ts",
+      "reason": "删除测试源码import正则扫描；实际独立消费者验证公开CLI可用而根及私有入口确实被exports拒绝。测试内部如何引入源码不作为业务结果。"
+    },
+    "apps-webapp-kernel-first-batch-contract.ts": {
+      "decision": "replace",
+      "replacement": "apps-dominds-root-packed-contract.ts",
+      "reason": "删除指定前端源文件import片段和旧symlink迁移步骤；前端构建、实际打包HTTP主页及其JS/CSS/图标资源交付保留用户可用的分发价值，不声称浏览器交互。"
+    },
+    "apps-webapp-no-shared-symlink-imports.ts": {
+      "decision": "replace",
+      "replacement": "apps-dominds-root-packed-contract.ts",
+      "reason": "删除重复源码片段/路径缺席检查；实际独立包资源交付与前端构建验证交付后果，不锁定仓库目录命名。"
+    },
+    "apps-public-import-boundary-guardrail.ts": {
+      "decision": "merge",
+      "replacement": "apps-kernel-shell-packed-contract.ts",
+      "reason": "删除整树正则导入扫描及兄弟仓库探查；真实包的公开导入与私有入口拒绝、自包含执行和外部类型消费保护运行边界，不用路径规则替代行为。"
+    },
+    "apps-dominds-root-package-boundary.ts": {
+      "decision": "merge",
+      "replacement": "apps-dominds-root-packed-contract.ts",
+      "reason": "固定exports/bins/files/脚本和workspace配方收敛为真实CLI导入/启动、私有入口拒绝、公开CLI类型及具体已打包依赖版本；删除main/index.ts缺席要求。发布认证/策略仍属单独未审计release候选，不声称本批覆盖。"
+    },
+    "apps-shell-package-contract.ts": {
+      "decision": "merge",
+      "replacement": "apps-kernel-shell-packed-contract.ts",
+      "reason": "删除description自然语言全文相等的低价值语义反例；删除空运行时导出、内部types/main路径及唯一依赖清单定式。保留真实包CJS/ESM/类型消费、CLI子路径拒绝及可安装kernel版本，未新增App目标架构要求。"
     }
   }
 }

@@ -103,6 +103,7 @@ const bootstrap = [
   'env/dotenv.ts',
   'env/env-tools.ts',
 ];
+const packaging = ['apps-dominds-root-packed-contract.ts', 'apps-kernel-shell-packed-contract.ts'];
 const semanticSuites = {
   context: [
     'semantic/context-guidance.ts',
@@ -223,6 +224,7 @@ export async function inventory() {
     persistence,
     recovery,
     bootstrap,
+    packaging,
   };
   const included = new Set(Object.values(suites).flat());
   const audit = JSON.parse(await fs.readFile(path.join(testsRoot, 'audit.json'), 'utf8'));
@@ -339,10 +341,11 @@ async function main() {
       'persistence',
       'recovery',
       'bootstrap',
+      'packaging',
     ].includes(args[1])
   ) {
     throw new Error(
-      'Usage: node tests/run.mjs --list | --suite smoke | --suite kernel | --suite context [--semantic] | --suite configuration [--semantic] | --suite manual [--semantic] | --suite filesystem [--semantic] | --suite persistence [--semantic] | --suite recovery [--semantic] | --suite bootstrap [--semantic]',
+      'Usage: node tests/run.mjs --list | --suite smoke | --suite kernel | --suite context [--semantic] | --suite configuration [--semantic] | --suite manual [--semantic] | --suite filesystem [--semantic] | --suite persistence [--semantic] | --suite recovery [--semantic] | --suite bootstrap [--semantic] | --suite packaging',
     );
   }
   const suite = args[1];
@@ -355,7 +358,9 @@ async function main() {
   const cases = files.map((file) => ({
     id: file,
     args:
-      suite !== 'smoke' || persistence.includes(file) || recovery.includes(file)
+      (suite !== 'smoke' && suite !== 'packaging') ||
+      persistence.includes(file) ||
+      recovery.includes(file)
         ? [tsx, path.join(testsRoot, 'cli.ts'), '--', file, ...(semantic ? ['--semantic'] : [])]
         : [tsx, '--tsconfig', path.join(testsRoot, 'tsconfig.json'), path.join(testsRoot, file)],
   }));

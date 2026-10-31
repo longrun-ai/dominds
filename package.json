@@ -67,7 +67,8 @@
     "test:recovery": "node tests/run.mjs --suite recovery",
     "test:semantic:recovery": "node tests/run.mjs --suite recovery --semantic",
     "test:bootstrap": "node tests/run.mjs --suite bootstrap",
-    "test:semantic:bootstrap": "node tests/run.mjs --suite bootstrap --semantic"
+    "test:semantic:bootstrap": "node tests/run.mjs --suite bootstrap --semantic",
+    "test:packaging": "node tests/run.mjs --suite packaging"
   },
   "repository": {
     "type": "git",
