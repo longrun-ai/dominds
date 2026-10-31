@@ -1,56 +1,76 @@
 import assert from 'node:assert/strict';
-import * as fs from 'node:fs';
-import * as os from 'node:os';
-import * as path from 'node:path';
-
+import fs from 'node:fs/promises';
+import path from 'node:path';
 import { loadRtwsDotenv } from '../../main/bootstrap/dotenv';
+import { withTempRtws } from '../kernel-driver/helpers';
 
-function withEnv(keys: ReadonlyArray<string>, fn: () => void): void {
-  const previous: Record<string, string | undefined> = {};
-  for (const key of keys) previous[key] = process.env[key];
-
-  try {
-    fn();
-  } finally {
-    for (const key of keys) {
-      const prev = previous[key];
-      if (prev === undefined) delete process.env[key];
-      else process.env[key] = prev;
+async function main(): Promise<void> {
+  await withTempRtws(async (rtws) => {
+    const keys = ['FOO', 'BAR', 'HASH', 'SINGLE', 'EMPTY'].map(
+      (key) => `DOMINDS_TEST_DOTENV_${key}`,
+    );
+    const previous = keys.map((key) => process.env[key]);
+    const [foo, bar, hash, single, empty] = keys;
+    assert.ok(foo && bar && hash && single && empty);
+    try {
+      for (const key of keys) delete process.env[key];
+      const directory = path.join(rtws, 'dotenv-case');
+      await fs.mkdir(directory);
+      assert.deepEqual(loadRtwsDotenv({ cwd: directory }), {
+        cwd: directory,
+        loadedFiles: [],
+        errors: [],
+      });
+      process.env[foo] = 'from_shell';
+      await fs.writeFile(path.join(directory, '.env'), `${foo}=from_env\n`);
+      await fs.writeFile(path.join(directory, '.env.local'), `${foo}=from_env_local\n`);
+      const loaded = loadRtwsDotenv({ cwd: directory });
+      assert.deepEqual(loaded, { cwd: directory, loadedFiles: ['.env', '.env.local'], errors: [] });
+      assert.equal(process.env[foo], 'from_env_local');
+      const input = [
+        `export ${bar}="a\\n b\\t\\\"c\\\\d"`,
+        `${hash}=abc#data # trailing comment`,
+        `${single}='literal\\n#data'`,
+        `${empty}=`,
+        'missing-equals-data',
+        '=empty-key-data',
+        'BAD-KEY=invalid-key-data',
+        `${foo}=valid-after-errors`,
+      ];
+      await fs.writeFile(path.join(directory, '.env'), input.join('\n'));
+      const parsed = loadRtwsDotenv({ cwd: directory });
+      assert.deepEqual(parsed.errors, [
+        { file: '.env', lineNumber: 5, raw: input[4], reason: 'missing_equals' },
+        { file: '.env', lineNumber: 6, raw: input[5], reason: 'empty_key' },
+        { file: '.env', lineNumber: 7, raw: input[6], reason: 'invalid_key' },
+      ]);
+      assert.equal(process.env[bar], 'a\n b\t"c\\d');
+      assert.equal(process.env[hash], 'abc#data');
+      assert.equal(process.env[single], 'literal\\n#data');
+      assert.equal(process.env[empty], '');
+      assert.equal(
+        process.env[foo],
+        'from_env_local',
+        '.env.local precedence survives errors in .env',
+      );
+      await fs.rm(path.join(directory, '.env.local'));
+      assert.deepEqual(loadRtwsDotenv({ cwd: directory }).loadedFiles, ['.env']);
+      assert.equal(
+        process.env[foo],
+        'valid-after-errors',
+        'invalid rows do not discard later valid data',
+      );
+    } finally {
+      for (const [index, key] of keys.entries()) {
+        const value = previous[index];
+        if (value === undefined) delete process.env[key];
+        else process.env[key] = value;
+      }
     }
-  }
-}
-
-function writeFile(filePath: string, content: string): void {
-  fs.mkdirSync(path.dirname(filePath), { recursive: true });
-  fs.writeFileSync(filePath, content, 'utf8');
-}
-
-function main(): void {
-  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'dominds-dotenv-'));
-  const keys = ['DOMINDS_TEST_DOTENV_FOO', 'DOMINDS_TEST_DOTENV_BAR'] as const;
-
-  withEnv(keys, () => {
-    process.env.DOMINDS_TEST_DOTENV_FOO = 'from_shell';
-
-    writeFile(path.join(tmp, '.env'), 'DOMINDS_TEST_DOTENV_FOO=from_env\n');
-    writeFile(path.join(tmp, '.env.local'), 'DOMINDS_TEST_DOTENV_FOO=from_env_local\n');
-
-    const result = loadRtwsDotenv({ cwd: tmp });
-    assert.equal(result.cwd, tmp);
-    assert.deepEqual(result.loadedFiles, ['.env', '.env.local']);
-    assert.equal(result.errors.length, 0);
-
-    // `.env.local` overwrites `.env`, and files overwrite existing process.env.
-    assert.equal(process.env.DOMINDS_TEST_DOTENV_FOO, 'from_env_local');
-
-    // Basic parsing sanity.
-    writeFile(path.join(tmp, '.env'), 'DOMINDS_TEST_DOTENV_BAR="a\\n b"\n');
-    const result2 = loadRtwsDotenv({ cwd: tmp });
-    assert.equal(result2.errors.length, 0);
-    assert.equal(process.env.DOMINDS_TEST_DOTENV_BAR, 'a\n b');
   });
-
-  fs.rmSync(tmp, { recursive: true, force: true });
+  console.log('dotenv input data, precedence and structured diagnostics: PASS');
 }
-
-main();
+main().catch((error: unknown) => {
+  console.error(error);
+  process.exitCode = 1;
+});

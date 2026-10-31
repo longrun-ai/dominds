@@ -26,10 +26,10 @@
     "provider-volcengine-coding-plan-live-smoke": "tsx provider/volcengine-coding-plan-live-smoke.ts",
     "provider-volcengine-coding-plan-reasoning-live": "tsx provider/volcengine-coding-plan-reasoning-live.ts",
     "llm-generation-metadata": "tsx llm-generation-metadata.ts",
-    "cli-man-subcommand": "tsx cli/man-subcommand.ts",
-    "cli-subcommand-argv-isolation": "tsx cli/subcommand-argv-isolation.ts",
-    "cli-env-proxy-support": "tsx cli/env-proxy-support.ts",
-    "cli-validate-team-def-subcommand": "tsx cli/validate-team-def-subcommand.ts",
+    "cli-man-subcommand": "pnpm run rtws -- --isolated-rtws cli/man-subcommand.ts",
+    "cli-subcommand-argv-isolation": "pnpm run rtws -- --isolated-rtws cli/subcommand-argv-isolation.ts",
+    "cli-env-proxy-support": "pnpm run rtws -- --isolated-rtws cli/env-proxy-support.ts",
+    "cli-validate-team-def-subcommand": "pnpm run rtws -- --isolated-rtws cli/validate-team-def-subcommand.ts",
     "mindset-i18n": "pnpm run rtws -- minds/mindset-i18n.ts",
     "skills-i18n": "pnpm run rtws -- minds/skills-i18n.ts",
     "persistence-latest-writeback": "pnpm run rtws -- --isolated-rtws persistence/latest-writeback.ts",
@@ -214,7 +214,7 @@
     "snippets-catalog-i18n": "tsx snippets/catalog-i18n.ts",
     "access-control-dialogs-root-deny": "tsx access-control/dialogs-root-deny.ts",
     "access-control-file-ext-names": "tsx access-control/file-ext-names.ts",
-    "env-tools": "tsx env/env-tools.ts",
+    "env-tools": "pnpm run rtws -- --isolated-rtws env/env-tools.ts",
     "team_mgmt-mcp-hot-reload-manual-problems": "pnpm run rtws -- team_mgmt-manual/mcp-hot-reload-manual-problems.ts",
     "team_mgmt-validate-mcp-manual-errors": "pnpm run rtws -- team_mgmt-manual/mcp-validate-manual-errors.ts",
     "server-dialog-forensics-zip": "tsx server-dialog-forensics-zip.ts",
@@ -238,7 +238,8 @@
     "test:semantic:filesystem": "node run.mjs --suite filesystem --semantic",
     "recovery-open-generation-recovery-stale-clears-on-backend-loop": "pnpm run rtws -- --isolated-rtws recovery/open-generation-recovery-stale-clears-on-backend-loop.ts",
     "recovery-reply-delivery-live-continuation": "pnpm run rtws -- --isolated-rtws recovery/reply-delivery-live-continuation.ts",
-    "recovery-reply-delivery-recovery-waits-for-q4h": "pnpm run rtws -- --isolated-rtws recovery/reply-delivery-recovery-waits-for-q4h.ts"
+    "recovery-reply-delivery-recovery-waits-for-q4h": "pnpm run rtws -- --isolated-rtws recovery/reply-delivery-recovery-waits-for-q4h.ts",
+    "cli-rtws-cli": "pnpm run rtws -- --isolated-rtws cli/rtws-cli.ts"
   },
   "devDependencies": {
     "tsx": "^4.22.4",

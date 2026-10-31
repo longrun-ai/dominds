@@ -66,6 +66,28 @@ function main(): void {
     assert.equal(parsed.chdir, path.join(baseCwd, 'relative', 'ws'));
     assert.deepEqual(parsed.argv, ['read']);
   }
+  for (const option of ['-C', '--cwd', '--chdir']) {
+    const argv = [option, './workspace-data', 'read'];
+    const original = [...argv];
+    assert.deepEqual(extractGlobalRtwsChdir({ argv, baseCwd }), {
+      chdir: path.join(baseCwd, 'workspace-data'),
+      argv: ['read'],
+    });
+    assert.deepEqual(argv, original, 'workspace selection does not mutate caller-owned arguments');
+    for (const suffix of [[], [''], ['   '], ['--']]) {
+      assert.throws(() => extractGlobalRtwsChdir({ argv: [option, ...suffix], baseCwd }), Error);
+    }
+  }
+  for (const option of ['--cwd', '--chdir']) {
+    assert.deepEqual(
+      extractGlobalRtwsChdir({ argv: [`${option}=./workspace-data`, 'read'], baseCwd }),
+      {
+        chdir: path.join(baseCwd, 'workspace-data'),
+        argv: ['read'],
+      },
+    );
+    assert.throws(() => extractGlobalRtwsChdir({ argv: [`${option}=`], baseCwd }), Error);
+  }
 }
 
 main();

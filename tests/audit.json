@@ -678,6 +678,48 @@
       "lane": "recovery",
       "value": "持久化人类等待阻挡本地确认恢复，gate移除后只补一次确认；已送达调用方可独立消费结果",
       "evidence": "Independent complete original/final/diff assertion review and seven fresh subjective cases: tests/semantic/reviews/2026-10-31-recovery.json. Real backend/persistence with controlled provider; seeded interruption boundaries, not abrupt kill/power loss. Human gate uses public persistence, not WebSocket answer flow. Previous verdicts do not accept new output."
+    },
+    "cli/env-proxy-support.ts": {
+      "status": "reviewed",
+      "lane": "bootstrap",
+      "value": "通过Node公开API边界转发原proxy配置并尊重显式禁用；保留进程变量和原hook，不冒称真实网络路由",
+      "evidence": "Complete original/final/diff assertion review and nine fresh actual semantic outputs: tests/semantic/reviews/2026-10-31-bootstrap.json. Initial four misleading CLI availability explanations rejected and corrected; no word oracle. Local processes, controlled Node API proxy boundary and declaration-only MCP checks; no live routing/service availability or OS env persistence claim. Previous verdicts do not accept new output."
+    },
+    "cli/man-subcommand.ts": {
+      "status": "reviewed",
+      "lane": "bootstrap",
+      "value": "实际隔离CLI返回ws_read索引、团队专用指南和topic帮助，输出含义由独立智能体判断",
+      "evidence": "Complete original/final/diff assertion review and nine fresh actual semantic outputs: tests/semantic/reviews/2026-10-31-bootstrap.json. Initial four misleading CLI availability explanations rejected and corrected; no word oracle. Local processes, controlled Node API proxy boundary and declaration-only MCP checks; no live routing/service availability or OS env persistence claim. Previous verdicts do not accept new output."
+    },
+    "cli/rtws-cli.ts": {
+      "status": "reviewed",
+      "lane": "bootstrap",
+      "value": "工作区选项别名、相对/绝对路径、分隔符、后者覆盖和缺参拒绝，保持调用者argv数据",
+      "evidence": "Complete original/final/diff assertion review and nine fresh actual semantic outputs: tests/semantic/reviews/2026-10-31-bootstrap.json. Initial four misleading CLI availability explanations rejected and corrected; no word oracle. Local processes, controlled Node API proxy boundary and declaration-only MCP checks; no live routing/service availability or OS env persistence claim. Previous verdicts do not accept new output."
+    },
+    "cli/subcommand-argv-isolation.ts": {
+      "status": "reviewed",
+      "lane": "bootstrap",
+      "value": "真实顶层子命令调用后进程argv对象身份和数据均不改写，且确有输出无stderr",
+      "evidence": "Complete original/final/diff assertion review and nine fresh actual semantic outputs: tests/semantic/reviews/2026-10-31-bootstrap.json. Initial four misleading CLI availability explanations rejected and corrected; no word oracle. Local processes, controlled Node API proxy boundary and declaration-only MCP checks; no live routing/service availability or OS env persistence claim. Previous verdicts do not accept new output."
+    },
+    "cli/validate-team-def-subcommand.ts": {
+      "status": "reviewed",
+      "lane": "bootstrap",
+      "value": "实际CLI声明校验区分未加载、禁用、缺失与已注册工具，保留退出0/2并提供准确的非连通性检查说明",
+      "evidence": "Complete original/final/diff assertion review and nine fresh actual semantic outputs: tests/semantic/reviews/2026-10-31-bootstrap.json. Initial four misleading CLI availability explanations rejected and corrected; no word oracle. Local processes, controlled Node API proxy boundary and declaration-only MCP checks; no live routing/service availability or OS env persistence claim. Previous verdicts do not accept new output."
+    },
+    "env/dotenv.ts": {
+      "status": "reviewed",
+      "lane": "bootstrap",
+      "value": "真实dotenv文件的覆盖优先级、引号/转义/注释/空值数据保真；缺文件和结构化错行后有效配置不丢失",
+      "evidence": "Complete original/final/diff assertion review and nine fresh actual semantic outputs: tests/semantic/reviews/2026-10-31-bootstrap.json. Initial four misleading CLI availability explanations rejected and corrected; no word oracle. Local processes, controlled Node API proxy boundary and declaration-only MCP checks; no live routing/service availability or OS env persistence claim. Previous verdicts do not accept new output."
+    },
+    "env/env-tools.ts": {
+      "status": "reviewed",
+      "lane": "bootstrap",
+      "value": "公开工具对原受限key读取/替换/删除/空值与参数拒绝的真实进程状态，无效请求不改环境，说明文字独立主观审查",
+      "evidence": "Complete original/final/diff assertion review and nine fresh actual semantic outputs: tests/semantic/reviews/2026-10-31-bootstrap.json. Initial four misleading CLI availability explanations rejected and corrected; no word oracle. Local processes, controlled Node API proxy boundary and declaration-only MCP checks; no live routing/service availability or OS env persistence claim. Previous verdicts do not accept new output."
     }
   },
   "retired": {

@@ -85,7 +85,7 @@ export async function main(argv: readonly string[] = process.argv.slice(2)): Pro
 
     process.stdout.write('# Team Definition Validation\n');
     process.stdout.write(
-      'This command checks explicit toolset references in `.minds/team.yaml`. `DEFERRED` usually means the toolset is declared through MCP but is not currently loaded; `DISABLED` means the server is intentionally `enabled: false` and exposes zero tools until `mcp_restart` enables it.\n',
+      'This command checks explicit toolset references in `.minds/team.yaml` against declarations and this CLI process registry. It does not connect to or load MCP servers. `DEFERRED` means declared but absent from this registry; `DISABLED` means the server is intentionally `enabled: false` and exposes zero tools until `mcp_restart` enables it in the running Dominds environment.\n',
     );
     printToolsetAudit(report, { heading: '## Definition Audit' });
 

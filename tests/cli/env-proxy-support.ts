@@ -1,8 +1,6 @@
 import assert from 'node:assert/strict';
 import { configureEnvProxySupport } from '../../main/cli-runner';
-const http = require('node:http') as typeof import('node:http') & {
-  setGlobalProxyFromEnv: (env?: NodeJS.ProcessEnv) => void;
-};
+const http = require('node:http') as typeof import('node:http');
 
 function withEnv(overrides: Record<string, string | undefined>, run: () => void): void {
   const keys = [
@@ -51,8 +49,9 @@ function main(): void {
 
   try {
     let capturedEnv: NodeJS.ProcessEnv | undefined;
-    http.setGlobalProxyFromEnv = (env?: NodeJS.ProcessEnv): void => {
+    http.setGlobalProxyFromEnv = (env?: NodeJS.ProcessEnv) => {
       capturedEnv = env;
+      return () => {};
     };
 
     withEnv(

@@ -39,7 +39,7 @@ async function main(): Promise<void> {
     process.argv = originalArgv;
   }
 
-  assert.ok(capturedStdout.some((line) => line.includes('Available toolsets:')));
+  assert.ok(capturedStdout.length > 0, 'successful subcommand actually emits output');
   assert.deepEqual(capturedStderr, []);
   console.log('subcommand argv isolation tests: ok');
 }

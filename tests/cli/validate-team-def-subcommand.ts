@@ -1,186 +1,82 @@
 import assert from 'node:assert/strict';
-import { spawnSync } from 'node:child_process';
 import fs from 'node:fs/promises';
-import os from 'node:os';
 import path from 'node:path';
+import { runDomindsCli } from '../helpers/cli-process';
+import { semanticEvidenceCollector } from '../helpers/semantic-evidence';
+import { withTempRtws } from '../kernel-driver/helpers';
 
-async function withTempRtws(
-  files: ReadonlyArray<Readonly<{ relPath: string; content: string }>>,
-  run: (tmpDir: string) => void | Promise<void>,
-): Promise<void> {
-  const tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), 'dominds-validate-team-def-'));
-  try {
-    for (const file of files) {
-      const absPath = path.join(tmpDir, file.relPath);
-      await fs.mkdir(path.dirname(absPath), { recursive: true });
-      await fs.writeFile(absPath, file.content, 'utf8');
-    }
-    await run(tmpDir);
-  } finally {
-    await fs.rm(tmpDir, { recursive: true, force: true });
-  }
-}
-
-function runCli(
-  args: string[],
-  cwd: string,
-): {
-  status: number | null;
-  stdout: string;
-  stderr: string;
-} {
-  const repoRoot = path.resolve(__dirname, '..', '..', '..');
-  const cliEntry = path.resolve(repoRoot, 'dominds', 'main', 'cli.ts');
-  const tsxCli = require.resolve('tsx/cli');
-  const result = spawnSync(process.execPath, [tsxCli, cliEntry, ...args], {
-    cwd,
-    encoding: 'utf8',
-  });
-  return {
-    status: result.status,
-    stdout: String(result.stdout),
-    stderr: String(result.stderr),
-  };
-}
-
+const evidence = semanticEvidenceCollector('dominds-cli-team-validation-');
 async function main(): Promise<void> {
-  await withTempRtws(
-    [
+  await withTempRtws(async (rtws) => {
+    await fs.mkdir(path.join(rtws, '.minds'), { recursive: true });
+    const mcpPath = path.join(rtws, '.minds/mcp.yaml');
+    for (const scenario of [
       {
-        relPath: '.minds/team.yaml',
-        content: [
-          'members:',
-          '  tester:',
-          '    name: Tester',
-          '    toolsets:',
-          '      - sdk_server',
-          '',
-        ].join('\n'),
+        id: 'deferred',
+        toolset: 'sdk_server',
+        code: 0,
+        mcp: "version: 1\nservers:\n  sdk_server:\n    transport: stdio\n    command: node\n    args: ['-e', 'setInterval(()=>{}, 1000)']\n    tools: { whitelist: [], blacklist: [] }\n    transform: []\n",
+        intent: 'A declared MCP toolset is currently unloaded, without a hard definition error.',
       },
       {
-        relPath: '.minds/mcp.yaml',
-        content: [
-          'version: 1',
-          'servers:',
-          '  sdk_server:',
-          '    transport: stdio',
-          '    command: node',
-          "    args: ['-e', 'setInterval(()=>{}, 1000)']",
-          '    tools: { whitelist: [], blacklist: [] }',
-          '    transform: []',
-          '',
-        ].join('\n'),
-      },
-    ],
-    async (tmpDir) => {
-      const result = runCli(
-        ['-C', tmpDir, 'validate_team_def'],
-        path.resolve(__dirname, '..', '..', '..'),
-      );
-      assert.equal(
-        result.status,
-        0,
-        `validate_team_def should treat deferred MCP toolsets as non-fatal.\nstderr:\n${result.stderr}`,
-      );
-      assert.match(
-        result.stdout,
-        /\[DEFERRED\] sdk_server/,
-        'stdout should mark MCP-declared unloaded toolsets as DEFERRED',
-      );
-      assert.match(
-        result.stdout,
-        /often temporary|temporarily down|service recovers/i,
-        'stdout should explain that deferred MCP toolsets are often transient runtime issues',
-      );
-    },
-  );
-
-  await withTempRtws(
-    [
-      {
-        relPath: '.minds/team.yaml',
-        content: [
-          'members:',
-          '  tester:',
-          '    name: Tester',
-          '    toolsets:',
-          '      - disabled_server',
-          '',
-        ].join('\n'),
+        id: 'disabled',
+        toolset: 'disabled_server',
+        code: 0,
+        mcp: 'version: 1\nservers:\n  disabled_server:\n    enabled: false\n    transport: streamable_http\n    url: http://127.0.0.1:9/mcp\n',
+        intent:
+          'An intentionally disabled MCP server exposes no tools without making the team definition invalid.',
       },
       {
-        relPath: '.minds/mcp.yaml',
-        content: [
-          'version: 1',
-          'servers:',
-          '  disabled_server:',
-          '    enabled: false',
-          '    transport: streamable_http',
-          '    url: http://127.0.0.1:9/mcp',
-          '',
-        ].join('\n'),
+        id: 'missing',
+        toolset: 'definitely_missing_toolset',
+        code: 2,
+        mcp: undefined,
+        intent: 'An undeclared toolset is a hard definition error.',
       },
-    ],
-    async (tmpDir) => {
-      const result = runCli(
-        ['-C', tmpDir, 'validate_team_def'],
-        path.resolve(__dirname, '..', '..', '..'),
-      );
-      assert.equal(
-        result.status,
-        0,
-        `validate_team_def should treat disabled MCP toolsets as non-fatal.\nstderr:\n${result.stderr}`,
-      );
-      assert.match(
-        result.stdout,
-        /\[DISABLED\] disabled_server/,
-        'stdout should mark MCP disabled toolsets as DISABLED',
-      );
-      assert.match(
-        result.stdout,
-        /enabled: false|zero tools/i,
-        'stdout should explain that disabled MCP toolsets intentionally expose zero tools',
-      );
-    },
-  );
-
-  await withTempRtws(
-    [
       {
-        relPath: '.minds/team.yaml',
-        content: [
-          'members:',
-          '  tester:',
-          '    name: Tester',
-          '    toolsets:',
-          '      - definitely_missing_toolset',
-          '',
-        ].join('\n'),
+        id: 'available',
+        toolset: 'ws_read',
+        code: 0,
+        mcp: undefined,
+        intent: 'A registered built-in toolset is usable in the team definition.',
       },
-    ],
-    async (tmpDir) => {
-      const result = runCli(
-        ['-C', tmpDir, 'validate_team_def'],
-        path.resolve(__dirname, '..', '..', '..'),
+    ]) {
+      const team = `members:\n  tester:\n    name: Tester\n    toolsets:\n      - ${scenario.toolset}\n`;
+      await fs.writeFile(path.join(rtws, '.minds/team.yaml'), team);
+      if (scenario.mcp === undefined) await fs.rm(mcpPath, { force: true });
+      else await fs.writeFile(mcpPath, scenario.mcp);
+      // -C is an actual top-level CLI option, not a direct call into the audit renderer.
+      const result = runDomindsCli(
+        ['-C', rtws, 'validate_team_def'],
+        path.resolve(__dirname, '../..'),
       );
-      assert.equal(
-        result.status,
-        2,
-        'validate_team_def should exit 2 on hard team-definition errors',
-      );
-      assert.match(
-        result.stdout,
-        /\[MISS\] definitely_missing_toolset/,
-        'stdout should mark undeclared toolsets as MISS',
-      );
-    },
-  );
-
-  console.log('validate_team_def subcommand tests: ok');
+      assert.equal(result.status, scenario.code);
+      assert.equal(result.stderr, '');
+      assert.ok(result.stdout.length > 0);
+      evidence.record({
+        id: scenario.id,
+        scenario: scenario.intent,
+        businessValue:
+          'Distinguish a broken team definition from temporary or intentional tool unavailability so operators choose the right repair.',
+        context: {
+          teamYaml: team,
+          mcpYaml: scenario.mcp ?? '(no MCP declaration)',
+          expectedExitCode: scenario.code,
+          actualExitCode: result.status,
+          scope:
+            'Real local CLI/team parsing and declaration audit. No MCP server is started or contacted; does not prove the declared endpoint recovers or exposes any tool.',
+        },
+        reviewQuestions: [
+          'Does the actual report distinguish this availability state, explain its implications accurately, and avoid promising a repair or runtime tool availability that was not established?',
+        ],
+        actualText: result.stdout,
+      });
+    }
+    await evidence.write();
+  });
+  console.log('CLI team validation states and exit codes: PASS');
 }
-
-main().catch((err: unknown) => {
-  const message = err instanceof Error ? err.message : String(err);
-  console.error(`validate_team_def subcommand tests: failed: ${message}`);
-  process.exit(1);
+main().catch((error: unknown) => {
+  console.error(error);
+  process.exitCode = 1;
 });

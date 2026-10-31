@@ -90,7 +90,17 @@ const recovery = [
   'recovery/reply-delivery-recovery-after-restart.ts',
   'recovery/reply-delivery-recovery-waits-for-q4h.ts',
 ];
+const bootstrap = [
+  'cli/env-proxy-support.ts',
+  'cli/man-subcommand.ts',
+  'cli/rtws-cli.ts',
+  'cli/subcommand-argv-isolation.ts',
+  'cli/validate-team-def-subcommand.ts',
+  'env/dotenv.ts',
+  'env/env-tools.ts',
+];
 const semanticSuites = {
+  bootstrap: ['cli/man-subcommand.ts', 'cli/validate-team-def-subcommand.ts', 'env/env-tools.ts'],
   recovery: recovery.filter((file) => !file.includes('open-generation-recovery-stale')),
   persistence: [
     'persistence/asker-stack-jsonl.ts',
@@ -198,6 +208,7 @@ export async function inventory() {
     filesystem,
     persistence,
     recovery,
+    bootstrap,
   };
   const included = new Set(Object.values(suites).flat());
   const audit = JSON.parse(await fs.readFile(path.join(testsRoot, 'audit.json'), 'utf8'));
@@ -313,10 +324,11 @@ async function main() {
       'filesystem',
       'persistence',
       'recovery',
+      'bootstrap',
     ].includes(args[1])
   ) {
     throw new Error(
-      'Usage: node tests/run.mjs --list | --suite smoke | --suite kernel | --suite context | --suite configuration [--semantic] | --suite manual [--semantic] | --suite filesystem [--semantic] | --suite persistence [--semantic] | --suite recovery [--semantic]',
+      'Usage: node tests/run.mjs --list | --suite smoke | --suite kernel | --suite context | --suite configuration [--semantic] | --suite manual [--semantic] | --suite filesystem [--semantic] | --suite persistence [--semantic] | --suite recovery [--semantic] | --suite bootstrap [--semantic]',
     );
   }
   const suite = args[1];

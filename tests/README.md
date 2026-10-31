@@ -26,6 +26,8 @@ pnpm run test:persistence
 pnpm run test:semantic:persistence
 pnpm run test:recovery
 pnpm run test:semantic:recovery
+pnpm run test:bootstrap
+pnpm run test:semantic:bootstrap
 ```
 
 - `test`: a small local smoke suite; not full product, browser, packaging, or provider coverage.
@@ -51,6 +53,9 @@ pnpm run test:semantic:recovery
 
 - `test:recovery`: four isolated cases for stale-generation cue cleanup without a provider request, real live caller delivery and local acknowledgement repair, serialization with the public dialog execution lock, persisted human-wait gating, and five seeded interruption states exercised by independent writer/recovery/verifier processes. Startup recovery uses the real backend and respects roots that require explicit resume. Human gating is a persistence/backend case, not the WebSocket answer flow; seeded interruption states do not establish abrupt-kill or power-loss behavior.
 - `test:semantic:recovery`: three producers emit seven actual local reply acknowledgements with their delivery/continuation context. Generation leaves their subjective acceptance pending.
+
+- `test:bootstrap`: seven local cases for actual CLI processes, workspace argument parsing, caller argv identity, forwarding proxy configuration through the Node API boundary, team-validation exit codes, dotenv data/precedence/errors and environment-tool mutations/refusals. It uses isolated workspaces and synthetic environment values; does not prove actual proxy routing, MCP server availability, shell/OS persistence or automatic reload after changing environment variables.
+- `test:semantic:bootstrap`: three producers emit nine actual manual/help, team-validation and environment-tool outputs. Complete texts and their scenarios require subjective review; exit-code success and evidence generation do not judge their meaning.
 
 The [assertion audit ledger](./audit.json) records which candidate tests have actually been reviewed, their business value, lane and evidence. Inventory exposes unaudited candidates and stale ledger paths. Neither suite membership nor a prior ledger entry decides the meaning of freshly generated output.
 

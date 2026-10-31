@@ -196,7 +196,7 @@ export function printToolsetAudit(
   );
   if (options?.includeTransientLegend !== false) {
     process.stdout.write(
-      '- Status notes: `DEFERRED` means the toolset is declared via `.minds/mcp.yaml` but is not currently loaded into the registry. This is often temporary (for example MCP server down/unreachable); if the MCP service recovers, rerun validation and it may clear without editing `team.yaml`.\n',
+      '- Status notes: `DEFERRED` means the toolset is declared via `.minds/mcp.yaml` but is absent from this CLI process registry. This declaration check does not connect to or load MCP servers, so it does not establish their health. Check MCP status in the running Dominds environment, enable or restart the server there as appropriate, and confirm the required tools are available in that runtime. Rerunning this standalone CLI alone does not load them.\n',
     );
     process.stdout.write(
       '- Status notes: `DISABLED` means the MCP server has `enabled: false`; it remains declared but intentionally exposes zero tools until `mcp_restart` enables it. `INVALID` means the MCP server declaration itself is invalid and needs a config fix. `MISS` means the toolset is neither registered nor declared in `.minds/mcp.yaml`.\n',

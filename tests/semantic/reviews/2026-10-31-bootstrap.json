@@ -1,0 +1,1204 @@
+{
+  "reviewDate": "2026-10-31",
+  "status": "passed",
+  "statusMeaning": "最终moX51k九份实际新输出独立主观通过；初轮5passed/4failed完整原文及理由保留。7候选原版/最终/完整差异、helper、产品说明修复及最终文档/ledger已审通过。仅指本独立范围，verification由主执行合入实际终态，不代称全目录类型或持续goal完成。",
+  "sourceBaseRevision": "2e13d1dc901a3d95db7c7245f3487c10f537e6cb",
+  "method": "完整逐份阅读actualText/context，按实际CLI/工具作用域主观判断；不执行待测文本，不用关键词/regex/固定句/快照/同源formatter或hash判语义。",
+  "cases": [
+    {
+      "id": "help",
+      "scenario": "Learn how to select manual topics, including toolset-specific keys.",
+      "businessValue": "A person or agent can request the relevant manual from the actual CLI, including dedicated guides and topic help.",
+      "context": {
+        "language": "en",
+        "args": "[\"man\",\"--help\"]",
+        "exitCode": 0,
+        "scope": "Real child CLI, built-in manual assets, isolated workspace. Meaning and requested topic selection are subjectively reviewed, not inferred from titles or keywords."
+      },
+      "reviewQuestions": [
+        "Does the actual output answer this manual request and give coherent guidance for the requested toolset or topic selection?"
+      ],
+      "actualText": "Usage: dominds man <toolsetId> [--topic <name>|--topics <a,b,c>|--all] [--lang <en|zh>]\n       dominds man --list\nAlias: dominds manual ...\n\nNote: the topic list below shows common manual topics. Some toolsets (for example `team_mgmt`) expose additional toolset-specific topic keys; run `dominds man <toolsetId> --all` to see that toolset's dedicated index.\n\nExamples:\n  dominds man ws_read --lang zh --all\n  dominds man team_mgmt --topics index,tools\n  dominds man team_mgmt --all\n\nCommon topics: index, principles, tools, scenarios, errors (or 'all')\n",
+      "verdict": "passed",
+      "rationale": "实际输出给出CLI选择toolset、单/多topic、语言、list及alias，并解释team_mgmt专有topic。已核标准index/tools通过team_mgmt兼容映射；示例与当前选择入口一致，不把普通common topics说成全部专用topic。",
+      "scope": "Real child CLI, built-in manual assets, isolated workspace. Meaning and requested topic selection are subjectively reviewed, not inferred from titles or keywords.",
+      "provenance": {
+        "generator": "tests/cli/man-subcommand.ts",
+        "originDirectoryLabel": "dominds-cli-manual-bdUDra",
+        "sourceFile": "help.json",
+        "actualTextSha256": "1dd8b6386e38680600cfc8e9074f5a588d4f08a82d9bb3f7366ed6c1d16f3755",
+        "evidenceJsonSha256": "74a7d8f9692c490977ad7ed12f0f6ba508a5011170e862f4eedbe562ded2dc7e",
+        "retention": "最终新材料逐份完整阅读后独立接受；原文/context完整内嵌，来源目录不是耐久依赖。SHA只身份，不判语义或接受后续同ID输出。"
+      }
+    },
+    {
+      "id": "team-guide",
+      "scenario": "Read the dedicated team-management guide.",
+      "businessValue": "A person or agent can request the relevant manual from the actual CLI, including dedicated guides and topic help.",
+      "context": {
+        "language": "en",
+        "args": "[\"man\",\"team_mgmt\"]",
+        "exitCode": 0,
+        "scope": "Real child CLI, built-in manual assets, isolated workspace. Meaning and requested topic selection are subjectively reviewed, not inferred from titles or keywords."
+      },
+      "reviewQuestions": [
+        "Does the actual output answer this manual request and give coherent guidance for the requested toolset or topic selection?"
+      ],
+      "actualText": "# Team Management Manual\n(Generated: 2026-10-31 06:59:37)\n\n- `man({ \"toolsetId\": \"team_mgmt\", \"topics\": [\"topics\"] })`: Index (you are here)\n- Common starter flow: run `team_mgmt_list_providers({})` / `team_mgmt_list_models({ provider_pattern: \"*\", model_pattern: \"*\" })` to confirm provider/model keys → write `.minds/team.yaml` → write `.minds/team/<id>/persona.*.md` → run `team_mgmt_check_provider({ provider_key: \"<providerKey>\", model: \"\", all_models: false, live: false })`. \n- `man({ \"toolsetId\": \"team_mgmt\", \"topics\": [\"team\"] })`: Team (team.yaml) — .minds/team.yaml (roster/toolsets/permissions entrypoint)\n- `man({ \"toolsetId\": \"team_mgmt\", \"topics\": [\"minds\"] })`: Minds Assets (.minds/team/<id>/*) — .minds/team/<id>/* (persona/knowhow/pitfalls assets)\n- `man({ \"toolsetId\": \"team_mgmt\", \"topics\": [\"skills\"] })`: Skills (.minds/skills/*) — .minds/skills/* (public skill migration, field mapping, app boundary)\n- `man({ \"toolsetId\": \"team_mgmt\", \"topics\": [\"priming\"] })`: Startup Scripts (.minds/priming/*) — .minds/priming/* (how to author, maintain, and reuse startup scripts)\n- After editing startup scripts, run: `team_mgmt_validate_priming_scripts({})`.\n- `man({ \"toolsetId\": \"team_mgmt\", \"topics\": [\"env\"] })`: Environment Intro (env.*.md) — .minds/env.*.md (runtime intro injected before Team Directory)\n- `man({ \"toolsetId\": \"team_mgmt\", \"topics\": [\"permissions\"] })`: Permissions — directory + extension permissions (semantics + conflict rules)\n- `man({ \"toolsetId\": \"team_mgmt\", \"topics\": [\"toolsets\"] })`: Toolsets — toolsets list (registered toolsets + common patterns)\n- `man({ \"toolsetId\": \"team_mgmt\", \"topics\": [\"llm\"] })`: LLM (llm.yaml) — .minds/llm.yaml (provider keys, env var boundaries)\n- `man({ \"toolsetId\": \"team_mgmt\", \"topics\": [\"mcp\"] })`: MCP (mcp.yaml) — .minds/mcp.yaml (serverId→toolset, hot reload, leasing, minimal templates)\n- `man({ \"toolsetId\": \"team_mgmt\", \"topics\": [\"troubleshooting\"] })`: Troubleshooting — symptom → steps; start with list_providers/list_models, then check_provider\n- `man({ \"toolsetId\": \"team_mgmt\", \"topics\": [\"team\",\"member-properties\"] })`: Team (team.yaml) + Member Properties (members.<id>) — member field reference (members.<id>)\n- `man({ \"toolsetId\": \"team_mgmt\", \"topics\": [\"llm\",\"builtin-defaults\"] })`: LLM (llm.yaml) + Built-in Defaults (LLM) — built-in defaults summary (what/when/merge behavior)\n- `man({ \"toolsetId\": \"team_mgmt\", \"topics\": [\"llm\",\"model-params\"] })`: LLM (llm.yaml) + Model Params (model_params) — `model_params` and `model_param_options` reference\n\n",
+      "verdict": "passed",
+      "rationale": "默认team_mgmt实际返回专用团队管理索引，而不是ws_read或缺章回退。内容按团队/成员资产/权限/provider/MCP等引导到真实专有topic，起步步骤使用现有tool能力；本案只接受实际索引，不扩大到所有链接章节全文。",
+      "scope": "Real child CLI, built-in manual assets, isolated workspace. Meaning and requested topic selection are subjectively reviewed, not inferred from titles or keywords.",
+      "provenance": {
+        "generator": "tests/cli/man-subcommand.ts",
+        "originDirectoryLabel": "dominds-cli-manual-bdUDra",
+        "sourceFile": "team-guide.json",
+        "actualTextSha256": "5766fb20176ebf0e4eb56cde165938a3b864d5bf643dc551379f7e89cd5e2bc8",
+        "evidenceJsonSha256": "4536c86f14796b18ad15f432012d522a00680bf4b7a0900cceffbf736c366dcb",
+        "retention": "最终新材料逐份完整阅读后独立接受；原文/context完整内嵌，来源目录不是耐久依赖。SHA只身份，不判语义或接受后续同ID输出。"
+      }
+    },
+    {
+      "id": "workspace-index",
+      "scenario": "Read the workspace-reading toolset index.",
+      "businessValue": "A person or agent can request the relevant manual from the actual CLI, including dedicated guides and topic help.",
+      "context": {
+        "language": "en",
+        "args": "[\"man\",\"ws_read\",\"--topic\",\"index\"]",
+        "exitCode": 0,
+        "scope": "Real child CLI, built-in manual assets, isolated workspace. Meaning and requested topic selection are subjectively reviewed, not inferred from titles or keywords."
+      },
+      "reviewQuestions": [
+        "Does the actual output answer this manual request and give coherent guidance for the requested toolset or topic selection?"
+      ],
+      "actualText": "**Toolset manual: ws_read**\n\n### Overview\n\nws_read is Dominds' **runtime workspace read-only toolset** for reading and searching files and content in the runtime workspace (rtws):\n\n- **Directory listing**: List directory contents\n- **File reading**: Read file contents\n- **Symlink inspection**: Read symlink targets without following them\n- **Content searching**: Use ripgrep to search files and content\n\n#### Quick Navigation\n\n| Topic                         | Description                                         |\n| ----------------------------- | --------------------------------------------------- |\n| [principles](./principles.md) | Core concepts, read-only principles, best practices |\n| [tools](./tools.md)           | Usage guidance, boundaries, and examples            |\n| [scenarios](./scenarios.md)   | Common usage scenarios (copy-paste ready)           |\n| [errors](./errors.md)         | Error codes and solutions                           |\n\n#### Status\n\n- Status: Implemented\n- Main implementation files:\n  - Tool implementation: `dominds/main/tools/fs.ts`, `dominds/main/tools/ripgrep.ts`\n  - Toolset metadata: `dominds/main/tools/builtins.ts`, `dominds/main/tools/registry.ts`\n\n#### Difference from ws_mod\n\nws_read is a read-only subset of ws_mod, providing only read functionality without write functionality.\n\n| Feature         | ws_read | ws_mod |\n| --------------- | ------- | ------ |\n| Read            | ✓       | ✓      |\n| Symlink inspect | ✓       | ✓      |\n| Write           | ✗       | ✓      |\n| Delete          | ✗       | ✓      |\n| Move            | ✗       | ✓      |\n",
+      "verdict": "passed",
+      "rationale": "实际正文对应ws_read的目录、文件、symlink检查和搜索只读能力，并区分ws_mod写/删/移能力。与请求index一致，不靠标题匹配推定；具体全量工具权限与错误章节不在本案范围。",
+      "scope": "Real child CLI, built-in manual assets, isolated workspace. Meaning and requested topic selection are subjectively reviewed, not inferred from titles or keywords.",
+      "provenance": {
+        "generator": "tests/cli/man-subcommand.ts",
+        "originDirectoryLabel": "dominds-cli-manual-bdUDra",
+        "sourceFile": "workspace-index.json",
+        "actualTextSha256": "4e6f6ce77987a3aaac83884efcbc231ecf229c859ed0fa5cd3874ffc4ac80714",
+        "evidenceJsonSha256": "cd533bfe19c229ea28df63c9cfd181045e382c708ec014e3a0265cd8db649f4e",
+        "retention": "最终新材料逐份完整阅读后独立接受；原文/context完整内嵌，来源目录不是耐久依赖。SHA只身份，不判语义或接受后续同ID输出。"
+      }
+    },
+    {
+      "id": "available",
+      "scenario": "A registered built-in toolset is usable in the team definition.",
+      "businessValue": "Distinguish a broken team definition from temporary or intentional tool unavailability so operators choose the right repair.",
+      "context": {
+        "teamYaml": "members:\n  tester:\n    name: Tester\n    toolsets:\n      - ws_read\n",
+        "mcpYaml": "(no MCP declaration)",
+        "expectedExitCode": 0,
+        "actualExitCode": 0,
+        "scope": "Real local CLI/team parsing and declaration audit. No MCP server is started or contacted; does not prove the declared endpoint recovers or exposes any tool."
+      },
+      "reviewQuestions": [
+        "Does the actual report distinguish this availability state, explain its implications accurately, and avoid promising a repair or runtime tool availability that was not established?"
+      ],
+      "actualText": "# Team Definition Validation\nThis command checks explicit toolset references in `.minds/team.yaml` against declarations and this CLI process registry. It does not connect to or load MCP servers. `DEFERRED` means declared but absent from this registry; `DISABLED` means the server is intentionally `enabled: false` and exposes zero tools until `mcp_restart` enables it in the running Dominds environment.\n\n## Definition Audit\n- MCP config: missing (`.minds/mcp.yaml` not found)\n- Summary: 1 OK, 0 DEFERRED, 0 DISABLED, 0 INVALID, 0 MISS\n- Status notes: `DEFERRED` means the toolset is declared via `.minds/mcp.yaml` but is absent from this CLI process registry. This declaration check does not connect to or load MCP servers, so it does not establish their health. Check MCP status in the running Dominds environment, enable or restart the server there as appropriate, and confirm the required tools are available in that runtime. Rerunning this standalone CLI alone does not load them.\n- Status notes: `DISABLED` means the MCP server has `enabled: false`; it remains declared but intentionally exposes zero tools until `mcp_restart` enables it. `INVALID` means the MCP server declaration itself is invalid and needs a config fix. `MISS` means the toolset is neither registered nor declared in `.minds/mcp.yaml`.\n- @tester (Tester):\n  - [OK] ws_read\n- Warnings: none\n",
+      "verdict": "passed",
+      "rationale": "实际报告把ws_read列为当前已注册OK，退出0和配置一致；共同说明现明确是当前CLI进程registry/声明检查，MCP config missing也没有误说服务运行。后续去真实runtime核查并确认工具，避免从本CLI成功推导MCP健康。",
+      "scope": "Real local CLI/team parsing and declaration audit. No MCP server is started or contacted; does not prove the declared endpoint recovers or exposes any tool.",
+      "provenance": {
+        "generator": "tests/cli/validate-team-def-subcommand.ts",
+        "originDirectoryLabel": "dominds-cli-team-validation-wLHtzJ",
+        "sourceFile": "available.json",
+        "actualTextSha256": "603d437f34d38812dd86d2549ad85d26c001e8248962adf76d3eec8da30509ce",
+        "evidenceJsonSha256": "95152666b08d885b70f712061da67242b4792e6a0a33b461c8c9949112a22611",
+        "retention": "最终新材料逐份完整阅读后独立接受；原文/context完整内嵌，来源目录不是耐久依赖。SHA只身份，不判语义或接受后续同ID输出。"
+      }
+    },
+    {
+      "id": "deferred",
+      "scenario": "A declared MCP toolset is currently unloaded, without a hard definition error.",
+      "businessValue": "Distinguish a broken team definition from temporary or intentional tool unavailability so operators choose the right repair.",
+      "context": {
+        "teamYaml": "members:\n  tester:\n    name: Tester\n    toolsets:\n      - sdk_server\n",
+        "mcpYaml": "version: 1\nservers:\n  sdk_server:\n    transport: stdio\n    command: node\n    args: ['-e', 'setInterval(()=>{}, 1000)']\n    tools: { whitelist: [], blacklist: [] }\n    transform: []\n",
+        "expectedExitCode": 0,
+        "actualExitCode": 0,
+        "scope": "Real local CLI/team parsing and declaration audit. No MCP server is started or contacted; does not prove the declared endpoint recovers or exposes any tool."
+      },
+      "reviewQuestions": [
+        "Does the actual report distinguish this availability state, explain its implications accurately, and avoid promising a repair or runtime tool availability that was not established?"
+      ],
+      "actualText": "# Team Definition Validation\nThis command checks explicit toolset references in `.minds/team.yaml` against declarations and this CLI process registry. It does not connect to or load MCP servers. `DEFERRED` means declared but absent from this registry; `DISABLED` means the server is intentionally `enabled: false` and exposes zero tools until `mcp_restart` enables it in the running Dominds environment.\n\n## Definition Audit\n- MCP config: loaded (declared servers: 1, invalid server configs: 0, disabled servers: 0)\n- Summary: 0 OK, 1 DEFERRED, 0 DISABLED, 0 INVALID, 0 MISS\n- Status notes: `DEFERRED` means the toolset is declared via `.minds/mcp.yaml` but is absent from this CLI process registry. This declaration check does not connect to or load MCP servers, so it does not establish their health. Check MCP status in the running Dominds environment, enable or restart the server there as appropriate, and confirm the required tools are available in that runtime. Rerunning this standalone CLI alone does not load them.\n- Status notes: `DISABLED` means the MCP server has `enabled: false`; it remains declared but intentionally exposes zero tools until `mcp_restart` enables it. `INVALID` means the MCP server declaration itself is invalid and needs a config fix. `MISS` means the toolset is neither registered nor declared in `.minds/mcp.yaml`.\n- @tester (Tester):\n  - [DEFERRED] sdk_server\n- Warnings: none\n",
+      "verdict": "passed",
+      "rationale": "实际报告准确把声明存在而当前CLI registry缺失列为DEFERRED并保非hard error。明确不联系/加载、不建立服务健康，重跑standalone CLI不会加载，操作建议转到真实运行环境按需启用/重启并确认工具；不再把未加载当暂时故障证据。",
+      "scope": "Real local CLI/team parsing and declaration audit. No MCP server is started or contacted; does not prove the declared endpoint recovers or exposes any tool.",
+      "provenance": {
+        "generator": "tests/cli/validate-team-def-subcommand.ts",
+        "originDirectoryLabel": "dominds-cli-team-validation-wLHtzJ",
+        "sourceFile": "deferred.json",
+        "actualTextSha256": "0580e5af02a546319fd6f7c3f42231bdbda46fc0a5aee0706375146061ad7b12",
+        "evidenceJsonSha256": "8e2fea5b008c88ae2cb34407ab0a8367754503f4215e3f539e725bee932846fd",
+        "retention": "最终新材料逐份完整阅读后独立接受；原文/context完整内嵌，来源目录不是耐久依赖。SHA只身份，不判语义或接受后续同ID输出。"
+      }
+    },
+    {
+      "id": "disabled",
+      "scenario": "An intentionally disabled MCP server exposes no tools without making the team definition invalid.",
+      "businessValue": "Distinguish a broken team definition from temporary or intentional tool unavailability so operators choose the right repair.",
+      "context": {
+        "teamYaml": "members:\n  tester:\n    name: Tester\n    toolsets:\n      - disabled_server\n",
+        "mcpYaml": "version: 1\nservers:\n  disabled_server:\n    enabled: false\n    transport: streamable_http\n    url: http://127.0.0.1:9/mcp\n",
+        "expectedExitCode": 0,
+        "actualExitCode": 0,
+        "scope": "Real local CLI/team parsing and declaration audit. No MCP server is started or contacted; does not prove the declared endpoint recovers or exposes any tool."
+      },
+      "reviewQuestions": [
+        "Does the actual report distinguish this availability state, explain its implications accurately, and avoid promising a repair or runtime tool availability that was not established?"
+      ],
+      "actualText": "# Team Definition Validation\nThis command checks explicit toolset references in `.minds/team.yaml` against declarations and this CLI process registry. It does not connect to or load MCP servers. `DEFERRED` means declared but absent from this registry; `DISABLED` means the server is intentionally `enabled: false` and exposes zero tools until `mcp_restart` enables it in the running Dominds environment.\n\n## Definition Audit\n- MCP config: loaded (declared servers: 1, invalid server configs: 0, disabled servers: 1)\n- Summary: 0 OK, 0 DEFERRED, 1 DISABLED, 0 INVALID, 0 MISS\n- Status notes: `DEFERRED` means the toolset is declared via `.minds/mcp.yaml` but is absent from this CLI process registry. This declaration check does not connect to or load MCP servers, so it does not establish their health. Check MCP status in the running Dominds environment, enable or restart the server there as appropriate, and confirm the required tools are available in that runtime. Rerunning this standalone CLI alone does not load them.\n- Status notes: `DISABLED` means the MCP server has `enabled: false`; it remains declared but intentionally exposes zero tools until `mcp_restart` enables it. `INVALID` means the MCP server declaration itself is invalid and needs a config fix. `MISS` means the toolset is neither registered nor declared in `.minds/mcp.yaml`.\n- @tester (Tester):\n  - [DISABLED] disabled_server\n- Warnings: none\n",
+      "verdict": "passed",
+      "rationale": "实际报告与enabled:false配置一致，列DISABLED而非坏定义。intro把mcp_restart的启用动作放在running Dominds，legend又要求确认runtime工具；没有把本CLI校验或禁用端点写成已连接成功，也不许诺仅重跑CLI便恢复。",
+      "scope": "Real local CLI/team parsing and declaration audit. No MCP server is started or contacted; does not prove the declared endpoint recovers or exposes any tool.",
+      "provenance": {
+        "generator": "tests/cli/validate-team-def-subcommand.ts",
+        "originDirectoryLabel": "dominds-cli-team-validation-wLHtzJ",
+        "sourceFile": "disabled.json",
+        "actualTextSha256": "dd8b4d6f5ed20620b100b93a37d92bf19e511ee786aca4d576e494eddb6519fe",
+        "evidenceJsonSha256": "3f017b44e8c5ba1cc97f052eb7a82a1d6d32986238a2b7347a00e527dae5021d",
+        "retention": "最终新材料逐份完整阅读后独立接受；原文/context完整内嵌，来源目录不是耐久依赖。SHA只身份，不判语义或接受后续同ID输出。"
+      }
+    },
+    {
+      "id": "missing",
+      "scenario": "An undeclared toolset is a hard definition error.",
+      "businessValue": "Distinguish a broken team definition from temporary or intentional tool unavailability so operators choose the right repair.",
+      "context": {
+        "teamYaml": "members:\n  tester:\n    name: Tester\n    toolsets:\n      - definitely_missing_toolset\n",
+        "mcpYaml": "(no MCP declaration)",
+        "expectedExitCode": 2,
+        "actualExitCode": 2,
+        "scope": "Real local CLI/team parsing and declaration audit. No MCP server is started or contacted; does not prove the declared endpoint recovers or exposes any tool."
+      },
+      "reviewQuestions": [
+        "Does the actual report distinguish this availability state, explain its implications accurately, and avoid promising a repair or runtime tool availability that was not established?"
+      ],
+      "actualText": "# Team Definition Validation\nThis command checks explicit toolset references in `.minds/team.yaml` against declarations and this CLI process registry. It does not connect to or load MCP servers. `DEFERRED` means declared but absent from this registry; `DISABLED` means the server is intentionally `enabled: false` and exposes zero tools until `mcp_restart` enables it in the running Dominds environment.\n\n## Definition Audit\n- MCP config: missing (`.minds/mcp.yaml` not found)\n- Summary: 0 OK, 0 DEFERRED, 0 DISABLED, 0 INVALID, 1 MISS\n- Status notes: `DEFERRED` means the toolset is declared via `.minds/mcp.yaml` but is absent from this CLI process registry. This declaration check does not connect to or load MCP servers, so it does not establish their health. Check MCP status in the running Dominds environment, enable or restart the server there as appropriate, and confirm the required tools are available in that runtime. Rerunning this standalone CLI alone does not load them.\n- Status notes: `DISABLED` means the MCP server has `enabled: false`; it remains declared but intentionally exposes zero tools until `mcp_restart` enables it. `INVALID` means the MCP server declaration itself is invalid and needs a config fix. `MISS` means the toolset is neither registered nor declared in `.minds/mcp.yaml`.\n- @tester (Tester):\n  - [MISS] definitely_missing_toolset\n- Warnings:\n  - @tester: toolset 'definitely_missing_toolset' is neither registered nor declared in mcp.yaml.\n",
+      "verdict": "passed",
+      "rationale": "实际报告标出未声明且未注册的具体toolset并给MISS/warning，退出2与hard definition error相符。修正后的共同legend不引导用重跑CLI加载MCP解决定义错误，准确区分配置缺失与runtime检查。",
+      "scope": "Real local CLI/team parsing and declaration audit. No MCP server is started or contacted; does not prove the declared endpoint recovers or exposes any tool.",
+      "provenance": {
+        "generator": "tests/cli/validate-team-def-subcommand.ts",
+        "originDirectoryLabel": "dominds-cli-team-validation-wLHtzJ",
+        "sourceFile": "missing.json",
+        "actualTextSha256": "b0a6bd8541b5f35af2d97d50d72041d1dfeea078e455cb05f4d08c6533e99f97",
+        "evidenceJsonSha256": "7701b9d794fab9b3498b7e63d8a20ac94d7c7da2d1802e0a81cd7d4ed39faa29",
+        "retention": "最终新材料逐份完整阅读后独立接受；原文/context完整内嵌，来源目录不是耐久依赖。SHA只身份，不判语义或接受后续同ID输出。"
+      }
+    },
+    {
+      "id": "environment-argument-refusals",
+      "scenario": "Reject an invalid variable name, non-string value and blank names without changing process environment.",
+      "businessValue": "Explain invalid local configuration requests while preventing unintended mutation.",
+      "context": {
+        "refusedCalls": 4,
+        "environmentUnchangedAfterEach": true,
+        "scope": "Public tool argument validation in-process. Diagnostic meaning is reviewed independently of exception type and no-state-change assertions."
+      },
+      "reviewQuestions": [
+        "Do the actual diagnostics correctly identify the invalid arguments, without suggesting a mutation succeeded or inventing a restriction on valid keys?"
+      ],
+      "actualText": "[\n  {\n    \"operation\": \"env_set\",\n    \"diagnostic\": \"env_set.key must be a valid environment variable name matching ^[A-Za-z_][A-Za-z0-9_]*$\"\n  },\n  {\n    \"operation\": \"env_set\",\n    \"diagnostic\": \"env_set.value must be a string\"\n  },\n  {\n    \"operation\": \"env_unset\",\n    \"diagnostic\": \"env_unset.key must be a non-empty string\"\n  },\n  {\n    \"operation\": \"env_get\",\n    \"diagnostic\": \"env_get.key must be a non-empty string\"\n  }\n]",
+      "verdict": "passed",
+      "rationale": "四份实际诊断分别解释非法变量名、非string值和两个空白/空name；与真实输入及无env变更事实相符。输出中的正则是工具公开参数约束说明，审查没有把它当语义匹配oracle，也未把合法special key说成被禁止。",
+      "scope": "Public tool argument validation in-process. Diagnostic meaning is reviewed independently of exception type and no-state-change assertions.",
+      "provenance": {
+        "generator": "tests/env/env-tools.ts",
+        "originDirectoryLabel": "dominds-environment-tools-J96lPS",
+        "sourceFile": "environment-argument-refusals.json",
+        "actualTextSha256": "d9e4ac6e21344f5cc6f7e4badee4c839930ad7fd9b11933fa961566f8302439f",
+        "evidenceJsonSha256": "d6fb7fdf5c6f09477fd8d8637b7a43c3889695bffeaaeeeac16ec7de45139b39",
+        "retention": "最终新材料逐份完整阅读后独立接受；原文/context完整内嵌，来源目录不是耐久依赖。SHA只身份，不判语义或接受后续同ID输出。"
+      }
+    },
+    {
+      "id": "environment-lifecycle",
+      "scenario": "Read a supplied value, replace it, remove it, then set an empty value through the public environment tools.",
+      "businessValue": "An executing agent can deliberately update process configuration and understand the observed change without confusing empty and absent values.",
+      "context": {
+        "key": "CHATGPT_WORKSTATION_BEARER_TOKEN",
+        "previousSyntheticValue": "old-token-data",
+        "suppliedNewValue": "new-token-data",
+        "unsetState": true,
+        "emptyState": "",
+        "scope": "Real process.env via public tools and a real dialog; child-process-local, not OS/shell persistence, other processes or automatic MCP reload."
+      },
+      "reviewQuestions": [
+        "Do the actual acknowledgements and missing/empty results faithfully explain the observed mutations without implying a broader persistent change?"
+      ],
+      "actualText": "{\n  \"set\": \"ok: CHATGPT_WORKSTATION_BEARER_TOKEN\\nprev: old-token-data\\nnext: new-token-data\",\n  \"unset\": \"ok: CHATGPT_WORKSTATION_BEARER_TOKEN\\nprev: new-token-data\\nnext: (unset)\",\n  \"getMissing\": \"(unset)\",\n  \"setEmpty\": \"ok: CHATGPT_WORKSTATION_BEARER_TOKEN\\nprev: (unset)\\nnext: \"\n}",
+      "verdict": "passed",
+      "rationale": "prev/next确认与old→new→unset→empty真实process.env变化相符，缺失显示unset而空值保持空。文本没有承诺OS/shell持久化、修改其他进程或自动MCP reload；fake token只是明确输入数据。",
+      "scope": "Real process.env via public tools and a real dialog; child-process-local, not OS/shell persistence, other processes or automatic MCP reload.",
+      "provenance": {
+        "generator": "tests/env/env-tools.ts",
+        "originDirectoryLabel": "dominds-environment-tools-J96lPS",
+        "sourceFile": "environment-lifecycle.json",
+        "actualTextSha256": "847da16bcc45296c6f571acd16db4257132007b8bfb086db568f24b07fcc2aa1",
+        "evidenceJsonSha256": "4dc3984c7f1c576e8f38a72b672eb70c7ae852d6e98c65fd56d5c28e9e73179c",
+        "retention": "最终新材料逐份完整阅读后独立接受；原文/context完整内嵌，来源目录不是耐久依赖。SHA只身份，不判语义或接受后续同ID输出。"
+      }
+    }
+  ],
+  "initialCases": [
+    {
+      "id": "help",
+      "scenario": "Learn how to select manual topics, including toolset-specific keys.",
+      "businessValue": "A person or agent can request the relevant manual from the actual CLI, including dedicated guides and topic help.",
+      "context": {
+        "language": "en",
+        "args": "[\"man\",\"--help\"]",
+        "exitCode": 0,
+        "scope": "Real child CLI, built-in manual assets, isolated workspace. Meaning and requested topic selection are subjectively reviewed, not inferred from titles or keywords."
+      },
+      "reviewQuestions": [
+        "Does the actual output answer this manual request and give coherent guidance for the requested toolset or topic selection?"
+      ],
+      "actualText": "Usage: dominds man <toolsetId> [--topic <name>|--topics <a,b,c>|--all] [--lang <en|zh>]\n       dominds man --list\nAlias: dominds manual ...\n\nNote: the topic list below shows common manual topics. Some toolsets (for example `team_mgmt`) expose additional toolset-specific topic keys; run `dominds man <toolsetId> --all` to see that toolset's dedicated index.\n\nExamples:\n  dominds man ws_read --lang zh --all\n  dominds man team_mgmt --topics index,tools\n  dominds man team_mgmt --all\n\nCommon topics: index, principles, tools, scenarios, errors (or 'all')\n",
+      "verdict": "passed",
+      "rationale": "实际输出给出CLI选择toolset、单/多topic、语言、list及alias，并解释team_mgmt专有topic。已核标准index/tools通过team_mgmt兼容映射；示例与当前选择入口一致，不把普通common topics说成全部专用topic。",
+      "scope": "Real child CLI, built-in manual assets, isolated workspace. Meaning and requested topic selection are subjectively reviewed, not inferred from titles or keywords.",
+      "provenance": {
+        "generator": "tests/cli/man-subcommand.ts",
+        "originDirectoryLabel": "dominds-cli-manual-0uXavf",
+        "sourceFile": "help.json",
+        "actualTextSha256": "1dd8b6386e38680600cfc8e9074f5a588d4f08a82d9bb3f7366ed6c1d16f3755",
+        "evidenceJsonSha256": "74a7d8f9692c490977ad7ed12f0f6ba508a5011170e862f4eedbe562ded2dc7e",
+        "retention": "完整actualText/context/scenario内嵌；临时路径只标签，SHA只材料身份，不判含义或自动接受新输出。"
+      }
+    },
+    {
+      "id": "team-guide",
+      "scenario": "Read the dedicated team-management guide.",
+      "businessValue": "A person or agent can request the relevant manual from the actual CLI, including dedicated guides and topic help.",
+      "context": {
+        "language": "en",
+        "args": "[\"man\",\"team_mgmt\"]",
+        "exitCode": 0,
+        "scope": "Real child CLI, built-in manual assets, isolated workspace. Meaning and requested topic selection are subjectively reviewed, not inferred from titles or keywords."
+      },
+      "reviewQuestions": [
+        "Does the actual output answer this manual request and give coherent guidance for the requested toolset or topic selection?"
+      ],
+      "actualText": "# Team Management Manual\n(Generated: 2026-10-31 06:54:10)\n\n- `man({ \"toolsetId\": \"team_mgmt\", \"topics\": [\"topics\"] })`: Index (you are here)\n- Common starter flow: run `team_mgmt_list_providers({})` / `team_mgmt_list_models({ provider_pattern: \"*\", model_pattern: \"*\" })` to confirm provider/model keys → write `.minds/team.yaml` → write `.minds/team/<id>/persona.*.md` → run `team_mgmt_check_provider({ provider_key: \"<providerKey>\", model: \"\", all_models: false, live: false })`. \n- `man({ \"toolsetId\": \"team_mgmt\", \"topics\": [\"team\"] })`: Team (team.yaml) — .minds/team.yaml (roster/toolsets/permissions entrypoint)\n- `man({ \"toolsetId\": \"team_mgmt\", \"topics\": [\"minds\"] })`: Minds Assets (.minds/team/<id>/*) — .minds/team/<id>/* (persona/knowhow/pitfalls assets)\n- `man({ \"toolsetId\": \"team_mgmt\", \"topics\": [\"skills\"] })`: Skills (.minds/skills/*) — .minds/skills/* (public skill migration, field mapping, app boundary)\n- `man({ \"toolsetId\": \"team_mgmt\", \"topics\": [\"priming\"] })`: Startup Scripts (.minds/priming/*) — .minds/priming/* (how to author, maintain, and reuse startup scripts)\n- After editing startup scripts, run: `team_mgmt_validate_priming_scripts({})`.\n- `man({ \"toolsetId\": \"team_mgmt\", \"topics\": [\"env\"] })`: Environment Intro (env.*.md) — .minds/env.*.md (runtime intro injected before Team Directory)\n- `man({ \"toolsetId\": \"team_mgmt\", \"topics\": [\"permissions\"] })`: Permissions — directory + extension permissions (semantics + conflict rules)\n- `man({ \"toolsetId\": \"team_mgmt\", \"topics\": [\"toolsets\"] })`: Toolsets — toolsets list (registered toolsets + common patterns)\n- `man({ \"toolsetId\": \"team_mgmt\", \"topics\": [\"llm\"] })`: LLM (llm.yaml) — .minds/llm.yaml (provider keys, env var boundaries)\n- `man({ \"toolsetId\": \"team_mgmt\", \"topics\": [\"mcp\"] })`: MCP (mcp.yaml) — .minds/mcp.yaml (serverId→toolset, hot reload, leasing, minimal templates)\n- `man({ \"toolsetId\": \"team_mgmt\", \"topics\": [\"troubleshooting\"] })`: Troubleshooting — symptom → steps; start with list_providers/list_models, then check_provider\n- `man({ \"toolsetId\": \"team_mgmt\", \"topics\": [\"team\",\"member-properties\"] })`: Team (team.yaml) + Member Properties (members.<id>) — member field reference (members.<id>)\n- `man({ \"toolsetId\": \"team_mgmt\", \"topics\": [\"llm\",\"builtin-defaults\"] })`: LLM (llm.yaml) + Built-in Defaults (LLM) — built-in defaults summary (what/when/merge behavior)\n- `man({ \"toolsetId\": \"team_mgmt\", \"topics\": [\"llm\",\"model-params\"] })`: LLM (llm.yaml) + Model Params (model_params) — `model_params` and `model_param_options` reference\n\n",
+      "verdict": "passed",
+      "rationale": "默认team_mgmt实际返回专用团队管理索引，而不是ws_read或缺章回退。内容按团队/成员资产/权限/provider/MCP等引导到真实专有topic，起步步骤使用现有tool能力；本案只接受实际索引，不扩大到所有链接章节全文。",
+      "scope": "Real child CLI, built-in manual assets, isolated workspace. Meaning and requested topic selection are subjectively reviewed, not inferred from titles or keywords.",
+      "provenance": {
+        "generator": "tests/cli/man-subcommand.ts",
+        "originDirectoryLabel": "dominds-cli-manual-0uXavf",
+        "sourceFile": "team-guide.json",
+        "actualTextSha256": "06e431841c7c3066682e074eaf624c0b4f6c11fff1bc7942afbf2c2e29c0d2d9",
+        "evidenceJsonSha256": "db5008b6516ab8ab22293fae88afa238afe388b9f8ea55d5eb48b25818fc821c",
+        "retention": "完整actualText/context/scenario内嵌；临时路径只标签，SHA只材料身份，不判含义或自动接受新输出。"
+      }
+    },
+    {
+      "id": "workspace-index",
+      "scenario": "Read the workspace-reading toolset index.",
+      "businessValue": "A person or agent can request the relevant manual from the actual CLI, including dedicated guides and topic help.",
+      "context": {
+        "language": "en",
+        "args": "[\"man\",\"ws_read\",\"--topic\",\"index\"]",
+        "exitCode": 0,
+        "scope": "Real child CLI, built-in manual assets, isolated workspace. Meaning and requested topic selection are subjectively reviewed, not inferred from titles or keywords."
+      },
+      "reviewQuestions": [
+        "Does the actual output answer this manual request and give coherent guidance for the requested toolset or topic selection?"
+      ],
+      "actualText": "**Toolset manual: ws_read**\n\n### Overview\n\nws_read is Dominds' **runtime workspace read-only toolset** for reading and searching files and content in the runtime workspace (rtws):\n\n- **Directory listing**: List directory contents\n- **File reading**: Read file contents\n- **Symlink inspection**: Read symlink targets without following them\n- **Content searching**: Use ripgrep to search files and content\n\n#### Quick Navigation\n\n| Topic                         | Description                                         |\n| ----------------------------- | --------------------------------------------------- |\n| [principles](./principles.md) | Core concepts, read-only principles, best practices |\n| [tools](./tools.md)           | Usage guidance, boundaries, and examples            |\n| [scenarios](./scenarios.md)   | Common usage scenarios (copy-paste ready)           |\n| [errors](./errors.md)         | Error codes and solutions                           |\n\n#### Status\n\n- Status: Implemented\n- Main implementation files:\n  - Tool implementation: `dominds/main/tools/fs.ts`, `dominds/main/tools/ripgrep.ts`\n  - Toolset metadata: `dominds/main/tools/builtins.ts`, `dominds/main/tools/registry.ts`\n\n#### Difference from ws_mod\n\nws_read is a read-only subset of ws_mod, providing only read functionality without write functionality.\n\n| Feature         | ws_read | ws_mod |\n| --------------- | ------- | ------ |\n| Read            | ✓       | ✓      |\n| Symlink inspect | ✓       | ✓      |\n| Write           | ✗       | ✓      |\n| Delete          | ✗       | ✓      |\n| Move            | ✗       | ✓      |\n",
+      "verdict": "passed",
+      "rationale": "实际正文对应ws_read的目录、文件、symlink检查和搜索只读能力，并区分ws_mod写/删/移能力。与请求index一致，不靠标题匹配推定；具体全量工具权限与错误章节不在本案范围。",
+      "scope": "Real child CLI, built-in manual assets, isolated workspace. Meaning and requested topic selection are subjectively reviewed, not inferred from titles or keywords.",
+      "provenance": {
+        "generator": "tests/cli/man-subcommand.ts",
+        "originDirectoryLabel": "dominds-cli-manual-0uXavf",
+        "sourceFile": "workspace-index.json",
+        "actualTextSha256": "4e6f6ce77987a3aaac83884efcbc231ecf229c859ed0fa5cd3874ffc4ac80714",
+        "evidenceJsonSha256": "cd533bfe19c229ea28df63c9cfd181045e382c708ec014e3a0265cd8db649f4e",
+        "retention": "完整actualText/context/scenario内嵌；临时路径只标签，SHA只材料身份，不判含义或自动接受新输出。"
+      }
+    },
+    {
+      "id": "available",
+      "scenario": "A registered built-in toolset is usable in the team definition.",
+      "businessValue": "Distinguish a broken team definition from temporary or intentional tool unavailability so operators choose the right repair.",
+      "context": {
+        "teamYaml": "members:\n  tester:\n    name: Tester\n    toolsets:\n      - ws_read\n",
+        "mcpYaml": "(no MCP declaration)",
+        "expectedExitCode": 0,
+        "actualExitCode": 0,
+        "scope": "Real local CLI/team parsing and declaration audit. No MCP server is started or contacted; does not prove the declared endpoint recovers or exposes any tool."
+      },
+      "reviewQuestions": [
+        "Does the actual report distinguish this availability state, explain its implications accurately, and avoid promising a repair or runtime tool availability that was not established?"
+      ],
+      "actualText": "# Team Definition Validation\nThis command checks explicit toolset references in `.minds/team.yaml`. `DEFERRED` usually means the toolset is declared through MCP but is not currently loaded; `DISABLED` means the server is intentionally `enabled: false` and exposes zero tools until `mcp_restart` enables it.\n\n## Definition Audit\n- MCP config: missing (`.minds/mcp.yaml` not found)\n- Summary: 1 OK, 0 DEFERRED, 0 DISABLED, 0 INVALID, 0 MISS\n- Status notes: `DEFERRED` means the toolset is declared via `.minds/mcp.yaml` but is not currently loaded into the registry. This is often temporary (for example MCP server down/unreachable); if the MCP service recovers, rerun validation and it may clear without editing `team.yaml`.\n- Status notes: `DISABLED` means the MCP server has `enabled: false`; it remains declared but intentionally exposes zero tools until `mcp_restart` enables it. `INVALID` means the MCP server declaration itself is invalid and needs a config fix. `MISS` means the toolset is neither registered nor declared in `.minds/mcp.yaml`.\n- @tester (Tester):\n  - [OK] ws_read\n- Warnings: none\n",
+      "verdict": "failed",
+      "rationale": "当前状态行及退出码与给定配置相符，但共同legend把DEFERRED引向服务down/恢复后重跑可能清除。实际standalone CLI只Team.load+读取声明+当前进程registry审计，不连接或加载MCP；健康服务恢复后重跑该CLI不会凭此加载，未加载也不是服务down证据。这会让操作者选不可达的修复路径，故本份全文不接受。",
+      "scope": "Real local CLI/team parsing and declaration audit. No MCP server is started or contacted; does not prove the declared endpoint recovers or exposes any tool.",
+      "provenance": {
+        "generator": "tests/cli/validate-team-def-subcommand.ts",
+        "originDirectoryLabel": "dominds-cli-team-validation-idwSE2",
+        "sourceFile": "available.json",
+        "actualTextSha256": "4e85e26ada088f5990b6129334519494490e30faf7cb1f1cb1774b337a2e7519",
+        "evidenceJsonSha256": "0317d4480966262f5a2d8eef6cf12df58177464230515b54ee4f0e52064350fc",
+        "retention": "完整actualText/context/scenario内嵌；临时路径只标签，SHA只材料身份，不判含义或自动接受新输出。"
+      }
+    },
+    {
+      "id": "deferred",
+      "scenario": "A declared MCP toolset is currently unloaded, without a hard definition error.",
+      "businessValue": "Distinguish a broken team definition from temporary or intentional tool unavailability so operators choose the right repair.",
+      "context": {
+        "teamYaml": "members:\n  tester:\n    name: Tester\n    toolsets:\n      - sdk_server\n",
+        "mcpYaml": "version: 1\nservers:\n  sdk_server:\n    transport: stdio\n    command: node\n    args: ['-e', 'setInterval(()=>{}, 1000)']\n    tools: { whitelist: [], blacklist: [] }\n    transform: []\n",
+        "expectedExitCode": 0,
+        "actualExitCode": 0,
+        "scope": "Real local CLI/team parsing and declaration audit. No MCP server is started or contacted; does not prove the declared endpoint recovers or exposes any tool."
+      },
+      "reviewQuestions": [
+        "Does the actual report distinguish this availability state, explain its implications accurately, and avoid promising a repair or runtime tool availability that was not established?"
+      ],
+      "actualText": "# Team Definition Validation\nThis command checks explicit toolset references in `.minds/team.yaml`. `DEFERRED` usually means the toolset is declared through MCP but is not currently loaded; `DISABLED` means the server is intentionally `enabled: false` and exposes zero tools until `mcp_restart` enables it.\n\n## Definition Audit\n- MCP config: loaded (declared servers: 1, invalid server configs: 0, disabled servers: 0)\n- Summary: 0 OK, 1 DEFERRED, 0 DISABLED, 0 INVALID, 0 MISS\n- Status notes: `DEFERRED` means the toolset is declared via `.minds/mcp.yaml` but is not currently loaded into the registry. This is often temporary (for example MCP server down/unreachable); if the MCP service recovers, rerun validation and it may clear without editing `team.yaml`.\n- Status notes: `DISABLED` means the MCP server has `enabled: false`; it remains declared but intentionally exposes zero tools until `mcp_restart` enables it. `INVALID` means the MCP server declaration itself is invalid and needs a config fix. `MISS` means the toolset is neither registered nor declared in `.minds/mcp.yaml`.\n- @tester (Tester):\n  - [DEFERRED] sdk_server\n- Warnings: none\n",
+      "verdict": "failed",
+      "rationale": "当前状态行及退出码与给定配置相符，但共同legend把DEFERRED引向服务down/恢复后重跑可能清除。实际standalone CLI只Team.load+读取声明+当前进程registry审计，不连接或加载MCP；健康服务恢复后重跑该CLI不会凭此加载，未加载也不是服务down证据。这会让操作者选不可达的修复路径，故本份全文不接受。",
+      "scope": "Real local CLI/team parsing and declaration audit. No MCP server is started or contacted; does not prove the declared endpoint recovers or exposes any tool.",
+      "provenance": {
+        "generator": "tests/cli/validate-team-def-subcommand.ts",
+        "originDirectoryLabel": "dominds-cli-team-validation-idwSE2",
+        "sourceFile": "deferred.json",
+        "actualTextSha256": "87535c7b65858b83f0c155f27a997c7d1d730d39c0f75637a9bb065a7b182117",
+        "evidenceJsonSha256": "0c6d4b99f51b3d931eff65743dfc6d464705b322fdd7de3f6fa5d39435b365e9",
+        "retention": "完整actualText/context/scenario内嵌；临时路径只标签，SHA只材料身份，不判含义或自动接受新输出。"
+      }
+    },
+    {
+      "id": "disabled",
+      "scenario": "An intentionally disabled MCP server exposes no tools without making the team definition invalid.",
+      "businessValue": "Distinguish a broken team definition from temporary or intentional tool unavailability so operators choose the right repair.",
+      "context": {
+        "teamYaml": "members:\n  tester:\n    name: Tester\n    toolsets:\n      - disabled_server\n",
+        "mcpYaml": "version: 1\nservers:\n  disabled_server:\n    enabled: false\n    transport: streamable_http\n    url: http://127.0.0.1:9/mcp\n",
+        "expectedExitCode": 0,
+        "actualExitCode": 0,
+        "scope": "Real local CLI/team parsing and declaration audit. No MCP server is started or contacted; does not prove the declared endpoint recovers or exposes any tool."
+      },
+      "reviewQuestions": [
+        "Does the actual report distinguish this availability state, explain its implications accurately, and avoid promising a repair or runtime tool availability that was not established?"
+      ],
+      "actualText": "# Team Definition Validation\nThis command checks explicit toolset references in `.minds/team.yaml`. `DEFERRED` usually means the toolset is declared through MCP but is not currently loaded; `DISABLED` means the server is intentionally `enabled: false` and exposes zero tools until `mcp_restart` enables it.\n\n## Definition Audit\n- MCP config: loaded (declared servers: 1, invalid server configs: 0, disabled servers: 1)\n- Summary: 0 OK, 0 DEFERRED, 1 DISABLED, 0 INVALID, 0 MISS\n- Status notes: `DEFERRED` means the toolset is declared via `.minds/mcp.yaml` but is not currently loaded into the registry. This is often temporary (for example MCP server down/unreachable); if the MCP service recovers, rerun validation and it may clear without editing `team.yaml`.\n- Status notes: `DISABLED` means the MCP server has `enabled: false`; it remains declared but intentionally exposes zero tools until `mcp_restart` enables it. `INVALID` means the MCP server declaration itself is invalid and needs a config fix. `MISS` means the toolset is neither registered nor declared in `.minds/mcp.yaml`.\n- @tester (Tester):\n  - [DISABLED] disabled_server\n- Warnings: none\n",
+      "verdict": "failed",
+      "rationale": "当前状态行及退出码与给定配置相符，但共同legend把DEFERRED引向服务down/恢复后重跑可能清除。实际standalone CLI只Team.load+读取声明+当前进程registry审计，不连接或加载MCP；健康服务恢复后重跑该CLI不会凭此加载，未加载也不是服务down证据。这会让操作者选不可达的修复路径，故本份全文不接受。",
+      "scope": "Real local CLI/team parsing and declaration audit. No MCP server is started or contacted; does not prove the declared endpoint recovers or exposes any tool.",
+      "provenance": {
+        "generator": "tests/cli/validate-team-def-subcommand.ts",
+        "originDirectoryLabel": "dominds-cli-team-validation-idwSE2",
+        "sourceFile": "disabled.json",
+        "actualTextSha256": "39f03019cda1846d9decf6954fa2ce9b6973aa8f52f4d95e61b596632db5c097",
+        "evidenceJsonSha256": "9e11089226fecbb4fee78b14ee433b733bd970a5248dbbf1ee2b6d2a15a94d14",
+        "retention": "完整actualText/context/scenario内嵌；临时路径只标签，SHA只材料身份，不判含义或自动接受新输出。"
+      }
+    },
+    {
+      "id": "missing",
+      "scenario": "An undeclared toolset is a hard definition error.",
+      "businessValue": "Distinguish a broken team definition from temporary or intentional tool unavailability so operators choose the right repair.",
+      "context": {
+        "teamYaml": "members:\n  tester:\n    name: Tester\n    toolsets:\n      - definitely_missing_toolset\n",
+        "mcpYaml": "(no MCP declaration)",
+        "expectedExitCode": 2,
+        "actualExitCode": 2,
+        "scope": "Real local CLI/team parsing and declaration audit. No MCP server is started or contacted; does not prove the declared endpoint recovers or exposes any tool."
+      },
+      "reviewQuestions": [
+        "Does the actual report distinguish this availability state, explain its implications accurately, and avoid promising a repair or runtime tool availability that was not established?"
+      ],
+      "actualText": "# Team Definition Validation\nThis command checks explicit toolset references in `.minds/team.yaml`. `DEFERRED` usually means the toolset is declared through MCP but is not currently loaded; `DISABLED` means the server is intentionally `enabled: false` and exposes zero tools until `mcp_restart` enables it.\n\n## Definition Audit\n- MCP config: missing (`.minds/mcp.yaml` not found)\n- Summary: 0 OK, 0 DEFERRED, 0 DISABLED, 0 INVALID, 1 MISS\n- Status notes: `DEFERRED` means the toolset is declared via `.minds/mcp.yaml` but is not currently loaded into the registry. This is often temporary (for example MCP server down/unreachable); if the MCP service recovers, rerun validation and it may clear without editing `team.yaml`.\n- Status notes: `DISABLED` means the MCP server has `enabled: false`; it remains declared but intentionally exposes zero tools until `mcp_restart` enables it. `INVALID` means the MCP server declaration itself is invalid and needs a config fix. `MISS` means the toolset is neither registered nor declared in `.minds/mcp.yaml`.\n- @tester (Tester):\n  - [MISS] definitely_missing_toolset\n- Warnings:\n  - @tester: toolset 'definitely_missing_toolset' is neither registered nor declared in mcp.yaml.\n",
+      "verdict": "failed",
+      "rationale": "当前状态行及退出码与给定配置相符，但共同legend把DEFERRED引向服务down/恢复后重跑可能清除。实际standalone CLI只Team.load+读取声明+当前进程registry审计，不连接或加载MCP；健康服务恢复后重跑该CLI不会凭此加载，未加载也不是服务down证据。这会让操作者选不可达的修复路径，故本份全文不接受。",
+      "scope": "Real local CLI/team parsing and declaration audit. No MCP server is started or contacted; does not prove the declared endpoint recovers or exposes any tool.",
+      "provenance": {
+        "generator": "tests/cli/validate-team-def-subcommand.ts",
+        "originDirectoryLabel": "dominds-cli-team-validation-idwSE2",
+        "sourceFile": "missing.json",
+        "actualTextSha256": "afac01f967dfbe3f8cefee898d859269f51aeada5094092c2550abec78679953",
+        "evidenceJsonSha256": "05dd9ca7e27c71981bcc275ad74a1eedcb6d4cde0ec4f3eecc0fb83b7a49b232",
+        "retention": "完整actualText/context/scenario内嵌；临时路径只标签，SHA只材料身份，不判含义或自动接受新输出。"
+      }
+    },
+    {
+      "id": "environment-argument-refusals",
+      "scenario": "Reject an invalid variable name, non-string value and blank names without changing process environment.",
+      "businessValue": "Explain invalid local configuration requests while preventing unintended mutation.",
+      "context": {
+        "refusedCalls": 4,
+        "environmentUnchangedAfterEach": true,
+        "scope": "Public tool argument validation in-process. Diagnostic meaning is reviewed independently of exception type and no-state-change assertions."
+      },
+      "reviewQuestions": [
+        "Do the actual diagnostics correctly identify the invalid arguments, without suggesting a mutation succeeded or inventing a restriction on valid keys?"
+      ],
+      "actualText": "[\n  {\n    \"operation\": \"env_set\",\n    \"diagnostic\": \"env_set.key must be a valid environment variable name matching ^[A-Za-z_][A-Za-z0-9_]*$\"\n  },\n  {\n    \"operation\": \"env_set\",\n    \"diagnostic\": \"env_set.value must be a string\"\n  },\n  {\n    \"operation\": \"env_unset\",\n    \"diagnostic\": \"env_unset.key must be a non-empty string\"\n  },\n  {\n    \"operation\": \"env_get\",\n    \"diagnostic\": \"env_get.key must be a non-empty string\"\n  }\n]",
+      "verdict": "passed",
+      "rationale": "四份实际诊断分别解释非法变量名、非string值和两个空白/空name；与真实输入及无env变更事实相符。输出中的正则是工具公开参数约束说明，审查没有把它当语义匹配oracle，也未把合法special key说成被禁止。",
+      "scope": "Public tool argument validation in-process. Diagnostic meaning is reviewed independently of exception type and no-state-change assertions.",
+      "provenance": {
+        "generator": "tests/env/env-tools.ts",
+        "originDirectoryLabel": "dominds-environment-tools-WNYJVQ",
+        "sourceFile": "environment-argument-refusals.json",
+        "actualTextSha256": "d9e4ac6e21344f5cc6f7e4badee4c839930ad7fd9b11933fa961566f8302439f",
+        "evidenceJsonSha256": "d6fb7fdf5c6f09477fd8d8637b7a43c3889695bffeaaeeeac16ec7de45139b39",
+        "retention": "完整actualText/context/scenario内嵌；临时路径只标签，SHA只材料身份，不判含义或自动接受新输出。"
+      }
+    },
+    {
+      "id": "environment-lifecycle",
+      "scenario": "Read a supplied value, replace it, remove it, then set an empty value through the public environment tools.",
+      "businessValue": "An executing agent can deliberately update process configuration and understand the observed change without confusing empty and absent values.",
+      "context": {
+        "key": "CHATGPT_WORKSTATION_BEARER_TOKEN",
+        "previousSyntheticValue": "old-token-data",
+        "suppliedNewValue": "new-token-data",
+        "unsetState": true,
+        "emptyState": "",
+        "scope": "Real process.env via public tools and a real dialog; child-process-local, not OS/shell persistence, other processes or automatic MCP reload."
+      },
+      "reviewQuestions": [
+        "Do the actual acknowledgements and missing/empty results faithfully explain the observed mutations without implying a broader persistent change?"
+      ],
+      "actualText": "{\n  \"set\": \"ok: CHATGPT_WORKSTATION_BEARER_TOKEN\\nprev: old-token-data\\nnext: new-token-data\",\n  \"unset\": \"ok: CHATGPT_WORKSTATION_BEARER_TOKEN\\nprev: new-token-data\\nnext: (unset)\",\n  \"getMissing\": \"(unset)\",\n  \"setEmpty\": \"ok: CHATGPT_WORKSTATION_BEARER_TOKEN\\nprev: (unset)\\nnext: \"\n}",
+      "verdict": "passed",
+      "rationale": "prev/next确认与old→new→unset→empty真实process.env变化相符，缺失显示unset而空值保持空。文本没有承诺OS/shell持久化、修改其他进程或自动MCP reload；fake token只是明确输入数据。",
+      "scope": "Real process.env via public tools and a real dialog; child-process-local, not OS/shell persistence, other processes or automatic MCP reload.",
+      "provenance": {
+        "generator": "tests/env/env-tools.ts",
+        "originDirectoryLabel": "dominds-environment-tools-WNYJVQ",
+        "sourceFile": "environment-lifecycle.json",
+        "actualTextSha256": "847da16bcc45296c6f571acd16db4257132007b8bfb086db568f24b07fcc2aa1",
+        "evidenceJsonSha256": "4dc3984c7f1c576e8f38a72b672eb70c7ae852d6e98c65fd56d5c28e9e73179c",
+        "retention": "完整actualText/context/scenario内嵌；临时路径只标签，SHA只材料身份，不判含义或自动接受新输出。"
+      }
+    }
+  ],
+  "counts": {
+    "finalPassed": 9,
+    "finalFailed": 0,
+    "finalPending": 0,
+    "initialPassed": 5,
+    "initialFailed": 4,
+    "assertionPassed": 7
+  },
+  "assertionReview": {
+    "status": "passed",
+    "candidates": [
+      {
+        "path": "tests/cli/env-proxy-support.ts",
+        "verdict": "passed",
+        "businessValue": "按用户env-proxy开关把原始代理配置传到Node API，禁用时不能误配置；不改用户NODE_USE_ENV_PROXY。",
+        "originalValuePreserved": "原两个分支、lowercase代理/no_proxy与NODE变量保真保留，只修正真实Node API返回restore闭包的夹具类型，未执行网络代理。",
+        "assertions": [
+          "真实configureEnvProxySupport调用仅拦http.setGlobalProxyFromEnv，未拦产品分支；默认enabled传给定http_proxy/https_proxy/no_proxy且保原NODE_USE_ENV_PROXY。",
+          "DOMINDS_USE_ENV_PROXY=0时capture为undefined、NODE_USE_ENV_PROXY原1不改；此前capture显式重置防旧值造成假象。所有env与http函数finally恢复，API不存在实际assert失败，不跳过计passed。"
+        ],
+        "scope": "Node接口调用/参数边界，不是实际网络流量或代理联通性。"
+      },
+      {
+        "path": "tests/cli/man-subcommand.ts",
+        "verdict": "passed",
+        "businessValue": "真实CLI能选到指定ws_read index/team专用索引及help，输出与请求相符。",
+        "originalValuePreserved": "原exit0/stderr空保留，删除标题、heading及缺章/帮助句regex；选中topic与说明价值由3份实际全文主观审接手，非仅stdout非空即可语义通过。",
+        "assertions": [
+          "同一共享helper派生真实main/cli.ts子进程，明确cwd和tsconfig，三个真实argv请求各exit0/stderr空/body非空。",
+          "三份完整stdout、命令、退出码和场景保留pending待审；本轮3份实际已独立读通过，不按标题或formatter oracle。"
+        ],
+        "scope": "实际CLI与当前内置手册资产；不覆盖全locale/每个章节或模型遵循。"
+      },
+      {
+        "path": "tests/cli/rtws-cli.ts",
+        "verdict": "passed",
+        "businessValue": "正确选workspace并保留剩余argv和调用者输入，拒绝缺路径。",
+        "originalValuePreserved": "原-C位置/等号cwd/relative基准/--分隔符/最后一个值优先全部保留，增加--chdir与不改原数组及缺空路径拒绝。",
+        "assertions": [
+          "path字段/余argv精确相等是CLI机器解析契约；绝对/相对、末值覆盖、--之后原样保留均实查。",
+          "三option separated形式和两longoption等号形式正确解析，原caller argv array内容不被修改；缺值/空/空白/--及空等号抛Error，不冻结异常解释措辞。"
+        ],
+        "scope": "公开parser组件，非实际chdir系统调用/Windows平台全覆盖。"
+      },
+      {
+        "path": "tests/cli/subcommand-argv-isolation.ts",
+        "verdict": "passed",
+        "businessValue": "执行子命令不会替换或改写全局process.argv。",
+        "originalValuePreserved": "原引用identity+元素完整快照断言保留；删Available toolsets句匹配只保stdout非空/无stderr，手册选中与内容另由实际证据评审。",
+        "assertions": [
+          "真实cli-runner.main(man --list)，assert.strictEqual原array identity和deepEqual原完整数据；process.exit替身遇调用抛错阻止误退出，finally还原exit/log/error/argv。",
+          "实际输出条数大于0防完全没运行，stderr为空是通道契约；未将任意输出视为正确手册或任务含义。"
+        ],
+        "scope": "进程内真实dispatch函数及全局状态保真，非外层CLI子进程全部参数路径。"
+      },
+      {
+        "path": "tests/cli/validate-team-def-subcommand.ts",
+        "verdict": "passed",
+        "businessValue": "独立CLI对声明完整性给正确退出码，并可解释available/unloaded/disabled/missing区别。",
+        "originalValuePreserved": "原deferred/disabled exit0和MISS exit2与-C实际workspace选择保留；加内置OK正向对照，删状态说明文字regex，4份全文交主观评审。",
+        "assertions": [
+          "实际isolated workspace顺序写team/MCP，缺MCP场景确删除前一文件；真实-C从仓库cwd选择rtws，child独立进程每场景状态0/0/2/0，stderr空且输出非空。",
+          "状态行/说明正确性没有偷偷按标签自动裁决；4份实际初轮正文因共同错误legend拒绝，机械exit全绿不能覆盖语义失败。"
+        ],
+        "scope": "静态team定义与CLI当前registry审计，不启动/联系MCP，不证明端点恢复或runtime工具可用。"
+      },
+      {
+        "path": "tests/env/dotenv.ts",
+        "verdict": "passed",
+        "businessValue": "明确dotenv文件优先级及原始值解析，坏行精确可定位且不丢后续合法数据。",
+        "originalValuePreserved": "原.env→.env.local覆盖shell及双引号LF保留，改CLI managed隔离/失败现场保留并增加缺文件、escape/comment/single/empty和坏行后续数据。",
+        "assertions": [
+          "无文件返回当前cwd/loadedFiles空/errors空，两个文件的加载顺序和.local最终优先覆盖shell是公开返回及实际env事实。",
+          "escaped LF/tab/quote/backslash、#数据与trailing comment、single literal及空值按给定数据严格相等；不是语义判断。",
+          "errors数组的file/lineNumber/raw/reason枚举完整相等，是公开machine diagnostics，未判自然语言error提示；删.local后合法后续foo确写valid-after-errors。env finally恢复。"
+        ],
+        "scope": "真实本机文件与进程env parser，不是shell导出、跨进程OS持久化或生产热重载。"
+      },
+      {
+        "path": "tests/env/env-tools.ts",
+        "verdict": "passed",
+        "businessValue": "实际环境工具可读/改/删原受限special key，区分missing与empty，非法参数不改变状态。",
+        "originalValuePreserved": "保留special-key unrestricted regression，仅synthetic值、子进程本地、原值finally恢复；真实Dialog替代{}as，删set/unset确认整句oracle，说明意义用2份实际材料审。",
+        "assertions": [
+          "envGet公开schema key字段仍有，真实get old/set new/process.env new/get new/unset undefined/empty string过程按实际数据与machine outcome success检查。",
+          "4非法参数捕Error后全部env快照相同，保证无意外改动；错误具体含义由全文主观审，不冻结异常message。",
+          "保真比较old/new空值只针对已给input data；确认prev/next/缺失文本完整输出，不以其整句等于expected充当语义验收。"
+        ],
+        "scope": "真实public tool call与Dialog/进程env，非driver授权发现、真实token、OS永久变更或MCP自动reload。"
+      }
+    ],
+    "helper": {
+      "path": "tests/helpers/cli-process.ts",
+      "status": "passed",
+      "review": "最终全文已读。真实Node+tsx main/cli.ts、明确repo tsconfig/cwd、15s timeout和2MB buffer；error/signal/非零status先透出已捕获stdout/stderr，之后assert spawn transport与numeric status，业务退出码由调用方明确判断。预期MISS退出2仍保完整诊断，不被helper当0成功或静默丢弃。DOMINDS_USE_ENV_PROXY=0只隔离真实CLI子进程的外部代理，不用于证明网络代理功能。",
+      "scope": "两实际CLI候选共享的子进程边界，无新框架/依赖/helper候选计数；未单独执行人为timeout回归，不声称全部OS进程边界。"
+    },
+    "literalComparisonMeaning": "CLI argv/path/exit/status/stdout通道、dotenv machine reason/raw/line与给定opaque环境值/参数均为机器或数据契约；手册/校验解释/env确认含义一律由实际正文主观判断。",
+    "blockingFindings": [],
+    "entryReview": [
+      "bootstrap显式7本地候选由现runCases串行汇总失败/timeout，经既有CLI隔离；semantic3入口生成9份始终pending待独立审。旧tsx命令转隔离CLI，增加rtws-cli命名入口，dotenv直接由suite执行，不发明缺失的旧命令。",
+      "完整根package/tests package/run变更、AGENTS/README/strategy及最终ledger7 reviewed均已审；明确CLI定义审计、proxy边界/env进程作用域及初轮4份拒绝理由，120 reviewed/142未审/129套件外与全types217失败不冒称总覆盖。ledger身份不能接受新输出。"
+    ]
+  },
+  "semanticFindings": [
+    {
+      "status": "resolved",
+      "affectedInitialCases": ["available", "deferred", "disabled", "missing"],
+      "finding": "standalone validate CLI不联系/加载MCP，DEFERRED不是健康探针。共同legend的服务恢复后重跑可能清除建议不可由本CLI实现兑现；需准确限定定义审计与实际运行时排障。",
+      "basis": "已核cli-runner直接validateTeamDefMain→Team.load/readMcpDeclaredToolsets/buildToolsetAuditReport，MCP supervisor由server路径启动，非该CLI。",
+      "next": "共同legend和validate intro已修，最终moX51k四份重新全文主观判passed；原始四份失败原文与范围继续保留。"
+    }
+  ],
+  "productReview": {
+    "status": "passed",
+    "paths": ["main/cli/team-definition-audit.ts", "main/cli/validate-team-def.ts"],
+    "assessment": "两个直接说明句限定standalone CLI只读取声明及进程registry、不联系/加载MCP、不判断健康；后续去实际runtime检查、按需启用/重启并确认工具，明确重跑此CLI不会加载。原状态分类、配置/退出码和权限未改，无新增flag/框架。",
+    "scope": "当前validate输出的真实新材料已审。read.ts共享legend源变化已知，其LLM prompt-audit链未执行/未接受，不把同源文案修正当整链回归。"
+  },
+  "sourceFingerprints": [
+    {
+      "path": "AGENTS.md",
+      "sha256": "56183ec6b89b945d1c0accce6de0968fbfc83cb85285f32ad79108d8d6c4bf3f",
+      "bytes": 12656,
+      "scope": "本批完整变更已审（含未跟踪helper）"
+    },
+    {
+      "path": "docs/testing-strategy.md",
+      "sha256": "dedba293abaff76b1c8212405967cccff90ff8f60b149ab3d27b34b63d6314dc",
+      "bytes": 71113,
+      "scope": "本批完整变更已审（含未跟踪helper）"
+    },
+    {
+      "path": "main/cli/team-definition-audit.ts",
+      "sha256": "74648abe5466f3d90f8bf17a402ad3e8ec3cb8c3806bfb5b5a994e9951bdffd6",
+      "bytes": 7991,
+      "scope": "本批完整变更已审（含未跟踪helper）"
+    },
+    {
+      "path": "main/cli/validate-team-def.ts",
+      "sha256": "1e2f28eb1254cc0dc3f54de1b5b7ad4eedcd707495a053a4c78d37040fc5b34c",
+      "bytes": 3521,
+      "scope": "本批完整变更已审（含未跟踪helper）"
+    },
+    {
+      "path": "package.json",
+      "sha256": "10e06900210cddabb46bc8b7bc5679b4f08bae7754e536efcd1e1e8347ab8e18",
+      "bytes": 5275,
+      "scope": "本批完整变更已审（含未跟踪helper）"
+    },
+    {
+      "path": "tests/README.md",
+      "sha256": "efe0bba57a44f4f3a9a8c9602d223dc7fd9b5bd4abd6fbe089642c1d3ceb5c10",
+      "bytes": 10538,
+      "scope": "本批完整变更已审（含未跟踪helper）"
+    },
+    {
+      "path": "tests/audit.json",
+      "sha256": "23d28fefffb952f07540ad7bcbd4fe169ff92b6a278f384d56736bad3e161650",
+      "bytes": 80409,
+      "scope": "本批完整变更已审（含未跟踪helper）"
+    },
+    {
+      "path": "tests/cli/env-proxy-support.ts",
+      "sha256": "7320a57360367d8df9abd24622da8887f7b31cb0e16a913afc881a20ef89ac86",
+      "bytes": 2511,
+      "scope": "本批完整变更已审（含未跟踪helper）"
+    },
+    {
+      "path": "tests/cli/man-subcommand.ts",
+      "sha256": "45c1e13b84b329e56f699d9928c5b9a41a538f95a2801ab9b0f07b4a9c18c1f2",
+      "bytes": 1957,
+      "scope": "本批完整变更已审（含未跟踪helper）"
+    },
+    {
+      "path": "tests/cli/rtws-cli.ts",
+      "sha256": "103d304c884db148ec7bd77130162dfa15abd9737e291bf5f051dac8b0df10a5",
+      "bytes": 2803,
+      "scope": "本批完整变更已审（含未跟踪helper）"
+    },
+    {
+      "path": "tests/cli/subcommand-argv-isolation.ts",
+      "sha256": "75c0d1c585518148a8f49d23a023f1cdcbd10cd3cbc049866832895b435e88e4",
+      "bytes": 1713,
+      "scope": "本批完整变更已审（含未跟踪helper）"
+    },
+    {
+      "path": "tests/cli/validate-team-def-subcommand.ts",
+      "sha256": "3c8a3892a28f1adcd6eb4e9bac64e656846b510e10aa962f76320ed86f49f521",
+      "bytes": 3522,
+      "scope": "本批完整变更已审（含未跟踪helper）"
+    },
+    {
+      "path": "tests/env/dotenv.ts",
+      "sha256": "224ec66e00cfd2789e93f9988fbb24cc465b2f488e9fff2d6a107ce89b051978",
+      "bytes": 3048,
+      "scope": "本批完整变更已审（含未跟踪helper）"
+    },
+    {
+      "path": "tests/env/env-tools.ts",
+      "sha256": "02e049667df00897b4e4942574b1fe60fe8aad68a726702a894704e910c48860",
+      "bytes": 5081,
+      "scope": "本批完整变更已审（含未跟踪helper）"
+    },
+    {
+      "path": "tests/package.json",
+      "sha256": "52f968b572c4748b6cefbb1f72dc94b4f3d40524165e8f904f0a29925fcaf762",
+      "bytes": 22277,
+      "scope": "本批完整变更已审（含未跟踪helper）"
+    },
+    {
+      "path": "tests/run.mjs",
+      "sha256": "3bc8fe185a2d49bb61f40374d0cf6837b3f463bb5608a79ba23909d958ce4a75",
+      "bytes": 15043,
+      "scope": "本批完整变更已审（含未跟踪helper）"
+    },
+    {
+      "path": "tests/helpers/cli-process.ts",
+      "sha256": "ba815227799cfe073058515d2ef8c86dd7b1eb4cf988824ab516eb4488544241",
+      "bytes": 1119,
+      "scope": "本批完整变更已审（含未跟踪helper）"
+    },
+    {
+      "path": "main/cli.ts",
+      "sha256": "586b094cbf39e009ea351607362b3ad25cd2975843c5f13780d1095333a89a9b",
+      "bytes": 22201,
+      "scope": "相关实现/资产/支持/环境身份；仅核对报告指明边界，不表示整文件或额外候选全部审计"
+    },
+    {
+      "path": "main/cli-runner.ts",
+      "sha256": "ca3675e40766bf0b9e33f6b45799a4b0d4788d5f77c5fdbfcfecde276213dfe5",
+      "bytes": 11833,
+      "scope": "相关实现/资产/支持/环境身份；仅核对报告指明边界，不表示整文件或额外候选全部审计"
+    },
+    {
+      "path": "main/cli/manual.ts",
+      "sha256": "34cca387d26aa83ca12a6be3bdddba28df51b5245cd828037d896c4a8ccb9a05",
+      "bytes": 5079,
+      "scope": "相关实现/资产/支持/环境身份；仅核对报告指明边界，不表示整文件或额外候选全部审计"
+    },
+    {
+      "path": "main/cli/read.ts",
+      "sha256": "4064df3ca83cc474a6199a633773c867b892d67d8cb82398bf69bbead9daee22",
+      "bytes": 18449,
+      "scope": "相关实现/资产/支持/环境身份；仅核对报告指明边界，不表示整文件或额外候选全部审计"
+    },
+    {
+      "path": "main/bootstrap/rtws-cli.ts",
+      "sha256": "88a4a94a12be5295f7185f6e6d17fde0271faa2fd3d1af821b245f2a3746bcdf",
+      "bytes": 1613,
+      "scope": "相关实现/资产/支持/环境身份；仅核对报告指明边界，不表示整文件或额外候选全部审计"
+    },
+    {
+      "path": "main/bootstrap/dotenv.ts",
+      "sha256": "993cdb01dd478d1ab063397c0917163cf493dffdac6e9e4c794ea47da9c09827",
+      "bytes": 4013,
+      "scope": "相关实现/资产/支持/环境身份；仅核对报告指明边界，不表示整文件或额外候选全部审计"
+    },
+    {
+      "path": "main/tools/env.ts",
+      "sha256": "f8e796076dd021db1cecc43981f32b68f0fb5f8b4ef13c1c0500642a43417158",
+      "bytes": 5502,
+      "scope": "相关实现/资产/支持/环境身份；仅核对报告指明边界，不表示整文件或额外候选全部审计"
+    },
+    {
+      "path": "main/team.ts",
+      "sha256": "15011ab16f5b36eda146a13201de9fbd9b4c0fde8ece9bc04fd26b0b1aff707c",
+      "bytes": 134570,
+      "scope": "相关实现/资产/支持/环境身份；仅核对报告指明边界，不表示整文件或额外候选全部审计"
+    },
+    {
+      "path": "main/tools/toolset-manual.ts",
+      "sha256": "bb3e326e1d94544791ccd0eb75458c84d9976cd3aca1d9e8296ad9031618c567",
+      "bytes": 16091,
+      "scope": "相关实现/资产/支持/环境身份；仅核对报告指明边界，不表示整文件或额外候选全部审计"
+    },
+    {
+      "path": "main/tools/team_mgmt-manual.ts",
+      "sha256": "36bad53a297d34700f442182cdd9a958155a83893b48a3067606557e31c9b584",
+      "bytes": 18999,
+      "scope": "相关实现/资产/支持/环境身份；仅核对报告指明边界，不表示整文件或额外候选全部审计"
+    },
+    {
+      "path": "main/tools/team_mgmt.ts",
+      "sha256": "7c298ede3f77dc9a22057ea268c197e4fa8c2f5c08985fab093e08204262f24a",
+      "bytes": 309989,
+      "scope": "相关实现/资产/支持/环境身份；仅核对报告指明边界，不表示整文件或额外候选全部审计"
+    },
+    {
+      "path": "main/tools/manual/render.ts",
+      "sha256": "a1569a18e76a96976e3e0286b714b7be680e5b830da6b1b10a0714289ddebf16",
+      "bytes": 12199,
+      "scope": "相关实现/资产/支持/环境身份；仅核对报告指明边界，不表示整文件或额外候选全部审计"
+    },
+    {
+      "path": "main/tools/manual/spec.ts",
+      "sha256": "6ae0cd718916c7d7879c2ee1b8427ea85d1d6c57dac2a6a3eee7e29bbf9fd646",
+      "bytes": 5125,
+      "scope": "相关实现/资产/支持/环境身份；仅核对报告指明边界，不表示整文件或额外候选全部审计"
+    },
+    {
+      "path": "main/tools/registry.ts",
+      "sha256": "1d5b8fe2b8edfeb949a8fe7d6378e03a6f12e9807d989aacb070a93f7ce237a9",
+      "bytes": 5350,
+      "scope": "相关实现/资产/支持/环境身份；仅核对报告指明边界，不表示整文件或额外候选全部审计"
+    },
+    {
+      "path": "main/tools/builtins.ts",
+      "sha256": "f95578ba821e743d5234ee95553b370477de2cbe7f66f1199d961ad9d1c15ca5",
+      "bytes": 15330,
+      "scope": "相关实现/资产/支持/环境身份；仅核对报告指明边界，不表示整文件或额外候选全部审计"
+    },
+    {
+      "path": "main/mcp/config.ts",
+      "sha256": "923fe3d388a5289fbee7bce653a4ab333838dd295a277953ee8f3eabee695172",
+      "bytes": 19456,
+      "scope": "相关实现/资产/支持/环境身份；仅核对报告指明边界，不表示整文件或额外候选全部审计"
+    },
+    {
+      "path": "main/mcp/supervisor.ts",
+      "sha256": "56abf128ef6fe5f5b7e71ec5bfe16079e78d206fee3d3be60d238ad3a45673ec",
+      "bytes": 71929,
+      "scope": "相关实现/资产/支持/环境身份；仅核对报告指明边界，不表示整文件或额外候选全部审计"
+    },
+    {
+      "path": "main/tools/prompts/ws_read/en/index.md",
+      "sha256": "e717ddee4a2dc244e631f459cecbe4cdc6dde0cad7dcc636002720703969f133",
+      "bytes": 1577,
+      "scope": "相关实现/资产/支持/环境身份；仅核对报告指明边界，不表示整文件或额外候选全部审计"
+    },
+    {
+      "path": "packages/kernel/src/team-mgmt-guide.ts",
+      "sha256": "c023b9b1d9d3870339e8d2663003d9401d56a2565064831513588bdf0d714d14",
+      "bytes": 4699,
+      "scope": "相关实现/资产/支持/环境身份；仅核对报告指明边界，不表示整文件或额外候选全部审计"
+    },
+    {
+      "path": "tests/helpers/semantic-evidence.ts",
+      "sha256": "a41efd1058ea6d65394059180dabf987e17ef0d219bae95ca67edd33db7e3777",
+      "bytes": 2050,
+      "scope": "相关实现/资产/支持/环境身份；仅核对报告指明边界，不表示整文件或额外候选全部审计"
+    },
+    {
+      "path": "tests/kernel-driver/helpers.ts",
+      "sha256": "520b1288cdb2114cb28cb9dcebdf95c7b0f19b1703fe3837a780ffb2d916f9a1",
+      "bytes": 10137,
+      "scope": "相关实现/资产/支持/环境身份；仅核对报告指明边界，不表示整文件或额外候选全部审计"
+    },
+    {
+      "path": "tests/cli.ts",
+      "sha256": "b9f9bc1f034a2a70c4b7bfbc2300ae854706f09a9788b7f4ca17b3a263f41598",
+      "bytes": 5618,
+      "scope": "相关实现/资产/支持/环境身份；仅核对报告指明边界，不表示整文件或额外候选全部审计"
+    },
+    {
+      "path": "tests/rtws-script-runner.ts",
+      "sha256": "410949f941c1f0166b4e42dace6fa9d87138740c8d6a85aac9b5d99852730359",
+      "bytes": 920,
+      "scope": "相关实现/资产/支持/环境身份；仅核对报告指明边界，不表示整文件或额外候选全部审计"
+    },
+    {
+      "path": "tests/runner.test.mjs",
+      "sha256": "47030439386e142d7897fbe03bd3ef095211458f588db5fcb398c47ddce29fea",
+      "bytes": 6322,
+      "scope": "相关实现/资产/支持/环境身份；仅核对报告指明边界，不表示整文件或额外候选全部审计"
+    },
+    {
+      "path": "tests/tsconfig.json",
+      "sha256": "b5bcec0fba331b397ee453a8ff2bb1ea1eb1cb0f5f61f1a4e968ffc0a55dc1df",
+      "bytes": 689,
+      "scope": "相关实现/资产/支持/环境身份；仅核对报告指明边界，不表示整文件或额外候选全部审计"
+    },
+    {
+      "path": "pnpm-lock.yaml",
+      "sha256": "39b09df41afbe38240cc837316680ec0b7a2ceb02372f02f6528168adf21da19",
+      "bytes": 84789,
+      "scope": "相关实现/资产/支持/环境身份；仅核对报告指明边界，不表示整文件或额外候选全部审计"
+    }
+  ],
+  "baselineFingerprints": [
+    {
+      "path": "tests/cli/env-proxy-support.ts",
+      "revision": "2e13d1dc901a3d95db7c7245f3487c10f537e6cb",
+      "sha256": "d30da807415ce9e359f252abcbc3c7b9d06741371243b3aa14521363ec8fae75",
+      "bytes": 2560,
+      "meaning": "已读原始版本身份，可从git基线重建；不判含义或自动接受新输出"
+    },
+    {
+      "path": "tests/cli/man-subcommand.ts",
+      "revision": "2e13d1dc901a3d95db7c7245f3487c10f537e6cb",
+      "sha256": "3649db4086e1f8e7ab8d69267ce030e1c7f8097fea7bbd97b24bfeae129c910f",
+      "bytes": 2102,
+      "meaning": "已读原始版本身份，可从git基线重建；不判含义或自动接受新输出"
+    },
+    {
+      "path": "tests/cli/rtws-cli.ts",
+      "revision": "2e13d1dc901a3d95db7c7245f3487c10f537e6cb",
+      "sha256": "77ebfcbbff20ec6e0f94bd4ac52de67aba679353bf13fd1d0da9fc0d04b01c38",
+      "bytes": 1898,
+      "meaning": "已读原始版本身份，可从git基线重建；不判含义或自动接受新输出"
+    },
+    {
+      "path": "tests/cli/subcommand-argv-isolation.ts",
+      "revision": "2e13d1dc901a3d95db7c7245f3487c10f537e6cb",
+      "sha256": "0942de7012d25da57de08a6d3d505e3cbb893b09241921765762f195038b9e0f",
+      "bytes": 1708,
+      "meaning": "已读原始版本身份，可从git基线重建；不判含义或自动接受新输出"
+    },
+    {
+      "path": "tests/cli/validate-team-def-subcommand.ts",
+      "revision": "2e13d1dc901a3d95db7c7245f3487c10f537e6cb",
+      "sha256": "6bf0d8e9015eaca2454a70221559a7b40e0ed6c6971c7e0561cd631e367f7599",
+      "bytes": 4997,
+      "meaning": "已读原始版本身份，可从git基线重建；不判含义或自动接受新输出"
+    },
+    {
+      "path": "tests/env/dotenv.ts",
+      "revision": "2e13d1dc901a3d95db7c7245f3487c10f537e6cb",
+      "sha256": "3b9f42734f383401dead1ee7d97bd60b0cd5ad929a5621440ffd1e389361b32e",
+      "bytes": 1874,
+      "meaning": "已读原始版本身份，可从git基线重建；不判含义或自动接受新输出"
+    },
+    {
+      "path": "tests/env/env-tools.ts",
+      "revision": "2e13d1dc901a3d95db7c7245f3487c10f537e6cb",
+      "sha256": "dbecbfa35e4dab066a20d952b3c05ed89f42a8fef257fe6226d7cd52085d51b4",
+      "bytes": 1600,
+      "meaning": "已读原始版本身份，可从git基线重建；不判含义或自动接受新输出"
+    },
+    {
+      "path": "main/cli/team-definition-audit.ts",
+      "revision": "2e13d1dc901a3d95db7c7245f3487c10f537e6cb",
+      "sha256": "5e18bba3a29b64509c2530f751aca0f4e67183adfc43edf7e695827107568a9c",
+      "bytes": 7826,
+      "meaning": "已读原始版本身份，可从git基线重建；不判含义或自动接受新输出"
+    },
+    {
+      "path": "main/cli/validate-team-def.ts",
+      "revision": "2e13d1dc901a3d95db7c7245f3487c10f537e6cb",
+      "sha256": "54c1438d18e4b71a3617f6d639deb7f9837c9b6bd6a4ae14e5976e6d70f2c26b",
+      "bytes": 3424,
+      "meaning": "已读原始版本身份，可从git基线重建；不判含义或自动接受新输出"
+    }
+  ],
+  "provenance": {
+    "retention": "初始9份原文/context/逐案理由完整内嵌；SHA只身份，临时目录不是耐久依赖；不hash报告自身。",
+    "runtime": "具体固定Node/Corepack环境和执行终态由主执行verification补充，独立评审不修改实现、不运行重叠build。",
+    "reproduce": "固定根packageManager环境运行test:bootstrap7behavior，test:semantic:bootstrap3producer的新pending证据，单案经tests/cli.ts隔离；真正CLI子进程用共享helper指定main/cli.ts和repo tsconfig。新输出仍需独立主观接受。",
+    "trackedDiffIdentity": {
+      "sha256": "e8c717e42043a25defdd95c9b8624b3575d130bbd5d960068462c5f6749c0d1b",
+      "meaning": "最终tracked完整diff身份；新cli-process helper另按全文和单文件SHA审查，不因untracked漏审。报告本身不hash。"
+    },
+    "sourceMeaning": "最终磁盘43份身份（17份本批改动含新helper，另26份相关实现/资产/支持），另9份已读基线身份。实际18份语义原文/context完整内嵌，不依赖临时目录；源码由base及最终提交重建。",
+    "retentionCheck": "最终9 passed与初始5 passed/4 failed均独立阅读全文后有明确理由/scope，18份输出SHA可核对完整材料保全，非语义oracle。旧通过、相同id/片段或hash都未用于新接受。"
+  },
+  "limits": [
+    "实际CLI使用当前英文输出，无全locale或所有help/topic覆盖声明；默认team_mgmt专用索引通过不代表整个角色/手册资产全部通过。",
+    "validate CLI为定义/registry审计，不是MCP连接/加载/服务健康探针；其他read.ts消费者共享legend的LLM prompt-audit路径本批未执行。",
+    "env-proxy仅Node API参数边界，无实际代理网络；dotenv/env工具仅本机文件及测试进程环境，非OS持久化/其他进程修改/自动reload。",
+    "special key只使用synthetic数据，原值恢复；数据保真检查不裁决其自然语言含义。",
+    "baseline7退出0不代表设计接受；初轮4份实际输出因误导legend拒绝，修后9份真实新材料逐份重读通过。全test类型仍217失败、142候选未审，本批不代表持续goal完成。"
+  ],
+  "verification": {
+    "status": "scoped_checks_passed_full_test_types_failed",
+    "runtime": "Node 24.19.0; repository-pinned Corepack pnpm 11.17.0 through /tmp/dominds-pnpm; no added dependency/test framework.",
+    "behavior": {
+      "bootstrap": {
+        "total": 7,
+        "passed": 7,
+        "failed": 0,
+        "timedOut": 0,
+        "cases": [
+          {
+            "id": "cli/env-proxy-support.ts",
+            "status": "passed",
+            "exitCode": 0
+          },
+          {
+            "id": "cli/man-subcommand.ts",
+            "status": "passed",
+            "exitCode": 0
+          },
+          {
+            "id": "cli/rtws-cli.ts",
+            "status": "passed",
+            "exitCode": 0
+          },
+          {
+            "id": "cli/subcommand-argv-isolation.ts",
+            "status": "passed",
+            "exitCode": 0
+          },
+          {
+            "id": "cli/validate-team-def-subcommand.ts",
+            "status": "passed",
+            "exitCode": 0
+          },
+          {
+            "id": "env/dotenv.ts",
+            "status": "passed",
+            "exitCode": 0
+          },
+          {
+            "id": "env/env-tools.ts",
+            "status": "passed",
+            "exitCode": 0
+          }
+        ]
+      },
+      "smoke": {
+        "total": 11,
+        "passed": 11,
+        "failed": 0,
+        "timedOut": 0,
+        "cases": [
+          {
+            "id": "auth.ts",
+            "status": "passed",
+            "exitCode": 0
+          },
+          {
+            "id": "llm-generation-metadata.ts",
+            "status": "passed",
+            "exitCode": 0
+          },
+          {
+            "id": "persistence/latest-writeback.ts",
+            "status": "passed",
+            "exitCode": 0
+          },
+          {
+            "id": "interruption-resumption.ts",
+            "status": "passed",
+            "exitCode": 0
+          },
+          {
+            "id": "access-control/dialogs-root-deny.ts",
+            "status": "passed",
+            "exitCode": 0
+          },
+          {
+            "id": "access-control/file-ext-names.ts",
+            "status": "passed",
+            "exitCode": 0
+          },
+          {
+            "id": "apps-host-ipc-contract.ts",
+            "status": "passed",
+            "exitCode": 0
+          },
+          {
+            "id": "toolsets/tool-availability-snapshot.ts",
+            "status": "passed",
+            "exitCode": 0
+          },
+          {
+            "id": "webapp/create-dialog-flow-ime.ts",
+            "status": "passed",
+            "exitCode": 0
+          },
+          {
+            "id": "webapp/create-dialog-flow-selection.ts",
+            "status": "passed",
+            "exitCode": 0
+          },
+          {
+            "id": "webapp/generation-model-presentation.ts",
+            "status": "passed",
+            "exitCode": 0
+          }
+        ]
+      }
+    },
+    "semanticGeneration": {
+      "producers": 3,
+      "failedProcesses": 0,
+      "timedOut": 0,
+      "actualCases": 9,
+      "origin": "dominds-tests-bootstrap-semantic-moX51k",
+      "acceptance": "Only nine actual fresh outputs embedded and independently reviewed above passed. Initial four rejected outputs are preserved; fresh generation always starts pending."
+    },
+    "runner": {
+      "passed": 5,
+      "failed": 0,
+      "log": {
+        "origin": "/tmp/dominds-bootstrap-runner.log",
+        "sha256": "0d32decacefa577f01bad260b79789c9129380fe76bfccca213c4fe19b3685b1",
+        "tail": [
+          "ℹ fail 0",
+          "ℹ cancelled 0",
+          "ℹ skipped 0",
+          "ℹ todo 0",
+          "ℹ duration_ms 2158.475965"
+        ]
+      }
+    },
+    "build": {
+      "exitCode": 0,
+      "log": {
+        "origin": "/tmp/dominds-bootstrap-build-final.log",
+        "sha256": "dc574c667f5563212892142cf72886400b521b77e24ac04381db93d44361061b",
+        "tail": [
+          "codex-auth build: Done",
+          "packages/shell build$ tsc -p tsconfig.json",
+          "packages/shell build: Done",
+          "$ node ./scripts/run-pnpm.mjs -C webapp run build",
+          "$ node ./scripts/build.mjs"
+        ]
+      }
+    },
+    "appTypes": {
+      "exitCode": 0,
+      "log": {
+        "origin": "/tmp/dominds-bootstrap-app-types-final.log",
+        "sha256": "41aa5be00a3d0c4d2223d9aee1e64fd44a1a074ddc49dbfbb33b30036175e87a",
+        "tail": [
+          "packages/kernel lint:types: Done",
+          "packages/shell lint:types$ tsc -p tsconfig.json --noEmit",
+          "packages/shell lint:types: Done",
+          "webapp lint:types$ tsc -p src/tsconfig.json --noEmit && node ./scripts/check-dom-events.mjs",
+          "webapp lint:types: Done"
+        ]
+      }
+    },
+    "focusedBootstrapTypes": {
+      "exitCode": 0,
+      "meaning": "All seven CLI/environment cases through an external config extending unchanged tests/tsconfig.json; does not replace full-directory check."
+    },
+    "fullTestTypes": {
+      "exitCode": 2,
+      "status": "failed",
+      "diagnostics": 217,
+      "previousDiagnostics": 218,
+      "byFile": {
+        "tests/apps-host-tool-result-contract.ts": 1,
+        "tests/apps-kernel-package-exports-contract.ts": 1,
+        "tests/diligence-push/q4h-global-broadcast.ts": 1,
+        "tests/diligence-push/retry-recovery-bypasses-budget.ts": 3,
+        "tests/interruption-resumption.ts": 10,
+        "tests/provider/anthropic-stream-errors.ts": 1,
+        "tests/provider/llm-quirks-retry-handling.ts": 63,
+        "tests/provider/openai-compatible-context-normalization.ts": 3,
+        "tests/provider/openai-compatible-volcengine-coding-plan.ts": 28,
+        "tests/provider/tool-choice-requirement.ts": 1,
+        "tests/provider/tool-result-image-size-fallback.ts": 3,
+        "tests/provider/user-image-model-support.ts": 1,
+        "tests/provider/volcengine-coding-plan-live-smoke.ts": 1,
+        "tests/reminders/app-reminder-render-mode-preserve.ts": 1,
+        "tests/reminders/daemon-exit-wake-event.ts": 19,
+        "tests/reminders/daemon-reminder-gone-exit-snapshot.ts": 1,
+        "tests/reminders/daemon-reminder-no-jitter-without-output-change.ts": 3,
+        "tests/reminders/daemon-reminder-render.ts": 2,
+        "tests/reminders/daemon-reminder-retained-after-exit.ts": 2,
+        "tests/reminders/daemon-start-receipt-lifecycle-card.ts": 2,
+        "tests/reminders/get-daemon-output-stream-selection.ts": 3,
+        "tests/reminders/main-dialog-goal-reminder.ts": 2,
+        "tests/reminders/migrate-reminder-scope.ts": 8,
+        "tests/reminders/pending-tellask-reminder-order.ts": 10,
+        "tests/reminders/pending-tellask-zero-state-no-jitter.ts": 4,
+        "tests/reminders/reminder-format.ts": 21,
+        "tests/reminders/reminder-owner-failure-loud.ts": 1,
+        "tests/reminders/reminder-render-mode.ts": 1,
+        "tests/reminders/shared-daemon-reminder-command-mismatch.ts": 2,
+        "tests/reminders/shared-daemon-reminder-persistence.ts": 2,
+        "tests/reminders/shared-daemon-reminder-wrapper-command-match.ts": 1,
+        "tests/reminders/task-agent-reminder-scope.ts": 10,
+        "tests/ripgrep-streaming.ts": 1,
+        "tests/ripgrep-windows-compat.ts": 1,
+        "tests/task-package.ts": 2,
+        "tests/toolsets/shell-cmd-capture-env.ts": 1
+      },
+      "meaning": "Inherited test contracts still fail. Real Node API fixture return type corrected; no weakened type/exclusion/include changes."
+    },
+    "inventory": {
+      "typescriptFiles": 282,
+      "supportFiles": 20,
+      "candidates": 262,
+      "reviewed": 120,
+      "remaining": 142,
+      "outsideSuites": 129,
+      "missingDirectScriptTargets": 0,
+      "staleAuditedPaths": 0
+    },
+    "preCommit": {
+      "status": "passed",
+      "trackedDocumentationOfflineLinkCheck": {
+        "trackedMarkdown": 201,
+        "newMarkdown": 0,
+        "canonicalDocuments": 69,
+        "excludedRuntimeSources": 131,
+        "localTargetsAndFragments": 352,
+        "networkLinksIgnored": 9,
+        "failures": []
+      },
+      "scope": "All tracked documentation Markdown from this repository only; local files/fragments, canonical symlinks and narrow runtime-role exclusions; network not requested. Initial format check caught the in-progress review JSON, which was subsequently formatted.",
+      "formatExitCode": 0,
+      "diffCheckExitCode": 0
+    },
+    "notRun": [
+      "No live-provider, real proxy-routing, MCP connection/recovery, shell/OS environment persistence, browser or cross-platform acceptance.",
+      "No read --audit prompt-audit LLM execution; shared legend is checked through actual validate_team_def outputs.",
+      "Kernel/persistence/context/configuration/manual/filesystem suites and their semantic material were not rerun for this CLI-only change. Previously accepted output cannot decide fresh meaning.",
+      "Updated individual package aliases were not separately invoked; inventory verifies direct targets and the bootstrap lane executes the actual same CLI-isolated cases."
+    ]
+  },
+  "reviewHistory": [
+    {
+      "classification": "semantic-blocker-fixed",
+      "meaning": "旧语义字面oracle曾要求DEFERRED说明often temporary/service recovers，初轮真实审查发现这与standalone CLI边界不符。删除oracle后按业务拒绝4份实际文本，修产品说明，再独立阅读全文9份新材料接受；没有靠放宽关键词救测试。"
+    },
+    {
+      "classification": "helper-evidence-preservation",
+      "meaning": "helper最终对error/signal/非零status先透出已捕获输出，保留包括预期MISS2的真实诊断；保持原15s失败边界，不加超时掩盖问题。"
+    }
+  ]
+}

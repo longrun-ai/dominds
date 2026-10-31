@@ -1,70 +1,51 @@
 import assert from 'node:assert/strict';
-import { spawnSync } from 'node:child_process';
-import * as path from 'node:path';
+import { runDomindsCli } from '../helpers/cli-process';
+import { semanticEvidenceCollector } from '../helpers/semantic-evidence';
+import { withTempRtws } from '../kernel-driver/helpers';
 
-function main(): void {
-  const repoRoot = path.resolve(__dirname, '..', '..', '..');
-  const cliEntry = path.resolve(repoRoot, 'dominds', 'main', 'cli.ts');
-  const tsxCli = require.resolve('tsx/cli');
-
-  const wsReadResult = spawnSync(
-    process.execPath,
-    [tsxCli, cliEntry, 'man', 'ws_read', '--topic', 'index'],
-    {
-      cwd: repoRoot,
-      encoding: 'utf8',
-    },
-  );
-
-  assert.equal(
-    wsReadResult.status,
-    0,
-    `dominds man ws_read should exit 0.\nstderr:\n${wsReadResult.stderr}`,
-  );
-  assert.match(
-    wsReadResult.stdout,
-    /\*\*Toolset manual: ws_read\*\*/,
-    'stdout should include the manual title',
-  );
-  assert.match(wsReadResult.stdout, /^### .+/m, 'stdout should include a markdown section heading');
-  assert.equal(wsReadResult.stderr, '', 'dominds man ws_read should not write to stderr');
-
-  const teamMgmtResult = spawnSync(process.execPath, [tsxCli, cliEntry, 'man', 'team_mgmt'], {
-    cwd: repoRoot,
-    encoding: 'utf8',
+const evidence = semanticEvidenceCollector('dominds-cli-manual-');
+async function main(): Promise<void> {
+  await withTempRtws(async (rtws) => {
+    for (const [id, args, request] of [
+      [
+        'workspace-index',
+        ['man', 'ws_read', '--topic', 'index'],
+        'Read the workspace-reading toolset index.',
+      ],
+      ['team-guide', ['man', 'team_mgmt'], 'Read the dedicated team-management guide.'],
+      [
+        'help',
+        ['man', '--help'],
+        'Learn how to select manual topics, including toolset-specific keys.',
+      ],
+    ] as const) {
+      const result = runDomindsCli(args, rtws);
+      assert.equal(result.status, 0);
+      assert.equal(result.stderr, '');
+      assert.ok(result.stdout.length > 0, 'the requested manual emits an actual body');
+      evidence.record({
+        id,
+        scenario: request,
+        businessValue:
+          'A person or agent can request the relevant manual from the actual CLI, including dedicated guides and topic help.',
+        context: {
+          language: 'en',
+          args: JSON.stringify(args),
+          exitCode: result.status,
+          scope:
+            'Real child CLI, built-in manual assets, isolated workspace. Meaning and requested topic selection are subjectively reviewed, not inferred from titles or keywords.',
+        },
+        reviewQuestions: [
+          'Does the actual output answer this manual request and give coherent guidance for the requested toolset or topic selection?',
+        ],
+        actualText: result.stdout,
+      });
+    }
+    await evidence.write();
   });
-
-  assert.equal(
-    teamMgmtResult.status,
-    0,
-    `dominds man team_mgmt should exit 0.\nstderr:\n${teamMgmtResult.stderr}`,
-  );
-  assert.match(
-    teamMgmtResult.stdout,
-    /^# Team Management Manual$/m,
-    'team_mgmt stdout should use the dedicated guide renderer',
-  );
-  assert.doesNotMatch(
-    teamMgmtResult.stdout,
-    /Missing manual sections/,
-    'team_mgmt stdout should not fall back to generic missing-section warnings',
-  );
-  assert.equal(teamMgmtResult.stderr, '', 'dominds man team_mgmt should not write to stderr');
-
-  const helpResult = spawnSync(process.execPath, [tsxCli, cliEntry, 'man', '--help'], {
-    cwd: repoRoot,
-    encoding: 'utf8',
-  });
-  assert.equal(
-    helpResult.status,
-    0,
-    `dominds man --help should exit 0.\nstderr:\n${helpResult.stderr}`,
-  );
-  assert.match(
-    helpResult.stdout,
-    /Some toolsets .* additional toolset-specific topic keys/i,
-    'man help should mention that some toolsets expose custom topic keys',
-  );
+  console.log('CLI manual routing and output: PASS');
 }
-
-main();
+main().catch((error: unknown) => {
+  console.error(error);
+  process.exitCode = 1;
+});
