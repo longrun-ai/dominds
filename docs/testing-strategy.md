@@ -539,3 +539,17 @@ registered owner的等价nested对象key序更新确实被调用一次；完整m
 能力快照保留全部原主/支线、specialist、直接赋予与工具集选择的ID集合矩阵，改为managed CLI中实际Team YAML加载；公开dialog-context本就是合法组件输入，不为形式强造drive。集合不单独证明无重复，快照不证明实际执行授权。新增能力快照仍是纯机器用例，不进入语义生成。现有filesystem从13扩至15项、configuration从7扩至9项、manual从6扩至7项；smoke中的快照同样经CLI隔离，五个旧alias统一managed CLI。四个明确producer生成16份本批实际中英目录/列表/拒绝文本并已逐例独立全文通过，来源与完整原值/断言审查见[本批记录](../tests/semantic/reviews/2026-10-31-tool-data-boundaries.json)。这是四个具体producer的现有材料，不是重采或接受三套完整语义lane；后续新输出仍待主观评审。本批没有产品代码改动或新产品red，不虚构缺陷来证明整改。
 
 当前288个TypeScript文件、36个辅助/证据模块、252个候选，已审192项、余60项，套件外58项、无单独脚本41项，失效直接入口与陈旧账本均零。配置9、手册7、文件工具15、smoke10和运行器6的实际执行全部通过；全目录测试类型检查仍为原5条失败、改动源零错误，继续后续批次，不以本批通过宣称全部测试已完成。
+
+### Taskdoc 共享状态、角色边界与 Unicode 预算批次
+
+原task-package 576行、taskdoc-search 70行完整审阅，旧基线2/2。沿袭resident与bearinmind给定正文/顺序、extra仅索引而recall显式读取、创建/追加/替换/删除及missing/重复/非法/旧格式/stale拒绝、规范磁盘换行与空正文、并发同版本单胜等原值。删除所有指导句、human/工具名关键词、标题、分隔符与显示空白邻接的语义/排版oracle；物理文件完整正文、CRC32 token和规范LF是实际数据契约，保留精确断言。公开recall返回的版本token实际喂给change，独立Python CRC32(b'123456789\n')=e0117757锚定规范化向量，而非只让同一个compute函数两端自洽。
+
+原Side do_mind目标本身非法、change_mind又缺hash；只改成failure会让角色guard丢失仍假绿。现四项均使用Main实际可成功的合法输入，每次Side拒绝核完整Taskdoc树/字节不变，再以相同参数在独立Main包执行并核准确文件效果。真正Promise.all同一recall token并发仍只一成功一失败，最终磁盘必须等于实际成功请求，不只“两者之一”；范围限进程内每文件锁。原假store/caller与原始数字brand换为Disk/Main/Side/真实成员和公开转换，两条继承类型错误消除。首轮新源码的循环类型推断以公共ToolCallOutput[]显式标注修复，不以any/排除源文件遮盖。前后树一致只证明数据保全，metadata收窄为packageUnchanged，不声称观察了零read/write syscall。
+
+prefix-sibling实际建独占自有包及正文，formatter不得注入它、合法append被拒后完整树保持；失败现场保留，全部成功后才清理。legacy文件也有真实给定正文作为非注入对照，formatter不自动建缺失包。搜索改自有明确根，保根/嵌套忽略和三个精确排序路径及空包可发现，补默认忽略、包内不递归；目录与resident文件设已知不同mtime，大小/时间直接关联实际源文件。原小型bearinmind示例只证明白名单与顺序，没有冒称验证整包100KiB注入阈值。
+
+初52份实际中英文材料逐例全文评审为46通过、6拒绝：四份Side缺章/已有章/extra-index指导在禁止写的首尾之外仍向当前Side推荐直接写；两份额外章节已存在的恢复示例丢了category。现仅按现有Side身份分支修共享指导，保recall可用并明确把写提案交Main维护者；duplicate恢复例由实际category/selector构造，先取当前hash、合并再替换。没有放松角色/参数/CRC协议，没有新增运行时类型或架构组件。
+
+另在真实Unicode章节复现字节预算缺陷：120047字节给定正文完整返回，120204字节回执却声称只展示前102400bytes。原初回归失败并保一份英文实际材料，中文因前一失败未执行，不虚构第二结论；该英文全文也被独立拒绝。强化后的相同测试源在旧产品再次实际失败：独立计算期望UTF-8原始前缀，以唯一给定head与最大é串识别实际正文数据，不解析自然语言标签或冻结Markdown布局；正文自身不得借用4KiB回执开销。修复仅用Node StringDecoder按既有100KiB字节界限保完整UTF-8前缀，不flush出虚构替代字符，notice说明最多字节数与字符边界。新中英实际前缀各102399bytes、原tail不回传，文件保全；与token预算、峰值内存或整包注入阈值是不同范围。更早临时探针的CJS/top-level-await转译失败不是产品red，单列为探针夹具失误。
+
+新增test:taskdoc三项实际行为入口及test:semantic:taskdoc两个明确producer，新的52份加Unicode2份共54份均须全新逐例评审，不沿用初46个verdict。初53份的46通过7拒绝、完整实际原文/上下文、红证、来源和最终独立结论见[本批记录](../tests/semantic/reviews/2026-10-31-taskdoc-state.json)。新预算回归是为实际产品缺陷建立的候选，不是纯formatter辅助模块；Taskdoc search只有机器断言，不算语义producer。当前289个TypeScript文件、36个辅助/证据模块、253个候选，审查195项、余58项，套件外56项、无单独脚本41项，直接失效入口/陈旧账本均零。完整测试类型检查仍为其他provider三条失败、改动源零错误；测试框架、依赖和源码排除均未改变。

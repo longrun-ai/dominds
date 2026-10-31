@@ -182,7 +182,9 @@ const shell = [
   'ripgrep-streaming.ts',
   'ripgrep-windows-compat.ts',
 ];
+const taskdoc = ['task-package.ts', 'taskdoc-search.ts', 'taskdoc-recall-budget.ts'];
 const semanticSuites = {
+  taskdoc: ['task-package.ts', 'taskdoc-recall-budget.ts'],
   shell: shell.filter((file) => file !== 'toolsets/shell-cmd-capture-env.ts'),
   components,
   presentation: ['semantic/model-presentation.ts', 'semantic/context-usage-title.ts'],
@@ -350,6 +352,7 @@ export async function inventory() {
     presentation,
     components,
     shell,
+    taskdoc,
   };
   const included = new Set(Object.values(suites).flat());
   const audit = JSON.parse(await fs.readFile(path.join(testsRoot, 'audit.json'), 'utf8'));
@@ -475,10 +478,11 @@ async function main() {
       'presentation',
       'components',
       'shell',
+      'taskdoc',
     ].includes(args[1])
   ) {
     throw new Error(
-      'Usage: node tests/run.mjs --list | --suite smoke | --suite kernel | --suite context [--semantic] | --suite configuration [--semantic] | --suite manual [--semantic] | --suite filesystem [--semantic] | --suite persistence [--semantic] | --suite recovery [--semantic] | --suite bootstrap [--semantic] | --suite packaging [--semantic] | --suite retry [--semantic] | --suite projection [--semantic] | --suite compatible [--semantic] | --suite reminders [--semantic] | --suite daemon [--semantic] | --suite presentation [--semantic] | --suite components [--semantic] | --suite shell [--semantic]',
+      'Usage: node tests/run.mjs --list | --suite smoke | --suite kernel | --suite context [--semantic] | --suite configuration [--semantic] | --suite manual [--semantic] | --suite filesystem [--semantic] | --suite persistence [--semantic] | --suite recovery [--semantic] | --suite bootstrap [--semantic] | --suite packaging [--semantic] | --suite retry [--semantic] | --suite projection [--semantic] | --suite compatible [--semantic] | --suite reminders [--semantic] | --suite daemon [--semantic] | --suite presentation [--semantic] | --suite components [--semantic] | --suite shell [--semantic] | --suite taskdoc [--semantic]',
     );
   }
   const suite = args[1];

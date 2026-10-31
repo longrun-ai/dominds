@@ -1152,6 +1152,24 @@
       "lane": "configuration",
       "value": "真实Team YAML绑定中的主/支线控制工具、直接赋予/工具集选择与shell specialist过滤的公开ID集合矩阵，仅快照组件",
       "evidence": "Complete original5(468lines)/final assertion and execution-scope review; tests/semantic/reviews/2026-10-31-tool-data-boundaries.json. Supplied identifiers/file bytes, protocol fields, counts and effects are machine/data evidence; no Added/omission/duplicate/signature sentence judges natural-language meaning. Four explicit producers emit16 actual semantic records for independent subjective review. Availability is pure machine acceptance, not a semantic producer; future output always starts pending."
+    },
+    "task-package.ts": {
+      "status": "reviewed",
+      "lane": "taskdoc",
+      "value": "原生共享Taskdoc章节读写/recall、完整内容与规范LF、独立CRC向量、实际版本token并发单胜和Main/Side合法同参对照；全文指导另评",
+      "evidence": "Original2(646lines) and complete new3/assertion/support/scope review; tests/semantic/reviews/2026-10-31-taskdoc-state.json. Exact supplied file/body data, persisted effects, role refusal controls and public CRC32 token are machine contracts, never natural-language oracles. Two explicit producers emit54 fresh actual records for independent subjective review; initial52(46pass/6fail) plus initial Unicode1 failed are preserved, not accepted by hashes. Same-process per-file locking is not cross-process CAS. No keyword detector, test exclusion, new dependency/framework or permission relaxation."
+    },
+    "taskdoc-search.ts": {
+      "status": "reviewed",
+      "lane": "taskdoc",
+      "value": "真实自有根内根/嵌套/default忽略、精确排序Taskdoc集合/封装不递归及实际源文件大小时间元数据，保空包可发现",
+      "evidence": "Original2(646lines) and complete new3/assertion/support/scope review; tests/semantic/reviews/2026-10-31-taskdoc-state.json. Exact supplied file/body data, persisted effects, role refusal controls and public CRC32 token are machine contracts, never natural-language oracles. Two explicit producers emit54 fresh actual records for independent subjective review; initial52(46pass/6fail) plus initial Unicode1 failed are preserved, not accepted by hashes. Same-process per-file locking is not cross-process CAS. No keyword detector, test exclusion, new dependency/framework or permission relaxation."
+    },
+    "taskdoc-recall-budget.ts": {
+      "status": "reviewed",
+      "lane": "taskdoc",
+      "value": "真实大Unicode章节在100KiB正文预算内返回精确有效UTF8原前缀、不用回执开销掩盖超限、文件不变；相同源旧产品实测失败",
+      "evidence": "Original2(646lines) and complete new3/assertion/support/scope review; tests/semantic/reviews/2026-10-31-taskdoc-state.json. Exact supplied file/body data, persisted effects, role refusal controls and public CRC32 token are machine contracts, never natural-language oracles. Two explicit producers emit54 fresh actual records for independent subjective review; initial52(46pass/6fail) plus initial Unicode1 failed are preserved, not accepted by hashes. Same-process per-file locking is not cross-process CAS. No keyword detector, test exclusion, new dependency/framework or permission relaxation."
     }
   },
   "retired": {

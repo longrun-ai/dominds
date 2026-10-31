@@ -85,7 +85,9 @@
     "test:components": "node tests/run.mjs --suite components",
     "test:semantic:components": "node tests/run.mjs --suite components --semantic",
     "test:shell": "node tests/run.mjs --suite shell",
-    "test:semantic:shell": "node tests/run.mjs --suite shell --semantic"
+    "test:semantic:shell": "node tests/run.mjs --suite shell --semantic",
+    "test:taskdoc": "node tests/run.mjs --suite taskdoc",
+    "test:semantic:taskdoc": "node tests/run.mjs --suite taskdoc --semantic"
   },
   "repository": {
     "type": "git",

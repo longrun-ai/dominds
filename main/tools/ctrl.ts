@@ -34,6 +34,7 @@ import type { ContextHealthSnapshot } from '@longrun-ai/kernel/types/context-hea
 import type { LanguageCode } from '@longrun-ai/kernel/types/language';
 import * as fs from 'fs';
 import * as path from 'path';
+import { StringDecoder } from 'string_decoder';
 import {
   InvalidReminderIndexError,
   SideDialog,
@@ -116,7 +117,11 @@ type CtrlMessages = Readonly<{
   invalidCategorySelector: (selector: string) => string;
   topLevelSelectorRequiresNoCategory: (category: string, selector: string) => string;
   bearInMindSelectorRequiresBearInMindCategory: (category: string, selector: string) => string;
-  taskDocSectionAlreadyExists: (relativePath: string) => string;
+  taskDocSectionAlreadyExists: (
+    relativePath: string,
+    recallArgs: string,
+    changeArgs: string,
+  ) => string;
   taskDocSectionChangeMissing: (relativePath: string) => string;
   taskDocSectionMissing: (relativePath: string) => string;
   taskDocSectionDeleteMissing: (relativePath: string) => string;
@@ -622,8 +627,8 @@ function getCtrlMessages(language: LanguageCode): CtrlMessages {
         `选择器 '${selector}' 是顶层保留分段（goals/constraints/progress），不能与 category='${category}' 一起用。`,
       bearInMindSelectorRequiresBearInMindCategory: (category, selector) =>
         `选择器 '${selector}' 只能在 category='bearinmind' 下用（当前 category='${category}'）。`,
-      taskDocSectionAlreadyExists: (relativePath) =>
-        `无法新增：${relativePath} 已存在。若确有把握要改写已有章节，请先用 recall_taskdoc 取得当前 content_hash，再使用 change_mind({"selector":"<selector>","content":"...","previous_content_hash":"crc32:..."})。`,
+      taskDocSectionAlreadyExists: (relativePath, recallArgs, changeArgs) =>
+        `无法新增：${relativePath} 已存在。若确有把握要改写已有章节，请先用 recall_taskdoc(${recallArgs}) 取得该章节当前的 content_hash，合并原有内容后再使用 change_mind(${changeArgs})；示例中的 previous_content_hash 必须替换为实际返回值。`,
       taskDocSectionChangeMissing: (relativePath) =>
         `无法修改：${relativePath} 不存在。若要新增章节，请使用 do_mind({ ... })。`,
       taskDocSectionMissing: (relativePath) =>
@@ -711,8 +716,8 @@ function getCtrlMessages(language: LanguageCode): CtrlMessages {
       `Error: Selector '${selector}' is reserved for top-level sections (goals/constraints/progress) and must not be used with category='${category}'.`,
     bearInMindSelectorRequiresBearInMindCategory: (category, selector) =>
       `Error: Selector '${selector}' is only valid under category='bearinmind' (got category='${category}').`,
-    taskDocSectionAlreadyExists: (relativePath) =>
-      `Cannot add: \`${relativePath}\` already exists. If you are sure you need to rewrite an existing section, call \`recall_taskdoc\` for the current content_hash first, then use \`change_mind({"selector":"<selector>","content":"...","previous_content_hash":"crc32:..."})\`.`,
+    taskDocSectionAlreadyExists: (relativePath, recallArgs, changeArgs) =>
+      `Cannot add: \`${relativePath}\` already exists. If you are sure you need to rewrite it, call \`recall_taskdoc(${recallArgs})\` for that section\'s current content_hash, merge the existing content, then use \`change_mind(${changeArgs})\`; replace the example previous_content_hash with the actual returned value.`,
     taskDocSectionChangeMissing: (relativePath) =>
       `Cannot change: \`${relativePath}\` does not exist. To create a new section, use \`do_mind({ ... })\`.`,
     taskDocSectionMissing: (relativePath) =>
@@ -1393,10 +1398,16 @@ export const doMindTool: FuncTool = {
     switch (result.kind) {
       case 'created':
         return formatToolActionResult(language, 'mindChanged');
-      case 'exists':
+      case 'exists': {
+        const targetArgs = category ? { category, selector } : { selector };
         return toolFailure(
-          t.taskDocSectionAlreadyExists(taskPackageRelativePathForChangeMindTarget(parsed.target)),
+          t.taskDocSectionAlreadyExists(
+            taskPackageRelativePathForChangeMindTarget(parsed.target),
+            JSON.stringify(targetArgs),
+            JSON.stringify({ ...targetArgs, content: '...', previous_content_hash: 'crc32:...' }),
+          ),
         );
+      }
       default: {
         const _exhaustive: never = result;
         return _exhaustive;
@@ -1767,12 +1778,17 @@ export const recallTaskdocTool: FuncTool = {
     const content = current.content;
     const bytes = Buffer.byteLength(content, 'utf8');
     const maxSize = 100 * 1024;
-    const clipped = bytes > maxSize ? content.slice(0, maxSize) : content;
+    // Keep the published byte budget and discard any cut trailing UTF-8 sequence.
+    // Do not flush the decoder: that would invent a replacement character.
+    const clipped =
+      bytes > maxSize
+        ? new StringDecoder('utf8').write(Buffer.from(content, 'utf8').subarray(0, maxSize))
+        : content;
     const note =
       bytes > maxSize
         ? language === 'zh'
-          ? `\n\n⚠️ 已截断：内容过大（${bytes} bytes），仅回显前 ${maxSize} bytes。`
-          : `\n\n⚠️ Truncated: content is too large (${bytes} bytes); showing first ${maxSize} bytes.`
+          ? `\n\n⚠️ 已截断：内容过大（${bytes} bytes），仅回显最多 ${maxSize} bytes，并保留完整的 UTF-8 字符。`
+          : `\n\n⚠️ Truncated: content is too large (${bytes} bytes); showing at most ${maxSize} bytes at a complete UTF-8 character boundary.`
         : '';
 
     const closingSeparatorPrefix = clipped.endsWith('\n') ? '' : '\n';

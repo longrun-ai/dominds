@@ -99,8 +99,8 @@
     "kernel-driver:fbr-context-health-closure": "pnpm run rtws -- kernel-driver/fbr-internal-conclusion-flow.ts",
     "kernel-driver:llm-request-failure-single-stream-error": "pnpm run rtws -- kernel-driver/llm-request-failure-single-stream-error.ts",
     "kernel-driver:integration": "node run.mjs --suite kernel",
-    "task-package": "tsx task-package.ts",
-    "taskdoc-search": "tsx taskdoc-search.ts",
+    "task-package": "pnpm run rtws -- --isolated-rtws task-package.ts",
+    "taskdoc-search": "pnpm run rtws -- --isolated-rtws taskdoc-search.ts",
     "team-yaml-parsing": "pnpm run rtws -- team-yaml-parsing.ts",
     "team-imports-members": "tsx team-imports-members.ts",
     "team-file-ext-permissions": "pnpm run rtws -- --isolated-rtws team-file-ext-permissions.ts",
@@ -259,7 +259,10 @@
     "test:shell": "node run.mjs --suite shell",
     "test:semantic:shell": "node run.mjs --suite shell --semantic",
     "shell-cmd-stdin-ignore": "pnpm run rtws -- --isolated-rtws toolsets/shell-cmd-stdin-ignore.ts",
-    "ripgrep-streaming": "pnpm run rtws -- --isolated-rtws ripgrep-streaming.ts"
+    "ripgrep-streaming": "pnpm run rtws -- --isolated-rtws ripgrep-streaming.ts",
+    "test:taskdoc": "node run.mjs --suite taskdoc",
+    "test:semantic:taskdoc": "node run.mjs --suite taskdoc --semantic",
+    "taskdoc-recall-budget": "pnpm run rtws -- --isolated-rtws taskdoc-recall-budget.ts"
   },
   "devDependencies": {
     "tsx": "^4.22.4",
