@@ -8,6 +8,7 @@ From the repository root:
 
 ```bash
 pnpm test
+pnpm run test:local
 pnpm run test:kernel
 pnpm run test:context
 pnpm run test:configuration
@@ -62,6 +63,7 @@ pnpm run test:provider-live
 ```
 
 - `test`: a small local smoke suite; not full product, browser, packaging, or provider coverage.
+- `test:local`: deduplicates every registered local behavior case, including the JavaScript runner controls, and excludes live-provider and external-Web-Dev lanes. Build first; packaging requires the existing pinned toolchain and local dependencies. This is machine behavior acceptance within each declared boundary, never fresh semantic, real-browser, real-vendor or native-Windows acceptance.
 - `test:kernel`: discovers TypeScript cases under `kernel-driver/`, excluding its helper, and the registered-session dedupe case under `tellask/`. The latter verifies same-generation worker reuse, completed result delivery, preserved history and replacement under a durable dead marker; it does not exercise the WebSocket cancellation pipeline. Each runs in an isolated rtws. Failures do not prevent subsequent cases. `kernel-driver:integration` delegates here.
 - `test:context`: runs eight local cases for generation-boundary eligibility/language fallback, public preservation/countdown decisions, supplied continuation-body fidelity, retry preparation, real budget consumption/manual continuation, exhaustion notices and global event forwarding. Policy/forwarding components do not establish actual WebSocket user delivery or side-dialog creation; actual critical-turn and queued-message driving is exercised by `test:kernel`.
 - `test:configuration`: seventeen isolated regressions for team configuration, extension rules against actual file access, capability boundaries, manual payload fidelity, MCP reload and Problems lifecycle. Only external MCP peers are replaced; no live providers or installed components are required.
@@ -73,8 +75,8 @@ pnpm run test:provider-live
 - `test:semantic:apps:external`: the same four scenarios emit complete actual guidance, diagnostics and context for independent review when the component is available. Without it, all four remain unexecuted and no component semantic material is accepted. The [external Web Dev audit](./audits/2026-10-31-external-web-dev.json) records assertion design, actual prerequisite/control evidence and that limitation; its preflight guidance review cannot accept future component output.
 - `test:manual`: eight isolated cases for language normalization, actual mind assets and skill scope/permissions, snippet paths, manual visibility and the original prose budget.
 - `test:types`: checks the full test directory against the current public contracts. Report actual diagnostics as failures; do not weaken types or exclude cases to obtain a green result.
-- `test:inventory`: sources, support files, discovered suites, outside-suite candidates, and candidates without package scripts. These counts are not behavior coverage. Unknown candidates can be live probes or external integrations; inspect prerequisites before executing them.
-- `test:runner`: verifies failure continuation, timeouts, evidence retention, cleanup, and discovery.
+- `test:inventory`: TypeScript/JavaScript sources, support, suite membership, direct script targets and missing/pending/stale source-review records. It reports gaps without dispatching tests or accepting their design. These counts and current source identities are not behavior or semantic coverage.
+- `test:runner`: runs the actual Node test-runner controls through the same source-review gate; verifies failure continuation, timeouts, evidence retention, cleanup, discovery, prerequisite boundaries and refusal before dispatch when review is missing or stale.
 - `test:semantic`: emits actual natural-language output, context, business value, and review questions. Evidence is **pending subjective review by a test-execution agent**, not automatically passed.
 - `test:semantic:context`: three producers emit thirty preservation, interjection, new-course, continuation/routing and actual budget-notice cases. The notices include zero initial allowance in both languages and two consumed nudges through streaming/batch execution. Every actual output remains pending subjective review after generation.
 - `test:semantic:configuration`: reruns the configuration scenarios with `--semantic` and emits full diagnostics, manual guidance and supplied configuration. It reports pending review, including when its machine assertions pass.
@@ -151,7 +153,7 @@ The [provider-probe review](./semantic/reviews/2026-10-31-provider-probes.json) 
 
 Transport probes retain the five original opaque command/PID payloads, two native request modes, dual-function A/B payloads, supplied JSON field identifiers, preseeded history and actual two-turn captured reasoning/provider-data replay. Function tools are capture-only and cannot execute shell commands, read an environment value or stop a process. Full supplied input and observed reply data are saved with `semanticAcceptance: not-assessed`. Automatic results establish the stated protocol/data/lifecycle facts and do not judge task meaning, prose, reasoning quality or real-time delivery. The local control uses39 actual HTTP requests through the OpenAI-compatible SDK; its three legacy streaming filenames do not establish three native SDKs. All eleven real-vendor paths remain **UNEXECUTED** in this batch. The custom-provider setup case remains local, not a live prerequisite skip.
 
-The [assertion audit ledger](./audit.json) records which candidate tests have actually been reviewed, their business value, lane and evidence. Inventory exposes unaudited candidates and stale ledger paths. Neither suite membership nor a prior ledger entry decides the meaning of freshly generated output.
+The [assertion audit ledger](./audit.json) records reviewed candidate value, explicit lane, evidence and reviewedSourceSha256; its support records bind shared executable test support too. Normal root suites reject missing, pending or changed source identities, invalid lanes and records for removed source before dispatch. Inventory exposes those gaps without execution. Source identities establish review scope only: neither suite membership nor a ledger/hash decides assertion quality or the meaning of fresh output.
 
 Place new shared helper modules in `tests/helpers/`; the remaining files in the discovered kernel directory are executable cases, not helper-only modules that can exit without assertions.
 
@@ -176,6 +178,8 @@ Scripts resolve repository-internal contracts through `tests/tsconfig.json`. Dir
 Literal matching is never a semantic oracle. Do not use keywords, regexes, fixed sentences, snapshots, or source snippets to judge the meaning of prompts, manuals, guidance, or explanations. Delete low-value checks; valuable semantic requirements emit full actual output and context for subjective agent review. Keep the verdict, reasons, and evidence. Unreviewed output stays pending. Exact assertions are for real machine contracts, identifiers, state, counts, and effects, not disguised natural-language judgments.
 
 Review added and changed assertions before accepting tests and again before committing. A semantic literal-match assertion blocks acceptance. Do not replace that review with a keyword-based detector. The inherited candidate audit is recorded in the remediation plan and ledger; rediscovery does not certify design or execute an unavailable lane. New and changed tests require the same complete assertion review.
+
+Before updating a source identity, read the complete changed test/helper diff, explain every assertion's machine contract or business effect, and complete valuable semantic review with full actual text. Update the ledger only after that review; there is no automatic acceptance command. Shared support changes require review of their actual callers and affected scope. Direct CLI/debug runs and semantic evidence generation remain available during remediation; they do not grant acceptance. Normal summaries retain source-review identity status and keep semantic acceptance separate.
 
 Keep accepted semantic review records under `tests/semantic/reviews/`, including per-case rationale, scope, and evidence/source provenance. Generated text can be recreated from the reviewed revision; hashes only identify that material. These records are review evidence, never golden snapshots or an oracle for accepting future wording. A fresh generation starts pending review even when an older record passed.
 

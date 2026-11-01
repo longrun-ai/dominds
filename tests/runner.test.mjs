@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import { execFile } from 'node:child_process';
+import { createHash } from 'node:crypto';
 import fs from 'node:fs/promises';
 import { createRequire } from 'node:module';
 import os from 'node:os';
@@ -359,5 +360,196 @@ test('component prerequisite skips require the declared component boundary and n
   } finally {
     if (completed) await fs.rm(logDir, { recursive: true, force: true });
     else console.error('Component prerequisite fixture retained: ' + logDir);
+  }
+});
+
+test('normal dispatch requires current assertion review for new cases, changed source, helpers and lanes', async () => {
+  const directory = await fs.mkdtemp(path.join(os.tmpdir(), 'dominds-review-gate-'));
+  const marker = path.join(directory, 'executed.jsonl');
+  let completed = false;
+  try {
+    const catalog = await inventory();
+    await fs.copyFile(path.join(import.meta.dirname, 'run.mjs'), path.join(directory, 'run.mjs'));
+    await fs.symlink(
+      path.join(import.meta.dirname, '..', 'node_modules'),
+      path.join(directory, 'node_modules'),
+      'dir',
+    );
+    // Reuse the actual isolated CLI for those smoke entries that require it.
+    await fs.writeFile(path.join(directory, 'package.json'), JSON.stringify({ scripts: {} }));
+    await fs.writeFile(
+      path.join(directory, 'tsconfig.json'),
+      JSON.stringify({ compilerOptions: { module: 'CommonJS', target: 'ES2022' } }),
+    );
+    const sources = Object.fromEntries(
+      catalog.suites.smoke.map((file) => [
+        file,
+        'require("node:fs").appendFileSync(' +
+          JSON.stringify(marker) +
+          ',' +
+          JSON.stringify(JSON.stringify({ executed: file }) + '\n') +
+          ');',
+      ]),
+    );
+    sources['helpers/provided.ts'] = 'export const payload = "provided-helper-data-48d7";\n';
+    sources['cli.ts'] = [
+      'const path = require("node:path");',
+      'const separator = process.argv.indexOf("--");',
+      'const index = separator >= 0 ? separator + 1 : 2;',
+      'process.argv[index] = path.resolve(__dirname, process.argv[index]);',
+      'require(' + JSON.stringify(path.join(import.meta.dirname, 'cli.ts')) + ');',
+    ].join('\n');
+
+    sources['run.mjs'] = await fs.readFile(path.join(directory, 'run.mjs'), 'utf8');
+    const ledger = { cases: {}, support: {} };
+    for (const [file, text] of Object.entries(sources)) {
+      const support = file === 'run.mjs' || file === 'cli.ts' || file.startsWith('helpers/');
+      const record = {
+        status: 'reviewed',
+        reviewedSourceSha256: createHash('sha256').update(text).digest('hex'),
+        evidence: 'provided-review-reference-53c8',
+      };
+      (support ? ledger.support : ledger.cases)[file] = support
+        ? record
+        : { ...record, lane: 'smoke', value: 'provided-dispatch-control-value-18af' };
+    }
+    const reset = async () => {
+      await fs.rm(marker, { force: true });
+      await fs.rm(path.join(directory, 'new-candidate.ts'), { force: true });
+      for (const [file, text] of Object.entries(sources)) {
+        await fs.mkdir(path.dirname(path.join(directory, file)), { recursive: true });
+        await fs.writeFile(path.join(directory, file), text);
+      }
+      await fs.writeFile(path.join(directory, 'audit.json'), JSON.stringify(ledger));
+    };
+    const invoke = (args) =>
+      new Promise((resolve) => {
+        execFile(
+          process.execPath,
+          [path.join(directory, 'run.mjs'), ...args],
+          { timeout: 15_000 },
+          (error, stdout, stderr) => resolve({ code: error?.code ?? 0, stdout, stderr }),
+        );
+      });
+    await reset();
+    const allowed = await invoke(['--suite', 'smoke']);
+    await fs.writeFile(path.join(directory, 'allowed-result.json'), JSON.stringify(allowed));
+    assert.equal(allowed.code, 0, JSON.stringify(allowed));
+    const executed = (await fs.readFile(marker, 'utf8'))
+      .trim()
+      .split('\n')
+      .map((line) => JSON.parse(line).executed);
+    assert.deepEqual(executed, catalog.suites.smoke);
+
+    const controls = [
+      {
+        id: 'new-candidate',
+        path: 'new-candidate.ts',
+        reason: 'review_required',
+        change: async () =>
+          fs.writeFile(path.join(directory, 'new-candidate.ts'), sources['auth.ts']),
+      },
+      {
+        id: 'changed-candidate',
+        path: 'auth.ts',
+        reason: 'source_changed',
+        change: async () =>
+          fs.appendFile(path.join(directory, 'auth.ts'), '\n// supplied source change\n'),
+      },
+      {
+        id: 'changed-helper',
+        path: 'helpers/provided.ts',
+        reason: 'source_changed',
+        change: async () =>
+          fs.appendFile(
+            path.join(directory, 'helpers/provided.ts'),
+            '\n// supplied helper change\n',
+          ),
+      },
+      {
+        id: 'removed-helper',
+        path: 'helpers/provided.ts',
+        reason: 'reviewed_source_missing',
+        change: async () => fs.rm(path.join(directory, 'helpers/provided.ts')),
+      },
+      {
+        id: 'pending',
+        path: 'auth.ts',
+        reason: 'review_required',
+        edit: (data) => {
+          data.cases['auth.ts'].status = 'pending';
+        },
+      },
+      {
+        id: 'missing-identity',
+        path: 'auth.ts',
+        reason: 'source_identity_missing',
+        edit: (data) => {
+          delete data.cases['auth.ts'].reviewedSourceSha256;
+        },
+      },
+      {
+        id: 'wrong-lane',
+        path: 'auth.ts',
+        reason: 'execution_lane_missing',
+        edit: (data) => {
+          data.cases['auth.ts'].lane = 'provider-live';
+        },
+      },
+    ];
+    const observations = [];
+    for (const control of controls) {
+      await reset();
+      if (control.change) await control.change();
+      if (control.edit) {
+        const changed = structuredClone(ledger);
+        control.edit(changed);
+        await fs.writeFile(path.join(directory, 'audit.json'), JSON.stringify(changed));
+      }
+      const blocked = await invoke(['--suite', 'smoke']);
+      await fs.writeFile(
+        path.join(directory, control.id + '-result.json'),
+        JSON.stringify(blocked),
+      );
+      assert.equal(blocked.code, 1, JSON.stringify({ control: control.id, ...blocked }));
+      const packets = blocked.stderr
+        .trim()
+        .split('\n')
+        .map((line) => JSON.parse(line));
+      assert.equal(packets.length, 1);
+      assert.equal(packets[0].artifact, 'test-source-review-block');
+      assert.equal(packets[0].code, 'source_review_required');
+      assert.equal(packets[0].attemptedCases, 0);
+      assert.deepEqual(packets[0].selectedCases, catalog.suites.smoke);
+      assert.ok(
+        packets[0].sourceReview.issues.some(
+          (row) => row.path === control.path && row.reasons.includes(control.reason),
+        ),
+      );
+      await assert.rejects(fs.access(marker), { code: 'ENOENT' });
+      const listed = await invoke(['--list']);
+      assert.equal(listed.code, 0);
+      assert.equal(JSON.parse(listed.stdout).sourceReview.status, 'required');
+      observations.push({
+        id: control.id,
+        code: blocked.code,
+        packet: packets[0],
+        inventoryCode: listed.code,
+        inventorySourceReview: JSON.parse(listed.stdout).sourceReview,
+        actualScriptExecutions: [],
+      });
+      await assert.rejects(fs.access(marker), { code: 'ENOENT' });
+    }
+    console.log(
+      JSON.stringify({
+        artifact: 'source-review-dispatch-controls',
+        actualAllowedExecutions: executed,
+        controls: observations,
+      }),
+    );
+    completed = true;
+  } finally {
+    if (completed) await fs.rm(directory, { recursive: true, force: true });
+    else console.error('Source review dispatch fixture retained: ' + directory);
   }
 });

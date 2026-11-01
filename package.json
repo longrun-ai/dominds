@@ -50,7 +50,7 @@
     "build:backend": "node ./scripts/build-backend.mjs",
     "test:kernel": "node tests/run.mjs --suite kernel",
     "test:inventory": "node tests/run.mjs --list",
-    "test:runner": "node --test tests/runner.test.mjs",
+    "test:runner": "node tests/run.mjs --suite runner",
     "test:semantic": "node ./scripts/run-pnpm.mjs -C tests run test:semantic",
     "test:context": "node tests/run.mjs --suite context",
     "test:semantic:context": "node tests/run.mjs --suite context --semantic",
@@ -98,7 +98,8 @@
     "test:apps:runtime": "node tests/run.mjs --suite apps-runtime",
     "test:semantic:apps:runtime": "node tests/run.mjs --suite apps-runtime --semantic",
     "test:apps:external": "node tests/run.mjs --suite apps-external",
-    "test:semantic:apps:external": "node tests/run.mjs --suite apps-external --semantic"
+    "test:semantic:apps:external": "node tests/run.mjs --suite apps-external --semantic",
+    "test:local": "node tests/run.mjs --suite local"
   },
   "repository": {
     "type": "git",

@@ -1,4 +1,5 @@
 import { spawn } from 'node:child_process';
+import { createHash } from 'node:crypto';
 import fs from 'node:fs/promises';
 import { createRequire } from 'node:module';
 import os from 'node:os';
@@ -389,7 +390,7 @@ async function sourceFiles(directory = testsRoot) {
       if (['node_modules', 'script-rtws', 'dist'].includes(entry.name)) return [];
       const absolute = path.join(directory, entry.name);
       if (entry.isDirectory()) return sourceFiles(absolute);
-      return entry.isFile() && entry.name.endsWith('.ts')
+      return entry.isFile() && ['.ts', '.mjs', '.cjs'].some((suffix) => entry.name.endsWith(suffix))
         ? [path.relative(testsRoot, absolute).split(path.sep).join('/')]
         : [];
     }),
@@ -403,7 +404,7 @@ export async function inventory() {
   const registrations = Object.entries(scripts).flatMap(([script, command]) =>
     [
       ...command.matchAll(
-        /(?:tsx|--)\s+(?:(?:--isolated-rtws|--shared-rtws)\s+)*([\w./-]+\.ts)(?:\s|$)/g,
+        /(?:tsx|node(?:\s+--test)?|--)\s+(?:(?:--isolated-rtws|--shared-rtws)\s+)*([\w./-]+\.(?:ts|mjs|cjs))(?:\s|$)/g,
       ),
     ].map((match) => ({
       script,
@@ -425,6 +426,7 @@ export async function inventory() {
     file.startsWith('helpers/') ||
     file.startsWith('semantic/') ||
     [
+      'run.mjs',
       'cli.ts',
       'rtws-script-runner.ts',
       'kernel-driver/helpers.ts',
@@ -462,12 +464,66 @@ export async function inventory() {
     'provider-local': providerLocal,
     'server-local': serverLocal,
     'provider-live': providerLive,
+    runner: ['runner.test.mjs'],
   };
+  const dedicatedSuites = { ...suites };
+  suites.local = [
+    ...new Set(
+      Object.entries(suites)
+        .filter(([name]) => name !== 'provider-live' && name !== 'apps-external')
+        .flatMap(([, members]) => members),
+    ),
+  ];
   const included = new Set(Object.values(suites).flat());
   const audit = JSON.parse(await fs.readFile(path.join(testsRoot, 'audit.json'), 'utf8'));
   const unauditedCandidates = candidates.filter((file) => audit.cases[file]?.status !== 'reviewed');
+  const identities = Object.fromEntries(
+    await Promise.all(
+      files.map(async (file) => [
+        file,
+        createHash('sha256')
+          .update(await fs.readFile(path.join(testsRoot, file)))
+          .digest('hex'),
+      ]),
+    ),
+  );
+  const sourceReviewIssues = [];
+  for (const file of files) {
+    const kind = support(file) ? 'support' : 'candidate';
+    const record = kind === 'support' ? audit.support?.[file] : audit.cases[file];
+    const reasons = [];
+    if (record?.status !== 'reviewed') reasons.push('review_required');
+    if (!record?.reviewedSourceSha256) reasons.push('source_identity_missing');
+    else if (record.reviewedSourceSha256 !== identities[file]) reasons.push('source_changed');
+    if (typeof record?.evidence !== 'string' || !record.evidence.trim())
+      reasons.push('review_evidence_missing');
+    if (kind === 'candidate') {
+      if (typeof record?.value !== 'string' || !record.value.trim())
+        reasons.push('business_value_missing');
+      if (
+        !Object.hasOwn(dedicatedSuites, record?.lane) ||
+        !dedicatedSuites[record.lane].includes(file)
+      )
+        reasons.push('execution_lane_missing');
+    }
+    if (reasons.length) sourceReviewIssues.push({ path: file, kind, reasons });
+  }
+  for (const [kind, records] of [
+    ['candidate', audit.cases],
+    ['support', audit.support ?? {}],
+  ]) {
+    for (const file of Object.keys(records)) {
+      if (!(kind === 'candidate' ? candidates : files.filter(support)).includes(file))
+        sourceReviewIssues.push({ path: file, kind, reasons: ['reviewed_source_missing'] });
+    }
+  }
   return {
-    typescriptFiles: files.length,
+    typescriptFiles: files.filter((file) => file.endsWith('.ts')).length,
+    executableSourceFiles: files.length,
+    sourceReview: {
+      status: sourceReviewIssues.length ? 'required' : 'current',
+      issues: sourceReviewIssues,
+    },
     supportFiles: files.filter(support),
     candidates: candidates.length,
     suites,
@@ -476,7 +532,7 @@ export async function inventory() {
     missingPackageScriptTargets,
     unauditedCandidates,
     missingAuditedFiles: Object.keys(audit.cases).filter((file) => !candidates.includes(file)),
-    note: 'Discovery and script registration are not measurements of behavior or line coverage. Missing package-script targets cover direct tsx/rtws TypeScript paths, including explicit shared/isolated flags, not arbitrary shell composition. Outside-suite candidates include live probes and external integrations; audit prerequisites before running them.',
+    note: 'Discovery, script registration and current reviewed-source identity are not measurements of assertion quality, behavior or semantic coverage. Missing package-script targets cover direct tsx/rtws and node JavaScript/TypeScript paths, including explicit shared/isolated flags, not arbitrary shell composition. Outside-suite candidates include live probes and external integrations; audit prerequisites before running them.',
   };
 }
 
@@ -675,6 +731,8 @@ async function main() {
     args[0] !== '--suite' ||
     ![
       'smoke',
+      'local',
+      'runner',
       'kernel',
       'context',
       'configuration',
@@ -702,45 +760,63 @@ async function main() {
     ].includes(args[1])
   ) {
     throw new Error(
-      'Usage: node tests/run.mjs --list | --suite smoke | --suite kernel | --suite context [--semantic] | --suite configuration [--semantic] | --suite apps-configuration [--semantic] | --suite apps-runtime [--semantic] | --suite apps-external [--semantic] | --suite manual [--semantic] | --suite filesystem [--semantic] | --suite persistence [--semantic] | --suite recovery [--semantic] | --suite bootstrap [--semantic] | --suite packaging [--semantic] | --suite retry [--semantic] | --suite projection [--semantic] | --suite compatible [--semantic] | --suite reminders [--semantic] | --suite daemon [--semantic] | --suite presentation [--semantic] | --suite components [--semantic] | --suite shell [--semantic] | --suite taskdoc [--semantic] | --suite provider-local [--semantic] | --suite server-local [--semantic] | --suite provider-live [--case <provider/file.ts> --live --provider <id> --model <id>]',
+      'Usage: node tests/run.mjs --list | --suite local | --suite runner | --suite smoke | --suite kernel | --suite context [--semantic] | --suite configuration [--semantic] | --suite apps-configuration [--semantic] | --suite apps-runtime [--semantic] | --suite apps-external [--semantic] | --suite manual [--semantic] | --suite filesystem [--semantic] | --suite persistence [--semantic] | --suite recovery [--semantic] | --suite bootstrap [--semantic] | --suite packaging [--semantic] | --suite retry [--semantic] | --suite projection [--semantic] | --suite compatible [--semantic] | --suite reminders [--semantic] | --suite daemon [--semantic] | --suite presentation [--semantic] | --suite components [--semantic] | --suite shell [--semantic] | --suite taskdoc [--semantic] | --suite provider-local [--semantic] | --suite server-local [--semantic] | --suite provider-live [--case <provider/file.ts> --live --provider <id> --model <id>]',
     );
   }
   const suite = args[1];
   if (semantic && !Object.hasOwn(semanticSuites, suite)) {
     throw new Error('--semantic requires a suite with explicit evidence producers');
   }
+  const catalog = await inventory();
   const files = selectedLiveCase
     ? [selectedLiveCase]
     : semantic
       ? semanticSuites[suite]
-      : (await inventory()).suites[suite];
+      : catalog.suites[suite];
   if (!files.length) throw new Error(`Suite ${suite} discovered no tests`);
+  if (!semantic && catalog.sourceReview.status !== 'current') {
+    console.error(
+      JSON.stringify({
+        artifact: 'test-source-review-block',
+        code: 'source_review_required',
+        attemptedCases: 0,
+        selectedCases: files,
+        sourceReview: catalog.sourceReview,
+      }),
+    );
+    process.exitCode = 1;
+    return;
+  }
   const tsx = require.resolve('tsx/cli');
   const cases = files.map((file) => ({
     id: file,
     ...(suite === 'provider-live' ? { skipExitCode: 77, requireLiveEvidence: true } : {}),
     ...(suite === 'apps-external' ? { skipExitCode: 77, prerequisiteBoundary: 'component' } : {}),
     args:
-      (suite !== 'smoke' && suite !== 'packaging') ||
-      persistence.includes(file) ||
-      recovery.includes(file) ||
-      presentation.includes(file) ||
-      configuration.includes(file)
-        ? [
-            tsx,
-            path.join(testsRoot, 'cli.ts'),
-            '--',
-            file,
-            ...liveArgs,
-            ...(semantic ? ['--semantic'] : []),
-          ]
-        : [
-            tsx,
-            '--tsconfig',
-            path.join(testsRoot, 'tsconfig.json'),
-            path.join(testsRoot, file),
-            ...(semantic ? ['--semantic'] : []),
-          ],
+      file === 'runner.test.mjs'
+        ? ['--test', path.join(testsRoot, file)]
+        : (suite !== 'smoke' &&
+              suite !== 'packaging' &&
+              !(suite === 'local' && packaging.includes(file))) ||
+            persistence.includes(file) ||
+            recovery.includes(file) ||
+            presentation.includes(file) ||
+            configuration.includes(file)
+          ? [
+              tsx,
+              path.join(testsRoot, 'cli.ts'),
+              '--',
+              file,
+              ...liveArgs,
+              ...(semantic ? ['--semantic'] : []),
+            ]
+          : [
+              tsx,
+              '--tsconfig',
+              path.join(testsRoot, 'tsconfig.json'),
+              path.join(testsRoot, file),
+              ...(semantic ? ['--semantic'] : []),
+            ],
   }));
   const logDir = await fs.mkdtemp(
     path.join(os.tmpdir(), `dominds-tests-${suite}${semantic ? '-semantic' : ''}-`),
@@ -753,6 +829,9 @@ async function main() {
     keepSuccessfulState: semantic || suite === 'provider-live' || suite === 'apps-external',
     report: semantic ? (line) => console.log(`GENERATION PROCESS ${line}`) : console.log,
   });
+  summary.sourceReview = catalog.sourceReview;
+  summary.semanticAcceptance = semantic ? 'pending' : 'not-assessed';
+  await fs.writeFile(path.join(logDir, 'summary.json'), JSON.stringify(summary, null, 2) + '\n');
   if (semantic) {
     await fs.writeFile(
       path.join(logDir, 'summary.json'),
