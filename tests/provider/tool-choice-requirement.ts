@@ -6,7 +6,10 @@ import { resolveCodexToolChoice } from '../../main/llm/gen/codex';
 import { resolveOpenAiToolChoice } from '../../main/llm/gen/openai';
 import { resolveOpenAiCompatibleToolChoice } from '../../main/llm/gen/openai-compatible';
 import type { FuncTool } from '../../main/tool';
+import { semanticEvidenceCollector } from '../helpers/semantic-evidence';
+const evidence = semanticEvidenceCollector('dominds-provider-tool-choice-');
 
+let refusals = 0;
 const baseContext: LlmRequestContext = {
   dialogSelfId: 'tool-choice-test',
   dialogRootId: 'tool-choice-test',
@@ -18,10 +21,11 @@ const openAiTool = {
   description: 'Ask the human.',
   parameters: { type: 'object', properties: {}, additionalProperties: false },
   strict: true,
-} as unknown as Tool;
+} satisfies Tool;
 
 const codexTool: ChatGptTool = {
   type: 'function',
+  strict: false,
   name: 'askHuman',
   description: 'Ask the human.',
   parameters: { type: 'object', properties: {}, additionalProperties: false },
@@ -48,7 +52,27 @@ assert.equal(
 );
 assert.throws(
   () => resolveOpenAiToolChoice([], { ...baseContext, toolUseRequirement: 'required' }),
-  /toolUseRequirement=required but no tools are available/,
+  (error: unknown) => {
+    assert.ok(error instanceof Error);
+    evidence.record({
+      id: 'required-without-tools-' + refusals++,
+      scenario:
+        'A local provider resolver is asked to require a tool with an empty supplied tool list.',
+      businessValue: 'Invalid mandatory-tool requests stop locally with actionable diagnostics.',
+      context: {
+        provider: ['openai', 'codex', 'openai-compatible'][refusals - 1]!,
+        tools: 0,
+        requirement: 'required',
+        compatibleSupportsToolChoice: refusals === 3 ? 'false' : 'not applicable',
+        scope: 'Pure public choice resolver; no request is sent and no tool is executed.',
+      },
+      reviewQuestions: [
+        'Does the actual refusal explain the impossible mandatory-tool request accurately and identify its scope?',
+      ],
+      actualText: error.message,
+    });
+    return true;
+  },
 );
 
 assert.equal(resolveCodexToolChoice([codexTool], baseContext), 'auto');
@@ -62,7 +86,27 @@ assert.equal(
 );
 assert.throws(
   () => resolveCodexToolChoice([], { ...baseContext, toolUseRequirement: 'required' }),
-  /toolUseRequirement=required but no tools are available/,
+  (error: unknown) => {
+    assert.ok(error instanceof Error);
+    evidence.record({
+      id: 'required-without-tools-' + refusals++,
+      scenario:
+        'A local provider resolver is asked to require a tool with an empty supplied tool list.',
+      businessValue: 'Invalid mandatory-tool requests stop locally with actionable diagnostics.',
+      context: {
+        provider: ['openai', 'codex', 'openai-compatible'][refusals - 1]!,
+        tools: 0,
+        requirement: 'required',
+        compatibleSupportsToolChoice: refusals === 3 ? 'false' : 'not applicable',
+        scope: 'Pure public choice resolver; no request is sent and no tool is executed.',
+      },
+      reviewQuestions: [
+        'Does the actual refusal explain the impossible mandatory-tool request accurately and identify its scope?',
+      ],
+      actualText: error.message,
+    });
+    return true;
+  },
 );
 
 assert.equal(resolveOpenAiCompatibleToolChoice([openAiCompatibleTool], baseContext), 'auto');
@@ -96,7 +140,48 @@ assert.throws(
       { ...baseContext, toolUseRequirement: 'required' },
       { supports_tool_choice: false },
     ),
-  /toolUseRequirement=required but no tools are available/,
+  (error: unknown) => {
+    assert.ok(error instanceof Error);
+    evidence.record({
+      id: 'required-without-tools-' + refusals++,
+      scenario:
+        'A local provider resolver is asked to require a tool with an empty supplied tool list.',
+      businessValue: 'Invalid mandatory-tool requests stop locally with actionable diagnostics.',
+      context: {
+        provider: ['openai', 'codex', 'openai-compatible'][refusals - 1]!,
+        tools: 0,
+        requirement: 'required',
+        compatibleSupportsToolChoice: refusals === 3 ? 'false' : 'not applicable',
+        scope: 'Pure public choice resolver; no request is sent and no tool is executed.',
+      },
+      reviewQuestions: [
+        'Does the actual refusal explain the impossible mandatory-tool request accurately and identify its scope?',
+      ],
+      actualText: error.message,
+    });
+    return true;
+  },
 );
 
-console.log('provider tool-choice requirement: PASS');
+for (const requirement of ['auto', 'none'] as const) {
+  assert.equal(
+    resolveOpenAiToolChoice([], { ...baseContext, toolUseRequirement: requirement }),
+    'none',
+  );
+  assert.equal(
+    resolveCodexToolChoice([], { ...baseContext, toolUseRequirement: requirement }),
+    'none',
+  );
+  assert.equal(
+    resolveOpenAiCompatibleToolChoice([], { ...baseContext, toolUseRequirement: requirement }),
+    'none',
+  );
+}
+assert.equal(refusals, 3);
+void evidence
+  .write()
+  .then(() => console.log('provider tool-choice requirement: PASS'))
+  .catch((error: unknown) => {
+    console.error(error);
+    process.exitCode = 1;
+  });

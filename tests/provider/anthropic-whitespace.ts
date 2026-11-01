@@ -2,6 +2,7 @@ import type { MessageStreamEvent } from '@anthropic-ai/sdk/resources/messages';
 
 import type { LlmStreamReceiver } from '../../main/llm/gen';
 import { consumeAnthropicStream } from '../../main/llm/gen/anthropic';
+import { anthropicMessageStart } from '../helpers/anthropic-stream';
 
 function assert(condition: boolean, message: string): void {
   if (!condition) throw new Error(message);
@@ -14,7 +15,9 @@ async function main() {
   let sayingFinishCount = 0;
 
   const receiver: LlmStreamReceiver = {
-    thinkingStart: async () => {},
+    thinkingStart: async () => {
+      throw new Error('Unexpected thinking output');
+    },
     thinkingChunk: async () => {},
     thinkingFinish: async () => {},
     sayingStart: async () => {
@@ -28,60 +31,58 @@ async function main() {
       sayingFinishCount += 1;
       sayingSegments.push(currentSaying);
     },
-    funcCall: async () => {},
-    streamError: async (_detail: string) => {},
+    funcCall: async () => {
+      throw new Error('Unexpected tool output');
+    },
+    streamError: async (detail: string) => {
+      throw new Error(detail);
+    },
   };
 
   async function* events(): AsyncIterable<MessageStreamEvent> {
     // Message 1: split text blocks; indentation at the start of later blocks must be preserved.
-    yield {
-      type: 'message_start',
-      message: { usage: { input_tokens: 0, output_tokens: 0 } },
-    } as unknown as MessageStreamEvent;
+    yield anthropicMessageStart();
 
     yield {
       type: 'content_block_start',
       index: 0,
-      content_block: { type: 'text', text: '' },
-    } as unknown as MessageStreamEvent;
+      content_block: { type: 'text', text: '', citations: null },
+    };
     yield {
       type: 'content_block_delta',
       index: 0,
       delta: { type: 'text_delta', text: 'function foo(\n' },
-    } as unknown as MessageStreamEvent;
-    yield { type: 'content_block_stop', index: 0 } as unknown as MessageStreamEvent;
+    };
+    yield { type: 'content_block_stop', index: 0 };
 
     yield {
       type: 'content_block_start',
       index: 1,
-      content_block: { type: 'text', text: '' },
-    } as unknown as MessageStreamEvent;
+      content_block: { type: 'text', text: '', citations: null },
+    };
     yield {
       type: 'content_block_delta',
       index: 1,
       delta: { type: 'text_delta', text: '  a: string,\n  b: number,\n)' },
-    } as unknown as MessageStreamEvent;
-    yield { type: 'content_block_stop', index: 1 } as unknown as MessageStreamEvent;
+    };
+    yield { type: 'content_block_stop', index: 1 };
 
-    yield { type: 'message_stop' } as unknown as MessageStreamEvent;
+    yield { type: 'message_stop' };
 
     // Message 2: whitespace-only output should still be delivered verbatim.
-    yield {
-      type: 'message_start',
-      message: { usage: { input_tokens: 0, output_tokens: 0 } },
-    } as unknown as MessageStreamEvent;
+    yield anthropicMessageStart();
     yield {
       type: 'content_block_start',
       index: 0,
-      content_block: { type: 'text', text: '' },
-    } as unknown as MessageStreamEvent;
+      content_block: { type: 'text', text: '', citations: null },
+    };
     yield {
       type: 'content_block_delta',
       index: 0,
       delta: { type: 'text_delta', text: '   ' },
-    } as unknown as MessageStreamEvent;
-    yield { type: 'content_block_stop', index: 0 } as unknown as MessageStreamEvent;
-    yield { type: 'message_stop' } as unknown as MessageStreamEvent;
+    };
+    yield { type: 'content_block_stop', index: 0 };
+    yield { type: 'message_stop' };
   }
 
   await consumeAnthropicStream(events(), receiver);

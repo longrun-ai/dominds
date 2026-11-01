@@ -553,3 +553,15 @@ prefix-sibling实际建独占自有包及正文，formatter不得注入它、合
 另在真实Unicode章节复现字节预算缺陷：120047字节给定正文完整返回，120204字节回执却声称只展示前102400bytes。原初回归失败并保一份英文实际材料，中文因前一失败未执行，不虚构第二结论；该英文全文也被独立拒绝。强化后的相同测试源在旧产品再次实际失败：独立计算期望UTF-8原始前缀，以唯一给定head与最大é串识别实际正文数据，不解析自然语言标签或冻结Markdown布局；正文自身不得借用4KiB回执开销。修复仅用Node StringDecoder按既有100KiB字节界限保完整UTF-8前缀，不flush出虚构替代字符，notice说明最多字节数与字符边界。新中英实际前缀各102399bytes、原tail不回传，文件保全；与token预算、峰值内存或整包注入阈值是不同范围。更早临时探针的CJS/top-level-await转译失败不是产品red，单列为探针夹具失误。
 
 新增test:taskdoc三项实际行为入口及test:semantic:taskdoc两个明确producer，新的52份加Unicode2份共54份均须全新逐例评审，不沿用初46个verdict。初53份的46通过7拒绝、完整实际原文/上下文、红证、来源和最终独立结论见[本批记录](../tests/semantic/reviews/2026-10-31-taskdoc-state.json)。新预算回归是为实际产品缺陷建立的候选，不是纯formatter辅助模块；Taskdoc search只有机器断言，不算语义producer。当前289个TypeScript文件、36个辅助/证据模块、253个候选，审查195项、余58项，套件外56项、无单独脚本41项，直接失效入口/陈旧账本均零。完整测试类型检查仍为其他provider三条失败、改动源零错误；测试框架、依赖和源码排除均未改变。
+
+### 本地 provider 流式数据、选择策略与配置批次
+
+原七项1045行完整审阅，旧行为基线6通过1失败：service-tier仍查Volcano已迁移前的anthropic-compatible命名空间。修正为当前openai-compatible并核实际builtin配置、setup DTO和真实team.yaml写入，保持空tier省略、effort及thinking布尔值。用managed CLI固定启动rtws，取消临时chdir及finally清理失败现场。固定Standard/Fast、模型显示名/窗口单位不再裁义；配置到DTO的原label/description逐字保真是已提供数据传输，另将真实显示文字送主观评审。数值阈值/模型ID/参数enum是当前仓库配置契约，不冒称核验供应商规格。
+
+保两tool block不同ID/名称/raw参数、错JSON原样交后续层、给定伪工具正文只作saying且零调用、两个消息流边界及纯空格/跨block缩进、Responses思考空格与saying拼接数据。原首个assistant选择改核全部assistant及总项数；首次重写给user编了错误DTO数组而实际是string，真实6通过1失败及初源保留，收窄断言后7/7，不把夹具错误说成产品red。意外streamError与无预期的思考/调用/正文不再被空回调静默吞掉。三个stream用例共同使用完整SDK message_start DTO，tool caller/text citations补公开字段，去原as unknown事件cast；新helper不是自动通过候选。
+
+错误字符串regex、incomplete状态词、Codex fallback整句/quirk标题/guard语言关键词全部删除。读异常保实际同一Error、一次streamError；partial已有给定思考数据而无finish、坏JSON和无SSE帧通过真实generator+一次intercepted fetch拒绝；genseq0仍必须零读零provider错误。三tool-choice保持auto/required/none及unsupported字段省略，补无tools可选策略none，必需策略实际拒绝。原custom/leading空白/任意marker逐字保真、quirk仅codex且array/string、三模型max/非法effort和auth code fatal保留；提示语义与能力事实分开，未声称配置quirk能保证一分钟思考或提高回答质量。
+
+最终断言复查发现fetch中的夹具assert也可能被failed()当成产品Error吞掉；新增原生AssertionError类型保护。对同一受控错误model断言实测：无guard竟exit0，有guard正确exit1，均为测试设计探针而非产品red；临时源码/日志与完整探针结果耐久记录。只重采stream的五份实际诊断并重新独立全文评审，其余24份保留同一轮已评实际材料，不按hash接受新输出。旧五份实际语义曾通过，但其夹具设计缺口与修正仍保留。
+
+新增test:provider-local七项及test:semantic:provider-local四个明确producer，产生29份实际指导/诊断/catalog/标签上下文供独立全文主观评审，完整材料与最终范围见[本批记录](../tests/semantic/reviews/2026-10-31-provider-local.json)。本批无产品源码变更。当前290个TypeScript文件、37个support、253个候选，审查202项、余51项；套件外49项、缺单独script38项、失效入口/陈旧账本均零。完整test:types仅余Volc live-smoke原never一条，未以any、排除或弱化类型掩盖；本批不运行付费live探针，也不把它们计通过。

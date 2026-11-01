@@ -87,7 +87,9 @@
     "test:shell": "node tests/run.mjs --suite shell",
     "test:semantic:shell": "node tests/run.mjs --suite shell --semantic",
     "test:taskdoc": "node tests/run.mjs --suite taskdoc",
-    "test:semantic:taskdoc": "node tests/run.mjs --suite taskdoc --semantic"
+    "test:semantic:taskdoc": "node tests/run.mjs --suite taskdoc --semantic",
+    "test:provider-local": "node tests/run.mjs --suite provider-local",
+    "test:semantic:provider-local": "node tests/run.mjs --suite provider-local --semantic"
   },
   "repository": {
     "type": "git",

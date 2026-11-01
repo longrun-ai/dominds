@@ -1170,6 +1170,48 @@
       "lane": "taskdoc",
       "value": "真实大Unicode章节在100KiB正文预算内返回精确有效UTF8原前缀、不用回执开销掩盖超限、文件不变；相同源旧产品实测失败",
       "evidence": "Original2(646lines) and complete new3/assertion/support/scope review; tests/semantic/reviews/2026-10-31-taskdoc-state.json. Exact supplied file/body data, persisted effects, role refusal controls and public CRC32 token are machine contracts, never natural-language oracles. Two explicit producers emit54 fresh actual records for independent subjective review; initial52(46pass/6fail) plus initial Unicode1 failed are preserved, not accepted by hashes. Same-process per-file locking is not cross-process CAS. No keyword detector, test exclusion, new dependency/framework or permission relaxation."
+    },
+    "provider/anthropic-multi-tool-use-stream.ts": {
+      "status": "reviewed",
+      "lane": "provider-local",
+      "value": "供应事件中两tool block的ID/名称/raw args隔离、坏JSON原样保留、伪工具正文不变且零调用；错误回调不再静默",
+      "evidence": "Original7(1045lines) and complete final7/native SDK helper assertion review; tests/semantic/reviews/2026-10-31-provider-local.json. Supplied payload/whitespace preservation, identifiers, enum policy, counts, object identity and persisted bytes are machine/data contracts. Four explicit producers emit29 actual records for independent subjective review; no diagnostic, fallback, instruction sentence or display-label literal judges meaning. Local interception/component/configuration scope only; no model compliance, live vendor, elapsed reasoning-time, browser or billing claim. Fresh output always starts pending. Baseline6/7 with stale namespace; initial rewrite projection DTO expectation was a fixture mistake, not product red."
+    },
+    "provider/anthropic-stream-errors.ts": {
+      "status": "reviewed",
+      "lane": "provider-local",
+      "value": "原生读异常同一对象/一次诊断、partial思考不假finish、坏SSE与无frame真实请求拒绝、非法代次零读零provider错误",
+      "evidence": "Original7(1045lines) and complete final7/native SDK helper assertion review; tests/semantic/reviews/2026-10-31-provider-local.json. Supplied payload/whitespace preservation, identifiers, enum policy, counts, object identity and persisted bytes are machine/data contracts. Four explicit producers emit29 actual records for independent subjective review; no diagnostic, fallback, instruction sentence or display-label literal judges meaning. Local interception/component/configuration scope only; no model compliance, live vendor, elapsed reasoning-time, browser or billing claim. Fresh output always starts pending. Baseline6/7 with stale namespace; initial rewrite projection DTO expectation was a fixture mistake, not product red."
+    },
+    "provider/anthropic-whitespace.ts": {
+      "status": "reviewed",
+      "lane": "provider-local",
+      "value": "两个消息开始结束边界、跨text block缩进及纯空格给定数据保真；意外思考/调用/错误不能吞掉",
+      "evidence": "Original7(1045lines) and complete final7/native SDK helper assertion review; tests/semantic/reviews/2026-10-31-provider-local.json. Supplied payload/whitespace preservation, identifiers, enum policy, counts, object identity and persisted bytes are machine/data contracts. Four explicit producers emit29 actual records for independent subjective review; no diagnostic, fallback, instruction sentence or display-label literal judges meaning. Local interception/component/configuration scope only; no model compliance, live vendor, elapsed reasoning-time, browser or billing claim. Fresh output always starts pending. Baseline6/7 with stale namespace; initial rewrite projection DTO expectation was a fixture mistake, not product red."
+    },
+    "provider/openai-whitespace.ts": {
+      "status": "reviewed",
+      "lane": "provider-local",
+      "value": "Responses两项投影与全部assistant给定纯空格thinking+saying数据保真，不再只检查首项",
+      "evidence": "Original7(1045lines) and complete final7/native SDK helper assertion review; tests/semantic/reviews/2026-10-31-provider-local.json. Supplied payload/whitespace preservation, identifiers, enum policy, counts, object identity and persisted bytes are machine/data contracts. Four explicit producers emit29 actual records for independent subjective review; no diagnostic, fallback, instruction sentence or display-label literal judges meaning. Local interception/component/configuration scope only; no model compliance, live vendor, elapsed reasoning-time, browser or billing claim. Fresh output always starts pending. Baseline6/7 with stale namespace; initial rewrite projection DTO expectation was a fixture mistake, not product red."
+    },
+    "provider/codex-instructions.ts": {
+      "status": "reviewed",
+      "lane": "provider-local",
+      "value": "给定系统全文/空白/任意marker保真、provider独占quirk及array/string、effort/鉴权code与内置配置机器值；指导与显示语义另评",
+      "evidence": "Original7(1045lines) and complete final7/native SDK helper assertion review; tests/semantic/reviews/2026-10-31-provider-local.json. Supplied payload/whitespace preservation, identifiers, enum policy, counts, object identity and persisted bytes are machine/data contracts. Four explicit producers emit29 actual records for independent subjective review; no diagnostic, fallback, instruction sentence or display-label literal judges meaning. Local interception/component/configuration scope only; no model compliance, live vendor, elapsed reasoning-time, browser or billing claim. Fresh output always starts pending. Baseline6/7 with stale namespace; initial rewrite projection DTO expectation was a fixture mistake, not product red."
+    },
+    "provider/codex-service-tier.ts": {
+      "status": "reviewed",
+      "lane": "provider-local",
+      "value": "当前namespace的setup公开参数/label数据映射、真实team.yaml空tier省略/effort与thinking保存，失败现场保留",
+      "evidence": "Original7(1045lines) and complete final7/native SDK helper assertion review; tests/semantic/reviews/2026-10-31-provider-local.json. Supplied payload/whitespace preservation, identifiers, enum policy, counts, object identity and persisted bytes are machine/data contracts. Four explicit producers emit29 actual records for independent subjective review; no diagnostic, fallback, instruction sentence or display-label literal judges meaning. Local interception/component/configuration scope only; no model compliance, live vendor, elapsed reasoning-time, browser or billing claim. Fresh output always starts pending. Baseline6/7 with stale namespace; initial rewrite projection DTO expectation was a fixture mistake, not product red."
+    },
+    "provider/tool-choice-requirement.ts": {
+      "status": "reviewed",
+      "lane": "provider-local",
+      "value": "三provider的auto/required/none机器policy、无tool的可选none与必需拒绝、不支持字段省略；说明另评",
+      "evidence": "Original7(1045lines) and complete final7/native SDK helper assertion review; tests/semantic/reviews/2026-10-31-provider-local.json. Supplied payload/whitespace preservation, identifiers, enum policy, counts, object identity and persisted bytes are machine/data contracts. Four explicit producers emit29 actual records for independent subjective review; no diagnostic, fallback, instruction sentence or display-label literal judges meaning. Local interception/component/configuration scope only; no model compliance, live vendor, elapsed reasoning-time, browser or billing claim. Fresh output always starts pending. Baseline6/7 with stale namespace; initial rewrite projection DTO expectation was a fixture mistake, not product red."
     }
   },
   "retired": {
