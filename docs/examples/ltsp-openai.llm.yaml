@@ -1,0 +1,55 @@
+# Merge providers.ltsp-openai into the rtws .minds/llm.yaml; keep existing providers.
+# Set LTSP_OPENAI_API_KEY in the process environment to an approved gateway Virtual Key.
+# No key value belongs in this file.
+providers:
+  ltsp-openai:
+    name: LTSP OpenAI
+    apiType: openai
+    baseUrl: http://172.16.100.254:8080/openai
+    apiKeyEnvVar: LTSP_OPENAI_API_KEY
+    models:
+      openai/gpt-6.1-sol:
+        name: GPT-6.1 Sol
+        supports_image_input: true
+        context_length: 1050000
+        output_length: 128000
+        optimal_max_tokens: 600000
+        critical_max_tokens: 922000
+        caution_remediation_cadence_generations: 10
+        context_window: '1.05M'
+      openai/gpt-6.1-terra:
+        name: GPT-6.1 Terra
+        supports_image_input: true
+        context_length: 1050000
+        output_length: 128000
+        optimal_max_tokens: 600000
+        critical_max_tokens: 922000
+        caution_remediation_cadence_generations: 10
+        context_window: '1.05M'
+      openai/gpt-6-astra:
+        name: GPT-6 Astra
+        supports_image_input: true
+        context_length: 1050000
+        output_length: 128000
+        optimal_max_tokens: 600000
+        critical_max_tokens: 922000
+        caution_remediation_cadence_generations: 10
+        context_window: '1.05M'
+      openai/gpt-6-luna:
+        name: GPT-6 Luna
+        supports_image_input: true
+        context_length: 1050000
+        output_length: 128000
+        optimal_max_tokens: 600000
+        critical_max_tokens: 922000
+        caution_remediation_cadence_generations: 10
+        context_window: '1.05M'
+      openai/gpt-6-sol:
+        name: GPT-6 Sol
+        supports_image_input: true
+        context_length: 1050000
+        output_length: 128000
+        optimal_max_tokens: 600000
+        critical_max_tokens: 922000
+        caution_remediation_cadence_generations: 10
+        context_window: '1.05M'

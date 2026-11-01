@@ -1046,7 +1046,7 @@ providers:
           # Allowed: none | minimal | low | medium | high | xhigh | max
           type: enum
           values: [none, minimal, low, medium, high, xhigh, max]
-          description: Reasoning effort level (when supported by the model).
+          description: Reasoning effort is model dependent. GPT-6 Astra and GPT-6.1 Sol require low or higher; minimal is retained for older models.
         reasoning_summary:
           type: enum
           default: auto
@@ -1060,23 +1060,23 @@ providers:
         verbosity:
           prominent: true
           default: medium
-          # Control response detail level on GPT-5 series models.
+          # Control response detail level on models supporting Responses text.verbosity.
           # Allowed: low | medium | high
           type: enum
           values: [low, medium, high]
-          description: Response verbosity/detail level (GPT-5 series).
+          description: Responses text verbosity/detail level (when supported by the model).
         temperature:
-          # Randomness; use 0–0.2 for tool-calling / deterministic behavior.
+          # Sampling controls depend on the model and reasoning effort.
           type: number
           min: 0
           max: 2
-          description: Sampling temperature (0–2).
+          description: Sampling temperature (0–2) when supported. Omit for GPT-6 reasoning effort other than none.
         top_p:
           # Nucleus sampling; usually leave unset if using temperature.
           type: number
           min: 0
           max: 1
-          description: Nucleus sampling probability (0–1).
+          description: Nucleus sampling probability (0–1) when supported. Omit for GPT-6 reasoning effort other than none.
         parallel_tool_calls:
           type: boolean
           description: Responses `parallel_tool_calls` request parameter.
@@ -1114,6 +1114,59 @@ providers:
           type: boolean
           description: Include `web_search_call.action.sources` in the response payload.
     models:
+      # OpenAI API specifications checked 2026-10-31:
+      # https://developers.openai.com/api/docs/models
+      # These models share a 1,050,000-token total context and 128,000-token output cap.
+      # No separate input_length is asserted: input, output and reasoning share the context.
+      # Keep the existing 1.05M harness policy: caution at 600K, critical at 922K
+      # (total context minus the maximum output allowance). These are Dominds budgets.
+      # Reasoning effort is model-specific: Astra/6.1 Sol require low or higher;
+      # Terra/Luna/6 Sol also accept none. The provider-wide enum retains older model options.
+      gpt-6.1-sol:
+        name: GPT-6.1 Sol
+        supports_image_input: true
+        optimal_max_tokens: 600000
+        critical_max_tokens: 922000
+        caution_remediation_cadence_generations: 10
+        context_length: 1050000
+        output_length: 128000
+        context_window: '1.05M'
+      gpt-6.1-terra:
+        name: GPT-6.1 Terra
+        supports_image_input: true
+        optimal_max_tokens: 600000
+        critical_max_tokens: 922000
+        caution_remediation_cadence_generations: 10
+        context_length: 1050000
+        output_length: 128000
+        context_window: '1.05M'
+      gpt-6-astra:
+        name: GPT-6 Astra
+        supports_image_input: true
+        optimal_max_tokens: 600000
+        critical_max_tokens: 922000
+        caution_remediation_cadence_generations: 10
+        context_length: 1050000
+        output_length: 128000
+        context_window: '1.05M'
+      gpt-6-luna:
+        name: GPT-6 Luna
+        supports_image_input: true
+        optimal_max_tokens: 600000
+        critical_max_tokens: 922000
+        caution_remediation_cadence_generations: 10
+        context_length: 1050000
+        output_length: 128000
+        context_window: '1.05M'
+      gpt-6-sol:
+        name: GPT-6 Sol
+        supports_image_input: true
+        optimal_max_tokens: 600000
+        critical_max_tokens: 922000
+        caution_remediation_cadence_generations: 10
+        context_length: 1050000
+        output_length: 128000
+        context_window: '1.05M'
       gpt-5.6:
         name: GPT-5.6 Sol (alias)
         optimal_max_tokens: 600000

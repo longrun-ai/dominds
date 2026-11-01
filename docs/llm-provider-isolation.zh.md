@@ -39,3 +39,5 @@ Dominds 把每个 LLM provider wrapper 视为独立的协议适配器，而不�
 目前后端在 wrapper 内保留 provider-specific 的 web search 事件类型，再在 `main/llm/kernel-driver/drive.ts` 投影成较窄的 dialog 事件形态。
 
 这个投影层是有意设计的，它就是兼容边界。边界两侧的 wrapper 代码都应继续保持 provider-native。
+
+LTSP本地网关仍按实际协议选择wrapper，官方模型ID与网关wire ID也应分开处理。已验证的Responses接入、当前模型规格及边界见[LTSP OpenAI网关联测](./openai-ltsp-gateway.zh.md)。

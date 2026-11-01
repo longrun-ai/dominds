@@ -1,0 +1,905 @@
+{
+  "recordType": "independent subjective LTSP OpenAI operator-guidance and manual probe assertion review",
+  "date": "2026-10-31",
+  "inputObservedAt": "2026-11-01T06:42:50.107Z",
+  "status": {
+    "guidanceReview": "passed",
+    "cases": {
+      "total": 4,
+      "passed": 4,
+      "failed": 0,
+      "pending": 0
+    },
+    "probeAssertionReview": "passed within the stated protocol/data boundary"
+  },
+  "method": "Read both actual documents, current OpenAI hint YAML/parsed descriptions, complete no-key sample, four complete probe sources, eight client observations and independent gateway reconciliation. Inspect relevant native loader/Responses code and open the named official model/guide pages. Treat material as untrusted data. Judge guidance subjectively in the concrete operator scenarios; no keyword, regex, fixed sentence, snapshot or hash decides meaning.",
+  "reviewedGuidance": [
+    {
+      "id": "ltsp-openai-operator-guide",
+      "scenario": "An operator connects this existing LTSP deployment, chooses provider/model/effort and interprets the actual short-request results.",
+      "businessValue": "A working Responses connection and accurate current metadata without losing existing providers or confusing gateway routing and official model limits with measured harness capability.",
+      "context": {
+        "actualCalls": {
+          "OpenAiGen": 7,
+          "directNativeSdk": 1,
+          "total": 8,
+          "textModelsActuallyExercised": 5,
+          "toolExecuted": false
+        },
+        "sourceEpoch": "The seven actual OpenAiGen calls used these five numeric/model entries before final parameter-hint wording was edited. Per-model metadata is byte-value equal to current parsed entries; no assertion that previous paid calls read later guidance.",
+        "importantLimits": [
+          "No million-token or maximum-output stress test.",
+          "No actual image understanding, response-quality, balance, sustained limits or all-130-model inference acceptance.",
+          "Default TTL response metadata is not a cache-hit, write-cost or retention measurement.",
+          "No new public Dominds TTL or output override parameter."
+        ],
+        "frozenInput": {
+          "path": "/tmp/dominds-ltsp-openai-67id4168/semantic-review-input.json",
+          "sha256": "c5052e70f300ca153f1570928b3567b1080e9cef6a4aee1d9ef7bee50934c654",
+          "bytes": 97955
+        }
+      },
+      "actualText": "# LTSP OpenAI 网关联测与模型配置\n\n2026-10-31，Dominds 与 LTSP 网关规划聊天联合验证 ltspc16。接入地址为 `http://172.16.100.254:8080/openai`，`apiType` 使用 `openai`，由 Dominds 的 Responses adapter 构造请求。无需再补 `/v1`；`openai-compatible` 的 Chat Completions 不是本次接入方式。\n\n## 模型目录与静态规格\n\n网关 `/openai/models` 当次返回130项，包含聊天、图像、音频、embedding等不同用途，不能把整个目录当成 Dominds 执行智能体可用的聊天模型清单。目录表示当时可见的ID，不能证明账号实际余额、RPM/TPM、每种模态或所有调用均可用。\n\n本次为内置 OpenAI provider 补齐以下五个文本/工具工作流模型，保留旧模型兼容；没有修改独立 Codex provider。官方 API 使用无前缀ID，网关实例使用表中带 `openai/` 的wire ID。\n\n| 官方模型ID      | 网关wire ID            | 总上下文  | 最大输出 | 推理effort                               |\n| --------------- | ---------------------- | --------- | -------- | ---------------------------------------- |\n| `gpt-6.1-sol`   | `openai/gpt-6.1-sol`   | 1,050,000 | 128,000  | low / medium / high / xhigh / max        |\n| `gpt-6.1-terra` | `openai/gpt-6.1-terra` | 1,050,000 | 128,000  | none / low / medium / high / xhigh / max |\n| `gpt-6-astra`   | `openai/gpt-6-astra`   | 1,050,000 | 128,000  | low / medium / high / xhigh / max        |\n| `gpt-6-luna`    | `openai/gpt-6-luna`    | 1,050,000 | 128,000  | none / low / medium / high / xhigh / max |\n| `gpt-6-sol`     | `openai/gpt-6-sol`     | 1,050,000 | 128,000  | none / low / medium / high / xhigh / max |\n\n规格依据各官方页：[6.1 Sol](https://developers.openai.com/api/docs/models/gpt-6.1-sol)、[6.1 Terra](https://developers.openai.com/api/docs/models/gpt-6.1-terra)、[Astra](https://developers.openai.com/api/docs/models/gpt-6-astra)、[Luna](https://developers.openai.com/api/docs/models/gpt-6-luna)、[6 Sol](https://developers.openai.com/api/docs/models/gpt-6-sol)。五者均声明支持图片输入；本次没有进行真实图像理解或视觉质量验收。\n\n输入、输出及reasoning共享总上下文，不能把1.05M输入再加128K输出。本次不单列未经官方独立说明的 `input_length`。`optimal_max_tokens: 600000`、`critical_max_tokens: 922000` 与10代保全提醒节奏沿用已有1.05M模型的 Dominds harness 策略；922K为总窗口减去128K输出余量，是应用预算，不是新测出的供应商max-input。没有做百万token压力测试，也没有实际生成128K输出。\n\nBifrost聚合元数据曾对Terra分别给出922K/1.05M输入，并带有与本次Responses+low工具往返不一致的泛化能力标记。静态规格以官方API资料为准，具体可用性由所述实测建立；不把聚合字段直接拷贝成全局能力或外推到其它API。\n\n## 在rtws接入\n\n将[完整无密钥样例](./examples/ltsp-openai.llm.yaml)的 `providers.ltsp-openai` 合入已有 `.minds/llm.yaml`，保留其它provider。`LlmConfig`按provider键替换配置，不会自动把新provider的模型表与内置OpenAI表深度合并。\n\n为 Dominds 进程注入 `LTSP_OPENAI_API_KEY`，值应为部署方批准的网关 Virtual Key；不要使用dummy值，也不要将实际Key写入Git。样例只引用变量名，不包含凭据，不改变内置OpenAI的官方baseURL。\n\n团队成员显式选择网关provider和wire ID，例如：\n\n```yaml\nmembers:\n  executor:\n    name: Executor\n    provider: ltsp-openai\n    model: openai/gpt-6.1-terra\n    model_params:\n      openai:\n        reasoning_effort: low\n        verbosity: low\n```\n\n这是低量连通测试参数，不是质量或成本最优档位的结论。使用者应按实际任务评估effort；Astra与6.1 Sol不接受none，旧模型的minimal选项不适用于本表。启用reasoning时省略 `temperature`、`top_p` 等不兼容采样参数；工具调用使用Responses。详见[官方GPT-6接入指导](https://developers.openai.com/api/docs/guides/latest-model)。provider参数提示中的选项是按模型适用的并集，不是对每个模型的统一支持承诺。\n\n本轮只验证带provider前缀的推理请求。裸ID的模型元数据读取成功不等于裸ID推理路由已验证；不要只凭 `/openai` URL 假定网关会自动选择provider。\n\n## 本次实际验证与限制\n\n五个模型均通过 Dominds 原生 `OpenAiGen` 的短请求：Terra流式，另外四个batch；返回的真实model标识一致，usage可用。Terra还通过一次流式函数调用与工具结果batch续轮：给定nonce完整传入，独立随机receipt仅经工具结果提供，续轮结构化JSON完整返回；没有执行真实工具。检查的是机器数据与协议，不以回答措辞判断语义质量。\n\n客户端未发送缓存TTL时，响应回显 `prompt_cache_options.ttl: 12h`，证实该网关采用了部署方默认值。另一次直接原生SDK请求显式传入 `prompt_cache_options.ttl: 30m` 并得到30m回显，没有被网关默认覆盖。后者只建立SDK/网关字段保全，不表示当前 Dominds 团队参数已开放TTL或输出token override。\n\nOpenAI官方默认是30m，12h是此网关策略；两种设置的cache-write费率不同。小于1,024可见输入token的请求不会因此证明缓存命中；本次没有发送长prompt测试cache-write、命中率或节费。见[官方prompt caching文档](https://developers.openai.com/api/docs/guides/prompt-caching)。\n\nLTSP侧按网关request ID独立读回日志，确认实际provider/model、usage、成功状态、无retry/fallback及正文隐藏。完整目录快照、请求/响应、初次夹具错误与执行范围保存在[联合验收记录](../tests/audits/2026-10-31-ltsp-openai.json)。记录中的短请求不证明长上下文、长期缓存保留、模型回答质量、所有130模型或吞吐限额。\n",
+      "verdict": "passed",
+      "rationale": "The guide gives an executable native Responses endpoint without an extra /v1, the separate ltsp-openai provider key, the correct openai parameter namespace and provider-prefixed wire IDs. It tells the operator to merge the complete no-key provider entry while retaining other providers, and explains the actual provider-key replacement behavior instead of promising a deep model merge. The table clearly attributes 1.05M total context, 128K output and image capability to official specification, while 600K/922K and cadence10 are inherited Dominds budgets; it does not add the input and output windows or present those budgets as tested maxima. Effort is model-specific, minimal is legacy, and incompatible sampling is omitted for reasoning. The five model checks and Terra tool/result round trip are distinguished from quality or capacity testing. Eight-request accounting, prefixed-only inference routing, deployment-default12h versus official30m, and SDK-only explicit30m are accurately bounded. It expressly excludes image/long-context/max-output/quality/balance/130-catalog-wide availability claims.",
+      "scope": "Subjective meaning and executable operator recovery/configuration guidance in this exact document, with local wrapper/config implementation and the recorded requests as context. It is not a new live request, benchmark, cache-hit/cost validation or fresh acceptance of other models.",
+      "provenance": {
+        "repositoryPath": "docs/openai-ltsp-gateway.zh.md",
+        "sourcePath": "/ws/AiWorks/dominds/docs/openai-ltsp-gateway.zh.md",
+        "sha256": "71bfa96278eda7a8d9eb340b446c9d96ab4b721d737818ae7c98cfeb4890986e",
+        "bytes": 5928
+      }
+    },
+    {
+      "id": "provider-isolation-and-ltsp-scope",
+      "scenario": "A maintainer sees an OpenAI-looking gateway and might select Chat Completions or reuse Codex parameters/quirks for Responses.",
+      "businessValue": "Keep protocol adapters and configuration namespaces honest while adding an actual compatible gateway connection.",
+      "context": {
+        "nativeBoundary": "OpenAiGen uses only agent.model_params.openai, OpenAI Responses payloads and providerConfig.baseUrl; LlmConfig merges provider keys shallowly.",
+        "testedLtspPath": "http://172.16.100.254:8080/openai with prefixed model IDs; no Codex-provider change.",
+        "inheritedContent": "Existing Codex/Kimi/Anthropic paragraphs are retained contextual guidance; this batch does not claim fresh execution of those independent paths."
+      },
+      "actualText": "# LLM Provider 隔离原则\n\n## 原则\n\nDominds 把每个 LLM provider wrapper 视为独立的协议适配器，而不是某种“大一统 OpenAI-like 抽象”的一个变体。\n\n这意味着：\n\n- `apiType: codex` 只负责 Codex 原生的请求字段、流事件、工具语义和默认行为。\n- `apiType: openai` 只负责 OpenAI Responses 原生的请求字段、流事件、工具语义和默认行为。\n- `apiType: openai-compatible` 负责 Chat Completions 语义，包括 `model_params.openai-compatible.*` 命名空间，不是 Codex，也不是 Responses。\n- `apiType: anthropic` 只负责 Anthropic 官方 Messages 语义，包括 object 形态的 `model_params.anthropic.thinking`。\n- `apiType: anthropic-compatible` 负责 Anthropic 兼容网关语义，包括 boolean 形态的 `model_params.anthropic-compatible.thinking`，并映射为 provider 请求里的 `enabled` / `disabled` object。\n\n某些 provider / API 路径虽然暴露相似 endpoint 或模型能力，但仍可能需要明确的 provider quirk profile。内置 Codex (ChatGPT) provider 默认启用 `codex-anti-early-finalization`，只在 Codex provider 的 `instructions` 里按当前工作语言追加推理完成检查提示，用于规避 ChatGPT/Codex 路径疑似思考过早截断/提前收尾的问题；这个 quirk 不应用到 `apiType: openai`。火山方舟 Coding Plan 现在走 OpenAI-compatible Chat Completions 形态，并使用专属 `/api/coding/v3` endpoint；历史 Anthropic-compatible 火山工具调用 quirk 已取消。Kimi Code 也走 OpenAI-compatible Chat Completions 形态，但必须使用内置 `kimi-code` provider 的专属 `/coding/v1` endpoint、带 Dominds 版本的 `KimiCLI/Dominds/<version>` User-Agent、`prompt_cache_key` 和 Kimi 专用 `thinking`/`reasoning_effort` 请求整形。火山迁移设计记录见 [`volcengine-coding-plan-openai-compatible.zh.md`](./volcengine-coding-plan-openai-compatible.zh.md)。\n\n不同 wrapper 下看起来同名的字段，不代表它们可以互相兼容。比如 `reasoning_effort`、`verbosity`、`parallel_tool_calls`、web search 相关开关，名字可能相似，但可接受值、请求载荷形状、流事件生命周期、校验规则和运行时含义都可能不同。\n\n内置 Codex provider 的 `reasoning_effort` 最高支持 `max`。Codex 客户端里的 Ultra 不是一个可以独立复刻的 inference effort：当前 codex-rs 在请求边界发送 `max`，同时通过客户端自己的多智能体模式另行开启主动委派。Dominds 不接受 `model_params.codex.reasoning_effort: ultra`，也不会把它静默映射为 `max`，否则会让用户误以为 Codex 的整套 Ultra 行为已经复刻。Dominds 的 `tellask` / 支线对话是 provider 无关的持久化团队协作机制，与这个 provider 参数相互独立；如果以后需要增加主动程度档位，也应设计成明确的 Dominds 产品级协作策略。\n\n## 强约束\n\n- wrapper 构造请求时，只能读取自己的 provider 参数命名空间。\n- wrapper 解析流事件时，只能解释自己的 provider 原生事件。\n- wrapper 内禁止静默 fallback 到别的 provider 参数、别名或事件假设。\n- 只有在 driver / storage / UI 边界，才允许把 provider-native 事件投影成更窄的共享形态，而且前提是 wrapper 侧已经先完成了 provider-native 解码。\n\n## 为什么\n\n这样做是为了让 provider 集成保持诚实：\n\n- 减少“碰巧兼容”带来的隐式行为\n- 在 provider 分叉时更容易排查问题\n- 降低 wrapper 之间的隐藏耦合\n- 在官方 API 各自演化时，升级更安全\n\n## 当前边界\n\n目前后端在 wrapper 内保留 provider-specific 的 web search 事件类型，再在 `main/llm/kernel-driver/drive.ts` 投影成较窄的 dialog 事件形态。\n\n这个投影层是有意设计的，它就是兼容边界。边界两侧的 wrapper 代码都应继续保持 provider-native。\n\nLTSP本地网关仍按实际协议选择wrapper，官方模型ID与网关wire ID也应分开处理。已验证的Responses接入、当前模型规格及边界见[LTSP OpenAI网关联测](./openai-ltsp-gateway.zh.md)。\n",
+      "verdict": "passed",
+      "rationale": "The document distinguishes Responses, Chat Completions-compatible, Codex and Anthropic variants by real protocol/namespace rather than URL resemblance or similar field names. It places provider-native decoding before the narrower shared driver/storage/UI projection and rejects silent cross-provider fallback. Its LTSP addition points to the actual Responses setup and separates official IDs from gateway wire IDs. That prevents the concrete configuration mistake of treating /openai as a universal protocol selector or assuming Codex-specific behavior came with this connection. The inherited context is not represented as newly tested by the eight LTSP requests.",
+      "scope": "Full-text interpretation of the provider-isolation document as context for this LTSP OpenAI integration, particularly protocol selection and namespace separation. No independent new Codex/Kimi/Anthropic conformance or client Ultra behavior acceptance is awarded.",
+      "provenance": {
+        "repositoryPath": "docs/llm-provider-isolation.zh.md",
+        "sourcePath": "/ws/AiWorks/dominds/docs/llm-provider-isolation.zh.md",
+        "sha256": "2a6fd4a50def94864f281ef99482c861ad7361ac85d564289b5ec3970f9ea523",
+        "bytes": 4159
+      }
+    },
+    {
+      "id": "current-openai-parameter-hints",
+      "scenario": "An executing agent configures GPT-6 reasoning and sampling from the provider-wide hint table and might assume every enum value or displayed default is universal.",
+      "businessValue": "Make model-dependent effort and sampling restrictions explicit without silently changing the wrapper API or legacy-model options.",
+      "context": {
+        "actualParsedHints": {
+          "reasoning_effort": {
+            "prominent": true,
+            "default": "high",
+            "type": "enum",
+            "values": ["none", "minimal", "low", "medium", "high", "xhigh", "max"],
+            "description": "Reasoning effort is model dependent. GPT-6 Astra and GPT-6.1 Sol require low or higher; minimal is retained for older models."
+          },
+          "reasoning_summary": {
+            "type": "enum",
+            "default": "auto",
+            "values": ["auto", "concise", "detailed", "none"],
+            "description": "Reasoning summary detail level (when supported by the model)."
+          },
+          "service_tier": {
+            "prominent": true,
+            "type": "enum",
+            "values": ["auto", "default", "flex", "scale", "priority"],
+            "description": "Responses `service_tier` request parameter."
+          },
+          "verbosity": {
+            "prominent": true,
+            "default": "medium",
+            "type": "enum",
+            "values": ["low", "medium", "high"],
+            "description": "Responses text verbosity/detail level (when supported by the model)."
+          },
+          "temperature": {
+            "type": "number",
+            "min": 0,
+            "max": 2,
+            "description": "Sampling temperature (0–2) when supported. Omit for GPT-6 reasoning effort other than none."
+          },
+          "top_p": {
+            "type": "number",
+            "min": 0,
+            "max": 1,
+            "description": "Nucleus sampling probability (0–1) when supported. Omit for GPT-6 reasoning effort other than none."
+          },
+          "parallel_tool_calls": {
+            "type": "boolean",
+            "description": "Responses `parallel_tool_calls` request parameter."
+          },
+          "safety_identifier": {
+            "type": "string",
+            "description": "Responses `safety_identifier` request parameter."
+          },
+          "text_format": {
+            "prominent": true,
+            "default": "text",
+            "type": "enum",
+            "values": ["text", "json_object", "json_schema"],
+            "description": "Responses `text.format.type`. Prefer `json_schema` over legacy `json_object`."
+          },
+          "text_format_json_schema_name": {
+            "type": "string",
+            "description": "Required when `text_format=json_schema`; mapped to `text.format.name`."
+          },
+          "text_format_json_schema": {
+            "type": "string",
+            "description": "Required when `text_format=json_schema`; JSON-encoded schema object mapped to `text.format.schema`."
+          },
+          "text_format_json_schema_strict": {
+            "type": "boolean",
+            "description": "Optional `text.format.strict` when `text_format=json_schema`."
+          },
+          "web_search_tool": {
+            "prominent": true,
+            "type": "boolean",
+            "description": "Enable native Responses `tools: [{type:'web_search'}]`."
+          },
+          "web_search_context_size": {
+            "type": "enum",
+            "default": "medium",
+            "values": ["low", "medium", "high"],
+            "description": "Native web_search `search_context_size`."
+          },
+          "web_search_allowed_domains": {
+            "type": "string_array",
+            "description": "Native web_search `filters.allowed_domains`."
+          },
+          "web_search_include_sources": {
+            "type": "boolean",
+            "description": "Include `web_search_call.action.sources` in the response payload."
+          }
+        },
+        "sourceYAMLRef": "frozenMaterial.parameterHintSource",
+        "hintApplication": "The actual source explicitly says these are documentation hints, not auto-applied defaults. OpenAiGen forwards supplied own-namespace fields; it does not automatically enforce the per-model vendor matrix.",
+        "officialRestriction": "The opened official GPT-6 guide restricts effort per model and removes temperature/top_p when effort is not none.",
+        "sourceEpoch": "The seven actual OpenAiGen calls used these five numeric/model entries before final parameter-hint wording was edited. Per-model metadata is byte-value equal to current parsed entries; no assertion that previous paid calls read later guidance."
+      },
+      "actualText": "  openai:\n    name: OpenAI\n    apiType: openai\n    baseUrl: https://api.openai.com/v1\n    apiKeyEnvVar: OPENAI_API_KEY\n    tech_spec_url: https://platform.openai.com/docs\n    api_mgmt_url: https://platform.openai.com/api-keys\n    # These are documentation hints for humans/agents; they are not auto-applied.\n    model_param_options:\n      openai:\n        # Isolation principle:\n        # - These hints describe the OpenAI Responses wrapper only.\n        # - Same-looking fields under `codex` are not aliases and are not fallback-compatible.\n        reasoning_effort:\n          prominent: true\n          default: high\n          # Trade latency/cost for quality on reasoning-capable models.\n          # Allowed: none | minimal | low | medium | high | xhigh | max\n          type: enum\n          values: [none, minimal, low, medium, high, xhigh, max]\n          description: Reasoning effort is model dependent. GPT-6 Astra and GPT-6.1 Sol require low or higher; minimal is retained for older models.\n        reasoning_summary:\n          type: enum\n          default: auto\n          values: [auto, concise, detailed, none]\n          description: Reasoning summary detail level (when supported by the model).\n        service_tier:\n          prominent: true\n          type: enum\n          values: [auto, default, flex, scale, priority]\n          description: Responses `service_tier` request parameter.\n        verbosity:\n          prominent: true\n          default: medium\n          # Control response detail level on models supporting Responses text.verbosity.\n          # Allowed: low | medium | high\n          type: enum\n          values: [low, medium, high]\n          description: Responses text verbosity/detail level (when supported by the model).\n        temperature:\n          # Sampling controls depend on the model and reasoning effort.\n          type: number\n          min: 0\n          max: 2\n          description: Sampling temperature (0–2) when supported. Omit for GPT-6 reasoning effort other than none.\n        top_p:\n          # Nucleus sampling; usually leave unset if using temperature.\n          type: number\n          min: 0\n          max: 1\n          description: Nucleus sampling probability (0–1) when supported. Omit for GPT-6 reasoning effort other than none.\n        parallel_tool_calls:\n          type: boolean\n          description: Responses `parallel_tool_calls` request parameter.\n        safety_identifier:\n          type: string\n          description: Responses `safety_identifier` request parameter.\n        text_format:\n          prominent: true\n          default: text\n          type: enum\n          values: [text, json_object, json_schema]\n          description: Responses `text.format.type`. Prefer `json_schema` over legacy `json_object`.\n        text_format_json_schema_name:\n          type: string\n          description: Required when `text_format=json_schema`; mapped to `text.format.name`.\n        text_format_json_schema:\n          type: string\n          description: Required when `text_format=json_schema`; JSON-encoded schema object mapped to `text.format.schema`.\n        text_format_json_schema_strict:\n          type: boolean\n          description: Optional `text.format.strict` when `text_format=json_schema`.\n        web_search_tool:\n          prominent: true\n          type: boolean\n          description: \"Enable native Responses `tools: [{type:'web_search'}]`.\"\n        web_search_context_size:\n          type: enum\n          default: medium\n          values: [low, medium, high]\n          description: Native web_search `search_context_size`.\n        web_search_allowed_domains:\n          type: string_array\n          description: Native web_search `filters.allowed_domains`.\n        web_search_include_sources:\n          type: boolean\n          description: Include `web_search_call.action.sources` in the response payload.\n",
+      "verdict": "passed",
+      "rationale": "The effort description states model dependence, identifies Astra and6.1Sol as requiring low or higher, and explains why minimal remains visible for older models. Thus the provider-wide union is not a promise that none/minimal works for every listed model. The temperature/top_p hints condition their ranges on model support and explicitly require omission for non-none GPT-6 reasoning; they do not advertise low reasoning with incompatible sampling. The YAML comment distinguishes hint defaults from automatically applied request values. Other displayed fields describe actual Responses payload mappings and do not add a TTL/output override. Together with the model table, the guidance gives the operator enough information to choose the supported combination; it makes no task-quality claim from the low-effort connectivity run.",
+      "scope": "Meaning of the exact current OpenAI hint section and its parsed descriptions/mappings. The earlier seven requests validate their explicit low-effort payload, not execution under later-edited descriptions or every option in the union.",
+      "provenance": {
+        "sourcePath": "/ws/AiWorks/dominds/main/llm/defaults.yaml",
+        "fullSourceSha256": "2d7aaf7971b5c4e7b4d01a638f42a621564ef1a5057b221f065adca4f94ab237",
+        "fullSourceBytes": 48249,
+        "excerptSha256": "096411481d1aeac229ebd98e9844035468adf76bc0b689b1b7cc64d003e9c6f1",
+        "excerptBytes": 3880,
+        "excerptDefinition": "Original YAML from the openai provider heading through its model_param_options, immediately before the models mapping."
+      }
+    },
+    {
+      "id": "complete-no-key-workspace-example",
+      "scenario": "An operator adds the gateway to an existing rtws without overwriting unrelated providers or committing credentials.",
+      "businessValue": "Provide a complete model table because provider-key replacement does not deep-merge model definitions.",
+      "context": {
+        "nativeLoadResult": {
+          "provider": {
+            "name": "LTSP OpenAI",
+            "apiType": "openai",
+            "baseUrl": "http://172.16.100.254:8080/openai",
+            "apiKeyEnvVar": "LTSP_OPENAI_API_KEY",
+            "models": {
+              "openai/gpt-6.1-sol": {
+                "name": "GPT-6.1 Sol",
+                "supports_image_input": true,
+                "context_length": 1050000,
+                "output_length": 128000,
+                "optimal_max_tokens": 600000,
+                "critical_max_tokens": 922000,
+                "caution_remediation_cadence_generations": 10,
+                "context_window": "1.05M"
+              },
+              "openai/gpt-6.1-terra": {
+                "name": "GPT-6.1 Terra",
+                "supports_image_input": true,
+                "context_length": 1050000,
+                "output_length": 128000,
+                "optimal_max_tokens": 600000,
+                "critical_max_tokens": 922000,
+                "caution_remediation_cadence_generations": 10,
+                "context_window": "1.05M"
+              },
+              "openai/gpt-6-astra": {
+                "name": "GPT-6 Astra",
+                "supports_image_input": true,
+                "context_length": 1050000,
+                "output_length": 128000,
+                "optimal_max_tokens": 600000,
+                "critical_max_tokens": 922000,
+                "caution_remediation_cadence_generations": 10,
+                "context_window": "1.05M"
+              },
+              "openai/gpt-6-luna": {
+                "name": "GPT-6 Luna",
+                "supports_image_input": true,
+                "context_length": 1050000,
+                "output_length": 128000,
+                "optimal_max_tokens": 600000,
+                "critical_max_tokens": 922000,
+                "caution_remediation_cadence_generations": 10,
+                "context_window": "1.05M"
+              },
+              "openai/gpt-6-sol": {
+                "name": "GPT-6 Sol",
+                "supports_image_input": true,
+                "context_length": 1050000,
+                "output_length": 128000,
+                "optimal_max_tokens": 600000,
+                "critical_max_tokens": 922000,
+                "caution_remediation_cadence_generations": 10,
+                "context_window": "1.05M"
+              }
+            }
+          },
+          "officialProviderUnchanged": "https://api.openai.com/v1",
+          "existingWorkspaceProvidersPreserved": ["local-mock"],
+          "networkRequests": 0
+        },
+        "networkRequestsDuringExampleLoad": 0,
+        "standaloneVersusMerge": "This complete provider entry is intended to be merged into the existing providers map, not copied over the whole existing file.",
+        "modelMetadataStatus": "Vendor-declared static capabilities and inherited harness budgets; actual image/long-context/output-capacity execution was not tested."
+      },
+      "actualText": "# Merge providers.ltsp-openai into the rtws .minds/llm.yaml; keep existing providers.\n# Set LTSP_OPENAI_API_KEY in the process environment to an approved gateway Virtual Key.\n# No key value belongs in this file.\nproviders:\n  ltsp-openai:\n    name: LTSP OpenAI\n    apiType: openai\n    baseUrl: http://172.16.100.254:8080/openai\n    apiKeyEnvVar: LTSP_OPENAI_API_KEY\n    models:\n      openai/gpt-6.1-sol:\n        name: GPT-6.1 Sol\n        supports_image_input: true\n        context_length: 1050000\n        output_length: 128000\n        optimal_max_tokens: 600000\n        critical_max_tokens: 922000\n        caution_remediation_cadence_generations: 10\n        context_window: '1.05M'\n      openai/gpt-6.1-terra:\n        name: GPT-6.1 Terra\n        supports_image_input: true\n        context_length: 1050000\n        output_length: 128000\n        optimal_max_tokens: 600000\n        critical_max_tokens: 922000\n        caution_remediation_cadence_generations: 10\n        context_window: '1.05M'\n      openai/gpt-6-astra:\n        name: GPT-6 Astra\n        supports_image_input: true\n        context_length: 1050000\n        output_length: 128000\n        optimal_max_tokens: 600000\n        critical_max_tokens: 922000\n        caution_remediation_cadence_generations: 10\n        context_window: '1.05M'\n      openai/gpt-6-luna:\n        name: GPT-6 Luna\n        supports_image_input: true\n        context_length: 1050000\n        output_length: 128000\n        optimal_max_tokens: 600000\n        critical_max_tokens: 922000\n        caution_remediation_cadence_generations: 10\n        context_window: '1.05M'\n      openai/gpt-6-sol:\n        name: GPT-6 Sol\n        supports_image_input: true\n        context_length: 1050000\n        output_length: 128000\n        optimal_max_tokens: 600000\n        critical_max_tokens: 922000\n        caution_remediation_cadence_generations: 10\n        context_window: '1.05M'\n",
+      "verdict": "passed",
+      "rationale": "The example contains no key value, names the environment variable consistently and explicitly instructs retaining existing providers. Its five complete prefixed model definitions agree with the canonical metadata and the separate endpoint, avoiding partial provider overrides that would lose the model table. The isolated native loader observation actually preserves the existing local-mock provider and the official OpenAI URL. The enabled image flag is presented by the surrounding guide as official capability metadata, not a successful image experiment. Nothing in this YAML exposes an unimplemented TTL or output override.",
+      "scope": "Exact configuration sample, its comments and the already recorded native configuration-load/data-preservation effect. It does not authorize credentials or establish additional provider inference, image, performance or quality capability.",
+      "provenance": {
+        "sourcePath": "/ws/AiWorks/dominds/docs/examples/ltsp-openai.llm.yaml",
+        "sha256": "1bf628a5e4566a0c981754bcc8baec31785b455e65fb66c544c13ed2ed3c2dd9",
+        "bytes": 1895
+      }
+    }
+  ],
+  "assertionReview": [
+    {
+      "area": "real transport/lifecycle",
+      "verdict": "passed",
+      "proves": "Gateway origin, HTTP200, selected actual model/usage observations, zero unintended function calls in short requests, actual callback completion and one response.completed event for each streamed request are protocol/data checks. Nonempty text only demonstrates returned transport content. It neither judges a sentence’s writing quality nor demands a particular short answer."
+    },
+    {
+      "area": "opaque function data",
+      "verdict": "passed",
+      "proves": "The first request requires the named capture_nonce function and compares parsed arguments to a freshly supplied UUID object. A second independent receipt UUID is generated only after the first call and is supplied through the matching tool-result message. The returned strict JSON object must exactly equal that supplied receipt. This establishes actual call/result association and opaque data preservation, not natural-language meaning. The function handler throws if invoked, and actual evidence records toolExecuted=false."
+    },
+    {
+      "area": "namespace and sampling",
+      "verdict": "passed",
+      "proves": "Recorded request bodies omit temperature/top_p and carry reasoning.effort=low. They use prefixed model IDs and the native OpenAiGen Responses builder for seven calls; no comparison of model prose determines success. Current per-model numerical metadata is equal to the entries recorded with the earlier calls; later hint wording is separately reviewed here."
+    },
+    {
+      "area": "cache option",
+      "verdict": "passed",
+      "proves": "The sole TTL branch directly calls the native SDK with maxRetries0 and an explicit30m option, checks completed/model/30m response data and records the actual wire request. Seven omitted-TTL observations return effective12h, independently reconciled on the gateway. These checks protect request/response field preservation and deployment-default observation only, not a public Dominds parameter, cache hit, retained duration or savings."
+    },
+    {
+      "area": "native workspace configuration",
+      "verdict": "passed",
+      "proves": "The example check merges existing providers with the complete gateway entry, loads through native LlmConfig, compares apiType/baseURL/env-var-name/five full model definitions and every prior provider, and preserves the official OpenAI URL. IDs/prefixes and exact metadata are configuration data; they do not certify all models available from an account."
+    },
+    {
+      "area": "wrapper and operating process",
+      "verdict": "passed",
+      "proves": "run.py obtains the selected deployment credential, passes it only on child stdin and redacts output; it never makes that value a semantic test fixture. Process exit, bounded abort/completion, request counts and retained JSON are execution evidence. The initial readFile(0) error occurred before HTTP and is correctly retained as a manual fixture failure, not a gateway/product red."
+    },
+    {
+      "area": "assertion limitations",
+      "verdict": "passed",
+      "proves": "Probe typing assertions/casts operate over existing real wire data and are not general schema or adversarial parser tests. Manual per-request observations and independent gateway IDs support the stated eight calls; callback receipt/data fidelity is not driver scheduling, durable restart, real tool execution or model reasoning quality. There is no new semantic literal oracle or task-quality bar."
+    }
+  ],
+  "observedProtocolExample": {
+    "sourcePath": "/tmp/dominds-ltsp-openai-67id4168/tools.json",
+    "rawSha256": "f4de3b7cf6a737684f1e6a447b20d4461b78468718c571b74e8fcb91f47b9b62",
+    "rawBytes": 74271,
+    "given": {
+      "nonce": "bfddb1b6-6767-4944-9da1-f92e7582aaee"
+    },
+    "receipt": "583ee87d-7587-409c-916e-0c1cdf9a1ff1",
+    "actualCall": {
+      "id": "call_oXcvpBfmNHByuA3xsvhU28mA",
+      "name": "capture_nonce",
+      "args": "{\"nonce\":\"bfddb1b6-6767-4944-9da1-f92e7582aaee\"}"
+    },
+    "actualNextContext": [
+      {
+        "type": "prompting_msg",
+        "role": "user",
+        "genseq": 1,
+        "msgId": "connectivity-fab17fb6-a85d-4504-9205-5cf70aa9eade",
+        "grammar": "markdown",
+        "content": "Call capture_nonce once with this supplied JSON: {\"nonce\":\"bfddb1b6-6767-4944-9da1-f92e7582aaee\"}. After receiving its result, return a JSON object containing the supplied receipt."
+      },
+      {
+        "type": "func_call_msg",
+        "role": "assistant",
+        "genseq": 1,
+        "id": "call_oXcvpBfmNHByuA3xsvhU28mA",
+        "name": "capture_nonce",
+        "arguments": "{\"nonce\":\"bfddb1b6-6767-4944-9da1-f92e7582aaee\"}"
+      },
+      {
+        "type": "func_result_msg",
+        "role": "tool",
+        "genseq": 1,
+        "id": "call_oXcvpBfmNHByuA3xsvhU28mA",
+        "name": "capture_nonce",
+        "content": "{\"receipt\":\"583ee87d-7587-409c-916e-0c1cdf9a1ff1\"}"
+      }
+    ],
+    "actualSecondResult": {
+      "messages": [
+        {
+          "type": "saying_msg",
+          "role": "assistant",
+          "genseq": 2,
+          "content": "{\"receipt\":\"583ee87d-7587-409c-916e-0c1cdf9a1ff1\"}"
+        }
+      ],
+      "outputs": [
+        {
+          "kind": "message",
+          "message": {
+            "type": "saying_msg",
+            "role": "assistant",
+            "genseq": 2,
+            "content": "{\"receipt\":\"583ee87d-7587-409c-916e-0c1cdf9a1ff1\"}"
+          }
+        }
+      ],
+      "usage": {
+        "kind": "available",
+        "promptTokens": 156,
+        "completionTokens": 36,
+        "reasoningTokens": 0,
+        "totalTokens": 192
+      },
+      "llmGenModel": "gpt-6.1-terra"
+    },
+    "toolExecuted": false
+  },
+  "officialDocumentationCrossCheck": {
+    "skillUsed": "OpenAI Docs",
+    "skillSource": "/run/dwdhome/.codex/skills/.system/openai-docs/SKILL.md",
+    "scope": "Read-only search and actual opening/relevant passage reading of official developer documentation. No API/model call by this reviewer. This supports the declared specification/parameter distinctions, not account or gateway capacity.",
+    "sources": [
+      {
+        "title": "GPT-6.1 Sol model",
+        "url": "https://developers.openai.com/api/docs/models/gpt-6.1-sol",
+        "support": "Declared1,050,000 total context,128,000 output,image input and low/medium/high/xhigh/max effort; tool calling uses Responses."
+      },
+      {
+        "title": "GPT-6.1 Terra model",
+        "url": "https://developers.openai.com/api/docs/models/gpt-6.1-terra",
+        "support": "Same declared context/output and image input; effort additionally includes none; tools require Responses."
+      },
+      {
+        "title": "GPT-6 Astra model",
+        "url": "https://developers.openai.com/api/docs/models/gpt-6-astra",
+        "support": "Same declared context/output and image input; supported effort starts at low."
+      },
+      {
+        "title": "GPT-6 Luna model",
+        "url": "https://developers.openai.com/api/docs/models/gpt-6-luna",
+        "support": "Same declared context/output and image input; none plus low through max; Responses supports reasoning with tools."
+      },
+      {
+        "title": "GPT-6 Sol model",
+        "url": "https://developers.openai.com/api/docs/models/gpt-6-sol",
+        "support": "Same declared context/output and image input; none plus low through max; Responses supports reasoning with tools."
+      },
+      {
+        "title": "Using GPT-6",
+        "url": "https://developers.openai.com/api/docs/guides/latest-model",
+        "support": "Model-specific effort, no none for Astra/6.1Sol; omit incompatible sampling when effort is not none; use Responses for reasoning/tool workflows."
+      },
+      {
+        "title": "Prompt caching",
+        "url": "https://developers.openai.com/api/docs/guides/prompt-caching",
+        "support": "For the relevant Responses model family,30m is the default minimum lifetime and12h is an option with a different write rate; minimum cacheable prefix is1,024 visible input tokens. TTL does not itself prove a cache hit or actual retention."
+      }
+    ],
+    "citations": "Links identify the official pages supporting the narrow factual summaries. No full copyrighted official page text is copied."
+  },
+  "frozenMaterial": {
+    "date": "2026-10-31",
+    "observedAt": "2026-11-01T06:42:50.107Z",
+    "scenario": "An executing agent configures the LTSP OpenAI provider, selects current models and reasoning effort, and interprets this small real-gateway check without overstating capability.",
+    "businessValue": "A working Responses connection and accurate current metadata without losing existing providers or confusing gateway routing and official model limits with measured harness capability.",
+    "actualDocuments": [
+      {
+        "repositoryPath": "docs/openai-ltsp-gateway.zh.md",
+        "sourcePath": "/ws/AiWorks/dominds/docs/openai-ltsp-gateway.zh.md",
+        "sha256": "71bfa96278eda7a8d9eb340b446c9d96ab4b721d737818ae7c98cfeb4890986e",
+        "bytes": 5928,
+        "actualText": "# LTSP OpenAI 网关联测与模型配置\n\n2026-10-31，Dominds 与 LTSP 网关规划聊天联合验证 ltspc16。接入地址为 `http://172.16.100.254:8080/openai`，`apiType` 使用 `openai`，由 Dominds 的 Responses adapter 构造请求。无需再补 `/v1`；`openai-compatible` 的 Chat Completions 不是本次接入方式。\n\n## 模型目录与静态规格\n\n网关 `/openai/models` 当次返回130项，包含聊天、图像、音频、embedding等不同用途，不能把整个目录当成 Dominds 执行智能体可用的聊天模型清单。目录表示当时可见的ID，不能证明账号实际余额、RPM/TPM、每种模态或所有调用均可用。\n\n本次为内置 OpenAI provider 补齐以下五个文本/工具工作流模型，保留旧模型兼容；没有修改独立 Codex provider。官方 API 使用无前缀ID，网关实例使用表中带 `openai/` 的wire ID。\n\n| 官方模型ID      | 网关wire ID            | 总上下文  | 最大输出 | 推理effort                               |\n| --------------- | ---------------------- | --------- | -------- | ---------------------------------------- |\n| `gpt-6.1-sol`   | `openai/gpt-6.1-sol`   | 1,050,000 | 128,000  | low / medium / high / xhigh / max        |\n| `gpt-6.1-terra` | `openai/gpt-6.1-terra` | 1,050,000 | 128,000  | none / low / medium / high / xhigh / max |\n| `gpt-6-astra`   | `openai/gpt-6-astra`   | 1,050,000 | 128,000  | low / medium / high / xhigh / max        |\n| `gpt-6-luna`    | `openai/gpt-6-luna`    | 1,050,000 | 128,000  | none / low / medium / high / xhigh / max |\n| `gpt-6-sol`     | `openai/gpt-6-sol`     | 1,050,000 | 128,000  | none / low / medium / high / xhigh / max |\n\n规格依据各官方页：[6.1 Sol](https://developers.openai.com/api/docs/models/gpt-6.1-sol)、[6.1 Terra](https://developers.openai.com/api/docs/models/gpt-6.1-terra)、[Astra](https://developers.openai.com/api/docs/models/gpt-6-astra)、[Luna](https://developers.openai.com/api/docs/models/gpt-6-luna)、[6 Sol](https://developers.openai.com/api/docs/models/gpt-6-sol)。五者均声明支持图片输入；本次没有进行真实图像理解或视觉质量验收。\n\n输入、输出及reasoning共享总上下文，不能把1.05M输入再加128K输出。本次不单列未经官方独立说明的 `input_length`。`optimal_max_tokens: 600000`、`critical_max_tokens: 922000` 与10代保全提醒节奏沿用已有1.05M模型的 Dominds harness 策略；922K为总窗口减去128K输出余量，是应用预算，不是新测出的供应商max-input。没有做百万token压力测试，也没有实际生成128K输出。\n\nBifrost聚合元数据曾对Terra分别给出922K/1.05M输入，并带有与本次Responses+low工具往返不一致的泛化能力标记。静态规格以官方API资料为准，具体可用性由所述实测建立；不把聚合字段直接拷贝成全局能力或外推到其它API。\n\n## 在rtws接入\n\n将[完整无密钥样例](./examples/ltsp-openai.llm.yaml)的 `providers.ltsp-openai` 合入已有 `.minds/llm.yaml`，保留其它provider。`LlmConfig`按provider键替换配置，不会自动把新provider的模型表与内置OpenAI表深度合并。\n\n为 Dominds 进程注入 `LTSP_OPENAI_API_KEY`，值应为部署方批准的网关 Virtual Key；不要使用dummy值，也不要将实际Key写入Git。样例只引用变量名，不包含凭据，不改变内置OpenAI的官方baseURL。\n\n团队成员显式选择网关provider和wire ID，例如：\n\n```yaml\nmembers:\n  executor:\n    name: Executor\n    provider: ltsp-openai\n    model: openai/gpt-6.1-terra\n    model_params:\n      openai:\n        reasoning_effort: low\n        verbosity: low\n```\n\n这是低量连通测试参数，不是质量或成本最优档位的结论。使用者应按实际任务评估effort；Astra与6.1 Sol不接受none，旧模型的minimal选项不适用于本表。启用reasoning时省略 `temperature`、`top_p` 等不兼容采样参数；工具调用使用Responses。详见[官方GPT-6接入指导](https://developers.openai.com/api/docs/guides/latest-model)。provider参数提示中的选项是按模型适用的并集，不是对每个模型的统一支持承诺。\n\n本轮只验证带provider前缀的推理请求。裸ID的模型元数据读取成功不等于裸ID推理路由已验证；不要只凭 `/openai` URL 假定网关会自动选择provider。\n\n## 本次实际验证与限制\n\n五个模型均通过 Dominds 原生 `OpenAiGen` 的短请求：Terra流式，另外四个batch；返回的真实model标识一致，usage可用。Terra还通过一次流式函数调用与工具结果batch续轮：给定nonce完整传入，独立随机receipt仅经工具结果提供，续轮结构化JSON完整返回；没有执行真实工具。检查的是机器数据与协议，不以回答措辞判断语义质量。\n\n客户端未发送缓存TTL时，响应回显 `prompt_cache_options.ttl: 12h`，证实该网关采用了部署方默认值。另一次直接原生SDK请求显式传入 `prompt_cache_options.ttl: 30m` 并得到30m回显，没有被网关默认覆盖。后者只建立SDK/网关字段保全，不表示当前 Dominds 团队参数已开放TTL或输出token override。\n\nOpenAI官方默认是30m，12h是此网关策略；两种设置的cache-write费率不同。小于1,024可见输入token的请求不会因此证明缓存命中；本次没有发送长prompt测试cache-write、命中率或节费。见[官方prompt caching文档](https://developers.openai.com/api/docs/guides/prompt-caching)。\n\nLTSP侧按网关request ID独立读回日志，确认实际provider/model、usage、成功状态、无retry/fallback及正文隐藏。完整目录快照、请求/响应、初次夹具错误与执行范围保存在[联合验收记录](../tests/audits/2026-10-31-ltsp-openai.json)。记录中的短请求不证明长上下文、长期缓存保留、模型回答质量、所有130模型或吞吐限额。\n"
+      },
+      {
+        "repositoryPath": "docs/llm-provider-isolation.zh.md",
+        "sourcePath": "/ws/AiWorks/dominds/docs/llm-provider-isolation.zh.md",
+        "sha256": "2a6fd4a50def94864f281ef99482c861ad7361ac85d564289b5ec3970f9ea523",
+        "bytes": 4159,
+        "actualText": "# LLM Provider 隔离原则\n\n## 原则\n\nDominds 把每个 LLM provider wrapper 视为独立的协议适配器，而不是某种“大一统 OpenAI-like 抽象”的一个变体。\n\n这意味着：\n\n- `apiType: codex` 只负责 Codex 原生的请求字段、流事件、工具语义和默认行为。\n- `apiType: openai` 只负责 OpenAI Responses 原生的请求字段、流事件、工具语义和默认行为。\n- `apiType: openai-compatible` 负责 Chat Completions 语义，包括 `model_params.openai-compatible.*` 命名空间，不是 Codex，也不是 Responses。\n- `apiType: anthropic` 只负责 Anthropic 官方 Messages 语义，包括 object 形态的 `model_params.anthropic.thinking`。\n- `apiType: anthropic-compatible` 负责 Anthropic 兼容网关语义，包括 boolean 形态的 `model_params.anthropic-compatible.thinking`，并映射为 provider 请求里的 `enabled` / `disabled` object。\n\n某些 provider / API 路径虽然暴露相似 endpoint 或模型能力，但仍可能需要明确的 provider quirk profile。内置 Codex (ChatGPT) provider 默认启用 `codex-anti-early-finalization`，只在 Codex provider 的 `instructions` 里按当前工作语言追加推理完成检查提示，用于规避 ChatGPT/Codex 路径疑似思考过早截断/提前收尾的问题；这个 quirk 不应用到 `apiType: openai`。火山方舟 Coding Plan 现在走 OpenAI-compatible Chat Completions 形态，并使用专属 `/api/coding/v3` endpoint；历史 Anthropic-compatible 火山工具调用 quirk 已取消。Kimi Code 也走 OpenAI-compatible Chat Completions 形态，但必须使用内置 `kimi-code` provider 的专属 `/coding/v1` endpoint、带 Dominds 版本的 `KimiCLI/Dominds/<version>` User-Agent、`prompt_cache_key` 和 Kimi 专用 `thinking`/`reasoning_effort` 请求整形。火山迁移设计记录见 [`volcengine-coding-plan-openai-compatible.zh.md`](./volcengine-coding-plan-openai-compatible.zh.md)。\n\n不同 wrapper 下看起来同名的字段，不代表它们可以互相兼容。比如 `reasoning_effort`、`verbosity`、`parallel_tool_calls`、web search 相关开关，名字可能相似，但可接受值、请求载荷形状、流事件生命周期、校验规则和运行时含义都可能不同。\n\n内置 Codex provider 的 `reasoning_effort` 最高支持 `max`。Codex 客户端里的 Ultra 不是一个可以独立复刻的 inference effort：当前 codex-rs 在请求边界发送 `max`，同时通过客户端自己的多智能体模式另行开启主动委派。Dominds 不接受 `model_params.codex.reasoning_effort: ultra`，也不会把它静默映射为 `max`，否则会让用户误以为 Codex 的整套 Ultra 行为已经复刻。Dominds 的 `tellask` / 支线对话是 provider 无关的持久化团队协作机制，与这个 provider 参数相互独立；如果以后需要增加主动程度档位，也应设计成明确的 Dominds 产品级协作策略。\n\n## 强约束\n\n- wrapper 构造请求时，只能读取自己的 provider 参数命名空间。\n- wrapper 解析流事件时，只能解释自己的 provider 原生事件。\n- wrapper 内禁止静默 fallback 到别的 provider 参数、别名或事件假设。\n- 只有在 driver / storage / UI 边界，才允许把 provider-native 事件投影成更窄的共享形态，而且前提是 wrapper 侧已经先完成了 provider-native 解码。\n\n## 为什么\n\n这样做是为了让 provider 集成保持诚实：\n\n- 减少“碰巧兼容”带来的隐式行为\n- 在 provider 分叉时更容易排查问题\n- 降低 wrapper 之间的隐藏耦合\n- 在官方 API 各自演化时，升级更安全\n\n## 当前边界\n\n目前后端在 wrapper 内保留 provider-specific 的 web search 事件类型，再在 `main/llm/kernel-driver/drive.ts` 投影成较窄的 dialog 事件形态。\n\n这个投影层是有意设计的，它就是兼容边界。边界两侧的 wrapper 代码都应继续保持 provider-native。\n\nLTSP本地网关仍按实际协议选择wrapper，官方模型ID与网关wire ID也应分开处理。已验证的Responses接入、当前模型规格及边界见[LTSP OpenAI网关联测](./openai-ltsp-gateway.zh.md)。\n"
+      }
+    ],
+    "actualOpenAiParameterHints": {
+      "reasoning_effort": {
+        "prominent": true,
+        "default": "high",
+        "type": "enum",
+        "values": ["none", "minimal", "low", "medium", "high", "xhigh", "max"],
+        "description": "Reasoning effort is model dependent. GPT-6 Astra and GPT-6.1 Sol require low or higher; minimal is retained for older models."
+      },
+      "reasoning_summary": {
+        "type": "enum",
+        "default": "auto",
+        "values": ["auto", "concise", "detailed", "none"],
+        "description": "Reasoning summary detail level (when supported by the model)."
+      },
+      "service_tier": {
+        "prominent": true,
+        "type": "enum",
+        "values": ["auto", "default", "flex", "scale", "priority"],
+        "description": "Responses `service_tier` request parameter."
+      },
+      "verbosity": {
+        "prominent": true,
+        "default": "medium",
+        "type": "enum",
+        "values": ["low", "medium", "high"],
+        "description": "Responses text verbosity/detail level (when supported by the model)."
+      },
+      "temperature": {
+        "type": "number",
+        "min": 0,
+        "max": 2,
+        "description": "Sampling temperature (0–2) when supported. Omit for GPT-6 reasoning effort other than none."
+      },
+      "top_p": {
+        "type": "number",
+        "min": 0,
+        "max": 1,
+        "description": "Nucleus sampling probability (0–1) when supported. Omit for GPT-6 reasoning effort other than none."
+      },
+      "parallel_tool_calls": {
+        "type": "boolean",
+        "description": "Responses `parallel_tool_calls` request parameter."
+      },
+      "safety_identifier": {
+        "type": "string",
+        "description": "Responses `safety_identifier` request parameter."
+      },
+      "text_format": {
+        "prominent": true,
+        "default": "text",
+        "type": "enum",
+        "values": ["text", "json_object", "json_schema"],
+        "description": "Responses `text.format.type`. Prefer `json_schema` over legacy `json_object`."
+      },
+      "text_format_json_schema_name": {
+        "type": "string",
+        "description": "Required when `text_format=json_schema`; mapped to `text.format.name`."
+      },
+      "text_format_json_schema": {
+        "type": "string",
+        "description": "Required when `text_format=json_schema`; JSON-encoded schema object mapped to `text.format.schema`."
+      },
+      "text_format_json_schema_strict": {
+        "type": "boolean",
+        "description": "Optional `text.format.strict` when `text_format=json_schema`."
+      },
+      "web_search_tool": {
+        "prominent": true,
+        "type": "boolean",
+        "description": "Enable native Responses `tools: [{type:'web_search'}]`."
+      },
+      "web_search_context_size": {
+        "type": "enum",
+        "default": "medium",
+        "values": ["low", "medium", "high"],
+        "description": "Native web_search `search_context_size`."
+      },
+      "web_search_allowed_domains": {
+        "type": "string_array",
+        "description": "Native web_search `filters.allowed_domains`."
+      },
+      "web_search_include_sources": {
+        "type": "boolean",
+        "description": "Include `web_search_call.action.sources` in the response payload."
+      }
+    },
+    "parameterHintSource": {
+      "sourcePath": "/ws/AiWorks/dominds/main/llm/defaults.yaml",
+      "sha256": "2d7aaf7971b5c4e7b4d01a638f42a621564ef1a5057b221f065adca4f94ab237",
+      "bytes": 48249,
+      "actualText": "# Optional provider-level retry controls for MicroKernel dialog driving:\n# - llm_retry_aggressive_max_retries: front-loaded fast retries before Dominds automatically downgrades\n#   to conservative slow retry (default 3). Automatic retries no longer stop just because a retry\n#   count budget was exhausted.\n# - llm_retry_initial_delay_ms: delay before the 1st retry (default 1000).\n# - llm_retry_conservative_delay_ms: base delay for provider-classified conservative retries (default 30000; fixed for first 10 retries, then ramps by x1.5 with the normal max-delay cap).\n# - llm_retry_backoff_multiplier: exponential factor between retries (default 1.5).\n# - llm_retry_max_delay_ms: upper bound for retry delay (default 1800000 / 30m).\n# - apiQuirks: optional provider/gateway quirk profile(s) for non-standard transport behavior,\n#   request shaping, and provider-specific failure handling that can override the driver's default retry disposition.\n#   Example: `apiQuirks: xcode.best` currently covers both keepalive/heartbeat stream quirks and\n#   repeated empty-response deadlock detection for the same unchanged dialog context, plus conservative retry\n#   classification for gateway-returned HTML 502 Bad Gateway pages and\n#   `500 auth_unavailable: no auth available` infrastructure failures.\n#   `apiQuirks: same-context-empty-response` detects repeated empty responses in the same\n#   dialog generation context and stops same-context retry loops with a deadlock-break prompt.\n#   `apiQuirks: volcengine-invalid-parameter-aggressive-retry` classifies Volcano Ark Coding Plan\n#   transient `400 InvalidParameter` failures as aggressive retry when the shape matches that\n#   provider's replay-successful instability.\n#   `apiQuirks: codex-anti-early-finalization` is Codex-provider-only request shaping that appends\n#   a work-language-specific reasoning-completion guard to ChatGPT/Codex instructions to reduce\n#   early-finalization / suspiciously short reasoning runs. It is intentionally not applied to the\n#   OpenAI API provider.\n# - tool_result_max_chars: optional transport-level cap for a single tool-result text payload\n#   before Dominds projects it into the provider request. Use this when a provider/gateway enforces\n#   a stricter per-item string limit than Dominds' built-in defaults.\nproviders:\n  google:\n    name: Google Gemini\n    apiType: google\n    baseUrl: https://generativelanguage.googleapis.com\n    apiKeyEnvVar: GEMINI_API_KEY\n    tech_spec_url: https://ai.google.dev/gemini-api/docs\n    api_mgmt_url: https://aistudio.google.com/\n    model_param_options:\n      google:\n        thinking:\n          prominent: true\n          type: boolean\n          description: Enable or disable model internal reasoning/thinking.\n        thinking_budget:\n          type: integer\n          min: 0\n          description: Budget for thinking tokens. Leave unset to use the model's default adaptive/dynamic thinking.\n        temperature:\n          type: number\n          min: 0\n          max: 2\n          description: Sampling temperature (0–2).\n        top_p:\n          type: number\n          min: 0\n          max: 1\n          description: Nucleus sampling probability (0–1).\n        google_search_tool:\n          prominent: true\n          type: boolean\n          default: true\n          description: Enable Gemini Google Search Grounding to access real-time internet data.\n    models:\n      gemini-3.5-flash:\n        name: Gemini 3.5 Flash\n        optimal_max_tokens: 300000\n        supports_thinking: true\n        default_thinking: true\n        context_length: 1048576\n        input_length: 1048576\n        output_length: 65536\n        context_window: '1M'\n      gemini-3.1-pro:\n        name: Gemini 3.1 Pro\n        optimal_max_tokens: 500000\n        supports_thinking: true\n        default_thinking: true\n        context_length: 2097152\n        input_length: 2097152\n        output_length: 65536\n        context_window: '2M'\n      gemini-2.5-flash:\n        name: Gemini 2.5 Flash\n        optimal_max_tokens: 300000\n        supports_thinking: true\n        default_thinking: true\n        context_length: 1048576\n        input_length: 1048576\n        output_length: 65536\n        context_window: '1M'\n      gemini-2.5-pro:\n        name: Gemini 2.5 Pro\n        optimal_max_tokens: 500000\n        supports_thinking: true\n        default_thinking: true\n        context_length: 2097152\n        input_length: 2097152\n        output_length: 65536\n        context_window: '2M'\n      gemini-1.5-flash:\n        name: Gemini 1.5 Flash\n        optimal_max_tokens: 300000\n        supports_thinking: false\n        default_thinking: false\n        context_length: 1048576\n        input_length: 1048576\n        output_length: 8192\n        context_window: '1M'\n      gemini-1.5-pro:\n        name: Gemini 1.5 Pro\n        optimal_max_tokens: 500000\n        supports_thinking: false\n        default_thinking: false\n        context_length: 2097152\n        input_length: 2097152\n        output_length: 8192\n        context_window: '2M'\n  codex:\n    name: Codex (ChatGPT)\n    apiType: codex\n    # Product auth policy: this provider accepts only managed, refreshable ChatGPT OAuth file\n    # auth. Do not widen it automatically when syncing codex-rs auth modes; direct other auth\n    # methods to a custom `apiType: openai` Responses provider or a Dominds feature request.\n    apiQuirks:\n      - codex-anti-early-finalization\n    baseUrl: https://chatgpt.com/backend-api/\n    apiKeyEnvVar: CODEX_HOME\n    tech_spec_url: https://platform.openai.com/docs/api-reference/responses\n    api_mgmt_url: https://chatgpt.com/\n    # `model_param_options` documents common `.minds/team.yaml` `model_params` fields\n    # that this provider supports (as of this defaults.yaml).\n    #\n    # These are documentation hints for humans/agents; they are not auto-applied.\n    model_param_options:\n      codex:\n        # Isolation principle:\n        # - These hints describe the Codex wrapper only.\n        # - Same-looking fields under `openai` are not aliases and are not fallback-compatible.\n        reasoning_effort:\n          prominent: true\n          default: high\n          # Trade latency/cost for quality on reasoning-capable models.\n          # Allowed: none | minimal | low | medium | high | xhigh | max\n          type: enum\n          values: [none, minimal, low, medium, high, xhigh, max]\n          description: Reasoning effort level. Max is the highest supported value. Codex Ultra is intentionally unsupported because it combines max inference effort with Codex-specific proactive subagent orchestration; Dominds teammate coordination is a separate product-level mechanism.\n        reasoning_summary:\n          type: enum\n          default: auto\n          values: [auto, concise, detailed, none]\n          description: Reasoning summary detail level (when supported by the model).\n        service_tier:\n          prominent: true\n          type: enum\n          # Keep setup/bootstrap aligned with the current ChatGPT codex backend behavior:\n          # keep `auto` as the explicit standard path, but allow setup UIs to leave this unset by\n          # default because the backend rejects the literal `default` enum value with HTTP 400 even\n          # though some SDK typings still mention it.\n          values: [auto, priority]\n          value_labels:\n            auto: Standard\n            priority: Fast\n          description: Processing tier. Set `priority` to emulate Codex `/fast` without changing reasoning effort.\n        verbosity:\n          prominent: true\n          default: medium\n          # Control response detail level on GPT-5 series models.\n          # Allowed: low | medium | high\n          type: enum\n          values: [low, medium, high]\n          description: Response verbosity/detail level (GPT-5 series).\n        temperature:\n          # Randomness; use 0–0.2 for tool-calling / deterministic behavior.\n          type: number\n          min: 0\n          max: 2\n          description: Sampling temperature (0–2).\n        top_p:\n          # Nucleus sampling; usually leave unset if using temperature.\n          type: number\n          min: 0\n          max: 1\n          description: Nucleus sampling probability (0–1).\n        parallel_tool_calls:\n          type: boolean\n          description: Allow the model to emit parallel tool calls (enable by default in Dominds).\n        web_search:\n          prominent: true\n          default: live\n          type: enum\n          values: [disabled, cached, live]\n          description: Enable native web search tool mode (disabled/cached/live).\n        json_response:\n          type: boolean\n          description: Force JSON object output mode.\n    models:\n      gpt-5.6-sol:\n        name: GPT-5.6 Sol\n        optimal_max_tokens: 200000\n        caution_remediation_cadence_generations: 10\n        context_length: 272000\n        input_length: 272000\n        output_length: 32768\n        context_window: '272K'\n      gpt-5.6-terra:\n        name: GPT-5.6 Terra\n        optimal_max_tokens: 200000\n        caution_remediation_cadence_generations: 10\n        context_length: 272000\n        input_length: 272000\n        output_length: 32768\n        context_window: '272K'\n      gpt-5.6-luna:\n        name: GPT-5.6 Luna\n        optimal_max_tokens: 200000\n        caution_remediation_cadence_generations: 10\n        context_length: 272000\n        input_length: 272000\n        output_length: 32768\n        context_window: '272K'\n      gpt-5.5:\n        name: GPT-5.5\n        optimal_max_tokens: 200000\n        # Caution remediation reinjection cadence in generation turns (default: 10).\n        caution_remediation_cadence_generations: 10\n        context_length: 272000\n        input_length: 272000\n        output_length: 32768\n        context_window: '272K'\n      gpt-5.4:\n        name: GPT-5.4\n        optimal_max_tokens: 200000\n        # Caution remediation reinjection cadence in generation turns (default: 10).\n        caution_remediation_cadence_generations: 10\n        context_length: 272000\n        input_length: 272000\n        output_length: 32768\n        context_window: '272K'\n      gpt-5.4-mini:\n        name: GPT-5.4 Mini\n        optimal_max_tokens: 200000\n        # Caution remediation reinjection cadence in generation turns (default: 10).\n        caution_remediation_cadence_generations: 10\n        context_length: 272000\n        input_length: 272000\n        output_length: 32768\n        context_window: '272K'\n      gpt-5.3-codex:\n        name: GPT-5.3 Codex\n        optimal_max_tokens: 200000\n        # Caution remediation reinjection cadence in generation turns (default: 10).\n        caution_remediation_cadence_generations: 10\n        context_length: 272000\n        input_length: 272000\n        output_length: 32768\n        context_window: '272K'\n      gpt-5.3-codex-spark:\n        name: GPT-5.3 Codex Spark\n        optimal_max_tokens: 80000\n        # Caution remediation reinjection cadence in generation turns (default: 10).\n        caution_remediation_cadence_generations: 3\n        context_length: 128000\n        input_length: 128000\n        output_length: 32768\n        context_window: '128K'\n      gpt-5.2-codex:\n        name: GPT-5.2 Codex\n        optimal_max_tokens: 200000\n        # Caution remediation reinjection cadence in generation turns (default: 10).\n        caution_remediation_cadence_generations: 10\n        context_length: 272000\n        input_length: 272000\n        output_length: 32768\n        context_window: '272K'\n      gpt-5.2:\n        name: GPT-5.2\n        optimal_max_tokens: 200000\n        # Caution remediation reinjection cadence in generation turns (default: 10).\n        caution_remediation_cadence_generations: 10\n        context_length: 272000\n        input_length: 272000\n        output_length: 32768\n        context_window: '272K'\n      gpt-5.1-codex-mini:\n        name: GPT-5.1 Codex Mini\n        optimal_max_tokens: 200000\n        context_length: 272000\n        input_length: 272000\n        output_length: 32768\n        context_window: '272K'\n      gpt-5.1-codex-max:\n        name: GPT-5.1 Codex Max\n        optimal_max_tokens: 200000\n        context_length: 272000\n        input_length: 272000\n        output_length: 32768\n        context_window: '272K'\n  minimaxi.com-token-plan:\n    name: MiniMax CN Token Plan\n    apiType: openai-compatible\n    apiQuirks:\n      - minimax-reasoning-details\n      - minimax-thinking-type\n    baseUrl: https://api.minimaxi.com/v1\n    apiKeyEnvVar: MINIMAX_CN_TP_API_KEY\n    tech_spec_url: https://platform.minimaxi.com/docs/api-reference/text-openai-api\n    api_mgmt_url: https://platform.minimaxi.com/\n    model_param_options:\n      openai-compatible:\n        thinking:\n          prominent: true\n          type: boolean|object\n          description: OpenAI-compatible MiniMax thinking control. Set true to send thinking.type=adaptive, false to send thinking.type=disabled, or provide the provider-specific thinking object documented by MiniMax. Leave unset to use the provider/model default.\n        reasoning_split:\n          prominent: true\n          type: boolean\n          default: true\n          description: Enable MiniMax Interleaved Thinking friendly format; when true, reasoning is returned separately in reasoning_details and Dominds preserves it for subsequent turns.\n        temperature:\n          type: number\n          min: 0\n          max: 1\n          default: 1\n          description: 'Fully supported. Range (0.0, 1.0], controls output randomness; recommended value: 1.'\n        top_p:\n          type: number\n          min: 0\n          max: 1\n          description: Fully supported. Nucleus sampling parameter.\n        text_format:\n          type: enum\n          values: [text, json_object, json_schema]\n          description: OpenAI-compatible Chat Completions response_format mode.\n    models:\n      MiniMax-M3:\n        name: MiniMax M3\n        optimal_max_tokens: 300000\n        critical_max_tokens: 500000\n        supports_thinking: true\n        default_thinking: true\n        supports_image_input: true\n        context_length: 1000000\n        input_length: 1000000\n        output_length: 32768\n        context_window: '1M'\n      MiniMax-M2.7:\n        name: MiniMax M2.7\n        supports_image_input: false\n        context_length: 204800\n        input_length: 204800\n        output_length: 8192\n        context_window: '204K'\n      MiniMax-M2.1:\n        name: MiniMax M2.1\n        supports_image_input: false\n        context_length: 204800\n        input_length: 204800\n        output_length: 8192\n        context_window: '204K'\n      MiniMax-M2:\n        name: MiniMax M2\n        supports_image_input: false\n        context_length: 204800\n        input_length: 204800\n        output_length: 8192\n        context_window: '204K'\n  minimaxi.com:\n    name: MiniMax CN\n    apiType: openai-compatible\n    apiQuirks:\n      - minimax-reasoning-details\n      - minimax-thinking-type\n    baseUrl: https://api.minimaxi.com/v1\n    apiKeyEnvVar: MINIMAX_CN_API_KEY\n    tech_spec_url: https://platform.minimaxi.com/docs/api-reference/text-openai-api\n    api_mgmt_url: https://platform.minimaxi.com/\n    model_param_options:\n      openai-compatible:\n        thinking:\n          prominent: true\n          type: boolean|object\n          description: OpenAI-compatible MiniMax thinking control. Set true to send thinking.type=adaptive, false to send thinking.type=disabled, or provide the provider-specific thinking object documented by MiniMax. Leave unset to use the provider/model default.\n        reasoning_split:\n          prominent: true\n          type: boolean\n          default: true\n          description: Enable MiniMax Interleaved Thinking friendly format; when true, reasoning is returned separately in reasoning_details and Dominds preserves it for subsequent turns.\n        temperature:\n          type: number\n          min: 0\n          max: 1\n          default: 1\n          description: 'Fully supported. Range (0.0, 1.0], controls output randomness; recommended value: 1.'\n        top_p:\n          type: number\n          min: 0\n          max: 1\n          description: Fully supported. Nucleus sampling parameter.\n        text_format:\n          type: enum\n          values: [text, json_object, json_schema]\n          description: OpenAI-compatible Chat Completions response_format mode.\n    models:\n      MiniMax-M3:\n        name: MiniMax M3\n        optimal_max_tokens: 300000\n        critical_max_tokens: 500000\n        supports_thinking: true\n        default_thinking: true\n        supports_image_input: true\n        context_length: 1000000\n        input_length: 1000000\n        output_length: 32768\n        context_window: '1M'\n      MiniMax-M2.7:\n        name: MiniMax M2.7\n        supports_image_input: false\n        context_length: 204800\n        input_length: 204800\n        output_length: 8192\n        context_window: '204K'\n      MiniMax-M2.1:\n        name: MiniMax M2.1\n        supports_image_input: false\n        context_length: 204800\n        input_length: 204800\n        output_length: 8192\n        context_window: '204K'\n      MiniMax-M2:\n        name: MiniMax M2 Stable\n        supports_image_input: false\n        context_length: 204800\n        input_length: 204800\n        output_length: 8192\n        context_window: '204K'\n  minimax.io-token-plan:\n    name: MiniMax International Token Plan\n    apiType: openai-compatible\n    apiQuirks:\n      - minimax-reasoning-details\n      - minimax-thinking-type\n    baseUrl: https://api.minimax.io/v1\n    apiKeyEnvVar: MINIMAX_TP_API_KEY\n    tech_spec_url: https://platform.minimax.io/docs/api-reference/text-openai-api\n    api_mgmt_url: https://platform.minimax.io/\n    model_param_options:\n      openai-compatible:\n        thinking:\n          prominent: true\n          type: boolean|object\n          description: OpenAI-compatible MiniMax thinking control. Set true to send thinking.type=adaptive, false to send thinking.type=disabled, or provide the provider-specific thinking object documented by MiniMax. Leave unset to use the provider/model default.\n        reasoning_split:\n          prominent: true\n          type: boolean\n          default: true\n          description: Enable MiniMax Interleaved Thinking friendly format; when true, reasoning is returned separately in reasoning_details and Dominds preserves it for subsequent turns.\n        temperature:\n          type: number\n          min: 0\n          max: 1\n          default: 1\n          description: 'Fully supported. Range (0.0, 1.0], controls output randomness; recommended value: 1.'\n        top_p:\n          type: number\n          min: 0\n          max: 1\n          description: Fully supported. Nucleus sampling parameter.\n        text_format:\n          type: enum\n          values: [text, json_object, json_schema]\n          description: OpenAI-compatible Chat Completions response_format mode.\n    models:\n      MiniMax-M3:\n        name: MiniMax M3\n        optimal_max_tokens: 300000\n        critical_max_tokens: 500000\n        supports_thinking: true\n        default_thinking: true\n        supports_image_input: true\n        context_length: 1000000\n        input_length: 1000000\n        output_length: 32768\n        context_window: '1M'\n      MiniMax-M2.7:\n        name: MiniMax M2.7\n        supports_image_input: false\n        context_length: 204800\n        input_length: 204800\n        output_length: 8192\n        context_window: '204K'\n      MiniMax-M2.1:\n        name: MiniMax M2.1\n        supports_image_input: false\n        context_length: 204800\n        input_length: 204800\n        output_length: 8192\n        context_window: '204K'\n      MiniMax-M2:\n        name: MiniMax M2\n        supports_image_input: false\n        context_length: 204800\n        input_length: 204800\n        output_length: 8192\n        context_window: '204K'\n  minimax.io:\n    name: MiniMax International\n    apiType: openai-compatible\n    apiQuirks:\n      - minimax-reasoning-details\n      - minimax-thinking-type\n    baseUrl: https://api.minimax.io/v1\n    apiKeyEnvVar: MINIMAX_API_KEY\n    tech_spec_url: https://platform.minimax.io/docs/api-reference/text-openai-api\n    api_mgmt_url: https://platform.minimax.io/\n    model_param_options:\n      openai-compatible:\n        thinking:\n          prominent: true\n          type: boolean|object\n          description: OpenAI-compatible MiniMax thinking control. Set true to send thinking.type=adaptive, false to send thinking.type=disabled, or provide the provider-specific thinking object documented by MiniMax. Leave unset to use the provider/model default.\n        reasoning_split:\n          prominent: true\n          type: boolean\n          default: true\n          description: Enable MiniMax Interleaved Thinking friendly format; when true, reasoning is returned separately in reasoning_details and Dominds preserves it for subsequent turns.\n        temperature:\n          type: number\n          min: 0\n          max: 1\n          default: 1\n          description: 'Fully supported. Range (0.0, 1.0], controls output randomness; recommended value: 1.'\n        top_p:\n          type: number\n          min: 0\n          max: 1\n          description: Fully supported. Nucleus sampling parameter.\n        text_format:\n          type: enum\n          values: [text, json_object, json_schema]\n          description: OpenAI-compatible Chat Completions response_format mode.\n    models:\n      MiniMax-M3:\n        name: MiniMax M3\n        optimal_max_tokens: 300000\n        critical_max_tokens: 500000\n        supports_thinking: true\n        default_thinking: true\n        supports_image_input: true\n        context_length: 1000000\n        input_length: 1000000\n        output_length: 32768\n        context_window: '1M'\n      MiniMax-M2.7:\n        name: MiniMax M2.7\n        supports_image_input: false\n        context_length: 204800\n        input_length: 204800\n        output_length: 8192\n        context_window: '204K'\n      MiniMax-M2.1:\n        name: MiniMax M2.1\n        supports_image_input: false\n        context_length: 204800\n        input_length: 204800\n        output_length: 8192\n        context_window: '204K'\n      MiniMax-M2:\n        name: MiniMax M2 Stable\n        supports_image_input: false\n        context_length: 204800\n        input_length: 204800\n        output_length: 8192\n        context_window: '204K'\n  bigmodel:\n    name: BigModel\n    apiType: anthropic-compatible\n    baseUrl: https://open.bigmodel.cn/api/anthropic\n    apiKeyEnvVar: ZHIPUAI_API_KEY\n    tech_spec_url: https://docs.bigmodel.cn/\n    api_mgmt_url: https://open.bigmodel.cn/usercenter/apikeys\n    model_param_options:\n      anthropic-compatible:\n        thinking:\n          prominent: true\n          type: boolean\n          description: Set true to send thinking.type=enabled, or false to send thinking.type=disabled when supported. Leave unset to use the provider/model default.\n    models:\n      glm-4.7:\n        name: GLM-4.7\n        supports_image_input: false\n        context_length: 200000\n        input_length: 200000\n        output_length: 8192\n        context_window: '200K'\n      glm-4.6:\n        name: GLM-4.6\n        supports_image_input: false\n        context_length: 200000\n        input_length: 200000\n        output_length: 8192\n        context_window: '200K'\n      glm-4.5:\n        name: GLM-4.5\n        supports_image_input: false\n        context_length: 128000\n        input_length: 128000\n        output_length: 8192\n        context_window: '128K'\n      glm-4.5-air:\n        name: GLM-4.5-Air\n        supports_image_input: false\n        context_length: 128000\n        input_length: 128000\n        output_length: 8192\n        context_window: '128K'\n  z.ai:\n    name: Z.AI\n    apiType: anthropic-compatible\n    baseUrl: https://api.z.ai/api/anthropic\n    apiKeyEnvVar: ZAI_API_KEY\n    tech_spec_url: https://docs.z.ai/api-reference\n    api_mgmt_url: https://z.ai/manage-apikey/apikey-list\n    model_param_options:\n      anthropic-compatible:\n        thinking:\n          prominent: true\n          type: boolean\n          description: Set true to send thinking.type=enabled, or false to send thinking.type=disabled when supported. Leave unset to use the provider/model default.\n    models:\n      glm-4.7:\n        name: GLM-4.7\n        supports_image_input: false\n        context_length: 200000\n        input_length: 200000\n        output_length: 8192\n        context_window: '200K'\n      glm-4.6:\n        name: GLM-4.6\n        supports_image_input: false\n        context_length: 200000\n        input_length: 200000\n        output_length: 8192\n        context_window: '200K'\n      glm-4.5:\n        name: GLM-4.5\n        supports_image_input: false\n        context_length: 128000\n        input_length: 128000\n        output_length: 8192\n        context_window: '128K'\n      glm-4.5-air:\n        name: GLM-4.5-Air\n        supports_image_input: false\n        context_length: 128000\n        input_length: 128000\n        output_length: 8192\n        context_window: '128K'\n  kimi-code:\n    name: Kimi Code\n    apiType: openai-compatible\n    apiQuirks:\n      - kimi-code\n      - kimi-cli-cloak # TODO: remove this once Kimi officially admits Dominds\n    baseUrl: https://api.kimi.com/coding/v1\n    apiKeyEnvVar: KIMI_CODE_API_KEY\n    tech_spec_url: https://www.kimi.com/code/docs/en/third-party-tools/other-coding-agents.html\n    api_mgmt_url: https://www.kimi.com/code/console\n    model_param_options:\n      openai-compatible:\n        thinking:\n          prominent: true\n          default: medium\n          type: enum\n          values: [auto, off, low, medium, high]\n          description: Kimi Code thinking mode. auto leaves thinking/reasoning_effort unset; off sends thinking.type=disabled; low/medium/high send thinking.type=enabled plus the matching reasoning_effort.\n        reasoning_effort:\n          type: enum\n          values: [low, medium, high]\n          description: Advanced Kimi Code wire-level reasoning effort override. Prefer the prominent thinking enum for normal setup; do not combine with auto/off/disabled thinking.\n        temperature:\n          type: number\n          min: 0\n          max: 2\n          description: Sampling temperature. Leave unset unless you have verified the current Kimi Code API accepts the chosen value.\n        top_p:\n          type: number\n          min: 0\n          max: 1\n          description: Nucleus sampling parameter.\n        parallel_tool_calls:\n          type: boolean\n          description: Allow the model to emit parallel tool calls.\n    models:\n      kimi-for-coding:\n        name: Kimi For Coding\n        optimal_max_tokens: 180000\n        critical_max_tokens: 210000\n        supports_thinking: true\n        default_thinking: true\n        supports_tool_choice: false\n        supports_image_input: true\n        context_length: 262144\n        input_length: 262144\n        output_length: 32768\n        context_window: '262K'\n  volcano-engine-coding-plan:\n    name: Volcano Ark Coding Plan\n    apiType: openai-compatible\n    apiQuirks:\n      - same-context-empty-response\n      - volcengine-invalid-parameter-aggressive-retry\n    baseUrl: https://ark.cn-beijing.volces.com/api/coding/v3\n    apiKeyEnvVar: ARK_API_KEY\n    tech_spec_url: https://www.volcengine.com/docs/82379/1928261\n    api_mgmt_url: https://console.volcengine.com/ark\n    model_param_options:\n      openai-compatible:\n        thinking:\n          prominent: true\n          type: boolean|object\n          description: OpenAI-compatible Chat Completions extension. Set true to send thinking.type=enabled, false to send thinking.type=disabled, or provide the provider-specific thinking object documented by this provider/model. Leave unset to use the model default_thinking metadata/provider default.\n        reasoning_effort:\n          type: enum\n          values: [none, minimal, low, medium, high, xhigh]\n          description: OpenAI-compatible reasoning effort level when supported by the selected upstream model. Do not combine with disabled thinking.\n        temperature:\n          type: number\n          min: 0\n          max: 2\n          description: Sampling temperature.\n        top_p:\n          type: number\n          min: 0\n          max: 1\n          description: Nucleus sampling parameter.\n        parallel_tool_calls:\n          type: boolean\n          description: Allow the model to emit parallel tool calls.\n        text_format:\n          type: enum\n          values: [text, json_object, json_schema]\n          description: OpenAI-compatible Chat Completions response_format mode.\n    models:\n      doubao-seed-2.0-code:\n        name: Doubao-Seed-2.0-Code\n        supports_thinking: true\n        default_thinking: false\n        supports_image_input: true\n        context_length: 256000\n        input_length: 256000\n        output_length: 8192\n        context_window: '256K'\n      doubao-seed-2.0-pro:\n        name: Doubao-Seed-2.0-pro\n        supports_thinking: true\n        default_thinking: true\n        supports_image_input: true\n        context_length: 256000\n        input_length: 256000\n        output_length: 8192\n        context_window: '256K'\n      doubao-seed-2.0-lite:\n        name: Doubao-Seed-2.0-lite\n        supports_thinking: true\n        default_thinking: true\n        supports_image_input: false\n        context_length: 256000\n        input_length: 256000\n        output_length: 8192\n        context_window: '256K'\n      doubao-seed-code:\n        name: Doubao-Seed-Code\n        supports_thinking: true\n        default_thinking: false\n        supports_image_input: true\n        context_length: 256000\n        input_length: 256000\n        output_length: 8192\n        context_window: '256K'\n      minimax-m2.7:\n        name: MiniMax-M2.7\n        supports_thinking: true\n        default_thinking: true\n        supports_image_input: false\n        context_length: 204800\n        input_length: 204800\n        output_length: 8192\n        context_window: '204K'\n      glm-5.1:\n        name: GLM-5.1\n        optimal_max_tokens: 180000\n        supports_thinking: true\n        default_thinking: true\n        supports_image_input: false\n        context_length: 256000\n        input_length: 256000\n        output_length: 8192\n        context_window: '256K'\n      glm-4.7:\n        name: GLM-4.7\n        optimal_max_tokens: 180000\n        supports_thinking: true\n        default_thinking: false\n        supports_image_input: false\n        context_length: 256000\n        input_length: 256000\n        output_length: 8192\n        context_window: '256K'\n      deepseek-v3.2:\n        name: DeepSeek-V3.2\n        supports_thinking: true\n        default_thinking: false\n        supports_image_input: false\n        context_length: 128000\n        input_length: 96000\n        output_length: 32000\n        context_window: '128K'\n      kimi-k2.6:\n        name: Kimi-K2.6\n        optimal_max_tokens: 180000\n        critical_max_tokens: 210000\n        supports_thinking: true\n        default_thinking: true\n        supports_tool_choice: false\n        supports_image_input: true\n        context_length: 262144\n        input_length: 262144\n        output_length: 32768\n        context_window: '262K'\n      kimi-k2.5:\n        name: Kimi-K2.5\n        optimal_max_tokens: 180000\n        critical_max_tokens: 210000\n        supports_thinking: true\n        default_thinking: true\n        supports_tool_choice: false\n        supports_image_input: true\n        context_length: 262144\n        input_length: 262144\n        output_length: 32768\n        context_window: '262K'\n  anthropic:\n    name: Anthropic\n    apiType: anthropic\n    baseUrl: https://api.anthropic.com\n    apiKeyEnvVar: ANTHROPIC_API_KEY\n    tech_spec_url: https://docs.anthropic.com/en/docs\n    api_mgmt_url: https://console.anthropic.com/\n    model_param_options:\n      anthropic:\n        thinking:\n          type: object\n          description: 'Official Anthropic thinking config object, for example {type: adaptive}, {type: enabled, budget_tokens: 1024}, or {type: disabled}. Leave unset to use the provider/model default.'\n        temperature:\n          type: number\n          min: 0\n          max: 1\n          description: Sampling temperature (0–1).\n        top_p:\n          type: number\n          min: 0\n          max: 1\n          description: Nucleus sampling probability (0–1).\n        json_response:\n          type: boolean\n          description: Force JSON object output via Anthropic tool_choice mode.\n        top_k:\n          type: integer\n          min: 0\n          description: Top-k sampling (0 disables).\n        max_tokens:\n          type: integer\n          min: 1\n          description: Provider-specific max tokens override.\n        stop_sequences:\n          type: string_array\n          description: Stop sequences (array of strings).\n        reasoning_split:\n          # If supported, streams a separated \"thinking/reasoning\" channel.\n          type: boolean\n          description: Enable separated reasoning stream (when supported).\n    models:\n      claude-opus-4.5:\n        name: Claude Opus 4.5\n        context_length: 200000\n        input_length: 200000\n        output_length: 8192\n        context_window: '200K'\n      claude-sonnet-4.5:\n        name: Claude Sonnet 4.5\n        context_length: 200000\n        input_length: 200000\n        output_length: 8192\n        context_window: '200K'\n      claude-haiku-4.5:\n        name: Claude Haiku 4.5\n        context_length: 200000\n        input_length: 200000\n        output_length: 8192\n        context_window: '200K'\n  deepseek:\n    name: DeepSeek\n    apiType: anthropic-compatible\n    baseUrl: https://api.deepseek.com/anthropic\n    apiKeyEnvVar: DEEPSEEK_API_KEY\n    tech_spec_url: https://api-docs.deepseek.com/zh-cn/guides/anthropic_api\n    api_mgmt_url: https://platform.deepseek.com/api_keys\n    model_param_options:\n      anthropic-compatible:\n        thinking:\n          prominent: true\n          type: boolean\n          description: Set true to send thinking.type=enabled, or false to send thinking.type=disabled when supported. Leave unset to use the provider/model default.\n        temperature:\n          type: number\n          min: 0\n          max: 2\n          description: Fully supported. Sampling temperature (0-2).\n        top_p:\n          type: number\n          min: 0\n          max: 1\n          description: Fully supported. Nucleus sampling probability (0-1).\n        stop_sequences:\n          type: string_array\n          description: Fully supported. Stop sequences (array of strings).\n        reasoning_split:\n          type: boolean\n          description: Enable separated reasoning stream when supported by the provider/model.\n    models:\n      deepseek-v4-flash:\n        name: DeepSeek-V4-Flash\n        supports_image_input: false\n        context_length: 1000000\n        input_length: 1000000\n        output_length: 384000\n        context_window: '1M'\n      deepseek-v4-pro:\n        name: DeepSeek-V4-Pro\n        supports_image_input: false\n        context_length: 1000000\n        input_length: 1000000\n        output_length: 384000\n        context_window: '1M'\n      deepseek-chat:\n        name: DeepSeek-V4-Flash (non-thinking alias)\n        supports_image_input: false\n        context_length: 1000000\n        input_length: 1000000\n        output_length: 384000\n        context_window: '1M'\n      deepseek-reasoner:\n        name: DeepSeek-V4-Flash (thinking alias)\n        supports_image_input: false\n        context_length: 1000000\n        input_length: 1000000\n        output_length: 384000\n        context_window: '1M'\n  aliyun-bailian:\n    name: Aliyun Bailian Coding Plan\n    apiType: anthropic-compatible\n    baseUrl: https://coding.dashscope.aliyuncs.com/apps/anthropic\n    apiKeyEnvVar: ALIYUN_BAILIAN_API_KEY\n    tech_spec_url: https://help.aliyun.com/zh/model-studio/other-tools-coding-plan\n    api_mgmt_url: https://bailian.console.aliyun.com/cn-beijing/?tab=model#/efm/coding_plan\n    model_param_options:\n      anthropic-compatible:\n        thinking:\n          prominent: true\n          type: boolean\n          description: Set true to send thinking.type=enabled, or false to send thinking.type=disabled when supported. Leave unset to use the provider/model default.\n        temperature:\n          type: number\n          min: 0\n          max: 1\n          description: Anthropic-compatible sampling temperature (0-1).\n        top_p:\n          type: number\n          min: 0\n          max: 1\n          description: Anthropic-compatible nucleus sampling probability (0-1).\n        json_response:\n          type: boolean\n          description: Force JSON object output via Anthropic tool_choice mode.\n        max_tokens:\n          type: integer\n          min: 1\n          description: Provider-specific max tokens override.\n    models:\n      qwen3.5-plus:\n        name: Qwen3.5 Plus\n        supports_image_input: true\n        context_length: 1000000\n        input_length: 983616\n        output_length: 65536\n        context_window: '1M'\n      kimi-k2.5:\n        name: Kimi K2.5\n        supports_image_input: true\n        context_length: 262144\n        input_length: 258048\n        output_length: 32768\n        context_window: '262K'\n      glm-5:\n        name: GLM-5\n        supports_image_input: false\n        context_length: 202752\n        input_length: 202752\n        output_length: 16384\n        context_window: '202K'\n      qwen3-coder-next:\n        name: Qwen3 Coder Next\n        supports_image_input: false\n        context_length: 262144\n        input_length: 204800\n        output_length: 65536\n        context_window: '262K'\n      qwen3-coder-plus:\n        name: Qwen3 Coder Plus\n        supports_image_input: false\n        context_length: 1000000\n        input_length: 997952\n        output_length: 65536\n        context_window: '1M'\n      glm-4.7:\n        name: GLM-4.7\n        supports_image_input: false\n        context_length: 202752\n        input_length: 169984\n        output_length: 16384\n        context_window: '202K'\n  openai:\n    name: OpenAI\n    apiType: openai\n    baseUrl: https://api.openai.com/v1\n    apiKeyEnvVar: OPENAI_API_KEY\n    tech_spec_url: https://platform.openai.com/docs\n    api_mgmt_url: https://platform.openai.com/api-keys\n    # These are documentation hints for humans/agents; they are not auto-applied.\n    model_param_options:\n      openai:\n        # Isolation principle:\n        # - These hints describe the OpenAI Responses wrapper only.\n        # - Same-looking fields under `codex` are not aliases and are not fallback-compatible.\n        reasoning_effort:\n          prominent: true\n          default: high\n          # Trade latency/cost for quality on reasoning-capable models.\n          # Allowed: none | minimal | low | medium | high | xhigh | max\n          type: enum\n          values: [none, minimal, low, medium, high, xhigh, max]\n          description: Reasoning effort is model dependent. GPT-6 Astra and GPT-6.1 Sol require low or higher; minimal is retained for older models.\n        reasoning_summary:\n          type: enum\n          default: auto\n          values: [auto, concise, detailed, none]\n          description: Reasoning summary detail level (when supported by the model).\n        service_tier:\n          prominent: true\n          type: enum\n          values: [auto, default, flex, scale, priority]\n          description: Responses `service_tier` request parameter.\n        verbosity:\n          prominent: true\n          default: medium\n          # Control response detail level on models supporting Responses text.verbosity.\n          # Allowed: low | medium | high\n          type: enum\n          values: [low, medium, high]\n          description: Responses text verbosity/detail level (when supported by the model).\n        temperature:\n          # Sampling controls depend on the model and reasoning effort.\n          type: number\n          min: 0\n          max: 2\n          description: Sampling temperature (0–2) when supported. Omit for GPT-6 reasoning effort other than none.\n        top_p:\n          # Nucleus sampling; usually leave unset if using temperature.\n          type: number\n          min: 0\n          max: 1\n          description: Nucleus sampling probability (0–1) when supported. Omit for GPT-6 reasoning effort other than none.\n        parallel_tool_calls:\n          type: boolean\n          description: Responses `parallel_tool_calls` request parameter.\n        safety_identifier:\n          type: string\n          description: Responses `safety_identifier` request parameter.\n        text_format:\n          prominent: true\n          default: text\n          type: enum\n          values: [text, json_object, json_schema]\n          description: Responses `text.format.type`. Prefer `json_schema` over legacy `json_object`.\n        text_format_json_schema_name:\n          type: string\n          description: Required when `text_format=json_schema`; mapped to `text.format.name`.\n        text_format_json_schema:\n          type: string\n          description: Required when `text_format=json_schema`; JSON-encoded schema object mapped to `text.format.schema`.\n        text_format_json_schema_strict:\n          type: boolean\n          description: Optional `text.format.strict` when `text_format=json_schema`.\n        web_search_tool:\n          prominent: true\n          type: boolean\n          description: \"Enable native Responses `tools: [{type:'web_search'}]`.\"\n        web_search_context_size:\n          type: enum\n          default: medium\n          values: [low, medium, high]\n          description: Native web_search `search_context_size`.\n        web_search_allowed_domains:\n          type: string_array\n          description: Native web_search `filters.allowed_domains`.\n        web_search_include_sources:\n          type: boolean\n          description: Include `web_search_call.action.sources` in the response payload.\n    models:\n      # OpenAI API specifications checked 2026-10-31:\n      # https://developers.openai.com/api/docs/models\n      # These models share a 1,050,000-token total context and 128,000-token output cap.\n      # No separate input_length is asserted: input, output and reasoning share the context.\n      # Keep the existing 1.05M harness policy: caution at 600K, critical at 922K\n      # (total context minus the maximum output allowance). These are Dominds budgets.\n      # Reasoning effort is model-specific: Astra/6.1 Sol require low or higher;\n      # Terra/Luna/6 Sol also accept none. The provider-wide enum retains older model options.\n      gpt-6.1-sol:\n        name: GPT-6.1 Sol\n        supports_image_input: true\n        optimal_max_tokens: 600000\n        critical_max_tokens: 922000\n        caution_remediation_cadence_generations: 10\n        context_length: 1050000\n        output_length: 128000\n        context_window: '1.05M'\n      gpt-6.1-terra:\n        name: GPT-6.1 Terra\n        supports_image_input: true\n        optimal_max_tokens: 600000\n        critical_max_tokens: 922000\n        caution_remediation_cadence_generations: 10\n        context_length: 1050000\n        output_length: 128000\n        context_window: '1.05M'\n      gpt-6-astra:\n        name: GPT-6 Astra\n        supports_image_input: true\n        optimal_max_tokens: 600000\n        critical_max_tokens: 922000\n        caution_remediation_cadence_generations: 10\n        context_length: 1050000\n        output_length: 128000\n        context_window: '1.05M'\n      gpt-6-luna:\n        name: GPT-6 Luna\n        supports_image_input: true\n        optimal_max_tokens: 600000\n        critical_max_tokens: 922000\n        caution_remediation_cadence_generations: 10\n        context_length: 1050000\n        output_length: 128000\n        context_window: '1.05M'\n      gpt-6-sol:\n        name: GPT-6 Sol\n        supports_image_input: true\n        optimal_max_tokens: 600000\n        critical_max_tokens: 922000\n        caution_remediation_cadence_generations: 10\n        context_length: 1050000\n        output_length: 128000\n        context_window: '1.05M'\n      gpt-5.6:\n        name: GPT-5.6 Sol (alias)\n        optimal_max_tokens: 600000\n        critical_max_tokens: 922000\n        caution_remediation_cadence_generations: 10\n        context_length: 1050000\n        input_length: 1050000\n        output_length: 128000\n        context_window: '1.05M'\n      gpt-5.6-sol:\n        name: GPT-5.6 Sol\n        optimal_max_tokens: 600000\n        critical_max_tokens: 922000\n        caution_remediation_cadence_generations: 10\n        context_length: 1050000\n        input_length: 1050000\n        output_length: 128000\n        context_window: '1.05M'\n      gpt-5.6-terra:\n        name: GPT-5.6 Terra\n        optimal_max_tokens: 600000\n        critical_max_tokens: 922000\n        caution_remediation_cadence_generations: 10\n        context_length: 1050000\n        input_length: 1050000\n        output_length: 128000\n        context_window: '1.05M'\n      gpt-5.6-luna:\n        name: GPT-5.6 Luna\n        optimal_max_tokens: 600000\n        critical_max_tokens: 922000\n        caution_remediation_cadence_generations: 10\n        context_length: 1050000\n        input_length: 1050000\n        output_length: 128000\n        context_window: '1.05M'\n      gpt-5.5:\n        name: GPT-5.5\n        optimal_max_tokens: 200000\n        # Caution remediation reinjection cadence in generation turns (default: 10).\n        caution_remediation_cadence_generations: 10\n        context_length: 272000\n        input_length: 272000\n        output_length: 32768\n        context_window: '272K'\n      gpt-5.5-pro:\n        name: GPT-5.5 Pro\n        optimal_max_tokens: 600000\n        # Caution remediation reinjection cadence in generation turns (default: 10).\n        caution_remediation_cadence_generations: 10\n        context_length: 1000000\n        input_length: 1000000\n        output_length: 128000\n        context_window: '1M'\n      gpt-5.4:\n        name: GPT-5.4\n        optimal_max_tokens: 200000\n        # Caution remediation reinjection cadence in generation turns (default: 10).\n        caution_remediation_cadence_generations: 10\n        context_length: 272000\n        input_length: 272000\n        output_length: 32768\n        context_window: '272K'\n      gpt-5.4-mini:\n        name: GPT-5.4 Mini\n        optimal_max_tokens: 200000\n        # Caution remediation reinjection cadence in generation turns (default: 10).\n        caution_remediation_cadence_generations: 10\n        context_length: 272000\n        input_length: 272000\n        output_length: 32768\n        context_window: '272K'\n      gpt-5.3-codex:\n        name: GPT-5.3 Codex\n        optimal_max_tokens: 200000\n        # Caution remediation reinjection cadence in generation turns (default: 10).\n        caution_remediation_cadence_generations: 10\n        context_length: 272000\n        input_length: 272000\n        output_length: 32768\n        context_window: '272K'\n      gpt-5.3-codex-spark:\n        name: GPT-5.3 Codex Spark\n        optimal_max_tokens: 80000\n        # Caution remediation reinjection cadence in generation turns (default: 10).\n        caution_remediation_cadence_generations: 3\n        context_length: 128000\n        input_length: 128000\n        output_length: 32768\n        context_window: '128K'\n      gpt-5.2-codex:\n        name: GPT-5.2 Codex\n        optimal_max_tokens: 200000\n        # Caution remediation reinjection cadence in generation turns (default: 10).\n        caution_remediation_cadence_generations: 10\n        context_length: 272000\n        input_length: 272000\n        output_length: 32768\n        context_window: '272K'\n      gpt-5.2:\n        name: GPT-5.2\n        optimal_max_tokens: 200000\n        # Caution remediation reinjection cadence in generation turns (default: 10).\n        caution_remediation_cadence_generations: 10\n        context_length: 272000\n        input_length: 272000\n        output_length: 32768\n        context_window: '272K'\n      gpt-5.1-codex-mini:\n        name: GPT-5.1 Codex Mini\n        optimal_max_tokens: 200000\n        context_length: 272000\n        input_length: 272000\n        output_length: 32768\n        context_window: '272K'\n      gpt-5.1-codex-max:\n        name: GPT-5.1 Codex Max\n        optimal_max_tokens: 200000\n        context_length: 272000\n        input_length: 272000\n        output_length: 32768\n        context_window: '272K'\n"
+    },
+    "configurationExample": {
+      "sourcePath": "/ws/AiWorks/dominds/docs/examples/ltsp-openai.llm.yaml",
+      "sha256": "1bf628a5e4566a0c981754bcc8baec31785b455e65fb66c544c13ed2ed3c2dd9",
+      "bytes": 1895,
+      "actualText": "# Merge providers.ltsp-openai into the rtws .minds/llm.yaml; keep existing providers.\n# Set LTSP_OPENAI_API_KEY in the process environment to an approved gateway Virtual Key.\n# No key value belongs in this file.\nproviders:\n  ltsp-openai:\n    name: LTSP OpenAI\n    apiType: openai\n    baseUrl: http://172.16.100.254:8080/openai\n    apiKeyEnvVar: LTSP_OPENAI_API_KEY\n    models:\n      openai/gpt-6.1-sol:\n        name: GPT-6.1 Sol\n        supports_image_input: true\n        context_length: 1050000\n        output_length: 128000\n        optimal_max_tokens: 600000\n        critical_max_tokens: 922000\n        caution_remediation_cadence_generations: 10\n        context_window: '1.05M'\n      openai/gpt-6.1-terra:\n        name: GPT-6.1 Terra\n        supports_image_input: true\n        context_length: 1050000\n        output_length: 128000\n        optimal_max_tokens: 600000\n        critical_max_tokens: 922000\n        caution_remediation_cadence_generations: 10\n        context_window: '1.05M'\n      openai/gpt-6-astra:\n        name: GPT-6 Astra\n        supports_image_input: true\n        context_length: 1050000\n        output_length: 128000\n        optimal_max_tokens: 600000\n        critical_max_tokens: 922000\n        caution_remediation_cadence_generations: 10\n        context_window: '1.05M'\n      openai/gpt-6-luna:\n        name: GPT-6 Luna\n        supports_image_input: true\n        context_length: 1050000\n        output_length: 128000\n        optimal_max_tokens: 600000\n        critical_max_tokens: 922000\n        caution_remediation_cadence_generations: 10\n        context_window: '1.05M'\n      openai/gpt-6-sol:\n        name: GPT-6 Sol\n        supports_image_input: true\n        context_length: 1050000\n        output_length: 128000\n        optimal_max_tokens: 600000\n        critical_max_tokens: 922000\n        caution_remediation_cadence_generations: 10\n        context_window: '1.05M'\n"
+    },
+    "sourceEpoch": "The seven actual OpenAiGen calls used these five numeric/model entries before final parameter-hint wording was edited. Per-model metadata is byte-value equal to current parsed entries; no assertion that previous paid calls read later guidance.",
+    "reviewQuestions": [
+      "Does the full actual guidance support a maintainer choosing the correct native Responses endpoint, provider namespace and model wire IDs?",
+      "Are vendor specifications, inherited Dominds budgets, actual eight requests, routing evidence, SDK-only TTL and untested scopes distinguished accurately?",
+      "Do current actual parameter descriptions make model-dependent effort and sampling limitations clear without promising unsupported universal values?",
+      "Do the probe assertions protect protocol and supplied opaque data fidelity without treating literal natural-language output as a meaning oracle?"
+    ],
+    "probeSources": [
+      {
+        "sourcePath": "/tmp/dominds-ltsp-openai-67id4168/native-generator-probe.ts",
+        "sha256": "9a168c4f97ba0c8d4c357d8cec79ea12422af5a7751a29f2ad7d13db5b7ee0e6",
+        "bytes": 8191,
+        "actualText": "import assert from 'node:assert/strict';\nimport fs from 'node:fs/promises';\nimport path from 'node:path';\nimport { randomUUID } from 'node:crypto';\nimport YAML from '/ws/AiWorks/dominds/node_modules/yaml';\nimport { readBuiltinDefaultsYamlRaw, type ProviderConfig, type ChatMessage } from '/ws/AiWorks/dominds/main/llm/client';\nimport { OpenAiGen } from '/ws/AiWorks/dominds/main/llm/gen/openai';\nimport { Team } from '/ws/AiWorks/dominds/main/team';\nimport type { FuncTool } from '/ws/AiWorks/dominds/main/tool';\nimport { liveCapture } from '/ws/AiWorks/dominds/tests/helpers/live-provider';\n\nconst directory = '/tmp/dominds-ltsp-openai-67id4168';\nconst mode = process.argv[2] || 'stream';\nlet secret = '';\nlet complete = false;\nconst wire: Array<Record<string, unknown>> = [];\nconst pendingAudits: Array<Promise<void>> = [];\nconst attempts: Array<Record<string, unknown>> = [];\nconst redact = (value: string) => secret ? value.split(secret).join('[REDACTED]') : value;\nprocess.once('beforeExit', () => { if (!complete) { console.error('Probe completion boundary was not reached'); process.exitCode=1; } });\n\nasync function main() {\n  let inputText = '';\n  for await (const chunk of process.stdin) inputText += chunk.toString();\n  const input = JSON.parse(inputText);\n  secret = input.key;\n  assert.equal(typeof secret, 'string');\n  assert.ok(secret.length > 10);\n  process.env.DOMINDS_LTSP_OPENAI_TEST_KEY = secret;\n  const nativeFetch = globalThis.fetch.bind(globalThis);\n  globalThis.fetch = async (input, init) => {\n    const request = new Request(input, init);\n    const url = new URL(request.url);\n    assert.equal(url.origin, 'http://172.16.100.254:8080');\n    const body = request.method === 'POST' ? JSON.parse(await request.clone().text()) : undefined;\n    const entry: Record<string, unknown> = {method:request.method, path:url.pathname, body, startedAt:new Date().toISOString()};\n    wire.push(entry);\n    const response = await nativeFetch(input, init);\n    entry.status = response.status;\n    entry.headers = Object.fromEntries(['content-type','x-request-id','x-bifrost-request-id','x-bf-request-id','openai-processing-ms'].map(key=>[key,response.headers.get(key)]));\n    const copy=response.clone();\n    pendingAudits.push(copy.text().then(raw=>{\n      entry.rawResponse = redact(raw);\n      const packets: unknown[] = [];\n      if ((response.headers.get('content-type') || '').includes('text/event-stream')) {\n        for (const line of raw.split('\\n')) {\n          if (!line.startsWith('data:')) continue;\n          const data=line.slice(5).trim();\n          if (data && data!=='[DONE]') packets.push(JSON.parse(data));\n        }\n      } else if (raw) packets.push(JSON.parse(raw));\n      entry.packets=packets;\n    }));\n    return response;\n  };\n  const defaults=YAML.parse(await readBuiltinDefaultsYamlRaw());\n  const canonical=mode.startsWith('batch:')?mode.slice(6):'gpt-6.1-terra';\n  const metadata=defaults.providers.openai.models[canonical];\n  assert.ok(metadata, 'The selected canonical model must be configured in built-in defaults');\n  const model='openai/'+canonical;\n  const provider: ProviderConfig={...defaults.providers.openai, baseUrl:'http://172.16.100.254:8080/openai', apiKeyEnvVar:'DOMINDS_LTSP_OPENAI_TEST_KEY', models:{[model]:metadata}};\n  const agent=new Team.Member({id:'ltsp-gateway-probe',name:'LTSP gateway probe',provider:'ltsp-openai',model,model_params:{openai:{reasoning_effort:'low',verbosity:'low',parallel_tool_calls:false}}});\n  const generator=new OpenAiGen();\n  const request={dialogSelfId:'ltsp-gateway-probe',dialogRootId:'ltsp-gateway-probe',providerKey:'ltsp-openai',modelKey:model,toolUseRequirement:'none' as const};\n  const context: ChatMessage[]=[{type:'prompting_msg',role:'user',genseq:1,msgId:'connectivity-'+randomUUID(),grammar:'markdown',content:'Reply in one short sentence for a connectivity check. No writing-quality evaluation is requested.'}];\n  if (mode==='stream') {\n    const capture=liveCapture(1);\n    const result=await generator.genToReceiver(provider,agent,'',[],request,context,capture.receiver,1,AbortSignal.timeout(30000));\n    capture.assertComplete();\n    assert.ok(capture.capture.sayingChunks.join('').length>0);\n    assert.equal(capture.capture.calls.length,0);\n    assert.equal(result.usage?.kind,'available');\n    attempts.push({mode,model,status:'passed',context,result,capture:capture.capture,metadata});\n  } else if(mode==='tools') {\n    const nonce=randomUUID();\n    const given={nonce};\n    const tools: FuncTool[]=[{type:'func',name:'capture_nonce',description:'Capture an opaque supplied nonce. No external command or action is executed.',parameters:{type:'object',properties:{nonce:{type:'string'}},required:['nonce'],additionalProperties:false},call:async()=>{throw new Error('This transport probe must not execute a tool');}}];\n    context[0]={...context[0],content:'Call capture_nonce once with this supplied JSON: '+JSON.stringify(given)+'. After receiving its result, return a JSON object containing the supplied receipt.'};\n    const capture=liveCapture(1);\n    const first=await generator.genToReceiver(provider,agent,'',tools,{...request,toolUseRequirement:'required'},context,capture.receiver,1,AbortSignal.timeout(30000));\n    capture.assertComplete();assert.equal(capture.capture.calls.length,1);\n    const call=capture.capture.calls[0];assert.equal(call.name,'capture_nonce');assert.deepEqual(JSON.parse(call.args),given);\n    const receipt=randomUUID();\n    const resultMessage: ChatMessage={type:'func_result_msg',role:'tool',genseq:1,id:call.id,name:call.name,content:JSON.stringify({receipt})};\n    const nextContext=[...context,...capture.capture.messages,resultMessage];\n    agent.model_params={openai:{...agent.model_params?.openai,text_format:'json_schema',text_format_json_schema_name:'gateway_receipt',text_format_json_schema:JSON.stringify({type:'object',properties:{receipt:{type:'string'}},required:['receipt'],additionalProperties:false}),text_format_json_schema_strict:true}};\n    const second=await generator.genMoreMessages(provider,agent,'',tools,request,nextContext,2,AbortSignal.timeout(30000));\n    assert.equal(second.messages.filter(m=>m.type==='func_call_msg').length,0);\n    const text=second.messages.filter(m=>m.type==='saying_msg').map(m=>m.content).join('');\n    // Exact opaque supplied JSON data fidelity; no natural-language meaning is matched.\n    assert.deepEqual(JSON.parse(text),{receipt});\n    attempts.push({mode,model,status:'passed',given,receipt,first,capture:capture.capture,nextContext,second,toolExecuted:false});\n  } else if(mode.startsWith('batch:')) {\n    const result=await generator.genMoreMessages(provider,agent,'',[],request,context,1,AbortSignal.timeout(30000));\n    assert.equal(result.usage?.kind,'available');assert.equal(result.messages.filter(m=>m.type==='func_call_msg').length,0);\n    assert.ok(result.messages.some(m=>m.type==='saying_msg' && m.content.length>0));\n    attempts.push({mode,model,status:'passed',context,result,metadata});\n  } else throw new Error('Unknown phase');\n  await Promise.all(pendingAudits);\n  for(const row of wire) {\n    assert.equal(row.status,200);\n    const body=row.body as Record<string,unknown>;assert.equal(body.temperature,undefined);assert.equal(body.top_p,undefined);\n    assert.deepEqual(body.reasoning,{effort:'low'});\n    if(body.stream===true) {\n      const packets=row.packets as Array<Record<string,unknown>>;\n      assert.equal(packets.filter(p=>p.type==='response.completed').length,1);\n    }\n  }\n}\nvoid main().catch(error=>{\n attempts.push({mode,status:'failed',error:redact(error instanceof Error?error.stack || error.message:String(error))});\n process.exitCode=1;\n}).finally(async()=>{\n await Promise.allSettled(pendingAudits);\n await fs.writeFile(path.join(directory,mode.replace(/[^a-zA-Z0-9.-]/g,'_')+'.json'),redact(JSON.stringify({mode,observedAt:new Date().toISOString(),semanticAcceptance:'not-assessed',credentialStored:false,attempts,wire},null,2))+'\\n');\n delete process.env.DOMINDS_LTSP_OPENAI_TEST_KEY;\n complete=true;\n console.log(JSON.stringify({phase:mode,status:process.exitCode?'failed':'passed',requests:wire.length,evidenceDirectory:directory}));\n});\n"
+      },
+      {
+        "sourcePath": "/tmp/dominds-ltsp-openai-67id4168/probe.ts",
+        "sha256": "f459faf3a6fd9dd074b9bea66cd0c1a81891b1681dd087bb5f8f83302140627f",
+        "bytes": 9024,
+        "actualText": "import assert from 'node:assert/strict';\nimport fs from 'node:fs/promises';\nimport path from 'node:path';\nimport { randomUUID } from 'node:crypto';\nimport YAML from '/ws/AiWorks/dominds/node_modules/yaml';\nimport OpenAI from '/ws/AiWorks/dominds/node_modules/openai';\nimport { readBuiltinDefaultsYamlRaw, type ProviderConfig, type ChatMessage } from '/ws/AiWorks/dominds/main/llm/client';\nimport { OpenAiGen } from '/ws/AiWorks/dominds/main/llm/gen/openai';\nimport { Team } from '/ws/AiWorks/dominds/main/team';\nimport type { FuncTool } from '/ws/AiWorks/dominds/main/tool';\nimport { liveCapture } from '/ws/AiWorks/dominds/tests/helpers/live-provider';\n\nconst directory = '/tmp/dominds-ltsp-openai-67id4168';\nconst mode = process.argv[2] || 'stream';\nlet secret = '';\nlet complete = false;\nconst wire: Array<Record<string, unknown>> = [];\nconst pendingAudits: Array<Promise<void>> = [];\nconst attempts: Array<Record<string, unknown>> = [];\nconst redact = (value: string) => secret ? value.split(secret).join('[REDACTED]') : value;\nprocess.once('beforeExit', () => { if (!complete) { console.error('Probe completion boundary was not reached'); process.exitCode=1; } });\n\nasync function main() {\n  let inputText = '';\n  for await (const chunk of process.stdin) inputText += chunk.toString();\n  const input = JSON.parse(inputText);\n  secret = input.key;\n  assert.equal(typeof secret, 'string');\n  assert.ok(secret.length > 10);\n  process.env.DOMINDS_LTSP_OPENAI_TEST_KEY = secret;\n  const nativeFetch = globalThis.fetch.bind(globalThis);\n  globalThis.fetch = async (input, init) => {\n    const request = new Request(input, init);\n    const url = new URL(request.url);\n    assert.equal(url.origin, 'http://172.16.100.254:8080');\n    const body = request.method === 'POST' ? JSON.parse(await request.clone().text()) : undefined;\n    const entry: Record<string, unknown> = {method:request.method, path:url.pathname, body, startedAt:new Date().toISOString()};\n    wire.push(entry);\n    const response = await nativeFetch(input, init);\n    entry.status = response.status;\n    entry.headers = Object.fromEntries(['content-type','x-request-id','x-bifrost-request-id','x-bf-request-id','openai-processing-ms'].map(key=>[key,response.headers.get(key)]));\n    const copy=response.clone();\n    pendingAudits.push(copy.text().then(raw=>{\n      entry.rawResponse = redact(raw);\n      const packets: unknown[] = [];\n      if ((response.headers.get('content-type') || '').includes('text/event-stream')) {\n        for (const line of raw.split('\\n')) {\n          if (!line.startsWith('data:')) continue;\n          const data=line.slice(5).trim();\n          if (data && data!=='[DONE]') packets.push(JSON.parse(data));\n        }\n      } else if (raw) packets.push(JSON.parse(raw));\n      entry.packets=packets;\n    }));\n    return response;\n  };\n  const defaults=YAML.parse(await readBuiltinDefaultsYamlRaw());\n  const canonical=mode.startsWith('batch:')?mode.slice(6):'gpt-6.1-terra';\n  const metadata=defaults.providers.openai.models[canonical];\n  assert.ok(metadata, 'The selected canonical model must be configured in built-in defaults');\n  const model='openai/'+canonical;\n  const provider: ProviderConfig={...defaults.providers.openai, baseUrl:'http://172.16.100.254:8080/openai', apiKeyEnvVar:'DOMINDS_LTSP_OPENAI_TEST_KEY', models:{[model]:metadata}};\n  const agent=new Team.Member({id:'ltsp-gateway-probe',name:'LTSP gateway probe',provider:'ltsp-openai',model,model_params:{openai:{reasoning_effort:'low',verbosity:'low',parallel_tool_calls:false}}});\n  const generator=new OpenAiGen();\n  const request={dialogSelfId:'ltsp-gateway-probe',dialogRootId:'ltsp-gateway-probe',providerKey:'ltsp-openai',modelKey:model,toolUseRequirement:'none' as const};\n  const context: ChatMessage[]=[{type:'prompting_msg',role:'user',genseq:1,msgId:'connectivity-'+randomUUID(),grammar:'markdown',content:'Reply in one short sentence for a connectivity check. No writing-quality evaluation is requested.'}];\n  if (mode==='stream') {\n    const capture=liveCapture(1);\n    const result=await generator.genToReceiver(provider,agent,'',[],request,context,capture.receiver,1,AbortSignal.timeout(30000));\n    capture.assertComplete();\n    assert.ok(capture.capture.sayingChunks.join('').length>0);\n    assert.equal(capture.capture.calls.length,0);\n    assert.equal(result.usage?.kind,'available');\n    attempts.push({mode,model,status:'passed',context,result,capture:capture.capture,metadata});\n  } else if(mode==='tools') {\n    const nonce=randomUUID();\n    const given={nonce};\n    const tools: FuncTool[]=[{type:'func',name:'capture_nonce',description:'Capture an opaque supplied nonce. No external command or action is executed.',parameters:{type:'object',properties:{nonce:{type:'string'}},required:['nonce'],additionalProperties:false},call:async()=>{throw new Error('This transport probe must not execute a tool');}}];\n    context[0]={...context[0],content:'Call capture_nonce once with this supplied JSON: '+JSON.stringify(given)+'. After receiving its result, return a JSON object containing the supplied receipt.'};\n    const capture=liveCapture(1);\n    const first=await generator.genToReceiver(provider,agent,'',tools,{...request,toolUseRequirement:'required'},context,capture.receiver,1,AbortSignal.timeout(30000));\n    capture.assertComplete();assert.equal(capture.capture.calls.length,1);\n    const call=capture.capture.calls[0];assert.equal(call.name,'capture_nonce');assert.deepEqual(JSON.parse(call.args),given);\n    const receipt=randomUUID();\n    const resultMessage: ChatMessage={type:'func_result_msg',role:'tool',genseq:1,id:call.id,name:call.name,content:JSON.stringify({receipt})};\n    const nextContext=[...context,...capture.capture.messages,resultMessage];\n    agent.model_params={openai:{...agent.model_params?.openai,text_format:'json_schema',text_format_json_schema_name:'gateway_receipt',text_format_json_schema:JSON.stringify({type:'object',properties:{receipt:{type:'string'}},required:['receipt'],additionalProperties:false}),text_format_json_schema_strict:true}};\n    const second=await generator.genMoreMessages(provider,agent,'',tools,request,nextContext,2,AbortSignal.timeout(30000));\n    assert.equal(second.messages.filter(m=>m.type==='func_call_msg').length,0);\n    const text=second.messages.filter(m=>m.type==='saying_msg').map(m=>m.content).join('');\n    // Exact opaque supplied JSON data fidelity; no natural-language meaning is matched.\n    assert.deepEqual(JSON.parse(text),{receipt});\n    attempts.push({mode,model,status:'passed',given,receipt,first,capture:capture.capture,nextContext,second,toolExecuted:false});\n  } else if(mode==='ttl') {\n    const client=new OpenAI({apiKey:secret,baseURL:provider.baseUrl,maxRetries:0});\n    const payload={model,input:'Reply briefly for a cache-setting transport check.',reasoning:{effort:'low' as const},text:{verbosity:'low' as const},stream:false as const,store:false,max_output_tokens:256,prompt_cache_options:{ttl:'30m'}};\n    const result=await client.responses.create(payload,{signal:AbortSignal.timeout(30000)});\n    assert.equal(result.status,'completed');assert.equal(result.model,canonical);\n    assert.equal(Reflect.get(result,'prompt_cache_options')?.ttl,'30m');\n    attempts.push({mode,model,status:'passed',scope:'Direct native SDK cache-option preservation only; no new Dominds team parameter is implied.',input:payload,result});\n  } else if(mode.startsWith('batch:')) {\n    const result=await generator.genMoreMessages(provider,agent,'',[],request,context,1,AbortSignal.timeout(30000));\n    assert.equal(result.usage?.kind,'available');assert.equal(result.messages.filter(m=>m.type==='func_call_msg').length,0);\n    assert.ok(result.messages.some(m=>m.type==='saying_msg' && m.content.length>0));\n    attempts.push({mode,model,status:'passed',context,result,metadata});\n  } else throw new Error('Unknown phase');\n  await Promise.all(pendingAudits);\n  for(const row of wire) {\n    assert.equal(row.status,200);\n    const body=row.body as Record<string,unknown>;assert.equal(body.temperature,undefined);assert.equal(body.top_p,undefined);\n    assert.deepEqual(body.reasoning,{effort:'low'});\n    if(body.stream===true) {\n      const packets=row.packets as Array<Record<string,unknown>>;\n      assert.equal(packets.filter(p=>p.type==='response.completed').length,1);\n    }\n  }\n}\nvoid main().catch(error=>{\n attempts.push({mode,status:'failed',error:redact(error instanceof Error?error.stack || error.message:String(error))});\n process.exitCode=1;\n}).finally(async()=>{\n await Promise.allSettled(pendingAudits);\n await fs.writeFile(path.join(directory,mode.replace(/[^a-zA-Z0-9.-]/g,'_')+'.json'),redact(JSON.stringify({mode,observedAt:new Date().toISOString(),semanticAcceptance:'not-assessed',credentialStored:false,attempts,wire},null,2))+'\\n');\n delete process.env.DOMINDS_LTSP_OPENAI_TEST_KEY;\n complete=true;\n console.log(JSON.stringify({phase:mode,status:process.exitCode?'failed':'passed',requests:wire.length,evidenceDirectory:directory}));\n});\n"
+      },
+      {
+        "sourcePath": "/tmp/dominds-ltsp-openai-67id4168/check-example.ts",
+        "sha256": "4d4e6862dc5b77fcd9201fafc69371784577ad0f2e0badbf946a1f22d6bb1bb8",
+        "bytes": 1703,
+        "actualText": "import assert from 'node:assert/strict';\nimport fs from 'node:fs/promises';\nimport YAML from '/ws/AiWorks/dominds/node_modules/yaml';\nimport { LlmConfig } from '/ws/AiWorks/dominds/main/llm/client';\nasync function main() {\n const example=YAML.parse(await fs.readFile('/ws/AiWorks/dominds/docs/examples/ltsp-openai.llm.yaml','utf8'));\n const prior=YAML.parse(await fs.readFile('.minds/llm.yaml','utf8'));\n await fs.writeFile('.minds/llm.yaml',YAML.stringify({providers:{...prior.providers,...example.providers}}));\n const actual=await LlmConfig.load();const provider=actual.getProvider('ltsp-openai');assert.ok(provider);\n assert.equal(provider.apiType,'openai');assert.equal(provider.baseUrl,'http://172.16.100.254:8080/openai');assert.equal(provider.apiKeyEnvVar,'LTSP_OPENAI_API_KEY');\n const builtin=actual.getProvider('openai');assert.ok(builtin);assert.equal(builtin.baseUrl,'https://api.openai.com/v1');\n for(const [id,metadata] of Object.entries(provider.models)){assert.ok(id.startsWith('openai/'));assert.deepEqual(metadata,builtin.models[id.slice(7)]);}\n assert.equal(Object.keys(provider.models).length,5);\n for(const [id,data] of Object.entries(prior.providers))assert.deepEqual(actual.getProvider(id),data);\n const result={provider,officialProviderUnchanged:builtin.baseUrl,existingWorkspaceProvidersPreserved:Object.keys(prior.providers),networkRequests:0};\n await fs.writeFile('/tmp/dominds-ltsp-openai-67id4168/example-load.json',JSON.stringify(result,null,2)+'\\n');\n console.log('Example configuration loaded through native LlmConfig; five wire-model definitions preserve canonical metadata; no network request.');\n}\nvoid main().catch(error=>{console.error(error);process.exitCode=1});\n"
+      },
+      {
+        "sourcePath": "/tmp/dominds-ltsp-openai-67id4168/run.py",
+        "sha256": "14f0ece0f67e7ddb198226bf7b30c36f4ad376691eb9a8e80802953a19c3c5c5",
+        "bytes": 1094,
+        "actualText": "import http.client,json,pathlib,subprocess,sys\nroot=pathlib.Path('/tmp/dominds-ltsp-openai-67id4168');mode=sys.argv[1]\nc=http.client.HTTPConnection('172.16.100.254',8080,timeout=15);c.request('GET','/api/governance/virtual-keys');r=c.getresponse();data=r.read();status=r.status;c.close()\nassert status==200\ninfo=json.loads(data)\ndef objects(v):\n if isinstance(v,dict):\n  yield v\n  for x in v.values():yield from objects(x)\n elif isinstance(v,list):\n  for x in v:yield from objects(x)\nkeys=[x['value'] for x in objects(info) if x.get('name')=='ltsp-lan-clients' and isinstance(x.get('value'),str)];assert len(keys)==1\nkey=keys[0]\np=subprocess.run(['/tmp/dominds-pnpm','exec','tsx','--tsconfig','/ws/AiWorks/dominds/tests/tsconfig.json','/ws/AiWorks/dominds/tests/cli.ts','--',str(root/'probe.ts'),mode],input=json.dumps({'key':key}),text=True,capture_output=True,cwd='/ws/AiWorks/dominds',timeout=75)\nsafe=(p.stdout+'\\n'+p.stderr).replace(key,'[REDACTED]');(root/(mode.replace(':','_')+'.log')).write_text(safe)\nprint('phase',mode,'exit',p.returncode)\nprint(safe[-4000:])\nsys.exit(p.returncode)\n"
+      }
+    ],
+    "gatewayReconciliation": {
+      "sourcePath": "/ws/daowei2026/ltsp-diskless/artifacts/dominds-gateway-20261031/joint-reconciliation.json",
+      "sha256": "681d74cbe3fcb0c34f14130b2a92adf09c058dad56efb043557db3e3159eb737",
+      "bytes": 5457,
+      "content": {
+        "summary": {
+          "requests": 8,
+          "input_tokens": 464,
+          "output_tokens": 117,
+          "estimated_usd": "0.0016348"
+        },
+        "requests": [
+          {
+            "source": "stream.json",
+            "gateway_id": "d3bed158-a4df-48a2-a1d8-639f4c34be2b",
+            "upstream_request_id": "req_4fa6b28b4f654cf2a5d7b7da47e21e0a",
+            "model": "gpt-6.1-terra",
+            "object": "responses_stream",
+            "status": "success",
+            "input_tokens": 23,
+            "output_tokens": 8,
+            "estimated_usd": 6.3e-5,
+            "requested_cache_options": null,
+            "effective_cache_options": {
+              "mode": "implicit",
+              "ttl": "12h"
+            },
+            "reasoning_effort": "low",
+            "retries": 0,
+            "fallback_index": 0,
+            "content_hidden": true,
+            "raw_request_empty": true,
+            "raw_response_empty": true
+          },
+          {
+            "source": "tools.json",
+            "gateway_id": "518fa6e2-a2f0-4425-b175-1e1332aee064",
+            "upstream_request_id": "req_8a8a3fa7d8154740b6d84c2859455526",
+            "model": "gpt-6.1-terra",
+            "object": "responses_stream",
+            "status": "success",
+            "input_tokens": 178,
+            "output_tokens": 39,
+            "estimated_usd": 0.000373,
+            "requested_cache_options": null,
+            "effective_cache_options": {
+              "mode": "implicit",
+              "ttl": "12h"
+            },
+            "reasoning_effort": "low",
+            "retries": 0,
+            "fallback_index": 0,
+            "content_hidden": true,
+            "raw_request_empty": true,
+            "raw_response_empty": true
+          },
+          {
+            "source": "tools.json",
+            "gateway_id": "7f8f4de5-a7e4-4cb6-8d47-a2a6a84ac9bb",
+            "upstream_request_id": "req_2b848a0838e8441b9828bd6962952aab",
+            "model": "gpt-6.1-terra",
+            "object": "responses",
+            "status": "success",
+            "input_tokens": 156,
+            "output_tokens": 36,
+            "estimated_usd": 0.00033600000000000004,
+            "requested_cache_options": null,
+            "effective_cache_options": {
+              "mode": "implicit",
+              "ttl": "12h"
+            },
+            "reasoning_effort": "low",
+            "retries": 0,
+            "fallback_index": 0,
+            "content_hidden": true,
+            "raw_request_empty": true,
+            "raw_response_empty": true
+          },
+          {
+            "source": "batch_gpt-6.1-sol.json",
+            "gateway_id": "5e04b3fd-d066-4377-856d-2747566f8420",
+            "upstream_request_id": "req_fc73d1b9a1ed4194a559f7cd4c307b35",
+            "model": "gpt-6.1-sol",
+            "object": "responses",
+            "status": "success",
+            "input_tokens": 23,
+            "output_tokens": 7,
+            "estimated_usd": 0.000116,
+            "requested_cache_options": null,
+            "effective_cache_options": {
+              "mode": "implicit",
+              "ttl": "12h"
+            },
+            "reasoning_effort": "low",
+            "retries": 0,
+            "fallback_index": 0,
+            "content_hidden": true,
+            "raw_request_empty": true,
+            "raw_response_empty": true
+          },
+          {
+            "source": "batch_gpt-6-astra.json",
+            "gateway_id": "9629c6c8-c82d-4b4c-a4e3-2ce694ef6f4d",
+            "upstream_request_id": "req_fc1d49e2c91f477ba8d7f260bab3bdb7",
+            "model": "gpt-6-astra",
+            "object": "responses",
+            "status": "success",
+            "input_tokens": 23,
+            "output_tokens": 7,
+            "estimated_usd": 0.00058,
+            "requested_cache_options": null,
+            "effective_cache_options": {
+              "mode": "implicit",
+              "ttl": "12h"
+            },
+            "reasoning_effort": "low",
+            "retries": 0,
+            "fallback_index": 0,
+            "content_hidden": true,
+            "raw_request_empty": true,
+            "raw_response_empty": true
+          },
+          {
+            "source": "batch_gpt-6-luna.json",
+            "gateway_id": "d11e5d17-8339-41e9-9aa2-617f3b2b776d",
+            "upstream_request_id": "req_2b15d4bb6e774dea81d3f6770fd6cc2b",
+            "model": "gpt-6-luna",
+            "object": "responses",
+            "status": "success",
+            "input_tokens": 23,
+            "output_tokens": 7,
+            "estimated_usd": 5.8e-6,
+            "requested_cache_options": null,
+            "effective_cache_options": {
+              "mode": "implicit",
+              "ttl": "12h"
+            },
+            "reasoning_effort": "low",
+            "retries": 0,
+            "fallback_index": 0,
+            "content_hidden": true,
+            "raw_request_empty": true,
+            "raw_response_empty": true
+          },
+          {
+            "source": "batch_gpt-6-sol.json",
+            "gateway_id": "cc16574f-f9a0-457e-9069-36b6f0341613",
+            "upstream_request_id": "req_8e90930bb9ef4e3a9c5c46e16d73b10d",
+            "model": "gpt-6-sol",
+            "object": "responses",
+            "status": "success",
+            "input_tokens": 23,
+            "output_tokens": 7,
+            "estimated_usd": 0.000116,
+            "requested_cache_options": null,
+            "effective_cache_options": {
+              "mode": "implicit",
+              "ttl": "12h"
+            },
+            "reasoning_effort": "low",
+            "retries": 0,
+            "fallback_index": 0,
+            "content_hidden": true,
+            "raw_request_empty": true,
+            "raw_response_empty": true
+          },
+          {
+            "source": "ttl.json",
+            "gateway_id": "e138e123-c7ac-4adc-b0ec-49ec7923fc23",
+            "upstream_request_id": "req_8e0f9caf389646c78c16865c132ddd79",
+            "model": "gpt-6.1-terra",
+            "object": "responses",
+            "status": "success",
+            "input_tokens": 15,
+            "output_tokens": 6,
+            "estimated_usd": 4.5e-5,
+            "requested_cache_options": {
+              "ttl": "30m"
+            },
+            "effective_cache_options": {
+              "mode": "implicit",
+              "ttl": "30m"
+            },
+            "reasoning_effort": "low",
+            "retries": 0,
+            "fallback_index": 0,
+            "content_hidden": true,
+            "raw_request_empty": true,
+            "raw_response_empty": true
+          }
+        ]
+      }
+    },
+    "clientObservations": [
+      {
+        "source": "stream.json",
+        "gatewayRequestId": "d3bed158-a4df-48a2-a1d8-639f4c34be2b",
+        "actualModel": "gpt-6.1-terra",
+        "stream": true,
+        "status": 200,
+        "inputTokens": 23,
+        "outputTokens": 8,
+        "effectiveCacheOptions": {
+          "mode": "implicit",
+          "ttl": "12h"
+        }
+      },
+      {
+        "source": "tools.json",
+        "gatewayRequestId": "518fa6e2-a2f0-4425-b175-1e1332aee064",
+        "actualModel": "gpt-6.1-terra",
+        "stream": true,
+        "status": 200,
+        "inputTokens": 178,
+        "outputTokens": 39,
+        "effectiveCacheOptions": {
+          "mode": "implicit",
+          "ttl": "12h"
+        }
+      },
+      {
+        "source": "tools.json",
+        "gatewayRequestId": "7f8f4de5-a7e4-4cb6-8d47-a2a6a84ac9bb",
+        "actualModel": "gpt-6.1-terra",
+        "stream": false,
+        "status": 200,
+        "inputTokens": 156,
+        "outputTokens": 36,
+        "effectiveCacheOptions": {
+          "mode": "implicit",
+          "ttl": "12h"
+        }
+      },
+      {
+        "source": "batch_gpt-6.1-sol.json",
+        "gatewayRequestId": "5e04b3fd-d066-4377-856d-2747566f8420",
+        "actualModel": "gpt-6.1-sol",
+        "stream": false,
+        "status": 200,
+        "inputTokens": 23,
+        "outputTokens": 7,
+        "effectiveCacheOptions": {
+          "mode": "implicit",
+          "ttl": "12h"
+        }
+      },
+      {
+        "source": "batch_gpt-6-astra.json",
+        "gatewayRequestId": "9629c6c8-c82d-4b4c-a4e3-2ce694ef6f4d",
+        "actualModel": "gpt-6-astra",
+        "stream": false,
+        "status": 200,
+        "inputTokens": 23,
+        "outputTokens": 7,
+        "effectiveCacheOptions": {
+          "mode": "implicit",
+          "ttl": "12h"
+        }
+      },
+      {
+        "source": "batch_gpt-6-luna.json",
+        "gatewayRequestId": "d11e5d17-8339-41e9-9aa2-617f3b2b776d",
+        "actualModel": "gpt-6-luna",
+        "stream": false,
+        "status": 200,
+        "inputTokens": 23,
+        "outputTokens": 7,
+        "effectiveCacheOptions": {
+          "mode": "implicit",
+          "ttl": "12h"
+        }
+      },
+      {
+        "source": "batch_gpt-6-sol.json",
+        "gatewayRequestId": "cc16574f-f9a0-457e-9069-36b6f0341613",
+        "actualModel": "gpt-6-sol",
+        "stream": false,
+        "status": 200,
+        "inputTokens": 23,
+        "outputTokens": 7,
+        "effectiveCacheOptions": {
+          "mode": "implicit",
+          "ttl": "12h"
+        }
+      },
+      {
+        "source": "ttl.json",
+        "gatewayRequestId": "e138e123-c7ac-4adc-b0ec-49ec7923fc23",
+        "actualModel": "gpt-6.1-terra",
+        "stream": false,
+        "status": 200,
+        "inputTokens": 15,
+        "outputTokens": 6,
+        "effectiveCacheOptions": {
+          "mode": "implicit",
+          "ttl": "30m"
+        }
+      }
+    ],
+    "semanticAcceptance": "pending independent full-text judgment; generated connectivity prose is outside a writing-quality requirement"
+  },
+  "provenance": {
+    "reviewInput": {
+      "sourcePath": "/tmp/dominds-ltsp-openai-67id4168/semantic-review-input.json",
+      "sha256": "c5052e70f300ca153f1570928b3567b1080e9cef6a4aee1d9ef7bee50934c654",
+      "bytes": 97955
+    },
+    "nativeCodeContext": [
+      {
+        "repositoryPath": "main/llm/client.ts",
+        "sha256": "d4522932503df8c8074d91c74f1ae7ae7568a6a607c7e7270cd538c6a5febd2d",
+        "bytes": 7458,
+        "readScope": "LlmConfig provider-key shallow merge and loader"
+      },
+      {
+        "repositoryPath": "main/llm/gen/openai.ts",
+        "sha256": "6bd60f1c6322ee1c204c9eac2990f435936b36dec249cb0087809c2fe38eb17c",
+        "bytes": 94651,
+        "readScope": "Streaming/batch payload construction, own OpenAI parameter namespace, native baseURL and absence of public TTL/output override"
+      }
+    ],
+    "mainAcceptanceRecord": {
+      "repositoryPath": "tests/audits/2026-10-31-ltsp-openai.json",
+      "scope": "Primary-owned full client/catalog/gateway evidence and later standard checks; this independent report does not edit it or freeze its later append-only check fields."
+    },
+    "sourceEpoch": "The seven actual OpenAiGen calls used these five numeric/model entries before final parameter-hint wording was edited. Per-model metadata is byte-value equal to current parsed entries; no assertion that previous paid calls read later guidance.",
+    "hashPolicy": "All SHA values identify exactly reviewed material or data provenance; none judges meaning, grants a fresh verdict to later output or acts as a semantic oracle."
+  },
+  "limitations": [
+    "Exactly seven actual OpenAiGen requests and one direct native SDK TTL request are the observed scope; this reviewer made no paid/API request and created no subagent.",
+    "The five short-model transport checks do not test the1.05M/128K limits, pressure behavior at scale, image input, task output quality, balance, rate limits or all130 catalog models.",
+    "600K/922K/cadence10 are inherited application policies, not measured vendor max-input or optimal-quality recommendations.",
+    "Official cache minimum/default and deployment12h injection are separate. Small requests and TTL echoes do not prove cache writes/hits, retention duration or financial savings.",
+    "The SDK-only explicit30m/max_output_tokens input does not expose new public Dominds team parameters.",
+    "The prior paid calls did not execute later-edited hint descriptions. Only equal per-model metadata is carried across that source epoch; current guidance receives its own full-text verdict here.",
+    "Inherited non-OpenAI provider guidance and old options remain context, not new conformance execution.",
+    "Current standard/local check outcomes belong to the primary acceptance record; this report does not duplicate them or claim broader fresh semantic acceptance."
+  ]
+}
