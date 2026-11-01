@@ -1039,6 +1039,11 @@ providers:
         # Isolation principle:
         # - These hints describe the OpenAI Responses wrapper only.
         # - Same-looking fields under `codex` are not aliases and are not fallback-compatible.
+        # Pro support for configured general-purpose OpenAI API models (checked 2026-11-01):
+        # GPT-6.1: gpt-6.1-sol, gpt-6.1-terra; GPT-6: gpt-6-astra, gpt-6-sol, gpt-6-luna.
+        # GPT-5.6: gpt-5.6-sol, gpt-5.6-terra, gpt-5.6-luna; gpt-5.6 aliases Sol.
+        # https://developers.openai.com/api/docs/guides/reasoning#reasoning-mode
+        # Older *-pro IDs are separate models, not uses of this Responses mode switch.
         reasoning_mode:
           prominent: true
           type: enum

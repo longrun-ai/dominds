@@ -50,6 +50,16 @@ members:
 
 GPT-6 的 Pro 是 Responses 执行模式，使用真实模型 ID 加 `reasoning.mode: pro`，与 `reasoning.effort` 独立；`max` effort 不会自动开启 Pro。Pro 会执行更多模型工作，并增加 token 使用和延迟，按所选模型的 token 费率计费。见[官方 reasoning mode](https://developers.openai.com/api/docs/guides/reasoning#reasoning-mode)。
 
+截至2026-11-01，官方说明支持该模式的**当前 Dominds 内置通用 OpenAI 模型**如下：
+
+| 系列    | 模型 ID                                                               |
+| ------- | --------------------------------------------------------------------- |
+| GPT-6.1 | `gpt-6.1-sol`、`gpt-6.1-terra`                                        |
+| GPT-6   | `gpt-6-astra`、`gpt-6-sol`、`gpt-6-luna`                              |
+| GPT-5.6 | `gpt-5.6-sol`、`gpt-5.6-terra`、`gpt-5.6-luna`；`gpt-5.6` 是 Sol 别名 |
+
+依据[官方模式支持范围](https://developers.openai.com/api/docs/guides/reasoning#reasoning-mode)与[型号/别名说明](https://developers.openai.com/api/docs/guides/latest-model)。网关使用相应的 `openai/` 前缀 ID；本地 Pro 实测目前仅覆盖 `openai/gpt-6.1-sol` 的 low effort，其余型号未逐一进行 Pro 实测。该范围适用于 OpenAI Responses，不外推到 Codex 或 Chat Completions。旧 `gpt-5.5-pro` 等仍是独立模型 ID，沿用各自行为和计费；不要向其它旧模型通用添加此开关。
+
 Dominds 使用 `.minds/team.yaml` 的 `model_params.openai.reasoning_mode: standard | pro`，模型目录继续使用原始 wire ID。例如让普通执行成员使用标准模式、审查成员显式使用 Pro：
 
 ```yaml

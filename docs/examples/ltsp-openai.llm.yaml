@@ -10,6 +10,9 @@ providers:
     # Keep setup choices and generation metadata visible for this custom provider.
     model_param_options:
       openai:
+        # All five GPT-6/6.1 models below officially support Responses Pro mode.
+        # Gateway Pro testing covers only openai/gpt-6.1-sol at low effort so far.
+        # https://developers.openai.com/api/docs/guides/reasoning#reasoning-mode
         reasoning_mode:
           prominent: true
           type: enum

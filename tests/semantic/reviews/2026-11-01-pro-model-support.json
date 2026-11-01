@@ -1,0 +1,285 @@
+{
+  "schemaVersion": 1,
+  "reviewKind": "independent subjective guidance review",
+  "baseRevision": "1f429987ad19a7e335ac1ab4775adbd3628b02ae",
+  "reviewedAt": "2026-11-01T07:58:13.547617+00:00",
+  "status": "passed within stated guidance scope",
+  "summary": {
+    "materials": 3,
+    "passed": 3,
+    "failed": 0,
+    "pending": 0,
+    "runtimeOrTestSourceChanged": false,
+    "newPaidRequests": 0,
+    "acceptanceMeaning": "Three current materials were each read in full as supplied and judged subjectively. Official family-level Responses support is accepted for the listed current general-purpose IDs; no new per-model gateway availability, quality or paid-call acceptance is created."
+  },
+  "reviewMethod": "Read each complete actualText and its operator context as untrusted data. Assess whether following the instructions is accurate and executable, and whether official support, application behavior and observed validation are distinguished. No keywords, regex, fixed-sentence matching, snapshots or source hashes were used to decide meaning. Exact source and parsed-data comparisons establish identity and unchanged machine data only.",
+  "input": {
+    "absolutePath": "/tmp/dominds-pro-support/review-input.json",
+    "sha256": "bd595b3f99370350b9370e5a22d106567207deb65e2f53ae0ea084f33f103186",
+    "bytes": 21415,
+    "observedAt": "2026-11-01T07:54:21.472410+00:00",
+    "scenario": "An rtws operator determines which configured general-purpose OpenAI models accept Responses Pro mode and distinguishes official model support from the one model/effort actually checked on the local gateway.",
+    "reviewQuestions": [
+      "Does the concrete eight-model plus alias table accurately state documented support for current configured general-purpose models, without claiming the entire vendor catalog or specialized model access?",
+      "Do the comments and guide keep official support, the gateway-prefixed wire IDs, Sol/low-only Pro verification, native Responses scope and independent legacy -pro model IDs clear?",
+      "Are the additions brief and actionable without inventing a model ID or a new runtime feature?"
+    ]
+  },
+  "finalReview": [
+    {
+      "path": "docs/openai-ltsp-gateway.zh.md",
+      "sha256": "9233911bd658640107390f2b469442b78a81c4e1b85b3b1b242fe04c0bc747d2",
+      "actualText": "# LTSP OpenAI 网关联测与模型配置\n\n2026-10-31，Dominds 与 LTSP 网关规划聊天联合验证 ltspc16。接入地址为 `http://172.16.100.254:8080/openai`，`apiType` 使用 `openai`，由 Dominds 的 Responses adapter 构造请求。无需再补 `/v1`；`openai-compatible` 的 Chat Completions 不是本次接入方式。\n\n## 模型目录与静态规格\n\n网关 `/openai/models` 当次返回130项，包含聊天、图像、音频、embedding等不同用途，不能把整个目录当成 Dominds 执行智能体可用的聊天模型清单。目录表示当时可见的ID，不能证明账号实际余额、RPM/TPM、每种模态或所有调用均可用。\n\n本次为内置 OpenAI provider 补齐以下五个文本/工具工作流模型，保留旧模型兼容；没有修改独立 Codex provider。官方 API 使用无前缀ID，网关实例使用表中带 `openai/` 的wire ID。\n\n| 官方模型ID      | 网关wire ID            | 总上下文  | 最大输出 | 推理effort                               |\n| --------------- | ---------------------- | --------- | -------- | ---------------------------------------- |\n| `gpt-6.1-sol`   | `openai/gpt-6.1-sol`   | 1,050,000 | 128,000  | low / medium / high / xhigh / max        |\n| `gpt-6.1-terra` | `openai/gpt-6.1-terra` | 1,050,000 | 128,000  | none / low / medium / high / xhigh / max |\n| `gpt-6-astra`   | `openai/gpt-6-astra`   | 1,050,000 | 128,000  | low / medium / high / xhigh / max        |\n| `gpt-6-luna`    | `openai/gpt-6-luna`    | 1,050,000 | 128,000  | none / low / medium / high / xhigh / max |\n| `gpt-6-sol`     | `openai/gpt-6-sol`     | 1,050,000 | 128,000  | none / low / medium / high / xhigh / max |\n\n规格依据各官方页：[6.1 Sol](https://developers.openai.com/api/docs/models/gpt-6.1-sol)、[6.1 Terra](https://developers.openai.com/api/docs/models/gpt-6.1-terra)、[Astra](https://developers.openai.com/api/docs/models/gpt-6-astra)、[Luna](https://developers.openai.com/api/docs/models/gpt-6-luna)、[6 Sol](https://developers.openai.com/api/docs/models/gpt-6-sol)。五者均声明支持图片输入；本次没有进行真实图像理解或视觉质量验收。\n\n输入、输出及reasoning共享总上下文，不能把1.05M输入再加128K输出。本次不单列未经官方独立说明的 `input_length`。`optimal_max_tokens: 600000`、`critical_max_tokens: 922000` 与10代保全提醒节奏沿用已有1.05M模型的 Dominds harness 策略；922K为总窗口减去128K输出余量，是应用预算，不是新测出的供应商max-input。没有做百万token压力测试，也没有实际生成128K输出。\n\nBifrost聚合元数据曾对Terra分别给出922K/1.05M输入，并带有与本次Responses+low工具往返不一致的泛化能力标记。静态规格以官方API资料为准，具体可用性由所述实测建立；不把聚合字段直接拷贝成全局能力或外推到其它API。\n\n## 在rtws接入\n\n将[完整无密钥样例](./examples/ltsp-openai.llm.yaml)的 `providers.ltsp-openai` 合入已有 `.minds/llm.yaml`，保留其它provider。`LlmConfig`按provider键替换配置，不会自动把新provider的模型表与内置OpenAI表深度合并。\n\n为 Dominds 进程注入 `LTSP_OPENAI_API_KEY`，值应为部署方批准的网关 Virtual Key；不要使用dummy值，也不要将实际Key写入Git。样例只引用变量名，不包含凭据，不改变内置OpenAI的官方baseURL。\n\n团队成员显式选择网关provider和wire ID，例如：\n\n```yaml\nmembers:\n  executor:\n    name: Executor\n    provider: ltsp-openai\n    model: openai/gpt-6.1-terra\n    model_params:\n      openai:\n        reasoning_effort: low\n        verbosity: low\n```\n\n这是低量连通测试参数，不是质量或成本最优档位的结论。使用者应按实际任务评估effort；Astra与6.1 Sol不接受none，旧模型的minimal选项不适用于本表。启用reasoning时省略 `temperature`、`top_p` 等不兼容采样参数；工具调用使用Responses。详见[官方GPT-6接入指导](https://developers.openai.com/api/docs/guides/latest-model)。provider参数提示中的选项是按模型适用的并集，不是对每个模型的统一支持承诺。\n\n本轮只验证带provider前缀的推理请求。裸ID的模型元数据读取成功不等于裸ID推理路由已验证；不要只凭 `/openai` URL 假定网关会自动选择provider。\n\n## Pro 模式与 rtws 选择\n\nGPT-6 的 Pro 是 Responses 执行模式，使用真实模型 ID 加 `reasoning.mode: pro`，与 `reasoning.effort` 独立；`max` effort 不会自动开启 Pro。Pro 会执行更多模型工作，并增加 token 使用和延迟，按所选模型的 token 费率计费。见[官方 reasoning mode](https://developers.openai.com/api/docs/guides/reasoning#reasoning-mode)。\n\n截至2026-11-01，官方说明支持该模式的**当前 Dominds 内置通用 OpenAI 模型**如下：\n\n| 系列    | 模型 ID                                                               |\n| ------- | --------------------------------------------------------------------- |\n| GPT-6.1 | `gpt-6.1-sol`、`gpt-6.1-terra`                                        |\n| GPT-6   | `gpt-6-astra`、`gpt-6-sol`、`gpt-6-luna`                              |\n| GPT-5.6 | `gpt-5.6-sol`、`gpt-5.6-terra`、`gpt-5.6-luna`；`gpt-5.6` 是 Sol 别名 |\n\n依据[官方模式支持范围](https://developers.openai.com/api/docs/guides/reasoning#reasoning-mode)与[型号/别名说明](https://developers.openai.com/api/docs/guides/latest-model)。网关使用相应的 `openai/` 前缀 ID；本地 Pro 实测目前仅覆盖 `openai/gpt-6.1-sol` 的 low effort，其余型号未逐一进行 Pro 实测。该范围适用于 OpenAI Responses，不外推到 Codex 或 Chat Completions。旧 `gpt-5.5-pro` 等仍是独立模型 ID，沿用各自行为和计费；不要向其它旧模型通用添加此开关。\n\nDominds 使用 `.minds/team.yaml` 的 `model_params.openai.reasoning_mode: standard | pro`，模型目录继续使用原始 wire ID。例如让普通执行成员使用标准模式、审查成员显式使用 Pro：\n\n```yaml\nmember_defaults:\n  provider: ltsp-openai\n  model: openai/gpt-6.1-sol\n  model_params:\n    openai:\n      reasoning_mode: standard\n      reasoning_effort: medium\n      verbosity: medium\nmembers:\n  executor:\n    name: Executor\n  reviewer:\n    name: Reviewer\n    model_params:\n      openai:\n        reasoning_mode: pro\n        reasoning_effort: high\n        verbosity: medium\n```\n\n`model_params` 是团队成员的运行配置；`.minds/llm.yaml` 的 `model_param_options` 提供配置提示。上面的[完整网关样例](./examples/ltsp-openai.llm.yaml)包含模式、effort 和 verbosity 的选项，因此这个自定义 provider 也能在 `/setup` 显示对应控件，并在 generation 模型标识/tooltip 中显示已配置的模式。成员自己的 `model_params` 替换整个继承参数块，示例为 reviewer 明确写出其所需参数。\n\n已有团队应在原 `.minds/team.yaml` 的 `member_defaults` 或具体 `members.<id>.model_params.openai` 下定点修改模式，保留现有成员、权限及其它配置。`/setup` 是初始化入口，保存的是仅含 `member_defaults` 的最小团队文件；确认覆盖会替换整份 `team.yaml`，不能把它当成已有团队的成员编辑器。\n\n初始化时，在 `/setup` 先选 provider 与模型，再独立选择 `reasoning_mode` 和 effort，检查生成的 `member_defaults` 预览后保存。重新加载 setup 会读回已保存的参数；手动更改的选择不会被随后状态刷新重置。模式控件没有预选默认值，省略 mode 保持既有请求不发送该字段；官方默认采用 standard。仅对支持该参数的 GPT-5.6/GPT-6 选择 standard/pro，切换到不支持的旧模型时保持未设置。已有旧 rtws 不会被自动切换为 Pro。配置显示的是选择，不是上游执行结果的证明。\n\n无需添加 `gpt-6-pro` 或 `gpt-6.1-sol-pro` 模型条目。当前配置中的模型键直接用于请求，`name` 仅为显示名称，不会把本地虚构 ID 映射为另一个上游模型。\n\nPro 专项已通过一次原生 SDK 调用，以及由实际 rtws 配置和 `Team.load()` 取得成员的 Dominds 流式调用、流式函数调用及工具结果 batch 续轮，共4次 Sol 请求。原始非流式响应和流式 completed 事件均明确回显 `reasoning.mode: pro`；HTTP200、费用升高或 reasoning token 数均不作为 Pro 生效的替代证据。网关日志独立核对 ID、模型及 usage，但其日志没有独立 mode 列。完整证据见[Pro 专项验收](../tests/audits/2026-11-01-openai-pro.json)。本次使用 low effort 验证传输与给定 JSON 数据往返，没有测量 Pro 的任务质量收益，也没有逐个验收所有模型/effort 组合。\n\n## 前一轮基础联测范围\n\n五个模型均通过 Dominds 原生 `OpenAiGen` 的短请求：Terra流式，另外四个batch；返回的真实model标识一致，usage可用。Terra还通过一次流式函数调用与工具结果batch续轮：给定nonce完整传入，独立随机receipt仅经工具结果提供，续轮结构化JSON完整返回；没有执行真实工具。检查的是机器数据与协议，不以回答措辞判断语义质量。\n\n客户端未发送缓存TTL时，响应回显 `prompt_cache_options.ttl: 12h`，证实该网关采用了部署方默认值。另一次直接原生SDK请求显式传入 `prompt_cache_options.ttl: 30m` 并得到30m回显，没有被网关默认覆盖。后者只建立SDK/网关字段保全，不表示当前 Dominds 团队参数已开放TTL或输出token override。\n\nOpenAI官方默认是30m，12h是此网关策略；两种设置的cache-write费率不同。小于1,024可见输入token的请求不会因此证明缓存命中；本次没有发送长prompt测试cache-write、命中率或节费。见[官方prompt caching文档](https://developers.openai.com/api/docs/guides/prompt-caching)。\n\nLTSP侧按网关request ID独立读回日志，确认实际provider/model、usage、成功状态、无retry/fallback及正文隐藏。完整目录快照、请求/响应、初次夹具错误与执行范围保存在[联合验收记录](../tests/audits/2026-10-31-ltsp-openai.json)。记录中的短请求不证明长上下文、长期缓存保留、模型回答质量、所有130模型或吞吐限额。\n",
+      "id": "operator-guide",
+      "scenario": "实际操作者在现有 rtws 中选择支持 Pro 的通用 OpenAI 模型，区分官方支持、网关 wire ID、已验证调用与尚未逐项验证的组合；也需保全既有团队配置。",
+      "context": {
+        "baseRevision": "1f429987ad19a7e335ac1ab4775adbd3628b02ae",
+        "evidenceObservedAt": "2026-11-01T07:54:21.472410+00:00",
+        "officialBasis": "official Responses family contract, restricted to the current configured general-purpose model IDs; not individual paid gateway validation",
+        "newPaidRequests": 0,
+        "runtimeAndParsedConfigurationValuesChanged": false
+      },
+      "verdict": "passed",
+      "rationale": [
+        "新增表限定到当前 Dominds 内置通用模型，完整列出八个 canonical ID，并把 gpt-5.6 说明为 Sol 别名，不把别名计为另一种模型。官方 latest-model 将 GPT-6.1 两型号纳入 GPT-6 指导，且说明 GPT-5.6 三型号与别名；reasoning-mode 的族级 Responses 契约可作为该表的依据。",
+        "官方支持、网关 openai/ 前缀和本地实际验证分开陈述：仅 Sol/low 的 Pro 联测属于已有实证，其余型号没有冒称逐项付费通过。标明日期及两个来源，读者能核对适用范围。",
+        "完整上下文继续使用真实 wire ID 与 model_params.openai.reasoning_mode，不虚构 Pro 型号；mode 与 effort 分离，max 不是 Pro 开关。旧 Pro ID 保持各自行为，支持范围明确限于 Responses，不向 Codex、Chat Completions 或任意旧模型外推。",
+        "既有团队定点修改与 /setup 最小初始化文件的覆盖边界仍清楚。新增表不改变原有规格、应用预算和测试范围区分，也不增添质量、容量或所有网关目录均可用的承诺。"
+      ],
+      "reviewScope": "接受这份完整当前接入指导中 Pro 型号说明及其与周围配置、UX 和验收边界的相容性。历史联测事实沿用文档所引用的独立验收记录；本次不重新执行或扩大它们。",
+      "provenance": {
+        "inputAbsolutePath": "/tmp/dominds-pro-support/review-input.json",
+        "inputSha256": "bd595b3f99370350b9370e5a22d106567207deb65e2f53ae0ea084f33f103186",
+        "materialIndex": 0,
+        "sourceAbsolutePath": "/ws/AiWorks/dominds/docs/openai-ltsp-gateway.zh.md",
+        "sourceSha256": "9233911bd658640107390f2b469442b78a81c4e1b85b3b1b242fe04c0bc747d2",
+        "actualTextSha256": "9233911bd658640107390f2b469442b78a81c4e1b85b3b1b242fe04c0bc747d2",
+        "actualTextUtf8Bytes": 10353,
+        "sourceIdentity": {
+          "sha256": "9233911bd658640107390f2b469442b78a81c4e1b85b3b1b242fe04c0bc747d2",
+          "bytes": 10353,
+          "gitBlob": "13d2e932f8da88ed6b4e06d9d3349ba63e178f56"
+        },
+        "hashPurpose": "identity only; neither meaning oracle nor acceptance of later output"
+      }
+    },
+    {
+      "path": "docs/examples/ltsp-openai.llm.yaml",
+      "sha256": "9627f090eba907e350cd8e4900726a46293afe94837953e4be176d139398d87a",
+      "actualText": "# Merge providers.ltsp-openai into the rtws .minds/llm.yaml; keep existing providers.\n# Set LTSP_OPENAI_API_KEY in the process environment to an approved gateway Virtual Key.\n# No key value belongs in this file.\nproviders:\n  ltsp-openai:\n    name: LTSP OpenAI\n    apiType: openai\n    baseUrl: http://172.16.100.254:8080/openai\n    apiKeyEnvVar: LTSP_OPENAI_API_KEY\n    # Keep setup choices and generation metadata visible for this custom provider.\n    model_param_options:\n      openai:\n        # All five GPT-6/6.1 models below officially support Responses Pro mode.\n        # Gateway Pro testing covers only openai/gpt-6.1-sol at low effort so far.\n        # https://developers.openai.com/api/docs/guides/reasoning#reasoning-mode\n        reasoning_mode:\n          prominent: true\n          type: enum\n          values: [standard, pro]\n          value_labels:\n            standard: Standard\n            pro: Pro\n          description: Responses execution mode for these GPT-6 models. Unset uses API standard mode; Pro uses more model work, tokens and latency. Independent of reasoning_effort.\n        reasoning_effort:\n          prominent: true\n          type: enum\n          values: [none, low, medium, high, xhigh, max]\n          description: Model-dependent reasoning effort. Astra and GPT-6.1 Sol require low or higher; Terra, Luna and GPT-6 Sol also accept none. Choose independently of standard/pro mode.\n        verbosity:\n          prominent: true\n          type: enum\n          values: [low, medium, high]\n          description: Response detail level when supported. This does not select reasoning mode or effort.\n    models:\n      openai/gpt-6.1-sol:\n        name: GPT-6.1 Sol\n        supports_image_input: true\n        context_length: 1050000\n        output_length: 128000\n        optimal_max_tokens: 600000\n        critical_max_tokens: 922000\n        caution_remediation_cadence_generations: 10\n        context_window: '1.05M'\n      openai/gpt-6.1-terra:\n        name: GPT-6.1 Terra\n        supports_image_input: true\n        context_length: 1050000\n        output_length: 128000\n        optimal_max_tokens: 600000\n        critical_max_tokens: 922000\n        caution_remediation_cadence_generations: 10\n        context_window: '1.05M'\n      openai/gpt-6-astra:\n        name: GPT-6 Astra\n        supports_image_input: true\n        context_length: 1050000\n        output_length: 128000\n        optimal_max_tokens: 600000\n        critical_max_tokens: 922000\n        caution_remediation_cadence_generations: 10\n        context_window: '1.05M'\n      openai/gpt-6-luna:\n        name: GPT-6 Luna\n        supports_image_input: true\n        context_length: 1050000\n        output_length: 128000\n        optimal_max_tokens: 600000\n        critical_max_tokens: 922000\n        caution_remediation_cadence_generations: 10\n        context_window: '1.05M'\n      openai/gpt-6-sol:\n        name: GPT-6 Sol\n        supports_image_input: true\n        context_length: 1050000\n        output_length: 128000\n        optimal_max_tokens: 600000\n        critical_max_tokens: 922000\n        caution_remediation_cadence_generations: 10\n        context_window: '1.05M'\n",
+      "id": "gateway-example",
+      "scenario": "操作者合并完整无密钥网关 provider 样例，并在五个已列出的 GPT-6/6.1 模型间选择独立的 reasoning_mode 与 effort。",
+      "context": {
+        "baseRevision": "1f429987ad19a7e335ac1ab4775adbd3628b02ae",
+        "evidenceObservedAt": "2026-11-01T07:54:21.472410+00:00",
+        "officialBasis": "official Responses family contract, restricted to the current configured general-purpose model IDs; not individual paid gateway validation",
+        "newPaidRequests": 0,
+        "runtimeAndParsedConfigurationValuesChanged": false
+      },
+      "verdict": "passed",
+      "rationale": [
+        "新增三行注释指向该样例实际包含的五个 GPT-6/6.1 canonical 网关型号；五者属于官方族级 Responses 模式契约，且说明实际网关 Pro 仅测 Sol/low，没有把五个静态条目当成五次 Pro 实测。",
+        "完整样例保留真实前缀 ID、环境变量凭据引用、独立 mode/effort 控件及模型差异说明。注释可直接帮助操作者选择，不增加新的参数、默认值或自动切换行为。",
+        "两次完整 YAML 解析值与基线深等，本次仅新增解释。该深等只证明机器数据没有改变，语义通过来自对完整样例和适用场景的主观判断。"
+      ],
+      "reviewScope": "接受完整当前网关样例中的说明和可执行配置含义；不声称本轮已调用五个模型、检验账户权限、质量或所有 effort 组合。",
+      "provenance": {
+        "inputAbsolutePath": "/tmp/dominds-pro-support/review-input.json",
+        "inputSha256": "bd595b3f99370350b9370e5a22d106567207deb65e2f53ae0ea084f33f103186",
+        "materialIndex": 1,
+        "sourceAbsolutePath": "/ws/AiWorks/dominds/docs/examples/ltsp-openai.llm.yaml",
+        "sourceSha256": "9627f090eba907e350cd8e4900726a46293afe94837953e4be176d139398d87a",
+        "actualTextSha256": "9627f090eba907e350cd8e4900726a46293afe94837953e4be176d139398d87a",
+        "actualTextUtf8Bytes": 3154,
+        "sourceIdentity": {
+          "sha256": "9627f090eba907e350cd8e4900726a46293afe94837953e4be176d139398d87a",
+          "bytes": 3154,
+          "gitBlob": "a60adf97a974cf61f3abeafc536242ad840c684a"
+        },
+        "hashPurpose": "identity only; neither meaning oracle nor acceptance of later output"
+      }
+    },
+    {
+      "path": "main/llm/defaults.yaml",
+      "sha256": "d1af0bc99c8c75d90fdf75b2bf7ae32424e2f0d31dde137adcb0a7a25cc9d4af",
+      "scope": "OpenAI model_param_options context and complete changed comments; no parsed YAML value changed.",
+      "actualText": "  openai:\n    name: OpenAI\n    apiType: openai\n    baseUrl: https://api.openai.com/v1\n    apiKeyEnvVar: OPENAI_API_KEY\n    tech_spec_url: https://platform.openai.com/docs\n    api_mgmt_url: https://platform.openai.com/api-keys\n    # These are documentation hints for humans/agents; they are not auto-applied.\n    model_param_options:\n      openai:\n        # Isolation principle:\n        # - These hints describe the OpenAI Responses wrapper only.\n        # - Same-looking fields under `codex` are not aliases and are not fallback-compatible.\n        # Pro support for configured general-purpose OpenAI API models (checked 2026-11-01):\n        # GPT-6.1: gpt-6.1-sol, gpt-6.1-terra; GPT-6: gpt-6-astra, gpt-6-sol, gpt-6-luna.\n        # GPT-5.6: gpt-5.6-sol, gpt-5.6-terra, gpt-5.6-luna; gpt-5.6 aliases Sol.\n        # https://developers.openai.com/api/docs/guides/reasoning#reasoning-mode\n        # Older *-pro IDs are separate models, not uses of this Responses mode switch.\n        reasoning_mode:\n          prominent: true\n          type: enum\n          values: [standard, pro]\n          value_labels:\n            standard: Standard\n            pro: Pro\n          # No configured default: existing workspaces and older models keep omitting this field.\n          description: Responses execution mode for GPT-5.6/GPT-6. Unset uses the API standard mode; pro uses more model work, tokens and latency. Independent of reasoning_effort. Omit for unsupported models.\n        reasoning_effort:\n          prominent: true\n          default: high\n          # Trade latency/cost for quality on reasoning-capable models.\n          # Allowed: none | minimal | low | medium | high | xhigh | max\n          type: enum\n          values: [none, minimal, low, medium, high, xhigh, max]\n          description: Reasoning effort is model dependent. GPT-6 Astra and GPT-6.1 Sol require low or higher; minimal is retained for older models.\n        reasoning_summary:\n",
+      "id": "builtin-openai-comments",
+      "scenario": "维护者或执行智能体阅读内置 OpenAI Responses 参数注释，判断当前已配置通用型号哪些支持 Pro，并避免向旧模型、独立 Codex 或其它 API 泛化。",
+      "context": {
+        "baseRevision": "1f429987ad19a7e335ac1ab4775adbd3628b02ae",
+        "evidenceObservedAt": "2026-11-01T07:54:21.472410+00:00",
+        "officialBasis": "official Responses family contract, restricted to the current configured general-purpose model IDs; not individual paid gateway validation",
+        "newPaidRequests": 0,
+        "runtimeAndParsedConfigurationValuesChanged": false
+      },
+      "verdict": "passed",
+      "rationale": [
+        "新增注释将具体 canonical ID 与 gpt-5.6 别名直接列在 OpenAI Responses 参数提示旁，适用范围为当前已配置的通用模型。已有隔离说明明确 codex 字段不是别名或 fallback，因此没有把族级 API 支持变成跨 provider 承诺。",
+        "旧 *-pro ID 被区分为独立模型；reasoning_mode 仍无配置默认值，已有说明要求不支持的模型省略。新增注释不使旧工作区自动发送 mode，也不改变 effort 选项或模型数据。",
+        "本材料的 actualText 是完整变更注释区间及其上下文，不冒称复制了整个 defaults.yaml。完整 YAML 解析值与基线深等，同时独立确认表中八个 canonical ID 和别名确实存在于当前内置 OpenAI models。"
+      ],
+      "reviewScope": "接受给出的 OpenAI model_param_options 变更注释与必要上下文；源指纹绑定整个文件。未对所有旧 provider 提示重新作语义审查，也不把注释通过当成运行时行为验证。",
+      "provenance": {
+        "inputAbsolutePath": "/tmp/dominds-pro-support/review-input.json",
+        "inputSha256": "bd595b3f99370350b9370e5a22d106567207deb65e2f53ae0ea084f33f103186",
+        "materialIndex": 2,
+        "sourceAbsolutePath": "/ws/AiWorks/dominds/main/llm/defaults.yaml",
+        "sourceSha256": "d1af0bc99c8c75d90fdf75b2bf7ae32424e2f0d31dde137adcb0a7a25cc9d4af",
+        "actualTextSha256": "c0be866551ae8388f7398fe0cdbd62a1a771fa45f7f735d9e1c8ec5cf3d428bd",
+        "actualTextUtf8Bytes": 1944,
+        "sourceIdentity": {
+          "sha256": "d1af0bc99c8c75d90fdf75b2bf7ae32424e2f0d31dde137adcb0a7a25cc9d4af",
+          "bytes": 49170,
+          "gitBlob": "0a4539dd1d8c58001cd977d1dd15400c7125b6f7"
+        },
+        "hashPurpose": "identity only; neither meaning oracle nor acceptance of later output"
+      }
+    }
+  ],
+  "officialBasis": [
+    {
+      "url": "https://developers.openai.com/api/docs/guides/reasoning#reasoning-mode",
+      "reviewerRead": "2026-11-01; official page section Reasoning mode, including its GPT-6.1 Sol request example and legacy-ID note",
+      "factSummary": "The official guide states that GPT-5.6 and GPT-6 support standard/pro in Responses, with standard as the default. Mode and effort are independent; Pro uses more model work and tokens. Existing Pro model IDs retain their own behavior and pricing.",
+      "useAndLimit": "Family-level support basis. It does not establish that an account or LTSP route can invoke every listed model."
+    },
+    {
+      "url": "https://developers.openai.com/api/docs/guides/latest-model",
+      "reviewerRead": "2026-11-01; GPT-6 model selection and limitations, GPT-5.6 introduction and migration parameter section",
+      "factSummary": "The current GPT-6 guide groups Astra, GPT-6.1 Sol/Terra and Luna, and discusses GPT-6 Sol compatibility. It includes Pro among the family capabilities. Its GPT-5.6 section identifies Sol/Terra/Luna, maps gpt-5.6 to gpt-5.6-sol, and instructs retaining the selected GPT-5.6 model while enabling Pro through reasoning.mode.",
+      "useAndLimit": "Together with the family contract, supports the eight configured canonical general-purpose IDs and one alias. This is an explicitly scoped inference from official family documentation, not a claim that each model page independently specifies Pro or each model was paid-tested."
+    }
+  ],
+  "sourceReview": {
+    "verdict": "passed",
+    "sourceFreeze": "The three reviewed material hashes match the current files and the frozen input. No source write was performed by the reviewer.",
+    "files": [
+      {
+        "path": "docs/openai-ltsp-gateway.zh.md",
+        "absolutePath": "/ws/AiWorks/dominds/docs/openai-ltsp-gateway.zh.md",
+        "current": {
+          "sha256": "9233911bd658640107390f2b469442b78a81c4e1b85b3b1b242fe04c0bc747d2",
+          "bytes": 10353,
+          "gitBlob": "13d2e932f8da88ed6b4e06d9d3349ba63e178f56"
+        },
+        "base": {
+          "revision": "1f429987ad19a7e335ac1ab4775adbd3628b02ae",
+          "sha256": "373891134d43a067e200cbf86d739819d0e03b026da84df57fad8e31e1e819b0",
+          "bytes": 9262,
+          "gitBlob": "7a7326f9c3851f3738112967f959b3dbc6ecc02f"
+        },
+        "actualTextScope": "complete source"
+      },
+      {
+        "path": "docs/examples/ltsp-openai.llm.yaml",
+        "absolutePath": "/ws/AiWorks/dominds/docs/examples/ltsp-openai.llm.yaml",
+        "current": {
+          "sha256": "9627f090eba907e350cd8e4900726a46293afe94837953e4be176d139398d87a",
+          "bytes": 3154,
+          "gitBlob": "a60adf97a974cf61f3abeafc536242ad840c684a"
+        },
+        "base": {
+          "revision": "1f429987ad19a7e335ac1ab4775adbd3628b02ae",
+          "sha256": "2eb947da46146014e4ce95c7138d7faf5952736c227e1f0289eea1b4df8c7a4f",
+          "bytes": 2909,
+          "gitBlob": "3737c0309f3fb4d8bab7ef2d7c3fc53d061c81bc"
+        },
+        "actualTextScope": "complete source"
+      },
+      {
+        "path": "main/llm/defaults.yaml",
+        "absolutePath": "/ws/AiWorks/dominds/main/llm/defaults.yaml",
+        "current": {
+          "sha256": "d1af0bc99c8c75d90fdf75b2bf7ae32424e2f0d31dde137adcb0a7a25cc9d4af",
+          "bytes": 49170,
+          "gitBlob": "0a4539dd1d8c58001cd977d1dd15400c7125b6f7"
+        },
+        "base": {
+          "revision": "1f429987ad19a7e335ac1ab4775adbd3628b02ae",
+          "sha256": "857194bc263184b4ebe7cf1f528ece7a4fa89bbd71dcb23bd59b53ee455aac6c",
+          "bytes": 48737,
+          "gitBlob": "d7b97487b6996a84aa9faf228c032bbe533c1c63"
+        },
+        "actualTextScope": "complete changed comment interval and surrounding OpenAI option context; source identity covers the whole YAML file"
+      }
+    ],
+    "completeReviewedDiff": {
+      "actualText": "diff --git a/docs/examples/ltsp-openai.llm.yaml b/docs/examples/ltsp-openai.llm.yaml\nindex 3737c030..a60adf97 100644\n--- a/docs/examples/ltsp-openai.llm.yaml\n+++ b/docs/examples/ltsp-openai.llm.yaml\n@@ -10,6 +10,9 @@ providers:\n     # Keep setup choices and generation metadata visible for this custom provider.\n     model_param_options:\n       openai:\n+        # All five GPT-6/6.1 models below officially support Responses Pro mode.\n+        # Gateway Pro testing covers only openai/gpt-6.1-sol at low effort so far.\n+        # https://developers.openai.com/api/docs/guides/reasoning#reasoning-mode\n         reasoning_mode:\n           prominent: true\n           type: enum\ndiff --git a/docs/openai-ltsp-gateway.zh.md b/docs/openai-ltsp-gateway.zh.md\nindex 7a7326f9..13d2e932 100644\n--- a/docs/openai-ltsp-gateway.zh.md\n+++ b/docs/openai-ltsp-gateway.zh.md\n@@ -50,6 +50,16 @@ members:\n \n GPT-6 的 Pro 是 Responses 执行模式，使用真实模型 ID 加 `reasoning.mode: pro`，与 `reasoning.effort` 独立；`max` effort 不会自动开启 Pro。Pro 会执行更多模型工作，并增加 token 使用和延迟，按所选模型的 token 费率计费。见[官方 reasoning mode](https://developers.openai.com/api/docs/guides/reasoning#reasoning-mode)。\n \n+截至2026-11-01，官方说明支持该模式的**当前 Dominds 内置通用 OpenAI 模型**如下：\n+\n+| 系列    | 模型 ID                                                               |\n+| ------- | --------------------------------------------------------------------- |\n+| GPT-6.1 | `gpt-6.1-sol`、`gpt-6.1-terra`                                        |\n+| GPT-6   | `gpt-6-astra`、`gpt-6-sol`、`gpt-6-luna`                              |\n+| GPT-5.6 | `gpt-5.6-sol`、`gpt-5.6-terra`、`gpt-5.6-luna`；`gpt-5.6` 是 Sol 别名 |\n+\n+依据[官方模式支持范围](https://developers.openai.com/api/docs/guides/reasoning#reasoning-mode)与[型号/别名说明](https://developers.openai.com/api/docs/guides/latest-model)。网关使用相应的 `openai/` 前缀 ID；本地 Pro 实测目前仅覆盖 `openai/gpt-6.1-sol` 的 low effort，其余型号未逐一进行 Pro 实测。该范围适用于 OpenAI Responses，不外推到 Codex 或 Chat Completions。旧 `gpt-5.5-pro` 等仍是独立模型 ID，沿用各自行为和计费；不要向其它旧模型通用添加此开关。\n+\n Dominds 使用 `.minds/team.yaml` 的 `model_params.openai.reasoning_mode: standard | pro`，模型目录继续使用原始 wire ID。例如让普通执行成员使用标准模式、审查成员显式使用 Pro：\n \n ```yaml\ndiff --git a/main/llm/defaults.yaml b/main/llm/defaults.yaml\nindex d7b97487..0a4539dd 100644\n--- a/main/llm/defaults.yaml\n+++ b/main/llm/defaults.yaml\n@@ -1039,6 +1039,11 @@ providers:\n         # Isolation principle:\n         # - These hints describe the OpenAI Responses wrapper only.\n         # - Same-looking fields under `codex` are not aliases and are not fallback-compatible.\n+        # Pro support for configured general-purpose OpenAI API models (checked 2026-11-01):\n+        # GPT-6.1: gpt-6.1-sol, gpt-6.1-terra; GPT-6: gpt-6-astra, gpt-6-sol, gpt-6-luna.\n+        # GPT-5.6: gpt-5.6-sol, gpt-5.6-terra, gpt-5.6-luna; gpt-5.6 aliases Sol.\n+        # https://developers.openai.com/api/docs/guides/reasoning#reasoning-mode\n+        # Older *-pro IDs are separate models, not uses of this Responses mode switch.\n         reasoning_mode:\n           prominent: true\n           type: enum\n",
+      "sha256": "599071bcd7210633d8c95128916aa6b6ab33027ff5a7f5777c795f27f734463d",
+      "bytes": 3485,
+      "scope": "Only the three named source paths relative to the stated base; 18 added lines and zero deleted lines."
+    },
+    "assertionAndDataBoundaryReview": [
+      "There are no new or modified test assertions, production runtime statements, schemas, public parameters or model data in this batch. A new regression would repeat a documentation-only change without establishing additional behavior.",
+      "Independent read-only YAML.parse using the repository yaml package followed by assert.deepEqual confirmed the complete defaults.yaml and complete gateway example have identical parsed values to the base. This is a machine-data preservation comparison, not a natural-language oracle.",
+      "Independent current OpenAI models map membership confirmed the eight canonical model IDs and gpt-5.6 alias are configured. This checks identifiers, not whether a vendor accepts a request.",
+      "The complete current scoped diff exactly matches the frozen input diff. Source hashes and Git blob IDs identify what was reviewed; they cannot automatically approve revisions or fresh output."
+    ]
+  },
+  "limits": [
+    "No paid model, gateway, browser, live provider or external service invocation was performed by this reviewer; only official documentation was browsed read-only.",
+    "Existing Sol/low Pro evidence and earlier five-model baseline retain their own acceptance scope and provenance. This batch does not turn them into Pro coverage of every listed model or effort.",
+    "No context/output stress, image capability, quality improvement, balance, rate-limit, cache behavior or full gateway catalog availability claim is accepted here.",
+    "No specialized model, Codex provider or Chat Completions reasoning.mode support is inferred.",
+    "Official support is time-sensitive. The dated documentation and source identities capture the reviewed version; later wording or vendor changes require a fresh review."
+  ],
+  "parentVerification": {
+    "status": "passed within documentation/comment-only scope",
+    "checks": [
+      {
+        "command": "pnpm run build",
+        "exitCode": 0,
+        "log": {
+          "sourcePath": "/tmp/dominds-pro-support/build.log",
+          "sha256": "193b6580923d96662cd64385568bb06c5883c43ab724c822213c618437b11f8f",
+          "actualText": "$ node ./scripts/run-pnpm.mjs run build:backend && node ./scripts/run-pnpm.mjs run build:frontend\n$ node ./scripts/build-backend.mjs\n$ tsx toolsets/manual-size-guard.ts\nOK: manual size guard passed (162 request(s), limit=25000).\n- control/en/default: 19193 chars\n- control/en/tools: 16562 chars\n- team_mgmt/en/team: 13949 chars\n- control/en/principles: 13272 chars\n- team_mgmt/en/skills: 12356 chars\nScope: 3 of 6 workspace projects\npackages/kernel build$ tsc -p tsconfig.json\ncodex-auth build$ tsc -p tsconfig.json\npackages/kernel build: Done\ncodex-auth build: Done\npackages/shell build$ tsc -p tsconfig.json\npackages/shell build: Done\n$ node ./scripts/run-pnpm.mjs -C webapp run build\n$ node ./scripts/build.mjs\n"
+        }
+      },
+      {
+        "command": "pnpm run lint:types",
+        "exitCode": 0,
+        "log": {
+          "sourcePath": "/tmp/dominds-pro-support/lint-types.log",
+          "sha256": "41aa5be00a3d0c4d2223d9aee1e64fd44a1a074ddc49dbfbb33b30036175e87a",
+          "actualText": "$ node ./scripts/run-pnpm.mjs -r --filter \"./packages/*\" --filter ./webapp run lint:types && tsc -p main/tsconfig.dev.json --noEmit\nScope: 3 of 6 workspace projects\npackages/kernel lint:types$ tsc -p tsconfig.json --noEmit\npackages/kernel lint:types: Done\npackages/shell lint:types$ tsc -p tsconfig.json --noEmit\npackages/shell lint:types: Done\nwebapp lint:types$ tsc -p src/tsconfig.json --noEmit && node ./scripts/check-dom-events.mjs\nwebapp lint:types: Done\n"
+        }
+      },
+      {
+        "command": "pnpm run format:check",
+        "exitCode": 0,
+        "log": {
+          "sourcePath": "/tmp/dominds-pro-support/format-check.log",
+          "sha256": "b1ea3ae2fe62892cb4e7315068d0b5aa27dc325de6426de93c32837cb79bd2f0",
+          "actualText": "$ prettier --check \"{main,webapp/src,docs,tests}/**/*.{js,mjs,jsx,ts,tsx}\" && prettier --check \"{main,webapp/src,docs,tests}/**/*.{css,md,json,html}\"\nChecking formatting...\nAll matched files use Prettier code style!\nChecking formatting...\nAll matched files use Prettier code style!\n"
+        }
+      },
+      {
+        "command": "pnpm exec prettier --check main/llm/defaults.yaml docs/examples/ltsp-openai.llm.yaml",
+        "exitCode": 0,
+        "log": {
+          "sourcePath": "/tmp/dominds-pro-support/yaml-format.log",
+          "sha256": "17aa973d3f004560237d9a95171210b0671deff23d61628eecf7322ff5938f20",
+          "actualText": "Checking formatting...\nAll matched files use Prettier code style!\n"
+        }
+      },
+      {
+        "command": "node /tmp/dominds-doclint/check.mjs",
+        "exitCode": 0,
+        "actualResult": {
+          "trackedMarkdown": 203,
+          "newMarkdown": 0,
+          "canonicalDocuments": 71,
+          "excludedRuntimeSources": 131,
+          "localTargetsAndFragments": 428,
+          "networkLinksIgnored": 19,
+          "failures": []
+        },
+        "scope": "Complete tracked repository Markdown, canonicalized sources, runtime-role exclusions only; offline local files/fragments, network URLs ignored."
+      }
+    ],
+    "dataContinuity": "Both complete YAML documents were parsed and deep-compared against the base revision; every machine data value is unchanged. No runtime/test source was changed, no new behavior regression test or paid request was needed.",
+    "semanticScope": "Primary read all three explicit independent verdicts/rationales and confirmed the current reviewed source identities/full text. Hashes identify scope only; no keyword or text-equality semantic oracle was introduced."
+  }
+}
