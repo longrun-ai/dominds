@@ -1,415 +1,215 @@
-#!/usr/bin/env tsx
-
-import '../../main/tools/builtins';
-
+import assert from 'node:assert/strict';
+import fs from 'node:fs/promises';
+import yaml from 'yaml';
 import { Team } from '../../main/team';
-import type { FuncTool } from '../../main/tool';
-import { getTool, getToolset, listTools, listToolsets } from '../../main/tools/registry';
+import { type FuncTool, toolSuccess } from '../../main/tool';
+import '../../main/tools/builtins';
+import {
+  getTool,
+  getToolset,
+  listTools,
+  listToolsets,
+  registerTool,
+  registerToolset,
+  unregisterTool,
+  unregisterToolset,
+} from '../../main/tools/registry';
+import { createMainDialog, withTempRtws, writeStandardMinds } from '../kernel-driver/helpers';
 
-// Helper function to run a test case
-async function runTest(name: string, testFn: () => void | Promise<void>): Promise<void> {
-  console.log(`\n=== Testing: ${name} ===`);
-
-  try {
-    await testFn();
-    console.log(`✅ PASS`);
-  } catch (error: unknown) {
-    const message = error instanceof Error ? error.message : String(error);
-    console.log(`❌ FAIL: ${message}`);
-    process.exit(1);
-  }
+function names(tools: readonly { name: string }[]) {
+  return tools.map((tool) => tool.name).sort();
 }
-
-// Helper function to assert equality
-function assertEqual<T>(actual: T, expected: T, message?: string): void {
-  if (JSON.stringify(actual) !== JSON.stringify(expected)) {
-    throw new Error(
-      `${message || 'Assertion failed'}: expected ${JSON.stringify(expected)}, got ${JSON.stringify(actual)}`,
-    );
-  }
+function requiredSet(name: string) {
+  const tools = getToolset(name);
+  assert.ok(tools, `required toolset ${name}`);
+  return tools;
 }
-
-// Helper function to assert truthy
-function assertTrue(condition: boolean, message?: string): void {
-  if (!condition) {
-    throw new Error(message || 'Assertion failed: expected truthy value');
-  }
-}
-
-async function main(): Promise<void> {
-  // Test 1: Registry functions availability
-  await runTest('Registry functions availability', () => {
-    const toolsets = listToolsets();
-    const tools = listTools();
-
-    assertTrue(Object.keys(toolsets).length > 0, 'Should have registered toolsets');
-    assertTrue(tools.length > 0, 'Should have registered tools');
-
-    console.log(`Available toolsets: ${Object.keys(toolsets).join(', ')}`);
-    console.log(`Available tools count: ${tools.length}`);
-  });
-
-  // Test 2: Toolset lookup returns Tool objects
-  await runTest('Toolset lookup returns Tool objects', () => {
-    const wsReadToolset = getToolset('ws_read');
-    const fsReadToolset = getToolset('fs_read');
-    const personalMemoryToolset = getToolset('personal_memory');
-    const sharedMemoryToolset = getToolset('team_memory');
-    const skillsToolset = getToolset('skills');
-    const nonexistentToolset = getToolset('nonexistent');
-
-    assertTrue(Array.isArray(wsReadToolset), 'ws_read toolset should be an array');
-    assertTrue(Array.isArray(fsReadToolset), 'fs_read toolset should be an array');
-    assertTrue(Array.isArray(personalMemoryToolset), 'personal_memory toolset should be an array');
-    assertTrue(Array.isArray(sharedMemoryToolset), 'team_memory toolset should be an array');
-    assertTrue(Array.isArray(skillsToolset), 'skills toolset should be an array');
-    assertEqual(nonexistentToolset, undefined, 'nonexistent toolset should be undefined');
-
-    if (skillsToolset) {
-      assertTrue(
-        skillsToolset.some((tool) => tool.name === 'move_personal_skill'),
-        'skills toolset should expose move_personal_skill',
-      );
+async function main() {
+  await withTempRtws(async (rtws) => {
+    await writeStandardMinds(rtws);
+    const loadedToolsets = listToolsets();
+    const loadedTools = listTools();
+    assert.ok(Object.keys(loadedToolsets).length > 0);
+    assert.ok(loadedTools.length > 0);
+    for (const id of ['ws_read', 'fs_read', 'personal_memory', 'team_memory', 'skills'])
+      assert.ok(Array.isArray(requiredSet(id)));
+    assert.equal(getToolset('__registry_unknown__'), undefined);
+    assert.equal(getTool('__registry_unknown__'), undefined);
+    for (const name of [
+      'list_dir',
+      'read_file',
+      'fs_read_file',
+      'read_picture',
+      'fs_read_picture',
+      'write_picture',
+      'add_personal_memory',
+      'add_personal_skill',
+      'import_personal_skill_from_file',
+      'move_personal_skill',
+      'readonly_shell',
+      'apply_patch',
+      'do_mind',
+      'mind_more',
+      'never_mind',
+    ]) {
+      const tool = getTool(name);
+      assert.ok(tool);
+      assert.equal(tool.name, name);
     }
-
-    // Verify tools are actual Tool objects
-    if (wsReadToolset) {
-      for (const tool of wsReadToolset) {
-        assertTrue(typeof tool === 'object' && 'name' in tool, 'Each item should be a Tool object');
-      }
-      console.log(`ws_read toolset tools: ${wsReadToolset.map((t) => t.name).join(', ')}`);
-    }
-
-    if (fsReadToolset) {
-      const fsReadNames = fsReadToolset.map((t) => t.name);
-      assertTrue(fsReadNames.includes('fs_read_file'), 'fs_read should expose fs_read_file');
-      assertTrue(
-        fsReadNames.includes('fs_ripgrep_search'),
-        'fs_read should expose fs_ripgrep_search',
-      );
-      console.log(`fs_read toolset tools: ${fsReadNames.join(', ')}`);
-    }
-  });
-
-  // Test 3: Individual tool lookup
-  await runTest('Individual tool lookup', () => {
-    const listDirTool = getTool('list_dir');
-    const readFileTool = getTool('read_file');
-    const fsReadFileTool = getTool('fs_read_file');
-    const readPictureTool = getTool('read_picture');
-    const fsReadPictureTool = getTool('fs_read_picture');
-    const writePictureTool = getTool('write_picture');
-    const addPersonalMemoryTool = getTool('add_personal_memory');
-    const addPersonalSkillTool = getTool('add_personal_skill');
-    const importPersonalSkillFromFileTool = getTool('import_personal_skill_from_file');
-    const movePersonalSkillTool = getTool('move_personal_skill');
-    const readonlyShellTool = getTool('readonly_shell');
-    const applyPatchTool = getTool('apply_patch');
-    const nonexistentTool = getTool('nonexistent');
-
-    assertTrue(!!listDirTool, 'list_dir tool should exist');
-    assertTrue(!!readFileTool, 'read_file tool should exist');
-    assertTrue(!!fsReadFileTool, 'fs_read_file tool should exist');
-    assertTrue(!!readPictureTool, 'read_picture tool should exist');
-    assertTrue(!!fsReadPictureTool, 'fs_read_picture tool should exist');
-    assertTrue(!!writePictureTool, 'write_picture tool should exist');
-    assertTrue(!!addPersonalMemoryTool, 'add_personal_memory tool should exist');
-    assertTrue(!!addPersonalSkillTool, 'add_personal_skill tool should exist');
-    assertTrue(
-      !!importPersonalSkillFromFileTool,
-      'import_personal_skill_from_file tool should exist',
-    );
-    assertTrue(!!movePersonalSkillTool, 'move_personal_skill tool should exist');
-    assertTrue(!!readonlyShellTool, 'readonly_shell tool should exist');
-    assertTrue(!!applyPatchTool, 'apply_patch tool should exist');
-    assertTrue(!!getTool('do_mind'), 'do_mind tool should exist');
-    assertTrue(!!getTool('mind_more'), 'mind_more tool should exist');
-    assertTrue(!!getTool('never_mind'), 'never_mind tool should exist');
-    assertEqual(nonexistentTool, undefined, 'nonexistent tool should be undefined');
-
-    console.log('Tool lookup verification passed');
-  });
-
-  await runTest('Control toolset exposes Taskdoc mutation tools', () => {
-    const controlToolset = getToolset('control');
-    assertTrue(Array.isArray(controlToolset), 'control toolset should be an array');
-    if (!controlToolset) throw new Error('unreachable');
-    assertTrue(
-      controlToolset.some((tool) => tool.name === 'do_mind'),
-      'control should expose do_mind',
-    );
-    assertTrue(
-      controlToolset.some((tool) => tool.name === 'mind_more'),
-      'control should expose mind_more',
-    );
-    assertTrue(
-      controlToolset.some((tool) => tool.name === 'change_mind'),
-      'control should expose change_mind',
-    );
-    assertTrue(
-      controlToolset.some((tool) => tool.name === 'never_mind'),
-      'control should expose never_mind',
-    );
-  });
-
-  await runTest('Control toolset cannot be assigned through team config', () => {
-    const testMember = new Team.Member({
+    assert.ok(names(requiredSet('skills')).includes('move_personal_skill'));
+    assert.ok(names(requiredSet('fs_read')).includes('fs_read_file'));
+    assert.ok(names(requiredSet('fs_read')).includes('fs_ripgrep_search'));
+    const controlIds = ['do_mind', 'mind_more', 'change_mind', 'never_mind'];
+    for (const id of controlIds) assert.ok(names(requiredSet('control')).includes(id));
+    const explicitControl = new Team.Member({
       id: 'control-test',
-      name: 'Control Test Member',
-      provider: 'openai',
-      model: 'gpt-4',
+      name: 'Control',
       toolsets: ['control'],
     });
-    assertEqual(
-      testMember.listResolvedToolsetNames({ onMissing: 'silent' }).includes('control'),
+    assert.equal(
+      explicitControl.listResolvedToolsetNames({ onMissing: 'silent' }).includes('control'),
       false,
-      'control should not resolve as an assignable member toolset',
     );
-    const toolNames = testMember.listTools({ onMissingToolset: 'silent' }).map((tool) => tool.name);
-    assertEqual(
-      toolNames.includes('do_mind') ||
-        toolNames.includes('mind_more') ||
-        toolNames.includes('change_mind') ||
-        toolNames.includes('never_mind'),
+    assert.equal(
+      explicitControl
+        .listTools({ onMissingToolset: 'silent' })
+        .some((t) => controlIds.includes(t.name)),
       false,
-      'control assignment should not grant Taskdoc mutation tools',
     );
-
-    const wildcardMember = new Team.Member({
-      id: 'wildcard-control-test',
-      name: 'Wildcard Control Test Member',
-      provider: 'openai',
-      model: 'gpt-4',
-      toolsets: ['*'],
-    });
-    assertEqual(
-      wildcardMember.listResolvedToolsetNames({ onMissing: 'silent' }).includes('control'),
+    const wildcard = new Team.Member({ id: 'wildcard-test', name: 'Wildcard', toolsets: ['*'] });
+    assert.equal(
+      wildcard.listResolvedToolsetNames({ onMissing: 'silent' }).includes('control'),
       false,
-      'wildcard toolsets should not resolve non-assignable control',
     );
-  });
-
-  await runTest('fs_read is explicit-grant only', () => {
-    const explicitMember = new Team.Member({
-      id: 'fs-read-explicit-test',
-      name: 'FS Read Explicit Test Member',
-      provider: 'openai',
-      model: 'gpt-4',
+    assert.equal(
+      wildcard.listResolvedToolsetNames({ onMissing: 'silent' }).includes('fs_read'),
+      false,
+    );
+    assert.equal(
+      wildcard.listTools({ onMissingToolset: 'silent' }).some((t) => t.name === 'fs_read_file'),
+      false,
+    );
+    const explicitFs = new Team.Member({
+      id: 'fs-read-explicit',
+      name: 'FS read',
       toolsets: ['fs_read'],
     });
-    assertTrue(
-      explicitMember.listResolvedToolsetNames({ onMissing: 'silent' }).includes('fs_read'),
-      'fs_read should resolve when explicitly assigned',
-    );
-    assertTrue(
-      explicitMember
-        .listTools({ onMissingToolset: 'silent' })
-        .some((tool) => tool.name === 'fs_read_file'),
-      'explicit fs_read assignment should grant fs_read_file',
-    );
+    assert.ok(explicitFs.listResolvedToolsetNames({ onMissing: 'silent' }).includes('fs_read'));
+    assert.ok(names(explicitFs.listTools({ onMissingToolset: 'silent' })).includes('fs_read_file'));
+    for (const [set, ids] of [
+      ['ws_read', ['read_picture', 'read_symlink']],
+      ['ws_mod', ['read_picture', 'write_picture', 'read_symlink', 'create_symlink', 'rm_symlink']],
+      ['team_mgmt', ['team_mgmt_read_symlink', 'team_mgmt_create_symlink', 'team_mgmt_rm_symlink']],
+    ] as const)
+      for (const id of ids) assert.ok(names(requiredSet(set)).includes(id));
+    assert.deepEqual(names(requiredSet('codex_inspect_and_patch_tools')), [
+      'apply_patch',
+      'readonly_shell',
+    ]);
 
-    const wildcardMember = new Team.Member({
-      id: 'fs-read-wildcard-test',
-      name: 'FS Read Wildcard Test Member',
-      provider: 'openai',
-      model: 'gpt-4',
-      toolsets: ['*'],
-    });
-    assertEqual(
-      wildcardMember.listResolvedToolsetNames({ onMissing: 'silent' }).includes('fs_read'),
-      false,
-      'wildcard toolsets should not grant fs_read',
-    );
-    assertEqual(
-      wildcardMember
-        .listTools({ onMissingToolset: 'silent' })
-        .some((tool) => tool.name === 'fs_read_file'),
-      false,
-      'wildcard toolsets should not grant fs_read_file',
-    );
-  });
-
-  await runTest('Picture tools are exposed in workspace toolsets', () => {
-    const wsReadToolset = getToolset('ws_read');
-    const wsModToolset = getToolset('ws_mod');
-    if (!wsReadToolset || !wsModToolset) {
-      throw new Error('Expected ws_read and ws_mod toolsets to be registered');
-    }
-    assertTrue(
-      wsReadToolset.some((tool) => tool.name === 'read_picture'),
-      'ws_read should expose read_picture',
-    );
-    assertTrue(
-      wsModToolset.some((tool) => tool.name === 'read_picture'),
-      'ws_mod should expose read_picture',
-    );
-    assertTrue(
-      wsModToolset.some((tool) => tool.name === 'write_picture'),
-      'ws_mod should expose write_picture',
-    );
-  });
-
-  await runTest('Symlink tools are exposed in workspace and team management toolsets', () => {
-    const wsReadToolset = getToolset('ws_read');
-    const wsModToolset = getToolset('ws_mod');
-    const teamMgmtToolset = getToolset('team_mgmt');
-    if (!wsReadToolset || !wsModToolset || !teamMgmtToolset) {
-      throw new Error('Expected ws_read, ws_mod, and team_mgmt toolsets to be registered');
-    }
-    assertTrue(
-      wsReadToolset.some((tool) => tool.name === 'read_symlink'),
-      'ws_read should expose read_symlink',
-    );
-    for (const toolName of ['read_symlink', 'create_symlink', 'rm_symlink']) {
-      assertTrue(
-        wsModToolset.some((tool) => tool.name === toolName),
-        `ws_mod should expose ${toolName}`,
-      );
-    }
-    for (const toolName of [
-      'team_mgmt_read_symlink',
-      'team_mgmt_create_symlink',
-      'team_mgmt_rm_symlink',
-    ]) {
-      assertTrue(
-        teamMgmtToolset.some((tool) => tool.name === toolName),
-        `team_mgmt should expose ${toolName}`,
-      );
-    }
-  });
-
-  await runTest('codex_inspect_and_patch_tools platform behavior', () => {
-    const codexTools = getToolset('codex_inspect_and_patch_tools');
-    assertTrue(Array.isArray(codexTools), 'codex_inspect_and_patch_tools should be an array');
-    if (!codexTools) throw new Error('unreachable');
-    const names = codexTools.map((t) => t.name);
-    assertEqual(
-      [...names].sort(),
-      ['apply_patch', 'readonly_shell'],
-      'codex_inspect_and_patch_tools should expose only inspect-and-patch tools',
-    );
-  });
-
-  // Test 4: Member with toolsets
-  await runTest('Member with toolsets', () => {
-    const testMember = new Team.Member({
-      id: 'test',
-      name: 'Test Member',
-      provider: 'openai',
-      model: 'gpt-4',
+    const mixed = new Team.Member({
+      id: 'mixed',
+      name: 'Mixed',
       toolsets: ['ws_read', 'personal_memory'],
-      tools: ['file_append', 'list_dir'], // list_dir should be duplicate from ws_read toolset
+      tools: ['file_append', 'list_dir'],
     });
-
-    const memberTools = testMember.listTools();
-    assertTrue(memberTools.length > 0, 'Member should have tools');
-
-    const toolNames = memberTools.map((t) => t.name).sort();
-    console.log(`Member tools (${memberTools.length}): ${toolNames.join(', ')}`);
-
-    // Verify all tools are unique
-    const uniqueNames = new Set(toolNames);
-    assertEqual(uniqueNames.size, toolNames.length, 'All tool names should be unique');
-  });
-
-  // Test 5: Duplicate handling
-  await runTest('Duplicate handling', () => {
-    const duplicateTestMember = new Team.Member({
-      id: 'duplicate-test',
-      name: 'Duplicate Test Member',
-      provider: 'openai',
-      model: 'gpt-4',
-      toolsets: ['ws_read', 'ws_mod'], // both contain list_dir and read_file
-      tools: ['list_dir', 'read_file'], // explicit duplicates
+    const expectedMixed = new Set([
+      ...names(requiredSet('ws_read')),
+      ...names(requiredSet('personal_memory')),
+      'file_append',
+      'list_dir',
+    ]);
+    const mixedNames = names(mixed.listTools());
+    assert.deepEqual(mixedNames, [...expectedMixed].sort());
+    assert.equal(new Set(mixedNames).size, mixedNames.length);
+    const duplicated = new Team.Member({
+      id: 'duplicated',
+      name: 'Duplicated',
+      toolsets: ['ws_read', 'ws_mod'],
+      tools: ['list_dir', 'read_file'],
     });
+    const expectedDuplicate = new Set([
+      ...names(requiredSet('ws_read')),
+      ...names(requiredSet('ws_mod')),
+      'list_dir',
+      'read_file',
+    ]);
+    const duplicateNames = names(duplicated.listTools());
+    assert.deepEqual(duplicateNames, [...expectedDuplicate].sort());
+    assert.equal(new Set(duplicateNames).size, duplicateNames.length);
 
-    const tools = duplicateTestMember.listTools();
-    const toolNames = tools.map((t) => t.name);
-
-    // Count occurrences of each tool name
-    const toolCounts = toolNames.reduce(
-      (acc, name) => {
-        acc[name] = (acc[name] || 0) + 1;
-        return acc;
-      },
-      {} as Record<string, number>,
+    await fs.writeFile(
+      '.minds/team.yaml',
+      yaml.stringify({
+        member_defaults: { provider: 'local-mock', model: 'default' },
+        default_responder: 'gd',
+        members: {
+          gd: { name: 'GD', toolsets: ['ws_read', 'ws_mod'], tools: ['list_dir', 'read_file'] },
+        },
+      }),
     );
-
-    // Verify no duplicates
-    for (const [toolName, count] of Object.entries(toolCounts)) {
-      assertTrue(
-        count === 1,
-        `Tool ${toolName} should appear only once, but appears ${count} times`,
-      );
-    }
-
-    console.log(`Duplicate test member tools (${tools.length}): ${toolNames.join(', ')}`);
-  });
-
-  // Test 6: YAML loading (if file exists)
-  await runTest('YAML loading', async () => {
-    try {
-      const team = await Team.load();
-      const gd = team.getMember('gd');
-
-      if (gd) {
-        const gdTools = gd.listTools();
-        assertTrue(gdTools.length > 0, 'GD member should have tools');
-
-        const toolNames = gdTools.map((t) => t.name).sort();
-        console.log(`GD member tools (${gdTools.length}): ${toolNames.join(', ')}`);
-
-        // Verify all tools are unique
-        const uniqueNames = new Set(toolNames);
-        assertEqual(uniqueNames.size, toolNames.length, 'GD member tools should be unique');
-      } else {
-        console.log('GD member not found in team configuration');
-      }
-    } catch (error: unknown) {
-      console.log(
-        `YAML loading failed (expected if .minds/team.yaml not in current directory): ${(error as Error).message}`,
-      );
-    }
-  });
-
-  // Test 7: Toolset registry consistency
-  await runTest('Toolset registry consistency', () => {
-    const toolsets = listToolsets();
-
-    for (const [toolsetName, tools] of Object.entries(toolsets) as ReadonlyArray<
-      readonly [string, readonly FuncTool[]]
-    >) {
-      assertTrue(Array.isArray(tools), `Toolset '${toolsetName}' should be an array`);
-      assertTrue(tools.length > 0, `Toolset '${toolsetName}' should not be empty`);
-
-      for (const tool of tools) {
-        assertTrue(
-          typeof tool === 'object' && 'name' in tool,
-          `Each tool in '${toolsetName}' should be a Tool object`,
-        );
-
-        // Verify tool exists in registry
-        const registeredTool = getTool(tool.name);
-        assertTrue(
-          !!registeredTool,
-          `Tool '${tool.name}' from toolset '${toolsetName}' should exist in registry`,
-        );
-        assertEqual(
-          registeredTool,
+    const team = await Team.load();
+    const gd = team.getMember('gd');
+    assert.ok(gd);
+    assert.equal(gd.provider, 'local-mock');
+    assert.equal(gd.model, 'default');
+    const gdNames = names(gd.listTools());
+    assert.deepEqual(gdNames, [...expectedDuplicate].sort());
+    assert.equal(new Set(gdNames).size, gdNames.length);
+    // The registry exposes actual tool handles. JSON serialization cannot compare handlers.
+    for (const [id, tools] of Object.entries(listToolsets())) {
+      assert.ok(Array.isArray(tools), id);
+      for (const tool of tools)
+        assert.strictEqual(
+          getTool(tool.name),
           tool,
-          `Tool '${tool.name}' should be the same object in registry and toolset`,
+          `${id}/${tool.name} must resolve the registered handle`,
         );
-      }
     }
-
-    console.log('Toolset registry consistency verified');
+    const dialog = await createMainDialog('gd');
+    const calls: Array<{ dialog: string; caller: string; value: unknown }> = [];
+    const probe: FuncTool = {
+      type: 'func',
+      name: '__registry_owned_probe__',
+      description: 'Owned handler input-data fixture.',
+      parameters: { type: 'object', properties: { value: { type: 'string' } } },
+      call: async (dlg, caller, args) => {
+        calls.push({ dialog: dlg.id.key(), caller: caller.id, value: args.value });
+        return toolSuccess(JSON.stringify({ value: args.value }));
+      },
+    };
+    registerTool(probe);
+    registerToolset('__registry_owned_set__', [probe]);
+    registerToolset('__registry_owned_empty__', []);
+    try {
+      assert.strictEqual(getTool(probe.name), probe);
+      const fromSet = requiredSet('__registry_owned_set__')[0];
+      assert.strictEqual(fromSet, probe);
+      assert.deepEqual(getToolset('__registry_owned_empty__'), []);
+      assert.deepEqual(
+        listToolsets()['__registry_owned_empty__'],
+        [],
+        'empty capability placeholders remain valid registry data',
+      );
+      assert.ok(fromSet && fromSet.type === 'func');
+      const result = await fromSet.call(dialog, gd, { value: 'owned-handler-payload' });
+      assert.equal(result.outcome, 'success');
+      assert.deepEqual(JSON.parse(result.content) as unknown, { value: 'owned-handler-payload' });
+      assert.deepEqual(calls, [
+        { dialog: dialog.id.key(), caller: 'gd', value: 'owned-handler-payload' },
+      ]);
+    } finally {
+      unregisterTool(probe.name);
+      unregisterToolset('__registry_owned_set__');
+      unregisterToolset('__registry_owned_empty__');
+    }
+    assert.equal(getTool(probe.name), undefined);
+    assert.equal(getToolset('__registry_owned_set__'), undefined);
+    assert.equal(getToolset('__registry_owned_empty__'), undefined);
   });
-
-  console.log('\n🎉 All tests passed!');
+  console.log('Registry handlers, selector grants and actual team data: passed');
 }
-
-void main().catch((error: unknown) => {
-  const message = error instanceof Error ? error.message : String(error);
-  console.log(`❌ FAIL: ${message}`);
-  process.exit(1);
+main().catch((error) => {
+  console.error(error);
+  process.exitCode = 1;
 });

@@ -58,9 +58,9 @@ pnpm run test:provider-live
 - `test`: a small local smoke suite; not full product, browser, packaging, or provider coverage.
 - `test:kernel`: discovers TypeScript cases under `kernel-driver/`, excluding its helper. Each runs in an isolated rtws. Failures do not prevent subsequent cases. `kernel-driver:integration` delegates here.
 - `test:context`: runs eight local cases for generation-boundary eligibility/language fallback, public preservation/countdown decisions, supplied continuation-body fidelity, retry preparation, real budget consumption/manual continuation, exhaustion notices and global event forwarding. Policy/forwarding components do not establish actual WebSocket user delivery or side-dialog creation; actual critical-turn and queued-message driving is exercised by `test:kernel`.
-- `test:configuration`: nine isolated regressions for team configuration, extension rules against actual file access, capability boundaries, manual payload fidelity, MCP reload and Problems lifecycle. Only external MCP peers are replaced; no live providers or installed components are required.
-- `test:manual`: seven isolated cases for language normalization, actual mind assets and skill scope/permissions, snippet paths, manual visibility and the original prose budget.
-- `test:types`: the full test-directory type check. During remediation it still reports inherited contract drift; that failure is tracked separately and is not a pass.
+- `test:configuration`: seventeen isolated regressions for team configuration, extension rules against actual file access, capability boundaries, manual payload fidelity, MCP reload and Problems lifecycle. Only external MCP peers are replaced; no live providers or installed components are required.
+- `test:manual`: eight isolated cases for language normalization, actual mind assets and skill scope/permissions, snippet paths, manual visibility and the original prose budget.
+- `test:types`: checks the full test directory against the current public contracts. Report actual diagnostics as failures; do not weaken types or exclude cases to obtain a green result.
 - `test:inventory`: sources, support files, discovered suites, outside-suite candidates, and candidates without package scripts. These counts are not behavior coverage. Unknown candidates can be live probes or external integrations; inspect prerequisites before executing them.
 - `test:runner`: verifies failure continuation, timeouts, evidence retention, cleanup, and discovery.
 - `test:semantic`: emits actual natural-language output, context, business value, and review questions. Evidence is **pending subjective review by a test-execution agent**, not automatically passed.
@@ -196,3 +196,20 @@ preserve an optional provider alias. New output still needs independent review. 
 emits only the two added authentication producers (27 current materials); the full local
 semantic lane emits68 fresh pending cases and is not accepted by those27 verdicts. No real
 OAuth login, token authority, external provider or browser was used.
+
+Registry and skill-handler remediation adds two audited cases to the configuration/manual
+lanes. Registry assertions compare real tool handles and a supplied callback effect, require
+an actual configured member, and preserve empty placeholders. Skill checks retain complete
+supplied file data, directory/link moves, import boundaries and read permissions, ordinary and
+deep copy-on-write, cycle/broken-link state preservation, and explicitly linked external assets.
+Direct handler calls do not establish driver authorization; three-way callback/persistence/
+scheduling behavior belongs to the separate dialog-driver lane.
+
+The added skill producer emits22 actual catalog-component, move-receipt and failure diagnostics
+for independent review; supplied metadata/body equality is a data-fidelity contract. Generated
+read_skill instructions and explanations have no literal semantic oracle. The
+[skill/registry record](semantic/reviews/2026-10-31-skill-registry.json) preserves the complete
+original-value and assertion audit with actual material, verdicts and provenance. Registry is a
+pure machine case and is excluded from semantic generation. The existing semantic producers
+were not freshly accepted by this batch. Registered-session deduplication remains a separate
+unremediated candidate until its background execution and persisted state are accepted.

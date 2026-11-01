@@ -1386,6 +1386,18 @@
       "lane": "server-local",
       "value": "真实鉴权和raw/bundle下载、独立解包CRC/原文/manifest来源与遗漏、逗号和多字节/binary保真、自动过滤与显式pick兼容、既存外部文件拒绝无泄漏",
       "evidence": "Original1284-line value/assertion audit and complete final test/helper/product/entry diff review; concrete public machine fields, input data fidelity and actual filesystem/HTTP effects. tests/semantic/reviews/2026-10-31-auth-forensics.json retains the initial ten subjective rejections, corrected current text review, execution scope and full provenance. Any freshly generated semantic output remains pending."
+    },
+    "toolsets/registry.ts": {
+      "status": "reviewed",
+      "lane": "configuration",
+      "value": "13组原工具注册/查询/选择规则，真实handler对象与调用效果，control不可配置、fs_read仅显式授权，完整正向集合去重及真实YAML成员加载，空能力placeholder兼容",
+      "evidence": "Complete original1359-line and final assertion/value audit; native registry references, supplied input data and full real filesystem effects, never natural-language meaning matching. tests/semantic/reviews/2026-10-31-skill-registry.json records actual catalog/diagnostic subjective review and explicit component/handler scope. Fresh output remains pending; the separately audited but unremediated TypeB candidate is not accepted here."
+    },
+    "toolsets/skills-tools.ts": {
+      "status": "reviewed",
+      "lane": "manual",
+      "value": "技能创建/完整导入/元数据重建/移动与惰性正文，真实目录/链接COW完整原包保全、拒绝无部分写入、导入边界和read_dirs、broken/cycle诊断及显式外部linkable兼容",
+      "evidence": "Complete original1359-line and final assertion/value audit; native registry references, supplied input data and full real filesystem effects, never natural-language meaning matching. tests/semantic/reviews/2026-10-31-skill-registry.json records actual catalog/diagnostic subjective review and explicit component/handler scope. Fresh output remains pending; the separately audited but unremediated TypeB candidate is not accepted here."
     }
   },
   "retired": {

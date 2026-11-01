@@ -31,6 +31,7 @@ const context = [
 ];
 
 const configuration = [
+  'toolsets/registry.ts',
   'mcp-config.ts',
   'mcp-disable.ts',
   'mcp-streamable-http-diagnostics.ts',
@@ -51,6 +52,7 @@ const configuration = [
 ];
 
 const manual = [
+  'toolsets/skills-tools.ts',
   'toolsets/memory-access.ts',
   'language.ts',
   'minds/mindset-i18n.ts',
@@ -326,9 +328,11 @@ const semanticSuites = {
       ![
         'team_mgmt-manual/mcp-hot-reload-manual-problems.ts',
         'toolsets/tool-availability-snapshot.ts',
+        'toolsets/registry.ts',
       ].includes(file),
   ),
   manual: [
+    'toolsets/skills-tools.ts',
     'toolsets/manual-behavior.ts',
     'semantic/manual-guidance.ts',
     'toolsets/memory-access.ts',

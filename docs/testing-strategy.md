@@ -611,3 +611,15 @@ Problems 保留同ID及原始详情的 active→resolved→按 source/path 删�
 provider-local 9→11、server-local 6→7，旧三个单项入口统一隔离CLI，原三候选均保留，新共用helper不计自动通过。provider-local语义producer5→7，完整未来lane41→68仍须fresh review；本批只采新两项的当前27，不继承其余41新输出的判决。标准构建、应用/全测试类型、相关local lanes、smoke、运行器、格式与完整文档导航的实际结果随记录保存；剩余候选23项，仍继续整改。
 
 独立源码审查还发现新增ZIP校验只证明manifest/payload自洽：错误条目可同时伪指另一已知fixture并携带其字节。自有临时fault probe只改实际下载的Buffer，保留有效ZIP/CRC和全部文件名，让side/latest.yaml变成nested/comma文件且manifest同步伪指；首版测试真实返回0，证明该设计假绿。修正为按实际bundle前缀和条目名独立绑定side/root/dialog/debug的正确源，再比较完整正文与manifest来源；同样污染须真实失败，未污染真实服务须通过。这是新增验收设计缺口，不是产品导出错误；临时probe的首次注入还误处理401 JSON并失败，已用实际HTTP200门控修正，失败记录保留，不伪称其证明了产品或校验缺陷。
+
+### 工具注册与技能包（二项）
+
+原registry415行/13组和skills944行完整审计，保真实工具可查询、intrinsic control不能由配置/wildcard授予、fs_read仅显式授予、图片/链接/inspect工具ID、成员组合/完整集合去重及实际YAML成员。删除JSON.stringify伪对象相等，改原生真实handle身份并调用自有给定callback核实实际参数/身份/返回数据；YAML必须自有合法配置且实际gd存在，加载或断言错误直接失败。全局“所有toolset非空”会误冻结disabled MCP placeholder，改为公开空集合注册/查询/清理的兼容正控；没有假装执行真实shell或Windows程序。
+
+技能操作全部通过真实Dialog和直接handler调用、真实目录/文件/链接与loadWorkspaceSkills/loadAgentMinds/read_skill；不声称driver授权。保创建、完整导入、重建frontmatter/allowed-tools、替换、改ID不改title、链接/目录移动、linkable分发、普通及深层COW、循环/broken链接失败、neutral变体、删除实体/链接/broken variant、unlink、variant链接与外部linkable-root兼容。原始给定description/body/name是数据，完整正文、frontmatter字段和整个包/链接快照保真；失败不得留下部分写入或.cow临时项。外部import负例用自有真实合法文件证明拒绝不泄漏且不改源；read_dirs拒绝仍有有效源。原outside-link没有SKILL文件却查另一包描述缺席的假证明，改为实际无技能文件目录的catalog ID缺席，不编造显式外部symlink禁止策略。给定英文描述也不成为Dominds策略。
+
+生成的read_skill调用整句、错误解释和移动回执改为独立主观验收：新增一个producer输出22份真实公开catalog组件/回执/诊断，附实际catalog与输入/文件效果上下文，详见[完整记录](../tests/semantic/reviews/2026-10-31-skill-registry.json)。整套persona不是该组件证据的接受范围，给定数据在实际Minds中的保真与惰性正文另由行为检查。原两项基线通过，新两项首次行为亦通过，无产品改动或虚构产品red；标准检查与完整configuration/manual/smoke/runner实际结果随记录保存。configuration16→17、manual7→8，registry不进语义producer集合，其他既有producer的新输出不继承本22判决。
+
+本来一起审计的TypeB去重单独继续：旧基线虽返回0，实际后台存在mock_response_missing和重复pending会话异常，注册计数不能当后台健康。其夹具只有root响应、直接设置dead marker的接受范围也不能代替UI宣告/取消/交付链；必须先补真实执行前提，再判断产品路径。该项未在本批记reviewed，剩余21候选（TypeB一项和App兼容二十项）继续整改。
+
+独立审查还收窄了一处新增比较：只看未改的Member.listTools不能证明实际装配工具未增权。现改为导入前/后真实loadAgentMinds.agentTools，先证明read_file未授予，再核完整可见集合不变，并把实际可见ID加入catalog证据。没有声称完成driver授权执行。原22准确文本以原范围保留，修订后新22仍逐例完整主观评审；这是新增测试断言的补强，不当产品red。Neutral变体保沿原有“新文件存在且既有EN/upstream不变”的范围，不虚报所有新字段均有独立验收。
