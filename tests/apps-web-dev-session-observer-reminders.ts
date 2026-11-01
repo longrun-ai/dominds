@@ -1,15 +1,31 @@
 import assert from 'node:assert/strict';
+import {
+  rejectWebDevAction,
+  runExternalWebDevScenario,
+  webDevComponentIdentity,
+} from './helpers/external-web-dev';
+import { semanticEvidenceCollector } from './helpers/semantic-evidence';
 
 import {
-  assertStructuredResult,
+  assertRecord,
+  assertSuccessfulResult,
   createWebDevFixture,
   requireReminderStateAdded,
   requireSingleUpsertReminder,
   sessionIdFromReminder,
 } from './helpers/web-dev-session-fixture';
 
+const evidence = semanticEvidenceCollector(
+  'dominds-external-apps-web-dev-session-observer-reminders-',
+);
+const observations: Array<{ stage: string; text: string; outcome?: string }> = [];
+function observe(stage: string, text: string, outcome?: string): void {
+  observations.push({ stage, text, ...(outcome ? { outcome } : {}) });
+}
+
 async function main(): Promise<void> {
   const fixture = await createWebDevFixture();
+  let completed = false;
   try {
     const created = await fixture.host.tools.playwright_session_new(
       {
@@ -19,7 +35,7 @@ async function main(): Promise<void> {
       },
       fixture.controllerCtx,
     );
-    assertStructuredResult(created);
+    assertSuccessfulResult(created);
     const controllerUpsert = requireSingleUpsertReminder(created);
     const controllerReminder = requireReminderStateAdded(
       await fixture.reminderOwner.apply(controllerUpsert, {
@@ -28,16 +44,17 @@ async function main(): Promise<void> {
       }),
     );
     const sessionId = sessionIdFromReminder(controllerReminder);
+    assertRecord(controllerReminder.meta);
+    assert.equal(controllerReminder.meta['role'], 'controller');
 
-    await assert.rejects(
+    await rejectWebDevAction(
       async () =>
         await fixture.reminderOwner.apply(controllerUpsert, {
           dialogId: fixture.controllerCtx.dialogId,
           ownedReminders: [{ content: 'corrupt owned reminder', meta: { sessionId } }],
         }),
-      /playwright_session owned reminder\[0\] meta\.role is required/,
     );
-    await assert.rejects(
+    await rejectWebDevAction(
       async () =>
         await fixture.reminderOwner.apply(controllerUpsert, {
           dialogId: fixture.controllerCtx.dialogId,
@@ -46,25 +63,22 @@ async function main(): Promise<void> {
             { content: 'corrupt trailing reminder', meta: { sessionId: 'pws_other' } },
           ],
         }),
-      /playwright_session owned reminder\[1\] meta\.role is required/,
     );
-    await assert.rejects(
+    await rejectWebDevAction(
       async () =>
         await fixture.reminderOwner.apply(controllerUpsert, {
           dialogId: fixture.controllerCtx.dialogId,
           ownedReminders: [controllerReminder, controllerReminder],
         }),
-      /playwright_session reminder invariant violation: duplicate sessionId=.* at owned indexes 0,1/,
     );
-    await assert.rejects(
+    await rejectWebDevAction(
       async () =>
         await fixture.reminderOwner.updateReminder({
           dialogId: fixture.controllerCtx.dialogId,
           reminder: { content: 'corrupt update reminder', meta: { sessionId } },
         }),
-      /playwright_session update reminder meta\.role is required/,
     );
-    await assert.rejects(
+    await rejectWebDevAction(
       async () =>
         await fixture.reminderOwner.renderReminder({
           dialogId: fixture.controllerCtx.dialogId,
@@ -72,19 +86,17 @@ async function main(): Promise<void> {
           reminderId: 'corrupt-reminder',
           workLanguage: 'en',
         }),
-      /playwright_session render reminder meta\.role is required/,
     );
 
-    await assert.rejects(
+    await rejectWebDevAction(
       async () =>
         await fixture.host.tools.playwright_session_list(
           { scope: 'same_root_dialog' },
           fixture.controllerCtx,
         ),
-      /scope must be 'attached_to_current_dialog', 'same_main_dialog', or 'all_visible'/,
     );
 
-    await assert.rejects(
+    await rejectWebDevAction(
       async () =>
         await fixture.host.tools.playwright_session_attach(
           {
@@ -97,7 +109,6 @@ async function main(): Promise<void> {
           },
           fixture.controllerCtx,
         ),
-      /target agent reference contains unsupported properties: rootDialogId/,
     );
 
     const implicitMainTarget = {
@@ -108,18 +119,22 @@ async function main(): Promise<void> {
       { sessionId, role: 'observer', target: implicitMainTarget },
       fixture.controllerCtx,
     );
-    assertStructuredResult(implicitMainAttach);
+    assertSuccessfulResult(implicitMainAttach);
     const implicitMainStatus = await fixture.host.tools.playwright_session_status(
       { sessionId },
       fixture.observerCtx,
     );
-    assertStructuredResult(implicitMainStatus);
-    assert.match(implicitMainStatus.output.content, /role=observer/);
+    assertSuccessfulResult(implicitMainStatus);
+    observe(
+      'implicitMainStatus',
+      implicitMainStatus.output.content,
+      implicitMainStatus.output.outcome,
+    );
     const implicitMainDetach = await fixture.host.tools.playwright_session_detach(
       { sessionId, target: implicitMainTarget },
       fixture.controllerCtx,
     );
-    assertStructuredResult(implicitMainDetach);
+    assertSuccessfulResult(implicitMainDetach);
 
     const otherRootList = await fixture.host.tools.playwright_session_list(
       { scope: 'same_main_dialog' },
@@ -129,28 +144,28 @@ async function main(): Promise<void> {
         mainDialogId: 'root_other',
       },
     );
-    assertStructuredResult(otherRootList);
-    assert.match(otherRootList.output.content, /no visible Web Dev browser sessions/);
+    assertSuccessfulResult(otherRootList);
+    observe('otherRootList', otherRootList.output.content, otherRootList.output.outcome);
+    // The generated opaque session identifier is confidential data, not a prose oracle.
+    assert.equal(otherRootList.output.content.includes(sessionId), false);
 
     const observerStatusBeforeAttach = await fixture.host.tools.playwright_session_status(
       { sessionId },
       fixture.observerCtx,
     );
-    assertStructuredResult(observerStatusBeforeAttach);
-    assert.match(observerStatusBeforeAttach.output.content, /role=not attached/);
-    assert.match(observerStatusBeforeAttach.output.content, /use playwright_session_attach/);
+    assertSuccessfulResult(observerStatusBeforeAttach);
+    observe(
+      'observerStatusBeforeAttach',
+      observerStatusBeforeAttach.output.content,
+      observerStatusBeforeAttach.output.outcome,
+    );
 
     const attached = await fixture.host.tools.playwright_session_attach(
       { sessionId, role: 'observer' },
       fixture.observerCtx,
     );
-    assertStructuredResult(attached);
-    assert.match(attached.output.content, /ok: session attachment updated\./);
-    assert.match(attached.output.content, /attachment: current dialog attached as observer/);
-    assert.match(
-      attached.output.content,
-      /reminder sync: current=refreshed; other=1 updates\/1 dialogs/,
-    );
+    assertSuccessfulResult(attached);
+    observe('attached', attached.output.content, attached.output.outcome);
 
     const observerReminder = requireReminderStateAdded(
       await fixture.reminderOwner.apply(requireSingleUpsertReminder(attached), {
@@ -158,6 +173,9 @@ async function main(): Promise<void> {
         ownedReminders: [],
       }),
     );
+    assert.equal(sessionIdFromReminder(observerReminder), sessionId);
+    assertRecord(observerReminder.meta);
+    assert.equal(observerReminder.meta['role'], 'observer');
     assert.ok(Array.isArray(attached.dialogReminderRequests));
     assert.equal(attached.dialogReminderRequests?.length, 1);
     assert.equal(
@@ -169,9 +187,8 @@ async function main(): Promise<void> {
       { sessionId },
       fixture.observerCtx,
     );
-    assertStructuredResult(observerStatus);
-    assert.match(observerStatus.output.content, /role=observer/);
-    assert.match(observerStatus.output.content, /attachment: current dialog attached as observer/);
+    assertSuccessfulResult(observerStatus);
+    observe('observerStatus', observerStatus.output.content, observerStatus.output.outcome);
 
     const renderedReminder = await fixture.reminderOwner.renderReminder({
       dialogId: fixture.observerCtx.dialogId,
@@ -179,21 +196,14 @@ async function main(): Promise<void> {
       reminderId: 'observer-reminder',
       workLanguage: 'en',
     });
-    assert.match(renderedReminder.content, /role=observer/);
-    assert.match(renderedReminder.content, /surface: page https:\/\/example\.test\/initial/);
-    assert.match(renderedReminder.content, /coverage snapshot:/);
-    assert.match(renderedReminder.content, /decision gate:/);
+    observe('renderedReminder', renderedReminder.content);
 
     const detached = await fixture.host.tools.playwright_session_detach(
       { sessionId },
       fixture.observerCtx,
     );
-    assertStructuredResult(detached);
-    assert.match(detached.output.content, /ok: session detached\./);
-    assert.match(
-      detached.output.content,
-      /reminder sync: current=removed; other=1 updates\/1 dialogs/,
-    );
+    assertSuccessfulResult(detached);
+    observe('detached', detached.output.content, detached.output.outcome);
 
     const staleObserverReminder = await fixture.reminderOwner.updateReminder({
       dialogId: fixture.observerCtx.dialogId,
@@ -210,31 +220,56 @@ async function main(): Promise<void> {
       if (typeof controllerReminderUpdate.updatedContent !== 'string') {
         throw new Error('Expected updated reminder content to be a string');
       }
-      assert.match(controllerReminderUpdate.updatedContent, /https:\/\/example\.test\/initial/);
+      observe('controllerReminderUpdate', controllerReminderUpdate.updatedContent);
     }
 
     const closed = await fixture.host.tools.playwright_session_close(
       { sessionId },
       fixture.controllerCtx,
     );
-    assertStructuredResult(closed);
-    assert.match(closed.output.content, /ok: session closed\./);
+    assertSuccessfulResult(closed);
+    observe('closed', closed.output.content, closed.output.outcome);
 
     const closedControllerReminder = await fixture.reminderOwner.updateReminder({
       dialogId: fixture.controllerCtx.dialogId,
       reminder: controllerReminder,
     });
     assert.equal(closedControllerReminder.treatment, 'drop');
+    completed = true;
   } finally {
-    await fixture.cleanup();
+    await fixture.cleanup({ preserve: !completed });
   }
 }
 
-void main()
-  .then(() => {
-    console.log('OK');
-  })
-  .catch((error: unknown) => {
-    console.error(error instanceof Error ? (error.stack ?? error.message) : String(error));
-    process.exit(1);
+runExternalWebDevScenario(async () => {
+  await main();
+  const identity = webDevComponentIdentity();
+  evidence.record({
+    id: 'observer-attachment-guidance',
+    scenario:
+      'A controller session is shared with an observer in the same main dialog, queried from another main dialog, attached/detached and closed.',
+    businessValue:
+      'Preserve role visibility, usable attachment guidance and accurate reminder updates without leaking a different main dialog session.',
+    context: {
+      ...{
+        initialUrl: 'https://example.test/initial',
+        controllerMain: 'root_demo',
+        otherMain: 'root_other',
+        boundary:
+          'Real selected component; controlled Playwright/Electron provider, no real browser/visual QA acceptance.',
+      },
+      componentRoot: identity.root,
+      componentPackageJsonSha256: identity.packageJsonSha256,
+    },
+    reviewQuestions: [
+      'Do actual status/list/attach/detach and reminder texts agree with the caller role and actual metadata/reminder requests at each stage?',
+      'Does the other-main-dialog list avoid disclosing the controller session, and do not-attached callers receive usable guidance?',
+      'Does reminder rendering describe the current session and role without claiming browser/permission actions this fixture did not execute?',
+    ],
+    actualText: JSON.stringify(observations, null, 2),
   });
+  await evidence.write();
+  console.log(
+    'Selected external Web Dev machine workflow completed; semantic acceptance is separate.',
+  );
+});

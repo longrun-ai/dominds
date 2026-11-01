@@ -73,6 +73,13 @@ const appsRuntime = [
   'apps-webui-startup-host-failure-no-interrupt.ts',
 ];
 
+const appsExternal = [
+  'apps-web-dev-session-core-contract.ts',
+  'apps-web-dev-session-observer-reminders.ts',
+  'apps-web-dev-session-qa-contract.ts',
+  'apps-web-dev-session-runtime-transitions.ts',
+];
+
 const manual = [
   'toolsets/skills-tools.ts',
   'toolsets/memory-access.ts',
@@ -251,6 +258,7 @@ const providerLocal = [
 ];
 const taskdoc = ['task-package.ts', 'taskdoc-search.ts', 'taskdoc-recall-budget.ts'];
 const semanticSuites = {
+  'apps-external': appsExternal,
   'apps-runtime': ['apps-tool-proxy-refresh.ts'],
   'apps-configuration': appsConfiguration.filter((file) =>
     [
@@ -435,6 +443,7 @@ export async function inventory() {
     configuration,
     'apps-configuration': appsConfiguration,
     'apps-runtime': appsRuntime,
+    'apps-external': appsExternal,
     manual,
     filesystem,
     persistence,
@@ -539,7 +548,12 @@ export async function runCases(
             row.status === 'skipped' &&
             typeof row.code === 'string' &&
             typeof row.detail === 'string' &&
-            row.providerRequestAttempted === false
+            (entry.prerequisiteBoundary === 'component'
+              ? row.componentLoadAttempted === false
+              : entry.prerequisiteBoundary === undefined ||
+                  entry.prerequisiteBoundary === 'provider'
+                ? row.providerRequestAttempted === false
+                : false)
             ? [row]
             : [];
         } catch {
@@ -666,6 +680,7 @@ async function main() {
       'configuration',
       'apps-configuration',
       'apps-runtime',
+      'apps-external',
       'manual',
       'filesystem',
       'persistence',
@@ -687,7 +702,7 @@ async function main() {
     ].includes(args[1])
   ) {
     throw new Error(
-      'Usage: node tests/run.mjs --list | --suite smoke | --suite kernel | --suite context [--semantic] | --suite configuration [--semantic] | --suite apps-configuration [--semantic] | --suite apps-runtime [--semantic] | --suite manual [--semantic] | --suite filesystem [--semantic] | --suite persistence [--semantic] | --suite recovery [--semantic] | --suite bootstrap [--semantic] | --suite packaging [--semantic] | --suite retry [--semantic] | --suite projection [--semantic] | --suite compatible [--semantic] | --suite reminders [--semantic] | --suite daemon [--semantic] | --suite presentation [--semantic] | --suite components [--semantic] | --suite shell [--semantic] | --suite taskdoc [--semantic] | --suite provider-local [--semantic] | --suite server-local [--semantic] | --suite provider-live [--case <provider/file.ts> --live --provider <id> --model <id>]',
+      'Usage: node tests/run.mjs --list | --suite smoke | --suite kernel | --suite context [--semantic] | --suite configuration [--semantic] | --suite apps-configuration [--semantic] | --suite apps-runtime [--semantic] | --suite apps-external [--semantic] | --suite manual [--semantic] | --suite filesystem [--semantic] | --suite persistence [--semantic] | --suite recovery [--semantic] | --suite bootstrap [--semantic] | --suite packaging [--semantic] | --suite retry [--semantic] | --suite projection [--semantic] | --suite compatible [--semantic] | --suite reminders [--semantic] | --suite daemon [--semantic] | --suite presentation [--semantic] | --suite components [--semantic] | --suite shell [--semantic] | --suite taskdoc [--semantic] | --suite provider-local [--semantic] | --suite server-local [--semantic] | --suite provider-live [--case <provider/file.ts> --live --provider <id> --model <id>]',
     );
   }
   const suite = args[1];
@@ -704,6 +719,7 @@ async function main() {
   const cases = files.map((file) => ({
     id: file,
     ...(suite === 'provider-live' ? { skipExitCode: 77, requireLiveEvidence: true } : {}),
+    ...(suite === 'apps-external' ? { skipExitCode: 77, prerequisiteBoundary: 'component' } : {}),
     args:
       (suite !== 'smoke' && suite !== 'packaging') ||
       persistence.includes(file) ||
@@ -734,7 +750,7 @@ async function main() {
   );
   const summary = await runCases(cases, {
     logDir,
-    keepSuccessfulState: semantic || suite === 'provider-live',
+    keepSuccessfulState: semantic || suite === 'provider-live' || suite === 'apps-external',
     report: semantic ? (line) => console.log(`GENERATION PROCESS ${line}`) : console.log,
   });
   if (semantic) {

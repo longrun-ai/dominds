@@ -12,6 +12,8 @@ pnpm run test:kernel
 pnpm run test:context
 pnpm run test:configuration
 pnpm run test:apps:configuration
+pnpm run test:apps:runtime
+pnpm run test:apps:external
 pnpm run test:manual
 pnpm run test:types
 pnpm run test:inventory
@@ -20,6 +22,8 @@ pnpm run test:semantic
 pnpm run test:semantic:context
 pnpm run test:semantic:configuration
 pnpm run test:semantic:apps:configuration
+pnpm run test:semantic:apps:runtime
+pnpm run test:semantic:apps:external
 pnpm run test:semantic:manual
 pnpm run test:semantic:kernel
 pnpm run test:filesystem
@@ -65,6 +69,8 @@ pnpm run test:provider-live
 - `test:semantic:apps:configuration`: eight producers emit actual command receipts and resolution/Problems diagnostics for separate subjective review. The [App configuration review](./semantic/reviews/2026-10-31-app-resolution.json) preserves its complete output and evidence scope; the [CLI/doctor review](./semantic/reviews/2026-10-31-app-doctor.json) adds eight actual command/diagnosis materials from a separately locked producer epoch. Every fresh run starts pending.
 - `test:apps:runtime`: five local compatibility cases for strict host IPC data/rejection/isolation, factory-controlled host refresh, actual Minds proxy availability, empty-cache startup recovery, and HTTP availability during real factory failure or pending initialization. HTTP checks compare complete shipped HTML, and host checks execute actual local factories/IPC; no browser or external Web Dev component acceptance is claimed. Server stop releases its maintenance timer and the cases must exit naturally.
 - `test:semantic:apps:runtime`: one producer emits two actual missing/disabled capability Problems contexts for separate subjective review. The [runtime review](./semantic/reviews/2026-10-31-app-runtime.json) records complete evidence and the pre-fix lifecycle failure; fresh semantic output remains pending.
+- `test:apps:external`: four Web Dev compatibility scenarios requiring `DOMINDS_TEST_WEB_DEV_PACKAGE_ROOT` to point to an absolute existing built component package. The real selected component runs against controlled Playwright/Electron adapters; this lane does not run a real browser or perform visual QA. Missing prerequisites produce explicit structured skips and a nonzero suite status, never passes. Configuration/import/runtime failures after selection remain failures; a setup error cannot satisfy an expected component rejection. Failed workspaces are retained.
+- `test:semantic:apps:external`: the same four scenarios emit complete actual guidance, diagnostics and context for independent review when the component is available. Without it, all four remain unexecuted and no component semantic material is accepted. The [external Web Dev audit](./audits/2026-10-31-external-web-dev.json) records assertion design, actual prerequisite/control evidence and that limitation; its preflight guidance review cannot accept future component output.
 - `test:manual`: eight isolated cases for language normalization, actual mind assets and skill scope/permissions, snippet paths, manual visibility and the original prose budget.
 - `test:types`: checks the full test directory against the current public contracts. Report actual diagnostics as failures; do not weaken types or exclude cases to obtain a green result.
 - `test:inventory`: sources, support files, discovered suites, outside-suite candidates, and candidates without package scripts. These counts are not behavior coverage. Unknown candidates can be live probes or external integrations; inspect prerequisites before executing them.
@@ -169,7 +175,7 @@ Scripts resolve repository-internal contracts through `tests/tsconfig.json`. Dir
 
 Literal matching is never a semantic oracle. Do not use keywords, regexes, fixed sentences, snapshots, or source snippets to judge the meaning of prompts, manuals, guidance, or explanations. Delete low-value checks; valuable semantic requirements emit full actual output and context for subjective agent review. Keep the verdict, reasons, and evidence. Unreviewed output stays pending. Exact assertions are for real machine contracts, identifiers, state, counts, and effects, not disguised natural-language judgments.
 
-Review added and changed assertions before accepting tests and again before committing. A semantic literal-match assertion blocks acceptance. Do not replace that review with a keyword-based detector. The inherited tests still require the staged audit described in the remediation plan; rediscovery does not certify their design.
+Review added and changed assertions before accepting tests and again before committing. A semantic literal-match assertion blocks acceptance. Do not replace that review with a keyword-based detector. The inherited candidate audit is recorded in the remediation plan and ledger; rediscovery does not certify design or execute an unavailable lane. New and changed tests require the same complete assertion review.
 
 Keep accepted semantic review records under `tests/semantic/reviews/`, including per-case rationale, scope, and evidence/source provenance. Generated text can be recreated from the reviewed revision; hashes only identify that material. These records are review evidence, never golden snapshots or an oracle for accepting future wording. A fresh generation starts pending review even when an older record passed.
 
@@ -217,5 +223,4 @@ read_skill instructions and explanations have no literal semantic oracle. The
 [skill/registry record](semantic/reviews/2026-10-31-skill-registry.json) preserves the complete
 original-value and assertion audit with actual material, verdicts and provenance. Registry is a
 pure machine case and is excluded from semantic generation. The existing semantic producers
-were not freshly accepted by this batch. Registered-session deduplication remains a separate
-unremediated candidate until its background execution and persisted state are accepted.
+were not freshly accepted by this batch. Registered-session deduplication is separately accepted within its durable-marker and actual background-execution scope in the [dedupe review](audits/2026-10-31-typeb-dedupe.json).

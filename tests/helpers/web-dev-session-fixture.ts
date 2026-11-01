@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import * as fs from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
+import { runInNewContext } from 'node:vm';
 
 import type {
   DomindsAppDialogReminderRequestBatch,
@@ -13,6 +14,7 @@ import type {
 } from '@longrun-ai/kernel/app-json';
 
 import { loadLocalAppEntry, type AppFactoryContext } from './app-entry';
+import { WebDevFixtureSetupError, webDevPackageRoot } from './external-web-dev';
 
 export type ToolCtx = Readonly<{
   dialogId: string;
@@ -140,6 +142,10 @@ type FakeTrackerState = {
   newContextOptions: unknown[];
   electronLaunchOptions: unknown[];
   screenshotCalls: unknown[];
+  screenshotBodies: Buffer[];
+  navigations: string[];
+  fills: Array<{ selector: string; value: string }>;
+  clicks: string[];
 };
 
 export type FakePlaywrightEnvironment = Readonly<{
@@ -162,7 +168,7 @@ export type WebDevFixture = Readonly<{
   reminderOwner: ReminderOwnerHandler;
   controllerCtx: ToolCtx;
   observerCtx: ToolCtx;
-  cleanup: () => Promise<void>;
+  cleanup: (options?: { preserve?: boolean }) => Promise<void>;
 }>;
 
 export type WebDevFixturePaths = Readonly<{
@@ -181,18 +187,20 @@ export async function pathExists(absPath: string): Promise<boolean> {
   try {
     await fs.access(absPath);
     return true;
-  } catch {
-    return false;
+  } catch (error) {
+    if (typeof error === 'object' && error !== null && 'code' in error && error.code === 'ENOENT')
+      return false;
+    throw error;
   }
 }
 
-export function assertStructuredResult(
+export function assertSuccessfulResult(
   result: StructuredToolResult,
 ): asserts result is StructuredToolResult {
   assert.equal(typeof result, 'object');
   assert.notEqual(result, null);
   assert.equal(typeof result.output.content, 'string');
-  assert.match(result.output.outcome, /^(success|failure|partial_failure)$/);
+  assert.equal(result.output.outcome, 'success');
 }
 
 export function assertRecord(value: unknown): asserts value is Record<string, unknown> {
@@ -276,6 +284,10 @@ export function createFakePlaywrightEnvironment(): FakePlaywrightEnvironment {
     newContextOptions: [],
     electronLaunchOptions: [],
     screenshotCalls: [],
+    screenshotBodies: [],
+    navigations: [],
+    fills: [],
+    clicks: [],
   };
 
   function createFakePage(initialUrl = 'about:blank'): FakePage {
@@ -315,6 +327,7 @@ export function createFakePlaywrightEnvironment(): FakePlaywrightEnvironment {
         listeners.set(eventName, list);
       },
       goto: async (url, _options) => {
+        trackers.navigations.push(url);
         await emitNavigation(url);
         currentState = createPageState(url);
         currentState.html = buildRenderedHtml(currentState);
@@ -327,30 +340,46 @@ export function createFakePlaywrightEnvironment(): FakePlaywrightEnvironment {
       },
       waitForLoadState: async (_state) => undefined,
       evaluate: async <T>(fn: () => T): Promise<T> => {
-        const isViewportMeasurement = Function.prototype.toString
-          .call(fn)
-          .includes('viewportWidth');
-        if (!isViewportMeasurement) {
-          return fn();
-        }
-        if (trackers.failViewportMeasurement) {
-          throw new Error('viewport evaluate failed');
-        }
-        return {
-          viewportWidth: 1280,
-          viewportHeight: 720,
-          documentClientWidth: 1280,
-          documentClientHeight: 720,
-          documentScrollWidth: 1280,
-          documentScrollHeight: 720,
+        if (trackers.failViewportMeasurement) throw new Error('viewport evaluate failed');
+        const documentElement = {
+          clientWidth: 1280,
+          clientHeight: 720,
+          scrollWidth: 1280,
+          scrollHeight: 720,
+        };
+        const document = {
+          documentElement,
+          body: { ...documentElement },
+          scrollingElement: documentElement,
+        };
+        const window = {
+          innerWidth: 1280,
+          innerHeight: 720,
           outerWidth: 1280,
           outerHeight: 800,
           devicePixelRatio: 1,
           scrollX: 0,
           scrollY: 0,
-        } as T;
+          document,
+        };
+        // Execute the supplied browser callback against controlled browser globals.
+        // No private output-variable name determines which fixture response is returned.
+        try {
+          return (await runInNewContext('(' + Function.prototype.toString.call(fn) + ')()', {
+            window,
+            document,
+            innerWidth: window.innerWidth,
+            innerHeight: window.innerHeight,
+            devicePixelRatio: 1,
+            scrollX: 0,
+            scrollY: 0,
+          })) as T;
+        } catch (error) {
+          throw new WebDevFixtureSetupError('adapter-contract', error);
+        }
       },
       click: async (selector) => {
+        trackers.clicks.push(selector);
         if (selector === '#increment') {
           currentState.statusText = 'Clicked 1';
           currentState.title = 'After Click';
@@ -361,7 +390,11 @@ export function createFakePlaywrightEnvironment(): FakePlaywrightEnvironment {
           } satisfies FakeConsoleMessage);
           return;
         }
-        assert.equal(selector, '#go');
+        if (selector !== '#go')
+          throw new WebDevFixtureSetupError(
+            'adapter-contract',
+            new Error('Unsupported controlled click selector: ' + selector),
+          );
         currentState.statusText = currentState.searchValue;
         currentState.html = buildRenderedHtml(currentState);
         await emit('console', {
@@ -370,8 +403,12 @@ export function createFakePlaywrightEnvironment(): FakePlaywrightEnvironment {
         } satisfies FakeConsoleMessage);
       },
       fill: async (selector, value) => {
+        trackers.fills.push({ selector, value });
         if (selector !== '#search' && selector !== '#name') {
-          throw new Error(`unexpected fill selector: ${selector}`);
+          throw new WebDevFixtureSetupError(
+            'adapter-contract',
+            new Error('Unsupported controlled fill selector: ' + selector),
+          );
         }
         currentState.searchValue = value;
         currentState.html = buildRenderedHtml(currentState);
@@ -394,16 +431,21 @@ export function createFakePlaywrightEnvironment(): FakePlaywrightEnvironment {
           selector !== '#go' &&
           selector !== '#out'
         ) {
-          throw new Error(`missing selector: ${selector}`);
+          throw new WebDevFixtureSetupError(
+            'adapter-contract',
+            new Error('Unsupported controlled wait selector: ' + selector),
+          );
         }
         return { selector };
       },
       locator: (selector) => ({ selector }),
       screenshot: async (options) => {
         trackers.screenshotCalls.push(options ?? null);
-        return Buffer.from(
+        const body = Buffer.from(
           `fake-screenshot:${currentState.url}:${JSON.stringify(options ?? null)}`,
         );
+        trackers.screenshotBodies.push(Buffer.from(body));
+        return body;
       },
       isClosed: () => pageClosed,
       close: async () => {
@@ -507,10 +549,9 @@ export function createFakePlaywrightEnvironment(): FakePlaywrightEnvironment {
 export async function createWebDevFixture(
   options: WebDevFixtureOptions = {},
 ): Promise<WebDevFixture> {
-  const repoRootAbs = path.resolve(__dirname, '..', '..', '..');
   const appId = '@longrun-ai/web-dev';
   const appIdPathParts = ['@longrun-ai', 'web-dev'];
-  const packageRootAbs = path.join(repoRootAbs, 'dominds-apps', ...appIdPathParts);
+  const packageRootAbs = webDevPackageRoot();
   const tempRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'dominds-web-dev-session-'));
   const rtwsAppDirAbs = path.join(tempRoot, '.apps', ...appIdPathParts);
   const sessionsCacheDirAbs = path.join(
@@ -534,13 +575,21 @@ export async function createWebDevFixture(
     sessionsCacheDirAbs,
     artifactsDirAbs,
   };
-  let fakeEnv: FakePlaywrightEnvironment;
-  let host: WebDevAppHost;
+  let entry: Awaited<ReturnType<typeof loadLocalAppEntry>>;
+  let stage: 'prepare' | 'load-entry' = 'prepare';
   try {
     await options.prepareRtws?.(fixturePaths);
-    const { appFactory } = await loadLocalAppEntry({ packageRootAbs });
-    fakeEnv = createFakePlaywrightEnvironment();
-    const webDevAppFactory = appFactory as unknown as (
+    stage = 'load-entry';
+    entry = await loadLocalAppEntry({ packageRootAbs });
+    assert.equal(entry.installJson.appId, appId);
+  } catch (error) {
+    console.error('External Web Dev fixture retained before factory invocation: ' + tempRoot);
+    throw new WebDevFixtureSetupError(stage, error);
+  }
+  const fakeEnv = createFakePlaywrightEnvironment();
+  let host: WebDevAppHost;
+  try {
+    const webDevAppFactory = entry.appFactory as unknown as (
       ctx: WebDevAppFactoryContext,
     ) => Promise<WebDevAppHost>;
     host = await webDevAppFactory({
@@ -553,13 +602,28 @@ export async function createWebDevFixture(
       playwrightLoader: async () => fakeEnv.playwright,
     });
   } catch (error) {
-    await fs.rm(tempRoot, { recursive: true, force: true });
+    console.error('External Web Dev fixture retained after factory rejection: ' + tempRoot);
     throw error;
   }
-  const reminderOwner = host.reminderOwners?.['playwright_session'];
-  assert.ok(reminderOwner, 'expected playwright_session reminder owner');
-  if (!reminderOwner) {
-    throw new Error('missing playwright_session reminder owner');
+  let reminderOwner: ReminderOwnerHandler;
+  try {
+    assertRecord(host);
+    assertRecord(host.tools);
+    assert.equal(typeof host.shutdown, 'function');
+    for (const handler of Object.values(host.tools)) assert.equal(typeof handler, 'function');
+    const owner = host.reminderOwners?.['playwright_session'];
+    assertRecord(owner);
+    for (const method of ['apply', 'updateReminder', 'renderReminder'] as const)
+      assert.equal(typeof owner[method], 'function');
+    reminderOwner = owner;
+  } catch (error) {
+    try {
+      if (typeof host === 'object' && host !== null && typeof host.shutdown === 'function')
+        await host.shutdown();
+    } finally {
+      console.error('External Web Dev fixture retained after host-contract failure: ' + tempRoot);
+      throw new WebDevFixtureSetupError('host-contract', error);
+    }
   }
   return {
     tempRoot,
@@ -583,8 +647,11 @@ export async function createWebDevFixture(
       sessionSlug: 'fix-loop',
       callerId: 'fullstack',
     },
-    cleanup: async () => {
-      await fs.rm(tempRoot, { recursive: true, force: true });
+    cleanup: async (options = {}) => {
+      await host.shutdown();
+      if (options.preserve)
+        console.error('External Web Dev fixture retained after scenario failure: ' + tempRoot);
+      else await fs.rm(tempRoot, { recursive: true, force: true });
     },
   };
 }

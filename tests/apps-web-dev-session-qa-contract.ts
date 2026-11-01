@@ -1,18 +1,31 @@
 import assert from 'node:assert/strict';
 import * as fs from 'node:fs/promises';
 import path from 'node:path';
+import {
+  rejectWebDevAction,
+  runExternalWebDevScenario,
+  webDevComponentIdentity,
+} from './helpers/external-web-dev';
+import { semanticEvidenceCollector } from './helpers/semantic-evidence';
 
 import {
   assertRecord,
-  assertStructuredResult,
+  assertSuccessfulResult,
   createWebDevFixture,
   requireReminderStateAdded,
   requireSingleUpsertReminder,
   sessionIdFromReminder,
 } from './helpers/web-dev-session-fixture';
 
+const evidence = semanticEvidenceCollector('dominds-external-apps-web-dev-session-qa-contract-');
+const observations: Array<{ stage: string; text: string; outcome?: string }> = [];
+function observe(stage: string, text: string, outcome?: string): void {
+  observations.push({ stage, text, ...(outcome ? { outcome } : {}) });
+}
+
 async function main(): Promise<void> {
   const fixture = await createWebDevFixture();
+  let completed = false;
   try {
     const created = await fixture.host.tools.playwright_session_new(
       {
@@ -22,7 +35,7 @@ async function main(): Promise<void> {
       },
       fixture.controllerCtx,
     );
-    assertStructuredResult(created);
+    assertSuccessfulResult(created);
     const controllerReminder = requireReminderStateAdded(
       await fixture.reminderOwner.apply(requireSingleUpsertReminder(created), {
         dialogId: fixture.controllerCtx.dialogId,
@@ -30,50 +43,57 @@ async function main(): Promise<void> {
       }),
     );
     const sessionId = sessionIdFromReminder(controllerReminder);
+    const sessionFile = path.join(fixture.sessionsCacheDirAbs, sessionId + '.json');
 
     const inventoryStatus = await fixture.host.tools.playwright_session_inventory_status(
       { sessionId },
       fixture.controllerCtx,
     );
-    assertStructuredResult(inventoryStatus);
-    assert.match(
-      inventoryStatus.output.content,
-      /coverage snapshot: inventory=0 functional=0\/0 visual=0\/0 pendingFunctional=none pendingVisual=none/,
-    );
-    assert.match(
-      inventoryStatus.output.content,
-      /decision gate: status=not_started functional=pending visual=pending viewport=pending exploratory=pending cleanup=not_run/,
-    );
+    assertSuccessfulResult(inventoryStatus);
+    observe('inventoryStatus', inventoryStatus.output.content, inventoryStatus.output.outcome);
+    const initialSession: unknown = JSON.parse(await fs.readFile(sessionFile, 'utf8'));
+    assertRecord(initialSession);
+    assertRecord(initialSession['qa']);
+    assert.deepEqual(initialSession['qa']['inventory'], []);
+    assertRecord(initialSession['qa']['signoff']);
+    assert.equal(initialSession['qa']['signoff']['status'], 'not_started');
 
     const screenshot = await fixture.host.tools.playwright_session_screenshot(
       { sessionId, label: 'qa-proof', imageType: 'png' },
       fixture.controllerCtx,
     );
-    assertStructuredResult(screenshot);
+    assertSuccessfulResult(screenshot);
 
+    const pendingItem = {
+      id: 'critical_flow',
+      kind: 'feature',
+      label: 'Primary browser flow',
+      functional: 'covered',
+      visual: 'pending',
+      artifact: 'qa-proof.png',
+      notes: 'Functional pass on desktop runtime.',
+    };
     const createdInventory = await fixture.host.tools.playwright_session_inventory_upsert(
       {
         sessionId,
-        item: {
-          id: 'critical_flow',
-          kind: 'feature',
-          label: 'Primary browser flow',
-          functional: 'covered',
-          visual: 'pending',
-          artifact: 'qa-proof.png',
-          notes: 'Functional pass on desktop runtime.',
-        },
+        item: pendingItem,
       },
       fixture.controllerCtx,
     );
-    assertStructuredResult(createdInventory);
-    assert.match(createdInventory.output.content, /ok: session QA inventory item created\./);
-    assert.match(
-      createdInventory.output.content,
-      /coverage snapshot: inventory=1 functional=1\/1 visual=0\/1 pendingFunctional=none pendingVisual=critical_flow/,
-    );
+    assertSuccessfulResult(createdInventory);
+    observe('createdInventory', createdInventory.output.content, createdInventory.output.outcome);
 
-    await assert.rejects(
+    const beforeRefusedReady: unknown = JSON.parse(await fs.readFile(sessionFile, 'utf8'));
+    assertRecord(beforeRefusedReady);
+    assertRecord(beforeRefusedReady['qa']);
+    const pendingInventory = beforeRefusedReady['qa']['inventory'];
+    assert.ok(Array.isArray(pendingInventory));
+    assert.equal(pendingInventory.length, 1);
+    const storedPendingItem: unknown = pendingInventory[0];
+    assertRecord(storedPendingItem);
+    for (const [key, value] of Object.entries(pendingItem))
+      assert.deepEqual(storedPendingItem[key], value);
+    const refusedReady = await rejectWebDevAction(
       async () =>
         await fixture.host.tools.playwright_session_signoff_record(
           {
@@ -88,8 +108,12 @@ async function main(): Promise<void> {
           },
           fixture.controllerCtx,
         ),
-      /ready signoff requires visual coverage to be complete \(0\/1\)/,
     );
+
+    observe('refusedReady', refusedReady.message);
+    const afterRefusedReady: unknown = JSON.parse(await fs.readFile(sessionFile, 'utf8'));
+    assertRecord(afterRefusedReady);
+    assert.deepEqual(afterRefusedReady['qa'], beforeRefusedReady['qa']);
 
     const inProgress = await fixture.host.tools.playwright_session_signoff_record(
       {
@@ -99,64 +123,58 @@ async function main(): Promise<void> {
       },
       fixture.controllerCtx,
     );
-    assertStructuredResult(inProgress);
-    assert.match(inProgress.output.content, /ok: session QA signoff recorded\./);
-    assert.match(
-      inProgress.output.content,
-      /decision gate detail: status=in_progress functional=pending visual=pending viewport=pending exploratory=pending cleanup=not_run/,
-    );
+    assertSuccessfulResult(inProgress);
+    observe('inProgress', inProgress.output.content, inProgress.output.outcome);
+    const progressSession: unknown = JSON.parse(await fs.readFile(sessionFile, 'utf8'));
+    assertRecord(progressSession);
+    assertRecord(progressSession['qa']);
+    assertRecord(progressSession['qa']['signoff']);
+    assert.equal(progressSession['qa']['signoff']['status'], 'in_progress');
 
+    const coveredItem = {
+      id: 'critical_flow',
+      kind: 'feature',
+      label: 'Primary browser flow',
+      functional: 'covered',
+      visual: 'covered',
+      artifact: 'qa-proof.png',
+      notes: 'Visual pass completed.',
+    };
     const updatedInventory = await fixture.host.tools.playwright_session_inventory_upsert(
       {
         sessionId,
-        item: {
-          id: 'critical_flow',
-          kind: 'feature',
-          label: 'Primary browser flow',
-          functional: 'covered',
-          visual: 'covered',
-          artifact: 'qa-proof.png',
-          notes: 'Visual pass completed.',
-        },
+        item: coveredItem,
       },
       fixture.controllerCtx,
     );
-    assertStructuredResult(updatedInventory);
-    assert.match(updatedInventory.output.content, /ok: session QA inventory item updated\./);
-    assert.match(
-      updatedInventory.output.content,
-      /coverage snapshot: inventory=1 functional=1\/1 visual=1\/1 pendingFunctional=none pendingVisual=none/,
-    );
+    assertSuccessfulResult(updatedInventory);
+    observe('updatedInventory', updatedInventory.output.content, updatedInventory.output.outcome);
 
+    const readyRecord = {
+      sessionId,
+      status: 'ready',
+      functional: true,
+      visual: true,
+      viewport: true,
+      exploratory: true,
+      cleanupStatus: 'kept_alive',
+      summary: 'Primary browser flow verified.',
+      negativeChecks: ['No unexpected console errors during smoke.'],
+      exclusions: ['Mobile-specific QA remains out of scope.'],
+    };
     const signoffReady = await fixture.host.tools.playwright_session_signoff_record(
-      {
-        sessionId,
-        status: 'ready',
-        functional: true,
-        visual: true,
-        viewport: true,
-        exploratory: true,
-        cleanupStatus: 'kept_alive',
-        summary: 'Primary browser flow verified.',
-        negativeChecks: ['No unexpected console errors during smoke.'],
-        exclusions: ['Mobile-specific QA remains out of scope.'],
-      },
+      readyRecord,
       fixture.controllerCtx,
     );
-    assertStructuredResult(signoffReady);
-    assert.match(signoffReady.output.content, /ok: session QA signoff recorded\./);
-    assert.match(
-      signoffReady.output.content,
-      /decision gate detail: status=ready functional=pass visual=pass viewport=pass exploratory=pass cleanup=kept_alive/,
-    );
+    assertSuccessfulResult(signoffReady);
+    observe('signoffReady', signoffReady.output.content, signoffReady.output.outcome);
 
     const signoffStatus = await fixture.host.tools.playwright_session_signoff_status(
       { sessionId },
       fixture.controllerCtx,
     );
-    assertStructuredResult(signoffStatus);
-    assert.match(signoffStatus.output.content, /ok: session QA signoff retrieved\./);
-    assert.match(signoffStatus.output.content, /- pending visual items: none/);
+    assertSuccessfulResult(signoffStatus);
+    observe('signoffStatus', signoffStatus.output.content, signoffStatus.output.outcome);
 
     const persistedSession = JSON.parse(
       await fs.readFile(path.join(fixture.sessionsCacheDirAbs, `${sessionId}.json`), 'utf-8'),
@@ -171,20 +189,48 @@ async function main(): Promise<void> {
     assertRecord(inventoryItem);
     const signoff = qa['signoff'];
     assertRecord(signoff);
-    assert.equal(inventoryItem['visual'], 'covered');
-    assert.equal(inventoryItem['artifact'], 'qa-proof.png');
-    assert.equal(signoff['status'], 'ready');
-    assert.equal(signoff['cleanupStatus'], 'kept_alive');
+    assert.equal(qa['inventory'].length, 1);
+    // These are supplied record fields and opaque text payloads, not generated meanings.
+    for (const [key, value] of Object.entries(coveredItem))
+      assert.deepEqual(inventoryItem[key], value);
+    for (const [key, value] of Object.entries(readyRecord)) {
+      if (key !== 'sessionId') assert.deepEqual(signoff[key], value);
+    }
+    completed = true;
   } finally {
-    await fixture.cleanup();
+    await fixture.cleanup({ preserve: !completed });
   }
 }
 
-void main()
-  .then(() => {
-    console.log('OK');
-  })
-  .catch((error: unknown) => {
-    console.error(error instanceof Error ? (error.stack ?? error.message) : String(error));
-    process.exit(1);
+runExternalWebDevScenario(async () => {
+  await main();
+  const identity = webDevComponentIdentity();
+  evidence.record({
+    id: 'qa-record-guidance',
+    scenario:
+      'A session records one QA inventory item, refuses ready signoff while visual coverage is pending, updates the record and retrieves final signoff.',
+    businessValue:
+      'Accurately manage supplied QA records and their decision gate without mistaking recorded claims or controlled screenshot bytes for real visual/functional QA.',
+    context: {
+      ...{
+        inventoryId: 'critical_flow',
+        visualInitially: 'pending',
+        visualFinally: 'covered',
+        actualBrowserExecuted: false,
+        boundary:
+          'Real selected component; controlled Playwright/Electron provider, no real browser/visual QA acceptance.',
+      },
+      componentRoot: identity.root,
+      componentPackageJsonSha256: identity.packageJsonSha256,
+    },
+    reviewQuestions: [
+      'Does actual coverage/gate guidance agree with the stored pending versus covered inventory and refused premature ready transition?',
+      'Do successful recording/query receipts preserve the supplied summaries, negative checks and exclusions without implying real browser or visual QA happened?',
+    ],
+    actualText: JSON.stringify(observations, null, 2),
   });
+  await evidence.write();
+  console.log(
+    'Selected external Web Dev machine workflow completed; semantic acceptance is separate.',
+  );
+});

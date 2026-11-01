@@ -96,7 +96,9 @@
     "test:apps:configuration": "node tests/run.mjs --suite apps-configuration",
     "test:semantic:apps:configuration": "node tests/run.mjs --suite apps-configuration --semantic",
     "test:apps:runtime": "node tests/run.mjs --suite apps-runtime",
-    "test:semantic:apps:runtime": "node tests/run.mjs --suite apps-runtime --semantic"
+    "test:semantic:apps:runtime": "node tests/run.mjs --suite apps-runtime --semantic",
+    "test:apps:external": "node tests/run.mjs --suite apps-external",
+    "test:semantic:apps:external": "node tests/run.mjs --suite apps-external --semantic"
   },
   "repository": {
     "type": "git",

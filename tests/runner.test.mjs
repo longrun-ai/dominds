@@ -296,3 +296,68 @@ test('live admission rejects help-only, empty or failed observations despite exi
     else console.error('Live admission fixture retained: ' + logDir);
   }
 });
+
+test('component prerequisite skips require the declared component boundary and no load attempt', async () => {
+  const logDir = await fs.mkdtemp(path.join(os.tmpdir(), 'dominds-runner-component-'));
+  let completed = false;
+  const component = {
+    status: 'skipped',
+    code: 'supplied_component_code',
+    detail: 'provided-component-prerequisite:391c',
+    componentLoadAttempted: false,
+  };
+  const emit = (record) => [
+    '-e',
+    'console.log(' + JSON.stringify(JSON.stringify(record)) + '); process.exit(77)',
+  ];
+  try {
+    const summary = await runCases(
+      [
+        {
+          id: 'declared-component',
+          args: emit(component),
+          skipExitCode: 77,
+          prerequisiteBoundary: 'component',
+        },
+        { id: 'wrong-provider-boundary', args: emit(component), skipExitCode: 77 },
+        {
+          id: 'wrong-component-boundary',
+          args: emit({
+            ...component,
+            componentLoadAttempted: undefined,
+            providerRequestAttempted: false,
+          }),
+          skipExitCode: 77,
+          prerequisiteBoundary: 'component',
+        },
+        {
+          id: 'already-loaded',
+          args: emit({ ...component, componentLoadAttempted: true }),
+          skipExitCode: 77,
+          prerequisiteBoundary: 'component',
+        },
+        { id: 'undeclared-external', args: emit(component) },
+        { id: 'following-case', args: ['-e', 'process.exit(0)'] },
+      ],
+      { logDir, report: () => {} },
+    );
+    assert.deepEqual(
+      summary.results.map(({ status }) => status),
+      ['skipped', 'failed', 'failed', 'failed', 'failed', 'passed'],
+    );
+    assert.equal(summary.total, 6);
+    assert.equal(summary.passed, 1);
+    assert.equal(summary.failed, 4);
+    assert.equal(summary.skipped, 1);
+    assert.deepEqual(summary.results[0].prerequisite, component);
+    await fs.access(summary.results[0].tempDir);
+    assert.deepEqual(
+      JSON.parse(await fs.readFile(path.join(logDir, 'summary.json'), 'utf8')),
+      summary,
+    );
+    completed = true;
+  } finally {
+    if (completed) await fs.rm(logDir, { recursive: true, force: true });
+    else console.error('Component prerequisite fixture retained: ' + logDir);
+  }
+});

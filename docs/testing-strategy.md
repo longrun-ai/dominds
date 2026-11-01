@@ -639,3 +639,17 @@ CLI/doctor 四例继续加入同一 App 兼容配置入口（行为11、显式�
 自愈与坏/未ready host 使用真正声明且有可加载bin的组件，核工厂确实进入、完整cache/成员数据、实际IPC以及WebUI完整HTML响应。旧启动失败例只填cache未声明组件，fresh resolver可清空cache，坏/慢工厂可能均未进入；删除其小于500ms时间断言。新正常退出约束实际发现生产服务停止后仍留30分钟自更新计时器（原60秒suite超时、随后公开资源探针确认完成后仍有Timeout；8秒探针仅调查不作接受）。修复将服务器自身后台检查清理接入HTTP/HTTPS停止finally，防止停止后重挂计时器，同时保留状态/重启交接数据。owner与inflight保护接受静态调用链审查；真实自愈HTTP/host退出及stop后状态查询建立当前回归，未声称完整更新安装/重启竞态均被动态覆盖。
 
 [运行时完整原值、实际断言与语义材料审查](../tests/semantic/reviews/2026-10-31-app-runtime.json) 区分机器运行、调查超时、两份实际能力Problems的主观判词与静态边界。语义入口仅工具代理producer，新输出始终pending。余下四个外部Web Dev session候选仍缺组件前置，不得计为本地或真实浏览器覆盖。
+
+最后四项外部 Web Dev session 候选保留当前组件兼容价值，进入显式 `test:apps:external`。不再从相邻工作区隐式找包；操作者须用 `DOMINDS_TEST_WEB_DEV_PACKAGE_ROOT` 指定已有已构建组件。未提供/不可读时以结构化 component-load 前置记录退出77，suite列出全部四项 skipped 并退出2，不能计为通过。配置格式、导入/准备失败及真实调用失败不能靠通用 Error 捕获伪装成合法负例；初始化正控与独立 setup error 边界同时保留。Playwright/Electron 仅在外部边界受控，不声称实际浏览器、原生窗口、PNG 合法性或真实视觉 QA。
+
+原四项1226行与590行helper完整溯源：删除错误/状态/角色/coverage/操作回执的自然语言正则与关键词判义；保留 session ID/enum、给定参数、metadata、请求路由、资源计数、磁盘记录、完整给定 QA 数据和 provider 返回附件字节等机器事实。fake evaluate 执行实际传入 callback 与受控 window/document，不按函数源码私有变量名挑响应；路径存在性只吞 ENOENT，不吞权限/循环等错误。闭合/损坏记录、linked rtws 恢复、写时无效 transport 的原磁盘保全值继续覆盖；visual pending 的 ready 拒绝只要求 QA 记录保全，允许非业务元数据合理变化。失败保留现场，未完成 Promise 不得裸退出0。
+
+[本批独立审查](../tests/audits/2026-10-31-external-web-dev.json) 区分当前源码设计、实际 preflight/受控边界检查、未执行组件工作流和未生成/未评审的组件语义。四项语义producer将完整实际文本和上下文送独立执行智能体，每次从pending开始；缺组件时没有可代替的通过判词。至此继承254项候选均有逐批断言审查与显式lane；这个数是设计审计进度，不是254项当前执行通过，更不是产品完整行为/语义覆盖。后续仍须收紧新增/变更源码的审查时效与最终工程指引，并完成必要收尾验证。
+
+独立审查发现原辅助函数只核 outcome 合法枚举，删除旧 ok 文案后部分正向状态/查询仍可能带 failure 继续。现在所有预期成功调用显式核公开 outcome=success，且语义材料同时保存真实 outcome 和完整 content；不是从文本推断成功。该修正是源码设计缺口，无可执行组件时不能伪称复现了组件产品错误。
+
+同轮审查把 factory 返回后的空/畸形host和owner、受控adapter不支持的调用归为夹具错误；进程内保留首个夹具错误来源，组件即使重新包装它也不能让预期拒绝通过。实际注入的 viewport 测量失败仍是给定provider故障，不笼统禁止组件用AssertionError作正常参数校验。
+
+QA 原值核验另补初始空inventory/not_started、给定pending条目完整落盘和in_progress实际状态，避免漏写前置数据却因其他条件拒绝ready的假证明。adapter await异步callback后再分类不支持的受控接口错误，避免Promise拒绝绕过夹具来源标记。
+
+显式合法rtws子目录cwd创建、实际cwdAbs落盘与关闭作为边界正控，防止“所有带cwd参数都拒绝”仍让三种越界负例通过。

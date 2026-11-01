@@ -2,11 +2,18 @@ import assert from 'node:assert/strict';
 import * as fs from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
+import {
+  rejectWebDevAction,
+  runExternalWebDevScenario,
+  webDevComponentIdentity,
+  webDevPackageRoot,
+} from './helpers/external-web-dev';
+import { semanticEvidenceCollector } from './helpers/semantic-evidence';
 
 import { loadLocalAppEntry } from './helpers/app-entry';
 import {
   assertRecord,
-  assertStructuredResult,
+  assertSuccessfulResult,
   createFakePlaywrightEnvironment,
   createWebDevFixture,
   pathExists,
@@ -17,6 +24,12 @@ import {
   type WebDevAppFactoryContext,
   type WebDevAppHost,
 } from './helpers/web-dev-session-fixture';
+
+const evidence = semanticEvidenceCollector('dominds-external-apps-web-dev-session-core-contract-');
+const observations: Array<{ stage: string; text: string; outcome?: string }> = [];
+function observe(stage: string, text: string, outcome?: string): void {
+  observations.push({ stage, text, ...(outcome ? { outcome } : {}) });
+}
 
 function persistedSessionId(hexDigit: string): string {
   assert.match(hexDigit, /^[0-9a-f]$/);
@@ -97,11 +110,10 @@ function buildPersistedSession(
 async function assertPersistedSessionRejected(
   params: Readonly<{
     id: string;
-    expected: RegExp;
     overrides?: (tempRoot: string) => Readonly<Record<string, unknown>>;
   }>,
 ): Promise<void> {
-  await assert.rejects(
+  await rejectWebDevAction(
     async () =>
       await createWebDevFixture({
         prepareRtws: async ({ sessionsCacheDirAbs, tempRoot }) => {
@@ -115,13 +127,11 @@ async function assertPersistedSessionRejected(
           );
         },
       }),
-    params.expected,
   );
 }
 
 async function runLinkedRtwsRestartContract(): Promise<void> {
-  const repoRootAbs = path.resolve(__dirname, '..', '..');
-  const packageRootAbs = path.join(repoRootAbs, 'dominds-apps', '@longrun-ai', 'web-dev');
+  const packageRootAbs = webDevPackageRoot();
   const tempContainerAbs = await fs.mkdtemp(path.join(os.tmpdir(), 'dominds-web-dev-linked-rtws-'));
   const physicalRtwsRootAbs = path.join(tempContainerAbs, 'physical-rtws');
   const linkedRtwsRootAbs = path.join(tempContainerAbs, 'linked-rtws');
@@ -154,12 +164,13 @@ async function runLinkedRtwsRestartContract(): Promise<void> {
     callerId: 'fullstack',
   };
 
+  let completed = false;
   let firstHost: WebDevAppHost | null = null;
   let restartedHost: WebDevAppHost | null = null;
   try {
     firstHost = await webDevAppFactory(factoryContext);
     const created = await firstHost.tools.playwright_session_new({ kind: 'web' }, toolCtx);
-    assertStructuredResult(created);
+    assertSuccessfulResult(created);
     const reminderRequest = requireSingleUpsertReminder(created);
     assertRecord(reminderRequest.meta);
     const sessionId = reminderRequest.meta['sessionId'];
@@ -175,24 +186,26 @@ async function runLinkedRtwsRestartContract(): Promise<void> {
       { sessionId },
       toolCtx,
     );
-    assertStructuredResult(restartedStatus);
-    assert.match(restartedStatus.output.content, /state=degraded/);
-    assert.match(restartedStatus.output.content, /role=controller/);
+    assertSuccessfulResult(restartedStatus);
+    observe('restartedStatus', restartedStatus.output.content, restartedStatus.output.outcome);
+    completed = true;
   } finally {
     await firstHost?.shutdown();
     await restartedHost?.shutdown();
-    await fs.rm(tempContainerAbs, { recursive: true, force: true });
+    if (completed) await fs.rm(tempContainerAbs, { recursive: true, force: true });
+    else console.error('Linked-rtws fixture retained after failure: ' + tempContainerAbs);
   }
 }
 
 async function runWriteTimeValidationContract(): Promise<void> {
   const fixture = await createWebDevFixture();
+  let completed = false;
   try {
     const created = await fixture.host.tools.playwright_session_new(
       { kind: 'web', label: 'write-time-validation' },
       fixture.controllerCtx,
     );
-    assertStructuredResult(created);
+    assertSuccessfulResult(created);
     const sessionId = sessionIdFromReminder(
       requireReminderStateAdded(
         await fixture.reminderOwner.apply(requireSingleUpsertReminder(created), {
@@ -204,7 +217,7 @@ async function runWriteTimeValidationContract(): Promise<void> {
     const sessionFileAbs = path.join(fixture.sessionsCacheDirAbs, `${sessionId}.json`);
     const persistedBeforeMutation = await fs.readFile(sessionFileAbs);
 
-    await assert.rejects(
+    await rejectWebDevAction(
       async () =>
         await fixture.host.tools.playwright_session_eval(
           {
@@ -213,7 +226,6 @@ async function runWriteTimeValidationContract(): Promise<void> {
           },
           fixture.controllerCtx,
         ),
-      /\.runtime\.transport must be 'playwright_browser_runtime'/,
     );
 
     const persistedAfterMutation = await fs.readFile(sessionFileAbs);
@@ -222,13 +234,15 @@ async function runWriteTimeValidationContract(): Promise<void> {
       persistedBeforeMutation,
       'invalid runtime mutation must not alter the persisted session',
     );
+    completed = true;
   } finally {
-    await fixture.cleanup();
+    await fixture.cleanup({ preserve: !completed });
   }
 }
 
 async function runCoreContract(): Promise<void> {
   const fixture = await createWebDevFixture();
+  let completed = false;
   let outsideCwdAbs: string | null = null;
   try {
     const created = await fixture.host.tools.playwright_session_new(
@@ -239,13 +253,8 @@ async function runCoreContract(): Promise<void> {
       },
       fixture.controllerCtx,
     );
-    assertStructuredResult(created);
-    assert.match(created.output.content, /ok: created Web Dev browser session\./);
-    assert.match(
-      created.output.content,
-      /state=ready \| role=controller \| runtime=playwright_browser_runtime \| browserMode=desktop/,
-    );
-    assert.match(created.output.content, /surface: page https:\/\/example\.test\/initial/);
+    assertSuccessfulResult(created);
+    observe('created', created.output.content, created.output.outcome);
 
     const controllerReminder = requireReminderStateAdded(
       await fixture.reminderOwner.apply(requireSingleUpsertReminder(created), {
@@ -266,23 +275,50 @@ async function runCoreContract(): Promise<void> {
     assertRecord(persistedSession['runtime']);
     assert.equal(persistedSession['runtime']['cwdAbs'], fixture.tempRoot);
 
-    await assert.rejects(
+    // A legal explicit cwd prevents blanket rejection of every supplied cwd from passing.
+    const legalCwd = path.join(fixture.tempRoot, 'inside-cwd');
+    await fs.mkdir(legalCwd);
+    const legalCwdSession = await fixture.host.tools.playwright_session_new(
+      { kind: 'web', cwd: 'inside-cwd' },
+      fixture.controllerCtx,
+    );
+    assertSuccessfulResult(legalCwdSession);
+    const legalCwdId = sessionIdFromReminder(
+      requireReminderStateAdded(
+        await fixture.reminderOwner.apply(requireSingleUpsertReminder(legalCwdSession), {
+          dialogId: fixture.controllerCtx.dialogId,
+          ownedReminders: [controllerReminder],
+        }),
+      ),
+    );
+    const legalCwdRecord: unknown = JSON.parse(
+      await fs.readFile(path.join(fixture.sessionsCacheDirAbs, legalCwdId + '.json'), 'utf8'),
+    );
+    assertRecord(legalCwdRecord);
+    assertRecord(legalCwdRecord['runtime']);
+    assert.equal(legalCwdRecord['runtime']['cwdAbs'], legalCwd);
+    assertSuccessfulResult(
+      await fixture.host.tools.playwright_session_close(
+        { sessionId: legalCwdId },
+        fixture.controllerCtx,
+      ),
+    );
+
+    await rejectWebDevAction(
       async () =>
         await fixture.host.tools.playwright_session_new(
           { kind: 'web', cwd: '..' },
           fixture.controllerCtx,
         ),
-      /cwd must stay within the rtws root/,
     );
 
     outsideCwdAbs = await fs.mkdtemp(path.join(os.tmpdir(), 'dominds-web-dev-cwd-outside-'));
-    await assert.rejects(
+    await rejectWebDevAction(
       async () =>
         await fixture.host.tools.playwright_session_new(
           { kind: 'web', cwd: outsideCwdAbs ?? undefined },
           fixture.controllerCtx,
         ),
-      /cwd must stay within the rtws root/,
     );
 
     const linkedOutsideCwdAbs = path.join(fixture.tempRoot, 'linked-outside');
@@ -291,13 +327,12 @@ async function runCoreContract(): Promise<void> {
       linkedOutsideCwdAbs,
       process.platform === 'win32' ? 'junction' : 'dir',
     );
-    await assert.rejects(
+    await rejectWebDevAction(
       async () =>
         await fixture.host.tools.playwright_session_new(
           { kind: 'web', cwd: 'linked-outside' },
           fixture.controllerCtx,
         ),
-      /cwd must stay within the rtws root/,
     );
 
     const evalResult = await fixture.host.tools.playwright_session_eval(
@@ -318,41 +353,64 @@ async function runCoreContract(): Promise<void> {
       },
       fixture.controllerCtx,
     );
-    assertStructuredResult(evalResult);
-    assert.match(evalResult.output.content, /ok: session eval completed\./);
-    assert.match(evalResult.output.content, /"url":"https:\/\/example\.test\/after-eval"/);
-    assert.match(evalResult.output.content, /"remembered":"Clicked 1"/);
+    assertSuccessfulResult(evalResult);
+    observe('evalResult', evalResult.output.content, evalResult.output.outcome);
+    // Given tool inputs must reach the external browser adapter unchanged.
+    assert.equal(fixture.fakeEnv.trackers.navigations.at(-1), 'https://example.test/after-eval');
+    assert.deepEqual(fixture.fakeEnv.trackers.fills.at(-1), {
+      selector: '#search',
+      value: 'alpha',
+    });
+    assert.equal(fixture.fakeEnv.trackers.clicks.at(-1), '#increment');
 
     const screenshotResult = await fixture.host.tools.playwright_session_screenshot(
       { sessionId, label: 'after-eval-proof', imageType: 'png' },
       fixture.controllerCtx,
     );
-    assertStructuredResult(screenshotResult);
-    assert.match(screenshotResult.output.content, /ok: session screenshot captured\./);
+    assertSuccessfulResult(screenshotResult);
+    observe('screenshotResult', screenshotResult.output.content, screenshotResult.output.outcome);
     const artifacts = await fs.readdir(path.join(fixture.artifactsDirAbs, sessionId));
     assert.equal(artifacts.length, 1);
     assert.ok(artifacts.some((entry) => /after-eval-proof\.png$/.test(entry)));
+    assert.deepEqual(
+      await fs.readFile(path.join(fixture.artifactsDirAbs, sessionId, artifacts[0])),
+      fixture.fakeEnv.trackers.screenshotBodies.at(-1),
+      'Artifact bytes must preserve the controlled provider payload; this is not a real PNG check',
+    );
 
     const closed = await fixture.host.tools.playwright_session_close(
       { sessionId },
       fixture.controllerCtx,
     );
-    assertStructuredResult(closed);
-    assert.match(closed.output.content, /ok: session closed\./);
+    assertSuccessfulResult(closed);
+    observe('closed', closed.output.content, closed.output.outcome);
 
     const controllerReminderUpdate = await fixture.reminderOwner.updateReminder({
       dialogId: fixture.controllerCtx.dialogId,
       reminder: controllerReminder,
     });
     assert.equal(controllerReminderUpdate.treatment, 'drop');
+    completed = true;
   } finally {
-    await fixture.cleanup();
-    if (outsideCwdAbs) {
+    await fixture.cleanup({ preserve: !completed });
+    if (outsideCwdAbs && completed) {
       await fs.rm(outsideCwdAbs, { recursive: true, force: true });
     }
   }
 
-  await assert.rejects(
+  const validHistory = await createWebDevFixture({
+    prepareRtws: async ({ sessionsCacheDirAbs, tempRoot }) => {
+      const id = persistedSessionId('0');
+      await fs.mkdir(sessionsCacheDirAbs, { recursive: true });
+      await fs.writeFile(
+        path.join(sessionsCacheDirAbs, id + '.json'),
+        JSON.stringify(buildPersistedSession(id, tempRoot)),
+      );
+    },
+  });
+  await validHistory.cleanup();
+
+  await rejectWebDevAction(
     async () =>
       await createWebDevFixture({
         prepareRtws: async ({ sessionsCacheDirAbs, packageRootAbs }) => {
@@ -365,10 +423,9 @@ async function runCoreContract(): Promise<void> {
           );
         },
       }),
-    /cwd must stay within the rtws root/,
   );
 
-  await assert.rejects(
+  await rejectWebDevAction(
     async () =>
       await createWebDevFixture({
         prepareRtws: async ({ sessionsCacheDirAbs, tempRoot }) => {
@@ -391,10 +448,9 @@ async function runCoreContract(): Promise<void> {
           );
         },
       }),
-    /unsupported legacy property rootDialogId/,
   );
 
-  await assert.rejects(
+  await rejectWebDevAction(
     async () =>
       await createWebDevFixture({
         prepareRtws: async ({ sessionsCacheDirAbs, tempRoot }) => {
@@ -409,10 +465,9 @@ async function runCoreContract(): Promise<void> {
           );
         },
       }),
-    /has unsupported kind 'unsupported'/,
   );
 
-  await assert.rejects(
+  await rejectWebDevAction(
     async () =>
       await createWebDevFixture({
         prepareRtws: async ({ sessionsCacheDirAbs, tempRoot }) => {
@@ -423,27 +478,21 @@ async function runCoreContract(): Promise<void> {
             `${JSON.stringify(
               buildPersistedSession(sessionId, tempRoot, {
                 state: 'mystery',
-                revision: 'oops',
-                evidence: 'corrupt',
-                qa: 'corrupt',
               }),
             )}\n`,
             'utf-8',
           );
         },
       }),
-    /has unsupported state 'mystery'/,
   );
 
   await assertPersistedSessionRejected({
     id: obsoleteSessionId(),
-    expected: /\.id must match pws_<32 lowercase hexadecimal characters>/,
   });
 
   await assertPersistedSessionRejected({
     id: persistedSessionId('6'),
     overrides: () => ({ revision: 0 }),
-    expected: /\.revision must be a positive safe integer/,
   });
 
   await assertPersistedSessionRejected({
@@ -462,7 +511,6 @@ async function runCoreContract(): Promise<void> {
         errorText: 'runtime unavailable',
       },
     }),
-    expected: /\.lastAction\.actor\.kind must be 'dialog' or 'app_host'/,
   });
 
   await assertPersistedSessionRejected({
@@ -475,7 +523,6 @@ async function runCoreContract(): Promise<void> {
         viewportChecks: [],
       },
     }),
-    expected: /\.evidence\.screenshots\[0\] contains unsupported properties: unexpected/,
   });
 
   await assertPersistedSessionRejected({
@@ -488,7 +535,6 @@ async function runCoreContract(): Promise<void> {
         viewportChecks: [],
       },
     }),
-    expected: /\.evidence\.console\[0\]\.text must be string/,
   });
 
   await assertPersistedSessionRejected({
@@ -508,7 +554,6 @@ async function runCoreContract(): Promise<void> {
         viewportChecks: [],
       },
     }),
-    expected: /\.evidence\.network\[0\]\.kind is unsupported: unknown/,
   });
 
   await assertPersistedSessionRejected({
@@ -544,7 +589,6 @@ async function runCoreContract(): Promise<void> {
         ],
       },
     }),
-    expected: /\.evidence\.viewportChecks\[0\]\.issues count is inconsistent/,
   });
 
   await assertPersistedSessionRejected({
@@ -566,7 +610,6 @@ async function runCoreContract(): Promise<void> {
         },
       },
     }),
-    expected: /\.qa\.inventory must be an array/,
   });
 
   const closedHistoryFixture = await createWebDevFixture({
@@ -587,11 +630,34 @@ async function runCoreContract(): Promise<void> {
   await runWriteTimeValidationContract();
 }
 
-void runCoreContract()
-  .then(() => {
-    console.log('OK');
-  })
-  .catch((error: unknown) => {
-    console.error(error instanceof Error ? (error.stack ?? error.message) : String(error));
-    process.exit(1);
+runExternalWebDevScenario(async () => {
+  await runCoreContract();
+  const identity = webDevComponentIdentity();
+  evidence.record({
+    id: 'session-core-guidance',
+    scenario:
+      'A selected external component creates, evaluates, captures, closes and restores sessions; valid and corrupt persisted records and rtws boundaries are exercised.',
+    businessValue:
+      'Keep session continuity, cwd boundaries and returned execution/evidence guidance accurate without treating generated prose as machine state.',
+    context: {
+      ...{
+        initialUrl: 'https://example.test/initial',
+        evalDestination: 'https://example.test/after-eval',
+        mockClickStatus: 'Clicked 1',
+        boundary:
+          'Real selected component; controlled Playwright/Electron provider, no real browser/visual QA acceptance.',
+      },
+      componentRoot: identity.root,
+      componentPackageJsonSha256: identity.packageJsonSha256,
+    },
+    reviewQuestions: [
+      'Do the actual create/eval/capture/close receipts agree with the requested initial URL, the controlled goto/fill/click/remember operations and the observable cleanup?',
+      'Does linked-rtws restart guidance explain the restored session without claiming a lost browser runtime is still ready?',
+    ],
+    actualText: JSON.stringify(observations, null, 2),
   });
+  await evidence.write();
+  console.log(
+    'Selected external Web Dev machine workflow completed; semantic acceptance is separate.',
+  );
+});
