@@ -1,189 +1,148 @@
 import assert from 'node:assert/strict';
 import * as fs from 'node:fs/promises';
-import os from 'node:os';
+import net from 'node:net';
 import path from 'node:path';
 
-import { loadEnabledAppsSnapshot } from '../main/apps/enabled-apps';
+import { loadEnabledAppsSnapshot, materializeAppsResolution } from '../main/apps/enabled-apps';
+import { writeAppsResolutionFile } from '../main/apps/resolution-file';
 import {
-  APPS_RESOLUTION_REL_PATH,
-  loadAppsResolutionFile,
-  writeAppsResolutionFile,
-  type AppsResolutionEntry,
-  type AppsResolutionFile,
-} from '../main/apps/resolution-file';
+  readAppResolution,
+  resolvedApp,
+  writeAppManifest,
+  writeAppText,
+  writeLocalApp,
+} from './helpers/app-fixture';
+import { semanticEvidenceCollector } from './helpers/semantic-evidence';
+import { withTempRtws } from './kernel-driver/helpers';
 
-async function writeText(filePathAbs: string, content: string): Promise<void> {
-  await fs.mkdir(path.dirname(filePathAbs), { recursive: true });
-  await fs.writeFile(filePathAbs, content, 'utf-8');
-}
-
-async function writeManifest(packageRootAbs: string, appId: string): Promise<void> {
-  await writeText(
-    path.join(packageRootAbs, '.minds', 'app.yaml'),
-    [`apiVersion: dominds.io/v1alpha1`, 'kind: DomindsApp', `id: ${appId}`, ''].join('\n'),
-  );
-}
-
-async function writeLocalInstallableApp(params: {
-  packageRootAbs: string;
-  appId: string;
-  defaultPort: number;
-}): Promise<void> {
-  await writeText(
-    path.join(params.packageRootAbs, 'package.json'),
-    JSON.stringify(
-      {
-        name: params.appId,
-        version: '0.0.0',
-        bin: 'bin.js',
-      },
-      null,
-      2,
-    ),
-  );
-  await writeText(
-    path.join(params.packageRootAbs, 'bin.js'),
-    [
-      "'use strict';",
-      "if (!process.argv.includes('--dominds-app')) {",
-      "  throw new Error('expected --dominds-app');",
-      '}',
-      'process.stdout.write(JSON.stringify({',
-      `  appId: ${JSON.stringify(params.appId)},`,
-      '  package: {',
-      `    name: ${JSON.stringify(params.appId)},`,
-      '    version: null,',
-      '    rootAbs: process.cwd(),',
-      '  },',
-      "  host: { kind: 'node_module', moduleRelPath: 'dist/app.js', exportName: 'domindsApp' },",
-      `  frontend: { kind: 'http', defaultPort: ${String(params.defaultPort)} },`,
-      '}));',
-      '',
-    ].join('\n'),
-  );
-  await writeManifest(params.packageRootAbs, params.appId);
-}
-
-function makeEntry(params: {
-  id: string;
-  packageRootAbs: string;
-  assignedPort: number;
-}): AppsResolutionEntry {
-  return {
-    id: params.id,
-    enabled: true,
-    source: { kind: 'npx', spec: `${params.id}@0.0.0` },
-    assignedPort: params.assignedPort,
-    installJson: {
-      appId: params.id,
-      package: {
-        name: params.id,
-        version: null,
-        rootAbs: params.packageRootAbs,
-      },
-      host: {
-        kind: 'node_module',
-        moduleRelPath: 'dist/app.js',
-        exportName: 'domindsApp',
-      },
-      frontend: {
-        kind: 'http',
-        defaultPort: params.assignedPort,
-      },
-    },
-  };
-}
-
+const evidence = semanticEvidenceCollector('dominds-app-ports-');
 async function main(): Promise<void> {
-  const tmpRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'dominds-apps-port-reassign-'));
-  const appA = 'app_port_a';
-  const appB = 'app_port_b';
-  const conflictPort = 49876;
-
-  try {
-    const appARootAbs = path.join(tmpRoot, 'pkgs', appA);
-    const appBRootAbs = path.join(tmpRoot, 'pkgs', appB);
-    await writeLocalInstallableApp({
-      packageRootAbs: appARootAbs,
-      appId: appA,
-      defaultPort: conflictPort,
+  await withTempRtws(async (rtws) => {
+    const blocker = net.createServer();
+    await new Promise<void>((resolve, reject) => {
+      blocker.once('error', reject);
+      blocker.listen(0, '127.0.0.1', resolve);
     });
-    await writeLocalInstallableApp({
-      packageRootAbs: appBRootAbs,
-      appId: appB,
-      defaultPort: conflictPort,
-    });
-    await writeText(
-      path.join(tmpRoot, '.minds', 'app.yaml'),
-      [
-        'apiVersion: dominds.io/v1alpha1',
-        'kind: DomindsApp',
-        'id: rtws_root',
-        'dependencies:',
-        `  - id: ${appA}`,
-        `  - id: ${appB}`,
-        '',
-      ].join('\n'),
-    );
-    await writeText(
-      path.join(tmpRoot, '.apps', 'configuration.yaml'),
-      [
-        'schemaVersion: 1',
-        'resolutionStrategy:',
-        '  order:',
-        '    - local',
-        '  localRoots:',
-        '    - pkgs',
-        '',
-      ].join('\n'),
-    );
-
-    const resolutionFile: AppsResolutionFile = {
-      schemaVersion: 1,
-      apps: [
-        makeEntry({ id: appA, packageRootAbs: appARootAbs, assignedPort: conflictPort }),
-        makeEntry({ id: appB, packageRootAbs: appBRootAbs, assignedPort: conflictPort }),
-      ],
-    };
-    await writeAppsResolutionFile({ rtwsRootAbs: tmpRoot, file: resolutionFile });
-
-    const snap = await loadEnabledAppsSnapshot({ rtwsRootAbs: tmpRoot });
-    assert.equal(
-      snap.enabledApps.length,
-      2,
-      `expected 2 enabled Stage 0 packages, got ${snap.enabledApps.length}`,
-    );
-
-    const runtimePorts = snap.enabledApps.map((e) => e.runtimePort);
-    assert.ok(runtimePorts.every((p) => typeof p === 'number' && p > 0));
-    const uniquePorts = new Set<number>(runtimePorts.filter((p): p is number => p !== null));
-    assert.equal(
-      uniquePorts.size,
-      2,
-      `expected unique runtime ports, got: ${JSON.stringify(runtimePorts)}`,
-    );
-
-    assert.ok(
-      snap.issues.some((i) => i.kind === 'assigned_port_reassigned'),
-      `expected assigned_port_reassigned issue, got: ${JSON.stringify(snap.issues)}`,
-    );
-
-    const loaded = await loadAppsResolutionFile({ rtwsRootAbs: tmpRoot });
-    if (loaded.kind === 'error') {
-      throw new Error(`failed to read ${APPS_RESOLUTION_REL_PATH}: ${loaded.errorText}`);
+    try {
+      const address = blocker.address();
+      assert.ok(address && typeof address === 'object');
+      const conflictPort = address.port;
+      const ids = ['app_port_a', 'app_port_b'];
+      const packages = await Promise.all(
+        ids.map((id) =>
+          writeLocalApp(path.join(rtws, 'pkgs', id), id, { defaultPort: conflictPort }),
+        ),
+      );
+      await writeAppManifest(rtws, 'rtws_root', ids);
+      await writeAppText(
+        path.join(rtws, '.apps', 'configuration.yaml'),
+        'schemaVersion: 1\nresolutionStrategy:\n  order: [local]\n  localRoots: [pkgs]\n',
+      );
+      await writeAppsResolutionFile({
+        rtwsRootAbs: rtws,
+        file: {
+          schemaVersion: 1,
+          apps: packages.map((pkg) => ({
+            ...resolvedApp(pkg, conflictPort),
+            source: { kind: 'npx' as const, spec: `${pkg.appId}@0.0.0` },
+          })),
+        },
+      });
+      const snapshot = await loadEnabledAppsSnapshot({ rtwsRootAbs: rtws });
+      assert.deepEqual(snapshot.enabledApps.map((app) => app.id).sort(), ids);
+      const ports = snapshot.enabledApps.map((app) => app.runtimePort);
+      assert.ok(
+        ports.every((port) => typeof port === 'number' && port > 0 && port !== conflictPort),
+      );
+      assert.equal(new Set(ports).size, 2);
+      const reassigned = snapshot.issues.filter(
+        (issue) => issue.kind === 'assigned_port_reassigned',
+      );
+      assert.deepEqual(reassigned.map((issue) => issue.detail.appId).sort(), ids);
+      const persisted = await readAppResolution(rtws);
+      for (const app of snapshot.enabledApps) {
+        const entry = persisted.apps.find((entry) => entry.id === app.id);
+        assert.ok(entry);
+        assert.equal(entry.assignedPort, app.runtimePort);
+        assert.deepEqual(
+          entry.installJson,
+          packages.find((pkg) => pkg.appId === app.id),
+        );
+        const issue = reassigned.find((issue) => issue.detail.appId === app.id);
+        assert.equal(issue?.detail.previousAssignedPort, conflictPort);
+        assert.equal(issue?.detail.reassignedToPort, app.runtimePort);
+      }
+      evidence.record({
+        id: 'reassigned',
+        scenario:
+          'Two cached local packages share one port which is also occupied by a real owned TCP listener.',
+        businessValue: 'Operators can identify which package port changed and why.',
+        context: {
+          blockedPort: conflictPort,
+          packages: ids.join(','),
+          persistedPortsAgreeWithRuntime: true,
+        },
+        reviewQuestions: [
+          'Do the complete warnings accurately identify the affected packages, old and new ports, and reason without suggesting the packages failed to resolve?',
+        ],
+        actualText: JSON.stringify(snapshot, null, 2),
+      });
+      const target = path.join(rtws, '.apps', 'resolution.yaml');
+      await fs.utimes(target, new Date('2000-01-01T00:00:00Z'), new Date('2000-01-01T00:00:00Z'));
+      const bytes = await fs.readFile(target);
+      const mtime = (await fs.stat(target)).mtimeMs;
+      const again = await materializeAppsResolution({ rtwsRootAbs: rtws });
+      assert.equal(again.wroteResolutionFile, false);
+      assert.deepEqual(again.resolved.issues, []);
+      assert.deepEqual(again.resolved.resolutionFile, persisted);
+      assert.deepEqual(await fs.readFile(target), bytes);
+      assert.equal((await fs.stat(target)).mtimeMs, mtime);
+      // A single cached port has no in-file duplicate: the real listener alone forces reassignment.
+      await writeAppManifest(rtws, 'rtws_root', [ids[0]]);
+      await writeAppsResolutionFile({
+        rtwsRootAbs: rtws,
+        file: { schemaVersion: 1, apps: [resolvedApp(packages[0], conflictPort)] },
+      });
+      const blocked = await loadEnabledAppsSnapshot({ rtwsRootAbs: rtws });
+      assert.deepEqual(
+        blocked.enabledApps.map((app) => app.id),
+        [ids[0]],
+      );
+      assert.ok(
+        typeof blocked.enabledApps[0].runtimePort === 'number' &&
+          blocked.enabledApps[0].runtimePort > 0,
+      );
+      assert.notEqual(blocked.enabledApps[0].runtimePort, conflictPort);
+      assert.equal(blocked.issues.length, 1);
+      assert.equal(blocked.issues[0].kind, 'assigned_port_reassigned');
+      assert.equal(blocked.issues[0].detail.reason, 'reassigned_from_existing_unbindable');
+      assert.equal(
+        (await readAppResolution(rtws)).apps[0].assignedPort,
+        blocked.enabledApps[0].runtimePort,
+      );
+      evidence.record({
+        id: 'occupied-only',
+        scenario:
+          'One cached frontend port is occupied by a real owned TCP listener; there is no other package to conflict with.',
+        businessValue: 'The operator can distinguish an occupied port from a duplicate assignment.',
+        context: { blockedPort: conflictPort, appId: ids[0], persistedPortsAgreeWithRuntime: true },
+        reviewQuestions: [
+          'Does the actual warning explain the port reassignment consistently with the single-package occupied-listener scenario?',
+        ],
+        actualText: JSON.stringify(blocked, null, 2),
+      });
+    } finally {
+      await new Promise<void>((resolve, reject) =>
+        blocker.close((error) => (error ? reject(error) : resolve())),
+      );
     }
-    const writtenPorts = loaded.file.apps
-      .map((a) => a.assignedPort)
-      .filter((p): p is number => typeof p === 'number')
-      .sort((a, b) => a - b);
-    assert.equal(writtenPorts.length, 2);
-    assert.notEqual(writtenPorts[0], writtenPorts[1]);
-  } finally {
-    await fs.rm(tmpRoot, { recursive: true, force: true });
-  }
+  });
+  await evidence.write();
+  console.log(
+    'duplicate and occupied frontend ports are reassigned, persisted consistently and remain stable on reload: passed',
+  );
 }
-
-main().catch((err: unknown) => {
-  console.error(err instanceof Error ? (err.stack ?? err.message) : String(err));
-  process.exit(1);
+main().catch((error: unknown) => {
+  console.error(error);
+  process.exitCode = 1;
 });

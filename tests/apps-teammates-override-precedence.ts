@@ -1,189 +1,82 @@
 import assert from 'node:assert/strict';
 import * as fs from 'node:fs/promises';
-import os from 'node:os';
 import path from 'node:path';
 
 import { loadEnabledAppTeammates } from '../main/apps/teammates';
-
-async function writeText(filePath: string, content: string): Promise<void> {
-  await fs.mkdir(path.dirname(filePath), { recursive: true });
-  await fs.writeFile(filePath, content, 'utf-8');
-}
-
-function asRecord(v: unknown): Record<string, unknown> | null {
-  return typeof v === 'object' && v !== null && !Array.isArray(v)
-    ? (v as Record<string, unknown>)
-    : null;
-}
-
-function getScribeName(members: Record<string, unknown>): string | null {
-  const scribeRaw = members['scribe'];
-  const scribe = asRecord(scribeRaw);
-  if (!scribe) return null;
-  const name = scribe['name'];
-  return typeof name === 'string' ? name : null;
-}
-
-async function writeLocalAppPackage(params: {
-  appId: string;
-  packageName: string;
-  packageRootAbs: string;
-  teammatesYamlRelPath?: string;
-}): Promise<void> {
-  await writeText(
-    path.join(params.packageRootAbs, 'package.json'),
-    JSON.stringify(
-      {
-        name: params.packageName,
-        version: '0.0.0',
-        bin: 'bin.js',
-      },
-      null,
-      2,
-    ),
-  );
-  const contributesLines =
-    params.teammatesYamlRelPath === undefined
-      ? []
-      : [
-          `  contributes: { teammatesYamlRelPath: ${JSON.stringify(params.teammatesYamlRelPath)} },`,
-        ];
-  await writeText(
-    path.join(params.packageRootAbs, 'bin.js'),
-    [
-      "'use strict';",
-      "if (!process.argv.includes('--dominds-app')) throw new Error('expected --dominds-app');",
-      'const json = {',
-      `  appId: ${JSON.stringify(params.appId)},`,
-      '  package: {',
-      `    name: ${JSON.stringify(params.packageName)},`,
-      "    version: '0.0.0',",
-      '    rootAbs: process.cwd(),',
-      '  },',
-      "  host: { kind: 'node_module', moduleRelPath: 'index.js', exportName: 'main' },",
-      ...contributesLines,
-      '};',
-      'process.stdout.write(JSON.stringify(json));',
-      '',
-    ].join('\n'),
-  );
-}
+import { writeAppManifest, writeAppText, writeLocalApp } from './helpers/app-fixture';
+import { withTempRtws } from './kernel-driver/helpers';
 
 async function main(): Promise<void> {
-  const oldCwd = process.cwd();
-  const tmpRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'dominds-apps-teammates-override-'));
-
-  try {
-    process.chdir(tmpRoot);
-
-    const commonRoot = path.join(tmpRoot, 'dominds-apps', 'common_agents');
-    const midRoot = path.join(tmpRoot, 'dominds-apps', 'mid_agents');
-    const outerRoot = path.join(tmpRoot, 'dominds-apps', 'outer_agents');
-
-    await writeText(
-      path.join(tmpRoot, '.minds', 'app.yaml'),
-      [
-        'apiVersion: dominds.io/v1alpha1',
-        'kind: DomindsApp',
-        'id: rtws_root',
-        'dependencies:',
-        '  - id: outer_agents',
-        '',
-      ].join('\n'),
-    );
-
-    await writeLocalAppPackage({
-      appId: 'common_agents',
+  await withTempRtws(async (rtws) => {
+    const common = path.join(rtws, 'dominds-apps', 'common_agents');
+    const mid = path.join(rtws, 'dominds-apps', 'mid_agents');
+    const outer = path.join(rtws, 'dominds-apps', 'outer_agents');
+    await writeAppManifest(rtws, 'rtws_root', ['outer_agents']);
+    await writeLocalApp(common, 'common_agents', {
       packageName: 'app-common-agents',
-      packageRootAbs: commonRoot,
       teammatesYamlRelPath: 'team.yaml',
     });
-
-    await writeText(
-      path.join(commonRoot, '.minds', 'app.yaml'),
-      ['apiVersion: dominds.io/v1alpha1', 'kind: DomindsApp', 'id: common_agents', ''].join('\n'),
-    );
-    await writeText(
-      path.join(commonRoot, 'team.yaml'),
-      ['members:', '  scribe:', '    name: ScribeFromDefault', ''].join('\n'),
-    );
-
-    await writeLocalAppPackage({
-      appId: 'mid_agents',
+    await writeLocalApp(mid, 'mid_agents', {
       packageName: 'app-mid-agents',
-      packageRootAbs: midRoot,
+      dependencies: ['common_agents', 'outer_agents'],
     });
-
-    await writeText(
-      path.join(midRoot, '.minds', 'app.yaml'),
-      [
-        'apiVersion: dominds.io/v1alpha1',
-        'kind: DomindsApp',
-        'id: mid_agents',
-        'dependencies:',
-        '  - id: common_agents',
-        '  - id: outer_agents',
-        '',
-      ].join('\n'),
-    );
-    await writeText(
-      path.join(midRoot, '.apps', 'override', 'common_agents', 'team.yaml'),
-      ['members:', '  scribe:', '    name: ScribeFromMidOverride', ''].join('\n'),
-    );
-
-    await writeLocalAppPackage({
-      appId: 'outer_agents',
+    await writeLocalApp(outer, 'outer_agents', {
       packageName: 'app-outer-agents',
-      packageRootAbs: outerRoot,
+      dependencies: ['mid_agents'],
     });
-
-    await writeText(
-      path.join(outerRoot, '.minds', 'app.yaml'),
-      [
-        'apiVersion: dominds.io/v1alpha1',
-        'kind: DomindsApp',
-        'id: outer_agents',
-        'dependencies:',
-        '  - id: mid_agents',
-        '',
-      ].join('\n'),
-    );
-    await writeText(
-      path.join(outerRoot, '.apps', 'override', 'common_agents', 'team.yaml'),
-      ['members:', '  scribe:', '    name: ScribeFromOuterOverride', ''].join('\n'),
-    );
-
-    // No rtws override: outer app override should beat mid app override, and cycle must not hang.
-    const loadedWithoutRtws = await loadEnabledAppTeammates({ rtwsRootAbs: tmpRoot });
-    const commonSnippetWithoutRtws = loadedWithoutRtws.find((s) => s.appId === 'common_agents');
-    assert.ok(commonSnippetWithoutRtws, 'expected common_agents teammates snippet');
-    assert.equal(
-      getScribeName(commonSnippetWithoutRtws.members),
-      'ScribeFromOuterOverride',
-      'outer app override should beat inner app override',
-    );
-
-    // rtws override has highest priority.
-    await writeText(
-      path.join(tmpRoot, '.apps', 'override', 'common_agents', 'team.yaml'),
-      ['members:', '  scribe:', '    name: ScribeFromRtwsOverride', ''].join('\n'),
-    );
-
-    const loadedWithRtws = await loadEnabledAppTeammates({ rtwsRootAbs: tmpRoot });
-    const commonSnippetWithRtws = loadedWithRtws.find((s) => s.appId === 'common_agents');
-    assert.ok(commonSnippetWithRtws, 'expected common_agents teammates snippet');
-    assert.equal(
-      getScribeName(commonSnippetWithRtws.members),
-      'ScribeFromRtwsOverride',
-      'rtws override should beat app override',
-    );
-  } finally {
-    process.chdir(oldCwd);
-    await fs.rm(tmpRoot, { recursive: true, force: true });
-  }
+    const defaults = path.join(common, 'team.yaml');
+    const middleOverride = path.join(mid, '.apps', 'override', 'common_agents', 'team.yaml');
+    const outerOverride = path.join(outer, '.apps', 'override', 'common_agents', 'team.yaml');
+    const rtwsOverride = path.join(rtws, '.apps', 'override', 'common_agents', 'team.yaml');
+    const values = {
+      default: {
+        name: 'ScribeFromDefault',
+        description: 'given-default-description',
+        toolsets: ['ws_read'],
+      },
+      mid: {
+        name: 'ScribeFromMidOverride',
+        description: 'given-mid-description',
+        toolsets: ['ws_read'],
+      },
+      outer: {
+        name: 'ScribeFromOuterOverride',
+        description: 'given-outer-description',
+        toolsets: ['personal_memory'],
+      },
+      rtws: {
+        name: 'ScribeFromRtwsOverride',
+        description: 'given-rtws-description',
+        toolsets: ['ws_mod'],
+      },
+    };
+    for (const [file, data] of [
+      [defaults, values.default],
+      [middleOverride, values.mid],
+      [outerOverride, values.outer],
+    ] as const) {
+      // JSON is valid YAML; all fields below are opaque supplied member data.
+      await writeAppText(file, JSON.stringify({ members: { scribe: data } }));
+    }
+    const expect = async (value: typeof values.default) =>
+      assert.deepEqual(await loadEnabledAppTeammates({ rtwsRootAbs: rtws }), [
+        { appId: 'common_agents', members: { scribe: value } },
+      ]);
+    // The mid/outer cycle must terminate; outside integrator overrides beat inside ones.
+    await expect(values.outer);
+    await writeAppText(rtwsOverride, JSON.stringify({ members: { scribe: values.rtws } }));
+    await expect(values.rtws);
+    await fs.rm(rtwsOverride);
+    await fs.rm(outerOverride);
+    await expect(values.mid);
+    await fs.rm(middleOverride);
+    await expect(values.default);
+  });
+  console.log(
+    'cyclic package graph terminates; rtws, outer, inner and default member payloads follow precedence: passed',
+  );
 }
-
-main().catch((err: unknown) => {
-  console.error(err instanceof Error ? (err.stack ?? err.message) : String(err));
-  process.exit(1);
+main().catch((error: unknown) => {
+  console.error(error);
+  process.exitCode = 1;
 });

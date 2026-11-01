@@ -11,6 +11,7 @@ pnpm test
 pnpm run test:kernel
 pnpm run test:context
 pnpm run test:configuration
+pnpm run test:apps:configuration
 pnpm run test:manual
 pnpm run test:types
 pnpm run test:inventory
@@ -18,6 +19,7 @@ pnpm run test:runner
 pnpm run test:semantic
 pnpm run test:semantic:context
 pnpm run test:semantic:configuration
+pnpm run test:semantic:apps:configuration
 pnpm run test:semantic:manual
 pnpm run test:semantic:kernel
 pnpm run test:filesystem
@@ -59,6 +61,8 @@ pnpm run test:provider-live
 - `test:kernel`: discovers TypeScript cases under `kernel-driver/`, excluding its helper, and the registered-session dedupe case under `tellask/`. The latter verifies same-generation worker reuse, completed result delivery, preserved history and replacement under a durable dead marker; it does not exercise the WebSocket cancellation pipeline. Each runs in an isolated rtws. Failures do not prevent subsequent cases. `kernel-driver:integration` delegates here.
 - `test:context`: runs eight local cases for generation-boundary eligibility/language fallback, public preservation/countdown decisions, supplied continuation-body fidelity, retry preparation, real budget consumption/manual continuation, exhaustion notices and global event forwarding. Policy/forwarding components do not establish actual WebSocket user delivery or side-dialog creation; actual critical-turn and queued-message driving is exercised by `test:kernel`.
 - `test:configuration`: seventeen isolated regressions for team configuration, extension rules against actual file access, capability boundaries, manual payload fidelity, MCP reload and Problems lifecycle. Only external MCP peers are replaced; no live providers or installed components are required.
+- `test:apps:configuration`: seven explicit compatibility cases for real local package resolution/install/enable/disable, dependency effective flags and recovery, occupied/duplicate frontend ports, conditional disk writes, Problems lifecycle and teammate override precedence through a cyclic package graph. Local bins, disk, TCP listeners and resolution stay real; no registry request, host startup or browser interaction is claimed.
+- `test:semantic:apps:configuration`: four producers emit actual command receipts and resolution/Problems diagnostics for separate subjective review. The [App configuration review](./semantic/reviews/2026-10-31-app-resolution.json) preserves their complete output and evidence scope; every fresh run starts pending.
 - `test:manual`: eight isolated cases for language normalization, actual mind assets and skill scope/permissions, snippet paths, manual visibility and the original prose budget.
 - `test:types`: checks the full test directory against the current public contracts. Report actual diagnostics as failures; do not weaken types or exclude cases to obtain a green result.
 - `test:inventory`: sources, support files, discovered suites, outside-suite candidates, and candidates without package scripts. These counts are not behavior coverage. Unknown candidates can be live probes or external integrations; inspect prerequisites before executing them.

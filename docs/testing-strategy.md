@@ -625,3 +625,7 @@ provider-local 9→11、server-local 6→7，旧三个单项入口统一隔离CL
 独立审查还收窄了一处新增比较：只看未改的Member.listTools不能证明实际装配工具未增权。现改为导入前/后真实loadAgentMinds.agentTools，先证明read_file未授予，再核完整可见集合不变，并把实际可见ID加入catalog证据。没有声称完成driver授权执行。原22准确文本以原范围保留，修订后新22仍逐例完整主观评审；这是新增测试断言的补强，不当产品red。Neutral变体保沿原有“新文件存在且既有EN/upstream不变”的范围，不虚报所有新字段均有独立验收。
 
 注册支线去重整改保留同一代两次 `tellask` 复用一个 worker 的价值，并补上实际最新调用完成、root 消费和持久结果路由。初始基线虽然退出 0，却缺少全部 worker 响应夹具且输出后台错误；不能把这个状态称为产品缺陷复现。新测试在确认旧调用完成且无 active dispatch 后写入 durable dead marker，再证明新 ID、最新 opaque 输入隔离、完整历史和唯一注册表映射，检查全局 touched 事件的真实 `sourceType=stream_error_evt` 投影为空（错误事件本身仅走对话局部流）。以结果到达和实际对话锁同步，删除睡眠轮询；`beforeExit` 使未完成的结果 Promise 无法退出 0。外部 provider 夹具按真实 reply obligation 收尾，完成后不重复调用回复工具。明确不把直接 marker 写入称为完整人类 WebSocket 声明死亡/取消流程。该例进入 `test:kernel`；[原始断言、夹具修正与实际执行审查](../tests/audits/2026-10-31-typeb-dedupe.json) 保留详细范围。
+
+App 解析与配置七例保留当前兼容价值，集中进入 `test:apps:configuration`。真实本地 bin、磁盘和端口探测不被 mock；仅给定 package JSON/manifest/成员数据受控。原1130行逐项溯源：对象 identity no-op 收敛为条件写回的实际字节/mtime，显式旧mtime消除1200ms睡眠，每次 disable/enable 后都核生效状态与 declaration/lock 保全。默认 local 解析不再泄露测试 ENV，仍核给定可用 preferredPort；重复和真实占用端口逐包核 runtime/cache 一致及再次 materialize 无重写。实际补齐缺失包后核 Problems 同ID resolved/过滤清除/无关问题保全，再区分已安装但被禁用；依赖禁用与恢复保全全部包、源和端口数据；循环图下完整给定成员 payload 实证 rtws > outer > mid > default，而非角色实际授权。
+
+[该批完整断言与实际语义审查](../tests/semantic/reviews/2026-10-31-app-resolution.json) 保存实际命令回执/诊断与上下文，语义生成入口仅四个 producer，每次均 pending，不能用字面匹配或旧判词代替评审。没有把端口分配当真实 frontend/host 启动，没有扩张已经退役的 App composition root 方向；剩余十三个 App CLI/doctor、host 与 WebUI/runtime 候选仍待整改。

@@ -1,96 +1,76 @@
 import assert from 'node:assert/strict';
+import * as fs from 'node:fs/promises';
+import path from 'node:path';
 
 import {
   removeResolvedApp,
   setResolvedAppAssignedPort,
   setResolvedAppEnabled,
-  type AppsResolutionEntry,
-  type AppsResolutionFile,
+  writeAppsResolutionFile,
+  writeAppsResolutionFileIfChanged,
 } from '../main/apps/resolution-file';
-
-function makeFile(params: {
-  appId: string;
-  enabled: boolean;
-  assignedPort: number | null;
-}): AppsResolutionFile {
-  const entry: AppsResolutionEntry = {
-    id: params.appId,
-    enabled: params.enabled,
-    source: { kind: 'npx', spec: 'example@0.0.0' },
-    assignedPort: params.assignedPort,
-    installJson: {
-      appId: params.appId,
-      package: {
-        name: 'example',
-        version: null,
-        rootAbs: '/tmp/example',
-      },
-      host: {
-        kind: 'node_module',
-        moduleRelPath: 'dist/app.js',
-        exportName: 'domindsApp',
-      },
-      frontend: {
-        kind: 'http',
-        defaultPort: 43001,
-      },
-    },
-  };
-  return { schemaVersion: 1, apps: [entry] };
-}
+import { readAppResolution, resolvedApp, writeLocalApp } from './helpers/app-fixture';
+import { withTempRtws } from './kernel-driver/helpers';
 
 async function main(): Promise<void> {
-  const file = makeFile({ appId: 'test-app', enabled: true, assignedPort: 43001 });
-
-  const noopMissingEnabled = setResolvedAppEnabled({
-    existing: file,
-    appId: 'missing-app',
-    enabled: false,
+  await withTempRtws(async (rtws) => {
+    const one = resolvedApp(
+      await writeLocalApp(path.join(rtws, 'packages', 'one'), 'one', { defaultPort: 43001 }),
+      43001,
+    );
+    const other = resolvedApp(await writeLocalApp(path.join(rtws, 'packages', 'other'), 'other'));
+    const file = { schemaVersion: 1 as const, apps: [one, other] };
+    const original = structuredClone(file);
+    await writeAppsResolutionFile({ rtwsRootAbs: rtws, file });
+    const target = path.join(rtws, '.apps', 'resolution.yaml');
+    await fs.utimes(target, new Date('2000-01-01T00:00:00Z'), new Date('2000-01-01T00:00:00Z'));
+    const bytes = await fs.readFile(target);
+    const before = await fs.stat(target);
+    for (const next of [
+      setResolvedAppEnabled({ existing: file, appId: 'missing', enabled: false }),
+      setResolvedAppEnabled({ existing: file, appId: 'one', enabled: true }),
+      setResolvedAppAssignedPort({ existing: file, appId: 'missing', assignedPort: 50000 }),
+      setResolvedAppAssignedPort({ existing: file, appId: 'one', assignedPort: 43001 }),
+      removeResolvedApp({ existing: file, appId: 'missing' }),
+    ]) {
+      assert.deepEqual(next, original);
+      await writeAppsResolutionFileIfChanged({ rtwsRootAbs: rtws, file: next });
+      assert.deepEqual(await fs.readFile(target), bytes);
+      assert.equal((await fs.stat(target)).mtimeMs, before.mtimeMs);
+    }
+    const changed = setResolvedAppAssignedPort({
+      existing: file,
+      appId: 'one',
+      assignedPort: 43002,
+    });
+    await writeAppsResolutionFileIfChanged({ rtwsRootAbs: rtws, file: changed });
+    const persisted = await readAppResolution(rtws);
+    assert.deepEqual(
+      persisted.apps.find((entry) => entry.id === 'one'),
+      { ...one, assignedPort: 43002 },
+    );
+    assert.deepEqual(
+      persisted.apps.find((entry) => entry.id === 'other'),
+      other,
+    );
+    assert.notDeepEqual(await fs.readFile(target), bytes);
+    assert.notEqual((await fs.stat(target)).mtimeMs, before.mtimeMs);
+    const disabled = setResolvedAppEnabled({ existing: changed, appId: 'one', enabled: false });
+    await writeAppsResolutionFileIfChanged({ rtwsRootAbs: rtws, file: disabled });
+    assert.deepEqual(
+      (await readAppResolution(rtws)).apps.find((entry) => entry.id === 'one'),
+      { ...one, assignedPort: 43002, enabled: false },
+    );
+    const removed = removeResolvedApp({ existing: disabled, appId: 'one' });
+    await writeAppsResolutionFileIfChanged({ rtwsRootAbs: rtws, file: removed });
+    assert.deepEqual((await readAppResolution(rtws)).apps, [other]);
+    assert.deepEqual(file, original);
   });
-  assert.strictEqual(noopMissingEnabled, file);
-
-  const noopSameEnabled = setResolvedAppEnabled({
-    existing: file,
-    appId: 'test-app',
-    enabled: true,
-  });
-  assert.strictEqual(noopSameEnabled, file);
-
-  const noopMissingAssigned = setResolvedAppAssignedPort({
-    existing: file,
-    appId: 'missing-app',
-    assignedPort: 50000,
-  });
-  assert.strictEqual(noopMissingAssigned, file);
-
-  const noopSameAssigned = setResolvedAppAssignedPort({
-    existing: file,
-    appId: 'test-app',
-    assignedPort: 43001,
-  });
-  assert.strictEqual(noopSameAssigned, file);
-
-  const noopMissingRemove = removeResolvedApp({ existing: file, appId: 'missing-app' });
-  assert.strictEqual(noopMissingRemove, file);
-
-  const changedAssigned = setResolvedAppAssignedPort({
-    existing: file,
-    appId: 'test-app',
-    assignedPort: 43002,
-  });
-  assert.notStrictEqual(changedAssigned, file);
-  assert.strictEqual(changedAssigned.apps[0].assignedPort, 43002);
-
-  const removed = removeResolvedApp({ existing: file, appId: 'test-app' });
-  assert.notStrictEqual(removed, file);
-  assert.strictEqual(removed.apps.length, 0);
+  console.log(
+    'no-op mutations preserve disk bytes and timestamp; actual changes persist without losing other packages: passed',
+  );
 }
-
-main()
-  .then(() => {
-    console.log('OK');
-  })
-  .catch((error: unknown) => {
-    console.error(error);
-    process.exitCode = 1;
-  });
+main().catch((error: unknown) => {
+  console.error(error);
+  process.exitCode = 1;
+});

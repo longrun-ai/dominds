@@ -1404,6 +1404,48 @@
       "lane": "kernel",
       "value": "Same-generation registered tellasks reuse one worker, latest assignment reaches it, completed results reach their caller once, and a completed dead session is replaced without losing old history.",
       "evidence": "Complete original/final/diff assertion review in tests/audits/2026-10-31-typeb-dedupe.json. Exact assertions are actual event kinds, call/session/dialog IDs, given input/reply bytes, persisted routes, dispatches, registry and metadata. No generated prose meaning oracle. Direct durable dead-marker scope after completed work, not WebSocket cancellation."
+    },
+    "apps-app-lock-no-jitter-on-enable-disable.ts": {
+      "status": "reviewed",
+      "lane": "apps-configuration",
+      "value": "Real local install/disable/enable changes effective state while preserving lock bytes/mtime and declared manifest after each mutation.",
+      "evidence": "Complete original1130-line, final candidate/helper and whole-diff assertion review in tests/semantic/reviews/2026-10-31-app-resolution.json. Exact checks cover given data, machine fields and real disk/process/port/Problems effects, not meaning. Actual command receipts and diagnostic text receive separate independent subjective verdicts. Fresh semantic output remains pending; current App contracts are compatibility scope during the DSL migration, not a destination architecture requirement."
+    },
+    "apps-resolution-assignedPort-noop.ts": {
+      "status": "reviewed",
+      "lane": "apps-configuration",
+      "value": "No-op mutation plus conditional write preserves actual disk bytes/mtime; changed port/enabled/removal persists full data without losing another package or mutating the caller input.",
+      "evidence": "Complete original1130-line, final candidate/helper and whole-diff assertion review in tests/semantic/reviews/2026-10-31-app-resolution.json. Exact checks cover given data, machine fields and real disk/process/port/Problems effects, not meaning. Actual command receipts and diagnostic text receive separate independent subjective verdicts. Fresh semantic output remains pending; current App contracts are compatibility scope during the DSL migration, not a destination architecture requirement."
+    },
+    "apps-resolution-assignedPort-reassign-on-conflict.ts": {
+      "status": "reviewed",
+      "lane": "apps-configuration",
+      "value": "Native duplicate-assignment and owned-listener conflicts choose distinct usable ports, retain full package data, correlate persisted/runtime ports and keep the next materialization stable.",
+      "evidence": "Complete original1130-line, final candidate/helper and whole-diff assertion review in tests/semantic/reviews/2026-10-31-app-resolution.json. Exact checks cover given data, machine fields and real disk/process/port/Problems effects, not meaning. Actual command receipts and diagnostic text receive separate independent subjective verdicts. Fresh semantic output remains pending; current App contracts are compatibility scope during the DSL migration, not a destination architecture requirement."
+    },
+    "apps-resolution-default-strategy-local.ts": {
+      "status": "reviewed",
+      "lane": "apps-configuration",
+      "value": "No custom resolution strategy or fixture ENV: native local default selects the given package and available preferred port, persists it and does not rewrite stable state.",
+      "evidence": "Complete original1130-line, final candidate/helper and whole-diff assertion review in tests/semantic/reviews/2026-10-31-app-resolution.json. Exact checks cover given data, machine fields and real disk/process/port/Problems effects, not meaning. Actual command receipts and diagnostic text receive separate independent subjective verdicts. Fresh semantic output remains pending; current App contracts are compatibility scope during the DSL migration, not a destination architecture requirement."
+    },
+    "apps-resolution-effective-enabled-writeback.ts": {
+      "status": "reviewed",
+      "lane": "apps-configuration",
+      "value": "Disabling a required dependency persists effective flags false for parent and dependency, preserves source/package/port data and recovers all prior state when configuration is repaired.",
+      "evidence": "Complete original1130-line, final candidate/helper and whole-diff assertion review in tests/semantic/reviews/2026-10-31-app-resolution.json. Exact checks cover given data, machine fields and real disk/process/port/Problems effects, not meaning. Actual command receipts and diagnostic text receive separate independent subjective verdicts. Fresh semantic output remains pending; current App contracts are compatibility scope during the DSL migration, not a destination architecture requirement."
+    },
+    "apps-resolution-issues-to-problems.ts": {
+      "status": "reviewed",
+      "lane": "apps-configuration",
+      "value": "Actual missing-package repair resolves same-ID Problems, filtered clearing preserves an unrelated active problem, and installed-but-disabled state produces a distinct accurate issue with full forwarding fidelity.",
+      "evidence": "Complete original1130-line, final candidate/helper and whole-diff assertion review in tests/semantic/reviews/2026-10-31-app-resolution.json. Exact checks cover given data, machine fields and real disk/process/port/Problems effects, not meaning. Actual command receipts and diagnostic text receive separate independent subjective verdicts. Fresh semantic output remains pending; current App contracts are compatibility scope during the DSL migration, not a destination architecture requirement."
+    },
+    "apps-teammates-override-precedence.ts": {
+      "status": "reviewed",
+      "lane": "apps-configuration",
+      "value": "Cyclic package graph terminates and chooses full supplied member payloads in rtws > outside integrator > inside integrator > component default order; component data loading, not actual Team authorization.",
+      "evidence": "Complete original1130-line, final candidate/helper and whole-diff assertion review in tests/semantic/reviews/2026-10-31-app-resolution.json. Exact checks cover given data, machine fields and real disk/process/port/Problems effects, not meaning. Actual command receipts and diagnostic text receive separate independent subjective verdicts. Fresh semantic output remains pending; current App contracts are compatibility scope during the DSL migration, not a destination architecture requirement."
     }
   },
   "retired": {

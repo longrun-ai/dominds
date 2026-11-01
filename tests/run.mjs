@@ -51,6 +51,16 @@ const configuration = [
   'team_mgmt-mcp-runtime-diagnostics.ts',
 ];
 
+const appsConfiguration = [
+  'apps-app-lock-no-jitter-on-enable-disable.ts',
+  'apps-resolution-assignedPort-noop.ts',
+  'apps-resolution-assignedPort-reassign-on-conflict.ts',
+  'apps-resolution-default-strategy-local.ts',
+  'apps-resolution-effective-enabled-writeback.ts',
+  'apps-resolution-issues-to-problems.ts',
+  'apps-teammates-override-precedence.ts',
+];
+
 const manual = [
   'toolsets/skills-tools.ts',
   'toolsets/memory-access.ts',
@@ -229,6 +239,14 @@ const providerLocal = [
 ];
 const taskdoc = ['task-package.ts', 'taskdoc-search.ts', 'taskdoc-recall-budget.ts'];
 const semanticSuites = {
+  'apps-configuration': appsConfiguration.filter((file) =>
+    [
+      'apps-app-lock-no-jitter-on-enable-disable.ts',
+      'apps-resolution-assignedPort-reassign-on-conflict.ts',
+      'apps-resolution-effective-enabled-writeback.ts',
+      'apps-resolution-issues-to-problems.ts',
+    ].includes(file),
+  ),
   'server-local': ['auth.ts', 'certificates.ts', 'ws-language.ts'],
   'provider-local': [
     'codex-auth-alignment.ts',
@@ -398,6 +416,7 @@ export async function inventory() {
     kernel,
     context,
     configuration,
+    'apps-configuration': appsConfiguration,
     manual,
     filesystem,
     persistence,
@@ -627,6 +646,7 @@ async function main() {
       'kernel',
       'context',
       'configuration',
+      'apps-configuration',
       'manual',
       'filesystem',
       'persistence',
@@ -648,7 +668,7 @@ async function main() {
     ].includes(args[1])
   ) {
     throw new Error(
-      'Usage: node tests/run.mjs --list | --suite smoke | --suite kernel | --suite context [--semantic] | --suite configuration [--semantic] | --suite manual [--semantic] | --suite filesystem [--semantic] | --suite persistence [--semantic] | --suite recovery [--semantic] | --suite bootstrap [--semantic] | --suite packaging [--semantic] | --suite retry [--semantic] | --suite projection [--semantic] | --suite compatible [--semantic] | --suite reminders [--semantic] | --suite daemon [--semantic] | --suite presentation [--semantic] | --suite components [--semantic] | --suite shell [--semantic] | --suite taskdoc [--semantic] | --suite provider-local [--semantic] | --suite server-local [--semantic] | --suite provider-live [--case <provider/file.ts> --live --provider <id> --model <id>]',
+      'Usage: node tests/run.mjs --list | --suite smoke | --suite kernel | --suite context [--semantic] | --suite configuration [--semantic] | --suite apps-configuration [--semantic] | --suite manual [--semantic] | --suite filesystem [--semantic] | --suite persistence [--semantic] | --suite recovery [--semantic] | --suite bootstrap [--semantic] | --suite packaging [--semantic] | --suite retry [--semantic] | --suite projection [--semantic] | --suite compatible [--semantic] | --suite reminders [--semantic] | --suite daemon [--semantic] | --suite presentation [--semantic] | --suite components [--semantic] | --suite shell [--semantic] | --suite taskdoc [--semantic] | --suite provider-local [--semantic] | --suite server-local [--semantic] | --suite provider-live [--case <provider/file.ts> --live --provider <id> --model <id>]',
     );
   }
   const suite = args[1];

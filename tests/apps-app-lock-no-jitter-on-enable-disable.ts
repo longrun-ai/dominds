@@ -1,176 +1,86 @@
 import assert from 'node:assert/strict';
-import { spawn } from 'node:child_process';
 import * as fs from 'node:fs/promises';
-import os from 'node:os';
 import path from 'node:path';
-
 import YAML from 'yaml';
 
 import { parseAppLockFile } from '../main/apps/app-lock-file';
+import { loadAppsConfigurationFile } from '../main/apps/configuration-file';
+import { readAppResolution, writeLocalApp } from './helpers/app-fixture';
+import { runDomindsCli } from './helpers/cli-process';
+import { semanticEvidenceCollector } from './helpers/semantic-evidence';
+import { withTempRtws } from './kernel-driver/helpers';
 
-type ExecResult = Readonly<{ code: number; stdout: string; stderr: string }>;
-
-async function writeText(filePathAbs: string, content: string): Promise<void> {
-  await fs.mkdir(path.dirname(filePathAbs), { recursive: true });
-  await fs.writeFile(filePathAbs, content, 'utf-8');
-}
-
-async function runTsCli(params: {
-  tsconfigAbs: string;
-  scriptAbs: string;
-  args: ReadonlyArray<string>;
-  cwdAbs: string;
-}): Promise<ExecResult> {
-  return await new Promise<ExecResult>((resolve, reject) => {
-    const child = spawn(
-      process.execPath,
-      [
-        require.resolve('tsx/cli'),
-        '--tsconfig',
-        params.tsconfigAbs,
-        params.scriptAbs,
-        ...params.args,
-      ],
-      {
-        cwd: params.cwdAbs,
-        env: { ...process.env },
-        stdio: ['ignore', 'pipe', 'pipe'],
-      },
-    );
-
-    let stdout = '';
-    let stderr = '';
-    child.stdout.on('data', (chunk: Buffer) => {
-      stdout += chunk.toString('utf-8');
-    });
-    child.stderr.on('data', (chunk: Buffer) => {
-      stderr += chunk.toString('utf-8');
-    });
-    child.on('error', (err: Error) => {
-      reject(err);
-    });
-    child.on('close', (code: number | null, signal: NodeJS.Signals | null) => {
-      if (signal) return resolve({ code: 1, stdout, stderr: `${stderr}\n[sig] ${signal}`.trim() });
-      resolve({ code: code ?? 1, stdout, stderr });
-    });
-  });
-}
-
-async function sleep(ms: number): Promise<void> {
-  await new Promise<void>((resolve) => {
-    setTimeout(resolve, ms);
-  });
-}
-
+const evidence = semanticEvidenceCollector('dominds-app-lock-');
 async function main(): Promise<void> {
-  const tmpRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'dominds-app-lock-no-jitter-'));
-  const appId = 'app_lock_test';
-  const localAppRel = 'local-app';
-  const localAppAbs = path.join(tmpRoot, localAppRel);
-
-  const mainTsconfigAbs = path.resolve(__dirname, '..', 'main', 'tsconfig.json');
-  const installCliAbs = path.resolve(__dirname, '..', 'main', 'cli', 'install.ts');
-  const disableCliAbs = path.resolve(__dirname, '..', 'main', 'cli', 'disable.ts');
-  const enableCliAbs = path.resolve(__dirname, '..', 'main', 'cli', 'enable.ts');
-  const lockPathAbs = path.join(tmpRoot, '.minds', 'app-lock.yaml');
-
-  try {
-    await writeText(
-      path.join(localAppAbs, 'package.json'),
-      JSON.stringify(
-        {
-          name: appId,
-          version: '0.0.0',
-          bin: 'bin.js',
+  await withTempRtws(async (rtws) => {
+    const id = 'app_lock_test';
+    await writeLocalApp(path.join(rtws, 'local-app'), id);
+    const install = runDomindsCli(['install', 'local-app', '--local', '--enable'], rtws);
+    assert.equal(install.status, 0);
+    const target = path.join(rtws, '.minds', 'app-lock.yaml');
+    const lockBytes = await fs.readFile(target);
+    const parsed = parseAppLockFile(YAML.parse(lockBytes.toString()) as unknown, target);
+    assert.ok(parsed.ok);
+    assert.equal(parsed.file.apps.length, 1);
+    assert.equal(parsed.file.apps[0].id, id);
+    assert.deepEqual(parsed.file.apps[0].package, { name: id, version: '0.0.0' });
+    const rootManifest = await fs.readFile(path.join(rtws, '.minds', 'app.yaml'));
+    // An old explicit timestamp makes any rewrite observable without waiting on clock granularity.
+    await fs.utimes(target, new Date('2000-01-01T00:00:00Z'), new Date('2000-01-01T00:00:00Z'));
+    const oldMtime = (await fs.stat(target)).mtimeMs;
+    for (const command of ['disable', 'enable'] as const) {
+      const result = runDomindsCli([command, id], rtws);
+      assert.equal(result.status, 0);
+      const configuration = await loadAppsConfigurationFile({ rtwsRootAbs: rtws });
+      assert.notEqual(configuration.kind, 'error');
+      if (configuration.kind === 'error') throw new Error(configuration.errorText);
+      assert.equal(configuration.file.disabledApps?.includes(id) ?? false, command === 'disable');
+      const resolution = await readAppResolution(rtws);
+      assert.equal(resolution.apps.find((entry) => entry.id === id)?.enabled, command === 'enable');
+      assert.deepEqual(await fs.readFile(target), lockBytes);
+      assert.equal((await fs.stat(target)).mtimeMs, oldMtime);
+      assert.deepEqual(await fs.readFile(path.join(rtws, '.minds', 'app.yaml')), rootManifest);
+      evidence.record({
+        id: command,
+        scenario: `A user ${command}s a locally installed compatibility package.`,
+        businessValue:
+          'The mutation receipt should explain the changed configuration and derived state without claiming to rewrite declaration or lock data.',
+        context: {
+          command,
+          appId: id,
+          effectiveEnabled: command === 'enable',
+          lockUnchanged: true,
+          manifestUnchanged: true,
         },
-        null,
-        2,
-      ),
-    );
-    await writeText(
-      path.join(localAppAbs, 'bin.js'),
-      [
-        "'use strict';",
-        "if (!process.argv.includes('--dominds-app')) {",
-        "  throw new Error('expected --dominds-app');",
-        '}',
-        'const json = {',
-        `  appId: ${JSON.stringify(appId)},`,
-        '  package: {',
-        `    name: ${JSON.stringify(appId)},`,
-        "    version: '0.0.0',",
-        '    rootAbs: process.cwd(),',
-        '  },',
-        "  host: { kind: 'node_module', moduleRelPath: 'index.js', exportName: 'main' },",
-        "  frontend: { kind: 'http', defaultPort: 43001 },",
-        '};',
-        'process.stdout.write(JSON.stringify(json));',
-        '',
-      ].join('\n'),
-    );
-
-    const installRes = await runTsCli({
-      tsconfigAbs: mainTsconfigAbs,
-      scriptAbs: installCliAbs,
-      args: [localAppRel, '--local', '--enable'],
-      cwdAbs: tmpRoot,
+        reviewQuestions: [
+          'Does the complete receipt agree with the actual change and unchanged declaration/lock state?',
+          'Is its next-step guidance usable without presenting the retired App composition root as the destination architecture?',
+        ],
+        actualText: JSON.stringify(result, null, 2),
+      });
+    }
+    evidence.record({
+      id: 'install',
+      scenario: 'A user installs an owned local compatibility package with --enable.',
+      businessValue:
+        'Explain the actual local install outcome and current configuration boundaries.',
+      context: {
+        appId: id,
+        source: 'owned local package, no registry request',
+        installStatus: install.status,
+      },
+      reviewQuestions: [
+        'Does the actual receipt describe the completed local installation and its configuration boundaries accurately?',
+      ],
+      actualText: JSON.stringify(install, null, 2),
     });
-    assert.equal(
-      installRes.code,
-      0,
-      `install failed\nstdout=${installRes.stdout}\nstderr=${installRes.stderr}`,
-    );
-
-    const lockText1 = await fs.readFile(lockPathAbs, 'utf-8');
-    const st1 = await fs.stat(lockPathAbs);
-    const lockParsed1 = parseAppLockFile(YAML.parse(lockText1) as unknown, lockPathAbs);
-    if (!lockParsed1.ok) throw new Error(lockParsed1.errorText);
-    assert.equal(lockParsed1.ok, true, 'expected ok');
-    assert.equal(lockParsed1.file.apps.length, 1);
-    assert.equal(lockParsed1.file.apps[0]?.id, appId);
-    assert.deepEqual(lockParsed1.file.apps[0]?.package, { name: appId, version: '0.0.0' });
-
-    // Ensure file-system timestamp granularity does not hide accidental rewrites.
-    await sleep(1200);
-
-    const disableRes = await runTsCli({
-      tsconfigAbs: mainTsconfigAbs,
-      scriptAbs: disableCliAbs,
-      args: [appId],
-      cwdAbs: tmpRoot,
-    });
-    assert.equal(
-      disableRes.code,
-      0,
-      `disable failed\nstdout=${disableRes.stdout}\nstderr=${disableRes.stderr}`,
-    );
-
-    const enableRes = await runTsCli({
-      tsconfigAbs: mainTsconfigAbs,
-      scriptAbs: enableCliAbs,
-      args: [appId],
-      cwdAbs: tmpRoot,
-    });
-    assert.equal(
-      enableRes.code,
-      0,
-      `enable failed\nstdout=${enableRes.stdout}\nstderr=${enableRes.stderr}`,
-    );
-
-    const lockText2 = await fs.readFile(lockPathAbs, 'utf-8');
-    const st2 = await fs.stat(lockPathAbs);
-    assert.equal(lockText2, lockText1, 'enable/disable must not rewrite app-lock.yaml');
-    assert.equal(st2.mtimeMs, st1.mtimeMs, 'enable/disable must not modify app-lock.yaml mtime');
-  } finally {
-    await fs.rm(tmpRoot, { recursive: true, force: true });
-  }
-}
-
-main()
-  .then(() => {
-    console.log('OK');
-  })
-  .catch((err: unknown) => {
-    console.error(err instanceof Error ? (err.stack ?? err.message) : String(err));
-    process.exit(1);
   });
+  await evidence.write();
+  console.log(
+    'real disable/enable update effective state while preserving declaration and lock bytes/timestamp after each command: passed',
+  );
+}
+main().catch((error: unknown) => {
+  console.error(error);
+  process.exitCode = 1;
+});
