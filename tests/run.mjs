@@ -59,6 +59,10 @@ const appsConfiguration = [
   'apps-resolution-effective-enabled-writeback.ts',
   'apps-resolution-issues-to-problems.ts',
   'apps-teammates-override-precedence.ts',
+  'apps-cli-doctor-guidance.ts',
+  'apps-doctor-handshake-diagnostics.ts',
+  'apps-doctor-self-target.ts',
+  'apps-install-configure-use-flow.ts',
 ];
 
 const manual = [
@@ -245,6 +249,10 @@ const semanticSuites = {
       'apps-resolution-assignedPort-reassign-on-conflict.ts',
       'apps-resolution-effective-enabled-writeback.ts',
       'apps-resolution-issues-to-problems.ts',
+      'apps-cli-doctor-guidance.ts',
+      'apps-doctor-handshake-diagnostics.ts',
+      'apps-doctor-self-target.ts',
+      'apps-install-configure-use-flow.ts',
     ].includes(file),
   ),
   'server-local': ['auth.ts', 'certificates.ts', 'ws-language.ts'],

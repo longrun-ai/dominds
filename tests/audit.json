@@ -1446,6 +1446,30 @@
       "lane": "apps-configuration",
       "value": "Cyclic package graph terminates and chooses full supplied member payloads in rtws > outside integrator > inside integrator > component default order; component data loading, not actual Team authorization.",
       "evidence": "Complete original1130-line, final candidate/helper and whole-diff assertion review in tests/semantic/reviews/2026-10-31-app-resolution.json. Exact checks cover given data, machine fields and real disk/process/port/Problems effects, not meaning. Actual command receipts and diagnostic text receive separate independent subjective verdicts. Fresh semantic output remains pending; current App contracts are compatibility scope during the DSL migration, not a destination architecture requirement."
+    },
+    "apps-cli-doctor-guidance.ts": {
+      "status": "reviewed",
+      "lane": "apps-configuration",
+      "value": "Real main CLI help succeeds and undeclared scoped update refuses without changing any of the four authoritative/derived App state files; actual help/error meaning is separately reviewed.",
+      "evidence": "Complete original579-line and final test/helper/entry diff review: tests/semantic/reviews/2026-10-31-app-doctor.json. Natural-language literal meaning oracles were removed; actual fresh locked-epoch8 guidance/diagnostic materials receive independent full-text subjective verdicts and durable provenance. Initial unlocked-epoch8 generation is excluded from acceptance. Exact equality only checks actual machine fields, supplied data and concrete disk/process effects; subsequent fresh semantic output remains pending."
+    },
+    "apps-doctor-handshake-diagnostics.ts": {
+      "status": "reviewed",
+      "lane": "apps-configuration",
+      "value": "Native doctor and actual CLI distinguish module-only, export-only, both-field mismatch and matching controls using full cached/fresh machine fields, with byte/mtime/absence preservation of all four App state files.",
+      "evidence": "Complete original579-line and final test/helper/entry diff review: tests/semantic/reviews/2026-10-31-app-doctor.json. Natural-language literal meaning oracles were removed; actual fresh locked-epoch8 guidance/diagnostic materials receive independent full-text subjective verdicts and durable provenance. Initial unlocked-epoch8 generation is excluded from acceptance. Exact equality only checks actual machine fields, supplied data and concrete disk/process effects; subsequent fresh semantic output remains pending."
+    },
+    "apps-doctor-self-target.ts": {
+      "status": "reviewed",
+      "lane": "apps-configuration",
+      "value": "An intentionally dependency-free root manifest is a valid declared healthy self target with no package snapshot/probe; actual API and CLI preserve four App state files.",
+      "evidence": "Complete original579-line and final test/helper/entry diff review: tests/semantic/reviews/2026-10-31-app-doctor.json. Natural-language literal meaning oracles were removed; actual fresh locked-epoch8 guidance/diagnostic materials receive independent full-text subjective verdicts and durable provenance. Initial unlocked-epoch8 generation is excluded from acceptance. Exact equality only checks actual machine fields, supplied data and concrete disk/process effects; subsequent fresh semantic output remains pending."
+    },
+    "apps-install-configure-use-flow.ts": {
+      "status": "reviewed",
+      "lane": "apps-configuration",
+      "value": "Scoped package ID resolves locally through real install/enable; declaration/lock/config/full cache retain given version/source/port and native Team imports two full supplied member templates with local name overrides. No host/provider/tool execution claim.",
+      "evidence": "Complete original579-line and final test/helper/entry diff review: tests/semantic/reviews/2026-10-31-app-doctor.json. Natural-language literal meaning oracles were removed; actual fresh locked-epoch8 guidance/diagnostic materials receive independent full-text subjective verdicts and durable provenance. Initial unlocked-epoch8 generation is excluded from acceptance. Exact equality only checks actual machine fields, supplied data and concrete disk/process effects; subsequent fresh semantic output remains pending."
     }
   },
   "retired": {

@@ -629,3 +629,7 @@ provider-local 9→11、server-local 6→7，旧三个单项入口统一隔离CL
 App 解析与配置七例保留当前兼容价值，集中进入 `test:apps:configuration`。真实本地 bin、磁盘和端口探测不被 mock；仅给定 package JSON/manifest/成员数据受控。原1130行逐项溯源：对象 identity no-op 收敛为条件写回的实际字节/mtime，显式旧mtime消除1200ms睡眠，每次 disable/enable 后都核生效状态与 declaration/lock 保全。默认 local 解析不再泄露测试 ENV，仍核给定可用 preferredPort；重复和真实占用端口逐包核 runtime/cache 一致及再次 materialize 无重写。实际补齐缺失包后核 Problems 同ID resolved/过滤清除/无关问题保全，再区分已安装但被禁用；依赖禁用与恢复保全全部包、源和端口数据；循环图下完整给定成员 payload 实证 rtws > outer > mid > default，而非角色实际授权。
 
 [该批完整断言与实际语义审查](../tests/semantic/reviews/2026-10-31-app-resolution.json) 保存实际命令回执/诊断与上下文，语义生成入口仅四个 producer，每次均 pending，不能用字面匹配或旧判词代替评审。没有把端口分配当真实 frontend/host 启动，没有扩张已经退役的 App composition root 方向；剩余十三个 App CLI/doctor、host 与 WebUI/runtime 候选仍待整改。
+
+CLI/doctor 四例继续加入同一 App 兼容配置入口（行为11、显式语义producer8）。删除 help、拒绝更新、entry module/export mismatch、handshake-only 和安装/启用回执中的自然语言 regex/includes 判断；实际主CLI与原生 doctor 比较只用 given IDs、缓存/fresh机器字段、状态、完整导入数据，以及四个 App 状态文件的字节、mtime和缺席状态。module-only/export-only/both/healthy 独立对照，degraded 报告完成仍退出0是保留的当前CLI契约，不改成测试臆造的退出语义。self . 的无依赖根保留 healthy；安装scoped ID仍走默认local查找，保全原0.1.0锁版本、完整cache、源真实路径、正端口与原两成员模板/名字override。角色purpose/工具清单是给定配置数据，不以它们的自然语言含义作断言；未声称host factory、provider、工具调用或完整授权执行。
+
+[本批原始价值与实际语义审查](../tests/semantic/reviews/2026-10-31-app-doctor.json) 只接受类型检查通过后锁定源码的最新8份完整材料，初次迭代时未锁epoch的8份不算语义通过。实际诊断前后状态保全严格限 .minds/app.yaml、app-lock.yaml 与 .apps/configuration.yaml、resolution.yaml，不夸成整个 workspace 无变化。新输出始终 pending，旧判词和hash不判断新含义。至此余下九个 host/WebUI/runtime 候选仍待整改。

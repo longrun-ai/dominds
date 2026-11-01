@@ -1,55 +1,58 @@
 import assert from 'node:assert/strict';
-import * as fs from 'node:fs/promises';
-import os from 'node:os';
-import path from 'node:path';
 
 import { runDoctor } from '../main/cli/doctor';
+import { writeAppManifest } from './helpers/app-fixture';
+import { readAppStateFiles } from './helpers/app-state-files';
+import { runDomindsCli } from './helpers/cli-process';
+import { semanticEvidenceCollector } from './helpers/semantic-evidence';
+import { withTempRtws } from './kernel-driver/helpers';
 
-async function writeText(filePathAbs: string, content: string): Promise<void> {
-  await fs.mkdir(path.dirname(filePathAbs), { recursive: true });
-  await fs.writeFile(filePathAbs, content, 'utf-8');
-}
-
+const evidence = semanticEvidenceCollector('dominds-app-doctor-self-');
 async function main(): Promise<void> {
-  const tmpRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'dominds-doctor-self-target-'));
-
-  try {
-    await writeText(
-      path.join(tmpRoot, '.minds', 'app.yaml'),
-      ['apiVersion: dominds.io/v1alpha1', 'kind: DomindsApp', 'id: chatgpt-workstation', ''].join(
-        '\n',
-      ),
-    );
-
-    const report = await runDoctor({ rtwsRootAbs: tmpRoot, appId: '.' });
-    assert.equal(
-      report.diagnoses.length,
-      1,
-      'doctor should report exactly one self-target diagnosis',
-    );
+  await withTempRtws(async (rtws) => {
+    await writeAppManifest(rtws, 'chatgpt-workstation');
+    const before = await readAppStateFiles(rtws);
+    const report = await runDoctor({ rtwsRootAbs: rtws, appId: '.' });
+    assert.equal(report.diagnoses.length, 1);
     const diagnosis = report.diagnoses[0];
     assert.equal(diagnosis.appId, '.');
-    assert.equal(
-      diagnosis.declared,
-      true,
-      'self target should count root manifest presence as declared',
-    );
-    assert.equal(
-      diagnosis.status,
-      'healthy',
-      'doctor . should be healthy when root app manifest exists and dependencies are intentionally empty',
-    );
-    assert.deepEqual(
-      diagnosis.reasons,
-      [],
-      'doctor . should not report missing dependency reasons for the current rtws self manifest',
-    );
-  } finally {
-    await fs.rm(tmpRoot, { recursive: true, force: true });
-  }
+    assert.equal(diagnosis.declared, true);
+    assert.equal(diagnosis.status, 'healthy');
+    assert.deepEqual(diagnosis.reasons, []);
+    assert.deepEqual(report.issues, []);
+    assert.equal(diagnosis.resolutionEntry, null);
+    assert.equal(diagnosis.freshProbe, null);
+    assert.deepEqual(await readAppStateFiles(rtws), before);
+    const cli = runDomindsCli(['doctor', '.'], rtws);
+    assert.equal(cli.status, 0);
+    assert.deepEqual(await readAppStateFiles(rtws), before);
+    evidence.record({
+      id: 'self-no-dependencies',
+      scenario:
+        'The root workspace manifest exists and intentionally declares no package dependencies; the user runs doctor .',
+      businessValue:
+        'A dependency-free root is a valid healthy workspace and diagnosis must remain read-only.',
+      context: {
+        rootManifestId: 'chatgpt-workstation',
+        target: '.',
+        declared: true,
+        status: diagnosis.status,
+        packageSnapshotAbsent: true,
+        appStateFilesUnchanged: true,
+      },
+      reviewQuestions: [
+        'Do the actual CLI output and API next actions correctly distinguish a healthy root manifest from missing dependency package data?',
+        'Could the user understand that the unresolved package-handshake fields do not require installing the root as its own dependency?',
+      ],
+      actualText: JSON.stringify({ diagnosis, stdout: cli.stdout, stderr: cli.stderr }, null, 2),
+    });
+  });
+  await evidence.write();
+  console.log(
+    'doctor self-target accepts an intentional dependency-free root and preserves all App state files: passed',
+  );
 }
-
-main().catch((err: unknown) => {
-  console.error(err instanceof Error ? (err.stack ?? err.message) : String(err));
-  process.exit(1);
+main().catch((error: unknown) => {
+  console.error(error);
+  process.exitCode = 1;
 });

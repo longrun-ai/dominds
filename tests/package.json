@@ -172,7 +172,7 @@
     "apps-resolution-assignedPort-noop": "pnpm run rtws -- --isolated-rtws apps-resolution-assignedPort-noop.ts",
     "apps-resolution-assignedPort-reassign-on-conflict": "pnpm run rtws -- --isolated-rtws apps-resolution-assignedPort-reassign-on-conflict.ts",
     "apps-app-lock-no-jitter-on-enable-disable": "pnpm run rtws -- --isolated-rtws apps-app-lock-no-jitter-on-enable-disable.ts",
-    "apps-install-configure-use-flow": "tsx apps-install-configure-use-flow.ts",
+    "apps-install-configure-use-flow": "pnpm run rtws -- --isolated-rtws apps-install-configure-use-flow.ts",
     "apps-host-tool-result-contract": "pnpm run rtws -- --isolated-rtws apps-host-tool-result-contract.ts",
     "apps-host-ipc-contract": "tsx apps-host-ipc-contract.ts",
     "apps-host-restart-on-local-host-change": "tsx apps-host-restart-on-local-host-change.ts",
@@ -181,8 +181,8 @@
     "apps-public-version-drift-guard": "tsx apps-public-version-drift-guard.ts",
     "apps-dominds-root-packed-contract": "tsx apps-dominds-root-packed-contract.ts",
     "apps-kernel-shell-packed-contract": "tsx apps-kernel-shell-packed-contract.ts",
-    "apps-cli-doctor-guidance": "tsx apps-cli-doctor-guidance.ts",
-    "apps-doctor-handshake-diagnostics": "tsx apps-doctor-handshake-diagnostics.ts",
+    "apps-cli-doctor-guidance": "pnpm run rtws -- --isolated-rtws apps-cli-doctor-guidance.ts",
+    "apps-doctor-handshake-diagnostics": "pnpm run rtws -- --isolated-rtws apps-doctor-handshake-diagnostics.ts",
     "apps-tool-proxy-refresh": "tsx apps-tool-proxy-refresh.ts",
     "apps-webui-self-heal-empty-resolution": "tsx apps-webui-self-heal-empty-resolution.ts",
     "apps-webui-startup-host-failure-no-interrupt": "tsx apps-webui-startup-host-failure-no-interrupt.ts",
@@ -282,7 +282,8 @@
     "provider-openai-multi-tool-probe": "pnpm run rtws -- --isolated-rtws provider/openai-multi-tool-probe.ts",
     "provider-minimax-m27-turn-assembly": "pnpm run rtws -- --isolated-rtws provider/minimax-m27-turn-assembly.ts",
     "provider-setup-rtws-custom-provider": "pnpm run rtws -- --isolated-rtws provider/setup-rtws-custom-provider.ts",
-    "provider-live-probe-controls": "pnpm run rtws -- --isolated-rtws provider/live-probe-controls.ts"
+    "provider-live-probe-controls": "pnpm run rtws -- --isolated-rtws provider/live-probe-controls.ts",
+    "apps-doctor-self-target": "pnpm run rtws -- --isolated-rtws apps-doctor-self-target.ts"
   },
   "devDependencies": {
     "tsx": "^4.22.4",

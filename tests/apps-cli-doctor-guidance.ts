@@ -1,79 +1,59 @@
 import assert from 'node:assert/strict';
-import { spawn } from 'node:child_process';
-import * as fs from 'node:fs/promises';
-import os from 'node:os';
-import path from 'node:path';
 
-async function writeText(filePathAbs: string, content: string): Promise<void> {
-  await fs.mkdir(path.dirname(filePathAbs), { recursive: true });
-  await fs.writeFile(filePathAbs, content, 'utf-8');
-}
+import { writeAppManifest } from './helpers/app-fixture';
+import { readAppStateFiles } from './helpers/app-state-files';
+import { runDomindsCli } from './helpers/cli-process';
+import { semanticEvidenceCollector } from './helpers/semantic-evidence';
+import { withTempRtws } from './kernel-driver/helpers';
 
-async function runNode(params: {
-  cwd: string;
-  args: ReadonlyArray<string>;
-}): Promise<Readonly<{ exitCode: number; stdout: string; stderr: string }>> {
-  return await new Promise((resolve, reject) => {
-    const child = spawn(process.execPath, params.args, {
-      cwd: params.cwd,
-      stdio: ['ignore', 'pipe', 'pipe'],
-      env: process.env,
+const evidence = semanticEvidenceCollector('dominds-app-cli-guidance-');
+async function main(): Promise<void> {
+  await withTempRtws(async (rtws) => {
+    await writeAppManifest(rtws, 'rtws_root');
+    const before = await readAppStateFiles(rtws);
+    const help = runDomindsCli(['help'], rtws);
+    assert.equal(help.status, 0);
+    assert.deepEqual(await readAppStateFiles(rtws), before);
+    evidence.record({
+      id: 'help',
+      scenario: 'A user reads main CLI help to find the compatibility-package diagnosis command.',
+      businessValue:
+        'Discover read-only diagnosis and its appropriate use before changing package state.',
+      context: { invokedCommand: 'dominds help', exitStatus: 0, appStateFilesUnchanged: true },
+      reviewQuestions: [
+        'Does the actual help explain how to invoke doctor and the state layers it diagnoses?',
+        'Is its example usable without implying diagnosis mutates those layers or that the old App design remains the destination?',
+      ],
+      actualText: help.stdout + '\nSTDERR:\n' + help.stderr,
     });
-    let stdout = '';
-    let stderr = '';
-    child.stdout.on('data', (chunk) => {
-      stdout += String(chunk);
-    });
-    child.stderr.on('data', (chunk) => {
-      stderr += String(chunk);
-    });
-    child.on('error', reject);
-    child.on('close', (exitCode) => {
-      resolve({ exitCode: exitCode ?? -1, stdout, stderr });
+    const id = '@longrun-ai/missing-app';
+    const update = runDomindsCli(['update', id], rtws);
+    assert.equal(update.status, 1);
+    assert.deepEqual(await readAppStateFiles(rtws), before);
+    evidence.record({
+      id: 'unknown-update',
+      scenario: 'A user attempts update for a package not declared in the root manifest.',
+      businessValue:
+        'Explain the refused update and a concrete diagnosis step while preserving package state.',
+      context: {
+        appId: id,
+        invokedCommand: `dominds update ${id}`,
+        exitStatus: 1,
+        appStateFilesUnchanged: true,
+      },
+      reviewQuestions: [
+        'Does the actual error explain the undeclared target and give an applicable doctor command?',
+        'Does the guidance encourage diagnosis without falsely claiming a completed update?',
+      ],
+      actualText: update.stdout + '\nSTDERR:\n' + update.stderr,
     });
   });
+  await evidence.write();
+  console.log(
+    'help succeeds and undeclared update fails without changing App state; guidance is separate subjective evidence: passed',
+  );
 }
-
-async function main(): Promise<void> {
-  const repoRoot = path.resolve(__dirname, '..');
-  const cliEntry = path.join(repoRoot, 'main', 'cli.ts');
-  const tsxCli = path.join(__dirname, 'node_modules', 'tsx', 'dist', 'cli.mjs');
-  const tmpRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'dominds-apps-cli-doctor-guidance-'));
-
-  try {
-    await writeText(
-      path.join(tmpRoot, '.minds', 'app.yaml'),
-      ['apiVersion: dominds.io/v1alpha1', 'kind: DomindsApp', 'id: rtws_root', ''].join('\n'),
-    );
-
-    const help = await runNode({
-      cwd: repoRoot,
-      args: [tsxCli, cliEntry, 'help'],
-    });
-    assert.equal(help.exitCode, 0, `expected help exit 0, got ${help.exitCode}: ${help.stderr}`);
-    assert.match(
-      help.stdout,
-      /doctor \[options\]\s+Read-only diagnosis across manifest\/lock\/configuration\/resolution\/handshake/,
-    );
-    assert.match(help.stdout, /dominds doctor @example\/capability-package/);
-
-    const unknownAppId = '@longrun-ai/missing-app';
-    const update = await runNode({
-      cwd: tmpRoot,
-      args: [tsxCli, cliEntry, 'update', unknownAppId],
-    });
-    assert.equal(update.exitCode, 1, `expected update exit 1, got ${update.exitCode}`);
-    assert.match(
-      update.stderr,
-      new RegExp(`dominds doctor ${unknownAppId.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}`),
-    );
-    assert.match(update.stderr, /Diagnosis first:/);
-  } finally {
-    await fs.rm(tmpRoot, { recursive: true, force: true });
-  }
-}
-
-main().catch((err: unknown) => {
-  console.error(err instanceof Error ? (err.stack ?? err.message) : String(err));
-  process.exit(1);
+main().catch((error: unknown) => {
+  console.error(error);
+  process.exitCode = 1;
 });

@@ -1,140 +1,102 @@
 import assert from 'node:assert/strict';
-import * as fs from 'node:fs/promises';
-import os from 'node:os';
 import path from 'node:path';
 
+import { writeAppsResolutionFile } from '../main/apps/resolution-file';
 import { runDoctor } from '../main/cli/doctor';
+import { resolvedApp, writeAppManifest, writeAppText, writeLocalApp } from './helpers/app-fixture';
+import { readAppStateFiles } from './helpers/app-state-files';
+import { runDomindsCli } from './helpers/cli-process';
+import { semanticEvidenceCollector } from './helpers/semantic-evidence';
+import { withTempRtws } from './kernel-driver/helpers';
 
-async function writeText(filePathAbs: string, content: string): Promise<void> {
-  await fs.mkdir(path.dirname(filePathAbs), { recursive: true });
-  await fs.writeFile(filePathAbs, content, 'utf-8');
-}
-
-async function writeLocalPackage(params: {
-  packageRootAbs: string;
-  appId: string;
-  moduleRelPath: string;
-  exportName: string;
-}): Promise<void> {
-  await writeText(
-    path.join(params.packageRootAbs, 'package.json'),
-    JSON.stringify(
-      {
-        name: params.appId,
-        version: '0.0.0',
-        bin: 'bin.js',
-      },
-      null,
-      2,
-    ),
-  );
-  await writeText(
-    path.join(params.packageRootAbs, 'bin.js'),
-    [
-      "'use strict';",
-      "if (!process.argv.includes('--dominds-app')) throw new Error('expected --dominds-app');",
-      'const json = {',
-      `  appId: ${JSON.stringify(params.appId)},`,
-      '  package: {',
-      `    name: ${JSON.stringify(params.appId)},`,
-      "    version: '0.0.0',",
-      '    rootAbs: process.cwd(),',
-      '  },',
-      `  host: { kind: 'node_module', moduleRelPath: ${JSON.stringify(params.moduleRelPath)}, exportName: ${JSON.stringify(params.exportName)} },`,
-      '};',
-      'process.stdout.write(JSON.stringify(json));',
-      '',
-    ].join('\n'),
-  );
-  await writeText(
-    path.join(params.packageRootAbs, '.minds', 'app.yaml'),
-    ['apiVersion: dominds.io/v1alpha1', 'kind: DomindsApp', `id: ${params.appId}`, ''].join('\n'),
-  );
-}
-
+const evidence = semanticEvidenceCollector('dominds-app-doctor-handshake-');
 async function main(): Promise<void> {
-  const tmpRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'dominds-apps-doctor-'));
-  const appId = '@longrun-ai/doctor-case';
-  const packageRootAbs = path.join(tmpRoot, 'dominds-apps', '@longrun-ai', 'doctor-case');
-
-  try {
-    await writeText(
-      path.join(tmpRoot, '.minds', 'app.yaml'),
-      [
-        'apiVersion: dominds.io/v1alpha1',
-        'kind: DomindsApp',
-        'id: rtws_root',
-        'dependencies:',
-        `  - id: ${JSON.stringify(appId)}`,
-        '',
-      ].join('\n'),
+  await withTempRtws(async (rtws) => {
+    const id = '@longrun-ai/doctor-case';
+    const supplied = await writeLocalApp(
+      path.join(rtws, 'dominds-apps', '@longrun-ai', 'doctor-case'),
+      id,
     );
-    await writeText(
-      path.join(tmpRoot, '.minds', 'app-lock.yaml'),
-      [
-        'schemaVersion: 1',
-        'apps:',
-        `  - id: ${JSON.stringify(appId)}`,
-        '    package:',
-        `      name: ${JSON.stringify(appId)}`,
-        "      version: '0.0.0'",
-        '',
-      ].join('\n'),
+    await writeAppManifest(rtws, 'rtws_root', [id]);
+    await writeAppText(
+      path.join(rtws, '.minds', 'app-lock.yaml'),
+      JSON.stringify({ schemaVersion: 1, apps: [{ id, package: { name: id, version: '0.0.0' } }] }),
     );
-    await writeText(
-      path.join(tmpRoot, '.apps', 'resolution.yaml'),
-      [
-        'schemaVersion: 1',
-        'apps:',
-        `  - id: ${JSON.stringify(appId)}`,
-        '    enabled: true',
-        '    source:',
-        '      kind: local',
-        `      pathAbs: ${JSON.stringify(packageRootAbs)}`,
-        '    assignedPort: null',
-        '    installJson:',
-        `      appId: ${JSON.stringify(appId)}`,
-        '      package:',
-        `        name: ${JSON.stringify(appId)}`,
-        "        version: '0.0.0'",
-        `        rootAbs: ${JSON.stringify(packageRootAbs)}`,
-        '      host:',
-        '        kind: node_module',
-        '        moduleRelPath: src/app-host.js',
-        '        exportName: createDomindsAppHost',
-        '',
-      ].join('\n'),
+    await writeAppText(
+      path.join(rtws, '.apps', 'configuration.yaml'),
+      'schemaVersion: 1\nresolutionStrategy:\n  order: [local]\n',
     );
-
-    await writeLocalPackage({
-      packageRootAbs,
-      appId,
-      moduleRelPath: 'dist/app.js',
-      exportName: 'createDomindsApp',
-    });
-
-    const report = await runDoctor({ rtwsRootAbs: tmpRoot, appId });
-    assert.equal(report.diagnoses.length, 1);
-    const diagnosis = report.diagnoses[0];
-    assert.equal(diagnosis.status, 'degraded');
-    assert.ok(
-      diagnosis.reasons.some((reason) => reason.includes('entry module mismatch')),
-      `expected entry module mismatch, got ${JSON.stringify(diagnosis.reasons)}`,
-    );
-    assert.ok(
-      diagnosis.reasons.some((reason) => reason.includes('entry export mismatch')),
-      `expected entry export mismatch, got ${JSON.stringify(diagnosis.reasons)}`,
-    );
-    assert.ok(
-      diagnosis.nextActions.some((action) => action.includes('handshake only')),
-      `expected handshake guidance, got ${JSON.stringify(diagnosis.nextActions)}`,
-    );
-  } finally {
-    await fs.rm(tmpRoot, { recursive: true, force: true });
-  }
+    for (const [variant, moduleChanged, exportChanged] of [
+      ['module', true, false],
+      ['export', false, true],
+      ['both', true, true],
+      ['healthy', false, false],
+    ] as const) {
+      const entry = resolvedApp({
+        ...supplied,
+        host: {
+          ...supplied.host,
+          moduleRelPath: moduleChanged ? 'src/app-host.js' : supplied.host.moduleRelPath,
+          exportName: exportChanged ? 'createDomindsAppHost' : supplied.host.exportName,
+        },
+      });
+      await writeAppsResolutionFile({
+        rtwsRootAbs: rtws,
+        file: { schemaVersion: 1, apps: [entry] },
+      });
+      const before = await readAppStateFiles(rtws);
+      const report = await runDoctor({ rtwsRootAbs: rtws, appId: id });
+      assert.equal(report.diagnoses.length, 1);
+      const diagnosis = report.diagnoses[0];
+      assert.equal(diagnosis.appId, id);
+      assert.equal(diagnosis.status, variant === 'healthy' ? 'healthy' : 'degraded');
+      assert.equal(diagnosis.declared, true);
+      assert.equal(diagnosis.disabled, false);
+      assert.deepEqual(diagnosis.resolutionEntry, entry);
+      assert.deepEqual(diagnosis.freshProbe, {
+        appId: id,
+        source: entry.source,
+        hostModuleRelPath: supplied.host.moduleRelPath,
+        hostExportName: supplied.host.exportName,
+        packageName: id,
+        packageVersion: '0.0.0',
+      });
+      assert.deepEqual(report.freshResolutionById.get(id)?.installJson, supplied);
+      assert.deepEqual(report.issues, []);
+      if (variant === 'healthy') assert.deepEqual(diagnosis.reasons, []);
+      assert.deepEqual(await readAppStateFiles(rtws), before);
+      const cli = runDomindsCli(['doctor', id], rtws);
+      // doctor reports diagnosis; the current public CLI returns0 for completed degraded reports too.
+      assert.equal(cli.status, 0);
+      assert.deepEqual(await readAppStateFiles(rtws), before);
+      evidence.record({
+        id: variant,
+        scenario: `Fresh local app JSON is compared against a cached entry with ${variant === 'healthy' ? 'matching host module and export' : variant + ' host mismatch'}.`,
+        businessValue:
+          'Diagnose stale host metadata before edits without silently rewriting state or confusing app JSON with a running host.',
+        context: {
+          appId: id,
+          moduleMismatch: moduleChanged,
+          exportMismatch: exportChanged,
+          status: diagnosis.status,
+          appStateFilesUnchanged: true,
+          hostFactoryStarted: false,
+        },
+        reviewQuestions: [
+          'Do actual reasons identify every changed host field and distinguish cached values from fresh package data?',
+          'Are next actions usable and consistent with read-only diagnosis, without claiming a host was started or silently fixed?',
+          'For the healthy control, does the actual guidance avoid inventing a mismatch?',
+        ],
+        actualText: JSON.stringify({ diagnosis, stdout: cli.stdout, stderr: cli.stderr }, null, 2),
+      });
+    }
+  });
+  await evidence.write();
+  console.log(
+    'doctor compares each fresh host field, reports degraded or healthy state and preserves every App state file: passed',
+  );
 }
-
-main().catch((err: unknown) => {
-  console.error(err instanceof Error ? (err.stack ?? err.message) : String(err));
-  process.exit(1);
+main().catch((error: unknown) => {
+  console.error(error);
+  process.exitCode = 1;
 });
