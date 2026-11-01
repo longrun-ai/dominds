@@ -1,164 +1,159 @@
-#!/usr/bin/env tsx
-
 import assert from 'node:assert/strict';
 import fs from 'node:fs/promises';
-import os from 'node:os';
-import path from 'node:path';
-
-import type { Dialog } from '../main/dialog';
-import { getProblemsSnapshot, removeProblemsByPrefix } from '../main/problems';
+import {
+  getProblemsSnapshot,
+  reconcileProblemsByPrefix,
+  removeProblemsByPrefix,
+} from '../main/problems';
+import { setWorkLanguage } from '../main/runtime/work-language';
 import { Team } from '../main/team';
-import '../main/tools/builtins';
 import {
   teamMgmtClearProblemsTool,
   teamMgmtListProblemsTool,
   teamMgmtValidateTeamCfgTool,
 } from '../main/tools/team_mgmt';
+import { semanticEvidenceCollector } from './helpers/semantic-evidence';
+import { toolOutputData } from './helpers/tool-output';
+import { createMainDialog, withTempRtws, writeStandardMinds } from './kernel-driver/helpers';
 
-const TEAM_PROBLEM_PREFIX = 'team/team_yaml_error/';
-
-async function writeText(filePathAbs: string, content: string): Promise<void> {
-  await fs.mkdir(path.dirname(filePathAbs), { recursive: true });
-  await fs.writeFile(filePathAbs, content, 'utf8');
-}
-
-async function withTempRtws(run: () => Promise<void>): Promise<void> {
-  const tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), 'dominds-team-mgmt-problems-'));
-  const oldCwd = process.cwd();
-  try {
-    process.chdir(tmpDir);
-    await run();
-  } finally {
-    process.chdir(oldCwd);
-    await fs.rm(tmpDir, { recursive: true, force: true });
-  }
-}
-
-function listTeamProblems(): ReturnType<typeof getProblemsSnapshot>['problems'] {
-  return getProblemsSnapshot().problems.filter((problem) =>
-    problem.id.startsWith(TEAM_PROBLEM_PREFIX),
-  );
-}
-
-async function main(): Promise<void> {
-  await withTempRtws(async () => {
-    removeProblemsByPrefix(TEAM_PROBLEM_PREFIX);
-
-    await writeText(
-      path.join(process.cwd(), '.minds', 'llm.yaml'),
-      [
-        'providers:',
-        '  stub:',
-        '    name: Stub',
-        '    apiType: openai',
-        '    baseUrl: https://example.invalid',
-        '    apiKeyEnvVar: STUB_API_KEY',
-        '    models:',
-        '      fake_model: { name: "fake-model" }',
-        '',
-      ].join('\n'),
-    );
-
-    const invalidTeamYaml = [
-      'member_defaults:',
-      '  provider: stub',
-      '  model: fake_model',
-      'members:',
-      '  tester:',
-      '    name: 123',
-      '',
-    ].join('\n');
-    const validTeamYaml = [
-      'member_defaults:',
-      '  provider: stub',
-      '  model: fake_model',
-      'members:',
-      '  tester:',
-      '    name: Tester',
-      '',
-    ].join('\n');
-
-    await writeText(path.join(process.cwd(), '.minds', 'team.yaml'), invalidTeamYaml);
-
-    const dlg = {
-      getLastUserLanguageCode: () => 'en' as const,
-    } as unknown as Dialog;
+const evidence = semanticEvidenceCollector('dominds-problems-lifecycle-');
+const prefix = 'team/team_yaml_error/';
+const id = prefix + 'members/tester/name/invalid_ignored';
+const teamYaml = (valid: boolean) =>
+  `member_defaults:\n  provider: local-mock\n  model: default\nmembers:\n  tester:\n    name: ${valid ? 'Tester' : '123'}\n`;
+async function main() {
+  await withTempRtws(async (rtws) => {
+    await writeStandardMinds(rtws);
+    const dialog = await createMainDialog();
     const caller = new Team.Member({ id: 'tester', name: 'Tester' });
-
-    const invalidOut = (await teamMgmtValidateTeamCfgTool.call(dlg, caller, {})).content;
-    assert.ok(
-      invalidOut.includes('Active Problems'),
-      'validate_team_cfg should report active problems in a dedicated section',
-    );
-    assert.ok(
-      listTeamProblems().some((problem) => problem.resolved !== true),
-      'invalid team.yaml should leave active team problems in the snapshot',
-    );
-
-    const prematureClearOut = (
-      await teamMgmtClearProblemsTool.call(dlg, caller, {
+    for (const language of ['en', 'zh'] as const) {
+      removeProblemsByPrefix(prefix);
+      setWorkLanguage(language);
+      dialog.setLastUserLanguageCode(language);
+      await fs.writeFile('.minds/team.yaml', teamYaml(false));
+      async function observe(phase: string, actualText: string) {
+        evidence.record({
+          id: phase + '-' + language,
+          scenario: phase,
+          businessValue:
+            'An agent must distinguish active problems from resolved history and clear only the requested records.',
+          context: {
+            language,
+            teamYaml: await fs.readFile('.minds/team.yaml', 'utf8'),
+            snapshot: JSON.stringify(getProblemsSnapshot()),
+          },
+          reviewQuestions: [
+            'Does the full output accurately distinguish active issues, resolved history, and any records actually cleared?',
+            'Are the source/path scope and suggested next action consistent with the supplied state?',
+          ],
+          actualText,
+        });
+      }
+      const invalid = await teamMgmtValidateTeamCfgTool.call(dialog, caller, {});
+      const active = getProblemsSnapshot().problems.find((p) => p.id === id);
+      assert.ok(
+        active && active.kind === 'team_workspace_config_error',
+        JSON.stringify(getProblemsSnapshot()),
+      );
+      assert.equal(active.source, 'team');
+      assert.equal(active.severity, 'warning');
+      const retainedMember = (await Team.load()).getMember('tester');
+      assert.ok(retainedMember);
+      assert.equal(retainedMember.name, 'tester');
+      assert.equal(active.detail.filePath, '.minds/team.yaml');
+      assert.equal(active.resolved, false);
+      assert.equal(active.resolvedAt, null);
+      await observe('invalid-configuration', invalid.content);
+      const beforeClear = getProblemsSnapshot();
+      const premature = await teamMgmtClearProblemsTool.call(dialog, caller, {
         source: 'team',
         path: 'team.yaml',
-      })
-    ).content;
-    assert.ok(
-      prematureClearOut.includes('cleared 0 problem(s)'),
-      'default clear should not remove active problems',
-    );
-
-    await writeText(path.join(process.cwd(), '.minds', 'team.yaml'), validTeamYaml);
-
-    const validOut = (await teamMgmtValidateTeamCfgTool.call(dlg, caller, {})).content;
-    assert.ok(
-      validOut.includes('team.yaml Validation Passed'),
-      'validate_team_cfg should pass after team.yaml is fixed',
-    );
-    assert.ok(
-      validOut.includes('Resolved But Not Yet Cleared'),
-      'resolved history should be reported in a separate section',
-    );
-    assert.ok(
-      validOut.includes('team_mgmt_clear_problems({ source: "team", path: "team.yaml" })'),
-      'resolved-history section should include the clear hint',
-    );
-
-    const listedOut = (
-      await teamMgmtListProblemsTool.call(dlg, caller, {
+      });
+      assert.equal(premature.outcome, 'success');
+      assert.deepEqual(
+        getProblemsSnapshot(),
+        beforeClear,
+        'default clear cannot remove or mutate active records',
+      );
+      await observe('clear-active-default', premature.content);
+      await fs.writeFile('.minds/team.yaml', teamYaml(true));
+      const repaired = await teamMgmtValidateTeamCfgTool.call(dialog, caller, {});
+      assert.equal(repaired.outcome, 'success');
+      const resolved = getProblemsSnapshot().problems.find((p) => p.id === id);
+      assert.ok(resolved?.resolved && resolved.resolvedAt);
+      assert.deepEqual(
+        { ...resolved, resolved: active.resolved, resolvedAt: active.resolvedAt },
+        active,
+      );
+      await observe('repaired-configuration', repaired.content);
+      const listed = await teamMgmtListProblemsTool.call(dialog, caller, {
         source: 'team',
         path: 'team.yaml',
-      })
-    ).content;
-    assert.ok(
-      listedOut.includes('Resolved But Not Yet Cleared'),
-      'list_problems should split resolved history into its own section',
-    );
-    assert.ok(
-      listedOut.includes('active: false'),
-      'list_problems YAML block should expose active=false for resolved history',
-    );
-
-    const clearOut = (
-      await teamMgmtClearProblemsTool.call(dlg, caller, {
+      });
+      assert.equal(listed.outcome, 'success');
+      const data = toolOutputData(listed.content);
+      assert.equal(data.active_count, 0);
+      assert.equal(data.resolved_count, 1);
+      assert.equal(data.returned_count, 1);
+      assert.ok(Array.isArray(data.problems));
+      const entry: unknown = data.problems[0];
+      assert.ok(
+        entry &&
+          typeof entry === 'object' &&
+          'problem_id' in entry &&
+          'active' in entry &&
+          'resolved_at' in entry,
+      );
+      assert.equal(entry.problem_id, id);
+      assert.equal(entry.active, false);
+      assert.equal(entry.resolved_at, resolved.resolvedAt);
+      await observe('list-resolved-history', listed.content);
+      // Real resolved records isolate both source and path filtering of the public clear tool.
+      reconcileProblemsByPrefix('fixture/unmatched/', [
+        {
+          id: 'fixture/unmatched/team-other-path',
+          timestamp: '2026/10/31-00:00:00',
+          kind: 'team_workspace_config_error',
+          source: 'team',
+          severity: 'warning',
+          message: 'Supplied other-path fixture data.',
+          detail: { filePath: '.minds/other.yaml', errorText: 'Supplied fixture detail.' },
+        },
+        {
+          id: 'fixture/unmatched/mcp-same-path',
+          timestamp: '2026/10/31-00:00:00',
+          kind: 'mcp_workspace_config_error',
+          source: 'mcp',
+          severity: 'error',
+          message: 'Supplied other-source fixture data.',
+          detail: { filePath: '.minds/team.yaml', errorText: 'Supplied fixture detail.' },
+        },
+      ]);
+      reconcileProblemsByPrefix('fixture/unmatched/', []);
+      const unmatched = getProblemsSnapshot().problems.filter((p) =>
+        p.id.startsWith('fixture/unmatched/'),
+      );
+      assert.equal(unmatched.length, 2);
+      const cleared = await teamMgmtClearProblemsTool.call(dialog, caller, {
         source: 'team',
         path: 'team.yaml',
-      })
-    ).content;
-    assert.ok(
-      clearOut.includes('cleared 1 problem(s)'),
-      'clear_problems should remove resolved team problems by source/path',
-    );
-    assert.deepEqual(
-      listTeamProblems(),
-      [],
-      'clearing resolved team problems should leave no team problem residue',
-    );
+      });
+      assert.equal(cleared.outcome, 'success');
+      assert.equal(
+        getProblemsSnapshot().problems.some((p) => p.id === id),
+        false,
+      );
+      assert.deepEqual(
+        getProblemsSnapshot().problems.filter((p) => p.id.startsWith('fixture/unmatched/')),
+        unmatched,
+      );
+      await observe('clear-resolved-filtered', cleared.content);
+      removeProblemsByPrefix('fixture/unmatched/');
+    }
   });
-
-  console.log('team_mgmt problems lifecycle tests: ok');
+  await evidence.write();
 }
-
-main().catch((err: unknown) => {
-  const message = err instanceof Error ? err.message : String(err);
-  console.error(`team_mgmt problems lifecycle tests: failed: ${message}`);
-  process.exit(1);
+main().catch((error) => {
+  console.error(error);
+  process.exitCode = 1;
 });

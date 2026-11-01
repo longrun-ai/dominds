@@ -1,16 +1,18 @@
 import assert from 'node:assert/strict';
 import * as fs from 'node:fs/promises';
-import os from 'node:os';
 import path from 'node:path';
 
 import { registerEnabledAppsToolProxies } from '../main/apps/runtime';
-import type { Dialog } from '../main/dialog';
 import { getProblemsSnapshot, removeProblemsByPrefix } from '../main/problems';
 import { setWorkLanguage } from '../main/runtime/work-language';
 import { Team } from '../main/team';
 import '../main/tools/builtins';
 import { teamMgmtOverwriteEntireFileTool } from '../main/tools/team_mgmt';
 
+import { semanticEvidenceCollector } from './helpers/semantic-evidence';
+import { toolOutputData } from './helpers/tool-output';
+import { createMainDialog, withTempRtws, writeStandardMinds } from './kernel-driver/helpers';
+const evidence = semanticEvidenceCollector('dominds-derived-problems-');
 const APPS_PROBLEM_PREFIX = 'apps/apps_resolution/';
 const TEAM_PROBLEM_PREFIX = 'team/team_yaml_error/';
 
@@ -45,16 +47,14 @@ function listActiveProblemIds(prefix: string): string[] {
 }
 
 async function main(): Promise<void> {
-  const oldCwd = process.cwd();
-  const tmpRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'dominds-team_mgmt-derived-problems-'));
-
-  try {
-    process.chdir(tmpRoot);
+  await withTempRtws(async (tmpRoot) => {
+    await writeStandardMinds(tmpRoot);
     setWorkLanguage('en');
     removeProblemsByPrefix(APPS_PROBLEM_PREFIX);
     removeProblemsByPrefix(TEAM_PROBLEM_PREFIX);
 
-    const dlg = {} as unknown as Dialog;
+    const dlg = await createMainDialog();
+    dlg.setLastUserLanguageCode('en');
     const alice = new Team.Member({
       id: 'alice',
       name: 'Alice',
@@ -122,14 +122,17 @@ async function main(): Promise<void> {
       'test bootstrap must register built-in toolsets so shadow-member team_mgmt does not appear as noise',
     );
 
-    assert.ok(
-      listActiveProblemIds(APPS_PROBLEM_PREFIX).length > 0,
-      'expected active apps resolution problems before fixing app.yaml',
-    );
-    assert.ok(
-      listActiveProblemIds(TEAM_PROBLEM_PREFIX).length > 0,
-      'expected active team yaml problems before fixing team.yaml',
-    );
+    const appId = 'apps/apps_resolution/required_dependency_missing/missing_required_app';
+    const teamId = 'team/team_yaml_error/members/tester/name/invalid_ignored';
+    const before = getProblemsSnapshot().problems;
+    const appProblem = before.find((p) => p.id === appId);
+    const teamProblem = before.find((p) => p.id === teamId);
+    assert.ok(appProblem && !appProblem.resolved);
+    assert.ok(teamProblem && !teamProblem.resolved, JSON.stringify(before));
+    assert.equal(appProblem.kind, 'generic_problem');
+    assert.equal(appProblem.source, 'system');
+    assert.equal(teamProblem.kind, 'team_workspace_config_error');
+    assert.equal(teamProblem.source, 'team');
 
     const appFileAbs = path.join(tmpRoot, '.minds', 'app.yaml');
     const appState = await readFileState(appFileAbs);
@@ -141,8 +144,36 @@ async function main(): Promise<void> {
         content: validAppYaml,
       })
     ).content;
-    assert.ok(overwriteAppResult.includes('status: ok'));
-    assert.ok(overwriteAppResult.includes('mode: overwrite_entire_file'));
+    assert.equal(toolOutputData(overwriteAppResult).status, 'ok');
+    assert.equal(toolOutputData(overwriteAppResult).mode, 'overwrite_entire_file');
+    assert.equal(await fs.readFile(appFileAbs, 'utf8'), validAppYaml);
+    const afterApp = getProblemsSnapshot().problems;
+    const resolvedApp = afterApp.find((p) => p.id === appId);
+    assert.ok(resolvedApp?.resolved && resolvedApp.resolvedAt);
+    assert.deepEqual(
+      { ...resolvedApp, resolved: appProblem.resolved, resolvedAt: appProblem.resolvedAt },
+      appProblem,
+    );
+    assert.deepEqual(
+      afterApp.find((p) => p.id === teamId),
+      teamProblem,
+    );
+    evidence.record({
+      id: 'app-repair-receipt',
+      scenario:
+        'The scoped write repairs a missing component dependency while tester.name remains invalid.',
+      businessValue:
+        'A successful configuration edit must refresh its derived Problems without masking an unrelated team error.',
+      context: {
+        before: JSON.stringify(before),
+        after: JSON.stringify(afterApp),
+        file: validAppYaml,
+      },
+      reviewQuestions: [
+        'Is the actual write receipt consistent with the file written and the bounded scope of the operation?',
+      ],
+      actualText: overwriteAppResult,
+    });
     assert.deepEqual(
       listActiveProblemIds(APPS_PROBLEM_PREFIX),
       [],
@@ -163,8 +194,35 @@ async function main(): Promise<void> {
         content: validTeamYaml,
       })
     ).content;
-    assert.ok(overwriteTeamResult.includes('status: ok'));
-    assert.ok(overwriteTeamResult.includes('mode: overwrite_entire_file'));
+    assert.equal(toolOutputData(overwriteTeamResult).status, 'ok');
+    assert.equal(toolOutputData(overwriteTeamResult).mode, 'overwrite_entire_file');
+    assert.equal(await fs.readFile(teamFileAbs, 'utf8'), validTeamYaml);
+    const afterTeam = getProblemsSnapshot().problems;
+    const resolvedTeam = afterTeam.find((p) => p.id === teamId);
+    assert.ok(resolvedTeam?.resolved && resolvedTeam.resolvedAt);
+    assert.deepEqual(
+      { ...resolvedTeam, resolved: teamProblem.resolved, resolvedAt: teamProblem.resolvedAt },
+      teamProblem,
+    );
+    assert.deepEqual(
+      afterTeam.find((p) => p.id === appId),
+      resolvedApp,
+    );
+    evidence.record({
+      id: 'team-repair-receipt',
+      scenario: 'The scoped write now repairs tester.name and resolves that same Problems record.',
+      businessValue:
+        'An executing agent can continue from the actual accepted configuration write.',
+      context: {
+        before: JSON.stringify(afterApp),
+        after: JSON.stringify(afterTeam),
+        file: validTeamYaml,
+      },
+      reviewQuestions: [
+        'Does the complete receipt describe the actual write without overclaiming validation or other execution?',
+      ],
+      actualText: overwriteTeamResult,
+    });
     assert.deepEqual(
       listActiveProblemIds(TEAM_PROBLEM_PREFIX),
       [],
@@ -172,12 +230,11 @@ async function main(): Promise<void> {
     );
 
     console.log('✅ team_mgmt-derived-problems-refresh tests passed');
-  } finally {
-    process.chdir(oldCwd);
-    await fs.rm(tmpRoot, { recursive: true, force: true });
-    removeProblemsByPrefix(APPS_PROBLEM_PREFIX);
-    removeProblemsByPrefix(TEAM_PROBLEM_PREFIX);
-  }
+  });
+  await evidence.write();
 }
 
-void main();
+main().catch((error) => {
+  console.error(error);
+  process.exitCode = 1;
+});

@@ -1,9 +1,5 @@
 import assert from 'node:assert/strict';
 import * as fs from 'node:fs/promises';
-import os from 'node:os';
-import path from 'node:path';
-import type { DialogStore } from '../main/dialog';
-import { MainDialog } from '../main/dialog';
 import { setWorkLanguage } from '../main/runtime/work-language';
 import { Team } from '../main/team';
 import type { FuncTool, ToolArguments } from '../main/tool';
@@ -21,6 +17,11 @@ import {
   teamMgmtPrepareOccurrenceReplaceTool,
   teamMgmtTools,
 } from '../main/tools/team_mgmt';
+
+import { semanticEvidenceCollector } from './helpers/semantic-evidence';
+import { toolOutputData } from './helpers/tool-output';
+import { createMainDialog, withTempRtws, writeStandardMinds } from './kernel-driver/helpers';
+const evidence = semanticEvidenceCollector('dominds-team-path-boundary-');
 
 type MirrorSpec = Readonly<{
   ws: string;
@@ -104,29 +105,6 @@ function assertIncludesAll(actual: readonly string[], expected: readonly string[
   }
 }
 
-async function assertTeamMgmtPathEscapeRejected(params: {
-  dlg: MainDialog;
-  caller: Team.Member;
-  tool: FuncTool;
-  args: ToolArguments;
-  tmpRoot: string;
-}) {
-  const output = (await params.tool.call(params.dlg, params.caller, params.args)).content;
-  assert.ok(
-    output.includes('Path must be within .minds/'),
-    `${params.tool.name} should reject path traversal, got:\n${output}`,
-  );
-  await assert.rejects(
-    async () => await fs.stat(path.join(params.tmpRoot, 'escape.txt')),
-    (error: unknown) =>
-      typeof error === 'object' &&
-      error !== null &&
-      'code' in error &&
-      (error as { code?: unknown }).code === 'ENOENT',
-    `${params.tool.name} must not create or modify an escaped file`,
-  );
-}
-
 async function main(): Promise<void> {
   setWorkLanguage('en');
 
@@ -167,83 +145,130 @@ async function main(): Promise<void> {
   assert.ok(teamNames.has('team_mgmt_prepare_occurrence_replace'));
   assert.ok(teamNames.has('team_mgmt_apply_occurrence_replace'));
 
-  const tmpRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'dominds-team-mgmt-parity-'));
-  const oldCwd = process.cwd();
-  try {
-    process.chdir(tmpRoot);
-    const dlg = new MainDialog(
-      {} as unknown as DialogStore,
-      'team-mgmt-parity.tsk',
-      undefined,
-      'tester',
-    );
+  await withTempRtws(async (rtws) => {
+    await writeStandardMinds(rtws);
     const caller = new Team.Member({
       id: 'tester',
       name: 'Tester',
       read_dirs: ['**'],
       write_dirs: ['**'],
     });
-    const pathEscapeCases: ReadonlyArray<Readonly<{ tool: FuncTool; args: ToolArguments }>> = [
-      { tool: teamMgmtCreateNewFileTool, args: { path: '../escape.txt', content: 'x\n' } },
-      {
-        tool: teamMgmtOverwriteEntireFileTool,
-        args: {
-          path: '../escape.txt',
-          known_old_total_lines: 0,
-          known_old_total_bytes: 0,
-          content: 'x\n',
+    for (const language of ['en', 'zh'] as const) {
+      setWorkLanguage(language);
+      const dlg = await createMainDialog();
+      dlg.setLastUserLanguageCode(language);
+      const seed = 'alpha\nanchor\nBEGIN\nold\nEND\nomega\n';
+      const cases: ReadonlyArray<{
+        tool: FuncTool;
+        args: ToolArguments;
+        expected: string;
+        creates?: boolean;
+        prepares?: boolean;
+      }> = [
+        {
+          tool: teamMgmtCreateNewFileTool,
+          args: { content: 'x\n' },
+          expected: 'x\n',
+          creates: true,
         },
-      },
-      {
-        tool: teamMgmtFileRangeEditTool,
-        args: { path: '../escape.txt', range: '1~1', content: 'x\n' },
-      },
-      { tool: teamMgmtFileAppendTool, args: { path: '../escape.txt', content: 'x\n' } },
-      {
-        tool: teamMgmtFileInsertAfterTool,
-        args: { path: '../escape.txt', anchor: 'anchor', content: 'x\n' },
-      },
-      {
-        tool: teamMgmtFileInsertBeforeTool,
-        args: { path: '../escape.txt', anchor: 'anchor', content: 'x\n' },
-      },
-      {
-        tool: teamMgmtFileBlockReplaceTool,
-        args: {
-          path: '../escape.txt',
-          start_anchor: 'BEGIN',
-          end_anchor: 'END',
-          content: 'x\n',
+        {
+          tool: teamMgmtOverwriteEntireFileTool,
+          args: {
+            known_old_total_lines: 6,
+            known_old_total_bytes: Buffer.byteLength(seed),
+            content: 'x\n',
+          },
+          expected: 'x\n',
         },
-      },
-      {
-        tool: teamMgmtPrepareOccurrenceReplaceTool,
-        args: { path: '../escape.txt', find: 'old', content: 'new' },
-      },
-    ];
-    for (const testCase of pathEscapeCases) {
-      await assertTeamMgmtPathEscapeRejected({
-        dlg,
-        caller,
-        tool: testCase.tool,
-        args: testCase.args,
-        tmpRoot,
-      });
+        {
+          tool: teamMgmtFileRangeEditTool,
+          args: { range: '1~1', content: 'x\n' },
+          expected: 'x\nanchor\nBEGIN\nold\nEND\nomega\n',
+        },
+        { tool: teamMgmtFileAppendTool, args: { content: 'x\n' }, expected: seed + 'x\n' },
+        {
+          tool: teamMgmtFileInsertAfterTool,
+          args: { anchor: 'anchor', content: 'x\n' },
+          expected: 'alpha\nanchor\nx\nBEGIN\nold\nEND\nomega\n',
+        },
+        {
+          tool: teamMgmtFileInsertBeforeTool,
+          args: { anchor: 'anchor', content: 'x\n' },
+          expected: 'alpha\nx\nanchor\nBEGIN\nold\nEND\nomega\n',
+        },
+        {
+          tool: teamMgmtFileBlockReplaceTool,
+          args: { start_anchor: 'BEGIN', end_anchor: 'END', content: 'x\n' },
+          expected: 'alpha\nanchor\nBEGIN\nx\nEND\nomega\n',
+        },
+        {
+          tool: teamMgmtPrepareOccurrenceReplaceTool,
+          args: { find: 'old', content: 'new' },
+          expected: seed,
+          prepares: true,
+        },
+      ];
+      for (const [index, testCase] of cases.entries()) {
+        const file = `boundary-${language}-${index}.txt`;
+        if (!testCase.creates) await fs.writeFile(file, seed);
+        const escapedArgs = { ...testCase.args, path: '../' + file };
+        const denied = await testCase.tool.call(dlg, caller, escapedArgs);
+        assert.equal(denied.outcome, 'failure');
+        if (testCase.creates) await assert.rejects(fs.stat(file), { code: 'ENOENT' });
+        else
+          assert.equal(
+            await fs.readFile(file, 'utf8'),
+            seed,
+            'the existing external file remains byte-for-byte intact',
+          );
+        const legalArgs = { ...testCase.args, path: file };
+        if (!testCase.creates) await fs.writeFile('.minds/' + file, seed);
+        const accepted = await testCase.tool.call(dlg, caller, legalArgs);
+        assert.equal(accepted.outcome, 'success');
+        assert.equal(await fs.readFile('.minds/' + file, 'utf8'), testCase.expected);
+        if (testCase.prepares) {
+          const planId = toolOutputData(accepted.content).plan_id;
+          assert.ok(typeof planId === 'string' && planId.length > 0);
+          const applied = await teamMgmtApplyOccurrenceReplaceTool.call(dlg, caller, {
+            plan_id: planId,
+          });
+          assert.equal(applied.outcome, 'success');
+          assert.equal(
+            await fs.readFile('.minds/' + file, 'utf8'),
+            'alpha\nanchor\nBEGIN\nnew\nEND\nomega\n',
+          );
+        }
+        if (!testCase.creates) assert.equal(await fs.readFile(file, 'utf8'), seed);
+        evidence.record({
+          id: testCase.tool.name + '-' + language,
+          scenario:
+            'A scoped configuration-edit call attempts to escape .minds; the same supplied arguments succeed for a legal configuration path.',
+          businessValue:
+            'Protect existing workspace data while giving an executing agent a usable explanation of the configuration-edit boundary.',
+          context: {
+            language,
+            rejectedArgs: JSON.stringify(escapedArgs),
+            acceptedArgs: JSON.stringify(legalArgs),
+            externalBefore: testCase.creates ? 'ABSENT' : seed,
+            externalAfter: testCase.creates ? 'ABSENT' : await fs.readFile(file, 'utf8'),
+            scope:
+              'Actual file effects and parameter-name/required-field compatibility; not complete behavior equivalence of ws_mod and team_mgmt.',
+          },
+          reviewQuestions: [
+            'Does the complete rejection identify the configuration path boundary and help the agent select a valid path?',
+          ],
+          actualText: denied.content,
+        });
+      }
     }
-
     assert.deepEqual(schemaProperties(teamMgmtApplyOccurrenceReplaceTool), [
       'plan_id',
       'show_diff',
     ]);
-
-    console.log('✅ team_mgmt/ws_mod parity tests passed');
-  } finally {
-    process.chdir(oldCwd);
-    await fs.rm(tmpRoot, { recursive: true, force: true });
-  }
+  });
+  await evidence.write();
 }
-
-void main().catch((error: unknown) => {
+main().catch((error) => {
   console.error(error);
-  process.exit(1);
+  process.exitCode = 1;
 });

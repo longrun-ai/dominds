@@ -31,6 +31,14 @@ const context = [
 ];
 
 const configuration = [
+  'mcp-config.ts',
+  'mcp-disable.ts',
+  'mcp-streamable-http-diagnostics.ts',
+  'team-imports-members.ts',
+  'team_mgmt-derived-problems-refresh.ts',
+  'team_mgmt-problems-lifecycle.ts',
+  'team_mgmt-ws-mod-parity.ts',
+
   'toolsets/team-mgmt-output-truncation.ts',
   'toolsets/tool-availability-snapshot.ts',
   'team-file-ext-permissions.ts',

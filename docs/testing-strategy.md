@@ -591,3 +591,11 @@ WebSocket保真实HTTP0端口/ws升级、welcome zh与en/zh支持、counts同epo
 独立审查发现本批首版runner把--help子进程exit0计成live通过；真实无网络反例先得到1pass，现声明live entry还须唯一owned观察材料、非空全passed transport attempts且无自动意义verdict，help/no-op/empty/failed不能准入。普通77也不能被掩为skip：只有显式外部lane及完整JSON前置记录可skip。八项运行器回归保护这些机器状态。首次新control在已收11份前置文本后，因自造nested TMPDIR使tsx Unix socket路径过长而失败；现场/原源保留，改exclusive自有短物理路径，正常成功清理、失败保留，不加timeout或重跑产品至绿。两处新控制夹具的unknown闭包/属性类型以原生窄化修正，无产品类型改动。
 
 最新12份前置/帮助全文均经独立主观评审；历史11份也逐例另评，历史文本可通过不等于旧control行为接受。完整23材料、真实scope、初red与最终判决见[本批记录](../tests/semantic/reviews/2026-10-31-provider-probes.json)。新controlled case是有真实断言的候选，两个共用helper不是自动通过测试；保所有原12候选。当前293TS、39support、254候选，审查221、余33项，套件外32、缺单独script27、失效直接入口与陈旧账本均零。本批只重采新producer12份，不沿用或重判其它29份新输出；完整provider-local语义lane未来生成41份仍各自pending。
+
+### MCP 与团队配置补审（七项）
+
+原七项1531行逐项审计，保留现有组件成员导入兼容、headers/transform/catalog、禁用与重启、派生 Problems 和编辑权限的业务价值。删除诊断和回执的句子/关键词判义；协议字段、ID、给定原文保真与实际文件/注册/问题状态仍精确比较。统一 CLI 启动固定隔离目录、真实 Dialog 与失败保留；两个 MCP 场景共享自有 loopback 协议端点，SDK、supervisor、registry 保持真实。端点先能握手并列出给定工具，之后 HTTP500 空体同时 health200 的失败由实际请求取证。禁用撤下已加载工具且保留手册，缺省及已有 enabled 都能写 false，重复禁用不改字节；非法配置清除旧 placeholder，失败 restart 仍已持久启用。没有使用外部 MCP 服务或执行 MCP 工具。
+
+Problems 保留同ID及原始详情的 active→resolved→按 source/path 删除链，默认 clear 不改变 active 快照，未匹配的已解决记录保留。真实 scoped write 修组件配置不得掩盖未修团队问题，文件全文与派生记录均核验。非法可选 name 的真实行为是 warning 且成员仍可用；新夹具最初误认成字段级 error ID，已修正契约并保留失败证据，不当作产品缺陷。8种直接路径拒绝各有外部既存文件保全/缺席检查及相同参数的合法路径正控，prepare/apply 也核磁盘效果。9组 schema 只证明参数名、required 和来源字段兼容，未声称完整行为等价。
+
+原六项安全前提下基线通过；原 disable 的未受控端口9场景未执行，其受控替代已实际执行。新七项最终行为7/7；七个 producer 产生44份实际文本（包含双语禁用、Problems 和路径拒绝），由执行智能体逐例全文主观评审，详见[完整记录](../tests/semantic/reviews/2026-10-31-mcp-team-configuration.json)。这批没有产品改动，不虚构修复前 red；夹具预期错误和新增类型错误均须按失败记录。独立审查还发现导入夹具沿用失效旧模型ID，诊断本身准确但健康配置前提不足，改为已配置的local-mock/default并直接核成员provider/model与默认配置无active问题；原3份准确文本保留为历史，替代新3重新全文评。禁用再补整份YAML数据除enabled外保留、失败重启明确写true的核验，相关新7也重新全文评。最终44与历史10均分开保存在记录中。配置行为入口9→16，语义 producer7→14；本批仅生成新增七项的44份，不把旧输出自动继承为新验收。全量测试类型、标准构建/应用类型/格式、完整配置入口、smoke、运行器和文档导航检查的实际结果保存在同一记录；live供应商、外部组件服务与浏览器不属于本批通过范围。

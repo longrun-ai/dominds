@@ -1326,6 +1326,48 @@
       "lane": "provider-local",
       "value": "原生child CLI和本地真实OpenAI-compatible SDK验证11入口/39请求、前置零请求、反例失败exit、真实history回传与help不能冒充live接受；指导另评",
       "evidence": "Complete original12(3266lines), final source/assertion/entry and new controlled-case review; tests/semantic/reviews/2026-10-31-provider-probes.json. Given opaque command/PID/JSON fields, protocol IDs, counts, captured callback data and file effects are machine/data contracts; no keyword/marker judges task meaning. Live target/model/auth prerequisites, structured skipped77 and owned nonempty execution records distinguish no-op/help/skips from completed transport. Eleven real-vendor probes remain UNEXECUTED in this batch; controlled positives use one localhost OpenAI-compatible SDK only. Operator preflight/help text has explicit subjective review; raw vendor observations have no automatic meaning verdict. No genuine OAuth, all-vendor SDK, real-time, reasoning-quality, actual tool execution, browser or durable-dialog claim."
+    },
+    "mcp-config.ts": {
+      "status": "reviewed",
+      "lane": "configuration",
+      "value": "MCP headers的原值拼接与缺失拒绝、禁用/非法分类、可选manual容错与原文保真、分层transform和公开catalog ID",
+      "evidence": "MCP/team batch: complete original and final assertion audit; exact IDs, protocol/data fields, given text fidelity and actual file/registry/Problems effects. tests/semantic/reviews/2026-10-31-mcp-team-configuration.json retains the independent full-text review and execution scope. Any fresh semantic output remains pending."
+    },
+    "mcp-disable.ts": {
+      "status": "reviewed",
+      "lane": "configuration",
+      "value": "真实MCP加载、禁用撤下能力、保留手册、重复禁用不改字节、非法配置清注册、失败restart仍持久启用",
+      "evidence": "MCP/team batch: complete original and final assertion audit; exact IDs, protocol/data fields, given text fidelity and actual file/registry/Problems effects. tests/semantic/reviews/2026-10-31-mcp-team-configuration.json retains the independent full-text review and execution scope. Any fresh semantic output remains pending."
+    },
+    "mcp-streamable-http-diagnostics.ts": {
+      "status": "reviewed",
+      "lane": "configuration",
+      "value": "真实SDK正常握手与工具数据正控、HTTP500空体失败和health200实际取证",
+      "evidence": "MCP/team batch: complete original and final assertion audit; exact IDs, protocol/data fields, given text fidelity and actual file/registry/Problems effects. tests/semantic/reviews/2026-10-31-mcp-team-configuration.json retains the independent full-text review and execution scope. Any fresh semantic output remains pending."
+    },
+    "team-imports-members.ts": {
+      "status": "reviewed",
+      "lane": "configuration",
+      "value": "健康团队成员保留、非法组件导入诊断、from-only本地定义以及当前组件导入/本地覆盖兼容",
+      "evidence": "MCP/team batch: complete original and final assertion audit; exact IDs, protocol/data fields, given text fidelity and actual file/registry/Problems effects. tests/semantic/reviews/2026-10-31-mcp-team-configuration.json retains the independent full-text review and execution scope. Any fresh semantic output remains pending."
+    },
+    "team_mgmt-derived-problems-refresh.ts": {
+      "status": "reviewed",
+      "lane": "configuration",
+      "value": "真实配置写入后同ID派生问题自动解决，修复组件配置不得掩盖仍存在的团队问题",
+      "evidence": "MCP/team batch: complete original and final assertion audit; exact IDs, protocol/data fields, given text fidelity and actual file/registry/Problems effects. tests/semantic/reviews/2026-10-31-mcp-team-configuration.json retains the independent full-text review and execution scope. Any fresh semantic output remains pending."
+    },
+    "team_mgmt-problems-lifecycle.ts": {
+      "status": "reviewed",
+      "lane": "configuration",
+      "value": "非法可选名称不丢成员、active默认不可清、同ID resolved历史及source/path过滤清理保留未匹配记录",
+      "evidence": "MCP/team batch: complete original and final assertion audit; exact IDs, protocol/data fields, given text fidelity and actual file/registry/Problems effects. tests/semantic/reviews/2026-10-31-mcp-team-configuration.json retains the independent full-text review and execution scope. Any fresh semantic output remains pending."
+    },
+    "team_mgmt-ws-mod-parity.ts": {
+      "status": "reviewed",
+      "lane": "configuration",
+      "value": "9组参数名/required字段兼容、退役入口、8种越界拒绝及外部字节保全与同参数合法写正控",
+      "evidence": "MCP/team batch: complete original and final assertion audit; exact IDs, protocol/data fields, given text fidelity and actual file/registry/Problems effects. tests/semantic/reviews/2026-10-31-mcp-team-configuration.json retains the independent full-text review and execution scope. Any fresh semantic output remains pending."
     }
   },
   "retired": {

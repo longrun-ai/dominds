@@ -12,6 +12,23 @@ import {
 import { buildHttpHeaders } from '../main/mcp/supervisor';
 import { applyMcpIdTransforms } from '../main/mcp/tool-names';
 
+import { semanticEvidenceCollector } from './helpers/semantic-evidence';
+
+const evidence = semanticEvidenceCollector('dominds-mcp-config-');
+function diagnostic(id: string, scenario: string, actualText: string) {
+  evidence.record({
+    id,
+    scenario,
+    businessValue:
+      'An operator can locate the invalid configuration or missing host input without losing healthy capabilities.',
+    context: { scope: 'Pure config/header parsing; no network connection.' },
+    reviewQuestions: [
+      'Does the actual diagnostic accurately identify the supplied invalid field or missing input and its required type?',
+    ],
+    actualText,
+  });
+}
+
 const AUTH_ENV = 'DOMINDS_TEST_MCP_AUTH_TOKEN';
 const RAW_ENV = 'DOMINDS_TEST_MCP_RAW_HEADER';
 
@@ -99,12 +116,10 @@ servers:
       X-Literal: dominds
 `);
 
-  assert.equal(parsed.ok, true);
-  if (!parsed.ok) return;
+  assert.ok(parsed.ok);
 
   const cfg = parsed.config.servers.http;
-  assert.equal(cfg?.transport, 'streamable_http');
-  if (!cfg || cfg.transport !== 'streamable_http') return;
+  assert.ok(cfg && cfg.transport === 'streamable_http');
 
   assert.deepEqual(cfg.headers.Authorization, {
     kind: 'from_env',
@@ -129,9 +144,17 @@ servers:
   );
 
   withEnv({ [AUTH_ENV]: undefined, [RAW_ENV]: 'raw-token' }, () => {
-    assert.throws(
-      () => buildHttpHeaders(cfg, 'http'),
-      /missing required host env var 'DOMINDS_TEST_MCP_AUTH_TOKEN' \(for headers.Authorization\)/,
+    let failure: unknown;
+    try {
+      buildHttpHeaders(cfg, 'http');
+    } catch (error) {
+      failure = error;
+    }
+    assert.ok(failure instanceof Error);
+    diagnostic(
+      'missing-host-env',
+      `Authorization uses {prefix: 'Bearer ', env: '${AUTH_ENV}'}, which is unset; X-Raw is set.`,
+      failure.message,
     );
   });
 
@@ -147,10 +170,18 @@ servers:
         env: ${AUTH_ENV}
 `);
 
-  assert.equal(invalid.ok, true);
-  if (!invalid.ok) return;
+  assert.ok(invalid.ok);
   assert.equal(invalid.invalidServers.length, 1);
-  assert.match(invalid.invalidServers[0]?.errorText ?? '', /headers\.Authorization\.prefix/);
+  assert.deepEqual(
+    invalid.invalidServers.map((entry) => entry.serverId),
+    ['http'],
+  );
+  assert.deepEqual(Object.keys(invalid.config.servers), []);
+  diagnostic(
+    'invalid-header-prefix',
+    'http.headers.Authorization.prefix is number42 rather than a string.',
+    invalid.invalidServers[0]!.errorText,
+  );
 
   const disabled = parseMcpYaml(`
 version: 1
@@ -161,8 +192,7 @@ servers:
     url: http://127.0.0.1:3000/mcp
 `);
 
-  assert.equal(disabled.ok, true);
-  if (!disabled.ok) return;
+  assert.ok(disabled.ok);
   assert.deepEqual(Object.keys(disabled.config.servers), []);
   assert.deepEqual(disabled.serverIdsInYamlOrder, ['disabled_http']);
   assert.deepEqual(disabled.validServerIdsInYamlOrder, []);
@@ -176,14 +206,17 @@ servers:
     transport: streamable_http
     url: http://127.0.0.1:3000/mcp
 `);
-  assert.equal(badEnabled.ok, true);
-  if (!badEnabled.ok) return;
-  assert.deepEqual(badEnabled.invalidServers, [
-    {
-      serverId: 'bad_enabled',
-      errorText: 'Invalid mcp.yaml: servers.bad_enabled.enabled must be a boolean',
-    },
-  ]);
+  assert.ok(badEnabled.ok);
+  assert.deepEqual(
+    badEnabled.invalidServers.map((entry) => entry.serverId),
+    ['bad_enabled'],
+  );
+  assert.deepEqual(Object.keys(badEnabled.config.servers), []);
+  diagnostic(
+    'invalid-enabled',
+    'bad_enabled.enabled is the string "false" rather than a boolean.',
+    badEnabled.invalidServers[0]!.errorText,
+  );
 
   const invalidManual = parseMcpYaml(`
 version: 1
@@ -194,8 +227,7 @@ servers:
     manual:
       sections: 42
 `);
-  assert.equal(invalidManual.ok, true);
-  if (!invalidManual.ok) return;
+  assert.ok(invalidManual.ok);
   assert.deepEqual(
     invalidManual.invalidServers,
     [],
@@ -214,8 +246,7 @@ servers:
       sections:
         UseCases: Use when needed
 `);
-  assert.equal(inlineManual.ok, true);
-  if (!inlineManual.ok) return;
+  assert.ok(inlineManual.ok);
   assert.deepEqual(inlineManual.config.servers.manual_inline?.manual, {
     content: 'Inline guidance',
     sections: [{ title: 'UseCases', content: 'Use when needed' }],
@@ -242,8 +273,7 @@ servers:
         transform:
           - prefix: skill_
 `);
-  assert.equal(transforms.ok, true);
-  if (!transforms.ok) return;
+  assert.ok(transforms.ok);
   const scopedCfg = transforms.config.servers.scoped;
   assert.ok(scopedCfg);
   assert.deepEqual(scopedCfg.transform, [{ kind: 'prefix_add', add: 'global_' }]);
@@ -300,8 +330,7 @@ servers:
       skills:
         enabled: true
 `);
-  assert.equal(nestedSkillInheritsResource.ok, true);
-  if (!nestedSkillInheritsResource.ok) return;
+  assert.ok(nestedSkillInheritsResource.ok);
   const nestedSkillCfg = nestedSkillInheritsResource.config.servers.nested_skill;
   assert.ok(nestedSkillCfg);
   const resourceTransforms = resolveMcpScopedTransforms(
@@ -327,11 +356,16 @@ servers:
       transform:
         - suffix: 42
 `);
-  assert.equal(invalidNestedTransform.ok, true);
-  if (!invalidNestedTransform.ok) return;
-  assert.match(
-    invalidNestedTransform.invalidServers[0]?.errorText ?? '',
-    /servers\.bad_nested\.prompts\.transform\[0\]\.suffix/,
+  assert.ok(invalidNestedTransform.ok);
+  assert.deepEqual(
+    invalidNestedTransform.invalidServers.map((entry) => entry.serverId),
+    ['bad_nested'],
+  );
+  assert.deepEqual(Object.keys(invalidNestedTransform.config.servers), []);
+  diagnostic(
+    'invalid-nested-transform',
+    'bad_nested.prompts.transform[0].suffix is number42 rather than a valid suffix declaration.',
+    invalidNestedTransform.invalidServers[0]!.errorText,
   );
 
   const unknownTransformEntry = parseMcpYaml(`
@@ -343,11 +377,16 @@ servers:
     transform:
       - replace: nope
 `);
-  assert.equal(unknownTransformEntry.ok, true);
-  if (!unknownTransformEntry.ok) return;
-  assert.match(
-    unknownTransformEntry.invalidServers[0]?.errorText ?? '',
-    /servers\.bad_transform_entry\.transform\[0\] must contain 'prefix' or 'suffix'/,
+  assert.ok(unknownTransformEntry.ok);
+  assert.deepEqual(
+    unknownTransformEntry.invalidServers.map((entry) => entry.serverId),
+    ['bad_transform_entry'],
+  );
+  assert.deepEqual(Object.keys(unknownTransformEntry.config.servers), []);
+  diagnostic(
+    'unknown-transform',
+    'bad_transform_entry.transform[0] contains {replace: nope} and neither prefix nor suffix.',
+    unknownTransformEntry.invalidServers[0]!.errorText,
   );
 
   await refreshMcpPromptResourceCatalog({
@@ -374,6 +413,7 @@ servers:
     clearMcpPromptResourceCatalog();
   }
 
+  await evidence.write();
   console.log('mcp config tests: ok');
 }
 

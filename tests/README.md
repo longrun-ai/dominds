@@ -170,3 +170,13 @@ Keep accepted semantic review records under `tests/semantic/reviews/`, including
 ## Separate verification scopes
 
 Local deterministic behavior, distribution contracts, necessary structure checks, external component integration, browser interaction, live providers, and platform-specific verification have different prerequisites. Missing prerequisites and unexecuted scenarios must not count as passes. Source-string checks and UI helper tests do not establish end-to-end behavior. Live probes make real API calls and are not automatically selected by smoke or kernel suites.
+
+The configuration lane includes seven further audited MCP/team cases: config/header/catalog data,
+real local SDK handshake and failing-handler diagnostics, capability removal on disable and
+persistent enable on failed restart, current component member-import compatibility, derived
+Problems refresh, filtered lifecycle cleanup, and configuration-edit path boundaries. These cases
+run through the isolated CLI. The path cases pair rejection and existing external-file preservation
+with successful legal-path writes; schema-name parity does not establish full behavior equivalence.
+The new seven producers emit44 current semantic materials for separate subjective review;
+this is not a count or acceptance of the whole configuration semantic lane. See the
+[review record](semantic/reviews/2026-10-31-mcp-team-configuration.json).

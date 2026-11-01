@@ -1,103 +1,73 @@
 import assert from 'node:assert/strict';
-import http, { type IncomingMessage, type ServerResponse } from 'node:http';
-import type { AddressInfo } from 'node:net';
-
 import { McpSdkClient } from '../main/mcp/sdk-client';
+import { startMcpHttpFixture } from './helpers/mcp-http-fixture';
+import { semanticEvidenceCollector } from './helpers/semantic-evidence';
 
-function handleRequest(req: IncomingMessage, res: ServerResponse): void {
-  if (req.method === 'GET' && req.url === '/health') {
-    const body = JSON.stringify({ ok: true, phase: 'shell' });
-    res.writeHead(200, {
-      'content-type': 'application/json; charset=utf-8',
-      'content-length': Buffer.byteLength(body),
-    });
-    res.end(body);
-    return;
-  }
-
-  if (req.method === 'POST' && req.url === '/mcp') {
-    req.resume();
-    res.writeHead(500, {
-      'content-type': 'text/plain; charset=utf-8',
-    });
-    res.end();
-    return;
-  }
-
-  res.writeHead(404, {
-    'content-type': 'application/json; charset=utf-8',
-  });
-  res.end(JSON.stringify({ ok: false, error: 'not found' }));
-}
-
-async function startFixtureServer(): Promise<{
-  server: http.Server;
-  endpointUrl: string;
-}> {
-  const server = http.createServer(handleRequest);
-  await new Promise<void>((resolve) => {
-    server.listen(0, '127.0.0.1', resolve);
-  });
-  const address = server.address();
-  assert.ok(address && typeof address === 'object');
-  const port = (address as AddressInfo).port;
-  return {
-    server,
-    endpointUrl: `http://127.0.0.1:${port}/mcp`,
-  };
-}
-
-async function closeServer(server: http.Server): Promise<void> {
-  await new Promise<void>((resolve, reject) => {
-    server.close((err) => {
-      if (err) {
-        reject(err);
-        return;
-      }
-      resolve();
-    });
-  });
-}
-
-async function main(): Promise<void> {
-  const fixture = await startFixtureServer();
+const evidence = semanticEvidenceCollector('dominds-mcp-http-diagnostics-');
+async function main() {
+  assert.equal(process.env.DOMINDS_TEST_RTWS_MANAGED, '1');
+  const fixture = await startMcpHttpFixture();
   try {
-    let thrown: unknown;
+    const client = await McpSdkClient.connectStreamableHttp({
+      serverId: 'broken-http',
+      url: fixture.endpointUrl,
+      headers: {},
+    });
     try {
-      await McpSdkClient.connectStreamableHttp({
+      assert.deepEqual(await client.listTools(), [fixture.listedTool]);
+    } finally {
+      await client.close();
+    }
+    fixture.setBroken(true);
+    const start = fixture.requests.length;
+    let failure: unknown;
+    let unexpectedClient: McpSdkClient | undefined;
+    try {
+      unexpectedClient = await McpSdkClient.connectStreamableHttp({
         serverId: 'broken-http',
         url: fixture.endpointUrl,
         headers: {},
       });
-      assert.fail('connectStreamableHttp should fail when MCP endpoint returns HTTP 500');
-    } catch (err: unknown) {
-      thrown = err;
+    } catch (error) {
+      failure = error;
+    } finally {
+      await unexpectedClient?.close();
     }
-
-    const errorText = thrown instanceof Error ? thrown.message : String(thrown);
-    assert.match(errorText, /MCP streamable_http connect failed for server 'broken-http'/);
-    assert.match(errorText, /endpoint: http:\/\/127\.0\.0\.1:\d+\/mcp/);
-    assert.match(
-      errorText,
-      /Probe summary: POST http:\/\/127\.0\.0\.1:\d+\/mcp -> 500 Internal Server Error/,
+    assert.equal(unexpectedClient, undefined);
+    assert.ok(failure instanceof Error);
+    const observations = fixture.requests.slice(start);
+    assert.ok(
+      observations.some(
+        (r) => r.method === 'POST' && r.url === '/mcp' && r.status === 500 && r.responseBody === '',
+      ),
     );
-    assert.match(errorText, /body=<empty>/);
-    assert.match(errorText, /GET http:\/\/127\.0\.0\.1:\d+\/health -> 200 OK/);
-    assert.match(
-      errorText,
-      /Likely cause: the target process is up, but its MCP handler is failing server-side before returning a valid MCP response/,
+    assert.ok(
+      observations.some((r) => r.method === 'GET' && r.url === '/health' && r.status === 200),
     );
-    assert.match(
-      errorText,
-      /Suggested next step: inspect the target app logs\/stderr around the failing POST/,
-    );
-    assert.match(errorText, /rerun mcp_restart\(\{"serverId":"broken-http"\}\)/);
+    evidence.record({
+      id: 'failed-handler-healthy-process',
+      scenario:
+        'The same owned endpoint first completes a real SDK handshake and lists a supplied tool; its MCP handler is then changed to return HTTP500 with an empty body while health remains HTTP200.',
+      businessValue:
+        'An operator needs an evidence-based diagnosis and a practical recovery step without an invented credential or process outage.',
+      context: {
+        endpoint: fixture.endpointUrl,
+        requests: JSON.stringify(observations),
+        scope:
+          'Real SDK handshake and HTTP diagnostics; no external MCP service and no tool execution.',
+      },
+      reviewQuestions: [
+        'Does the full diagnostic accurately convey the observed boundary and distinguish a reachable process from a failing handler?',
+        'Is the likely cause qualified, and is its recovery advice usable for the identified server?',
+      ],
+      actualText: failure.message,
+    });
   } finally {
-    await closeServer(fixture.server);
+    await fixture.close();
   }
+  await evidence.write();
 }
-
-main().catch((err: unknown) => {
-  console.error(err instanceof Error ? (err.stack ?? err.message) : String(err));
-  process.exit(1);
+main().catch((error) => {
+  console.error(error);
+  process.exitCode = 1;
 });
