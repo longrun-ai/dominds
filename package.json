@@ -91,7 +91,8 @@
     "test:provider-local": "node tests/run.mjs --suite provider-local",
     "test:semantic:provider-local": "node tests/run.mjs --suite provider-local --semantic",
     "test:server-local": "node tests/run.mjs --suite server-local",
-    "test:semantic:server-local": "node tests/run.mjs --suite server-local --semantic"
+    "test:semantic:server-local": "node tests/run.mjs --suite server-local --semantic",
+    "test:provider-live": "node tests/run.mjs --suite provider-live"
   },
   "repository": {
     "type": "git",

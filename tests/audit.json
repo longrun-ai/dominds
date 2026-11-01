@@ -1248,6 +1248,84 @@
       "lane": "server-local",
       "value": "本地真实HTTP升级/ws welcome语言/计数epoch、双向语言ack、无效请求后仍可用及事件驱动关闭；原诊断全文另评",
       "evidence": "Complete original6(1147lines) and final6 assertion/business-scope review; tests/semantic/reviews/2026-10-31-server-local.json. Native protocol/data/URL encoding, supplied strings, counts, complete file bytes and observable effects are machine contracts. Three explicit producers emit16 actual guidance/refusal/CLI-help cases for independent subjective review; no error/receipt sentence or regex decides meaning. Initial5/6 was an unsupported localhost fixture assumption, not product red. Native local TLS is distinct from browser trust/remote LAN; request helper from HTTP authentication wire; language packets from live-dialog/browser preference changes. Unchanged setup-env-input remains a valuable data-only candidate. Fresh output starts pending."
+    },
+    "provider/anthropic-streaming.ts": {
+      "status": "reviewed",
+      "lane": "provider-live",
+      "value": "旧文件名的实际provider/model/API选择、完整native stream payload/回调寿命与错误保留；不以名称冒称特定SDK或实时性",
+      "evidence": "Complete original12(3266lines), final source/assertion/entry and new controlled-case review; tests/semantic/reviews/2026-10-31-provider-probes.json. Given opaque command/PID/JSON fields, protocol IDs, counts, captured callback data and file effects are machine/data contracts; no keyword/marker judges task meaning. Live target/model/auth prerequisites, structured skipped77 and owned nonempty execution records distinguish no-op/help/skips from completed transport. Eleven real-vendor probes remain UNEXECUTED in this batch; controlled positives use one localhost OpenAI-compatible SDK only. Operator preflight/help text has explicit subjective review; raw vendor observations have no automatic meaning verdict. No genuine OAuth, all-vendor SDK, real-time, reasoning-quality, actual tool execution, browser or durable-dialog claim."
+    },
+    "provider/openai-streaming.ts": {
+      "status": "reviewed",
+      "lane": "provider-live",
+      "value": "显式目标native generator完成流、零未提供工具/side output、非空原payload与完整诊断；不判写作品质",
+      "evidence": "Complete original12(3266lines), final source/assertion/entry and new controlled-case review; tests/semantic/reviews/2026-10-31-provider-probes.json. Given opaque command/PID/JSON fields, protocol IDs, counts, captured callback data and file effects are machine/data contracts; no keyword/marker judges task meaning. Live target/model/auth prerequisites, structured skipped77 and owned nonempty execution records distinguish no-op/help/skips from completed transport. Eleven real-vendor probes remain UNEXECUTED in this batch; controlled positives use one localhost OpenAI-compatible SDK only. Operator preflight/help text has explicit subjective review; raw vendor observations have no automatic meaning verdict. No genuine OAuth, all-vendor SDK, real-time, reasoning-quality, actual tool execution, browser or durable-dialog claim."
+    },
+    "provider/codex-streaming.ts": {
+      "status": "reviewed",
+      "lane": "provider-live",
+      "value": "实际选择与Codex文件认证可读前置分离、流完整数据/错误；不以环境变量存在冒称OAuth有效",
+      "evidence": "Complete original12(3266lines), final source/assertion/entry and new controlled-case review; tests/semantic/reviews/2026-10-31-provider-probes.json. Given opaque command/PID/JSON fields, protocol IDs, counts, captured callback data and file effects are machine/data contracts; no keyword/marker judges task meaning. Live target/model/auth prerequisites, structured skipped77 and owned nonempty execution records distinguish no-op/help/skips from completed transport. Eleven real-vendor probes remain UNEXECUTED in this batch; controlled positives use one localhost OpenAI-compatible SDK only. Operator preflight/help text has explicit subjective review; raw vendor observations have no automatic meaning verdict. No genuine OAuth, all-vendor SDK, real-time, reasoning-quality, actual tool execution, browser or durable-dialog claim."
+    },
+    "provider/func-call.ts": {
+      "status": "reviewed",
+      "lane": "provider-live",
+      "value": "native batch保原五组给定opaque command/PID和JSON字段、单调用真实name/id/args，失败汇总非零；不假称shell/daemon执行",
+      "evidence": "Complete original12(3266lines), final source/assertion/entry and new controlled-case review; tests/semantic/reviews/2026-10-31-provider-probes.json. Given opaque command/PID/JSON fields, protocol IDs, counts, captured callback data and file effects are machine/data contracts; no keyword/marker judges task meaning. Live target/model/auth prerequisites, structured skipped77 and owned nonempty execution records distinguish no-op/help/skips from completed transport. Eleven real-vendor probes remain UNEXECUTED in this batch; controlled positives use one localhost OpenAI-compatible SDK only. Operator preflight/help text has explicit subjective review; raw vendor observations have no automatic meaning verdict. No genuine OAuth, all-vendor SDK, real-time, reasoning-quality, actual tool execution, browser or durable-dialog claim."
+    },
+    "provider/stream-func-call.ts": {
+      "status": "reviewed",
+      "lane": "provider-live",
+      "value": "native stream保同五组给定参数、完整流和全部调用、拒绝额外调用/字段、失败非零且CLI import真执行；无mustInclude语义oracle",
+      "evidence": "Complete original12(3266lines), final source/assertion/entry and new controlled-case review; tests/semantic/reviews/2026-10-31-provider-probes.json. Given opaque command/PID/JSON fields, protocol IDs, counts, captured callback data and file effects are machine/data contracts; no keyword/marker judges task meaning. Live target/model/auth prerequisites, structured skipped77 and owned nonempty execution records distinguish no-op/help/skips from completed transport. Eleven real-vendor probes remain UNEXECUTED in this batch; controlled positives use one localhost OpenAI-compatible SDK only. Operator preflight/help text has explicit subjective review; raw vendor observations have no automatic meaning verdict. No genuine OAuth, all-vendor SDK, real-time, reasoning-quality, actual tool execution, browser or durable-dialog claim."
+    },
+    "provider/minimax-json-response.ts": {
+      "status": "reviewed",
+      "lane": "provider-live",
+      "value": "真实json_response单对象、给定五field identifiers精确保真与零工具/异常；值任意不推含义或完整compliance",
+      "evidence": "Complete original12(3266lines), final source/assertion/entry and new controlled-case review; tests/semantic/reviews/2026-10-31-provider-probes.json. Given opaque command/PID/JSON fields, protocol IDs, counts, captured callback data and file effects are machine/data contracts; no keyword/marker judges task meaning. Live target/model/auth prerequisites, structured skipped77 and owned nonempty execution records distinguish no-op/help/skips from completed transport. Eleven real-vendor probes remain UNEXECUTED in this batch; controlled positives use one localhost OpenAI-compatible SDK only. Operator preflight/help text has explicit subjective review; raw vendor observations have no automatic meaning verdict. No genuine OAuth, all-vendor SDK, real-time, reasoning-quality, actual tool execution, browser or durable-dialog claim."
+    },
+    "provider/minimax-m27-multi-tool-probe.ts": {
+      "status": "reviewed",
+      "lane": "provider-live",
+      "value": "真实单轮两函数的唯一非空ID、given A/B JSON关联、实际API namespace温度及零调用失败",
+      "evidence": "Complete original12(3266lines), final source/assertion/entry and new controlled-case review; tests/semantic/reviews/2026-10-31-provider-probes.json. Given opaque command/PID/JSON fields, protocol IDs, counts, captured callback data and file effects are machine/data contracts; no keyword/marker judges task meaning. Live target/model/auth prerequisites, structured skipped77 and owned nonempty execution records distinguish no-op/help/skips from completed transport. Eleven real-vendor probes remain UNEXECUTED in this batch; controlled positives use one localhost OpenAI-compatible SDK only. Operator preflight/help text has explicit subjective review; raw vendor observations have no automatic meaning verdict. No genuine OAuth, all-vendor SDK, real-time, reasoning-quality, actual tool execution, browser or durable-dialog claim."
+    },
+    "provider/openai-multi-tool-probe.ts": {
+      "status": "reviewed",
+      "lane": "provider-live",
+      "value": "受支持API的两独立给定工具payload及完整原输出、额外/缺失/错配不能以仅打印假绿",
+      "evidence": "Complete original12(3266lines), final source/assertion/entry and new controlled-case review; tests/semantic/reviews/2026-10-31-provider-probes.json. Given opaque command/PID/JSON fields, protocol IDs, counts, captured callback data and file effects are machine/data contracts; no keyword/marker judges task meaning. Live target/model/auth prerequisites, structured skipped77 and owned nonempty execution records distinguish no-op/help/skips from completed transport. Eleven real-vendor probes remain UNEXECUTED in this batch; controlled positives use one localhost OpenAI-compatible SDK only. Operator preflight/help text has explicit subjective review; raw vendor observations have no automatic meaning verdict. No genuine OAuth, all-vendor SDK, real-time, reasoning-quality, actual tool execution, browser or durable-dialog claim."
+    },
+    "provider/minimax-m27-turn-assembly.ts": {
+      "status": "reviewed",
+      "lane": "provider-live",
+      "value": "原给定environment/guide/call/result/saying历史被真实目标接收、可信新generation3与零额外调用；无消费含义或持久化声明",
+      "evidence": "Complete original12(3266lines), final source/assertion/entry and new controlled-case review; tests/semantic/reviews/2026-10-31-provider-probes.json. Given opaque command/PID/JSON fields, protocol IDs, counts, captured callback data and file effects are machine/data contracts; no keyword/marker judges task meaning. Live target/model/auth prerequisites, structured skipped77 and owned nonempty execution records distinguish no-op/help/skips from completed transport. Eleven real-vendor probes remain UNEXECUTED in this batch; controlled positives use one localhost OpenAI-compatible SDK only. Operator preflight/help text has explicit subjective review; raw vendor observations have no automatic meaning verdict. No genuine OAuth, all-vendor SDK, real-time, reasoning-quality, actual tool execution, browser or durable-dialog claim."
+    },
+    "provider/volcengine-coding-plan-live-smoke.ts": {
+      "status": "reviewed",
+      "lane": "provider-live",
+      "value": "显式模型的content/tool/history及可选thinking通道、给定tool args保真与真实逐attempt汇总；无0model假绿或未执行ok行",
+      "evidence": "Complete original12(3266lines), final source/assertion/entry and new controlled-case review; tests/semantic/reviews/2026-10-31-provider-probes.json. Given opaque command/PID/JSON fields, protocol IDs, counts, captured callback data and file effects are machine/data contracts; no keyword/marker judges task meaning. Live target/model/auth prerequisites, structured skipped77 and owned nonempty execution records distinguish no-op/help/skips from completed transport. Eleven real-vendor probes remain UNEXECUTED in this batch; controlled positives use one localhost OpenAI-compatible SDK only. Operator preflight/help text has explicit subjective review; raw vendor observations have no automatic meaning verdict. No genuine OAuth, all-vendor SDK, real-time, reasoning-quality, actual tool execution, browser or durable-dialog claim."
+    },
+    "provider/volcengine-coding-plan-reasoning-live.ts": {
+      "status": "reviewed",
+      "lane": "provider-live",
+      "value": "显式两目标实际thinking回调/真实第一轮messages含ReasoningPayload/provider_data供第二请求，tool结果纯数据且可信user续令，未执行第二轮明确标注",
+      "evidence": "Complete original12(3266lines), final source/assertion/entry and new controlled-case review; tests/semantic/reviews/2026-10-31-provider-probes.json. Given opaque command/PID/JSON fields, protocol IDs, counts, captured callback data and file effects are machine/data contracts; no keyword/marker judges task meaning. Live target/model/auth prerequisites, structured skipped77 and owned nonempty execution records distinguish no-op/help/skips from completed transport. Eleven real-vendor probes remain UNEXECUTED in this batch; controlled positives use one localhost OpenAI-compatible SDK only. Operator preflight/help text has explicit subjective review; raw vendor observations have no automatic meaning verdict. No genuine OAuth, all-vendor SDK, real-time, reasoning-quality, actual tool execution, browser or durable-dialog claim."
+    },
+    "provider/setup-rtws-custom-provider.ts": {
+      "status": "reviewed",
+      "lane": "provider-local",
+      "value": "本地自定义provider元数据/可用环境状态优先及实际team.yaml provider/model落盘，固定启动rtws与恢复原ENV",
+      "evidence": "Complete original12(3266lines), final source/assertion/entry and new controlled-case review; tests/semantic/reviews/2026-10-31-provider-probes.json. Given opaque command/PID/JSON fields, protocol IDs, counts, captured callback data and file effects are machine/data contracts; no keyword/marker judges task meaning. Live target/model/auth prerequisites, structured skipped77 and owned nonempty execution records distinguish no-op/help/skips from completed transport. Eleven real-vendor probes remain UNEXECUTED in this batch; controlled positives use one localhost OpenAI-compatible SDK only. Operator preflight/help text has explicit subjective review; raw vendor observations have no automatic meaning verdict. No genuine OAuth, all-vendor SDK, real-time, reasoning-quality, actual tool execution, browser or durable-dialog claim."
+    },
+    "provider/live-probe-controls.ts": {
+      "status": "reviewed",
+      "lane": "provider-local",
+      "value": "原生child CLI和本地真实OpenAI-compatible SDK验证11入口/39请求、前置零请求、反例失败exit、真实history回传与help不能冒充live接受；指导另评",
+      "evidence": "Complete original12(3266lines), final source/assertion/entry and new controlled-case review; tests/semantic/reviews/2026-10-31-provider-probes.json. Given opaque command/PID/JSON fields, protocol IDs, counts, captured callback data and file effects are machine/data contracts; no keyword/marker judges task meaning. Live target/model/auth prerequisites, structured skipped77 and owned nonempty execution records distinguish no-op/help/skips from completed transport. Eleven real-vendor probes remain UNEXECUTED in this batch; controlled positives use one localhost OpenAI-compatible SDK only. Operator preflight/help text has explicit subjective review; raw vendor observations have no automatic meaning verdict. No genuine OAuth, all-vendor SDK, real-time, reasoning-quality, actual tool execution, browser or durable-dialog claim."
     }
   },
   "retired": {

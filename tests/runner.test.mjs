@@ -55,7 +55,13 @@ test('kernel discovery includes regressions omitted from the old hand-maintained
     ),
   );
   assert.equal(catalog.suites.kernel.includes('kernel-driver/helpers.ts'), false);
-  assert.ok(catalog.outsideSuites.includes('provider/volcengine-coding-plan-live-smoke.ts'));
+  assert.ok(
+    catalog.suites['provider-live'].includes('provider/volcengine-coding-plan-live-smoke.ts'),
+  );
+  assert.equal(
+    catalog.suites['provider-live'].includes('provider/setup-rtws-custom-provider.ts'),
+    false,
+  );
 });
 
 test('a descriptive case id does not overflow the tsx Unix socket path', async () => {
@@ -198,4 +204,95 @@ test('inventory recognizes rtws flags and reports their missing script targets',
     throw error;
   }
   await fs.rm(directory, { recursive: true, force: true });
+});
+
+test('only a declared external lane with a structured prerequisite can skip; failures and later cases remain visible', async () => {
+  const logDir = await fs.mkdtemp(path.join(os.tmpdir(), 'dominds-runner-prerequisites-'));
+  let passed = false;
+  try {
+    const prerequisite = {
+      status: 'skipped',
+      code: 'supplied_prerequisite_code',
+      detail: 'provided-prerequisite-data:2f19',
+      providerRequestAttempted: false,
+    };
+    const emit =
+      'console.log(' + JSON.stringify(JSON.stringify(prerequisite)) + '); process.exit(77)';
+    const summary = await runCases(
+      [
+        { id: 'declared-external', args: ['-e', emit], skipExitCode: 77 },
+        { id: 'ordinary-77', args: ['-e', emit] },
+        { id: 'external-without-record', args: ['-e', 'process.exit(77)'], skipExitCode: 77 },
+        { id: 'subsequent-case', args: ['-e', 'console.log("subsequent-case-data:09c1")'] },
+      ],
+      { logDir, report: () => {} },
+    );
+    assert.deepEqual(
+      summary.results.map((row) => row.status),
+      ['skipped', 'failed', 'failed', 'passed'],
+    );
+    assert.equal(summary.total, 4);
+    assert.equal(summary.passed, 1);
+    assert.equal(summary.failed, 2);
+    assert.equal(summary.skipped, 1);
+    assert.equal(summary.timedOut, 0);
+    assert.deepEqual(summary.results[0].prerequisite, prerequisite);
+    assert.equal(
+      await fs.readFile(summary.results[3].logPath, 'utf8'),
+      'subsequent-case-data:09c1\n',
+    );
+    assert.deepEqual(
+      JSON.parse(await fs.readFile(path.join(logDir, 'summary.json'), 'utf8')),
+      summary,
+    );
+    await fs.access(summary.results[0].tempDir);
+    passed = true;
+  } finally {
+    if (passed) await fs.rm(logDir, { recursive: true, force: true });
+    else console.error('Runner prerequisite fixture retained: ' + logDir);
+  }
+});
+
+test('live admission rejects help-only, empty or failed observations despite exit0', async () => {
+  const logDir = await fs.mkdtemp(path.join(os.tmpdir(), 'dominds-runner-live-admission-'));
+  let passed = false;
+  const emit = (results) =>
+    `const fs = require('node:fs'), path = require('node:path'), os = require('node:os'); const target = path.join(os.tmpdir(), 'observations.json'); fs.writeFileSync(target, JSON.stringify({semanticAcceptance:'not-assessed',results:${JSON.stringify(results)}})); console.log(JSON.stringify({artifact:'live-provider-observations',path:target}));`;
+  try {
+    const summary = await runCases(
+      [
+        {
+          id: 'help-only',
+          args: ['-e', 'console.log("provided-help-data:29f1")'],
+          requireLiveEvidence: true,
+        },
+        { id: 'no-attempts', args: ['-e', emit([])], requireLiveEvidence: true },
+        {
+          id: 'completed-transport',
+          args: ['-e', emit([{ status: 'passed' }])],
+          requireLiveEvidence: true,
+        },
+        {
+          id: 'failed-attempt',
+          args: ['-e', emit([{ status: 'failed' }])],
+          requireLiveEvidence: true,
+        },
+      ],
+      { logDir, report: () => {}, keepSuccessfulState: true },
+    );
+    assert.deepEqual(
+      summary.results.map((row) => row.status),
+      ['failed', 'failed', 'passed', 'failed'],
+    );
+    assert.equal(summary.passed, 1);
+    assert.equal(summary.failed, 3);
+    assert.equal(summary.skipped, 0);
+    assert.equal(summary.results[0].code, 0);
+    assert.equal(summary.results[0].evidenceFailure.code, 'invalid_live_execution_evidence');
+    assert.equal(summary.results[2].executionEvidence.attempts, 1);
+    passed = true;
+  } finally {
+    if (passed) await fs.rm(logDir, { recursive: true, force: true });
+    else console.error('Live admission fixture retained: ' + logDir);
+  }
 });

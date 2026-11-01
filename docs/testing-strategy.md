@@ -579,3 +579,15 @@ WebSocket保真实HTTP0端口/ws升级、welcome zh与en/zh支持、counts同epo
 初轮16份实际文本全文主观评审为10通过6拒绝：六份非法CLI选项虽准确拒绝，但附带的完整help无条件声称匹配证书即可自动启HTTPS，遗漏strict固定端口会禁用它的现有边界。以本批真实strict正控及现有server策略为事实，仅澄清help的auto/default/带符号端口与strict例外、独立HTTPS端口，并说明status --origin只用证书和给定输出端口推导，不探测运行中服务或其HTTPS端口。没有更改端口/权限/证书策略。重采整个证书producer12份须新评，auth1和ws3沿用同一已读实际材料，非接受新输出；原拒绝材料与来源保留。
 
 新增test:server-local六项及test:semantic:server-local三个明确producer，16份实际文本完整主观审查见[本批记录](../tests/semantic/reviews/2026-10-31-server-local.json)。本批产品改动仅上述已有CLI帮助文案，无依赖/框架改动；当前290TS、37support、253候选，审查208、余45项、套件外44项、缺单独script37项、失效入口和陈旧账本均零。完整test:types仍明确保留另一live-provider的一条继承错误，不以本批验收冒称全部通过。
+
+### Provider 实机探针、前置条件与本地控制批次
+
+完整审原12项3266行：其中custom-provider setup是本地DTO/落盘测试，其余11项有真实供应商兼容价值。保原五组给定command/PID、batch/stream模式、JSON给定field IDs、同轮双工具A/B和完整history、实际第一轮thinking/ReasoningPayload/provider_data回放第二请求；不凭文件名、模型fallback、chunk总数或回执猜测执行效果。去mustInclude命令词义裁决和AFTER_TOOL等自然回复marker意义oracle；给定JSON/完整command/PID数据、协议ID/计数及回调是实际数据合同。旧两大类1312行简化为真实执行入口和按11个实际用途共用的预检/采集，补失败汇总非零、CLI import确实运行、零/额外调用和字段拒绝、实际namespace参数、完整原输出与异常保存；无新依赖或框架。实机原probe没有离线baseline供应商red，不假造验证或把静态缺陷说成网络实测。
+
+新增明确provider-live lane：默认无--live或模型时只记录结构化skip77/零请求，suite记skipped并退出2，不能冒充通过；真实运行必须--case选一入口并显式给配置目标，错误模型不回退、不隐式遍历全部模型。普通ENV与Codex auth.json可读前置分开，只读fs.access，不做authprepare/refresh或修改用户配置；可读不证明OAuth有效，真wrapper仍判其既有策略。reasoning第二轮未执行单列false/UNEXECUTED，不再构造虚假ok行。给定tool-result只存数据，后续指令来自可信user。custom-provider setup改CLI固定cwd、恢复原变量、核真实team.yaml provider/model。Volc空数组补原生Capture类型，完整test:types已转绿，未用any/排除或弱化类型。
+
+原生子CLI+受控localhost SDK回归核11入口、39个真实HTTP请求、前置零请求、两模式零调用反例必须exit1、同轮调用data和实际captured history进入第二HTTP请求、读错/缺thinking不得假通过。它只执行一个OpenAI-compatible SDK，不能按三个legacy streaming文件名冒称跑了Anthropic/Codex SDK或真供应商；所有11实机路径本批仍UNEXECUTED。原生请求数据与保存记录保真不代表原指令/回答的任务含义、思考质量、工具执行、浏览器或durable dialog成立。runtime raw observations维持not-assessed，须另行主观审查任何后续有价值的语义要求。
+
+独立审查发现本批首版runner把--help子进程exit0计成live通过；真实无网络反例先得到1pass，现声明live entry还须唯一owned观察材料、非空全passed transport attempts且无自动意义verdict，help/no-op/empty/failed不能准入。普通77也不能被掩为skip：只有显式外部lane及完整JSON前置记录可skip。八项运行器回归保护这些机器状态。首次新control在已收11份前置文本后，因自造nested TMPDIR使tsx Unix socket路径过长而失败；现场/原源保留，改exclusive自有短物理路径，正常成功清理、失败保留，不加timeout或重跑产品至绿。两处新控制夹具的unknown闭包/属性类型以原生窄化修正，无产品类型改动。
+
+最新12份前置/帮助全文均经独立主观评审；历史11份也逐例另评，历史文本可通过不等于旧control行为接受。完整23材料、真实scope、初red与最终判决见[本批记录](../tests/semantic/reviews/2026-10-31-provider-probes.json)。新controlled case是有真实断言的候选，两个共用helper不是自动通过测试；保所有原12候选。当前293TS、39support、254候选，审查221、余33项，套件外32、缺单独script27、失效直接入口与陈旧账本均零。本批只重采新producer12份，不沿用或重判其它29份新输出；完整provider-local语义lane未来生成41份仍各自pending。

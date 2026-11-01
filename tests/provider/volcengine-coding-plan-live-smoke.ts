@@ -1,503 +1,201 @@
+import assert from 'node:assert/strict';
 import type { ChatMessage } from '../../main/llm/client';
-import { LlmConfig, type ProviderConfig } from '../../main/llm/client';
-import type { LlmStreamReceiver } from '../../main/llm/gen';
-import { generatorsRegistry } from '../../main/llm/gen/registry';
 import { Team } from '../../main/team';
 import type { FuncTool } from '../../main/tool';
+import { liveCapture, selectLiveProvider, writeLiveReport } from '../helpers/live-provider';
 
-type Args = Readonly<{
-  models: string[];
-  reasoningModel: string | null;
-}>;
-
-type SmokeResult = {
-  model: string;
-  content: {
-    ok: boolean;
-    elapsedMs: number;
-    sayingText: string;
-    thinkingChars: number;
-    streamErrors: string[];
-    error?: string;
-  };
-  tool: {
-    ok: boolean;
-    elapsedMs: number;
-    callCount: number;
-    calls: Array<{ id: string; name: string; args: string }>;
-    sayingText: string;
-    thinkingChars: number;
-    streamErrors: string[];
-    error?: string;
-  };
-  historyRoundtrip: {
-    ok: boolean;
-    elapsedMs: number;
-    sayingText: string;
-    thinkingChars: number;
-    streamErrors: string[];
-    error?: string;
-  };
-};
-
-type ReasoningResult = {
-  model: string;
-  ok: boolean;
-  elapsedMs: number;
-  sayingText: string;
-  thinkingChars: number;
-  streamErrors: string[];
-  error?: string;
-};
-
-function parseArgs(argv: ReadonlyArray<string>): Args {
-  const models: string[] = [];
-  let reasoningModel: string | null = null;
-
-  for (let i = 0; i < argv.length; i += 1) {
-    const arg = argv[i];
-    if (arg === '--') continue;
-    if (arg === '--model') {
-      const next = argv[i + 1];
-      if (!next || next.trim() === '') throw new Error('Missing value for --model');
-      models.push(next.trim());
-      i += 1;
-      continue;
-    }
-    if (arg === '--reasoning-model') {
-      const next = argv[i + 1];
-      if (!next || next.trim() === '') throw new Error('Missing value for --reasoning-model');
-      reasoningModel = next.trim();
-      i += 1;
-      continue;
-    }
-    if (arg === '--help' || arg === '-h') {
-      console.log(
-        'Usage: pnpm -C tests exec tsx provider/volcengine-coding-plan-live-smoke.ts -- [--model <model> ...] [--reasoning-model <model>]',
-      );
-      process.exit(0);
-    }
-    throw new Error(`Unknown arg: ${arg}`);
-  }
-
-  return { models, reasoningModel };
-}
-
-function buildReceiver(capture: {
-  sayingChunks: string[];
-  thinkingChars: number;
-  streamErrors: string[];
-  calls: Array<{ id: string; name: string; args: string }>;
-}): LlmStreamReceiver {
-  return {
-    thinkingStart: async () => {},
-    thinkingChunk: async (chunk) => {
-      capture.thinkingChars += chunk.length;
-    },
-    thinkingFinish: async () => {},
-    sayingStart: async () => {},
-    sayingChunk: async (chunk) => {
-      capture.sayingChunks.push(chunk);
-    },
-    sayingFinish: async () => {},
-    funcCall: async (id, name, args) => {
-      capture.calls.push({ id, name, args });
-    },
-    streamError: async (detail) => {
-      capture.streamErrors.push(detail);
-    },
-  };
-}
-
-function getGen(provider: ProviderConfig) {
-  const gen = generatorsRegistry.get(provider.apiType);
-  if (!gen) throw new Error(`generator '${provider.apiType}' not registered`);
-  return gen;
-}
-
-function contentContext(model: string): ChatMessage[] {
-  return [
-    {
-      type: 'prompting_msg',
-      role: 'user',
-      genseq: 1,
-      msgId: `volc-content-${model}`,
-      grammar: 'markdown',
-      content: 'Reply with exactly: OK',
-    },
-  ];
-}
-
-function toolContext(model: string): ChatMessage[] {
-  return [
-    {
-      type: 'prompting_msg',
-      role: 'user',
-      genseq: 2,
-      msgId: `volc-tool-${model}`,
-      grammar: 'markdown',
-      content: `Call tool_echo with value="${model}". Do not output prose.`,
-    },
-  ];
-}
-
-function reasoningContext(model: string): ChatMessage[] {
-  return [
-    {
-      type: 'prompting_msg',
-      role: 'user',
-      genseq: 3,
-      msgId: `volc-reasoning-${model}`,
-      grammar: 'markdown',
-      content: 'Think briefly, then answer exactly: DONE',
-    },
-  ];
-}
-
-function historyRoundtripContext(model: string): ChatMessage[] {
-  return [
-    {
-      type: 'prompting_msg',
-      role: 'user',
-      genseq: 4,
-      msgId: `volc-history-user-${model}`,
-      grammar: 'markdown',
-      content: 'Use tool_echo once.',
-    },
-    {
-      type: 'thinking_msg',
-      role: 'assistant',
-      genseq: 4,
-      content: 'Need to call the echo tool.',
-    },
-    {
-      type: 'saying_msg',
-      role: 'assistant',
-      genseq: 4,
-      content: 'Calling the echo tool.',
-    },
-    {
-      type: 'func_call_msg',
-      role: 'assistant',
-      genseq: 4,
-      id: `call-history-${model}`,
-      name: 'tool_echo',
-      arguments: JSON.stringify({ value: model }),
-    },
-    {
-      type: 'func_result_msg',
-      role: 'tool',
-      genseq: 4,
-      id: `call-history-${model}`,
-      name: 'tool_echo',
-      content: `echo:${model}`,
-    },
-    {
-      type: 'prompting_msg',
-      role: 'user',
-      genseq: 5,
-      msgId: `volc-history-followup-${model}`,
-      grammar: 'markdown',
-      content: 'Reply with exactly: AFTER_TOOL',
-    },
-  ];
-}
-
-function echoTool(): FuncTool {
-  return {
+async function main() {
+  const selected = await selectLiveProvider('volcano-engine-coding-plan', {
+    multipleModels: true,
+    reasoning: true,
+  });
+  if (!selected) return;
+  if (selected.provider.apiType !== 'openai-compatible')
+    throw new Error('This probe requires the current OpenAI-compatible coding-plan API');
+  const echo: FuncTool = {
     type: 'func',
     name: 'tool_echo',
-    description: 'Echo a short string value.',
+    description: 'Capture a supplied value without executing it.',
     parameters: {
       type: 'object',
-      properties: {
-        value: { type: 'string' },
-      },
+      properties: { value: { type: 'string' } },
       required: ['value'],
       additionalProperties: false,
     },
     call: async () => {
-      throw new Error('tool_echo should not execute in live smoke');
+      throw new Error('The live smoke probe does not execute tools');
     },
   };
-}
-
-async function runContent(
-  provider: ProviderConfig,
-  model: string,
-): Promise<SmokeResult['content']> {
-  const capture = { sayingChunks: [], thinkingChars: 0, streamErrors: [], calls: [] };
-  const startedAt = Date.now();
-  try {
-    await getGen(provider).genToReceiver(
-      provider,
-      new Team.Member({
-        id: 'volc-live-smoke',
-        name: 'Volc Live Smoke',
-        provider: 'volcano-engine-coding-plan',
-        model,
-        model_params: {
-          'openai-compatible': { temperature: 0, thinking: false, parallel_tool_calls: false },
+  const rows: Array<{ status: 'passed' | 'failed'; [key: string]: unknown }> = [];
+  async function attempt(
+    kind: 'content' | 'tool' | 'history' | 'reasoning',
+    model: string,
+    genseq: number,
+    context: ChatMessage[],
+  ) {
+    const observed = liveCapture(genseq);
+    const started = Date.now();
+    let status: 'passed' | 'failed' = 'failed';
+    let error: string | undefined;
+    let result: unknown;
+    const systemPrompt =
+      'Respond briefly to the supplied diagnostic request. Tools are captured, never executed.';
+    try {
+      result = await selected!.generator.genToReceiver(
+        selected!.provider,
+        new Team.Member({
+          id: 'coding-plan-smoke',
+          name: 'Coding-plan transport probe',
+          provider: selected!.providerKey,
+          model,
+          model_params: {
+            'openai-compatible': {
+              temperature: 0,
+              thinking: kind === 'reasoning',
+              parallel_tool_calls: false,
+            },
+          },
+        }),
+        systemPrompt,
+        kind === 'tool' ? [echo] : [],
+        {
+          dialogSelfId: 'coding-plan-' + kind,
+          dialogRootId: 'coding-plan-' + kind,
+          providerKey: selected!.providerKey,
+          modelKey: model,
+          toolUseRequirement: kind === 'tool' ? 'required' : 'none',
         },
-      }),
-      'You are a concise test assistant.',
-      [],
-      {
-        dialogSelfId: 'tests/provider/volcengine-coding-plan-live-smoke',
-        dialogRootId: 'tests/provider/volcengine-coding-plan-live-smoke',
-        providerKey: 'volcano-engine-coding-plan',
-        modelKey: model,
-      },
-      contentContext(model),
-      buildReceiver(capture),
-      1,
-    );
-    const sayingText = capture.sayingChunks.join('');
-    return {
-      ok: sayingText.trim().length > 0 && capture.streamErrors.length === 0,
-      elapsedMs: Date.now() - startedAt,
-      sayingText,
-      thinkingChars: capture.thinkingChars,
-      streamErrors: capture.streamErrors,
-    };
-  } catch (error: unknown) {
-    return {
-      ok: false,
-      elapsedMs: Date.now() - startedAt,
-      sayingText: capture.sayingChunks.join(''),
-      thinkingChars: capture.thinkingChars,
-      streamErrors: capture.streamErrors,
-      error: error instanceof Error ? error.message : String(error),
-    };
-  }
-}
-
-async function runTool(provider: ProviderConfig, model: string): Promise<SmokeResult['tool']> {
-  const capture = { sayingChunks: [], thinkingChars: 0, streamErrors: [], calls: [] };
-  const startedAt = Date.now();
-  try {
-    await getGen(provider).genToReceiver(
-      provider,
-      new Team.Member({
-        id: 'volc-live-smoke',
-        name: 'Volc Live Smoke',
-        provider: 'volcano-engine-coding-plan',
-        model,
-        model_params: {
-          'openai-compatible': { temperature: 0, thinking: false, parallel_tool_calls: false },
-        },
-      }),
-      'You are a deterministic test assistant. Use tools exactly when requested.',
-      [echoTool()],
-      {
-        dialogSelfId: 'tests/provider/volcengine-coding-plan-live-smoke',
-        dialogRootId: 'tests/provider/volcengine-coding-plan-live-smoke',
-        providerKey: 'volcano-engine-coding-plan',
-        modelKey: model,
-      },
-      toolContext(model),
-      buildReceiver(capture),
-      2,
-    );
-    return {
-      ok:
-        capture.calls.length === 1 &&
-        capture.calls[0]?.name === 'tool_echo' &&
-        capture.streamErrors.length === 0,
-      elapsedMs: Date.now() - startedAt,
-      callCount: capture.calls.length,
-      calls: capture.calls,
-      sayingText: capture.sayingChunks.join(''),
-      thinkingChars: capture.thinkingChars,
-      streamErrors: capture.streamErrors,
-    };
-  } catch (error: unknown) {
-    return {
-      ok: false,
-      elapsedMs: Date.now() - startedAt,
-      callCount: capture.calls.length,
-      calls: capture.calls,
-      sayingText: capture.sayingChunks.join(''),
-      thinkingChars: capture.thinkingChars,
-      streamErrors: capture.streamErrors,
-      error: error instanceof Error ? error.message : String(error),
-    };
-  }
-}
-
-async function runHistoryRoundtrip(
-  provider: ProviderConfig,
-  model: string,
-): Promise<SmokeResult['historyRoundtrip']> {
-  const capture = { sayingChunks: [], thinkingChars: 0, streamErrors: [], calls: [] };
-  const startedAt = Date.now();
-  try {
-    await getGen(provider).genToReceiver(
-      provider,
-      new Team.Member({
-        id: 'volc-live-smoke',
-        name: 'Volc Live Smoke',
-        provider: 'volcano-engine-coding-plan',
-        model,
-        model_params: {
-          'openai-compatible': { temperature: 0, thinking: false, parallel_tool_calls: false },
-        },
-      }),
-      'You are a concise test assistant.',
-      [echoTool()],
-      {
-        dialogSelfId: 'tests/provider/volcengine-coding-plan-live-smoke',
-        dialogRootId: 'tests/provider/volcengine-coding-plan-live-smoke',
-        providerKey: 'volcano-engine-coding-plan',
-        modelKey: model,
-      },
-      historyRoundtripContext(model),
-      buildReceiver(capture),
-      5,
-    );
-    const sayingText = capture.sayingChunks.join('');
-    return {
-      ok: sayingText.trim().includes('AFTER_TOOL') && capture.streamErrors.length === 0,
-      elapsedMs: Date.now() - startedAt,
-      sayingText,
-      thinkingChars: capture.thinkingChars,
-      streamErrors: capture.streamErrors,
-    };
-  } catch (error: unknown) {
-    return {
-      ok: false,
-      elapsedMs: Date.now() - startedAt,
-      sayingText: capture.sayingChunks.join(''),
-      thinkingChars: capture.thinkingChars,
-      streamErrors: capture.streamErrors,
-      error: error instanceof Error ? error.message : String(error),
-    };
-  }
-}
-
-async function runReasoning(provider: ProviderConfig, model: string): Promise<ReasoningResult> {
-  const capture = { sayingChunks: [], thinkingChars: 0, streamErrors: [], calls: [] };
-  const startedAt = Date.now();
-  try {
-    await getGen(provider).genToReceiver(
-      provider,
-      new Team.Member({
-        id: 'volc-live-smoke',
-        name: 'Volc Live Smoke',
-        provider: 'volcano-engine-coding-plan',
-        model,
-        model_params: {
-          'openai-compatible': { temperature: 0, thinking: true, parallel_tool_calls: false },
-        },
-      }),
-      'You are a concise test assistant.',
-      [],
-      {
-        dialogSelfId: 'tests/provider/volcengine-coding-plan-live-smoke',
-        dialogRootId: 'tests/provider/volcengine-coding-plan-live-smoke',
-        providerKey: 'volcano-engine-coding-plan',
-        modelKey: model,
-      },
-      reasoningContext(model),
-      buildReceiver(capture),
-      3,
-    );
-    return {
-      model,
-      ok: capture.sayingChunks.join('').trim().length > 0 && capture.streamErrors.length === 0,
-      elapsedMs: Date.now() - startedAt,
-      sayingText: capture.sayingChunks.join(''),
-      thinkingChars: capture.thinkingChars,
-      streamErrors: capture.streamErrors,
-    };
-  } catch (error: unknown) {
-    return {
-      model,
-      ok: false,
-      elapsedMs: Date.now() - startedAt,
-      sayingText: capture.sayingChunks.join(''),
-      thinkingChars: capture.thinkingChars,
-      streamErrors: capture.streamErrors,
-      error: error instanceof Error ? error.message : String(error),
-    };
-  }
-}
-
-async function main(): Promise<void> {
-  const args = parseArgs(process.argv.slice(2));
-  const cfg = await LlmConfig.load();
-  const providerCfg = cfg.getProvider('volcano-engine-coding-plan');
-  if (!providerCfg) throw new Error('provider volcano-engine-coding-plan not found');
-  const models = args.models.length > 0 ? args.models : Object.keys(providerCfg.models);
-  for (const model of models) {
-    if (!Object.prototype.hasOwnProperty.call(providerCfg.models, model)) {
-      throw new Error(`model '${model}' is not configured for volcano-engine-coding-plan`);
-    }
-  }
-
-  const results: SmokeResult[] = [];
-  for (const model of models) {
-    console.error(`live smoke: ${model} content`);
-    const content = await runContent(providerCfg, model);
-    console.error(`live smoke: ${model} tool`);
-    const tool = await runTool(providerCfg, model);
-    console.error(`live smoke: ${model} history roundtrip`);
-    const historyRoundtrip = await runHistoryRoundtrip(providerCfg, model);
-    results.push({ model, content, tool, historyRoundtrip });
-    console.log(JSON.stringify({ model, content, tool, historyRoundtrip }));
-  }
-
-  let reasoning: ReasoningResult | undefined;
-  if (args.reasoningModel !== null) {
-    if (!Object.prototype.hasOwnProperty.call(providerCfg.models, args.reasoningModel)) {
-      throw new Error(
-        `reasoning model '${args.reasoningModel}' is not configured for volcano-engine-coding-plan`,
+        context,
+        observed.receiver,
+        genseq,
       );
+      observed.assertComplete();
+      assert.equal(observed.capture.sideOutputs.length, 0);
+      if (kind === 'tool') {
+        assert.equal(observed.capture.calls.length, 1);
+        const call = observed.capture.calls[0]!;
+        assert.ok(call.id.length > 0);
+        assert.equal(call.name, 'tool_echo');
+        assert.deepEqual(JSON.parse(call.args), { value: model });
+      } else {
+        assert.equal(observed.capture.calls.length, 0);
+        assert.ok(observed.capture.sayingChunks.join('').length > 0);
+      }
+      if (kind === 'reasoning')
+        assert.ok(
+          observed.capture.thinkingChunks.join('').length > 0,
+          'The selected reasoning probe requires actual visible thinking-channel data',
+        );
+      status = 'passed';
+    } catch (failure: unknown) {
+      error = failure instanceof Error ? failure.message : String(failure);
     }
-    console.error(`live smoke: ${args.reasoningModel} reasoning`);
-    reasoning = await runReasoning(providerCfg, args.reasoningModel);
-    console.log(JSON.stringify({ reasoning }));
-  }
-
-  const failed = results.filter(
-    (item) => !item.content.ok || !item.tool.ok || !item.historyRoundtrip.ok,
-  );
-  if (reasoning !== undefined && !reasoning.ok) {
-    failed.push({
-      model: reasoning.model,
-      content: {
-        ok: true,
-        elapsedMs: 0,
-        sayingText: '',
-        thinkingChars: 0,
-        streamErrors: [],
-      },
-      tool: {
-        ok: false,
-        elapsedMs: reasoning.elapsedMs,
-        callCount: 0,
-        calls: [],
-        sayingText: reasoning.sayingText,
-        thinkingChars: reasoning.thinkingChars,
-        streamErrors: reasoning.streamErrors,
-        error: reasoning.error,
-      },
-      historyRoundtrip: {
-        ok: true,
-        elapsedMs: 0,
-        sayingText: '',
-        thinkingChars: 0,
-        streamErrors: [],
-      },
+    rows.push({
+      id: kind + ':' + model,
+      provider: selected!.providerKey,
+      model,
+      apiType: selected!.provider.apiType,
+      status,
+      error,
+      elapsedMs: Date.now() - started,
+      systemPrompt,
+      context,
+      result,
+      capture: observed.capture,
+      scope:
+        'Native provider/generator request acceptance and supplied-data/callback effects. No tool execution, durable execution, semantic history use or reasoning quality is established.',
     });
+    console.log(JSON.stringify({ id: kind + ':' + model, status, scope: 'provider-transport' }));
   }
-  if (failed.length > 0) {
-    console.error(`live smoke failures: ${failed.map((item) => item.model).join(', ')}`);
-    process.exit(1);
+  for (const model of selected.models) {
+    await attempt('content', model, 1, [
+      {
+        type: 'prompting_msg',
+        role: 'user',
+        genseq: 1,
+        msgId: 'coding-content',
+        grammar: 'markdown',
+        content: 'Send a short connectivity response.',
+      },
+    ]);
+    await attempt('tool', model, 2, [
+      {
+        type: 'prompting_msg',
+        role: 'user',
+        genseq: 2,
+        msgId: 'coding-tool',
+        grammar: 'markdown',
+        content:
+          'Call tool_echo once with exactly this supplied JSON object: ' +
+          JSON.stringify({ value: model }),
+      },
+    ]);
+    await attempt('history', model, 5, [
+      {
+        type: 'prompting_msg',
+        role: 'user',
+        genseq: 4,
+        msgId: 'coding-history-first',
+        grammar: 'markdown',
+        content: 'Use tool_echo once.',
+      },
+      {
+        type: 'thinking_msg',
+        role: 'assistant',
+        genseq: 4,
+        content: 'Need to call the echo tool.',
+      },
+      { type: 'saying_msg', role: 'assistant', genseq: 4, content: 'Calling the echo tool.' },
+      {
+        type: 'func_call_msg',
+        role: 'assistant',
+        genseq: 4,
+        id: 'call-history-' + model,
+        name: 'tool_echo',
+        arguments: JSON.stringify({ value: model }),
+      },
+      {
+        type: 'func_result_msg',
+        role: 'tool',
+        genseq: 4,
+        id: 'call-history-' + model,
+        name: 'tool_echo',
+        content: 'echo:' + model,
+      },
+      {
+        type: 'prompting_msg',
+        role: 'user',
+        genseq: 5,
+        msgId: 'coding-history-followup',
+        grammar: 'markdown',
+        content: 'Briefly acknowledge this completed fixture exchange without another tool call.',
+      },
+    ]);
   }
+  if (selected.reasoningModel)
+    await attempt('reasoning', selected.reasoningModel, 3, [
+      {
+        type: 'prompting_msg',
+        role: 'user',
+        genseq: 3,
+        msgId: 'coding-reasoning',
+        grammar: 'markdown',
+        content: 'Use the enabled thinking channel, then give a short response.',
+      },
+    ]);
+  await writeLiveReport('coding-plan-smoke', rows);
+  const failed = rows.filter((row) => row.status === 'failed').length;
+  console.log(
+    JSON.stringify({
+      total: rows.length,
+      passed: rows.length - failed,
+      failed,
+      semanticAcceptance: 'not-assessed',
+    }),
+  );
+  if (failed) process.exitCode = 1;
 }
-
 main().catch((error: unknown) => {
-  console.error(error instanceof Error ? error.message : String(error));
-  process.exit(1);
+  console.error(error);
+  process.exitCode = 1;
 });

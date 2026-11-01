@@ -182,6 +182,19 @@ const shell = [
   'ripgrep-streaming.ts',
   'ripgrep-windows-compat.ts',
 ];
+const providerLive = [
+  'provider/anthropic-streaming.ts',
+  'provider/openai-streaming.ts',
+  'provider/codex-streaming.ts',
+  'provider/func-call.ts',
+  'provider/stream-func-call.ts',
+  'provider/minimax-json-response.ts',
+  'provider/minimax-m27-multi-tool-probe.ts',
+  'provider/openai-multi-tool-probe.ts',
+  'provider/minimax-m27-turn-assembly.ts',
+  'provider/volcengine-coding-plan-live-smoke.ts',
+  'provider/volcengine-coding-plan-reasoning-live.ts',
+];
 const serverLocal = [
   'auth.ts',
   'certificates.ts',
@@ -191,6 +204,8 @@ const serverLocal = [
   'ws-language.ts',
 ];
 const providerLocal = [
+  'provider/setup-rtws-custom-provider.ts',
+  'provider/live-probe-controls.ts',
   'provider/anthropic-multi-tool-use-stream.ts',
   'provider/anthropic-stream-errors.ts',
   'provider/anthropic-whitespace.ts',
@@ -203,6 +218,7 @@ const taskdoc = ['task-package.ts', 'taskdoc-search.ts', 'taskdoc-recall-budget.
 const semanticSuites = {
   'server-local': ['auth.ts', 'certificates.ts', 'ws-language.ts'],
   'provider-local': [
+    'provider/live-probe-controls.ts',
     'provider/anthropic-stream-errors.ts',
     'provider/codex-instructions.ts',
     'provider/codex-service-tier.ts',
@@ -379,6 +395,7 @@ export async function inventory() {
     taskdoc,
     'provider-local': providerLocal,
     'server-local': serverLocal,
+    'provider-live': providerLive,
   };
   const included = new Set(Object.values(suites).flat());
   const audit = JSON.parse(await fs.readFile(path.join(testsRoot, 'audit.json'), 'utf8'));
@@ -453,8 +470,91 @@ export async function runCases(
       });
     });
     await output.close();
-    const status = timedOut ? 'timeout' : outcome.code === 0 ? 'passed' : 'failed';
-    const result = { id: entry.id, status, durationMs: Date.now() - started, ...outcome, logPath };
+    let prerequisite;
+    // Only explicitly declared external lanes may use the structured prerequisite protocol.
+    // Exit77 by itself remains a failure; no prose is interpreted to infer a skip.
+    if (!timedOut && entry.skipExitCode !== undefined && outcome.code === entry.skipExitCode) {
+      const records = (await fs.readFile(logPath, 'utf8')).split('\n').flatMap((line) => {
+        try {
+          const row = JSON.parse(line);
+          return row &&
+            typeof row === 'object' &&
+            row.status === 'skipped' &&
+            typeof row.code === 'string' &&
+            typeof row.detail === 'string' &&
+            row.providerRequestAttempted === false
+            ? [row]
+            : [];
+        } catch {
+          return [];
+        }
+      });
+      if (records.length === 1) prerequisite = records[0];
+    }
+    let executionEvidence;
+    let evidenceFailure;
+    if (!timedOut && outcome.code === 0 && entry.requireLiveEvidence) {
+      try {
+        const artifacts = (await fs.readFile(logPath, 'utf8')).split('\n').flatMap((line) => {
+          try {
+            const row = JSON.parse(line);
+            return row?.artifact === 'live-provider-observations' && typeof row.path === 'string'
+              ? [row]
+              : [];
+          } catch {
+            return [];
+          }
+        });
+        if (artifacts.length !== 1)
+          throw new Error(
+            'A live transport run requires exactly one structured observations artifact',
+          );
+        const source = await fs.realpath(artifacts[0].path);
+        const root = await fs.realpath(tempDir);
+        const relative = path.relative(root, source);
+        if (relative === '..' || relative.startsWith('..' + path.sep) || path.isAbsolute(relative))
+          throw new Error('Live evidence must remain in this process-owned directory');
+        const material = JSON.parse(await fs.readFile(source, 'utf8'));
+        if (
+          material?.semanticAcceptance !== 'not-assessed' ||
+          !Array.isArray(material.results) ||
+          material.results.length === 0 ||
+          !material.results.every(
+            (row) => row && typeof row === 'object' && row.status === 'passed',
+          )
+        )
+          throw new Error(
+            'Live observations must contain completed passing transport attempts, without an automatic meaning verdict',
+          );
+        executionEvidence = {
+          path: source,
+          attempts: material.results.length,
+          semanticAcceptance: 'not-assessed',
+        };
+      } catch (error) {
+        evidenceFailure = {
+          code: 'invalid_live_execution_evidence',
+          detail: error instanceof Error ? error.message : String(error),
+        };
+      }
+    }
+    const status = timedOut
+      ? 'timeout'
+      : outcome.code === 0 && !evidenceFailure
+        ? 'passed'
+        : prerequisite
+          ? 'skipped'
+          : 'failed';
+    const result = {
+      id: entry.id,
+      status,
+      durationMs: Date.now() - started,
+      ...outcome,
+      logPath,
+      ...(prerequisite ? { prerequisite } : {}),
+      ...(executionEvidence ? { executionEvidence } : {}),
+      ...(evidenceFailure ? { evidenceFailure } : {}),
+    };
     if (status === 'passed' && !keepSuccessfulState)
       await fs.rm(tempDir, { recursive: true, force: true });
     else result.tempDir = tempDir;
@@ -468,6 +568,7 @@ export async function runCases(
     passed: results.filter((result) => result.status === 'passed').length,
     failed: results.filter((result) => result.status === 'failed').length,
     timedOut: results.filter((result) => result.status === 'timeout').length,
+    skipped: results.filter((result) => result.status === 'skipped').length,
     results,
   };
   await fs.writeFile(path.join(logDir, 'summary.json'), `${JSON.stringify(summary, null, 2)}\n`);
@@ -482,6 +583,22 @@ async function main() {
   }
   const semantic = args.at(-1) === '--semantic';
   if (semantic) args.pop();
+  const liveArgs = args[1] === 'provider-live' ? args.splice(2) : [];
+  let selectedLiveCase;
+  const caseIndex = liveArgs.indexOf('--case');
+  if (caseIndex >= 0) {
+    const requested = liveArgs[caseIndex + 1];
+    selectedLiveCase = providerLive.find(
+      (file) => file === requested || path.basename(file) === requested,
+    );
+    if (!selectedLiveCase)
+      throw new Error('Select a registered live probe with --case <provider/file.ts>');
+    liveArgs.splice(caseIndex, 2);
+  }
+  if (liveArgs.includes('--live') && !selectedLiveCase)
+    throw new Error(
+      'A live request run requires --case; do not dispatch every provider probe implicitly',
+    );
   if (
     args.length !== 2 ||
     args[0] !== '--suite' ||
@@ -507,28 +624,41 @@ async function main() {
       'taskdoc',
       'provider-local',
       'server-local',
+      'provider-live',
     ].includes(args[1])
   ) {
     throw new Error(
-      'Usage: node tests/run.mjs --list | --suite smoke | --suite kernel | --suite context [--semantic] | --suite configuration [--semantic] | --suite manual [--semantic] | --suite filesystem [--semantic] | --suite persistence [--semantic] | --suite recovery [--semantic] | --suite bootstrap [--semantic] | --suite packaging [--semantic] | --suite retry [--semantic] | --suite projection [--semantic] | --suite compatible [--semantic] | --suite reminders [--semantic] | --suite daemon [--semantic] | --suite presentation [--semantic] | --suite components [--semantic] | --suite shell [--semantic] | --suite taskdoc [--semantic] | --suite provider-local [--semantic] | --suite server-local [--semantic]',
+      'Usage: node tests/run.mjs --list | --suite smoke | --suite kernel | --suite context [--semantic] | --suite configuration [--semantic] | --suite manual [--semantic] | --suite filesystem [--semantic] | --suite persistence [--semantic] | --suite recovery [--semantic] | --suite bootstrap [--semantic] | --suite packaging [--semantic] | --suite retry [--semantic] | --suite projection [--semantic] | --suite compatible [--semantic] | --suite reminders [--semantic] | --suite daemon [--semantic] | --suite presentation [--semantic] | --suite components [--semantic] | --suite shell [--semantic] | --suite taskdoc [--semantic] | --suite provider-local [--semantic] | --suite server-local [--semantic] | --suite provider-live [--case <provider/file.ts> --live --provider <id> --model <id>]',
     );
   }
   const suite = args[1];
   if (semantic && !Object.hasOwn(semanticSuites, suite)) {
     throw new Error('--semantic requires a suite with explicit evidence producers');
   }
-  const files = semantic ? semanticSuites[suite] : (await inventory()).suites[suite];
+  const files = selectedLiveCase
+    ? [selectedLiveCase]
+    : semantic
+      ? semanticSuites[suite]
+      : (await inventory()).suites[suite];
   if (!files.length) throw new Error(`Suite ${suite} discovered no tests`);
   const tsx = require.resolve('tsx/cli');
   const cases = files.map((file) => ({
     id: file,
+    ...(suite === 'provider-live' ? { skipExitCode: 77, requireLiveEvidence: true } : {}),
     args:
       (suite !== 'smoke' && suite !== 'packaging') ||
       persistence.includes(file) ||
       recovery.includes(file) ||
       presentation.includes(file) ||
       configuration.includes(file)
-        ? [tsx, path.join(testsRoot, 'cli.ts'), '--', file, ...(semantic ? ['--semantic'] : [])]
+        ? [
+            tsx,
+            path.join(testsRoot, 'cli.ts'),
+            '--',
+            file,
+            ...liveArgs,
+            ...(semantic ? ['--semantic'] : []),
+          ]
         : [
             tsx,
             '--tsconfig',
@@ -545,7 +675,7 @@ async function main() {
   );
   const summary = await runCases(cases, {
     logDir,
-    keepSuccessfulState: semantic,
+    keepSuccessfulState: semantic || suite === 'provider-live',
     report: semantic ? (line) => console.log(`GENERATION PROCESS ${line}`) : console.log,
   });
   if (semantic) {
@@ -554,14 +684,18 @@ async function main() {
       `${JSON.stringify({ ...summary, scope: 'evidence-generation-processes', semanticAcceptance: 'pending' }, null, 2)}\n`,
     );
     console.log(
-      `Generation processes: ${summary.passed} completed, ${summary.failed} failed, ${summary.timedOut} timed out. Semantic acceptance: PENDING subjective review. Evidence: ${logDir}`,
+      `Generation processes: ${summary.passed} completed, ${summary.failed} failed, ${summary.timedOut} timed out, ${summary.skipped} skipped. Semantic acceptance: PENDING subjective review. Evidence: ${logDir}`,
     );
   } else {
     console.log(
-      `Total ${summary.total}: ${summary.passed} passed, ${summary.failed} failed, ${summary.timedOut} timed out. Evidence: ${logDir}`,
+      `Total ${summary.total}: ${summary.passed} passed, ${summary.failed} failed, ${summary.timedOut} timed out, ${summary.skipped} skipped. Evidence: ${logDir}`,
     );
   }
+  console.log(
+    JSON.stringify({ artifact: 'suite-summary', suite, path: path.join(logDir, 'summary.json') }),
+  );
   if (summary.failed || summary.timedOut) process.exitCode = 1;
+  else if (summary.skipped) process.exitCode = 2;
 }
 
 if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
