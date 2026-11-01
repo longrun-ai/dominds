@@ -1368,6 +1368,24 @@
       "lane": "configuration",
       "value": "9组参数名/required字段兼容、退役入口、8种越界拒绝及外部字节保全与同参数合法写正控",
       "evidence": "MCP/team batch: complete original and final assertion audit; exact IDs, protocol/data fields, given text fidelity and actual file/registry/Problems effects. tests/semantic/reviews/2026-10-31-mcp-team-configuration.json retains the independent full-text review and execution scope. Any fresh semantic output remains pending."
+    },
+    "codex-auth-alignment.ts": {
+      "status": "reviewed",
+      "lane": "provider-local",
+      "value": "通用SDK认证能力与Dominds受管文件认证边界、真实401后状态变更零重试、凭据保全、headers轮换/实际HTTP透传、计划别名/URL/给定prompt资产保真",
+      "evidence": "Original1284-line value/assertion audit and complete final test/helper/product/entry diff review; concrete public machine fields, input data fidelity and actual filesystem/HTTP effects. tests/semantic/reviews/2026-10-31-auth-forensics.json retains the initial ten subjective rejections, corrected current text review, execution scope and full provenance. Any freshly generated semantic output remains pending."
+    },
+    "codex-auth-refresh.ts": {
+      "status": "reviewed",
+      "lane": "provider-local",
+      "value": "受控继承认证输入隔离、三manager同进程合并刷新、真实文件锁重读/所有权/回收、完整foreign与旧malformed owner、过期与暂态fallback以及结构化permanent拒绝",
+      "evidence": "Original1284-line value/assertion audit and complete final test/helper/product/entry diff review; concrete public machine fields, input data fidelity and actual filesystem/HTTP effects. tests/semantic/reviews/2026-10-31-auth-forensics.json retains the initial ten subjective rejections, corrected current text review, execution scope and full provenance. Any freshly generated semantic output remains pending."
+    },
+    "server-dialog-forensics-zip.ts": {
+      "status": "reviewed",
+      "lane": "server-local",
+      "value": "真实鉴权和raw/bundle下载、独立解包CRC/原文/manifest来源与遗漏、逗号和多字节/binary保真、自动过滤与显式pick兼容、既存外部文件拒绝无泄漏",
+      "evidence": "Original1284-line value/assertion audit and complete final test/helper/product/entry diff review; concrete public machine fields, input data fidelity and actual filesystem/HTTP effects. tests/semantic/reviews/2026-10-31-auth-forensics.json retains the initial ten subjective rejections, corrected current text review, execution scope and full provenance. Any freshly generated semantic output remains pending."
     }
   },
   "retired": {

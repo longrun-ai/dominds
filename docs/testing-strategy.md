@@ -599,3 +599,15 @@ WebSocket保真实HTTP0端口/ws升级、welcome zh与en/zh支持、counts同epo
 Problems 保留同ID及原始详情的 active→resolved→按 source/path 删除链，默认 clear 不改变 active 快照，未匹配的已解决记录保留。真实 scoped write 修组件配置不得掩盖未修团队问题，文件全文与派生记录均核验。非法可选 name 的真实行为是 warning 且成员仍可用；新夹具最初误认成字段级 error ID，已修正契约并保留失败证据，不当作产品缺陷。8种直接路径拒绝各有外部既存文件保全/缺席检查及相同参数的合法路径正控，prepare/apply 也核磁盘效果。9组 schema 只证明参数名、required 和来源字段兼容，未声称完整行为等价。
 
 原六项安全前提下基线通过；原 disable 的未受控端口9场景未执行，其受控替代已实际执行。新七项最终行为7/7；七个 producer 产生44份实际文本（包含双语禁用、Problems 和路径拒绝），由执行智能体逐例全文主观评审，详见[完整记录](../tests/semantic/reviews/2026-10-31-mcp-team-configuration.json)。这批没有产品改动，不虚构修复前 red；夹具预期错误和新增类型错误均须按失败记录。独立审查还发现导入夹具沿用失效旧模型ID，诊断本身准确但健康配置前提不足，改为已配置的local-mock/default并直接核成员provider/model与默认配置无active问题；原3份准确文本保留为历史，替代新3重新全文评。禁用再补整份YAML数据除enabled外保留、失败重启明确写true的核验，相关新7也重新全文评。最终44与历史10均分开保存在记录中。配置行为入口9→16，语义 producer7→14；本批仅生成新增七项的44份，不把旧输出自动继承为新验收。全量测试类型、标准构建/应用类型/格式、完整配置入口、smoke、运行器和文档导航检查的实际结果保存在同一记录；live供应商、外部组件服务与浏览器不属于本批通过范围。
+
+### 认证与取证下载（三项）
+
+原三项1284行和alignment17组、refresh11组逐项完整审查。保留通用SDK的外部headers能力与Dominds受管OAuth文件策略的不同边界，改用原生错误class/code、preflight kind/reason、真实401后的请求次数及凭据保全，删除策略句子/错误关键词判义。模型到给定prompt资产的读取只核数据保真，不判断prompt意思。profile始终显式指向CLI自有目录；不改HOME/CODEX_HOME。刷新以自有假继承CODEX_ACCESS_TOKEN输入验证局部隔离与恢复，真实文件锁/持久化保留，三manager合并只证明同进程。请求gate及实际锁文件保全替代四处sleep，原malformed owner回收与完整foreign owner回收区分，公开POST字段在预期失败catch之外核验，避免把夹具断言吞成预期失败。
+
+真实取证HTTP保鉴权、raw读取、side/root bundle和重复files参数/逗号文件名。独立读取ZIP store/deflate格式、native CRC、完整给定正文、二进制/多字节原值、manifest来源与实际遗漏；实际本地server仍产生store格式，不声称已跑deflate生产者。full排除无关记录，授权pick无关debug文件仍允许。自有既存外部文件被拒绝后不泄漏正文且原字节保全；CLI固定启动目录和响应error/aborted处理保留失败现场。这是原始取证文件夹具，不为形式伪造执行Dialog。
+
+初三项基线3/3。初新语义运行alignment通过并产24份、refresh因夹具误删os import失败；新类型错误（withResolvers不在既有lib及os缺失、后续Promise gate被推断成never）均如实保留，以普通Promise和显式void修正，未改lib或排除。独立全文裁决初24为14通过10拒绝：实际login/status命令未绑定显式profile，操作默认/继承目录后却要求另一目录auth.json，无法完成所建议恢复。产品只修既有fileModeSteps/loginSteps的envPrefix，显式CODEX_HOME指向选定目录，并保留自定义provider别名同路径；未扩展认证模式或权限。新alignment25（含custom alias）与最终refresh2分别重新全文评，旧拒绝与中间材料独立保存在[完整记录](../tests/semantic/reviews/2026-10-31-auth-forensics.json)。file-mode config-write-failure诊断仅有源码审查，不冒称本27实际文本已经覆盖；没有实际OAuth/供应商/浏览器验收。
+
+provider-local 9→11、server-local 6→7，旧三个单项入口统一隔离CLI，原三候选均保留，新共用helper不计自动通过。provider-local语义producer5→7，完整未来lane41→68仍须fresh review；本批只采新两项的当前27，不继承其余41新输出的判决。标准构建、应用/全测试类型、相关local lanes、smoke、运行器、格式与完整文档导航的实际结果随记录保存；剩余候选23项，仍继续整改。
+
+独立源码审查还发现新增ZIP校验只证明manifest/payload自洽：错误条目可同时伪指另一已知fixture并携带其字节。自有临时fault probe只改实际下载的Buffer，保留有效ZIP/CRC和全部文件名，让side/latest.yaml变成nested/comma文件且manifest同步伪指；首版测试真实返回0，证明该设计假绿。修正为按实际bundle前缀和条目名独立绑定side/root/dialog/debug的正确源，再比较完整正文与manifest来源；同样污染须真实失败，未污染真实服务须通过。这是新增验收设计缺口，不是产品导出错误；临时probe的首次注入还误处理401 JSON并失败，已用实际HTTP200门控修正，失败记录保留，不伪称其证明了产品或校验缺陷。

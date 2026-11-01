@@ -204,6 +204,7 @@ const providerLive = [
   'provider/volcengine-coding-plan-reasoning-live.ts',
 ];
 const serverLocal = [
+  'server-dialog-forensics-zip.ts',
   'auth.ts',
   'certificates.ts',
   'setup-env-input.ts',
@@ -212,6 +213,8 @@ const serverLocal = [
   'ws-language.ts',
 ];
 const providerLocal = [
+  'codex-auth-alignment.ts',
+  'codex-auth-refresh.ts',
   'provider/setup-rtws-custom-provider.ts',
   'provider/live-probe-controls.ts',
   'provider/anthropic-multi-tool-use-stream.ts',
@@ -226,6 +229,8 @@ const taskdoc = ['task-package.ts', 'taskdoc-search.ts', 'taskdoc-recall-budget.
 const semanticSuites = {
   'server-local': ['auth.ts', 'certificates.ts', 'ws-language.ts'],
   'provider-local': [
+    'codex-auth-alignment.ts',
+    'codex-auth-refresh.ts',
     'provider/live-probe-controls.ts',
     'provider/anthropic-stream-errors.ts',
     'provider/codex-instructions.ts',

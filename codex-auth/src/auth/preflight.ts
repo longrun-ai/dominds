@@ -421,7 +421,11 @@ function topLevelTomlPrefix(raw: string): string {
 }
 
 function fileModeSteps(codexHome: string, codexHomeEnvVar: string | undefined): string[] {
-  const envPrefix = codexHomeEnvVar ? `${codexHomeEnvVar}=${shellQuote(codexHome)} ` : '';
+  const envPrefix =
+    `CODEX_HOME=${shellQuote(codexHome)} ` +
+    (codexHomeEnvVar && codexHomeEnvVar !== 'CODEX_HOME'
+      ? `${codexHomeEnvVar}=${shellQuote(codexHome)} `
+      : '');
   return [
     `Set Codex CLI auth storage to file mode: ${envPrefix}codex -c cli_auth_credentials_store=file login status`,
     `Or edit ${codexConfigPath(codexHome)} and add: cli_auth_credentials_store = "file"`,
@@ -429,7 +433,11 @@ function fileModeSteps(codexHome: string, codexHomeEnvVar: string | undefined): 
 }
 
 function loginSteps(codexHome: string, codexHomeEnvVar: string | undefined): string[] {
-  const envPrefix = codexHomeEnvVar ? `${codexHomeEnvVar}=${shellQuote(codexHome)} ` : '';
+  const envPrefix =
+    `CODEX_HOME=${shellQuote(codexHome)} ` +
+    (codexHomeEnvVar && codexHomeEnvVar !== 'CODEX_HOME'
+      ? `${codexHomeEnvVar}=${shellQuote(codexHome)} `
+      : '');
   return [
     `Run ChatGPT login in file mode: ${envPrefix}codex -c cli_auth_credentials_store=file login`,
     `Verify file auth exists: ${envPrefix}codex -c cli_auth_credentials_store=file login status`,

@@ -1,7 +1,6 @@
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import http from 'node:http';
-import os from 'node:os';
 import path from 'node:path';
 
 import {
@@ -17,19 +16,53 @@ import {
   createChatGptStartRequest,
   createExternalHeaderAuth,
   credentialsFromAuthState,
-  DOMINDS_CODEX_PROVIDER_AUTH_POLICY,
+  DOMINDS_CODEX_PROVIDER_AUTH_POLICY_ERROR_CODE,
+  DomindsCodexProviderAuthPolicyError,
   formatCodexFileAuthActionRequired,
   loadCodexPromptSync,
   normalizeAccountPlanType,
   oauthClientId,
   prepareCodexFileAuth,
   readAuthFile,
+  readCodexCliAuthStoreMode,
   resolveCodexPromptFilename,
   writeAuthFile,
   type AuthDotJson,
   type AuthState,
   type ExternalAuth,
 } from '../codex-auth/src/index';
+
+import {
+  captureAsyncAuthError,
+  captureAuthError,
+  makeAuthProfile as makeCodexHome,
+  makeAuthJwt as makeJwt,
+} from './helpers/auth-fixture';
+import { semanticEvidenceCollector } from './helpers/semantic-evidence';
+const evidence = semanticEvidenceCollector('dominds-codex-auth-alignment-');
+function diagnostic(
+  id: string,
+  scenario: string,
+  actualText: string,
+  context: Record<string, string | number | boolean> = {},
+) {
+  evidence.record({
+    id,
+    scenario,
+    businessValue:
+      'A user can recover managed authentication in the intended profile while general SDK authentication support remains separate from the Dominds provider policy.',
+    context,
+    reviewQuestions: [
+      'Does the complete diagnostic accurately identify the supplied mode or missing credential and the supported alternatives?',
+      'When recommending login, do the commands target the supplied explicit profile rather than another profile?',
+    ],
+    actualText,
+  });
+}
+function assertPolicyError(error: Error) {
+  assert.ok(error instanceof DomindsCodexProviderAuthPolicyError);
+  assert.equal(error.code, DOMINDS_CODEX_PROVIDER_AUTH_POLICY_ERROR_CODE);
+}
 
 async function run(): Promise<void> {
   await withCodexAccessTokenUnsetAsync(async () => {
@@ -51,6 +84,7 @@ async function run(): Promise<void> {
     testHostedLoginSuccessRedirect();
     testGpt56PromptSelection();
   });
+  await evidence.write();
   console.log('codex-auth alignment tests: ok');
 }
 
@@ -65,13 +99,20 @@ async function testDomindsCodexProviderRejectsInitialExternalAuth(): Promise<voi
     resolve: async () => createExternalHeaderAuth({ Authorization: 'Bearer external' }),
     refresh: async () => createExternalHeaderAuth({ Authorization: 'Bearer refreshed' }),
   };
-  const manager = new AuthManager({ codexHome: makeCodexHome(), externalAuth });
-  await assert.rejects(
-    () =>
-      createChatGptClientFromManager(manager, {
-        validateAuthState: assertDomindsCodexProviderManagedChatGptAuth,
-      }),
-    /supports only managed ChatGPT OAuth file auth.*headers/,
+  const codexHome = makeCodexHome();
+  const manager = new AuthManager({ codexHome, externalAuth });
+  const error = await captureAsyncAuthError(() =>
+    createChatGptClientFromManager(manager, {
+      validateAuthState: assertDomindsCodexProviderManagedChatGptAuth,
+    }),
+  );
+  assertPolicyError(error);
+  assert.equal(fs.existsSync(path.join(codexHome, 'auth.json')), false);
+  diagnostic(
+    'initial-external-header-policy',
+    'A general SDK external header resolver is offered to the Dominds managed-file-only client factory.',
+    error.message,
+    { codexHome, authMode: 'headers', providerRequestAttempted: false },
   );
 }
 
@@ -82,7 +123,6 @@ async function testDomindsCodexProviderRejectsRuntimeAuthChanges(): Promise<void
     mutation:
       | { kind: 'stored'; changedAuth: AuthDotJson }
       | { kind: 'environment'; accessToken: string };
-    expectedError: RegExp;
   }> = [
     {
       name: 'external ChatGPT tokens',
@@ -98,7 +138,6 @@ async function testDomindsCodexProviderRejectsRuntimeAuthChanges(): Promise<void
           },
         },
       },
-      expectedError: /supports only managed ChatGPT OAuth file auth.*chatgptAuthTokens/,
     },
     {
       name: 'incomplete managed ChatGPT auth',
@@ -114,13 +153,10 @@ async function testDomindsCodexProviderRejectsRuntimeAuthChanges(): Promise<void
           },
         },
       },
-      expectedError: /missing id_token, access_token, or refresh_token/,
     },
     {
       name: 'runtime CODEX_ACCESS_TOKEN override',
       mutation: { kind: 'environment', accessToken: 'at-runtime-test' },
-      expectedError:
-        /supports only managed ChatGPT OAuth file auth.*personal_access_token.*custom Dominds OpenAI Responses API provider.*feature request/,
     },
   ];
 
@@ -134,7 +170,6 @@ async function assertRuntimeAuthRejection(testCase: {
   mutation:
     | { kind: 'stored'; changedAuth: AuthDotJson }
     | { kind: 'environment'; accessToken: string };
-  expectedError: RegExp;
 }): Promise<void> {
   const codexHome = makeCodexHome();
   const initialAuth = managedChatGptAuthState().raw;
@@ -182,7 +217,20 @@ async function assertRuntimeAuthRejection(testCase: {
       conversationId: '00000000-0000-4000-8000-000000000001',
       userText: 'test',
     });
-    await assert.rejects(() => client.responses(payload), testCase.expectedError);
+    const error = await captureAsyncAuthError(() => client.responses(payload));
+    assertPolicyError(error);
+    diagnostic(
+      'runtime-policy-' + testCase.mutation.kind + '-' + testCase.name.replaceAll(' ', '-'),
+      'A real owned HTTP401 is followed by ' + testCase.name + ' before a retry can be sent.',
+      error.message,
+      {
+        codexHome,
+        mutation: JSON.stringify(testCase.mutation),
+        requestCount,
+        initialAuth: JSON.stringify(initialAuth),
+        storedAuth: JSON.stringify(readAuthFile(codexHome)),
+      },
+    );
     assert.equal(
       requestCount,
       1,
@@ -219,30 +267,47 @@ async function assertRuntimeAuthRejection(testCase: {
 function testDomindsCodexProviderRejectsUnknownFutureFileMode(): void {
   withCodexAccessTokenUnset(() => {
     const codexHome = makeCodexHome();
-    const rawAuth = `${JSON.stringify({ auth_mode: 'futureAuthMode', credential: 'test' }, null, 2)}\n`;
+    const rawAuth =
+      JSON.stringify({ auth_mode: 'futureAuthMode', credential: 'test' }, null, 2) + '\n';
     fs.writeFileSync(path.join(codexHome, 'auth.json'), rawAuth, 'utf8');
     const result = prepareCodexFileAuth({ codexHome });
-    assert.equal(result.kind, 'action_required');
-    if (result.kind !== 'action_required') {
-      throw new Error('expected an unknown future auth mode to require action');
-    }
-    const formatted = formatCodexFileAuthActionRequired(result);
-    assert.match(formatted, /unknown auth\.json mode/);
-    assert.match(formatted, /custom Dominds OpenAI Responses API provider/);
-    assert.match(formatted, /submit a Dominds feature request/);
-
-    assert.throws(
+    assert.ok(result.kind === 'action_required');
+    assert.equal(result.reason, 'unsupported_auth_mode');
+    assert.equal(readCodexCliAuthStoreMode(codexHome).mode, 'file');
+    assert.equal(fs.readFileSync(path.join(codexHome, 'auth.json'), 'utf8'), rawAuth);
+    diagnostic(
+      'unknown-mode-preflight',
+      'An explicit owned profile contains futureAuthMode, which this version does not support.',
+      formatCodexFileAuthActionRequired(result),
+      { codexHome, rawAuth, reason: result.reason },
+    );
+    const error = captureAuthError(
       () =>
         new AuthManager({
           codexHome,
           validateStoredAuth: assertDomindsCodexProviderManagedChatGptStoredAuth,
         }),
-      /unknown auth\.json mode.*custom Dominds OpenAI Responses API provider.*feature request/,
     );
-    assert.equal(
-      fs.readFileSync(path.join(codexHome, 'auth.json'), 'utf8'),
-      rawAuth,
-      'rejected unknown stored auth must not be normalized or rewritten',
+    assertPolicyError(error);
+    assert.equal(fs.readFileSync(path.join(codexHome, 'auth.json'), 'utf8'), rawAuth);
+    diagnostic(
+      'unknown-mode-manager',
+      'The manager is constructed from the same unchanged unknown-mode file.',
+      error.message,
+      { codexHome, rawAuth },
+    );
+    const custom = prepareCodexFileAuth({
+      codexHome,
+      codexHomeEnvVar: 'DOMINDS_TEST_AUTH_PROFILE',
+    });
+    assert.ok(custom.kind === 'action_required');
+    assert.equal(custom.reason, 'unsupported_auth_mode');
+    assert.equal(fs.readFileSync(path.join(codexHome, 'auth.json'), 'utf8'), rawAuth);
+    diagnostic(
+      'custom-profile-preflight',
+      'The Dominds provider selects an explicit profile through a provider-specific environment alias; Codex CLI still needs to target that same directory.',
+      formatCodexFileAuthActionRequired(custom),
+      { codexHome, codexHomeEnvVar: 'DOMINDS_TEST_AUTH_PROFILE', rawAuth },
     );
   });
 }
@@ -260,13 +325,27 @@ function testDomindsCodexProviderRejectsEphemeralManagedAuth(): void {
   const managed = managedChatGptAuthState().raw;
   writeAuthFile(codexHome, managed);
   writeAuthFile(codexHome, managed, 'ephemeral');
-  assert.throws(
+  const before = fs.readFileSync(path.join(codexHome, 'auth.json'), 'utf8');
+  const error = captureAuthError(
     () =>
       new AuthManager({
         codexHome,
         validateStoredAuth: assertDomindsCodexProviderManagedChatGptStoredAuth,
       }),
-    /supports only managed ChatGPT OAuth file auth.*chatgpt from the ephemeral auth store.*custom Dominds OpenAI Responses API provider.*feature request/,
+  );
+  assertPolicyError(error);
+  assert.equal(fs.readFileSync(path.join(codexHome, 'auth.json'), 'utf8'), before);
+  assert.deepEqual(readAuthFile(codexHome, 'ephemeral'), managed);
+  diagnostic(
+    'ephemeral-managed-store',
+    'A valid managed token record is present in both persistent and ephemeral stores, but the Dominds provider requires persistent file auth.',
+    error.message,
+    {
+      codexHome,
+      auth: JSON.stringify(managed),
+      persistentUnchanged: true,
+      ephemeralUnchanged: true,
+    },
   );
 }
 
@@ -309,10 +388,17 @@ function testDomindsCodexProviderManagedOauthBoundary(): void {
       },
     },
   ];
-  for (const auth of rejected) {
-    assert.throws(
-      () => assertDomindsCodexProviderManagedChatGptAuth(auth),
-      new RegExp(DOMINDS_CODEX_PROVIDER_AUTH_POLICY.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')),
+  for (const [index, auth] of rejected.entries()) {
+    const error = captureAuthError(() => assertDomindsCodexProviderManagedChatGptAuth(auth));
+    assertPolicyError(error);
+    diagnostic(
+      'managed-state-' + index + '-' + auth.mode,
+      'The provider validator receives the supplied unsupported state or incomplete managed tokens.',
+      error.message,
+      {
+        auth: JSON.stringify(auth),
+        scope: 'Pure state policy validation; no provider request or file mutation.',
+      },
     );
   }
 }
@@ -348,18 +434,21 @@ function testDomindsCodexProviderRejectsUnsupportedFileModes(): void {
   ];
 
   withCodexAccessTokenUnset(() => {
-    for (const auth of cases) {
+    for (const [index, auth] of cases.entries()) {
       const codexHome = makeCodexHome();
       writeAuthFile(codexHome, auth);
+      const before = fs.readFileSync(path.join(codexHome, 'auth.json'), 'utf8');
       const result = prepareCodexFileAuth({ codexHome });
-      assert.equal(result.kind, 'action_required');
-      if (result.kind !== 'action_required') {
-        throw new Error('expected unsupported auth to require action');
-      }
-      const formatted = formatCodexFileAuthActionRequired(result);
-      assert.match(formatted, /supports only managed ChatGPT OAuth file auth/);
-      assert.match(formatted, /custom Dominds OpenAI Responses API provider/);
-      assert.match(formatted, /submit a Dominds feature request/);
+      assert.ok(result.kind === 'action_required');
+      assert.equal(result.reason, index === 0 ? 'api_key_auth' : 'unsupported_auth_mode');
+      assert.equal(readCodexCliAuthStoreMode(codexHome).mode, 'file');
+      assert.equal(fs.readFileSync(path.join(codexHome, 'auth.json'), 'utf8'), before);
+      diagnostic(
+        'stored-mode-' + index,
+        'A supplied unsupported file-auth mode must be rejected while the original auth file remains intact.',
+        formatCodexFileAuthActionRequired(result),
+        { codexHome, auth: before, reason: result.reason },
+      );
     }
   });
 }
@@ -380,8 +469,20 @@ function testDomindsCodexProviderRejectsCodexAccessTokenOverride(): void {
       if (result.kind !== 'action_required') {
         throw new Error('expected CODEX_ACCESS_TOKEN to be rejected');
       }
-      assert.match(result.message, new RegExp(`${testCase.detected} via CODEX_ACCESS_TOKEN`));
-      assert.ok(result.steps.some((step) => step.includes(`Unset ${CODEX_ACCESS_TOKEN_ENV_VAR}`)));
+      assert.equal(result.reason, 'unsupported_auth_mode');
+      assert.equal(result.changedConfigToFile, false);
+      assert.equal(fs.existsSync(path.join(codexHome, 'config.toml')), false);
+      diagnostic(
+        'environment-override-' + testCase.detected,
+        'A dedicated supplied CODEX_ACCESS_TOKEN override must be rejected before changing the selected profile config.',
+        formatCodexFileAuthActionRequired(result),
+        {
+          codexHome,
+          environmentValue: testCase.value,
+          detectedFixtureMode: testCase.detected,
+          authFile: JSON.stringify(readAuthFile(codexHome)),
+        },
+      );
     }
   } finally {
     if (previous === undefined) {
@@ -490,9 +591,14 @@ function testAgentIdentityJwtWithoutEmail(): void {
 function testHeaderAuthCannotBePersisted(): void {
   const codexHome = makeCodexHome();
   writeAuthFile(codexHome, { auth_mode: 'headers' });
-  assert.throws(
-    () => new AuthManager({ codexHome }),
-    /externally provided header auth cannot be loaded from auth\.json/,
+  const before = fs.readFileSync(path.join(codexHome, 'auth.json'), 'utf8');
+  const error = captureAuthError(() => new AuthManager({ codexHome }));
+  assert.equal(fs.readFileSync(path.join(codexHome, 'auth.json'), 'utf8'), before);
+  diagnostic(
+    'header-auth-not-persistable',
+    'An auth file declares externally supplied headers without an external resolver.',
+    error.message,
+    { codexHome, authFile: before },
   );
 }
 
@@ -624,25 +730,32 @@ function testHostedLoginSuccessRedirect(): void {
     { kind: 'hosted', appBrand: 'codex' },
   );
   assert.equal(setupRedirect.kind, 'local');
-  assert.match(setupRedirect.url, /^http:\/\/localhost:1455\/success\?/);
+  const local = new URL(setupRedirect.url);
+  assert.equal(local.protocol, 'http:');
+  assert.equal(local.hostname, 'localhost');
+  assert.equal(local.port, '1455');
+  assert.equal(local.pathname, '/success');
 }
 
 function testGpt56PromptSelection(): void {
-  assert.equal(resolveCodexPromptFilename('gpt-5.6'), 'gpt-5.6-sol_prompt.md');
-  assert.equal(resolveCodexPromptFilename('gpt-5.6-sol'), 'gpt-5.6-sol_prompt.md');
-  assert.equal(resolveCodexPromptFilename('gpt-5.6-terra'), 'gpt-5.6_prompt.md');
-  assert.equal(resolveCodexPromptFilename('gpt-5.6-luna'), 'gpt-5.6_prompt.md');
-  const sol = loadCodexPromptSync('gpt-5.6-sol');
-  const terra = loadCodexPromptSync('gpt-5.6-terra');
-  const luna = loadCodexPromptSync('gpt-5.6-luna');
-  assert.ok(sol);
-  assert.ok(terra);
-  assert.equal(luna, terra);
-  assert.notEqual(sol, terra);
-}
-
-function makeCodexHome(): string {
-  return fs.mkdtempSync(path.join(os.tmpdir(), 'dominds-codex-auth-alignment-'));
+  const selection = [
+    ['gpt-5.6', 'gpt-5.6-sol_prompt.md'],
+    ['gpt-5.6-sol', 'gpt-5.6-sol_prompt.md'],
+    ['gpt-5.6-terra', 'gpt-5.6_prompt.md'],
+    ['gpt-5.6-luna', 'gpt-5.6_prompt.md'],
+  ] as const;
+  for (const [model, file] of selection) {
+    assert.equal(resolveCodexPromptFilename(model), file);
+    const suppliedAsset = fs.readFileSync(
+      path.resolve(__dirname, '../codex-auth/prompts', file),
+      'utf8',
+    );
+    assert.equal(
+      loadCodexPromptSync(model),
+      suppliedAsset,
+      'bundled asset selection preserves exact source data; this does not judge prompt meaning',
+    );
+  }
 }
 
 function withCodexAccessTokenUnset(work: () => void): void {
@@ -673,12 +786,7 @@ async function withCodexAccessTokenUnsetAsync(work: () => Promise<void>): Promis
   }
 }
 
-function makeJwt(payload: Record<string, unknown>): string {
-  return `${base64UrlJson({ alg: 'none', typ: 'JWT' })}.${base64UrlJson(payload)}.sig`;
-}
-
-function base64UrlJson(value: unknown): string {
-  return Buffer.from(JSON.stringify(value)).toString('base64url');
-}
-
-void run();
+run().catch((error) => {
+  console.error(error);
+  process.exitCode = 1;
+});
