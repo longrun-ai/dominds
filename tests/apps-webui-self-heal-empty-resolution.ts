@@ -1,190 +1,124 @@
 import assert from 'node:assert/strict';
 import * as fs from 'node:fs/promises';
-import os from 'node:os';
 import path from 'node:path';
 
-import YAML from 'yaml';
-
-import { loadAppsResolutionFile } from '../main/apps/resolution-file';
-import { shutdownAppsRuntime } from '../main/apps/runtime';
+import { loadAppsResolutionFile, writeAppsResolutionFile } from '../main/apps/resolution-file';
+import { getAppsHostClient, shutdownAppsRuntime } from '../main/apps/runtime';
 import { stopMcpSupervisor } from '../main/mcp/supervisor';
 import { startServer } from '../main/server';
-import '../main/tools/builtins';
+import { getDomindsSelfUpdateStatus } from '../main/server/dominds-self-update';
+import { Team } from '../main/team';
+import { writeAppManifest, writeAppText } from './helpers/app-fixture';
+import {
+  assertWebuiDelivered,
+  createAppFactoryGate,
+  runHostScenario,
+  writeHostedApp,
+} from './helpers/app-host-fixture';
+import { withTempRtws, writeStandardMinds } from './kernel-driver/helpers';
 
-async function writeText(filePathAbs: string, content: string): Promise<void> {
-  await fs.mkdir(path.dirname(filePathAbs), { recursive: true });
-  await fs.writeFile(filePathAbs, content, 'utf-8');
-}
-
-async function canonicalPath(pathAbs: string): Promise<string> {
-  try {
-    return await fs.realpath(pathAbs);
-  } catch {
-    return path.resolve(pathAbs);
-  }
-}
-
-async function main(): Promise<void> {
-  const previousCwd = process.cwd();
-  const tmpRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'dominds-apps-webui-self-heal-'));
-  const appId = '@tests/self-heal-package';
-  const localAppRel = path.join('dominds-apps', '@tests', 'self-heal-package');
-  const localAppAbs = path.join(tmpRoot, localAppRel);
-
-  try {
-    process.chdir(tmpRoot);
-
-    await writeText(
-      path.join(tmpRoot, '.minds', 'app.yaml'),
-      [
-        'apiVersion: dominds.io/v1alpha1',
-        'kind: DomindsApp',
-        'id: rtws_root',
-        'dependencies:',
-        `  - id: ${JSON.stringify(appId)}`,
-        '',
-      ].join('\n'),
-    );
-    await writeText(
-      path.join(tmpRoot, '.minds', 'llm.yaml'),
-      [
-        'providers:',
-        '  stub:',
-        '    name: Stub',
-        '    apiType: openai',
-        '    baseUrl: https://example.invalid',
-        '    apiKeyEnvVar: STUB_API_KEY',
-        '    models:',
-        '      fake_model: { name: "fake-model" }',
-        '',
-      ].join('\n'),
-    );
-    await writeText(
-      path.join(tmpRoot, '.minds', 'team.yaml'),
-      [
-        'member_defaults:',
-        '  provider: stub',
-        '  model: fake_model',
-        'default_responder: reviewer_from_package',
-        'members:',
-        '  reviewer_from_package:',
-        `    from: ${JSON.stringify(appId)}`,
-        '    use: reviewer',
-        '',
-      ].join('\n'),
-    );
-    await writeText(path.join(tmpRoot, '.apps', 'configuration.yaml'), 'schemaVersion: 1\n');
-    await writeText(
-      path.join(tmpRoot, '.apps', 'resolution.yaml'),
-      YAML.stringify({ schemaVersion: 1, apps: [] }),
-    );
-
-    await writeText(
-      path.join(localAppAbs, 'package.json'),
-      JSON.stringify(
-        {
-          name: appId,
-          version: '0.1.0',
-          type: 'module',
-          bin: 'bin.js',
-          dominds: { appManifest: '.minds/app.yaml' },
-        },
-        null,
-        2,
-      ),
-    );
-    await writeText(
-      path.join(localAppAbs, '.minds', 'app.yaml'),
-      [
-        'apiVersion: dominds.io/v1alpha1',
-        'kind: DomindsApp',
-        `id: ${JSON.stringify(appId)}`,
-        'contributes:',
-        '  teammates:',
-        '    teamYaml: .minds/team.yaml',
-        '  tools:',
-        '    module: ./src/app.js',
-        '',
-      ].join('\n'),
-    );
-    await writeText(
-      path.join(localAppAbs, '.minds', 'team.yaml'),
-      [
-        'members:',
-        '  reviewer:',
-        '    name: Review Worker',
-        '    toolsets:',
-        '      - ws_read',
-        '',
-      ].join('\n'),
-    );
-    await writeText(
-      path.join(localAppAbs, 'bin.js'),
-      [
-        '#!/usr/bin/env node',
-        "if (!process.argv.includes('--dominds-app')) throw new Error('expected --dominds-app');",
-        'process.stdout.write(JSON.stringify({',
-        `  appId: ${JSON.stringify(appId)},`,
-        "  displayName: 'Self-heal Fixture',",
-        '  package: {',
-        `    name: ${JSON.stringify(appId)},`,
-        "    version: '0.1.0',",
-        '    rootAbs: process.cwd(),',
-        '  },',
-        "  host: { kind: 'node_module', moduleRelPath: './src/app.js', exportName: 'createDomindsApp' },",
-        "  contributes: { teammatesYamlRelPath: '.minds/team.yaml' }",
-        '}));',
-        '',
-      ].join('\n'),
-    );
-    await writeText(
-      path.join(localAppAbs, 'src', 'app.js'),
-      [
-        'export async function createDomindsApp() {',
-        '  return {',
-        '    tools: {},',
-        '  };',
-        '}',
-        '',
-      ].join('\n'),
-    );
-
-    const started = await startServer({
-      port: 0,
-      host: '127.0.0.1',
-      mode: 'prod',
-      startBackendDriver: false,
-    });
+runHostScenario(async () => {
+  await withTempRtws(async (rtws) => {
+    await writeStandardMinds(rtws);
+    const id = '@tests/self-heal-package';
+    const gate = await createAppFactoryGate();
+    let started: Awaited<ReturnType<typeof startServer>> | undefined;
     try {
-      const resolutionLoaded = await loadAppsResolutionFile({ rtwsRootAbs: tmpRoot });
-      if (resolutionLoaded.kind !== 'ok') throw new Error(resolutionLoaded.errorText);
-      assert.equal(resolutionLoaded.kind, 'ok', 'expected ok');
-      assert.equal(resolutionLoaded.file.apps.length, 1);
-      const resolved = resolutionLoaded.file.apps[0] ?? null;
-      assert.ok(resolved, 'expected one resolved app entry');
-      assert.equal(resolved?.id, appId);
-      assert.equal(resolved?.enabled, true);
-      assert.equal(resolved?.source.kind, 'local');
-      const resolvedSourcePath =
-        resolved?.source.kind === 'local' ? await canonicalPath(resolved.source.pathAbs) : null;
-      assert.equal(resolvedSourcePath, await canonicalPath(localAppAbs));
-      assert.equal(resolved?.assignedPort, null);
+      const base = await writeHostedApp(
+        rtws,
+        id,
+        gate.childSource +
+          '\nreturn { tools: { probe_tool: async () => ({ output: { content: "self-heal-data", outcome: "success" } }) } };',
+      );
+      const supplied = {
+        ...base,
+        contributes: { ...base.contributes, teammatesYamlRelPath: '.minds/team.yaml' },
+      };
+      await writeAppText(
+        path.join(base.package.rootAbs, 'app-json.json'),
+        JSON.stringify(supplied),
+      );
+      const member = { name: 'Review Worker', toolsets: ['ws_read'] };
+      await writeAppText(
+        path.join(base.package.rootAbs, '.minds', 'team.yaml'),
+        JSON.stringify({ members: { reviewer: member } }),
+      );
+      await writeAppText(
+        path.join(rtws, '.minds', 'team.yaml'),
+        JSON.stringify({
+          member_defaults: { provider: 'local-mock', model: 'default' },
+          default_responder: 'reviewer_from_package',
+          members: { reviewer_from_package: { from: id, use: 'reviewer' } },
+        }),
+      );
+      await writeAppManifest(rtws, 'rtws_root', [id]);
+      const manifestBytes = await fs.readFile(path.join(rtws, '.minds', 'app.yaml'));
+      await writeAppsResolutionFile({ rtwsRootAbs: rtws, file: { schemaVersion: 1, apps: [] } });
+      const startup = startServer({
+        port: 0,
+        host: '127.0.0.1',
+        mode: 'prod',
+        startBackendDriver: false,
+      }).then((server) => {
+        started = server;
+        return server;
+      });
+      const entered = await Promise.race([
+        gate.entered,
+        startup.then(() => {
+          throw new Error('Server startup completed without entering the declared local factory');
+        }),
+      ]);
+      assert.ok(typeof entered === 'object' && entered !== null && 'appId' in entered);
+      assert.equal(entered.appId, id);
+      gate.release();
+      started = await startup;
+      await assertWebuiDelivered('http://127.0.0.1:' + started.port);
+      const result = await getAppsHostClient().callTool(
+        'probe_tool',
+        {},
+        {
+          dialogId: 'self-heal-dialog',
+          mainDialogId: 'self-heal-root',
+          agentId: 'reviewer_from_package',
+          taskDocPath: 'task.md',
+          callerId: 'tester',
+        },
+      );
+      assert.deepEqual(result, { output: { content: 'self-heal-data', outcome: 'success' } });
+      const loaded = await loadAppsResolutionFile({ rtwsRootAbs: rtws });
+      assert.equal(loaded.kind, 'ok');
+      assert.deepEqual(loaded.file.apps, [
+        {
+          id,
+          enabled: true,
+          source: { kind: 'local', pathAbs: base.package.rootAbs },
+          assignedPort: null,
+          installJson: supplied,
+        },
+      ]);
+      const imported = (await Team.load()).getMember('reviewer_from_package');
+      assert.ok(imported);
+      assert.equal(imported.name, member.name);
+      assert.deepEqual(imported.toolsets, member.toolsets);
+      assert.deepEqual(await fs.readFile(path.join(rtws, '.minds', 'app.yaml')), manifestBytes);
+      assert.equal(gate.packets.length, 1);
+      console.log(
+        JSON.stringify({
+          scenario: 'empty-cache-startup-recovery',
+          factoryEntries: gate.packets,
+          resolution: loaded.file,
+          probeResult: result,
+          httpDelivered: true,
+        }),
+      );
     } finally {
-      await started.httpServer.stop();
+      gate.release();
+      await started?.httpServer.stop();
+      if (started) assert.equal((await getDomindsSelfUpdateStatus()).mode, 'production');
       await shutdownAppsRuntime();
       stopMcpSupervisor();
+      await gate.close();
     }
-  } finally {
-    process.chdir(previousCwd);
-    await fs.rm(tmpRoot, { recursive: true, force: true });
-  }
-}
-
-void main()
-  .then(() => {
-    process.exit(0);
-  })
-  .catch((err: unknown) => {
-    console.error(err instanceof Error ? (err.stack ?? err.message) : String(err));
-    process.exit(1);
   });
+});

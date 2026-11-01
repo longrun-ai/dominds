@@ -1,178 +1,126 @@
 import assert from 'node:assert/strict';
-import * as fs from 'node:fs/promises';
-import os from 'node:os';
-import path from 'node:path';
 
-import YAML from 'yaml';
-
-import { shutdownAppsRuntime } from '../main/apps/runtime';
+import {
+  getAppsHostClient,
+  shutdownAppsRuntime,
+  waitForAppsHostClient,
+} from '../main/apps/runtime';
 import { stopMcpSupervisor } from '../main/mcp/supervisor';
 import { startServer } from '../main/server';
-import '../main/tools/builtins';
+import { getDomindsSelfUpdateStatus } from '../main/server/dominds-self-update';
+import { readAppResolution, writeAppManifest } from './helpers/app-fixture';
+import {
+  assertWebuiDelivered,
+  createAppFactoryGate,
+  runHostScenario,
+  writeHostedApp,
+} from './helpers/app-host-fixture';
+import { withTempRtws, writeStandardMinds } from './kernel-driver/helpers';
 
-async function writeText(filePathAbs: string, content: string): Promise<void> {
-  await fs.mkdir(path.dirname(filePathAbs), { recursive: true });
-  await fs.writeFile(filePathAbs, content, 'utf-8');
-}
-
-function elapsedMs(startedAt: bigint): number {
-  return Number(process.hrtime.bigint() - startedAt) / 1_000_000;
-}
-
-async function main(): Promise<void> {
-  const previousCwd = process.cwd();
-  const tmpRoot = await fs.mkdtemp(
-    path.join(os.tmpdir(), 'dominds-apps-webui-startup-host-failure-no-interrupt-'),
-  );
-
-  try {
-    process.chdir(tmpRoot);
-
-    await writeText(
-      path.join(tmpRoot, '.minds', 'llm.yaml'),
-      [
-        'providers:',
-        '  stub:',
-        '    name: Stub',
-        '    apiType: openai',
-        '    baseUrl: https://example.invalid',
-        '    apiKeyEnvVar: STUB_API_KEY',
-        '    models:',
-        '      fake_model: { name: "fake-model" }',
-        '',
-      ].join('\n'),
-    );
-    await writeText(
-      path.join(tmpRoot, '.minds', 'team.yaml'),
-      [
-        'member_defaults:',
-        '  provider: stub',
-        '  model: fake_model',
-        'members:',
-        '  tester:',
-        '    name: Tester',
-        '',
-      ].join('\n'),
-    );
-    await writeText(
-      path.join(tmpRoot, '.apps', 'resolution.yaml'),
-      YAML.stringify({
-        schemaVersion: 1,
-        apps: [
-          {
-            id: '@longrun-ai/broken-web-dev',
-            enabled: true,
-            assignedPort: 43123,
-            source: {
-              kind: 'local',
-              pathAbs: path.join(tmpRoot, 'dominds-apps', 'broken-web-dev'),
+runHostScenario(async () => {
+  await withTempRtws(async (rtws) => {
+    await writeStandardMinds(rtws);
+    for (const failure of [true, false]) {
+      const id = failure ? 'controlled_broken_host' : 'controlled_pending_host';
+      const gate = await createAppFactoryGate();
+      let started: Awaited<ReturnType<typeof startServer>> | undefined;
+      try {
+        await writeHostedApp(
+          rtws,
+          id,
+          gate.childSource +
+            (failure
+              ? '\nthrow new Error("controlled-factory-failure-data");'
+              : '\nreturn { tools: { probe_tool: async () => ({ output: { content: "released-host-data", outcome: "success" } }) } };'),
+        );
+        await writeAppManifest(rtws, 'rtws_root', [id]);
+        const startup = startServer({
+          port: 0,
+          host: '127.0.0.1',
+          mode: 'prod',
+          startBackendDriver: false,
+          returnAfterListen: !failure,
+        }).then((server) => {
+          started = server;
+          return server;
+        });
+        let entered: unknown;
+        if (failure) {
+          entered = await Promise.race([
+            gate.entered,
+            startup.then(() => {
+              throw new Error('Startup never entered the declared failing factory');
+            }),
+          ]);
+          const transition = waitForAppsHostClient().then(
+            () => ({ ok: true as const }),
+            (error: unknown) => ({ ok: false as const, error }),
+          );
+          gate.release();
+          const result = await transition;
+          assert.equal(result.ok, false);
+          if (result.ok) throw new Error('The controlled failing factory became ready');
+          assert.ok(result.error instanceof Error);
+          started = await startup;
+          assert.throws(() => getAppsHostClient(), Error);
+          await assertWebuiDelivered('http://127.0.0.1:' + started.port);
+        } else {
+          started = await startup;
+          entered = await gate.entered;
+          const waiting = waitForAppsHostClient();
+          assert.throws(() => getAppsHostClient(), Error);
+          // A completed real HTTP response while the factory is held proves the availability boundary.
+          await assertWebuiDelivered('http://127.0.0.1:' + started.port);
+          assert.throws(() => getAppsHostClient(), Error);
+          gate.release();
+          const result = await (
+            await waiting
+          ).callTool(
+            'probe_tool',
+            {},
+            {
+              dialogId: 'pending-host-dialog',
+              mainDialogId: 'pending-host-root',
+              agentId: 'tester',
+              taskDocPath: 'task.md',
+              callerId: 'tester',
             },
-            installJson: {
-              appId: '@longrun-ai/broken-web-dev',
-              package: {
-                name: '@longrun-ai/broken-web-dev',
-                version: '0.1.0',
-                rootAbs: path.join(tmpRoot, 'dominds-apps', 'broken-web-dev'),
-              },
-              host: {
-                kind: 'node_module',
-                moduleRelPath: './src/app.js',
-                exportName: 'createDomindsApp',
-              },
-              contributes: {},
-            },
-          },
-        ],
-      }),
-    );
-
-    const started = await startServer({
-      port: 0,
-      host: '127.0.0.1',
-      mode: 'prod',
-      startBackendDriver: false,
-    });
-    try {
-      assert.equal(started.host, '127.0.0.1');
-      assert.equal(started.mode, 'prod');
-    } finally {
-      await started.httpServer.stop();
-      await shutdownAppsRuntime();
-      stopMcpSupervisor();
+          );
+          assert.deepEqual(result, {
+            output: { content: 'released-host-data', outcome: 'success' },
+          });
+        }
+        assert.deepEqual(entered, {
+          kind: 'factory_entered',
+          appId: id,
+          rtwsRootAbs: rtws,
+          kernel: { scheme: 'http', host: '127.0.0.1', port: started.port },
+        });
+        const cache = await readAppResolution(rtws);
+        assert.deepEqual(
+          cache.apps.map((app) => ({ id: app.id, enabled: app.enabled })),
+          [{ id, enabled: true }],
+        );
+        assert.equal(gate.packets.length, 1);
+        console.log(
+          JSON.stringify({
+            scenario: failure ? 'webui-after-real-factory-failure' : 'webui-during-held-factory',
+            factoryEntries: gate.packets,
+            httpDelivered: true,
+            cacheApps: cache.apps.map((app) => app.id),
+          }),
+        );
+      } finally {
+        gate.release();
+        await started?.httpServer.stop();
+        if (started) assert.equal((await getDomindsSelfUpdateStatus()).mode, 'production');
+        try {
+          await shutdownAppsRuntime();
+        } finally {
+          stopMcpSupervisor();
+          await gate.close();
+        }
+      }
     }
-
-    const slowAppRootAbs = path.join(tmpRoot, 'dominds-apps', 'slow-web-dev');
-    await writeText(
-      path.join(slowAppRootAbs, 'src', 'app.js'),
-      [
-        'export async function createDomindsApp() {',
-        '  await new Promise((resolve) => setTimeout(resolve, 2000));',
-        '  return { tools: {} };',
-        '}',
-        '',
-      ].join('\n'),
-    );
-    await writeText(
-      path.join(tmpRoot, '.apps', 'resolution.yaml'),
-      YAML.stringify({
-        schemaVersion: 1,
-        apps: [
-          {
-            id: '@longrun-ai/slow-web-dev',
-            enabled: true,
-            assignedPort: null,
-            source: {
-              kind: 'local',
-              pathAbs: slowAppRootAbs,
-            },
-            installJson: {
-              appId: '@longrun-ai/slow-web-dev',
-              package: {
-                name: '@longrun-ai/slow-web-dev',
-                version: '0.1.0',
-                rootAbs: slowAppRootAbs,
-              },
-              host: {
-                kind: 'node_module',
-                moduleRelPath: './src/app.js',
-                exportName: 'createDomindsApp',
-              },
-              contributes: {},
-            },
-          },
-        ],
-      }),
-    );
-
-    const returnStartedAt = process.hrtime.bigint();
-    const returnedBeforeSlowAppReady = await startServer({
-      port: 0,
-      host: '127.0.0.1',
-      mode: 'prod',
-      startBackendDriver: false,
-      returnAfterListen: true,
-    });
-    try {
-      assert.ok(
-        elapsedMs(returnStartedAt) < 500,
-        'returnAfterListen startup must return before slow apps-host initialization completes',
-      );
-    } finally {
-      await returnedBeforeSlowAppReady.httpServer.stop();
-      await shutdownAppsRuntime();
-      stopMcpSupervisor();
-    }
-  } finally {
-    process.chdir(previousCwd);
-    await fs.rm(tmpRoot, { recursive: true, force: true });
-  }
-}
-
-void main()
-  .then(() => {
-    process.exit(0);
-  })
-  .catch((err: unknown) => {
-    console.error(err instanceof Error ? (err.stack ?? err.message) : String(err));
-    process.exit(1);
   });
+});

@@ -633,3 +633,9 @@ App 解析与配置七例保留当前兼容价值，集中进入 `test:apps:conf
 CLI/doctor 四例继续加入同一 App 兼容配置入口（行为11、显式语义producer8）。删除 help、拒绝更新、entry module/export mismatch、handshake-only 和安装/启用回执中的自然语言 regex/includes 判断；实际主CLI与原生 doctor 比较只用 given IDs、缓存/fresh机器字段、状态、完整导入数据，以及四个 App 状态文件的字节、mtime和缺席状态。module-only/export-only/both/healthy 独立对照，degraded 报告完成仍退出0是保留的当前CLI契约，不改成测试臆造的退出语义。self . 的无依赖根保留 healthy；安装scoped ID仍走默认local查找，保全原0.1.0锁版本、完整cache、源真实路径、正端口与原两成员模板/名字override。角色purpose/工具清单是给定配置数据，不以它们的自然语言含义作断言；未声称host factory、provider、工具调用或完整授权执行。
 
 [本批原始价值与实际语义审查](../tests/semantic/reviews/2026-10-31-app-doctor.json) 只接受类型检查通过后锁定源码的最新8份完整材料，初次迭代时未锁epoch的8份不算语义通过。实际诊断前后状态保全严格限 .minds/app.yaml、app-lock.yaml 与 .apps/configuration.yaml、resolution.yaml，不夸成整个 workspace 无变化。新输出始终 pending，旧判词和hash不判断新含义。至此余下九个 host/WebUI/runtime 候选仍待整改。
+
+最后本地五例进入 test:apps:runtime。IPC 保留双向完整给定数据、严格字段/端口/lossless JSON 拒绝、getter零求值和真实修改隔离，删除41个低价值 Error 说明正则；没有用另一个词义检测器替代审查。Host refresh 用真实 child factory TCP进入/释放同步 v1→v2及刷新期间caller，不用250ms延迟/文件轮询。工具代理改为自有本地组件，真实 Minds/registry/Problems 随配置获得、撤销、恢复三个能力；工厂不得因发现元数据而启动，且不再称实际外部 Web Dev 插件通过。
+
+自愈与坏/未ready host 使用真正声明且有可加载bin的组件，核工厂确实进入、完整cache/成员数据、实际IPC以及WebUI完整HTML响应。旧启动失败例只填cache未声明组件，fresh resolver可清空cache，坏/慢工厂可能均未进入；删除其小于500ms时间断言。新正常退出约束实际发现生产服务停止后仍留30分钟自更新计时器（原60秒suite超时、随后公开资源探针确认完成后仍有Timeout；8秒探针仅调查不作接受）。修复将服务器自身后台检查清理接入HTTP/HTTPS停止finally，防止停止后重挂计时器，同时保留状态/重启交接数据。owner与inflight保护接受静态调用链审查；真实自愈HTTP/host退出及stop后状态查询建立当前回归，未声称完整更新安装/重启竞态均被动态覆盖。
+
+[运行时完整原值、实际断言与语义材料审查](../tests/semantic/reviews/2026-10-31-app-runtime.json) 区分机器运行、调查超时、两份实际能力Problems的主观判词与静态边界。语义入口仅工具代理producer，新输出始终pending。余下四个外部Web Dev session候选仍缺组件前置，不得计为本地或真实浏览器覆盖。

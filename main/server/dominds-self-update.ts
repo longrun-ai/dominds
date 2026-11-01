@@ -147,6 +147,7 @@ const PROCESS_START_CWD = domindsRtwsRootAbs();
 let runtimeConfig: RuntimeConfig | null = null;
 let latestObservation: LatestObservation = { kind: 'unknown' };
 let backgroundCheckTimer: ReturnType<typeof setTimeout> | null = null;
+let backgroundChecksEnabled = false;
 let installPromise: Promise<DomindsSelfUpdateStatus> | null = null;
 let restartPromise: Promise<DomindsSelfUpdateStatus> | null = null;
 let restartState: RestartState = IDLE_RESTART_STATE;
@@ -1126,7 +1127,8 @@ function clearBackgroundCheckTimer(): void {
 
 function scheduleBackgroundCheck(delayMs: number): void {
   clearBackgroundCheckTimer();
-  if (runtimeConfig === null || runtimeConfig.mode !== 'production') return;
+  if (!backgroundChecksEnabled || runtimeConfig === null || runtimeConfig.mode !== 'production')
+    return;
   backgroundCheckTimer = setTimeout(() => {
     void runBackgroundCheck();
   }, delayMs);
@@ -1222,14 +1224,16 @@ export function configureDomindsSelfUpdate(params: {
   mode: ServerMode;
   closeWebSocketClients: () => void;
   stopServer: () => Promise<void>;
-}): void {
-  runtimeConfig = {
+}): () => void {
+  const configuredRuntime = {
     host: params.host,
     port: params.port,
     mode: params.mode,
     closeWebSocketClients: params.closeWebSocketClients,
     stopServer: params.stopServer,
   };
+  runtimeConfig = configuredRuntime;
+  backgroundChecksEnabled = params.mode === 'production';
   latestObservation = { kind: 'unknown' };
   restartState = IDLE_RESTART_STATE;
   installFailureObservation = null;
@@ -1237,6 +1241,12 @@ export function configureDomindsSelfUpdate(params: {
   if (params.mode === 'production') {
     scheduleBackgroundCheck(BACKGROUND_CHECK_INTERVAL_MS);
   }
+  // Stop this server's maintenance while keeping status available for restart handoff.
+  return () => {
+    if (runtimeConfig !== configuredRuntime) return;
+    backgroundChecksEnabled = false;
+    clearBackgroundCheckTimer();
+  };
 }
 
 export function setDomindsSelfUpdateBroadcaster(

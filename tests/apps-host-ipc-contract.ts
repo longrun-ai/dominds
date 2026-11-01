@@ -222,6 +222,15 @@ function testKernelToHostValidAndRebuilt(): void {
   assert.notStrictEqual(tool.args, args);
   assert.notStrictEqual(tool.args['nested'], args.nested);
   assertNoOwnProperty(tool.ctx, 'sessionSlug');
+  // The validated payload owns its data even if the untrusted sender changes its input.
+  args.nested.value = 99;
+  args.list.push(false);
+  assert.deepEqual(tool.args, { nested: { value: 42 }, list: [true, null, 'value'] });
+  const nested = tool.args['nested'];
+  assert.ok(typeof nested === 'object' && nested !== null);
+  const changed = Reflect.set(nested, 'value', 43);
+  assert.equal(Reflect.get(nested, 'value'), changed ? 43 : 42);
+  assert.equal(args.nested.value, 99);
 
   const apply = parseAppsHostMessageFromKernel(makeMessagesFromKernel()[3]);
   assert.equal(apply.type, 'reminder_apply');
@@ -247,7 +256,7 @@ function testKernelToHostExactKeys(): void {
   for (const message of makeMessagesFromKernel()) {
     assert.throws(
       () => parseAppsHostMessageFromKernel({ ...message, unsupportedExtension: true }),
-      /unsupported properties: unsupportedExtension/,
+      Error,
     );
   }
 
@@ -262,7 +271,7 @@ function testKernelToHostExactKeys(): void {
           unsupportedExtension: true,
         },
       }),
-    /unsupported properties: unsupportedExtension/,
+    Error,
   );
   const initApps = init['apps'];
   assert.ok(Array.isArray(initApps));
@@ -274,7 +283,7 @@ function testKernelToHostExactKeys(): void {
         ...init,
         apps: [{ ...firstApp, unsupportedExtension: true }],
       }),
-    /unsupported properties: unsupportedExtension/,
+    Error,
   );
   assert.throws(
     () =>
@@ -290,7 +299,7 @@ function testKernelToHostExactKeys(): void {
           },
         ],
       }),
-    /installJson.*unsupported properties: unsupportedExtension/,
+    Error,
   );
 
   const tool = makeToolCall();
@@ -303,7 +312,7 @@ function testKernelToHostExactKeys(): void {
           unsupportedExtension: true,
         },
       }),
-    /unsupported properties: unsupportedExtension/,
+    Error,
   );
 
   const apply = makeMessagesFromKernel()[3];
@@ -318,7 +327,7 @@ function testKernelToHostExactKeys(): void {
           unsupportedExtension: true,
         },
       }),
-    /unsupported properties: unsupportedExtension/,
+    Error,
   );
   assert.throws(
     () =>
@@ -326,7 +335,7 @@ function testKernelToHostExactKeys(): void {
         ...apply,
         ctx: { ...applyContext, unsupportedExtension: true },
       }),
-    /unsupported properties: unsupportedExtension/,
+    Error,
   );
   assert.throws(
     () =>
@@ -337,7 +346,7 @@ function testKernelToHostExactKeys(): void {
           ownedReminders: [{ content: 'value', unsupportedExtension: true }],
         },
       }),
-    /unsupported properties: unsupportedExtension/,
+    Error,
   );
 
   const update = makeMessagesFromKernel()[4];
@@ -351,7 +360,7 @@ function testKernelToHostExactKeys(): void {
           unsupportedExtension: true,
         },
       }),
-    /unsupported properties: unsupportedExtension/,
+    Error,
   );
 
   const render = makeMessagesFromKernel()[5];
@@ -365,22 +374,16 @@ function testKernelToHostExactKeys(): void {
           unsupportedExtension: true,
         },
       }),
-    /unsupported properties: unsupportedExtension/,
+    Error,
   );
 }
 
 function testKernelToHostLosslessJsonPortsAndInstallJson(): void {
   for (const message of makeMessagesFromKernel()) {
-    assert.throws(
-      () => parseAppsHostMessageFromKernel({ ...message, invalidJson: -0 }),
-      /lossless JSON value/,
-    );
+    assert.throws(() => parseAppsHostMessageFromKernel({ ...message, invalidJson: -0 }), Error);
   }
 
-  assert.throws(
-    () => parseAppsHostMessageFromKernel(makeToolCall({ invalid: -0 })),
-    /lossless JSON value/,
-  );
+  assert.throws(() => parseAppsHostMessageFromKernel(makeToolCall({ invalid: -0 })), Error);
 
   let accessorReads = 0;
   const accessorArgs: Record<string, unknown> = {};
@@ -391,10 +394,7 @@ function testKernelToHostLosslessJsonPortsAndInstallJson(): void {
       return 42;
     },
   });
-  assert.throws(
-    () => parseAppsHostMessageFromKernel(makeToolCall(accessorArgs)),
-    /lossless JSON value/,
-  );
+  assert.throws(() => parseAppsHostMessageFromKernel(makeToolCall(accessorArgs)), Error);
   assert.equal(accessorReads, 0, 'IPC validation must not evaluate accessors');
 
   const init = makeMessagesFromKernel()[1];
@@ -407,7 +407,7 @@ function testKernelToHostLosslessJsonPortsAndInstallJson(): void {
           ...init,
           kernel: { scheme: 'http', host: '127.0.0.1', port },
         }),
-      /integer between 0 and 65535/,
+      Error,
     );
   }
   assert.throws(
@@ -416,7 +416,7 @@ function testKernelToHostLosslessJsonPortsAndInstallJson(): void {
         ...init,
         kernel: { scheme: 'http', host: '127.0.0.1', port: -0 },
       }),
-    /lossless JSON value/,
+    Error,
   );
 
   const invalidRuntimePorts: ReadonlyArray<unknown> = [-1, 1.5, 65_536, '43001', undefined];
@@ -426,10 +426,7 @@ function testKernelToHostLosslessJsonPortsAndInstallJson(): void {
       runtimePort,
       installJson: makeInstallJson(),
     };
-    assert.throws(
-      () => parseAppsHostMessageFromKernel({ ...init, apps: [app] }),
-      runtimePort === undefined ? /lossless JSON value/ : /integer between 0 and 65535/,
-    );
+    assert.throws(() => parseAppsHostMessageFromKernel({ ...init, apps: [app] }), Error);
   }
   const maxPortInit = parseAppsHostMessageFromKernel({
     ...init,
@@ -459,7 +456,7 @@ function testKernelToHostLosslessJsonPortsAndInstallJson(): void {
           },
         ],
       }),
-    /does not match installJson\.appId/,
+    Error,
   );
 }
 
@@ -538,6 +535,14 @@ function testHostToKernelValidAndRebuilt(): void {
   const parsedMeta = fullTool.reminderRequests?.[0]?.meta;
   assert.deepEqual(parsedMeta, { nested: [true, null] });
   assert.notStrictEqual(parsedMeta, fullToolRaw.reminderRequests[0]?.meta);
+  fullToolRaw.reminderRequests[0].meta.nested.push(false);
+  assert.deepEqual(parsedMeta, { nested: [true, null] });
+  assert.ok(typeof parsedMeta === 'object' && parsedMeta !== null);
+  const inserted = Reflect.set(parsedMeta, 'parsedOnly', true);
+  assert.equal(Reflect.get(parsedMeta, 'parsedOnly'), inserted ? true : undefined);
+  assert.equal(Object.hasOwn(parsedMeta, 'parsedOnly'), inserted);
+  assert.equal(Object.hasOwn(fullToolRaw.reminderRequests[0].meta, 'parsedOnly'), false);
+
   const dialogTarget = fullTool.dialogReminderRequests?.[0]?.target;
   assert.ok(dialogTarget);
   assertNoOwnProperty(dialogTarget, 'mainDialogId');
@@ -586,7 +591,7 @@ function testHostToKernelExactKeys(): void {
   for (const message of [...makeMessagesToKernel(), ...makeFailureMessagesToKernel()]) {
     assert.throws(
       () => parseAppsHostMessageToKernel({ ...message, unsupportedExtension: true }),
-      /unsupported properties: unsupportedExtension/,
+      Error,
     );
   }
 
@@ -598,7 +603,7 @@ function testHostToKernelExactKeys(): void {
         ...ready,
         apps: [{ appId: 'app', frontend: null, unsupportedExtension: true }],
       }),
-    /unsupported properties: unsupportedExtension/,
+    Error,
   );
   assert.throws(
     () =>
@@ -616,7 +621,7 @@ function testHostToKernelExactKeys(): void {
           },
         ],
       }),
-    /unsupported properties: unsupportedExtension/,
+    Error,
   );
 
   const tool = makeMessagesToKernel()[2];
@@ -637,7 +642,7 @@ function testHostToKernelExactKeys(): void {
           ],
         },
       }),
-    /unsupported properties: unsupportedExtension/,
+    Error,
   );
   assert.throws(
     () =>
@@ -648,7 +653,7 @@ function testHostToKernelExactKeys(): void {
           unsupportedExtension: true,
         },
       }),
-    /unsupported properties: unsupportedExtension/,
+    Error,
   );
 
   const contentItemBase = {
@@ -672,7 +677,7 @@ function testHostToKernelExactKeys(): void {
           contentItems: [{ ...contentItemBase, unsupportedExtension: true }],
         },
       }),
-    /unsupported properties: unsupportedExtension/,
+    Error,
   );
   assert.throws(
     () =>
@@ -692,7 +697,7 @@ function testHostToKernelExactKeys(): void {
           ],
         },
       }),
-    /unsupported properties: unsupportedExtension/,
+    Error,
   );
 
   assert.throws(
@@ -707,7 +712,7 @@ function testHostToKernelExactKeys(): void {
           },
         ],
       }),
-    /unsupported properties: unsupportedExtension/,
+    Error,
   );
   assert.throws(
     () =>
@@ -721,7 +726,7 @@ function testHostToKernelExactKeys(): void {
           },
         ],
       }),
-    /unsupported properties: unsupportedExtension/,
+    Error,
   );
   assert.throws(
     () =>
@@ -734,7 +739,7 @@ function testHostToKernelExactKeys(): void {
           },
         ],
       }),
-    /unsupported properties: unsupportedExtension/,
+    Error,
   );
 
   const apply = makeMessagesToKernel()[3];
@@ -746,7 +751,7 @@ function testHostToKernelExactKeys(): void {
         ...apply,
         result: { ...applyResult, unsupportedExtension: true },
       }),
-    /unsupported properties: unsupportedExtension/,
+    Error,
   );
   assert.throws(
     () =>
@@ -757,7 +762,7 @@ function testHostToKernelExactKeys(): void {
           reminder: { content: 'value', unsupportedExtension: true },
         },
       }),
-    /unsupported properties: unsupportedExtension/,
+    Error,
   );
 
   const update = makeMessagesToKernel()[4];
@@ -771,7 +776,7 @@ function testHostToKernelExactKeys(): void {
           unsupportedExtension: true,
         },
       }),
-    /unsupported properties: unsupportedExtension/,
+    Error,
   );
 
   const render = makeMessagesToKernel()[5];
@@ -785,16 +790,13 @@ function testHostToKernelExactKeys(): void {
           unsupportedExtension: true,
         },
       }),
-    /unsupported properties: unsupportedExtension/,
+    Error,
   );
 }
 
 function testHostToKernelShapesAndLosslessJson(): void {
   for (const message of [...makeMessagesToKernel(), ...makeFailureMessagesToKernel()]) {
-    assert.throws(
-      () => parseAppsHostMessageToKernel({ ...message, invalidJson: -0 }),
-      /lossless JSON value/,
-    );
+    assert.throws(() => parseAppsHostMessageToKernel({ ...message, invalidJson: -0 }), Error);
   }
 
   const ready = makeMessagesToKernel()[0];
@@ -815,7 +817,7 @@ function testHostToKernelShapesAndLosslessJson(): void {
             },
           ],
         }),
-      /integer between 1 and 65535/,
+      Error,
     );
   }
 
@@ -828,7 +830,7 @@ function testHostToKernelShapesAndLosslessJson(): void {
         appId: null,
         data: [],
       }),
-    /data: must be a lossless JSON object/,
+    Error,
   );
 
   const tool = makeMessagesToKernel()[2];
@@ -839,7 +841,7 @@ function testHostToKernelShapesAndLosslessJson(): void {
         ...tool,
         output: { content: 'value', outcome: 'unknown' },
       }),
-    /outcome/,
+    Error,
   );
   assert.throws(
     () =>
@@ -863,7 +865,7 @@ function testHostToKernelShapesAndLosslessJson(): void {
           ],
         },
       }),
-    /non-negative integer/,
+    Error,
   );
 
   assert.throws(
@@ -878,7 +880,7 @@ function testHostToKernelShapesAndLosslessJson(): void {
           },
         ],
       }),
-    /lossless JSON value/,
+    Error,
   );
 
   let accessorReads = 0;
@@ -899,7 +901,7 @@ function testHostToKernelShapesAndLosslessJson(): void {
         appId: null,
         data: dataWithAccessor,
       }),
-    /lossless JSON value/,
+    Error,
   );
   assert.equal(accessorReads, 0, 'IPC validation must not evaluate accessors');
 
@@ -911,7 +913,7 @@ function testHostToKernelShapesAndLosslessJson(): void {
         ok: true,
         result: { treatment: 'update', ownedIndex: -1, reminder: makeReminderState() },
       }),
-    /non-negative integer/,
+    Error,
   );
   assert.throws(
     () =>
@@ -921,7 +923,7 @@ function testHostToKernelShapesAndLosslessJson(): void {
         ok: true,
         result: { treatment: 'update', updatedContent: 42 },
       }),
-    /updatedContent/,
+    Error,
   );
   assert.throws(
     () =>
@@ -931,7 +933,7 @@ function testHostToKernelShapesAndLosslessJson(): void {
         ok: true,
         message: { content: 'value', unsupportedExtension: true },
       }),
-    /unsupported properties: unsupportedExtension/,
+    Error,
   );
 }
 

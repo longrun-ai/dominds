@@ -85,11 +85,16 @@ type PostListenStartupToken = {
 function attachPostListenStartupCancellation(
   httpServer: HttpServerCore,
   token: PostListenStartupToken,
+  stopBackgroundChecks: () => void,
 ): HttpServerCore {
   const originalStop = httpServer.stop.bind(httpServer);
   httpServer.stop = async (): Promise<void> => {
     token.canceled = true;
-    await originalStop();
+    try {
+      await originalStop();
+    } finally {
+      stopBackgroundChecks();
+    }
   };
   return httpServer;
 }
@@ -308,19 +313,25 @@ export async function startServer(opts: ServerOptions = {}): Promise<StartedServ
   );
 
   const postListenStartupToken: PostListenStartupToken = { canceled: false };
-  const httpServer = attachPostListenStartupCancellation(startedCore, postListenStartupToken);
+  let stopBackgroundChecks = (): void => undefined;
+  const httpServer = attachPostListenStartupCancellation(startedCore, postListenStartupToken, () =>
+    stopBackgroundChecks(),
+  );
   if (httpsServer !== undefined) {
     const originalStop = httpServer.stop.bind(httpServer);
     const httpsServerToStop = httpsServer;
     httpServer.stop = async (): Promise<void> => {
       postListenStartupToken.canceled = true;
-      await httpsServerToStop.stop();
-      await originalStop();
+      try {
+        await httpsServerToStop.stop();
+      } finally {
+        await originalStop();
+      }
     };
   }
   try {
     const rtwsRootAbs = domindsRtwsRootAbs();
-    configureDomindsSelfUpdate({
+    stopBackgroundChecks = configureDomindsSelfUpdate({
       host,
       port: boundPort,
       mode: serverMode,

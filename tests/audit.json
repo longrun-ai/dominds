@@ -1470,6 +1470,36 @@
       "lane": "apps-configuration",
       "value": "Scoped package ID resolves locally through real install/enable; declaration/lock/config/full cache retain given version/source/port and native Team imports two full supplied member templates with local name overrides. No host/provider/tool execution claim.",
       "evidence": "Complete original579-line and final test/helper/entry diff review: tests/semantic/reviews/2026-10-31-app-doctor.json. Natural-language literal meaning oracles were removed; actual fresh locked-epoch8 guidance/diagnostic materials receive independent full-text subjective verdicts and durable provenance. Initial unlocked-epoch8 generation is excluded from acceptance. Exact equality only checks actual machine fields, supplied data and concrete disk/process effects; subsequent fresh semantic output remains pending."
+    },
+    "apps-host-ipc-contract.ts": {
+      "status": "reviewed",
+      "lane": "apps-runtime",
+      "value": "Both directions of App host IPC preserve full supplied data, reject malformed protocol shapes/ports/JSON without evaluating getters, omit absent optionals and isolate sender/parsed mutations. Low-value diagnostic wording regexes are removed.",
+      "evidence": "Complete original local5 plus final source/product/helper/diff review in tests/semantic/reviews/2026-10-31-app-runtime.json. Exact assertions protect actual protocol/data/effects; no diagnostic wording semantic oracle. Two actual proxy Problems materials receive separate independent full-text verdicts. Real pre-fix natural-exit timeout and post-fix completion scope are preserved. Existing App compatibility only; four external Web Dev session cases remain unaccepted and require explicit prerequisites."
+    },
+    "apps-host-restart-on-local-host-change.ts": {
+      "status": "reviewed",
+      "lane": "apps-runtime",
+      "value": "An actual owned local factory changes v1 to v2; a caller during controlled factory initialization awaits the fresh client and gets v2. Real factory entry/release replaces sleeps and filesystem polling.",
+      "evidence": "Complete original local5 plus final source/product/helper/diff review in tests/semantic/reviews/2026-10-31-app-runtime.json. Exact assertions protect actual protocol/data/effects; no diagnostic wording semantic oracle. Two actual proxy Problems materials receive separate independent full-text verdicts. Real pre-fix natural-exit timeout and post-fix completion scope are preserved. Existing App compatibility only; four external Web Dev session cases remain unaccepted and require explicit prerequisites."
+    },
+    "apps-tool-proxy-refresh.ts": {
+      "status": "reviewed",
+      "lane": "apps-runtime",
+      "value": "Actual Minds assembly gains/withdraws/restores three owned component tools, registry data and missing-toolset Problems follow real configuration, repeat refresh stays stable and discovery never starts the factory. This is core proxy compatibility, not real Web Dev plugin/browser execution.",
+      "evidence": "Complete original local5 plus final source/product/helper/diff review in tests/semantic/reviews/2026-10-31-app-runtime.json. Exact assertions protect actual protocol/data/effects; no diagnostic wording semantic oracle. Two actual proxy Problems materials receive separate independent full-text verdicts. Real pre-fix natural-exit timeout and post-fix completion scope are preserved. Existing App compatibility only; four external Web Dev session cases remain unaccepted and require explicit prerequisites."
+    },
+    "apps-webui-self-heal-empty-resolution.ts": {
+      "status": "reviewed",
+      "lane": "apps-runtime",
+      "value": "An actual declared local package rebuilds empty resolution, enters a real host factory, returns an IPC probe and serves complete built WebUI HTML; imported member data and declaration are preserved and natural process exit exposes maintenance cleanup.",
+      "evidence": "Complete original local5 plus final source/product/helper/diff review in tests/semantic/reviews/2026-10-31-app-runtime.json. Exact assertions protect actual protocol/data/effects; no diagnostic wording semantic oracle. Two actual proxy Problems materials receive separate independent full-text verdicts. Real pre-fix natural-exit timeout and post-fix completion scope are preserved. Existing App compatibility only; four external Web Dev session cases remain unaccepted and require explicit prerequisites."
+    },
+    "apps-webui-startup-host-failure-no-interrupt.ts": {
+      "status": "reviewed",
+      "lane": "apps-runtime",
+      "value": "Real declared factories either fail or stay controlled/unready while complete WebUI HTTP remains usable; later release delivers a genuine tool result. Preserve post-stop status queries and natural process exit, without elapsed-time or unentered-factory false coverage.",
+      "evidence": "Complete original local5 plus final source/product/helper/diff review in tests/semantic/reviews/2026-10-31-app-runtime.json. Exact assertions protect actual protocol/data/effects; no diagnostic wording semantic oracle. Two actual proxy Problems materials receive separate independent full-text verdicts. Real pre-fix natural-exit timeout and post-fix completion scope are preserved. Existing App compatibility only; four external Web Dev session cases remain unaccepted and require explicit prerequisites."
     }
   },
   "retired": {

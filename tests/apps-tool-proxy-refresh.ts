@@ -1,143 +1,144 @@
 import assert from 'node:assert/strict';
 import * as fs from 'node:fs/promises';
-import os from 'node:os';
 import path from 'node:path';
 
-import YAML from 'yaml';
-
-import { runDomindsAppJsonViaLocalPackage } from '../main/apps/run-app-json';
 import { registerEnabledAppsToolProxies } from '../main/apps/runtime';
 import { loadAgentMinds } from '../main/minds/load';
-import { getProblemsSnapshot, removeProblemsByPrefix } from '../main/problems';
-import '../main/tools/builtins';
-import { getToolset, getToolsetMeta } from '../main/tools/registry';
+import { getProblemsSnapshot } from '../main/problems';
+import { getTool, getToolset, getToolsetMeta } from '../main/tools/registry';
+import { writeAppManifest, writeAppText } from './helpers/app-fixture';
+import { runHostScenario, writeHostedApp } from './helpers/app-host-fixture';
+import { semanticEvidenceCollector } from './helpers/semantic-evidence';
+import { withTempRtws, writeStandardMinds } from './kernel-driver/helpers';
 
-async function writeText(filePathAbs: string, content: string): Promise<void> {
-  await fs.mkdir(path.dirname(filePathAbs), { recursive: true });
-  await fs.writeFile(filePathAbs, content, 'utf-8');
-}
-
-async function main(): Promise<void> {
-  const previousCwd = process.cwd();
-  const tmpRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'dominds-app-tool-proxy-refresh-'));
-  const appId = '@longrun-ai/web-dev';
-  const webDevRootAbs = path.resolve(
-    __dirname,
-    '..',
-    '..',
-    'dominds-apps',
-    '@longrun-ai',
-    'web-dev',
-  );
-
-  try {
-    process.chdir(tmpRoot);
-    const installJson = await runDomindsAppJsonViaLocalPackage({ packageRootAbs: webDevRootAbs });
-
-    await writeText(
-      path.join(tmpRoot, '.minds', 'app.yaml'),
-      [
-        'apiVersion: dominds.io/v1alpha1',
-        'kind: DomindsApp',
-        'id: rtws_root',
-        'dependencies:',
-        `  - id: ${JSON.stringify(appId)}`,
-        '',
-      ].join('\n'),
+const evidence = semanticEvidenceCollector('dominds-app-tool-proxy-');
+runHostScenario(async () => {
+  await withTempRtws(async (rtws) => {
+    const toolset = 'controlled_host_tools';
+    const names = ['probe_tool', 'controlled_status', 'controlled_eval'];
+    const id = 'owned_proxy_package';
+    const problemId = 'team/team_yaml_error/members/tester/toolsets/controlled_host_tools/missing';
+    await writeStandardMinds(rtws, { memberToolsets: [toolset] });
+    await writeAppManifest(rtws, 'rtws_root');
+    assert.equal(getToolset(toolset), undefined);
+    const first = await loadAgentMinds('tester', undefined, { missingToolsetPolicy: 'warn' });
+    assert.ok(first.agentTools.every((tool) => !names.includes(tool.name)));
+    const before = getProblemsSnapshot().problems.find((problem) => problem.id === problemId);
+    assert.ok(before && !before.resolved);
+    evidence.record({
+      id: 'before-package-load',
+      scenario: 'A member selects a component toolset before the owned local package is declared.',
+      businessValue:
+        'The agent or operator can diagnose absent capabilities and recover through actual package configuration.',
+      context: { toolset, componentDeclared: false, componentFactoryStarted: false },
+      reviewQuestions: [
+        'Does the actual missing-toolset Problem explain the unavailable capability and relevant recovery checks without granting the missing tools?',
+        'Is its guidance consistent with a package not yet loaded in this workspace?',
+      ],
+      actualText: JSON.stringify(
+        { problems: [before], actualVisibleToolIds: first.agentTools.map((tool) => tool.name) },
+        null,
+        2,
+      ),
+    });
+    const marker = path.join(rtws, 'unexpected-factory-entry');
+    const supplied = await writeHostedApp(
+      rtws,
+      id,
+      'await require("node:fs/promises").writeFile(' +
+        JSON.stringify(marker) +
+        ', "entered"); throw new Error("discovery must not start the factory");',
+      names,
     );
-    await writeText(
-      path.join(tmpRoot, '.minds', 'llm.yaml'),
-      [
-        'providers:',
-        '  stub:',
-        '    name: Stub',
-        '    apiType: openai',
-        '    baseUrl: https://example.invalid',
-        '    apiKeyEnvVar: STUB_API_KEY',
-        '    models:',
-        '      fake_model: { name: "fake-model" }',
-        '',
-      ].join('\n'),
+    await writeAppManifest(rtws, 'rtws_root', [id]);
+    const loaded = await loadAgentMinds('tester', undefined, { missingToolsetPolicy: 'warn' });
+    for (const name of names) assert.ok(loaded.agentTools.some((tool) => tool.name === name));
+    assert.deepEqual(
+      getToolset(toolset)?.map((tool) => tool.name),
+      names,
     );
-    await writeText(
-      path.join(tmpRoot, '.minds', 'team.yaml'),
-      [
-        'member_defaults:',
-        '  provider: stub',
-        '  model: fake_model',
-        'default_responder: tester',
-        'members:',
-        '  tester:',
-        '    name: Tester',
-        '    toolsets:',
-        '      - playwright_interactive',
-        '',
-      ].join('\n'),
+    assert.equal(getToolsetMeta(toolset)?.source, 'app');
+    assert.deepEqual(
+      getToolsetMeta(toolset)?.descriptionI18n,
+      supplied.contributes?.toolsets?.[0].descriptionI18n,
     );
-    await writeText(
-      path.join(tmpRoot, '.apps', 'resolution.yaml'),
-      YAML.stringify({
-        schemaVersion: 1,
-        apps: [
-          {
-            id: appId,
-            enabled: true,
-            assignedPort: 43123,
-            source: { kind: 'local', pathAbs: webDevRootAbs },
-            installJson,
-          },
-        ],
+    for (const given of supplied.contributes?.toolsets?.[0].tools ?? []) {
+      const actual = getTool(given.name);
+      assert.ok(actual);
+      assert.equal(actual.description, given.description);
+      assert.deepEqual(actual.descriptionI18n, given.descriptionI18n);
+      assert.deepEqual(actual.parameters, given.parameters);
+    }
+    assert.equal(
+      getProblemsSnapshot().problems.find((problem) => problem.id === problemId)?.resolved,
+      true,
+    );
+    const granted = loaded.agentTools.map((tool) => tool.name).sort();
+    await registerEnabledAppsToolProxies({ rtwsRootAbs: rtws });
+    assert.deepEqual(
+      (await loadAgentMinds('tester')).agentTools.map((tool) => tool.name).sort(),
+      granted,
+    );
+    await writeAppText(
+      path.join(rtws, '.apps', 'configuration.yaml'),
+      'schemaVersion: 1\ndisabledApps: [owned_proxy_package]\n',
+    );
+    const disabled = await loadAgentMinds('tester', undefined, { missingToolsetPolicy: 'warn' });
+    assert.equal(getToolset(toolset), undefined);
+    assert.equal(getToolsetMeta(toolset), undefined);
+    for (const name of names) {
+      assert.equal(getTool(name), undefined);
+      assert.ok(disabled.agentTools.every((tool) => tool.name !== name));
+    }
+    const unavailable = getProblemsSnapshot().problems;
+    assert.equal(unavailable.find((problem) => problem.id === problemId)?.resolved, false);
+    evidence.record({
+      id: 'package-disabled',
+      scenario:
+        'The package previously supplied three visible tools; disabling it withdraws those actual capabilities while the member still selects the toolset.',
+      businessValue:
+        'Expose the real missing/disabled state and its recovery path without leaving stale executable proxies.',
+      context: {
+        toolset,
+        componentDeclared: true,
+        componentEnabled: false,
+        componentFactoryStarted: false,
+        suppliedTools: names.join(','),
+      },
+      reviewQuestions: [
+        'Do the complete active/resolved Problems distinguish a disabled required package from an available toolset?',
+        'Does the guidance agree with the actual visible-tool withdrawal and avoid claiming component runtime health?',
+      ],
+      actualText: JSON.stringify(
+        {
+          problems: unavailable,
+          actualVisibleToolIds: disabled.agentTools.map((tool) => tool.name),
+        },
+        null,
+        2,
+      ),
+    });
+    await writeAppText(
+      path.join(rtws, '.apps', 'configuration.yaml'),
+      'schemaVersion: 1\ndisabledApps: []\n',
+    );
+    const restored = await loadAgentMinds('tester');
+    assert.deepEqual(restored.agentTools.map((tool) => tool.name).sort(), granted);
+    assert.equal(
+      getProblemsSnapshot().problems.find((problem) => problem.id === problemId)?.resolved,
+      true,
+    );
+    await assert.rejects(fs.access(marker), { code: 'ENOENT' });
+    console.log(
+      JSON.stringify({
+        scenario: 'owned-component-capability-refresh',
+        suppliedTools: names,
+        beforeIds: first.agentTools.map((tool) => tool.name),
+        granted,
+        restored: restored.agentTools.map((tool) => tool.name).sort(),
+        factoryNeverStarted: true,
       }),
     );
-
-    removeProblemsByPrefix('team/team_yaml_error/');
-
-    assert.equal(
-      getToolset('playwright_interactive'),
-      undefined,
-      'playwright_interactive should not exist before refresh',
-    );
-
-    const minds = await loadAgentMinds('tester', undefined, { missingToolsetPolicy: 'warn' });
-    const toolNames = minds.agentTools
-      .filter((tool) => tool.type === 'func')
-      .map((tool) => tool.name)
-      .sort();
-    assert.ok(toolNames.includes('playwright_session_new'));
-    assert.ok(toolNames.includes('playwright_session_eval'));
-
-    const interactiveToolset = getToolset('playwright_interactive');
-    const interactiveToolsetMeta = getToolsetMeta('playwright_interactive');
-    assert.ok(
-      interactiveToolset,
-      'expected component-provided toolset after loadAgentMinds refresh',
-    );
-    assert.equal(interactiveToolsetMeta?.source, 'app');
-    assert.ok(interactiveToolset.some((tool) => tool.name === 'playwright_session_status'));
-
-    const teamProblems = getProblemsSnapshot().problems.filter((problem) =>
-      problem.id.startsWith('team/team_yaml_error/'),
-    );
-    assert.ok(
-      teamProblems.every(
-        (problem) => !problem.id.includes('/toolsets/playwright_interactive/missing'),
-      ),
-      `unexpected team problems: ${teamProblems.map((problem) => problem.id).join(', ')}`,
-    );
-
-    await registerEnabledAppsToolProxies({ rtwsRootAbs: tmpRoot });
-    assert.ok(getToolset('playwright_interactive'), 'refresh should keep toolset registered');
-  } finally {
-    process.chdir(previousCwd);
-    await fs.rm(tmpRoot, { recursive: true, force: true });
-  }
-}
-
-main()
-  .then(() => {
-    console.log('OK');
-  })
-  .catch((error: unknown) => {
-    console.error(error);
-    process.exitCode = 1;
   });
+  await evidence.write();
+});

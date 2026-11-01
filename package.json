@@ -94,7 +94,9 @@
     "test:semantic:server-local": "node tests/run.mjs --suite server-local --semantic",
     "test:provider-live": "node tests/run.mjs --suite provider-live",
     "test:apps:configuration": "node tests/run.mjs --suite apps-configuration",
-    "test:semantic:apps:configuration": "node tests/run.mjs --suite apps-configuration --semantic"
+    "test:semantic:apps:configuration": "node tests/run.mjs --suite apps-configuration --semantic",
+    "test:apps:runtime": "node tests/run.mjs --suite apps-runtime",
+    "test:semantic:apps:runtime": "node tests/run.mjs --suite apps-runtime --semantic"
   },
   "repository": {
     "type": "git",
