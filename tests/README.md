@@ -56,7 +56,7 @@ pnpm run test:provider-live
 ```
 
 - `test`: a small local smoke suite; not full product, browser, packaging, or provider coverage.
-- `test:kernel`: discovers TypeScript cases under `kernel-driver/`, excluding its helper. Each runs in an isolated rtws. Failures do not prevent subsequent cases. `kernel-driver:integration` delegates here.
+- `test:kernel`: discovers TypeScript cases under `kernel-driver/`, excluding its helper, and the registered-session dedupe case under `tellask/`. The latter verifies same-generation worker reuse, completed result delivery, preserved history and replacement under a durable dead marker; it does not exercise the WebSocket cancellation pipeline. Each runs in an isolated rtws. Failures do not prevent subsequent cases. `kernel-driver:integration` delegates here.
 - `test:context`: runs eight local cases for generation-boundary eligibility/language fallback, public preservation/countdown decisions, supplied continuation-body fidelity, retry preparation, real budget consumption/manual continuation, exhaustion notices and global event forwarding. Policy/forwarding components do not establish actual WebSocket user delivery or side-dialog creation; actual critical-turn and queued-message driving is exercised by `test:kernel`.
 - `test:configuration`: seventeen isolated regressions for team configuration, extension rules against actual file access, capability boundaries, manual payload fidelity, MCP reload and Problems lifecycle. Only external MCP peers are replaced; no live providers or installed components are required.
 - `test:manual`: eight isolated cases for language normalization, actual mind assets and skill scope/permissions, snippet paths, manual visibility and the original prose budget.

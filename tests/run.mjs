@@ -389,7 +389,10 @@ export async function inventory() {
       'semantic/context-guidance.ts',
     ].includes(file);
   const candidates = files.filter((file) => !support(file));
-  const kernel = candidates.filter((file) => file.startsWith('kernel-driver/'));
+  const kernel = candidates.filter(
+    (file) =>
+      file.startsWith('kernel-driver/') || file === 'tellask/typeb-registered-sideDialog-dedupe.ts',
+  );
   const suites = {
     smoke,
     kernel,

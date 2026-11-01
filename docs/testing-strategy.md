@@ -623,3 +623,5 @@ provider-local 9→11、server-local 6→7，旧三个单项入口统一隔离CL
 本来一起审计的TypeB去重单独继续：旧基线虽返回0，实际后台存在mock_response_missing和重复pending会话异常，注册计数不能当后台健康。其夹具只有root响应、直接设置dead marker的接受范围也不能代替UI宣告/取消/交付链；必须先补真实执行前提，再判断产品路径。该项未在本批记reviewed，剩余21候选（TypeB一项和App兼容二十项）继续整改。
 
 独立审查还收窄了一处新增比较：只看未改的Member.listTools不能证明实际装配工具未增权。现改为导入前/后真实loadAgentMinds.agentTools，先证明read_file未授予，再核完整可见集合不变，并把实际可见ID加入catalog证据。没有声称完成driver授权执行。原22准确文本以原范围保留，修订后新22仍逐例完整主观评审；这是新增测试断言的补强，不当产品red。Neutral变体保沿原有“新文件存在且既有EN/upstream不变”的范围，不虚报所有新字段均有独立验收。
+
+注册支线去重整改保留同一代两次 `tellask` 复用一个 worker 的价值，并补上实际最新调用完成、root 消费和持久结果路由。初始基线虽然退出 0，却缺少全部 worker 响应夹具且输出后台错误；不能把这个状态称为产品缺陷复现。新测试在确认旧调用完成且无 active dispatch 后写入 durable dead marker，再证明新 ID、最新 opaque 输入隔离、完整历史和唯一注册表映射，检查全局 touched 事件的真实 `sourceType=stream_error_evt` 投影为空（错误事件本身仅走对话局部流）。以结果到达和实际对话锁同步，删除睡眠轮询；`beforeExit` 使未完成的结果 Promise 无法退出 0。外部 provider 夹具按真实 reply obligation 收尾，完成后不重复调用回复工具。明确不把直接 marker 写入称为完整人类 WebSocket 声明死亡/取消流程。该例进入 `test:kernel`；[原始断言、夹具修正与实际执行审查](../tests/audits/2026-10-31-typeb-dedupe.json) 保留详细范围。

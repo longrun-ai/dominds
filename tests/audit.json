@@ -1398,6 +1398,12 @@
       "lane": "manual",
       "value": "技能创建/完整导入/元数据重建/移动与惰性正文，真实目录/链接COW完整原包保全、拒绝无部分写入、导入边界和read_dirs、broken/cycle诊断及显式外部linkable兼容",
       "evidence": "Complete original1359-line and final assertion/value audit; native registry references, supplied input data and full real filesystem effects, never natural-language meaning matching. tests/semantic/reviews/2026-10-31-skill-registry.json records actual catalog/diagnostic subjective review and explicit component/handler scope. Fresh output remains pending; the separately audited but unremediated TypeB candidate is not accepted here."
+    },
+    "tellask/typeb-registered-sideDialog-dedupe.ts": {
+      "status": "reviewed",
+      "lane": "kernel",
+      "value": "Same-generation registered tellasks reuse one worker, latest assignment reaches it, completed results reach their caller once, and a completed dead session is replaced without losing old history.",
+      "evidence": "Complete original/final/diff assertion review in tests/audits/2026-10-31-typeb-dedupe.json. Exact assertions are actual event kinds, call/session/dialog IDs, given input/reply bytes, persisted routes, dispatches, registry and metadata. No generated prose meaning oracle. Direct durable dead-marker scope after completed work, not WebSocket cancellation."
     }
   },
   "retired": {
