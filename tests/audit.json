@@ -1789,6 +1789,13 @@
       "value": "Actual child dispatch requires current reviewed source: legal ten-script completion, seven missing/stale/source/lane/helper refusals before any effect, read-only inventory, and preserved failure/timeout/prerequisite controls. Counts describe runner behavior, not product or semantic coverage.",
       "evidence": "tests/audits/2026-10-31-source-review-gate.json; complete original/final source and assertion review, actual controlled dispatch data, retained first fixture failure and corrected absolute CLI binding. No semantic literal oracle.",
       "reviewedSourceSha256": "edc9d6bd35b6b9039c6d4e910471d5e236d262a96ff14eb80218ec47782eae92"
+    },
+    "provider/openai-reasoning-mode.ts": {
+      "status": "reviewed",
+      "lane": "provider-local",
+      "value": "Explicit standard/pro mode is independent of effort, survives native request construction and real rtws setup/parser/YAML readback, remains visible in structured generation metadata, and leaves old mode omission intact.",
+      "evidence": "tests/semantic/reviews/2026-11-01-openai-pro.json; independent complete current test/assertion review explicitly authorized this identity after the final presence checks. Native wrapper with controlled external boundary; exact payload/opaque data/IDs, enum values, metadata kind/value, real YAML/DTO and Problem lifecycle.12 actual guidance/formatter/diagnostic materials receive separate subjective verdicts; source identity is not a fresh semantic oracle. Real gateway/browser evidence has separate explicit scope in tests/audits/2026-11-01-openai-pro.json.",
+      "reviewedSourceSha256": "95b17b15d80ed04a89881cbc35ba51c958849b47862d1dea8e6e65c7fe119db6"
     }
   },
   "retired": {
@@ -2180,8 +2187,8 @@
     },
     "run.mjs": {
       "status": "reviewed",
-      "reviewedSourceSha256": "1c06a859c1c975ad6549244a7378d79575f87d9e6c6a6de427296f4e37614b2c",
-      "evidence": "tests/audits/2026-10-31-source-review-gate.json; source identity continuity with the completed baseline audits and current shared-runner full-diff review; no fresh semantic verdict."
+      "reviewedSourceSha256": "13f69d25a015788caaff1aac78c2e49e0c0a67ceb00bc329d1bacf3c07618c3f",
+      "evidence": "tests/audits/2026-10-31-source-review-gate.json; source identity continuity with the completed baseline audits and current shared-runner full-diff review; no fresh semantic verdict. Pro registration update: tests/semantic/reviews/2026-11-01-openai-pro.json; independently reviewed only the added local/semantic case registration and direct package target/caller impact, with existing gate/dispatch behavior preserved. Current source identity explicitly reviewed, not granted by execution."
     },
     "semantic/context-guidance.ts": {
       "status": "reviewed",

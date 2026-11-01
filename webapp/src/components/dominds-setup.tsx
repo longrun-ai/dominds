@@ -410,6 +410,24 @@ export class DomindsSetup extends HTMLElement {
     for (const p of prominent) {
       const k = `${providerKey}/${p.namespace}/${p.key}`;
       if (this.prominentParamTouched[k] === true) continue;
+      const memberDefaults = status.teamYaml.memberDefaults;
+      const persistedNamespace =
+        memberDefaults?.provider === providerKey
+          ? memberDefaults.modelParams?.[p.namespace]
+          : undefined;
+      const persisted: unknown =
+        persistedNamespace !== null &&
+        typeof persistedNamespace === 'object' &&
+        !Array.isArray(persistedNamespace)
+          ? Reflect.get(persistedNamespace, p.key)
+          : undefined;
+      if (
+        (p.kind === 'boolean' && typeof persisted === 'boolean') ||
+        (p.kind === 'enum' && typeof persisted === 'string' && p.values.includes(persisted))
+      ) {
+        this.prominentParamSelections[k] = String(persisted);
+        continue;
+      }
       const def = p.defaultValue;
       if (p.kind === 'boolean' && typeof def === 'boolean') {
         this.prominentParamSelections[k] = String(def);

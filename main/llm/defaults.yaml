@@ -1039,6 +1039,15 @@ providers:
         # Isolation principle:
         # - These hints describe the OpenAI Responses wrapper only.
         # - Same-looking fields under `codex` are not aliases and are not fallback-compatible.
+        reasoning_mode:
+          prominent: true
+          type: enum
+          values: [standard, pro]
+          value_labels:
+            standard: Standard
+            pro: Pro
+          # No configured default: existing workspaces and older models keep omitting this field.
+          description: Responses execution mode for GPT-5.6/GPT-6. Unset uses the API standard mode; pro uses more model work, tokens and latency. Independent of reasoning_effort. Omit for unsupported models.
         reasoning_effort:
           prominent: true
           default: high

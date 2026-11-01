@@ -368,6 +368,7 @@ export namespace Team {
     service_tier?: 'auto' | 'default' | 'flex' | 'scale' | 'priority'; // Processing tier / latency class
     top_p?: number; // 0-1, nucleus sampling
     reasoning_effort?: 'none' | 'minimal' | 'low' | 'medium' | 'high' | 'xhigh' | 'max'; // For reasoning-capable models
+    reasoning_mode?: 'standard' | 'pro'; // Responses execution mode; independent of effort.
     reasoning_summary?: 'auto' | 'concise' | 'detailed' | 'none'; // Control reasoning summary detail level
     verbosity?: 'low' | 'medium' | 'high'; // Control response detail level (GPT-5 series)
     parallel_tool_calls?: boolean; // Allow models to emit parallel tool calls.
@@ -1663,6 +1664,7 @@ export namespace Team {
     'service_tier',
     'top_p',
     'reasoning_effort',
+    'reasoning_mode',
     'reasoning_summary',
     'verbosity',
     'parallel_tool_calls',
@@ -1776,6 +1778,7 @@ export namespace Team {
 
       const modelParamsAt = `${atPrefix}.${field}`;
       const hintsAtModelParams: Record<string, string> = {
+        reasoning_mode: `Use \`${modelParamsAt}.openai.reasoning_mode\` for supported OpenAI Responses models.`,
         reasoning_effort: `Did you mean \`${modelParamsAt}.codex.reasoning_effort\`, \`${modelParamsAt}.openai.reasoning_effort\`, or \`${modelParamsAt}.openai-compatible.reasoning_effort\`?`,
         reasoning_summary: `Did you mean \`${modelParamsAt}.codex.reasoning_summary\` or \`${modelParamsAt}.openai.reasoning_summary\`?`,
         verbosity: `Did you mean \`${modelParamsAt}.codex.verbosity\` or \`${modelParamsAt}.openai.verbosity\`?`,
@@ -2984,6 +2987,15 @@ export namespace Team {
     };
 
     const validateOpenAiParams = (params: Record<string, unknown>, at2: string): void => {
+      if (
+        params.reasoning_mode !== undefined &&
+        params.reasoning_mode !== 'standard' &&
+        params.reasoning_mode !== 'pro'
+      ) {
+        throw new Error(
+          `Invalid ${at2}.reasoning_mode: expected standard|pro (got ${describeValueType(params.reasoning_mode)})`,
+        );
+      }
       asOptionalNumber(params.temperature, `${at2}.temperature`);
       asOptionalNumber(params.top_p, `${at2}.top_p`);
       asOptionalBoolean(params.parallel_tool_calls, `${at2}.parallel_tool_calls`);

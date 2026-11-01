@@ -857,19 +857,24 @@ function buildOpenAiTextConfig(
 function buildOpenAiReasoning(
   openAiParams: NonNullable<Team.ModelParams['openai']>,
 ): ResponseCreateParamsStreaming['reasoning'] | undefined {
-  if (openAiParams.reasoning_effort === undefined && openAiParams.reasoning_summary === undefined) {
+  if (
+    openAiParams.reasoning_effort === undefined &&
+    openAiParams.reasoning_summary === undefined &&
+    openAiParams.reasoning_mode === undefined
+  ) {
     return undefined;
   }
 
   const summary = openAiParams.reasoning_summary === 'none' ? null : openAiParams.reasoning_summary;
   const reasoning = {
+    ...(openAiParams.reasoning_mode !== undefined ? { mode: openAiParams.reasoning_mode } : {}),
     ...(openAiParams.reasoning_effort !== undefined
       ? { effort: openAiParams.reasoning_effort }
       : {}),
     ...(summary !== undefined ? { summary } : {}),
   };
-  // OpenAI SDK 6.42.0 predates the GPT-5.6 `max` effort literal exposed by the current
-  // API model catalog. Keep the widening isolated at this external SDK boundary.
+  // OpenAI SDK 6.42.0 predates the current `max` effort and standard/pro mode contracts.
+  // Keep the widening isolated at this external SDK boundary.
   return reasoning as unknown as ResponseCreateParamsStreaming['reasoning'];
 }
 

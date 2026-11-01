@@ -605,7 +605,16 @@ async function readTeamYamlMemberDefaults(): Promise<SetupStatusResponse['teamYa
       typeof memberDefaultsUnknown['model'] === 'string'
         ? memberDefaultsUnknown['model']
         : undefined;
-    return { path: TEAM_YAML_PATH, exists: true, memberDefaults: { provider, model } };
+    const modelParams = memberDefaultsUnknown['model_params'];
+    return {
+      path: TEAM_YAML_PATH,
+      exists: true,
+      memberDefaults: {
+        provider,
+        model,
+        ...(isRecord(modelParams) ? { modelParams } : {}),
+      },
+    };
   } catch (error) {
     return { path: TEAM_YAML_PATH, exists: true, parseError: 'Failed to parse team.yaml' };
   }

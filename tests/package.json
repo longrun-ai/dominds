@@ -282,6 +282,7 @@
     "provider-openai-multi-tool-probe": "pnpm run rtws -- --isolated-rtws provider/openai-multi-tool-probe.ts",
     "provider-minimax-m27-turn-assembly": "pnpm run rtws -- --isolated-rtws provider/minimax-m27-turn-assembly.ts",
     "provider-setup-rtws-custom-provider": "pnpm run rtws -- --isolated-rtws provider/setup-rtws-custom-provider.ts",
+    "provider-openai-reasoning-mode": "pnpm run rtws -- --isolated-rtws provider/openai-reasoning-mode.ts",
     "provider-live-probe-controls": "pnpm run rtws -- --isolated-rtws provider/live-probe-controls.ts",
     "apps-doctor-self-target": "pnpm run rtws -- --isolated-rtws apps-doctor-self-target.ts"
   },

@@ -46,7 +46,44 @@ members:
 
 本轮只验证带provider前缀的推理请求。裸ID的模型元数据读取成功不等于裸ID推理路由已验证；不要只凭 `/openai` URL 假定网关会自动选择provider。
 
-## 本次实际验证与限制
+## Pro 模式与 rtws 选择
+
+GPT-6 的 Pro 是 Responses 执行模式，使用真实模型 ID 加 `reasoning.mode: pro`，与 `reasoning.effort` 独立；`max` effort 不会自动开启 Pro。Pro 会执行更多模型工作，并增加 token 使用和延迟，按所选模型的 token 费率计费。见[官方 reasoning mode](https://developers.openai.com/api/docs/guides/reasoning#reasoning-mode)。
+
+Dominds 使用 `.minds/team.yaml` 的 `model_params.openai.reasoning_mode: standard | pro`，模型目录继续使用原始 wire ID。例如让普通执行成员使用标准模式、审查成员显式使用 Pro：
+
+```yaml
+member_defaults:
+  provider: ltsp-openai
+  model: openai/gpt-6.1-sol
+  model_params:
+    openai:
+      reasoning_mode: standard
+      reasoning_effort: medium
+      verbosity: medium
+members:
+  executor:
+    name: Executor
+  reviewer:
+    name: Reviewer
+    model_params:
+      openai:
+        reasoning_mode: pro
+        reasoning_effort: high
+        verbosity: medium
+```
+
+`model_params` 是团队成员的运行配置；`.minds/llm.yaml` 的 `model_param_options` 提供配置提示。上面的[完整网关样例](./examples/ltsp-openai.llm.yaml)包含模式、effort 和 verbosity 的选项，因此这个自定义 provider 也能在 `/setup` 显示对应控件，并在 generation 模型标识/tooltip 中显示已配置的模式。成员自己的 `model_params` 替换整个继承参数块，示例为 reviewer 明确写出其所需参数。
+
+已有团队应在原 `.minds/team.yaml` 的 `member_defaults` 或具体 `members.<id>.model_params.openai` 下定点修改模式，保留现有成员、权限及其它配置。`/setup` 是初始化入口，保存的是仅含 `member_defaults` 的最小团队文件；确认覆盖会替换整份 `team.yaml`，不能把它当成已有团队的成员编辑器。
+
+初始化时，在 `/setup` 先选 provider 与模型，再独立选择 `reasoning_mode` 和 effort，检查生成的 `member_defaults` 预览后保存。重新加载 setup 会读回已保存的参数；手动更改的选择不会被随后状态刷新重置。模式控件没有预选默认值，省略 mode 保持既有请求不发送该字段；官方默认采用 standard。仅对支持该参数的 GPT-5.6/GPT-6 选择 standard/pro，切换到不支持的旧模型时保持未设置。已有旧 rtws 不会被自动切换为 Pro。配置显示的是选择，不是上游执行结果的证明。
+
+无需添加 `gpt-6-pro` 或 `gpt-6.1-sol-pro` 模型条目。当前配置中的模型键直接用于请求，`name` 仅为显示名称，不会把本地虚构 ID 映射为另一个上游模型。
+
+Pro 专项已通过一次原生 SDK 调用，以及由实际 rtws 配置和 `Team.load()` 取得成员的 Dominds 流式调用、流式函数调用及工具结果 batch 续轮，共4次 Sol 请求。原始非流式响应和流式 completed 事件均明确回显 `reasoning.mode: pro`；HTTP200、费用升高或 reasoning token 数均不作为 Pro 生效的替代证据。网关日志独立核对 ID、模型及 usage，但其日志没有独立 mode 列。完整证据见[Pro 专项验收](../tests/audits/2026-11-01-openai-pro.json)。本次使用 low effort 验证传输与给定 JSON 数据往返，没有测量 Pro 的任务质量收益，也没有逐个验收所有模型/effort 组合。
+
+## 前一轮基础联测范围
 
 五个模型均通过 Dominds 原生 `OpenAiGen` 的短请求：Terra流式，另外四个batch；返回的真实model标识一致，usage可用。Terra还通过一次流式函数调用与工具结果batch续轮：给定nonce完整传入，独立随机receipt仅经工具结果提供，续轮结构化JSON完整返回；没有执行真实工具。检查的是机器数据与协议，不以回答措辞判断语义质量。
 

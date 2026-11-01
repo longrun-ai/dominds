@@ -248,6 +248,7 @@ const providerLocal = [
   'codex-auth-alignment.ts',
   'codex-auth-refresh.ts',
   'provider/setup-rtws-custom-provider.ts',
+  'provider/openai-reasoning-mode.ts',
   'provider/live-probe-controls.ts',
   'provider/anthropic-multi-tool-use-stream.ts',
   'provider/anthropic-stream-errors.ts',
@@ -275,6 +276,7 @@ const semanticSuites = {
   ),
   'server-local': ['auth.ts', 'certificates.ts', 'ws-language.ts'],
   'provider-local': [
+    'provider/openai-reasoning-mode.ts',
     'codex-auth-alignment.ts',
     'codex-auth-refresh.ts',
     'provider/live-probe-controls.ts',

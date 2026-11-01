@@ -28,7 +28,12 @@ export type SetupTeamYamlInfo = {
   path: string;
   exists: boolean;
   parseError?: string;
-  memberDefaults?: { provider?: string; model?: string };
+  memberDefaults?: {
+    provider?: string;
+    model?: string;
+    // Untrusted persisted configuration; setup controls read only supported scalar choices.
+    modelParams?: Record<string, unknown>;
+  };
 };
 
 export type SetupRtwsLlmYamlInfo = {
@@ -79,7 +84,14 @@ export type SetupModelParamScalar = string | boolean;
 export type SetupProviderSummary = {
   providerKey: string;
   name: string;
-  apiType: 'mock' | 'anthropic' | 'anthropic-compatible' | 'openai' | 'openai-compatible' | 'codex' | 'google';
+  apiType:
+    | 'mock'
+    | 'anthropic'
+    | 'anthropic-compatible'
+    | 'openai'
+    | 'openai-compatible'
+    | 'codex'
+    | 'google';
   baseUrl: string;
   apiKeyEnvVar: string;
   techSpecUrl?: string;

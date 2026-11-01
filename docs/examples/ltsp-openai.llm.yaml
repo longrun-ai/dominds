@@ -7,6 +7,27 @@ providers:
     apiType: openai
     baseUrl: http://172.16.100.254:8080/openai
     apiKeyEnvVar: LTSP_OPENAI_API_KEY
+    # Keep setup choices and generation metadata visible for this custom provider.
+    model_param_options:
+      openai:
+        reasoning_mode:
+          prominent: true
+          type: enum
+          values: [standard, pro]
+          value_labels:
+            standard: Standard
+            pro: Pro
+          description: Responses execution mode for these GPT-6 models. Unset uses API standard mode; Pro uses more model work, tokens and latency. Independent of reasoning_effort.
+        reasoning_effort:
+          prominent: true
+          type: enum
+          values: [none, low, medium, high, xhigh, max]
+          description: Model-dependent reasoning effort. Astra and GPT-6.1 Sol require low or higher; Terra, Luna and GPT-6 Sol also accept none. Choose independently of standard/pro mode.
+        verbosity:
+          prominent: true
+          type: enum
+          values: [low, medium, high]
+          description: Response detail level when supported. This does not select reasoning mode or effort.
     models:
       openai/gpt-6.1-sol:
         name: GPT-6.1 Sol
