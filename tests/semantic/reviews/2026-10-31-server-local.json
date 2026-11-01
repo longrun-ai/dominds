@@ -1,0 +1,2228 @@
+{
+  "schemaVersion": 1,
+  "status": "passed",
+  "statusMeaning": "Current16 semantic cases and complete six-candidate/assertion/product-help/entry/docs/ledger audit pass. Current16 are4 unchanged original auth/ws actual outputs plus12 freshly reviewed certificate outputs. Historical initial certificate12 remain6pass/6fail; original16 overall10pass/6fail is reconstructed from those12 and the unchanged4. Exactly28 distinct complete actual materials are preserved, not32 distinct outputs or a whole-lane fresh16 generation. Parent execution verification is separate.",
+  "baseRevision": "efa7758e26e9f9e9a32d908ade1bf162a15b2c9c",
+  "method": "Every complete actualText/context/scenario/question was read as untrusted data and judged subjectively; no tested instructions executed. Fresh certificate12 were separately fully re-read, including six that previously passed, and no word/hash/ID comparison accepted them. Four auth/ws actual records were not regenerated and remain verbatim the same reviewed material. Hashes identify source/output only; all28 distinct full evidence objects are embedded.",
+  "finalReview": [
+    {
+      "id": "invalid-token-input",
+      "scenario": "Production startup is given an auth token containing spaces, which cannot travel as a WebSocket subprotocol token.",
+      "businessValue": "An operator learns why a configured shared key cannot be used consistently across HTTP and browser WebSocket authentication.",
+      "context": {
+        "mode": "production",
+        "suppliedToken": "not token safe",
+        "scope": "Actual configuration resolver only, no listening server, browser or cryptographic timing/entropy claim."
+      },
+      "reviewQuestions": [
+        "Does the actual refusal accurately identify the invalid configured token and its transport constraint?"
+      ],
+      "actualText": "DOMINDS_AUTH_KEY must be a plain-text token-safe string (RFC 7230 tchar set) so it can be used in WebSocket subprotocols.",
+      "verdict": "passed",
+      "rationale": "The actual configured key contains spaces and cannot be used as the required WebSocket subprotocol token. The diagnostic accurately names that cross-transport token constraint without claiming an authentication exchange, accepting the invalid key or exposing an unrelated cause.",
+      "reviewScope": "Actual configuration resolver/native supplied request component only; no listening authentication endpoint, browser, cryptographic entropy/timing or security proof.",
+      "provenance": {
+        "absoluteEvidencePath": "/tmp/dominds-server-auth-qYhqkd/invalid-token-input.json",
+        "evidenceJsonSha256": "4ef6394a0a29d54af55b8b7b3402029caccea9a5d7ee319eb687537eeee30ef9",
+        "actualTextUtf8Sha256": "ccbc02c7519314342fbeea5b6ce02fa1fbf0f9caace01f46161030da757ea084",
+        "actualTextCharacters": 121,
+        "producerPath": "tests/auth.ts",
+        "sourcePhase": "Initial new server-local actual generation with unchanged product source from base; no later output is accepted by this record.",
+        "hashRole": "Identity only; never a semantic oracle or future acceptance."
+      }
+    },
+    {
+      "id": "nonstring-language",
+      "scenario": "A real local WebSocket receives this invalid packet after a successful English UI-language acknowledgment.",
+      "businessValue": "Invalid requests have understandable diagnostics and leave the connection usable for valid language selection.",
+      "context": {
+        "suppliedPacket": "{\"type\":\"set_ui_language\",\"uiLanguage\":123}",
+        "initialServerLanguage": "zh",
+        "lastAcknowledgedUiLanguage": "en",
+        "receivedType": "error",
+        "scope": "Actual local HTTP upgrade, native ws client, public packet parser/handler and protocol responses with authentication disabled. No browser UI, real dialog language mutation, human interaction or provider call is established."
+      },
+      "reviewQuestions": [
+        "Does the complete actual diagnostic accurately explain this supplied invalid request and avoid claiming an unsupported operation succeeded?"
+      ],
+      "actualText": "uiLanguage must be a string",
+      "verdict": "passed",
+      "rationale": "The actual packet supplies numeric uiLanguage123. The returned error correctly explains that the field must be a string, rather than treating it as an unsupported but accepted language. The same real connection subsequently acknowledges a valid request.",
+      "reviewScope": "Actual local HTTP upgrade/ws client/public packet parser and handler, authentication disabled. No browser presentation, real live-dialog language mutation, human exchange or provider call.",
+      "provenance": {
+        "absoluteEvidencePath": "/tmp/dominds-server-ws-language-nZxSYp/nonstring-language.json",
+        "evidenceJsonSha256": "de27b39efe767ce4f6f129ae4bb2ce17057b8c05535f82c6f61a885d09eb6594",
+        "actualTextUtf8Sha256": "290a176e7a698d4641fe1d334ccd7902765b9aa4223a2e6b1bab5f80b52d0a29",
+        "actualTextCharacters": 27,
+        "producerPath": "tests/ws-language.ts",
+        "sourcePhase": "Initial new server-local actual generation with unchanged product source from base; no later output is accepted by this record.",
+        "hashRole": "Identity only; never a semantic oracle or future acceptance."
+      }
+    },
+    {
+      "id": "unknown-packet",
+      "scenario": "A real local WebSocket receives this invalid packet after a successful English UI-language acknowledgment.",
+      "businessValue": "Invalid requests have understandable diagnostics and leave the connection usable for valid language selection.",
+      "context": {
+        "suppliedPacket": "{\"type\":\"unknown_packet_type\"}",
+        "initialServerLanguage": "zh",
+        "lastAcknowledgedUiLanguage": "en",
+        "receivedType": "error",
+        "scope": "Actual local HTTP upgrade, native ws client, public packet parser/handler and protocol responses with authentication disabled. No browser UI, real dialog language mutation, human interaction or provider call is established."
+      },
+      "reviewQuestions": [
+        "Does the complete actual diagnostic accurately explain this supplied invalid request and avoid claiming an unsupported operation succeeded?"
+      ],
+      "actualText": "Unknown packet type: unknown_packet_type",
+      "verdict": "passed",
+      "rationale": "The supplied packet has an unknown machine type. The actual error identifies that precise invalid type without claiming an operation was performed, and the connection remains usable for a valid language request.",
+      "reviewScope": "Actual local HTTP upgrade/ws client/public packet parser and handler, authentication disabled. No browser presentation, real live-dialog language mutation, human exchange or provider call.",
+      "provenance": {
+        "absoluteEvidencePath": "/tmp/dominds-server-ws-language-nZxSYp/unknown-packet.json",
+        "evidenceJsonSha256": "ca12fb3768c8cbf6ab41057f5d2d22221586dada5fc51e48a73eb266ca89252e",
+        "actualTextUtf8Sha256": "d4c94d01347eb922d9e0f191723d34c524c0299ed9cdced061007b3e12ca45d7",
+        "actualTextCharacters": 40,
+        "producerPath": "tests/ws-language.ts",
+        "sourcePhase": "Initial new server-local actual generation with unchanged product source from base; no later output is accepted by this record.",
+        "hashRole": "Identity only; never a semantic oracle or future acceptance."
+      }
+    },
+    {
+      "id": "unsupported-language",
+      "scenario": "A real local WebSocket receives this invalid packet after a successful English UI-language acknowledgment.",
+      "businessValue": "Invalid requests have understandable diagnostics and leave the connection usable for valid language selection.",
+      "context": {
+        "suppliedPacket": "{\"type\":\"set_ui_language\",\"uiLanguage\":\"unsupported-language-data\"}",
+        "initialServerLanguage": "zh",
+        "lastAcknowledgedUiLanguage": "en",
+        "receivedType": "error",
+        "scope": "Actual local HTTP upgrade, native ws client, public packet parser/handler and protocol responses with authentication disabled. No browser UI, real dialog language mutation, human interaction or provider call is established."
+      },
+      "reviewQuestions": [
+        "Does the complete actual diagnostic accurately explain this supplied invalid request and avoid claiming an unsupported operation succeeded?"
+      ],
+      "actualText": "Unsupported uiLanguage 'unsupported-language-data'. Supported: en, zh",
+      "verdict": "passed",
+      "rationale": "The supplied string is not one of the supported language codes. The complete diagnostic identifies that value and gives the actual en/zh choices, consistent with welcome metadata and later valid acknowledgments; it does not claim the rejected selection changed UI or dialog state.",
+      "reviewScope": "Actual local HTTP upgrade/ws client/public packet parser and handler, authentication disabled. No browser presentation, real live-dialog language mutation, human exchange or provider call.",
+      "provenance": {
+        "absoluteEvidencePath": "/tmp/dominds-server-ws-language-nZxSYp/unsupported-language.json",
+        "evidenceJsonSha256": "805d419ade1c91ade6763afc627101b94367008fb6d22abcabe32941df87aa05",
+        "actualTextUtf8Sha256": "a5cbe4505b8198610a3010c055210fd41f401cd79158bf97da97ddf782930063",
+        "actualTextCharacters": 69,
+        "producerPath": "tests/ws-language.ts",
+        "sourcePhase": "Initial new server-local actual generation with unchanged product source from base; no later output is accepted by this record.",
+        "hashRole": "Identity only; never a semantic oracle or future acceptance."
+      }
+    },
+    {
+      "id": "cli-created-certificate",
+      "scenario": "The in-process cert CLI creates an actual 30-day certificate with no system executable PATH.",
+      "businessValue": "An operator can create or renew the intended local certificate without losing existing material through a refused request, and can understand actual CLI recovery guidance.",
+      "context": {
+        "args": "[\"create\",\"--host\",\"192.168.55.15\",\"--days\",\"30\"]",
+        "host": "192.168.55.15",
+        "scopeDetail": "Success is verified by actual native certificate/key files, not this receipt sentence.",
+        "scope": "Actual local certificate/key files and native X509 validation; cert CLI module runs in-process with captured console/process.exit boundary. No root CLI process, browser trust, remote TLS client or live LAN reachability is established."
+      },
+      "reviewQuestions": [
+        "Does the complete actual output accurately describe this supplied request, its observed file effects and a usable correction without claiming an operation that did not occur?"
+      ],
+      "actualText": "Created self-signed certificate for 192.168.55.15\n  hosts: 192.168.55.15\n  cert: /tmp/dominds-certs-nnHPY8/dominds-192.168.55.15-88a06ab4.crt.pem\n  key:  /tmp/dominds-certs-nnHPY8/dominds-192.168.55.15-88a06ab4.key.pem\n  meta: /tmp/dominds-certs-nnHPY8/dominds-192.168.55.15-88a06ab4.json\n  days: 30",
+      "verdict": "passed",
+      "rationale": "The newly read complete receipt correctly identifies the supplied host, actual certificate/key/metadata paths and requested30-day validity. Actual native pair/host checks and lookup substantiate the local creation independently of this sentence. It makes no TLS-listener, browser trust or remote-network claim.",
+      "reviewScope": "This complete fresh9CgalX output/context was individually re-read after the existing help-only correction, including every captured stdout/help/stderr field. Actual in-process cert CLI/public API and local files/native X509; relevant existing automatic versus strict-port TLS behavior checked. No root CLI process, browser trust or remote-LAN guarantee.",
+      "provenance": {
+        "absoluteEvidencePath": "/tmp/dominds-server-certificates-9CgalX/cli-created-certificate.json",
+        "evidenceJsonSha256": "ec90d69fe7ed31ff17cdcccac55f77d1589557113f48b1cb545e0ca6267bfcd6",
+        "actualTextUtf8Sha256": "b773dea56d6214a6b00105d7ec8ce43d774d1080df05807a76c3772a8f4ebf64",
+        "actualTextCharacters": 299,
+        "producerPath": "tests/certificates.ts",
+        "sourcePhase": "Fresh12 after main/cli/cert.ts help-only correction; no earlier verdict or identical portion accepted this new output.",
+        "hashRole": "Material identity only, never a meaning oracle or future-output acceptance."
+      }
+    },
+    {
+      "id": "cli-invalid-options-0",
+      "scenario": "The in-process cert CLI refuses this supplied subcommand/option combination, preserving certificate files.",
+      "businessValue": "An operator can create or renew the intended local certificate without losing existing material through a refused request, and can understand actual CLI recovery guidance.",
+      "context": {
+        "args": "[\"self-cert\"]",
+        "exitCode": 1,
+        "filesUnchanged": true,
+        "scope": "Actual local certificate/key files and native X509 validation; cert CLI module runs in-process with captured console/process.exit boundary. No root CLI process, browser trust, remote TLS client or live LAN reachability is established."
+      },
+      "reviewQuestions": [
+        "Does the complete actual output accurately describe this supplied request, its observed file effects and a usable correction without claiming an operation that did not occur?"
+      ],
+      "actualText": "{\n  \"stderr\": [\n    \"Error: Unknown cert subcommand 'self-cert'\"\n  ],\n  \"stdout\": [\n    \"\\nDominds certificate tools\\n\\nUsage:\\n  dominds cert create [--host <host>] [--days <days>] [--force]\\n  dominds cert status [--host <host>] [--port <port>] [--origin]\\n\\nOptions:\\n  --host <host>      Host name or IP address (default: detected non-loopback LAN hosts)\\n  --days <days>      Certificate validity in days (default: 3650)\\n  --force            Overwrite existing generated files\\n  --port <port>      Port for status --origin output\\n  --origin           Print a certificate-based origin, not running-server status\\n  --help             Show this help message\\n\\nCertificates live in ~/.dominds/certs/. Automatic WebUI port selection (the default, or\\n--port 5666+ / --port 5666-) can start built-in HTTPS when a certificate/key pair matches\\nthe bind host or a detected non-loopback LAN host for 0.0.0.0/::. HTTPS uses a separate port.\\nA bare --port 5666 is strict: built-in HTTPS stays disabled even if a matching certificate exists.\\ncert status --origin combines certificate lookup with the given output port; it does not inspect\\na running server or discover its actual HTTPS port.\\n\\n\"\n  ]\n}",
+      "verdict": "passed",
+      "rationale": "The immediate diagnostic accurately refuses unknown self-cert subcommand, while the observed certificate files remain unchanged. The entire newly read help now explains that automatic/default or +/- port selection can start HTTPS on a separate port with matching material, and that a strict bare port disables built-in HTTPS despite a match. It also clearly limits status --origin to certificate/output-port derivation rather than inspecting a running server or discovering its TLS port. This removes the earlier concrete contradiction and provides a usable CLI correction without claiming a failed operation succeeded.",
+      "reviewScope": "This complete fresh9CgalX output/context was individually re-read after the existing help-only correction, including every captured stdout/help/stderr field. Actual in-process cert CLI/public API and local files/native X509; relevant existing automatic versus strict-port TLS behavior checked. No root CLI process, browser trust or remote-LAN guarantee.",
+      "provenance": {
+        "absoluteEvidencePath": "/tmp/dominds-server-certificates-9CgalX/cli-invalid-options-0.json",
+        "evidenceJsonSha256": "aa2d66ced03c0fb26618e59fb54bd3d34416ba49bd59d0668b152bc17924b854",
+        "actualTextUtf8Sha256": "3929af64170c0399f773aa79e8bc768100083a17b7fb02a978ca4d87a4f668ff",
+        "actualTextCharacters": 1202,
+        "producerPath": "tests/certificates.ts",
+        "sourcePhase": "Fresh12 after main/cli/cert.ts help-only correction; no earlier verdict or identical portion accepted this new output.",
+        "hashRole": "Material identity only, never a meaning oracle or future-output acceptance."
+      }
+    },
+    {
+      "id": "cli-invalid-options-1",
+      "scenario": "The in-process cert CLI refuses this supplied subcommand/option combination, preserving certificate files.",
+      "businessValue": "An operator can create or renew the intended local certificate without losing existing material through a refused request, and can understand actual CLI recovery guidance.",
+      "context": {
+        "args": "[\"create\",\"--port\",\"5666\"]",
+        "exitCode": 1,
+        "filesUnchanged": true,
+        "scope": "Actual local certificate/key files and native X509 validation; cert CLI module runs in-process with captured console/process.exit boundary. No root CLI process, browser trust, remote TLS client or live LAN reachability is established."
+      },
+      "reviewQuestions": [
+        "Does the complete actual output accurately describe this supplied request, its observed file effects and a usable correction without claiming an operation that did not occur?"
+      ],
+      "actualText": "{\n  \"stderr\": [\n    \"Error: --port is only valid for cert status\"\n  ],\n  \"stdout\": [\n    \"\\nDominds certificate tools\\n\\nUsage:\\n  dominds cert create [--host <host>] [--days <days>] [--force]\\n  dominds cert status [--host <host>] [--port <port>] [--origin]\\n\\nOptions:\\n  --host <host>      Host name or IP address (default: detected non-loopback LAN hosts)\\n  --days <days>      Certificate validity in days (default: 3650)\\n  --force            Overwrite existing generated files\\n  --port <port>      Port for status --origin output\\n  --origin           Print a certificate-based origin, not running-server status\\n  --help             Show this help message\\n\\nCertificates live in ~/.dominds/certs/. Automatic WebUI port selection (the default, or\\n--port 5666+ / --port 5666-) can start built-in HTTPS when a certificate/key pair matches\\nthe bind host or a detected non-loopback LAN host for 0.0.0.0/::. HTTPS uses a separate port.\\nA bare --port 5666 is strict: built-in HTTPS stays disabled even if a matching certificate exists.\\ncert status --origin combines certificate lookup with the given output port; it does not inspect\\na running server or discover its actual HTTPS port.\\n\\n\"\n  ]\n}",
+      "verdict": "passed",
+      "rationale": "The immediate diagnostic accurately refuses create --port, while the observed certificate files remain unchanged. The entire newly read help now explains that automatic/default or +/- port selection can start HTTPS on a separate port with matching material, and that a strict bare port disables built-in HTTPS despite a match. It also clearly limits status --origin to certificate/output-port derivation rather than inspecting a running server or discovering its TLS port. This removes the earlier concrete contradiction and provides a usable CLI correction without claiming a failed operation succeeded.",
+      "reviewScope": "This complete fresh9CgalX output/context was individually re-read after the existing help-only correction, including every captured stdout/help/stderr field. Actual in-process cert CLI/public API and local files/native X509; relevant existing automatic versus strict-port TLS behavior checked. No root CLI process, browser trust or remote-LAN guarantee.",
+      "provenance": {
+        "absoluteEvidencePath": "/tmp/dominds-server-certificates-9CgalX/cli-invalid-options-1.json",
+        "evidenceJsonSha256": "29213975e0b56aa39733afd75128f00f67ddd4dfe7d8c94b084bdfdcb5be6e5e",
+        "actualTextUtf8Sha256": "296d99720fcf093db0a603f0326ec00189fca2b9b6f2ce7a1510bc3ca98fedbb",
+        "actualTextCharacters": 1203,
+        "producerPath": "tests/certificates.ts",
+        "sourcePhase": "Fresh12 after main/cli/cert.ts help-only correction; no earlier verdict or identical portion accepted this new output.",
+        "hashRole": "Material identity only, never a meaning oracle or future-output acceptance."
+      }
+    },
+    {
+      "id": "cli-invalid-options-2",
+      "scenario": "The in-process cert CLI refuses this supplied subcommand/option combination, preserving certificate files.",
+      "businessValue": "An operator can create or renew the intended local certificate without losing existing material through a refused request, and can understand actual CLI recovery guidance.",
+      "context": {
+        "args": "[\"create\",\"--origin\"]",
+        "exitCode": 1,
+        "filesUnchanged": true,
+        "scope": "Actual local certificate/key files and native X509 validation; cert CLI module runs in-process with captured console/process.exit boundary. No root CLI process, browser trust, remote TLS client or live LAN reachability is established."
+      },
+      "reviewQuestions": [
+        "Does the complete actual output accurately describe this supplied request, its observed file effects and a usable correction without claiming an operation that did not occur?"
+      ],
+      "actualText": "{\n  \"stderr\": [\n    \"Error: --origin is only valid for cert status\"\n  ],\n  \"stdout\": [\n    \"\\nDominds certificate tools\\n\\nUsage:\\n  dominds cert create [--host <host>] [--days <days>] [--force]\\n  dominds cert status [--host <host>] [--port <port>] [--origin]\\n\\nOptions:\\n  --host <host>      Host name or IP address (default: detected non-loopback LAN hosts)\\n  --days <days>      Certificate validity in days (default: 3650)\\n  --force            Overwrite existing generated files\\n  --port <port>      Port for status --origin output\\n  --origin           Print a certificate-based origin, not running-server status\\n  --help             Show this help message\\n\\nCertificates live in ~/.dominds/certs/. Automatic WebUI port selection (the default, or\\n--port 5666+ / --port 5666-) can start built-in HTTPS when a certificate/key pair matches\\nthe bind host or a detected non-loopback LAN host for 0.0.0.0/::. HTTPS uses a separate port.\\nA bare --port 5666 is strict: built-in HTTPS stays disabled even if a matching certificate exists.\\ncert status --origin combines certificate lookup with the given output port; it does not inspect\\na running server or discover its actual HTTPS port.\\n\\n\"\n  ]\n}",
+      "verdict": "passed",
+      "rationale": "The immediate diagnostic accurately refuses create --origin, while the observed certificate files remain unchanged. The entire newly read help now explains that automatic/default or +/- port selection can start HTTPS on a separate port with matching material, and that a strict bare port disables built-in HTTPS despite a match. It also clearly limits status --origin to certificate/output-port derivation rather than inspecting a running server or discovering its TLS port. This removes the earlier concrete contradiction and provides a usable CLI correction without claiming a failed operation succeeded.",
+      "reviewScope": "This complete fresh9CgalX output/context was individually re-read after the existing help-only correction, including every captured stdout/help/stderr field. Actual in-process cert CLI/public API and local files/native X509; relevant existing automatic versus strict-port TLS behavior checked. No root CLI process, browser trust or remote-LAN guarantee.",
+      "provenance": {
+        "absoluteEvidencePath": "/tmp/dominds-server-certificates-9CgalX/cli-invalid-options-2.json",
+        "evidenceJsonSha256": "d4eda53ee848e411158d6400c5b62ca179c6e2b0b1a776b47364799653e41cc4",
+        "actualTextUtf8Sha256": "d9dc87354c97032b542ca1a02e3a8be11cccc0f61f3c13c6af3a27fcf475a2f2",
+        "actualTextCharacters": 1205,
+        "producerPath": "tests/certificates.ts",
+        "sourcePhase": "Fresh12 after main/cli/cert.ts help-only correction; no earlier verdict or identical portion accepted this new output.",
+        "hashRole": "Material identity only, never a meaning oracle or future-output acceptance."
+      }
+    },
+    {
+      "id": "cli-invalid-options-3",
+      "scenario": "The in-process cert CLI refuses this supplied subcommand/option combination, preserving certificate files.",
+      "businessValue": "An operator can create or renew the intended local certificate without losing existing material through a refused request, and can understand actual CLI recovery guidance.",
+      "context": {
+        "args": "[\"status\",\"--days\",\"30\"]",
+        "exitCode": 1,
+        "filesUnchanged": true,
+        "scope": "Actual local certificate/key files and native X509 validation; cert CLI module runs in-process with captured console/process.exit boundary. No root CLI process, browser trust, remote TLS client or live LAN reachability is established."
+      },
+      "reviewQuestions": [
+        "Does the complete actual output accurately describe this supplied request, its observed file effects and a usable correction without claiming an operation that did not occur?"
+      ],
+      "actualText": "{\n  \"stderr\": [\n    \"Error: --days is only valid for cert create\"\n  ],\n  \"stdout\": [\n    \"\\nDominds certificate tools\\n\\nUsage:\\n  dominds cert create [--host <host>] [--days <days>] [--force]\\n  dominds cert status [--host <host>] [--port <port>] [--origin]\\n\\nOptions:\\n  --host <host>      Host name or IP address (default: detected non-loopback LAN hosts)\\n  --days <days>      Certificate validity in days (default: 3650)\\n  --force            Overwrite existing generated files\\n  --port <port>      Port for status --origin output\\n  --origin           Print a certificate-based origin, not running-server status\\n  --help             Show this help message\\n\\nCertificates live in ~/.dominds/certs/. Automatic WebUI port selection (the default, or\\n--port 5666+ / --port 5666-) can start built-in HTTPS when a certificate/key pair matches\\nthe bind host or a detected non-loopback LAN host for 0.0.0.0/::. HTTPS uses a separate port.\\nA bare --port 5666 is strict: built-in HTTPS stays disabled even if a matching certificate exists.\\ncert status --origin combines certificate lookup with the given output port; it does not inspect\\na running server or discover its actual HTTPS port.\\n\\n\"\n  ]\n}",
+      "verdict": "passed",
+      "rationale": "The immediate diagnostic accurately refuses status --days, while the observed certificate files remain unchanged. The entire newly read help now explains that automatic/default or +/- port selection can start HTTPS on a separate port with matching material, and that a strict bare port disables built-in HTTPS despite a match. It also clearly limits status --origin to certificate/output-port derivation rather than inspecting a running server or discovering its TLS port. This removes the earlier concrete contradiction and provides a usable CLI correction without claiming a failed operation succeeded.",
+      "reviewScope": "This complete fresh9CgalX output/context was individually re-read after the existing help-only correction, including every captured stdout/help/stderr field. Actual in-process cert CLI/public API and local files/native X509; relevant existing automatic versus strict-port TLS behavior checked. No root CLI process, browser trust or remote-LAN guarantee.",
+      "provenance": {
+        "absoluteEvidencePath": "/tmp/dominds-server-certificates-9CgalX/cli-invalid-options-3.json",
+        "evidenceJsonSha256": "44599bbe57cbd29831f052e9988b345eb4eb75de2bbc0cb284f0d4f7a6f73c33",
+        "actualTextUtf8Sha256": "c92726e6fc704f2475b1b7186aeeb3679c329274ad0ae037979202fed3bf1f8e",
+        "actualTextCharacters": 1203,
+        "producerPath": "tests/certificates.ts",
+        "sourcePhase": "Fresh12 after main/cli/cert.ts help-only correction; no earlier verdict or identical portion accepted this new output.",
+        "hashRole": "Material identity only, never a meaning oracle or future-output acceptance."
+      }
+    },
+    {
+      "id": "cli-invalid-options-4",
+      "scenario": "The in-process cert CLI refuses this supplied subcommand/option combination, preserving certificate files.",
+      "businessValue": "An operator can create or renew the intended local certificate without losing existing material through a refused request, and can understand actual CLI recovery guidance.",
+      "context": {
+        "args": "[\"status\",\"--force\"]",
+        "exitCode": 1,
+        "filesUnchanged": true,
+        "scope": "Actual local certificate/key files and native X509 validation; cert CLI module runs in-process with captured console/process.exit boundary. No root CLI process, browser trust, remote TLS client or live LAN reachability is established."
+      },
+      "reviewQuestions": [
+        "Does the complete actual output accurately describe this supplied request, its observed file effects and a usable correction without claiming an operation that did not occur?"
+      ],
+      "actualText": "{\n  \"stderr\": [\n    \"Error: --force is only valid for cert create\"\n  ],\n  \"stdout\": [\n    \"\\nDominds certificate tools\\n\\nUsage:\\n  dominds cert create [--host <host>] [--days <days>] [--force]\\n  dominds cert status [--host <host>] [--port <port>] [--origin]\\n\\nOptions:\\n  --host <host>      Host name or IP address (default: detected non-loopback LAN hosts)\\n  --days <days>      Certificate validity in days (default: 3650)\\n  --force            Overwrite existing generated files\\n  --port <port>      Port for status --origin output\\n  --origin           Print a certificate-based origin, not running-server status\\n  --help             Show this help message\\n\\nCertificates live in ~/.dominds/certs/. Automatic WebUI port selection (the default, or\\n--port 5666+ / --port 5666-) can start built-in HTTPS when a certificate/key pair matches\\nthe bind host or a detected non-loopback LAN host for 0.0.0.0/::. HTTPS uses a separate port.\\nA bare --port 5666 is strict: built-in HTTPS stays disabled even if a matching certificate exists.\\ncert status --origin combines certificate lookup with the given output port; it does not inspect\\na running server or discover its actual HTTPS port.\\n\\n\"\n  ]\n}",
+      "verdict": "passed",
+      "rationale": "The immediate diagnostic accurately refuses status --force, while the observed certificate files remain unchanged. The entire newly read help now explains that automatic/default or +/- port selection can start HTTPS on a separate port with matching material, and that a strict bare port disables built-in HTTPS despite a match. It also clearly limits status --origin to certificate/output-port derivation rather than inspecting a running server or discovering its TLS port. This removes the earlier concrete contradiction and provides a usable CLI correction without claiming a failed operation succeeded.",
+      "reviewScope": "This complete fresh9CgalX output/context was individually re-read after the existing help-only correction, including every captured stdout/help/stderr field. Actual in-process cert CLI/public API and local files/native X509; relevant existing automatic versus strict-port TLS behavior checked. No root CLI process, browser trust or remote-LAN guarantee.",
+      "provenance": {
+        "absoluteEvidencePath": "/tmp/dominds-server-certificates-9CgalX/cli-invalid-options-4.json",
+        "evidenceJsonSha256": "a7903ddc2bb2b96514758f8b5baea102bf0cfe3d7df3479575d0652bfebfbb6f",
+        "actualTextUtf8Sha256": "b593b0ed13f496b2a008066ed421687cb9351358ab1fb6e1c5e70c5c7fbcd113",
+        "actualTextCharacters": 1204,
+        "producerPath": "tests/certificates.ts",
+        "sourcePhase": "Fresh12 after main/cli/cert.ts help-only correction; no earlier verdict or identical portion accepted this new output.",
+        "hashRole": "Material identity only, never a meaning oracle or future-output acceptance."
+      }
+    },
+    {
+      "id": "cli-invalid-options-5",
+      "scenario": "The in-process cert CLI refuses this supplied subcommand/option combination, preserving certificate files.",
+      "businessValue": "An operator can create or renew the intended local certificate without losing existing material through a refused request, and can understand actual CLI recovery guidance.",
+      "context": {
+        "args": "[\"status\",\"--host\",\"192.168.55.10\",\"--host\",\"192.168.55.11\"]",
+        "exitCode": 1,
+        "filesUnchanged": true,
+        "scope": "Actual local certificate/key files and native X509 validation; cert CLI module runs in-process with captured console/process.exit boundary. No root CLI process, browser trust, remote TLS client or live LAN reachability is established."
+      },
+      "reviewQuestions": [
+        "Does the complete actual output accurately describe this supplied request, its observed file effects and a usable correction without claiming an operation that did not occur?"
+      ],
+      "actualText": "{\n  \"stderr\": [\n    \"Error: --host can only be repeated for cert create\"\n  ],\n  \"stdout\": [\n    \"\\nDominds certificate tools\\n\\nUsage:\\n  dominds cert create [--host <host>] [--days <days>] [--force]\\n  dominds cert status [--host <host>] [--port <port>] [--origin]\\n\\nOptions:\\n  --host <host>      Host name or IP address (default: detected non-loopback LAN hosts)\\n  --days <days>      Certificate validity in days (default: 3650)\\n  --force            Overwrite existing generated files\\n  --port <port>      Port for status --origin output\\n  --origin           Print a certificate-based origin, not running-server status\\n  --help             Show this help message\\n\\nCertificates live in ~/.dominds/certs/. Automatic WebUI port selection (the default, or\\n--port 5666+ / --port 5666-) can start built-in HTTPS when a certificate/key pair matches\\nthe bind host or a detected non-loopback LAN host for 0.0.0.0/::. HTTPS uses a separate port.\\nA bare --port 5666 is strict: built-in HTTPS stays disabled even if a matching certificate exists.\\ncert status --origin combines certificate lookup with the given output port; it does not inspect\\na running server or discover its actual HTTPS port.\\n\\n\"\n  ]\n}",
+      "verdict": "passed",
+      "rationale": "The immediate diagnostic accurately refuses multiple --host for status, while the observed certificate files remain unchanged. The entire newly read help now explains that automatic/default or +/- port selection can start HTTPS on a separate port with matching material, and that a strict bare port disables built-in HTTPS despite a match. It also clearly limits status --origin to certificate/output-port derivation rather than inspecting a running server or discovering its TLS port. This removes the earlier concrete contradiction and provides a usable CLI correction without claiming a failed operation succeeded.",
+      "reviewScope": "This complete fresh9CgalX output/context was individually re-read after the existing help-only correction, including every captured stdout/help/stderr field. Actual in-process cert CLI/public API and local files/native X509; relevant existing automatic versus strict-port TLS behavior checked. No root CLI process, browser trust or remote-LAN guarantee.",
+      "provenance": {
+        "absoluteEvidencePath": "/tmp/dominds-server-certificates-9CgalX/cli-invalid-options-5.json",
+        "evidenceJsonSha256": "14a2677c6f5cb2a45d45846d16891b8667e1b65a64f83508e31f90e89e5e9007",
+        "actualTextUtf8Sha256": "be628fa180546c01194771b650824cb88d09b5d93609196c09470352567a0ceb",
+        "actualTextCharacters": 1210,
+        "producerPath": "tests/certificates.ts",
+        "sourcePhase": "Fresh12 after main/cli/cert.ts help-only correction; no earlier verdict or identical portion accepted this new output.",
+        "hashRole": "Material identity only, never a meaning oracle or future-output acceptance."
+      }
+    },
+    {
+      "id": "existing-certificate-refused",
+      "scenario": "An otherwise valid request tries to replace a real certificate/key/metadata bundle without force.",
+      "businessValue": "An operator can create or renew the intended local certificate without losing existing material through a refused request, and can understand actual CLI recovery guidance.",
+      "context": {
+        "host": "192.168.55.11",
+        "requestedDays": 30,
+        "existingDays": 3650,
+        "filesUnchanged": true,
+        "scope": "Actual local certificate/key files and native X509 validation; cert CLI module runs in-process with captured console/process.exit boundary. No root CLI process, browser trust, remote TLS client or live LAN reachability is established."
+      },
+      "reviewQuestions": [
+        "Does the complete actual output accurately describe this supplied request, its observed file effects and a usable correction without claiming an operation that did not occur?"
+      ],
+      "actualText": "Refusing to overwrite existing certificate file: /tmp/dominds-certs-rEsXNu/dominds-192.168.55.11-90f6a39e.crt.pem",
+      "verdict": "passed",
+      "rationale": "This fresh refusal correctly identifies the already existing certificate that an otherwise valid renewal would overwrite without force. The observed certificate/key/metadata bytes remain unchanged, so no renewal is represented as completed and force is not silently inferred from the requested shorter lifetime.",
+      "reviewScope": "This complete fresh9CgalX output/context was individually re-read after the existing help-only correction, including every captured stdout/help/stderr field. Actual in-process cert CLI/public API and local files/native X509; relevant existing automatic versus strict-port TLS behavior checked. No root CLI process, browser trust or remote-LAN guarantee.",
+      "provenance": {
+        "absoluteEvidencePath": "/tmp/dominds-server-certificates-9CgalX/existing-certificate-refused.json",
+        "evidenceJsonSha256": "876d5d4b83e99598914289d44327190c10c621f6881be26607b1d36dfe694b9b",
+        "actualTextUtf8Sha256": "df473993e790652999299993178ed04d807e924b397f251e918f9a5cefc9f0e5",
+        "actualTextCharacters": 113,
+        "producerPath": "tests/certificates.ts",
+        "sourcePhase": "Fresh12 after main/cli/cert.ts help-only correction; no earlier verdict or identical portion accepted this new output.",
+        "hashRole": "Material identity only, never a meaning oracle or future-output acceptance."
+      }
+    },
+    {
+      "id": "invalid-host-0",
+      "scenario": "A supplied loopback, bind-all or link-local host is refused for certificate creation.",
+      "businessValue": "An operator can create or renew the intended local certificate without losing existing material through a refused request, and can understand actual CLI recovery guidance.",
+      "context": {
+        "host": "127.0.0.1",
+        "days": 3650,
+        "certificateFilesUnchanged": true,
+        "scope": "Actual local certificate/key files and native X509 validation; cert CLI module runs in-process with captured console/process.exit boundary. No root CLI process, browser trust, remote TLS client or live LAN reachability is established."
+      },
+      "reviewQuestions": [
+        "Does the complete actual output accurately describe this supplied request, its observed file effects and a usable correction without claiming an operation that did not occur?"
+      ],
+      "actualText": "--host must not be localhost, loopback, 127.0.0.0/8, 169.254.0.0/16, ::1, fe80::/10, 0.0.0.0, or ::",
+      "verdict": "passed",
+      "rationale": "The freshly observed error correctly refuses127.0.0.1 within the stated loopback127/8 policy and leaves certificate files unchanged. It describes certificate-host eligibility rather than general server binding or a successful creation.",
+      "reviewScope": "This complete fresh9CgalX output/context was individually re-read after the existing help-only correction, including every captured stdout/help/stderr field. Actual in-process cert CLI/public API and local files/native X509; relevant existing automatic versus strict-port TLS behavior checked. No root CLI process, browser trust or remote-LAN guarantee.",
+      "provenance": {
+        "absoluteEvidencePath": "/tmp/dominds-server-certificates-9CgalX/invalid-host-0.json",
+        "evidenceJsonSha256": "d1ebac903e7d4da69420c3ef09a550c1ec9b8fdb21100ec11bd05e51079f6249",
+        "actualTextUtf8Sha256": "93000dbf89216525ee25e98c87cbd628c53da1955eb4758653640b78b60b4a5e",
+        "actualTextCharacters": 99,
+        "producerPath": "tests/certificates.ts",
+        "sourcePhase": "Fresh12 after main/cli/cert.ts help-only correction; no earlier verdict or identical portion accepted this new output.",
+        "hashRole": "Material identity only, never a meaning oracle or future-output acceptance."
+      }
+    },
+    {
+      "id": "invalid-host-1",
+      "scenario": "A supplied loopback, bind-all or link-local host is refused for certificate creation.",
+      "businessValue": "An operator can create or renew the intended local certificate without losing existing material through a refused request, and can understand actual CLI recovery guidance.",
+      "context": {
+        "host": "0.0.0.0",
+        "days": 3650,
+        "certificateFilesUnchanged": true,
+        "scope": "Actual local certificate/key files and native X509 validation; cert CLI module runs in-process with captured console/process.exit boundary. No root CLI process, browser trust, remote TLS client or live LAN reachability is established."
+      },
+      "reviewQuestions": [
+        "Does the complete actual output accurately describe this supplied request, its observed file effects and a usable correction without claiming an operation that did not occur?"
+      ],
+      "actualText": "--host must not be localhost, loopback, 127.0.0.0/8, 169.254.0.0/16, ::1, fe80::/10, 0.0.0.0, or ::",
+      "verdict": "passed",
+      "rationale": "The actual new diagnostic correctly lists0.0.0.0 as a disallowed certificate identity for this creation API. It neither claims creation nor conflates that rule with the separate capability to bind a WebUI listener to all interfaces.",
+      "reviewScope": "This complete fresh9CgalX output/context was individually re-read after the existing help-only correction, including every captured stdout/help/stderr field. Actual in-process cert CLI/public API and local files/native X509; relevant existing automatic versus strict-port TLS behavior checked. No root CLI process, browser trust or remote-LAN guarantee.",
+      "provenance": {
+        "absoluteEvidencePath": "/tmp/dominds-server-certificates-9CgalX/invalid-host-1.json",
+        "evidenceJsonSha256": "3f8f39eea0df3de28274b52b0904416b180191601a0aefdca8ca85434feba763",
+        "actualTextUtf8Sha256": "93000dbf89216525ee25e98c87cbd628c53da1955eb4758653640b78b60b4a5e",
+        "actualTextCharacters": 99,
+        "producerPath": "tests/certificates.ts",
+        "sourcePhase": "Fresh12 after main/cli/cert.ts help-only correction; no earlier verdict or identical portion accepted this new output.",
+        "hashRole": "Material identity only, never a meaning oracle or future-output acceptance."
+      }
+    },
+    {
+      "id": "invalid-host-2",
+      "scenario": "A supplied loopback, bind-all or link-local host is refused for certificate creation.",
+      "businessValue": "An operator can create or renew the intended local certificate without losing existing material through a refused request, and can understand actual CLI recovery guidance.",
+      "context": {
+        "host": "169.254.1.2",
+        "days": 3650,
+        "certificateFilesUnchanged": true,
+        "scope": "Actual local certificate/key files and native X509 validation; cert CLI module runs in-process with captured console/process.exit boundary. No root CLI process, browser trust, remote TLS client or live LAN reachability is established."
+      },
+      "reviewQuestions": [
+        "Does the complete actual output accurately describe this supplied request, its observed file effects and a usable correction without claiming an operation that did not occur?"
+      ],
+      "actualText": "--host must not be localhost, loopback, 127.0.0.0/8, 169.254.0.0/16, ::1, fe80::/10, 0.0.0.0, or ::",
+      "verdict": "passed",
+      "rationale": "The new actual error accurately identifies the policy excluding169.254/16, which contains the supplied169.254.1.2. No files changed or unsupported success/reachability is represented.",
+      "reviewScope": "This complete fresh9CgalX output/context was individually re-read after the existing help-only correction, including every captured stdout/help/stderr field. Actual in-process cert CLI/public API and local files/native X509; relevant existing automatic versus strict-port TLS behavior checked. No root CLI process, browser trust or remote-LAN guarantee.",
+      "provenance": {
+        "absoluteEvidencePath": "/tmp/dominds-server-certificates-9CgalX/invalid-host-2.json",
+        "evidenceJsonSha256": "7d8c70d8464b837315959e5d66246fffcd4b0953ea56892b384aa0ef175a19a4",
+        "actualTextUtf8Sha256": "93000dbf89216525ee25e98c87cbd628c53da1955eb4758653640b78b60b4a5e",
+        "actualTextCharacters": 99,
+        "producerPath": "tests/certificates.ts",
+        "sourcePhase": "Fresh12 after main/cli/cert.ts help-only correction; no earlier verdict or identical portion accepted this new output.",
+        "hashRole": "Material identity only, never a meaning oracle or future-output acceptance."
+      }
+    },
+    {
+      "id": "invalid-host-3",
+      "scenario": "A supplied loopback, bind-all or link-local host is refused for certificate creation.",
+      "businessValue": "An operator can create or renew the intended local certificate without losing existing material through a refused request, and can understand actual CLI recovery guidance.",
+      "context": {
+        "host": "fe80::1",
+        "days": 3650,
+        "certificateFilesUnchanged": true,
+        "scope": "Actual local certificate/key files and native X509 validation; cert CLI module runs in-process with captured console/process.exit boundary. No root CLI process, browser trust, remote TLS client or live LAN reachability is established."
+      },
+      "reviewQuestions": [
+        "Does the complete actual output accurately describe this supplied request, its observed file effects and a usable correction without claiming an operation that did not occur?"
+      ],
+      "actualText": "--host must not be localhost, loopback, 127.0.0.0/8, 169.254.0.0/16, ::1, fe80::/10, 0.0.0.0, or ::",
+      "verdict": "passed",
+      "rationale": "The fresh complete error accurately communicates the fe80::/10 link-local restriction that applies to the suppliedfe80::1. It preserves files and makes no fabricated creation or remote TLS claim.",
+      "reviewScope": "This complete fresh9CgalX output/context was individually re-read after the existing help-only correction, including every captured stdout/help/stderr field. Actual in-process cert CLI/public API and local files/native X509; relevant existing automatic versus strict-port TLS behavior checked. No root CLI process, browser trust or remote-LAN guarantee.",
+      "provenance": {
+        "absoluteEvidencePath": "/tmp/dominds-server-certificates-9CgalX/invalid-host-3.json",
+        "evidenceJsonSha256": "6000e4cd712626238bb0377e67772415ae27f80006c4e6df8acae93bc8c788ed",
+        "actualTextUtf8Sha256": "93000dbf89216525ee25e98c87cbd628c53da1955eb4758653640b78b60b4a5e",
+        "actualTextCharacters": 99,
+        "producerPath": "tests/certificates.ts",
+        "sourcePhase": "Fresh12 after main/cli/cert.ts help-only correction; no earlier verdict or identical portion accepted this new output.",
+        "hashRole": "Material identity only, never a meaning oracle or future-output acceptance."
+      }
+    }
+  ],
+  "blockingFindings": [
+    {
+      "ids": [
+        "cli-invalid-options-0",
+        "cli-invalid-options-1",
+        "cli-invalid-options-2",
+        "cli-invalid-options-3",
+        "cli-invalid-options-4",
+        "cli-invalid-options-5"
+      ],
+      "finding": "Complete help promises automatic HTTPS whenever matching certificate/key exists but omits the actual strict-port disabling condition.",
+      "evidence": "main/server.ts chooses a matching certificate only when !strictPort; explicit opts.port defaults to strict. New/old testStrictPortDisablesBuiltInHttps supplies a matching certificate yet observes no httpsServer/httpsPort.",
+      "repairValue": "Clarify that automatic built-in HTTPS applies to automatic port mode and that strict fixed-port mode disables it, without changing the existing port/security policy. Fresh actual output must then be reviewed independently.",
+      "resolution": "Resolved in the12 fresh certificate outputs independently reviewed above; historical six failures remain failed. No port/certificate/auth strategy was changed."
+    }
+  ],
+  "assertionReview": {
+    "status": "passed-with-explicit-scope",
+    "readCoverage": "Original6 total1147 and final6 total1378 lines fully read, including unchanged44-line input case; complete five test diffs and final12-file staged patch fully audited. Existing help-only product diff and necessary server/lookup/WS/setup call chains read. No low-value natural-language literal oracle found in the final assertions.",
+    "candidates": [
+      {
+        "path": "tests/auth.ts",
+        "originalLines": 109,
+        "finalLines": 191,
+        "originalValue": "Mode/env key policy, valid and invalid HTTP/WS opaque-token transport, IPv4/IPv6 origin and URL query encoding.",
+        "preservedOrStrengthened": [
+          "Native IncomingMessage backed by an owned destroyed unconnected Socket replaces a double-cast partial object; scope remains a component, not network authentication.",
+          "Development disabled, production unset-generated/empty-disabled/provided-verbatim and original header/subprotocol successes/refusals remain public structured decisions. Generated keys now actually roundtrip through both transport encodings.",
+          "Extra disabled/missing/Basic-invalid checks and Authorization precedence prove a valid fallback cannot bypass a supplied invalid header. Actual query fallback is checked with the public allow-url helper.",
+          "URL/IPv6 brackets/query escaping are consumed protocol data. Invalid-key Error explanation regex is replaced with actual rejection and full subjective diagnostic."
+        ],
+        "limits": "No live auth server/client, browser or cryptographic timing/entropy proof."
+      },
+      {
+        "path": "tests/certificates.ts",
+        "originalLines": 366,
+        "finalLines": 452,
+        "originalValue": "Real matching and multi-SAN files, no system OpenSSL dependency, invalid-host and no-force protections, force renewal, usable cert CLI parse/output and LAN-host selection.",
+        "preservedOrStrengthened": [
+          "Native X509 parses actual generated bytes, checks actual private-key correspondence, supplied IPv4/DNS/IPv6 SANs and a nonmatching-IP negative. Original lookup paths/matched-host/empty diagnostics remain.",
+          "PATH-empty real create and CLI create still produce actual matching native certificate/key material. Environment/console/process.exit boundaries are restored; failed fixture directories remain.",
+          "Each invalid host and non-forced overwrite rejects and preserves the entire file-name/byte map. Native renewal changes3650 to30days, requires different actual certificate and earlier expiry, matching keypair/host, same bundle names, days30 metadata and usable lookup; it does not require a fresh private key as an incidental implementation rule.",
+          "All six illegal subcommand/option requests retain exit1 and whole-file preservation. Captured stdout/help plus stderr are fully emitted, replacing generated error/success sentence regexes. The in-process exit sentinel catches only its dedicated class, not arbitrary fixture assertions.",
+          "status --origin remains exactly one parseable machine URL with actual discovered host set or genuine no-host localhost fallback, protocol/port/path/search/hash checks. This preserves a script-consumable output contract without freezing prose or assuming a host the environment did not discover.",
+          "Original LAN eligibility matrix and short-host excluded/qualified-host included controls remain; host/interface patches are restored and explicitly component inputs."
+        ],
+        "limits": "Cert CLI module is in-process with captured console/process.exit, not root CLI spawn. File equality is data preservation, not zero I/O or crash atomicity; native validation does not establish browser trust/remote reachability."
+      },
+      {
+        "path": "tests/setup-env-input.ts",
+        "originalLines": 44,
+        "finalLines": 44,
+        "changed": false,
+        "originalValue": "Nine paste normalization vectors retain raw/doubled Windows drive and UNC paths, single quoted key, unquoted path and malformed/multiline input behavior.",
+        "assertions": "All exact comparisons concern supplied runtime input data/escaping, not natural-language meaning. Full unchanged original was read; audit is not inferred from a previous run.",
+        "limits": "Pure paste helper, not Windows execution, full dotenv grammar or UI paste interaction."
+      },
+      {
+        "path": "tests/setup-shell-env.ts",
+        "originalLines": 51,
+        "finalLines": 56,
+        "originalValue": "A Windows-like runtime value survives actual env_local serialization, process update, deletion and real dotenv reload.",
+        "preservedOrStrengthened": [
+          "Dedicated allowed provider env variable avoids changing CODEX_HOME while preserving the same given Windows string encoding roundtrip. Actual supplied provider YAML makes setup authorization a real prerequisite.",
+          "Public ok result, exact .env.local bytes, immediate process value, empty loader errors and exact reloaded value are real state/data contracts.",
+          "Managed fixed rtws replaces manual mid-case chdir; original dedicated env value restored in finally and failed workspace retained by CLI."
+        ],
+        "limits": "Only env_local/current process and explicit reload, not OS persistent environment, Windows shell execution, shell RC mutation or automatic application reload."
+      },
+      {
+        "path": "tests/webui-port-selection.ts",
+        "originalLines": 451,
+        "finalLines": 483,
+        "originalValue": "Strict occupied-port refusal; auto up/down/default fallback; strict mode suppresses built-in TLS; automatic adjacent TLS port and skipping an occupied TLS candidate.",
+        "preservedOrStrengthened": [
+          "All original parse vectors and EADDRINUSE structured rejection remain. The real bound HTTP address is now checked against the returned selected port, not only returned metadata.",
+          "Port probes classify only EADDRINUSE as occupied; other errors fail. Default5666 remains the real no-explicit-port contract, with an owned blocker or observed preexisting EADDRINUSE, not an arbitrary dynamic substitute. Only owned blockers are closed.",
+          "Neighbor availability loops prepare environment before product startup and fail if no suitable fixture; they do not rerun product assertions until green or expand timeouts. Released probes inherently retain a TOCTOU environmental limit.",
+          "HTTPS selection still uses actually discovered certificate-eligible hosts; structural IP/DNS eligibility replaces exception-meaning matching, and absence of a usable LAN identity fails rather than being reported as a pass.",
+          "Automatic TLS listeners expose actual bound ports and complete a native local TLS handshake trusting only the given owned certificate, checking its advertised host, authorized state and peer certificate raw bytes. Both adjacent and skipped-candidate paths use that check.",
+          "Managed rtws does not change cwd mid-case; startup certificate failures remain. Existing httpServer.stop really stops attached HTTPS as well; no new stop mechanism is invented."
+        ],
+        "limits": "Local listeners/owned cert trust only; no browser/system trust, external LAN reachability, live provider/backend execution or proof that any unrelated port is globally available."
+      },
+      {
+        "path": "tests/ws-language.ts",
+        "originalLines": 126,
+        "finalLines": 152,
+        "originalValue": "Real local upgrade sends welcome language/support codes, correlated initial run-count snapshot, English language acknowledgment and invalid-packet error.",
+        "preservedOrStrengthened": [
+          "Actual ws client and public parser/handler retain initial zh/support en-zh, nonempty epoch, counts matching that epoch/positive seq/zero initial counts and parseable timestamps.",
+          "Unknown type, unsupported language string and nonstring input each return an actual error for subjective review; a following valid English request on the same connection and final Chinese request positively prove continued protocol operation.",
+          "Queue rejects waiters on real error/close/parse failure and surfaces unexpected error packets rather than hanging or silently discarding them. No timeout race consumes a message.",
+          "Real close events are awaited; finally terminates owned client/server-side peers and awaits HTTP close. Managed isolated rtws prevents unrelated persisted state from fabricating nonzero counts."
+        ],
+        "limits": "Authentication disabled protocol integration, no browser rendering, real live-dialog language preferences, human interaction, provider call or driver execution."
+      }
+    ],
+    "machineTextComparisons": [
+      "Opaque auth header/subprotocol/query/URL bytes and machine unauthorized reasons are protocol/data.",
+      "Full given paths/keys, normalization and dotenv serialization bytes must remain exact; Windows-shaped input does not imply native Windows execution.",
+      "Native cert raw bytes, SAN identity/keypair, days metadata, file-map preservation and actual port/socket observations establish public effects.",
+      "IDs, epoch/sequence/counts, en/zh codes, parsed packet types and actual timestamps are wire contract facts.",
+      "Single status --origin URL is machine output consumed as a URL; no generated description/help/receipt sentence is accepted by matching literal words."
+    ],
+    "typeAndFixtureScope": "Native node request/key/TLS APIs and public unions are used without expanding product types or adding a framework. The existing narrow CapturedProcessExit sentinel models only the in-process CLI boundary."
+  },
+  "sourceIdentity": {
+    "hashRole": "Provenance only; not meaning or automatic acceptance of later source/output.",
+    "initialCandidates": [
+      {
+        "path": "tests/auth.ts",
+        "sha256": "86a52ec490b162f9ce1bf159b6c943461ed95a662edbfbe1621df486675e9872",
+        "lines": 191,
+        "phase": "Initial frozen candidate source; entry/docs/ledger and any subsequent product correction are not final yet."
+      },
+      {
+        "path": "tests/certificates.ts",
+        "sha256": "936be6dd962e721512ef84112bd0390343d09941cfb5c858f8ad3f86246a0e0a",
+        "lines": 452,
+        "phase": "Initial frozen candidate source; entry/docs/ledger and any subsequent product correction are not final yet."
+      },
+      {
+        "path": "tests/setup-env-input.ts",
+        "sha256": "c2f7a2ec0bb0aa67ca9f94f4e739f156817e44cd8bc54b4e99e193341ea4e755",
+        "lines": 44,
+        "phase": "Initial frozen candidate source; entry/docs/ledger and any subsequent product correction are not final yet."
+      },
+      {
+        "path": "tests/setup-shell-env.ts",
+        "sha256": "e75afc7595f908b89e764813f4f3f25df9a9c0cc551b5a197460098aba8f8bff",
+        "lines": 56,
+        "phase": "Initial frozen candidate source; entry/docs/ledger and any subsequent product correction are not final yet."
+      },
+      {
+        "path": "tests/webui-port-selection.ts",
+        "sha256": "94ebb99808d3c5cf5a0723b816f00f9063a11c3863c2c04eb5385065556e5726",
+        "lines": 483,
+        "phase": "Initial frozen candidate source; entry/docs/ledger and any subsequent product correction are not final yet."
+      },
+      {
+        "path": "tests/ws-language.ts",
+        "sha256": "a11b8fd57bb05adbf393558aa603fc105dce32b1a4b1a32a281a4e28b7c5c564",
+        "lines": 152,
+        "phase": "Initial frozen candidate source; entry/docs/ledger and any subsequent product correction are not final yet."
+      }
+    ],
+    "originalCandidates": [
+      {
+        "path": "tests/auth.ts",
+        "revision": "efa7758e26e9f9e9a32d908ade1bf162a15b2c9c",
+        "sha256": "0829dd8284cd22f0446e945795e88826c2c003e3b4201940c02ef050f97e55a9",
+        "lines": 109,
+        "role": "Original candidate fully read for value preservation"
+      },
+      {
+        "path": "tests/certificates.ts",
+        "revision": "efa7758e26e9f9e9a32d908ade1bf162a15b2c9c",
+        "sha256": "5fee4c6c87d553d47847eea5be3947be699a6e48ae54cc3690cdf53e8a5244cd",
+        "lines": 366,
+        "role": "Original candidate fully read for value preservation"
+      },
+      {
+        "path": "tests/setup-env-input.ts",
+        "revision": "efa7758e26e9f9e9a32d908ade1bf162a15b2c9c",
+        "sha256": "c2f7a2ec0bb0aa67ca9f94f4e739f156817e44cd8bc54b4e99e193341ea4e755",
+        "lines": 44,
+        "role": "Original candidate fully read for value preservation"
+      },
+      {
+        "path": "tests/setup-shell-env.ts",
+        "revision": "efa7758e26e9f9e9a32d908ade1bf162a15b2c9c",
+        "sha256": "ef4d6551de43442d0ce6d4ea28d4f382924aec9a7667ec9128b2c46ec4f4bb2a",
+        "lines": 51,
+        "role": "Original candidate fully read for value preservation"
+      },
+      {
+        "path": "tests/webui-port-selection.ts",
+        "revision": "efa7758e26e9f9e9a32d908ade1bf162a15b2c9c",
+        "sha256": "f15e5add1e9fa10df797514ae4c4ed109b11a39253e15eedf71199ac365ae764",
+        "lines": 451,
+        "role": "Original candidate fully read for value preservation"
+      },
+      {
+        "path": "tests/ws-language.ts",
+        "revision": "efa7758e26e9f9e9a32d908ade1bf162a15b2c9c",
+        "sha256": "5e725585e47786223dea90560bd6ad6eda9109f0272943381a941cd149bb4046",
+        "lines": 126,
+        "role": "Original candidate fully read for value preservation"
+      }
+    ],
+    "initialProduct": [
+      {
+        "path": "main/cli/cert.ts",
+        "revision": "efa7758e26e9f9e9a32d908ade1bf162a15b2c9c",
+        "sha256": "aec04cf23678070c8526f2bf5d5e495b4ce387cd1736128fcc12c824825c749e",
+        "role": "Original product/source contract underlying initial actual outputs and identified HTTPS-help conflict."
+      },
+      {
+        "path": "main/server.ts",
+        "revision": "efa7758e26e9f9e9a32d908ade1bf162a15b2c9c",
+        "sha256": "19402c05fc8b2472d36e6e18cb8239f674b4cab32c190b5aedf3b8cbd4a1eb37",
+        "role": "Original product/source contract underlying initial actual outputs and identified HTTPS-help conflict."
+      },
+      {
+        "path": "main/server/certificates.ts",
+        "revision": "efa7758e26e9f9e9a32d908ade1bf162a15b2c9c",
+        "sha256": "e62d40238f13ee89a332f8a86695807225b7e877eca4fcc93959fda942864346",
+        "role": "Original product/source contract underlying initial actual outputs and identified HTTPS-help conflict."
+      },
+      {
+        "path": "main/server/auth.ts",
+        "revision": "efa7758e26e9f9e9a32d908ade1bf162a15b2c9c",
+        "sha256": "2cba2989fb945403222a319dd7431ab8f3ac291aa99a24e1f5c5f908ae5d63ea",
+        "role": "Original product/source contract underlying initial actual outputs and identified HTTPS-help conflict."
+      },
+      {
+        "path": "main/server/port-selection.ts",
+        "revision": "efa7758e26e9f9e9a32d908ade1bf162a15b2c9c",
+        "sha256": "fb56a759b87645804a029465752c07df8761d5f7c07ee5668b592b5ebcc7cadf",
+        "role": "Original product/source contract underlying initial actual outputs and identified HTTPS-help conflict."
+      },
+      {
+        "path": "main/server/websocket-handler.ts",
+        "revision": "efa7758e26e9f9e9a32d908ade1bf162a15b2c9c",
+        "sha256": "88d6732e6980bb07bae6959953c3c985abd2bc50f3ac9c123408d7a1ba28e115",
+        "role": "Original product/source contract underlying initial actual outputs and identified HTTPS-help conflict."
+      }
+    ],
+    "finalCurrent": [
+      {
+        "path": "docs/testing-strategy.md",
+        "absolutePath": "/ws/AiWorks/dominds/docs/testing-strategy.md",
+        "sha256": "43a3400ae80f30796fe03cad96fadc6fe26cc19375d8a1aed56b517c181fde4a",
+        "lines": 581,
+        "byteLength": 143445,
+        "role": "Final changed source/entry/document/ledger"
+      },
+      {
+        "path": "main/cli/cert.ts",
+        "absolutePath": "/ws/AiWorks/dominds/main/cli/cert.ts",
+        "sha256": "d99663cbcf2830f78040017ad1cc7b0d787e686eedde753bfb1b8e12f63185ba",
+        "lines": 287,
+        "byteLength": 9186,
+        "role": "Final changed source/entry/document/ledger"
+      },
+      {
+        "path": "package.json",
+        "absolutePath": "/ws/AiWorks/dominds/package.json",
+        "sha256": "f32f94655f2c7256647ae52c001a96621b50e30c90827087301c51200ef94212",
+        "lines": 136,
+        "byteLength": 6990,
+        "role": "Final changed source/entry/document/ledger"
+      },
+      {
+        "path": "tests/README.md",
+        "absolutePath": "/ws/AiWorks/dominds/tests/README.md",
+        "sha256": "57ca71d08d788e68476200d07a83529051b3a8b0a93ae6e7d1e0643dec05326e",
+        "lines": 159,
+        "byteLength": 35576,
+        "role": "Final changed source/entry/document/ledger"
+      },
+      {
+        "path": "tests/audit.json",
+        "absolutePath": "/ws/AiWorks/dominds/tests/audit.json",
+        "sha256": "cab0e241a231ba2863bd8e11da0aaaafc874c73e0a2f5a9185b6a29d6c588fab",
+        "lines": 1434,
+        "byteLength": 171878,
+        "role": "Final changed source/entry/document/ledger"
+      },
+      {
+        "path": "tests/auth.ts",
+        "absolutePath": "/ws/AiWorks/dominds/tests/auth.ts",
+        "sha256": "86a52ec490b162f9ce1bf159b6c943461ed95a662edbfbe1621df486675e9872",
+        "lines": 191,
+        "byteLength": 6258,
+        "role": "Final changed source/entry/document/ledger"
+      },
+      {
+        "path": "tests/certificates.ts",
+        "absolutePath": "/ws/AiWorks/dominds/tests/certificates.ts",
+        "sha256": "936be6dd962e721512ef84112bd0390343d09941cfb5c858f8ad3f86246a0e0a",
+        "lines": 452,
+        "byteLength": 16608,
+        "role": "Final changed source/entry/document/ledger"
+      },
+      {
+        "path": "tests/package.json",
+        "absolutePath": "/ws/AiWorks/dominds/tests/package.json",
+        "sha256": "5a695c9e0fe85ac946426a99e349f59d48a8e3bfbb41b6f6589a56b7b33ab492",
+        "lines": 279,
+        "byteLength": 26643,
+        "role": "Final changed source/entry/document/ledger"
+      },
+      {
+        "path": "tests/run.mjs",
+        "absolutePath": "/ws/AiWorks/dominds/tests/run.mjs",
+        "sha256": "a0f2bcce27d2fe48db13261af685aa8ddd04d824feaf9088d48490ef8cbbc8c2",
+        "lines": 572,
+        "byteLength": 21580,
+        "role": "Final changed source/entry/document/ledger"
+      },
+      {
+        "path": "tests/setup-shell-env.ts",
+        "absolutePath": "/ws/AiWorks/dominds/tests/setup-shell-env.ts",
+        "sha256": "e75afc7595f908b89e764813f4f3f25df9a9c0cc551b5a197460098aba8f8bff",
+        "lines": 56,
+        "byteLength": 2039,
+        "role": "Final changed source/entry/document/ledger"
+      },
+      {
+        "path": "tests/webui-port-selection.ts",
+        "absolutePath": "/ws/AiWorks/dominds/tests/webui-port-selection.ts",
+        "sha256": "94ebb99808d3c5cf5a0723b816f00f9063a11c3863c2c04eb5385065556e5726",
+        "lines": 483,
+        "byteLength": 15292,
+        "role": "Final changed source/entry/document/ledger"
+      },
+      {
+        "path": "tests/ws-language.ts",
+        "absolutePath": "/ws/AiWorks/dominds/tests/ws-language.ts",
+        "sha256": "a11b8fd57bb05adbf393558aa603fc105dce32b1a4b1a32a281a4e28b7c5c564",
+        "lines": 152,
+        "byteLength": 6643,
+        "role": "Final changed source/entry/document/ledger"
+      },
+      {
+        "path": "tests/setup-env-input.ts",
+        "absolutePath": "/ws/AiWorks/dominds/tests/setup-env-input.ts",
+        "sha256": "c2f7a2ec0bb0aa67ca9f94f4e739f156817e44cd8bc54b4e99e193341ea4e755",
+        "lines": 44,
+        "byteLength": 1421,
+        "role": "Unchanged44-line candidate fully audited in this batch"
+      }
+    ],
+    "relevantRuntimeAndInstructions": [
+      {
+        "path": "main/server.ts",
+        "absolutePath": "/ws/AiWorks/dominds/main/server.ts",
+        "sha256": "19402c05fc8b2472d36e6e18cb8239f674b4cab32c190b5aedf3b8cbd4a1eb37",
+        "lines": 388,
+        "byteLength": 12951,
+        "role": "Related actual boundary/source used to assess scope, not a transitive full-system acceptance"
+      },
+      {
+        "path": "main/server/auth.ts",
+        "absolutePath": "/ws/AiWorks/dominds/main/server/auth.ts",
+        "sha256": "2cba2989fb945403222a319dd7431ab8f3ac291aa99a24e1f5c5f908ae5d63ea",
+        "lines": 210,
+        "byteLength": 7329,
+        "role": "Related actual boundary/source used to assess scope, not a transitive full-system acceptance"
+      },
+      {
+        "path": "main/server/certificates.ts",
+        "absolutePath": "/ws/AiWorks/dominds/main/server/certificates.ts",
+        "sha256": "e62d40238f13ee89a332f8a86695807225b7e877eca4fcc93959fda942864346",
+        "lines": 562,
+        "byteLength": 16815,
+        "role": "Related actual boundary/source used to assess scope, not a transitive full-system acceptance"
+      },
+      {
+        "path": "main/server/network-hosts.ts",
+        "absolutePath": "/ws/AiWorks/dominds/main/server/network-hosts.ts",
+        "sha256": "a8a860abeb16756547660032bf06d931cda687e2133460d7c4c1938c7e3cbd4d",
+        "lines": 283,
+        "byteLength": 8795,
+        "role": "Related actual boundary/source used to assess scope, not a transitive full-system acceptance"
+      },
+      {
+        "path": "main/server/port-selection.ts",
+        "absolutePath": "/ws/AiWorks/dominds/main/server/port-selection.ts",
+        "sha256": "fb56a759b87645804a029465752c07df8761d5f7c07ee5668b592b5ebcc7cadf",
+        "lines": 72,
+        "byteLength": 2106,
+        "role": "Related actual boundary/source used to assess scope, not a transitive full-system acceptance"
+      },
+      {
+        "path": "main/server/websocket-handler.ts",
+        "absolutePath": "/ws/AiWorks/dominds/main/server/websocket-handler.ts",
+        "sha256": "88d6732e6980bb07bae6959953c3c985abd2bc50f3ac9c123408d7a1ba28e115",
+        "lines": 2716,
+        "byteLength": 91921,
+        "role": "Related actual boundary/source used to assess scope, not a transitive full-system acceptance"
+      },
+      {
+        "path": "main/server/setup-routes.ts",
+        "absolutePath": "/ws/AiWorks/dominds/main/server/setup-routes.ts",
+        "sha256": "b93f787a88ad1555090faa2d6851f6ab9f0a02c99f7838d7de92def3c5c6e496",
+        "lines": 933,
+        "byteLength": 30659,
+        "role": "Related actual boundary/source used to assess scope, not a transitive full-system acceptance"
+      },
+      {
+        "path": "main/bootstrap/dotenv.ts",
+        "absolutePath": "/ws/AiWorks/dominds/main/bootstrap/dotenv.ts",
+        "sha256": "993cdb01dd478d1ab063397c0917163cf493dffdac6e9e4c794ea47da9c09827",
+        "lines": 128,
+        "byteLength": 4013,
+        "role": "Related actual boundary/source used to assess scope, not a transitive full-system acceptance"
+      },
+      {
+        "path": "webapp/src/utils/setupEnvInput.ts",
+        "absolutePath": "/ws/AiWorks/dominds/webapp/src/utils/setupEnvInput.ts",
+        "sha256": "6abcec60539dd275780bc4c7ea3f47cd5743bf9cae7f74b9865e9f737d58dd53",
+        "lines": 62,
+        "byteLength": 1915,
+        "role": "Related actual boundary/source used to assess scope, not a transitive full-system acceptance"
+      },
+      {
+        "path": "tests/helpers/semantic-evidence.ts",
+        "absolutePath": "/ws/AiWorks/dominds/tests/helpers/semantic-evidence.ts",
+        "sha256": "a41efd1058ea6d65394059180dabf987e17ef0d219bae95ca67edd33db7e3777",
+        "lines": 57,
+        "byteLength": 2050,
+        "role": "Related actual boundary/source used to assess scope, not a transitive full-system acceptance"
+      },
+      {
+        "path": "tests/kernel-driver/helpers.ts",
+        "absolutePath": "/ws/AiWorks/dominds/tests/kernel-driver/helpers.ts",
+        "sha256": "520b1288cdb2114cb28cb9dcebdf95c7b0f19b1703fe3837a780ffb2d916f9a1",
+        "lines": 298,
+        "byteLength": 10137,
+        "role": "Related actual boundary/source used to assess scope, not a transitive full-system acceptance"
+      },
+      {
+        "path": "tests/cli.ts",
+        "absolutePath": "/ws/AiWorks/dominds/tests/cli.ts",
+        "sha256": "b9f9bc1f034a2a70c4b7bfbc2300ae854706f09a9788b7f4ca17b3a263f41598",
+        "lines": 186,
+        "byteLength": 5618,
+        "role": "Related actual boundary/source used to assess scope, not a transitive full-system acceptance"
+      },
+      {
+        "path": "AGENTS.md",
+        "absolutePath": "/ws/AiWorks/dominds/AGENTS.md",
+        "sha256": "20158ca001ccdbbcea511a7ca4a1d72245a5e646196c676f5a4443956247dac6",
+        "lines": 67,
+        "byteLength": 21273,
+        "role": "Related actual boundary/source used to assess scope, not a transitive full-system acceptance"
+      }
+    ],
+    "completeReviewedDiff": {
+      "sha256": "00682b1b968e8349b8c0702e2c582ad9dc01e70082bcab4b3b316bd571e1407e",
+      "byteLength": 65746,
+      "baseRevision": "efa7758e26e9f9e9a32d908ade1bf162a15b2c9c",
+      "paths": [
+        "docs/testing-strategy.md",
+        "main/cli/cert.ts",
+        "package.json",
+        "tests/README.md",
+        "tests/audit.json",
+        "tests/auth.ts",
+        "tests/certificates.ts",
+        "tests/package.json",
+        "tests/run.mjs",
+        "tests/setup-shell-env.ts",
+        "tests/webui-port-selection.ts",
+        "tests/ws-language.ts"
+      ],
+      "historicalAbsolutePath": "/tmp/dominds-setup-network-complete-stage.diff",
+      "scope": "Complete final12-file staged binary-safe patch, verified byte-equal to current staged diff for these paths. Includes product help and unchanged case ledger scope; excludes report. setup-env-input current identity is recorded separately because its source did not change."
+    }
+  },
+  "parentVerification": {
+    "status": "recorded",
+    "reviewer": "primary /root after explicit final independent reviewer report ownership handoff",
+    "verifiedRecords": 28,
+    "identityRole": "All28 complete original evidence fields/actual text/raw provenance,13 current sources including unchanged paste-data candidate,6 git base candidates, pre-fix CLI help and relevant runtime identities and complete12-source staged patch verified for identity only. Six old semantic failures retained. Current16 are4 identical existing actual materials plus12 newly independently read certificate actuals; hashes never judge meaning or accept future output. All changed assertions and complete test diff reviewed again.",
+    "checks": {
+      "build": {
+        "command": "pnpm run build",
+        "launcher": "/tmp/dominds-pnpm, Node24.19.0/Corepack/pnpm11.17.0; login:false",
+        "exitCode": 0,
+        "logPath": "/tmp/dominds-setup-network-build.log",
+        "logSha256": "dc574c667f5563212892142cf72886400b521b77e24ac04381db93d44361061b"
+      },
+      "applicationTypes": {
+        "command": "pnpm run lint:types",
+        "launcher": "/tmp/dominds-pnpm, Node24.19.0/Corepack/pnpm11.17.0; login:false",
+        "exitCode": 0,
+        "logPath": "/tmp/dominds-setup-network-app-types.log",
+        "logSha256": "41aa5be00a3d0c4d2223d9aee1e64fd44a1a074ddc49dbfbb33b30036175e87a"
+      },
+      "entireTestTypes": {
+        "command": "pnpm run test:types",
+        "launcher": "/tmp/dominds-pnpm, Node24.19.0/Corepack/pnpm11.17.0; login:false",
+        "exitCode": 2,
+        "logPath": "/tmp/dominds-setup-network-types-final.log",
+        "logSha256": "082a69a7bcce954299dab810ed578bc562f0eedbe020c69a295777bed2bc3619",
+        "fullLog": "$ tsc -p tests/tsconfig.json --noEmit\ntests/provider/volcengine-coding-plan-live-smoke.ts(305,27): error TS2339: Property 'name' does not exist on type 'never'.\n[ELIFECYCLE] Command failed with exit code 2.\n",
+        "meaning": "Still failed with1 inherited live-provider never capture-array error, zero changed-source errors. No exclusion or weakened types; live scenario not executed."
+      },
+      "serverLocal": {
+        "command": "pnpm run test:server-local",
+        "launcher": "/tmp/dominds-pnpm, Node24.19.0/Corepack/pnpm11.17.0; login:false",
+        "exitCode": 0,
+        "logPath": "/tmp/dominds-setup-network-behavior-final.log",
+        "logSha256": "941d7771cf3a728e43914a3216629e2e9d80989af561a6667ddaeaf94f50d039",
+        "summary": {
+          "total": 6,
+          "passed": 6,
+          "failed": 0,
+          "timedOut": 0,
+          "results": [
+            {
+              "id": "auth.ts",
+              "status": "passed",
+              "durationMs": 388,
+              "code": 0,
+              "signal": null,
+              "logPath": "/tmp/dominds-tests-server-local-GXuchw/001-auth.ts.log"
+            },
+            {
+              "id": "certificates.ts",
+              "status": "passed",
+              "durationMs": 2166,
+              "code": 0,
+              "signal": null,
+              "logPath": "/tmp/dominds-tests-server-local-GXuchw/002-certificates.ts.log"
+            },
+            {
+              "id": "setup-env-input.ts",
+              "status": "passed",
+              "durationMs": 457,
+              "code": 0,
+              "signal": null,
+              "logPath": "/tmp/dominds-tests-server-local-GXuchw/003-setup-env-input.ts.log"
+            },
+            {
+              "id": "setup-shell-env.ts",
+              "status": "passed",
+              "durationMs": 1954,
+              "code": 0,
+              "signal": null,
+              "logPath": "/tmp/dominds-tests-server-local-GXuchw/004-setup-shell-env.ts.log"
+            },
+            {
+              "id": "webui-port-selection.ts",
+              "status": "passed",
+              "durationMs": 2492,
+              "code": 0,
+              "signal": null,
+              "logPath": "/tmp/dominds-tests-server-local-GXuchw/005-webui-port-selection.ts.log"
+            },
+            {
+              "id": "ws-language.ts",
+              "status": "passed",
+              "durationMs": 2064,
+              "code": 0,
+              "signal": null,
+              "logPath": "/tmp/dominds-tests-server-local-GXuchw/006-ws-language.ts.log"
+            }
+          ]
+        }
+      },
+      "bootstrap": {
+        "command": "pnpm run test:bootstrap",
+        "launcher": "/tmp/dominds-pnpm, Node24.19.0/Corepack/pnpm11.17.0; login:false",
+        "exitCode": 0,
+        "logPath": "/tmp/dominds-setup-network-bootstrap.log",
+        "logSha256": "87c4703eab49922413a2452d57a272f4bc5e092430162a05e7ccbb7b346bb259",
+        "summary": {
+          "total": 7,
+          "passed": 7,
+          "failed": 0,
+          "timedOut": 0,
+          "results": [
+            {
+              "id": "cli/env-proxy-support.ts",
+              "status": "passed",
+              "durationMs": 2249,
+              "code": 0,
+              "signal": null,
+              "logPath": "/tmp/dominds-tests-bootstrap-I9JdWB/001-cli_env-proxy-support.ts.log"
+            },
+            {
+              "id": "cli/man-subcommand.ts",
+              "status": "passed",
+              "durationMs": 6097,
+              "code": 0,
+              "signal": null,
+              "logPath": "/tmp/dominds-tests-bootstrap-I9JdWB/002-cli_man-subcommand.ts.log"
+            },
+            {
+              "id": "cli/rtws-cli.ts",
+              "status": "passed",
+              "durationMs": 377,
+              "code": 0,
+              "signal": null,
+              "logPath": "/tmp/dominds-tests-bootstrap-I9JdWB/003-cli_rtws-cli.ts.log"
+            },
+            {
+              "id": "cli/subcommand-argv-isolation.ts",
+              "status": "passed",
+              "durationMs": 2242,
+              "code": 0,
+              "signal": null,
+              "logPath": "/tmp/dominds-tests-bootstrap-I9JdWB/004-cli_subcommand-argv-isolation.ts.log"
+            },
+            {
+              "id": "cli/validate-team-def-subcommand.ts",
+              "status": "passed",
+              "durationMs": 7242,
+              "code": 0,
+              "signal": null,
+              "logPath": "/tmp/dominds-tests-bootstrap-I9JdWB/005-cli_validate-team-def-subcommand.ts.log"
+            },
+            {
+              "id": "env/dotenv.ts",
+              "status": "passed",
+              "durationMs": 1764,
+              "code": 0,
+              "signal": null,
+              "logPath": "/tmp/dominds-tests-bootstrap-I9JdWB/006-env_dotenv.ts.log"
+            },
+            {
+              "id": "env/env-tools.ts",
+              "status": "passed",
+              "durationMs": 2087,
+              "code": 0,
+              "signal": null,
+              "logPath": "/tmp/dominds-tests-bootstrap-I9JdWB/007-env_env-tools.ts.log"
+            }
+          ]
+        }
+      },
+      "smoke": {
+        "command": "pnpm test",
+        "launcher": "/tmp/dominds-pnpm, Node24.19.0/Corepack/pnpm11.17.0; login:false",
+        "exitCode": 0,
+        "logPath": "/tmp/dominds-setup-network-smoke.log",
+        "logSha256": "4804c54e5e17bcd00329c1197c83932d28bb35829bc010255417731c38b473ca",
+        "summary": {
+          "total": 10,
+          "passed": 10,
+          "failed": 0,
+          "timedOut": 0,
+          "results": [
+            {
+              "id": "auth.ts",
+              "status": "passed",
+              "durationMs": 209,
+              "code": 0,
+              "signal": null,
+              "logPath": "/tmp/dominds-tests-smoke-vJx64k/001-auth.ts.log"
+            },
+            {
+              "id": "llm-generation-metadata.ts",
+              "status": "passed",
+              "durationMs": 1897,
+              "code": 0,
+              "signal": null,
+              "logPath": "/tmp/dominds-tests-smoke-vJx64k/002-llm-generation-metadata.ts.log"
+            },
+            {
+              "id": "persistence/latest-writeback.ts",
+              "status": "passed",
+              "durationMs": 2481,
+              "code": 0,
+              "signal": null,
+              "logPath": "/tmp/dominds-tests-smoke-vJx64k/003-persistence_latest-writeback.ts.log"
+            },
+            {
+              "id": "interruption-resumption.ts",
+              "status": "passed",
+              "durationMs": 5253,
+              "code": 0,
+              "signal": null,
+              "logPath": "/tmp/dominds-tests-smoke-vJx64k/004-interruption-resumption.ts.log"
+            },
+            {
+              "id": "access-control/dialogs-root-deny.ts",
+              "status": "passed",
+              "durationMs": 316,
+              "code": 0,
+              "signal": null,
+              "logPath": "/tmp/dominds-tests-smoke-vJx64k/005-access-control_dialogs-root-deny.ts.log"
+            },
+            {
+              "id": "access-control/file-ext-names.ts",
+              "status": "passed",
+              "durationMs": 316,
+              "code": 0,
+              "signal": null,
+              "logPath": "/tmp/dominds-tests-smoke-vJx64k/006-access-control_file-ext-names.ts.log"
+            },
+            {
+              "id": "apps-host-ipc-contract.ts",
+              "status": "passed",
+              "durationMs": 222,
+              "code": 0,
+              "signal": null,
+              "logPath": "/tmp/dominds-tests-smoke-vJx64k/007-apps-host-ipc-contract.ts.log"
+            },
+            {
+              "id": "toolsets/tool-availability-snapshot.ts",
+              "status": "passed",
+              "durationMs": 1947,
+              "code": 0,
+              "signal": null,
+              "logPath": "/tmp/dominds-tests-smoke-vJx64k/008-toolsets_tool-availability-snapshot.ts.log"
+            },
+            {
+              "id": "webapp/create-dialog-flow-ime.ts",
+              "status": "passed",
+              "durationMs": 413,
+              "code": 0,
+              "signal": null,
+              "logPath": "/tmp/dominds-tests-smoke-vJx64k/009-webapp_create-dialog-flow-ime.ts.log"
+            },
+            {
+              "id": "webapp/create-dialog-flow-selection.ts",
+              "status": "passed",
+              "durationMs": 441,
+              "code": 0,
+              "signal": null,
+              "logPath": "/tmp/dominds-tests-smoke-vJx64k/010-webapp_create-dialog-flow-selection.ts.log"
+            }
+          ]
+        }
+      },
+      "runner": {
+        "command": "pnpm run test:runner",
+        "launcher": "/tmp/dominds-pnpm, Node24.19.0/Corepack/pnpm11.17.0; login:false",
+        "exitCode": 0,
+        "logPath": "/tmp/dominds-setup-network-runner.log",
+        "logSha256": "49fe8557cf120526b7ca8ec06c9ed928c195ebe16b5849b6ff7c8e16993fb00a",
+        "fullLog": "$ node --test tests/runner.test.mjs\n✔ a failure and a timeout retain evidence and do not prevent later cases from running (1086.506347ms)\n✔ kernel discovery includes regressions omitted from the old hand-maintained integration script (17.787241ms)\n✔ a descriptive case id does not overflow the tsx Unix socket path (202.954285ms)\n✔ evidence generation retains successful process material for subjective review (31.514554ms)\n✔ isolated CLI preserves a failed workspace and cleans a successful workspace by default (782.400036ms)\n✔ inventory recognizes rtws flags and reports their missing script targets (7.436201ms)\nℹ tests 6\nℹ suites 0\nℹ pass 6\nℹ fail 0\nℹ cancelled 0\nℹ skipped 0\nℹ todo 0\nℹ duration_ms 2190.148392\n"
+      },
+      "inventory": {
+        "typescriptFiles": 290,
+        "supportFiles": [
+          "cli.ts",
+          "helpers/anthropic-stream.ts",
+          "helpers/app-entry.ts",
+          "helpers/budget-exhaustion-fixture.ts",
+          "helpers/cli-process.ts",
+          "helpers/compatible-peer.ts",
+          "helpers/daemon-reminders.ts",
+          "helpers/daemon-runner-observer.ts",
+          "helpers/dialog-events.ts",
+          "helpers/llm-retry-fixtures.ts",
+          "helpers/llm-retry-runtime.ts",
+          "helpers/manual-budget.ts",
+          "helpers/manual-reminders.ts",
+          "helpers/mcp-stdio-fixture.ts",
+          "helpers/message-provider.ts",
+          "helpers/open-generation-worker.ts",
+          "helpers/packaging/consumer.ts",
+          "helpers/packaging/release-fixture.ts",
+          "helpers/pending-reminders.ts",
+          "helpers/provider-context.ts",
+          "helpers/provider-images.ts",
+          "helpers/reply-recovery-worker.ts",
+          "helpers/reply-recovery.ts",
+          "helpers/semantic-evidence.ts",
+          "helpers/shared-reminders.ts",
+          "helpers/shell-fixture.ts",
+          "helpers/tool-output.ts",
+          "helpers/web-dev-session-fixture.ts",
+          "kernel-driver/helpers.ts",
+          "rtws-script-runner.ts",
+          "semantic/context-guidance.ts",
+          "semantic/context-usage-title.ts",
+          "semantic/evidence.ts",
+          "semantic/manual-guidance.ts",
+          "semantic/model-presentation.ts",
+          "semantic/reminder-guidance.ts",
+          "semantic/reply-guidance.ts"
+        ],
+        "candidates": 253,
+        "suites": {
+          "smoke": [
+            "auth.ts",
+            "llm-generation-metadata.ts",
+            "persistence/latest-writeback.ts",
+            "interruption-resumption.ts",
+            "access-control/dialogs-root-deny.ts",
+            "access-control/file-ext-names.ts",
+            "apps-host-ipc-contract.ts",
+            "toolsets/tool-availability-snapshot.ts",
+            "webapp/create-dialog-flow-ime.ts",
+            "webapp/create-dialog-flow-selection.ts"
+          ],
+          "kernel": [
+            "kernel-driver/answer-human-a2h-deferred.ts",
+            "kernel-driver/answering-a2h-side-reply-reminder.ts",
+            "kernel-driver/backend-loop-persists-drive-error-stall.ts",
+            "kernel-driver/backend-revalidates-work-after-preflight.ts",
+            "kernel-driver/clear-mind-blocks-on-sibling-tool-failure.ts",
+            "kernel-driver/clear-mind-critical-auto-course.ts",
+            "kernel-driver/context-health-large-tool-output-hidden.ts",
+            "kernel-driver/context-health-model-limit-usage.ts",
+            "kernel-driver/context-health-multi-iter-gate.ts",
+            "kernel-driver/critical-queued-user-interjection.ts",
+            "kernel-driver/duplicate-raw-callid-effective-id.ts",
+            "kernel-driver/duplicate-tool-call-feedback.ts",
+            "kernel-driver/fbr-internal-conclusion-flow.ts",
+            "kernel-driver/fbr-model-params-merge.ts",
+            "kernel-driver/func-call-persists-before-result.ts",
+            "kernel-driver/idle-with-active-reply-obligation-display-state.ts",
+            "kernel-driver/immediate-followup-trigger-repair.ts",
+            "kernel-driver/invalid-json-tool-call-feedback.ts",
+            "kernel-driver/llm-request-failure-single-stream-error.ts",
+            "kernel-driver/mainline-reply-obligation-reminder-direct-fallback.ts",
+            "kernel-driver/mock-provider-contract.ts",
+            "kernel-driver/multi-iter-tool-round-context-continuity.ts",
+            "kernel-driver/multiple-askhuman-invalid.ts",
+            "kernel-driver/pending-user-interjection-recovery.ts",
+            "kernel-driver/pre-drive-latest-load-failure-stops.ts",
+            "kernel-driver/q4h-preserves-diligence-budget.ts",
+            "kernel-driver/reminder-context-footer-state.ts",
+            "kernel-driver/repeated-tool-call-reminder.ts",
+            "kernel-driver/reply-tool-dynamic-guidance.ts",
+            "kernel-driver/retry-recovery-diligence-push-with-keep-going-disabled.ts",
+            "kernel-driver/root-cross-trigger-does-not-reenter-during-tail.ts",
+            "kernel-driver/root-runtime-wake-lifecycle.ts",
+            "kernel-driver/root-tail-error-still-rewakes-root-runtime-wake.ts",
+            "kernel-driver/root-tellask-background-callee-badge-event.ts",
+            "kernel-driver/runtime-reminder-context.ts",
+            "kernel-driver/sideDialog-askback-auto-resume-while-pending-registered-sideDialog.ts",
+            "kernel-driver/sideDialog-askback-reply-tool-no-double-delivery.ts",
+            "kernel-driver/sideDialog-backend-loop-retries-after-active-run-blocker.ts",
+            "kernel-driver/sideDialog-caller-result-arrival-backend-wake-queue.ts",
+            "kernel-driver/sideDialog-clear-mind-keeps-pending-round.ts",
+            "kernel-driver/sideDialog-diligence-push-state.ts",
+            "kernel-driver/sideDialog-direct-fallback-thinking.ts",
+            "kernel-driver/sideDialog-mixed-tool-round-honors-suspension.ts",
+            "kernel-driver/sideDialog-multi-pending-registers-before-drive.ts",
+            "kernel-driver/sideDialog-new-course-prompt-survives-restore.ts",
+            "kernel-driver/sideDialog-new-course-update-reminder-followup.ts",
+            "kernel-driver/sideDialog-no-empty-autodrive-after-final-response.ts",
+            "kernel-driver/sideDialog-pending-runtime-prompt-counts-as-resumable.ts",
+            "kernel-driver/sideDialog-queue-commit-mirror.ts",
+            "kernel-driver/sideDialog-queue-interrupt-rollback.ts",
+            "kernel-driver/sideDialog-registered-initial-auto-drive.ts",
+            "kernel-driver/sideDialog-registered-update-clear-mind-rebinds-reply-target.ts",
+            "kernel-driver/sideDialog-registered-update-queues-queued-prompt.ts",
+            "kernel-driver/sideDialog-registered-update-replaces-pending-round.ts",
+            "kernel-driver/sideDialog-reply-delivery-marked-delivered.ts",
+            "kernel-driver/sideDialog-reply-missing-assignment-anchor.ts",
+            "kernel-driver/sideDialog-stale-pending-runtime-prompt-clears-on-restore.ts",
+            "kernel-driver/stale-pending-runtime-prompt-queue-claim.ts",
+            "kernel-driver/tellask-background-dispatch-does-not-immediate-followup.ts",
+            "kernel-driver/tellask-resolved-result-context-pointer.ts",
+            "kernel-driver/unexpected-idle-after-tool-round-debug-dump.ts",
+            "kernel-driver/update-reminder-immediate-followup.ts",
+            "kernel-driver/user-interject-active-callee-suppresses-reply-guidance.ts",
+            "kernel-driver/user-interject-active-callee-tool-followup.ts"
+          ],
+          "context": [
+            "websocket-user-msg-generation-boundary.ts",
+            "context-health/caution-cadence.ts",
+            "context-health/critical-user-interjection.ts",
+            "diligence-push/auto-continue-prompt-format.ts",
+            "diligence-push/retry-recovery-bypasses-budget.ts",
+            "diligence-push/q4h-diligence-push-i18n.ts",
+            "diligence-push/diligence-budget-event.ts",
+            "diligence-push/q4h-global-broadcast.ts"
+          ],
+          "configuration": [
+            "toolsets/team-mgmt-output-truncation.ts",
+            "toolsets/tool-availability-snapshot.ts",
+            "team-file-ext-permissions.ts",
+            "team-yaml-parsing.ts",
+            "team_mgmt-validate-team-manual-guidance.ts",
+            "team_mgmt-manual/mcp-manual-content.ts",
+            "team_mgmt-manual/mcp-validate-manual-errors.ts",
+            "team_mgmt-manual/mcp-hot-reload-manual-problems.ts",
+            "team_mgmt-mcp-runtime-diagnostics.ts"
+          ],
+          "manual": [
+            "toolsets/memory-access.ts",
+            "language.ts",
+            "minds/mindset-i18n.ts",
+            "minds/skills-i18n.ts",
+            "snippets/catalog-i18n.ts",
+            "toolsets/manual-behavior.ts",
+            "toolsets/manual-size-guard.ts"
+          ],
+          "filesystem": [
+            "toolsets/list-dir-output-truncation.ts",
+            "toolsets/picture-tools.ts",
+            "overwrite-entire-file.ts",
+            "occurrence-replace.ts",
+            "team_mgmt-create-new-file.ts",
+            "team_mgmt-file-range-edit.ts",
+            "team_mgmt-occurrence-replace.ts",
+            "reminders/ws-mod-pad.ts",
+            "access-control/dialogs-root-deny.ts",
+            "access-control/file-ext-names.ts",
+            "fs-symlink-follow.ts",
+            "create-new-file.ts",
+            "file-block-tools.ts",
+            "file-range-edit.ts",
+            "edit-output-truncation.ts"
+          ],
+          "persistence": [
+            "persistence/call-duplicate-callid-loud.ts",
+            "persistence/cross-course-tellask-requires-carryover-content.ts",
+            "persistence/dialog-fork.ts",
+            "persistence/fork-sideDialog-creation.ts",
+            "persistence/malformed-main-dialog-quarantine.ts",
+            "persistence/nested-sideDialog-created-parent-context.ts",
+            "persistence/restore-preserves-unpaired-tool-events.ts",
+            "persistence/tellask-result-duplicate-callid-loud.ts",
+            "persistence/tellask-result-requires-canonical-fields.ts",
+            "persistence/ui-only-markdown-replay-event.ts",
+            "persistence/latest-writeback.ts",
+            "persistence/thinking-reasoning-replay-event.ts",
+            "persistence/asker-stack-jsonl.ts",
+            "persistence/sideDialog-reconciled-course.ts",
+            "persistence/move-dialog-status.ts",
+            "persistence/reminders-owner-meta.ts",
+            "persistence/reminders-status-path.ts",
+            "persistence/runtime-guide-fork-anchor.ts",
+            "persistence/priming-reminders.ts"
+          ],
+          "recovery": [
+            "interruption-resumption.ts",
+            "interruption-llm-retry-stopped-resumable.ts",
+            "recovery/open-generation-recovery-stale-clears-on-backend-loop.ts",
+            "recovery/reply-delivery-live-continuation.ts",
+            "recovery/reply-delivery-recovery-after-restart.ts",
+            "recovery/reply-delivery-recovery-waits-for-q4h.ts"
+          ],
+          "bootstrap": [
+            "cli/env-proxy-support.ts",
+            "cli/man-subcommand.ts",
+            "cli/rtws-cli.ts",
+            "cli/subcommand-argv-isolation.ts",
+            "cli/validate-team-def-subcommand.ts",
+            "env/dotenv.ts",
+            "env/env-tools.ts"
+          ],
+          "packaging": [
+            "apps-dominds-root-packed-contract.ts",
+            "apps-kernel-shell-packed-contract.ts",
+            "apps-kernel-package-exports-contract.ts",
+            "apps-public-version-drift-guard.ts",
+            "apps-public-publish-guard.ts"
+          ],
+          "retry": [
+            "provider/llm-quirks-retry-handling.ts",
+            "provider/retry-request-lifecycle.ts",
+            "provider/retry-empty-recovery.ts"
+          ],
+          "projection": [
+            "provider/openai-context-normalization.ts",
+            "provider/anthropic-context-normalization.ts",
+            "provider/openai-compatible-context-normalization.ts",
+            "provider/tool-result-image-size-fallback.ts",
+            "provider/openai-compatible-image-fallback.ts",
+            "provider/user-image-model-support.ts",
+            "provider/tool-result-truncation.ts"
+          ],
+          "compatible": [
+            "provider/openai-compatible-kimi-code.ts",
+            "provider/openai-compatible-volcengine-coding-plan.ts"
+          ],
+          "reminders": [
+            "reminders/main-dialog-goal-reminder.ts",
+            "reminders/reminder-display-order.ts",
+            "reminders/reminder-render-mode.ts",
+            "reminders/delete-reminder-empty-state.ts",
+            "reminders/delete-reminder-meta-guard.ts",
+            "reminders/update-reminder-meta-guard.ts",
+            "reminders/delete-reminder-round-snapshot.ts",
+            "reminders/stale-target-message.ts",
+            "reminders/reminder-owner-failure-loud.ts",
+            "reminders/task-agent-reminder-scope.ts",
+            "reminders/migrate-reminder-scope.ts",
+            "reminders/context-health-continuation.ts",
+            "reminders/pending-tellask-reminder-order.ts",
+            "reminders/pending-tellask-zero-state-no-jitter.ts"
+          ],
+          "daemon": [
+            "reminders/daemon-exit-wake-event.ts",
+            "reminders/daemon-reminder-gone-exit-snapshot.ts",
+            "reminders/daemon-reminder-no-jitter-without-output-change.ts",
+            "reminders/daemon-reminder-render.ts",
+            "reminders/daemon-reminder-retained-after-exit.ts",
+            "reminders/get-daemon-output-stream-selection.ts",
+            "reminders/shared-daemon-reminder-command-mismatch.ts",
+            "reminders/shared-daemon-reminder-persistence.ts",
+            "reminders/shared-daemon-reminder-wrapper-command-match.ts"
+          ],
+          "presentation": [
+            "kernel/unified-timestamp-ordering.ts",
+            "llm-generation-metadata.ts",
+            "log-priority-fields.ts",
+            "webapp/run-control-visual.ts",
+            "webapp/create-dialog-flow-ime.ts",
+            "webapp/create-dialog-flow-selection.ts"
+          ],
+          "components": [
+            "reminders/app-reminder-render-mode-preserve.ts",
+            "apps-host-tool-result-contract.ts"
+          ],
+          "shell": [
+            "toolsets/shell-cmd-capture-env.ts",
+            "toolsets/shell-cmd-fast-completion.ts",
+            "toolsets/shell-cmd-output-truncation.ts",
+            "toolsets/shell-cmd-stdin-ignore.ts",
+            "toolsets/shell-cmd-windows-spawn-spec.ts",
+            "toolsets/readonly-shell.ts",
+            "stop-daemon-windows-process-tree.ts",
+            "ripgrep-streaming.ts",
+            "ripgrep-windows-compat.ts"
+          ],
+          "taskdoc": ["task-package.ts", "taskdoc-search.ts", "taskdoc-recall-budget.ts"],
+          "provider-local": [
+            "provider/anthropic-multi-tool-use-stream.ts",
+            "provider/anthropic-stream-errors.ts",
+            "provider/anthropic-whitespace.ts",
+            "provider/openai-whitespace.ts",
+            "provider/codex-instructions.ts",
+            "provider/codex-service-tier.ts",
+            "provider/tool-choice-requirement.ts"
+          ],
+          "server-local": [
+            "auth.ts",
+            "certificates.ts",
+            "setup-env-input.ts",
+            "setup-shell-env.ts",
+            "webui-port-selection.ts",
+            "ws-language.ts"
+          ]
+        },
+        "outsideSuites": [
+          "apps-app-lock-no-jitter-on-enable-disable.ts",
+          "apps-cli-doctor-guidance.ts",
+          "apps-doctor-handshake-diagnostics.ts",
+          "apps-doctor-self-target.ts",
+          "apps-host-restart-on-local-host-change.ts",
+          "apps-install-configure-use-flow.ts",
+          "apps-resolution-assignedPort-noop.ts",
+          "apps-resolution-assignedPort-reassign-on-conflict.ts",
+          "apps-resolution-default-strategy-local.ts",
+          "apps-resolution-effective-enabled-writeback.ts",
+          "apps-resolution-issues-to-problems.ts",
+          "apps-teammates-override-precedence.ts",
+          "apps-tool-proxy-refresh.ts",
+          "apps-web-dev-session-core-contract.ts",
+          "apps-web-dev-session-observer-reminders.ts",
+          "apps-web-dev-session-qa-contract.ts",
+          "apps-web-dev-session-runtime-transitions.ts",
+          "apps-webui-self-heal-empty-resolution.ts",
+          "apps-webui-startup-host-failure-no-interrupt.ts",
+          "codex-auth-alignment.ts",
+          "codex-auth-refresh.ts",
+          "mcp-config.ts",
+          "mcp-disable.ts",
+          "mcp-streamable-http-diagnostics.ts",
+          "provider/anthropic-streaming.ts",
+          "provider/codex-streaming.ts",
+          "provider/func-call.ts",
+          "provider/minimax-json-response.ts",
+          "provider/minimax-m27-multi-tool-probe.ts",
+          "provider/minimax-m27-turn-assembly.ts",
+          "provider/openai-multi-tool-probe.ts",
+          "provider/openai-streaming.ts",
+          "provider/setup-rtws-custom-provider.ts",
+          "provider/stream-func-call.ts",
+          "provider/volcengine-coding-plan-live-smoke.ts",
+          "provider/volcengine-coding-plan-reasoning-live.ts",
+          "server-dialog-forensics-zip.ts",
+          "team-imports-members.ts",
+          "team_mgmt-derived-problems-refresh.ts",
+          "team_mgmt-problems-lifecycle.ts",
+          "team_mgmt-ws-mod-parity.ts",
+          "tellask/typeb-registered-sideDialog-dedupe.ts",
+          "toolsets/registry.ts",
+          "toolsets/skills-tools.ts"
+        ],
+        "withoutPackageScript": [
+          "apps-doctor-self-target.ts",
+          "env/dotenv.ts",
+          "kernel-driver/backend-loop-persists-drive-error-stall.ts",
+          "kernel-driver/fbr-model-params-merge.ts",
+          "kernel-driver/idle-with-active-reply-obligation-display-state.ts",
+          "kernel-driver/mainline-reply-obligation-reminder-direct-fallback.ts",
+          "kernel-driver/mock-provider-contract.ts",
+          "kernel-driver/pre-drive-latest-load-failure-stops.ts",
+          "kernel-driver/retry-recovery-diligence-push-with-keep-going-disabled.ts",
+          "kernel-driver/root-cross-trigger-does-not-reenter-during-tail.ts",
+          "kernel-driver/root-runtime-wake-lifecycle.ts",
+          "kernel-driver/root-tail-error-still-rewakes-root-runtime-wake.ts",
+          "kernel-driver/sideDialog-askback-auto-resume-while-pending-registered-sideDialog.ts",
+          "kernel-driver/sideDialog-backend-loop-retries-after-active-run-blocker.ts",
+          "kernel-driver/sideDialog-new-course-prompt-survives-restore.ts",
+          "kernel-driver/sideDialog-new-course-update-reminder-followup.ts",
+          "kernel-driver/sideDialog-pending-runtime-prompt-counts-as-resumable.ts",
+          "kernel-driver/sideDialog-registered-update-clear-mind-rebinds-reply-target.ts",
+          "kernel-driver/sideDialog-stale-pending-runtime-prompt-clears-on-restore.ts",
+          "kernel-driver/stale-pending-runtime-prompt-queue-claim.ts",
+          "kernel-driver/unexpected-idle-after-tool-round-debug-dump.ts",
+          "kernel-driver/update-reminder-immediate-followup.ts",
+          "kernel-driver/user-interject-active-callee-suppresses-reply-guidance.ts",
+          "language.ts",
+          "log-priority-fields.ts",
+          "persistence/nested-sideDialog-created-parent-context.ts",
+          "provider/anthropic-streaming.ts",
+          "provider/codex-streaming.ts",
+          "provider/func-call.ts",
+          "provider/minimax-json-response.ts",
+          "provider/minimax-m27-multi-tool-probe.ts",
+          "provider/minimax-m27-turn-assembly.ts",
+          "provider/openai-multi-tool-probe.ts",
+          "provider/openai-streaming.ts",
+          "provider/setup-rtws-custom-provider.ts",
+          "provider/stream-func-call.ts",
+          "toolsets/manual-behavior.ts"
+        ],
+        "missingPackageScriptTargets": [],
+        "unauditedCandidates": [
+          "apps-app-lock-no-jitter-on-enable-disable.ts",
+          "apps-cli-doctor-guidance.ts",
+          "apps-doctor-handshake-diagnostics.ts",
+          "apps-doctor-self-target.ts",
+          "apps-host-ipc-contract.ts",
+          "apps-host-restart-on-local-host-change.ts",
+          "apps-install-configure-use-flow.ts",
+          "apps-resolution-assignedPort-noop.ts",
+          "apps-resolution-assignedPort-reassign-on-conflict.ts",
+          "apps-resolution-default-strategy-local.ts",
+          "apps-resolution-effective-enabled-writeback.ts",
+          "apps-resolution-issues-to-problems.ts",
+          "apps-teammates-override-precedence.ts",
+          "apps-tool-proxy-refresh.ts",
+          "apps-web-dev-session-core-contract.ts",
+          "apps-web-dev-session-observer-reminders.ts",
+          "apps-web-dev-session-qa-contract.ts",
+          "apps-web-dev-session-runtime-transitions.ts",
+          "apps-webui-self-heal-empty-resolution.ts",
+          "apps-webui-startup-host-failure-no-interrupt.ts",
+          "codex-auth-alignment.ts",
+          "codex-auth-refresh.ts",
+          "mcp-config.ts",
+          "mcp-disable.ts",
+          "mcp-streamable-http-diagnostics.ts",
+          "provider/anthropic-streaming.ts",
+          "provider/codex-streaming.ts",
+          "provider/func-call.ts",
+          "provider/minimax-json-response.ts",
+          "provider/minimax-m27-multi-tool-probe.ts",
+          "provider/minimax-m27-turn-assembly.ts",
+          "provider/openai-multi-tool-probe.ts",
+          "provider/openai-streaming.ts",
+          "provider/setup-rtws-custom-provider.ts",
+          "provider/stream-func-call.ts",
+          "provider/volcengine-coding-plan-live-smoke.ts",
+          "provider/volcengine-coding-plan-reasoning-live.ts",
+          "server-dialog-forensics-zip.ts",
+          "team-imports-members.ts",
+          "team_mgmt-derived-problems-refresh.ts",
+          "team_mgmt-problems-lifecycle.ts",
+          "team_mgmt-ws-mod-parity.ts",
+          "tellask/typeb-registered-sideDialog-dedupe.ts",
+          "toolsets/registry.ts",
+          "toolsets/skills-tools.ts"
+        ],
+        "missingAuditedFiles": [],
+        "note": "Discovery and script registration are not measurements of behavior or line coverage. Missing package-script targets cover direct tsx/rtws TypeScript paths, including explicit shared/isolated flags, not arbitrary shell composition. Outside-suite candidates include live probes and external integrations; audit prerequisites before running them."
+      },
+      "documentationLinks": {
+        "trackedMarkdown": 201,
+        "newMarkdown": 0,
+        "canonicalDocuments": 69,
+        "excludedRuntimeSources": 131,
+        "localTargetsAndFragments": 391,
+        "networkLinksIgnored": 9,
+        "failures": []
+      }
+    },
+    "semanticGeneration": {
+      "auth": "$ tsx cli.ts -- --isolated-rtws auth.ts --semantic\nGenerated 1 semantic evidence cases: /tmp/dominds-server-auth-qYhqkd\nPENDING subjective test-execution-agent review; no semantic cases have automatically passed.\nauth configuration, opaque token transport and header precedence: PASS\n",
+      "websocket": "$ tsx cli.ts -- --isolated-rtws ws-language.ts --semantic\n[2026/10/31-17:16:18] [websocket-handler] WARN: Unknown WebSocket packet type: Extra: unknown_packet_type\nGenerated 3 semantic evidence cases: /tmp/dominds-server-ws-language-nZxSYp\nPENDING subjective test-execution-agent review; no semantic cases have automatically passed.\nActual welcome/count epoch, language acknowledgments and invalid-packet recovery: PASS\n",
+      "initialCertificate": "$ tsx cli.ts -- --isolated-rtws certificates.ts --semantic\n[2026/10/31-17:16:17] [network-hosts] INFO: Resolved LAN HTTPS certificate hosts Extra: {\n  acceptedHosts: [\n    '172.16.11.50'\n  ],\n  bindHost: '0.0.0.0',\n  families: [\n    'ipv4'\n  ]\n}\n[2026/10/31-17:16:17] [network-hosts] INFO: Resolved LAN HTTPS certificate hosts Extra: {\n  acceptedHosts: [\n    '172.16.11.50',\n    'cymp.lan'\n  ],\n  bindHost: '0.0.0.0',\n  families: [\n    'ipv4'\n  ]\n}\nOwned certificate fixture: /tmp/dominds-certs-DB3PML\n[2026/10/31-17:16:17] [network-hosts] INFO: Resolved LAN HTTPS certificate hosts Extra: {\n  acceptedHosts: [\n    '192.168.55.10'\n  ],\n  bindHost: '192.168.55.10',\n  normalizedHost: '192.168.55.10'\n}\nOwned certificate fixture: /tmp/dominds-certs-DNWQmz\n[2026/10/31-17:16:17] [network-hosts] INFO: Resolved LAN HTTPS certificate hosts Extra: {\n  acceptedHosts: [\n    '192.168.55.13'\n  ],\n  bindHost: '192.168.55.13',\n  normalizedHost: '192.168.55.13'\n}\n[2026/10/31-17:16:17] [network-hosts] INFO: Resolved LAN HTTPS certificate hosts Extra: {\n  acceptedHosts: [\n    'dominds-test.lan'\n  ],\n  bindHost: 'dominds-test.lan',\n  normalizedHost: 'dominds-test.lan'\n}\n[2026/10/31-17:16:17] [network-hosts] INFO: Resolved LAN HTTPS certificate hosts Extra: {\n  acceptedHosts: [\n    'fd00::55'\n  ],\n  bindHost: 'fd00::55',\n  normalizedHost: 'fd00::55'\n}\nOwned certificate fixture: /tmp/dominds-certs-AVtAZB\n[2026/10/31-17:16:17] [network-hosts] INFO: Resolved LAN HTTPS certificate hosts Extra: {\n  acceptedHosts: [\n    '192.168.55.12'\n  ],\n  bindHost: '192.168.55.12',\n  normalizedHost: '192.168.55.12'\n}\nOwned certificate fixture: /tmp/dominds-certs-dh1cdr\n[2026/10/31-17:16:17] [network-hosts] INFO: Resolved LAN HTTPS certificate hosts Extra: {\n  acceptedHosts: [],\n  bindHost: '127.0.0.1',\n  normalizedHost: '127.0.0.1'\n}\nOwned certificate fixture: /tmp/dominds-certs-yK0pPg\n[2026/10/31-17:16:17] [network-hosts] INFO: Resolved LAN HTTPS certificate hosts Extra: {\n  acceptedHosts: [\n    '192.168.55.11'\n  ],\n  bindHost: '192.168.55.11',\n  normalizedHost: '192.168.55.11'\n}\nOwned certificate fixture: /tmp/dominds-certs-5T9xGA\n[2026/10/31-17:16:17] [network-hosts] INFO: Resolved LAN HTTPS certificate hosts Extra: {\n  acceptedHosts: [\n    '172.16.11.50',\n    '172.20.1.183'\n  ],\n  bindHost: '::',\n  families: [\n    'ipv6',\n    'ipv4'\n  ]\n}\n[2026/10/31-17:16:17] [network-hosts] INFO: Resolved LAN HTTPS certificate hosts Extra: {\n  acceptedHosts: [\n    '172.16.11.50',\n    '172.20.1.183'\n  ],\n  bindHost: '::',\n  families: [\n    'ipv6',\n    'ipv4'\n  ]\n}\nOwned certificate fixture: /tmp/dominds-certs-ylBjni\n[2026/10/31-17:16:17] [network-hosts] INFO: Resolved LAN HTTPS certificate hosts Extra: {\n  acceptedHosts: [\n    '192.168.55.15'\n  ],\n  bindHost: '192.168.55.15',\n  normalizedHost: '192.168.55.15'\n}\nOwned certificate fixture: /tmp/dominds-certs-NHFiTU\nGenerated 12 semantic evidence cases: /tmp/dominds-server-certificates-HLsHts\nPENDING subjective test-execution-agent review; no semantic cases have automatically passed.\ncertificates tests: ok\n",
+      "fixedCertificate": "$ tsx cli.ts -- --isolated-rtws certificates.ts --semantic\n[2026/10/31-17:18:52] [network-hosts] INFO: Resolved LAN HTTPS certificate hosts Extra: {\n  acceptedHosts: [\n    '172.16.11.50'\n  ],\n  bindHost: '0.0.0.0',\n  families: [\n    'ipv4'\n  ]\n}\n[2026/10/31-17:18:52] [network-hosts] INFO: Resolved LAN HTTPS certificate hosts Extra: {\n  acceptedHosts: [\n    '172.16.11.50',\n    'cymp.lan'\n  ],\n  bindHost: '0.0.0.0',\n  families: [\n    'ipv4'\n  ]\n}\nOwned certificate fixture: /tmp/dominds-certs-EBTJX6\n[2026/10/31-17:18:52] [network-hosts] INFO: Resolved LAN HTTPS certificate hosts Extra: {\n  acceptedHosts: [\n    '192.168.55.10'\n  ],\n  bindHost: '192.168.55.10',\n  normalizedHost: '192.168.55.10'\n}\nOwned certificate fixture: /tmp/dominds-certs-UHDDyY\n[2026/10/31-17:18:52] [network-hosts] INFO: Resolved LAN HTTPS certificate hosts Extra: {\n  acceptedHosts: [\n    '192.168.55.13'\n  ],\n  bindHost: '192.168.55.13',\n  normalizedHost: '192.168.55.13'\n}\n[2026/10/31-17:18:52] [network-hosts] INFO: Resolved LAN HTTPS certificate hosts Extra: {\n  acceptedHosts: [\n    'dominds-test.lan'\n  ],\n  bindHost: 'dominds-test.lan',\n  normalizedHost: 'dominds-test.lan'\n}\n[2026/10/31-17:18:52] [network-hosts] INFO: Resolved LAN HTTPS certificate hosts Extra: {\n  acceptedHosts: [\n    'fd00::55'\n  ],\n  bindHost: 'fd00::55',\n  normalizedHost: 'fd00::55'\n}\nOwned certificate fixture: /tmp/dominds-certs-MLl21q\n[2026/10/31-17:18:52] [network-hosts] INFO: Resolved LAN HTTPS certificate hosts Extra: {\n  acceptedHosts: [\n    '192.168.55.12'\n  ],\n  bindHost: '192.168.55.12',\n  normalizedHost: '192.168.55.12'\n}\nOwned certificate fixture: /tmp/dominds-certs-laIluN\n[2026/10/31-17:18:52] [network-hosts] INFO: Resolved LAN HTTPS certificate hosts Extra: {\n  acceptedHosts: [],\n  bindHost: '127.0.0.1',\n  normalizedHost: '127.0.0.1'\n}\nOwned certificate fixture: /tmp/dominds-certs-rEsXNu\n[2026/10/31-17:18:52] [network-hosts] INFO: Resolved LAN HTTPS certificate hosts Extra: {\n  acceptedHosts: [\n    '192.168.55.11'\n  ],\n  bindHost: '192.168.55.11',\n  normalizedHost: '192.168.55.11'\n}\nOwned certificate fixture: /tmp/dominds-certs-L2B2NB\n[2026/10/31-17:18:52] [network-hosts] INFO: Resolved LAN HTTPS certificate hosts Extra: {\n  acceptedHosts: [\n    '172.16.11.50',\n    '172.20.1.183'\n  ],\n  bindHost: '::',\n  families: [\n    'ipv6',\n    'ipv4'\n  ]\n}\n[2026/10/31-17:18:52] [network-hosts] INFO: Resolved LAN HTTPS certificate hosts Extra: {\n  acceptedHosts: [\n    '172.16.11.50',\n    '172.20.1.183'\n  ],\n  bindHost: '::',\n  families: [\n    'ipv6',\n    'ipv4'\n  ]\n}\nOwned certificate fixture: /tmp/dominds-certs-nnHPY8\n[2026/10/31-17:18:52] [network-hosts] INFO: Resolved LAN HTTPS certificate hosts Extra: {\n  acceptedHosts: [\n    '192.168.55.15'\n  ],\n  bindHost: '192.168.55.15',\n  normalizedHost: '192.168.55.15'\n}\nOwned certificate fixture: /tmp/dominds-certs-EPlm34\nGenerated 12 semantic evidence cases: /tmp/dominds-server-certificates-9CgalX\nPENDING subjective test-execution-agent review; no semantic cases have automatically passed.\ncertificates tests: ok\n",
+      "meaning": "Only these16 current actual materials have independent subjective acceptance. Generation success, ledgers and hashes do not accept later output."
+    },
+    "scope": "One standard build completed before final runtime checks, no overlapping root builds. Product change is only existing certificate CLI help; actual port/certificate policies remain as observed. Full kernel rerun is not claimed for this help/test batch.45 candidates remain unaudited; full test types still fails1 inherited diagnostic. Final global/root/report formatting, complete tracked-document link lint and cached patch checks precede commit."
+  },
+  "initialCertificateReview": {
+    "counts": {
+      "total": 12,
+      "passed": 6,
+      "failed": 6,
+      "pending": 0
+    },
+    "records": [
+      {
+        "id": "cli-created-certificate",
+        "scenario": "The in-process cert CLI creates an actual 30-day certificate with no system executable PATH.",
+        "businessValue": "An operator can create or renew the intended local certificate without losing existing material through a refused request, and can understand actual CLI recovery guidance.",
+        "context": {
+          "args": "[\"create\",\"--host\",\"192.168.55.15\",\"--days\",\"30\"]",
+          "host": "192.168.55.15",
+          "scopeDetail": "Success is verified by actual native certificate/key files, not this receipt sentence.",
+          "scope": "Actual local certificate/key files and native X509 validation; cert CLI module runs in-process with captured console/process.exit boundary. No root CLI process, browser trust, remote TLS client or live LAN reachability is established."
+        },
+        "reviewQuestions": [
+          "Does the complete actual output accurately describe this supplied request, its observed file effects and a usable correction without claiming an operation that did not occur?"
+        ],
+        "actualText": "Created self-signed certificate for 192.168.55.15\n  hosts: 192.168.55.15\n  cert: /tmp/dominds-certs-ylBjni/dominds-192.168.55.15-88a06ab4.crt.pem\n  key:  /tmp/dominds-certs-ylBjni/dominds-192.168.55.15-88a06ab4.key.pem\n  meta: /tmp/dominds-certs-ylBjni/dominds-192.168.55.15-88a06ab4.json\n  days: 30",
+        "verdict": "passed",
+        "rationale": "The complete receipt names the supplied192.168.55.15 host, concrete certificate/key/metadata paths and requested30-day validity. It accurately reports creation that is separately verified from actual local X509/key data and lookup, without claiming browser trust, a listening TLS server or remote reachability.",
+        "reviewScope": "Actual in-process cert CLI or public certificate API with local files/native X509 checks; this output includes all captured stdout/help and stderr, not only its first error. Relevant existing strict-port HTTPS behavior was checked; no browser trust or remote LAN guarantee.",
+        "provenance": {
+          "absoluteEvidencePath": "/tmp/dominds-server-certificates-HLsHts/cli-created-certificate.json",
+          "evidenceJsonSha256": "853e674a9ac3e4fc852e75db27c6af586d774b0ab31062ab3ba798e4f5308363",
+          "actualTextUtf8Sha256": "d1d004b230a07d89e6af30356bcb54c6aef81cde5fd303421b167d0c99d2362f",
+          "actualTextCharacters": 299,
+          "producerPath": "tests/certificates.ts",
+          "sourcePhase": "Initial new server-local actual generation with unchanged product source from base; no later output is accepted by this record.",
+          "hashRole": "Identity only; never a semantic oracle or future acceptance."
+        }
+      },
+      {
+        "id": "cli-invalid-options-0",
+        "scenario": "The in-process cert CLI refuses this supplied subcommand/option combination, preserving certificate files.",
+        "businessValue": "An operator can create or renew the intended local certificate without losing existing material through a refused request, and can understand actual CLI recovery guidance.",
+        "context": {
+          "args": "[\"self-cert\"]",
+          "exitCode": 1,
+          "filesUnchanged": true,
+          "scope": "Actual local certificate/key files and native X509 validation; cert CLI module runs in-process with captured console/process.exit boundary. No root CLI process, browser trust, remote TLS client or live LAN reachability is established."
+        },
+        "reviewQuestions": [
+          "Does the complete actual output accurately describe this supplied request, its observed file effects and a usable correction without claiming an operation that did not occur?"
+        ],
+        "actualText": "{\n  \"stderr\": [\n    \"Error: Unknown cert subcommand 'self-cert'\"\n  ],\n  \"stdout\": [\n    \"\\nDominds certificate tools\\n\\nUsage:\\n  dominds cert create [--host <host>] [--days <days>] [--force]\\n  dominds cert status [--host <host>] [--port <port>] [--origin]\\n\\nOptions:\\n  --host <host>      Host name or IP address (default: detected non-loopback LAN hosts)\\n  --days <days>      Certificate validity in days (default: 3650)\\n  --force            Overwrite existing generated files\\n  --port <port>      Port for status --origin output\\n  --origin           Print only the effective origin, using https when a matching cert exists\\n  --help             Show this help message\\n\\nCertificates live in ~/.dominds/certs/. A WebUI server automatically enables HTTPS when it finds\\na certificate/key pair that matches the bind host or, for 0.0.0.0/::, a detected non-loopback LAN host.\\n\"\n  ]\n}",
+        "verdict": "failed",
+        "rationale": "The immediate error correctly explains the unknown self-cert subcommand and the actual certificate files remain unchanged. However, the complete attached help unconditionally states that a WebUI server automatically enables HTTPS when it finds a matching certificate/key pair. The inspected real server contract and this batch strict-port positive fixture explicitly disable built-in HTTPS under strictPort, including a normal explicit fixed-port default. An operator following this help can create a matching certificate yet still get only the strict HTTP listener. That missing operative condition makes this full output misleading despite the correct first error line; this is a capability/behavior contradiction, not a preferred-wording requirement.",
+        "reviewScope": "Actual in-process cert CLI or public certificate API with local files/native X509 checks; this output includes all captured stdout/help and stderr, not only its first error. Relevant existing strict-port HTTPS behavior was checked; no browser trust or remote LAN guarantee.",
+        "provenance": {
+          "absoluteEvidencePath": "/tmp/dominds-server-certificates-HLsHts/cli-invalid-options-0.json",
+          "evidenceJsonSha256": "9da4730ac55eae1e87e159604ac3c2e659061422a93d764374fd8b628c3d136f",
+          "actualTextUtf8Sha256": "526caa6ac6d67de6bec2cdf99e378a77842d3150b162c6ac2bba94d73f801384",
+          "actualTextCharacters": 890,
+          "producerPath": "tests/certificates.ts",
+          "sourcePhase": "Initial new server-local actual generation with unchanged product source from base; no later output is accepted by this record.",
+          "hashRole": "Identity only; never a semantic oracle or future acceptance."
+        }
+      },
+      {
+        "id": "cli-invalid-options-1",
+        "scenario": "The in-process cert CLI refuses this supplied subcommand/option combination, preserving certificate files.",
+        "businessValue": "An operator can create or renew the intended local certificate without losing existing material through a refused request, and can understand actual CLI recovery guidance.",
+        "context": {
+          "args": "[\"create\",\"--port\",\"5666\"]",
+          "exitCode": 1,
+          "filesUnchanged": true,
+          "scope": "Actual local certificate/key files and native X509 validation; cert CLI module runs in-process with captured console/process.exit boundary. No root CLI process, browser trust, remote TLS client or live LAN reachability is established."
+        },
+        "reviewQuestions": [
+          "Does the complete actual output accurately describe this supplied request, its observed file effects and a usable correction without claiming an operation that did not occur?"
+        ],
+        "actualText": "{\n  \"stderr\": [\n    \"Error: --port is only valid for cert status\"\n  ],\n  \"stdout\": [\n    \"\\nDominds certificate tools\\n\\nUsage:\\n  dominds cert create [--host <host>] [--days <days>] [--force]\\n  dominds cert status [--host <host>] [--port <port>] [--origin]\\n\\nOptions:\\n  --host <host>      Host name or IP address (default: detected non-loopback LAN hosts)\\n  --days <days>      Certificate validity in days (default: 3650)\\n  --force            Overwrite existing generated files\\n  --port <port>      Port for status --origin output\\n  --origin           Print only the effective origin, using https when a matching cert exists\\n  --help             Show this help message\\n\\nCertificates live in ~/.dominds/certs/. A WebUI server automatically enables HTTPS when it finds\\na certificate/key pair that matches the bind host or, for 0.0.0.0/::, a detected non-loopback LAN host.\\n\"\n  ]\n}",
+        "verdict": "failed",
+        "rationale": "The immediate error correctly explains the create --port option combination and the actual certificate files remain unchanged. However, the complete attached help unconditionally states that a WebUI server automatically enables HTTPS when it finds a matching certificate/key pair. The inspected real server contract and this batch strict-port positive fixture explicitly disable built-in HTTPS under strictPort, including a normal explicit fixed-port default. An operator following this help can create a matching certificate yet still get only the strict HTTP listener. That missing operative condition makes this full output misleading despite the correct first error line; this is a capability/behavior contradiction, not a preferred-wording requirement.",
+        "reviewScope": "Actual in-process cert CLI or public certificate API with local files/native X509 checks; this output includes all captured stdout/help and stderr, not only its first error. Relevant existing strict-port HTTPS behavior was checked; no browser trust or remote LAN guarantee.",
+        "provenance": {
+          "absoluteEvidencePath": "/tmp/dominds-server-certificates-HLsHts/cli-invalid-options-1.json",
+          "evidenceJsonSha256": "d6931957cb486c293ebea5eecf1b15a6b1b698fa149d9a3d8dbc928a1b96d5ad",
+          "actualTextUtf8Sha256": "6c4a9ae9a9de474548b814cfb625b68ebb1d741966eccd5435e948d5fc926782",
+          "actualTextCharacters": 891,
+          "producerPath": "tests/certificates.ts",
+          "sourcePhase": "Initial new server-local actual generation with unchanged product source from base; no later output is accepted by this record.",
+          "hashRole": "Identity only; never a semantic oracle or future acceptance."
+        }
+      },
+      {
+        "id": "cli-invalid-options-2",
+        "scenario": "The in-process cert CLI refuses this supplied subcommand/option combination, preserving certificate files.",
+        "businessValue": "An operator can create or renew the intended local certificate without losing existing material through a refused request, and can understand actual CLI recovery guidance.",
+        "context": {
+          "args": "[\"create\",\"--origin\"]",
+          "exitCode": 1,
+          "filesUnchanged": true,
+          "scope": "Actual local certificate/key files and native X509 validation; cert CLI module runs in-process with captured console/process.exit boundary. No root CLI process, browser trust, remote TLS client or live LAN reachability is established."
+        },
+        "reviewQuestions": [
+          "Does the complete actual output accurately describe this supplied request, its observed file effects and a usable correction without claiming an operation that did not occur?"
+        ],
+        "actualText": "{\n  \"stderr\": [\n    \"Error: --origin is only valid for cert status\"\n  ],\n  \"stdout\": [\n    \"\\nDominds certificate tools\\n\\nUsage:\\n  dominds cert create [--host <host>] [--days <days>] [--force]\\n  dominds cert status [--host <host>] [--port <port>] [--origin]\\n\\nOptions:\\n  --host <host>      Host name or IP address (default: detected non-loopback LAN hosts)\\n  --days <days>      Certificate validity in days (default: 3650)\\n  --force            Overwrite existing generated files\\n  --port <port>      Port for status --origin output\\n  --origin           Print only the effective origin, using https when a matching cert exists\\n  --help             Show this help message\\n\\nCertificates live in ~/.dominds/certs/. A WebUI server automatically enables HTTPS when it finds\\na certificate/key pair that matches the bind host or, for 0.0.0.0/::, a detected non-loopback LAN host.\\n\"\n  ]\n}",
+        "verdict": "failed",
+        "rationale": "The immediate error correctly explains the create --origin option combination and the actual certificate files remain unchanged. However, the complete attached help unconditionally states that a WebUI server automatically enables HTTPS when it finds a matching certificate/key pair. The inspected real server contract and this batch strict-port positive fixture explicitly disable built-in HTTPS under strictPort, including a normal explicit fixed-port default. An operator following this help can create a matching certificate yet still get only the strict HTTP listener. That missing operative condition makes this full output misleading despite the correct first error line; this is a capability/behavior contradiction, not a preferred-wording requirement.",
+        "reviewScope": "Actual in-process cert CLI or public certificate API with local files/native X509 checks; this output includes all captured stdout/help and stderr, not only its first error. Relevant existing strict-port HTTPS behavior was checked; no browser trust or remote LAN guarantee.",
+        "provenance": {
+          "absoluteEvidencePath": "/tmp/dominds-server-certificates-HLsHts/cli-invalid-options-2.json",
+          "evidenceJsonSha256": "8c743092fe194808368b5ff18dc319edaf12eb1a9f3a236e15a6d8ed9af348b7",
+          "actualTextUtf8Sha256": "aae737b44df4029df67afd627e23943c5123ef04013a6e08b35167d6852ae35d",
+          "actualTextCharacters": 893,
+          "producerPath": "tests/certificates.ts",
+          "sourcePhase": "Initial new server-local actual generation with unchanged product source from base; no later output is accepted by this record.",
+          "hashRole": "Identity only; never a semantic oracle or future acceptance."
+        }
+      },
+      {
+        "id": "cli-invalid-options-3",
+        "scenario": "The in-process cert CLI refuses this supplied subcommand/option combination, preserving certificate files.",
+        "businessValue": "An operator can create or renew the intended local certificate without losing existing material through a refused request, and can understand actual CLI recovery guidance.",
+        "context": {
+          "args": "[\"status\",\"--days\",\"30\"]",
+          "exitCode": 1,
+          "filesUnchanged": true,
+          "scope": "Actual local certificate/key files and native X509 validation; cert CLI module runs in-process with captured console/process.exit boundary. No root CLI process, browser trust, remote TLS client or live LAN reachability is established."
+        },
+        "reviewQuestions": [
+          "Does the complete actual output accurately describe this supplied request, its observed file effects and a usable correction without claiming an operation that did not occur?"
+        ],
+        "actualText": "{\n  \"stderr\": [\n    \"Error: --days is only valid for cert create\"\n  ],\n  \"stdout\": [\n    \"\\nDominds certificate tools\\n\\nUsage:\\n  dominds cert create [--host <host>] [--days <days>] [--force]\\n  dominds cert status [--host <host>] [--port <port>] [--origin]\\n\\nOptions:\\n  --host <host>      Host name or IP address (default: detected non-loopback LAN hosts)\\n  --days <days>      Certificate validity in days (default: 3650)\\n  --force            Overwrite existing generated files\\n  --port <port>      Port for status --origin output\\n  --origin           Print only the effective origin, using https when a matching cert exists\\n  --help             Show this help message\\n\\nCertificates live in ~/.dominds/certs/. A WebUI server automatically enables HTTPS when it finds\\na certificate/key pair that matches the bind host or, for 0.0.0.0/::, a detected non-loopback LAN host.\\n\"\n  ]\n}",
+        "verdict": "failed",
+        "rationale": "The immediate error correctly explains the status --days option combination and the actual certificate files remain unchanged. However, the complete attached help unconditionally states that a WebUI server automatically enables HTTPS when it finds a matching certificate/key pair. The inspected real server contract and this batch strict-port positive fixture explicitly disable built-in HTTPS under strictPort, including a normal explicit fixed-port default. An operator following this help can create a matching certificate yet still get only the strict HTTP listener. That missing operative condition makes this full output misleading despite the correct first error line; this is a capability/behavior contradiction, not a preferred-wording requirement.",
+        "reviewScope": "Actual in-process cert CLI or public certificate API with local files/native X509 checks; this output includes all captured stdout/help and stderr, not only its first error. Relevant existing strict-port HTTPS behavior was checked; no browser trust or remote LAN guarantee.",
+        "provenance": {
+          "absoluteEvidencePath": "/tmp/dominds-server-certificates-HLsHts/cli-invalid-options-3.json",
+          "evidenceJsonSha256": "3636fe195bd4178415c71db2b19627deb1e2c840876ba86769959955a50c1dba",
+          "actualTextUtf8Sha256": "ae5bb805fa76c6e8a3a5c2a4275ad1a407574c2af7ab043796ce33f6fbb24278",
+          "actualTextCharacters": 891,
+          "producerPath": "tests/certificates.ts",
+          "sourcePhase": "Initial new server-local actual generation with unchanged product source from base; no later output is accepted by this record.",
+          "hashRole": "Identity only; never a semantic oracle or future acceptance."
+        }
+      },
+      {
+        "id": "cli-invalid-options-4",
+        "scenario": "The in-process cert CLI refuses this supplied subcommand/option combination, preserving certificate files.",
+        "businessValue": "An operator can create or renew the intended local certificate without losing existing material through a refused request, and can understand actual CLI recovery guidance.",
+        "context": {
+          "args": "[\"status\",\"--force\"]",
+          "exitCode": 1,
+          "filesUnchanged": true,
+          "scope": "Actual local certificate/key files and native X509 validation; cert CLI module runs in-process with captured console/process.exit boundary. No root CLI process, browser trust, remote TLS client or live LAN reachability is established."
+        },
+        "reviewQuestions": [
+          "Does the complete actual output accurately describe this supplied request, its observed file effects and a usable correction without claiming an operation that did not occur?"
+        ],
+        "actualText": "{\n  \"stderr\": [\n    \"Error: --force is only valid for cert create\"\n  ],\n  \"stdout\": [\n    \"\\nDominds certificate tools\\n\\nUsage:\\n  dominds cert create [--host <host>] [--days <days>] [--force]\\n  dominds cert status [--host <host>] [--port <port>] [--origin]\\n\\nOptions:\\n  --host <host>      Host name or IP address (default: detected non-loopback LAN hosts)\\n  --days <days>      Certificate validity in days (default: 3650)\\n  --force            Overwrite existing generated files\\n  --port <port>      Port for status --origin output\\n  --origin           Print only the effective origin, using https when a matching cert exists\\n  --help             Show this help message\\n\\nCertificates live in ~/.dominds/certs/. A WebUI server automatically enables HTTPS when it finds\\na certificate/key pair that matches the bind host or, for 0.0.0.0/::, a detected non-loopback LAN host.\\n\"\n  ]\n}",
+        "verdict": "failed",
+        "rationale": "The immediate error correctly explains the status --force option combination and the actual certificate files remain unchanged. However, the complete attached help unconditionally states that a WebUI server automatically enables HTTPS when it finds a matching certificate/key pair. The inspected real server contract and this batch strict-port positive fixture explicitly disable built-in HTTPS under strictPort, including a normal explicit fixed-port default. An operator following this help can create a matching certificate yet still get only the strict HTTP listener. That missing operative condition makes this full output misleading despite the correct first error line; this is a capability/behavior contradiction, not a preferred-wording requirement.",
+        "reviewScope": "Actual in-process cert CLI or public certificate API with local files/native X509 checks; this output includes all captured stdout/help and stderr, not only its first error. Relevant existing strict-port HTTPS behavior was checked; no browser trust or remote LAN guarantee.",
+        "provenance": {
+          "absoluteEvidencePath": "/tmp/dominds-server-certificates-HLsHts/cli-invalid-options-4.json",
+          "evidenceJsonSha256": "17cf53d9016779132f17f080940b56820661d1d2e7274929b1bfdc4be68e090a",
+          "actualTextUtf8Sha256": "c8d69d6286121ecc2b051324ce2c13d0d06c7ad5e46784294263b4b9192be684",
+          "actualTextCharacters": 892,
+          "producerPath": "tests/certificates.ts",
+          "sourcePhase": "Initial new server-local actual generation with unchanged product source from base; no later output is accepted by this record.",
+          "hashRole": "Identity only; never a semantic oracle or future acceptance."
+        }
+      },
+      {
+        "id": "cli-invalid-options-5",
+        "scenario": "The in-process cert CLI refuses this supplied subcommand/option combination, preserving certificate files.",
+        "businessValue": "An operator can create or renew the intended local certificate without losing existing material through a refused request, and can understand actual CLI recovery guidance.",
+        "context": {
+          "args": "[\"status\",\"--host\",\"192.168.55.10\",\"--host\",\"192.168.55.11\"]",
+          "exitCode": 1,
+          "filesUnchanged": true,
+          "scope": "Actual local certificate/key files and native X509 validation; cert CLI module runs in-process with captured console/process.exit boundary. No root CLI process, browser trust, remote TLS client or live LAN reachability is established."
+        },
+        "reviewQuestions": [
+          "Does the complete actual output accurately describe this supplied request, its observed file effects and a usable correction without claiming an operation that did not occur?"
+        ],
+        "actualText": "{\n  \"stderr\": [\n    \"Error: --host can only be repeated for cert create\"\n  ],\n  \"stdout\": [\n    \"\\nDominds certificate tools\\n\\nUsage:\\n  dominds cert create [--host <host>] [--days <days>] [--force]\\n  dominds cert status [--host <host>] [--port <port>] [--origin]\\n\\nOptions:\\n  --host <host>      Host name or IP address (default: detected non-loopback LAN hosts)\\n  --days <days>      Certificate validity in days (default: 3650)\\n  --force            Overwrite existing generated files\\n  --port <port>      Port for status --origin output\\n  --origin           Print only the effective origin, using https when a matching cert exists\\n  --help             Show this help message\\n\\nCertificates live in ~/.dominds/certs/. A WebUI server automatically enables HTTPS when it finds\\na certificate/key pair that matches the bind host or, for 0.0.0.0/::, a detected non-loopback LAN host.\\n\"\n  ]\n}",
+        "verdict": "failed",
+        "rationale": "The immediate error correctly explains repeated --host options for status and the actual certificate files remain unchanged. However, the complete attached help unconditionally states that a WebUI server automatically enables HTTPS when it finds a matching certificate/key pair. The inspected real server contract and this batch strict-port positive fixture explicitly disable built-in HTTPS under strictPort, including a normal explicit fixed-port default. An operator following this help can create a matching certificate yet still get only the strict HTTP listener. That missing operative condition makes this full output misleading despite the correct first error line; this is a capability/behavior contradiction, not a preferred-wording requirement.",
+        "reviewScope": "Actual in-process cert CLI or public certificate API with local files/native X509 checks; this output includes all captured stdout/help and stderr, not only its first error. Relevant existing strict-port HTTPS behavior was checked; no browser trust or remote LAN guarantee.",
+        "provenance": {
+          "absoluteEvidencePath": "/tmp/dominds-server-certificates-HLsHts/cli-invalid-options-5.json",
+          "evidenceJsonSha256": "9c4509dea72fca26451f61315b8b8704902eef786787d474be5132e98835a365",
+          "actualTextUtf8Sha256": "be4b3cacdd38d10231c04b44d70644db51ed53b3a087e315076092b23d7e9e5b",
+          "actualTextCharacters": 898,
+          "producerPath": "tests/certificates.ts",
+          "sourcePhase": "Initial new server-local actual generation with unchanged product source from base; no later output is accepted by this record.",
+          "hashRole": "Identity only; never a semantic oracle or future acceptance."
+        }
+      },
+      {
+        "id": "existing-certificate-refused",
+        "scenario": "An otherwise valid request tries to replace a real certificate/key/metadata bundle without force.",
+        "businessValue": "An operator can create or renew the intended local certificate without losing existing material through a refused request, and can understand actual CLI recovery guidance.",
+        "context": {
+          "host": "192.168.55.11",
+          "requestedDays": 30,
+          "existingDays": 3650,
+          "filesUnchanged": true,
+          "scope": "Actual local certificate/key files and native X509 validation; cert CLI module runs in-process with captured console/process.exit boundary. No root CLI process, browser trust, remote TLS client or live LAN reachability is established."
+        },
+        "reviewQuestions": [
+          "Does the complete actual output accurately describe this supplied request, its observed file effects and a usable correction without claiming an operation that did not occur?"
+        ],
+        "actualText": "Refusing to overwrite existing certificate file: /tmp/dominds-certs-yK0pPg/dominds-192.168.55.11-90f6a39e.crt.pem",
+        "verdict": "passed",
+        "rationale": "The otherwise valid30-day request would replace a real existing3650-day bundle without force. The actual error correctly identifies overwrite refusal at that certificate path, and the observed whole bundle remains byte-for-byte unchanged; it does not say the renewal happened or imply merely requesting a shorter lifetime authorizes replacement.",
+        "reviewScope": "Actual in-process cert CLI or public certificate API with local files/native X509 checks; this output includes all captured stdout/help and stderr, not only its first error. Relevant existing strict-port HTTPS behavior was checked; no browser trust or remote LAN guarantee.",
+        "provenance": {
+          "absoluteEvidencePath": "/tmp/dominds-server-certificates-HLsHts/existing-certificate-refused.json",
+          "evidenceJsonSha256": "d683602764fb945d0d78e5668a893cb51796ad936464c770a4e8e30e287d8a0c",
+          "actualTextUtf8Sha256": "d54e81e707fe1441b92c9907fe6e2d15a5d4d01f3f69fc34bda404b3ed201933",
+          "actualTextCharacters": 113,
+          "producerPath": "tests/certificates.ts",
+          "sourcePhase": "Initial new server-local actual generation with unchanged product source from base; no later output is accepted by this record.",
+          "hashRole": "Identity only; never a semantic oracle or future acceptance."
+        }
+      },
+      {
+        "id": "invalid-host-0",
+        "scenario": "A supplied loopback, bind-all or link-local host is refused for certificate creation.",
+        "businessValue": "An operator can create or renew the intended local certificate without losing existing material through a refused request, and can understand actual CLI recovery guidance.",
+        "context": {
+          "host": "127.0.0.1",
+          "days": 3650,
+          "certificateFilesUnchanged": true,
+          "scope": "Actual local certificate/key files and native X509 validation; cert CLI module runs in-process with captured console/process.exit boundary. No root CLI process, browser trust, remote TLS client or live LAN reachability is established."
+        },
+        "reviewQuestions": [
+          "Does the complete actual output accurately describe this supplied request, its observed file effects and a usable correction without claiming an operation that did not occur?"
+        ],
+        "actualText": "--host must not be localhost, loopback, 127.0.0.0/8, 169.254.0.0/16, ::1, fe80::/10, 0.0.0.0, or ::",
+        "verdict": "passed",
+        "rationale": "The supplied127.0.0.1 is a loopback address within the stated forbidden127/8 set. The diagnostic accurately explains this local certificate-creation restriction, and no certificate files are changed or success claimed.",
+        "reviewScope": "Actual in-process cert CLI or public certificate API with local files/native X509 checks; this output includes all captured stdout/help and stderr, not only its first error. Relevant existing strict-port HTTPS behavior was checked; no browser trust or remote LAN guarantee.",
+        "provenance": {
+          "absoluteEvidencePath": "/tmp/dominds-server-certificates-HLsHts/invalid-host-0.json",
+          "evidenceJsonSha256": "d1ebac903e7d4da69420c3ef09a550c1ec9b8fdb21100ec11bd05e51079f6249",
+          "actualTextUtf8Sha256": "93000dbf89216525ee25e98c87cbd628c53da1955eb4758653640b78b60b4a5e",
+          "actualTextCharacters": 99,
+          "producerPath": "tests/certificates.ts",
+          "sourcePhase": "Initial new server-local actual generation with unchanged product source from base; no later output is accepted by this record.",
+          "hashRole": "Identity only; never a semantic oracle or future acceptance."
+        }
+      },
+      {
+        "id": "invalid-host-1",
+        "scenario": "A supplied loopback, bind-all or link-local host is refused for certificate creation.",
+        "businessValue": "An operator can create or renew the intended local certificate without losing existing material through a refused request, and can understand actual CLI recovery guidance.",
+        "context": {
+          "host": "0.0.0.0",
+          "days": 3650,
+          "certificateFilesUnchanged": true,
+          "scope": "Actual local certificate/key files and native X509 validation; cert CLI module runs in-process with captured console/process.exit boundary. No root CLI process, browser trust, remote TLS client or live LAN reachability is established."
+        },
+        "reviewQuestions": [
+          "Does the complete actual output accurately describe this supplied request, its observed file effects and a usable correction without claiming an operation that did not occur?"
+        ],
+        "actualText": "--host must not be localhost, loopback, 127.0.0.0/8, 169.254.0.0/16, ::1, fe80::/10, 0.0.0.0, or ::",
+        "verdict": "passed",
+        "rationale": "The supplied0.0.0.0 is a bind-all address rather than a certificate endpoint identity supported by this creation API. The actual refusal names that prohibited address and preserves all files; it does not confuse rejection of the certificate host with inability to bind a server.",
+        "reviewScope": "Actual in-process cert CLI or public certificate API with local files/native X509 checks; this output includes all captured stdout/help and stderr, not only its first error. Relevant existing strict-port HTTPS behavior was checked; no browser trust or remote LAN guarantee.",
+        "provenance": {
+          "absoluteEvidencePath": "/tmp/dominds-server-certificates-HLsHts/invalid-host-1.json",
+          "evidenceJsonSha256": "3f8f39eea0df3de28274b52b0904416b180191601a0aefdca8ca85434feba763",
+          "actualTextUtf8Sha256": "93000dbf89216525ee25e98c87cbd628c53da1955eb4758653640b78b60b4a5e",
+          "actualTextCharacters": 99,
+          "producerPath": "tests/certificates.ts",
+          "sourcePhase": "Initial new server-local actual generation with unchanged product source from base; no later output is accepted by this record.",
+          "hashRole": "Identity only; never a semantic oracle or future acceptance."
+        }
+      },
+      {
+        "id": "invalid-host-2",
+        "scenario": "A supplied loopback, bind-all or link-local host is refused for certificate creation.",
+        "businessValue": "An operator can create or renew the intended local certificate without losing existing material through a refused request, and can understand actual CLI recovery guidance.",
+        "context": {
+          "host": "169.254.1.2",
+          "days": 3650,
+          "certificateFilesUnchanged": true,
+          "scope": "Actual local certificate/key files and native X509 validation; cert CLI module runs in-process with captured console/process.exit boundary. No root CLI process, browser trust, remote TLS client or live LAN reachability is established."
+        },
+        "reviewQuestions": [
+          "Does the complete actual output accurately describe this supplied request, its observed file effects and a usable correction without claiming an operation that did not occur?"
+        ],
+        "actualText": "--host must not be localhost, loopback, 127.0.0.0/8, 169.254.0.0/16, ::1, fe80::/10, 0.0.0.0, or ::",
+        "verdict": "passed",
+        "rationale": "The supplied169.254.1.2 is within the stated link-local169.254/16 range. The complete error accurately communicates this creation policy with no misleading success or file effect.",
+        "reviewScope": "Actual in-process cert CLI or public certificate API with local files/native X509 checks; this output includes all captured stdout/help and stderr, not only its first error. Relevant existing strict-port HTTPS behavior was checked; no browser trust or remote LAN guarantee.",
+        "provenance": {
+          "absoluteEvidencePath": "/tmp/dominds-server-certificates-HLsHts/invalid-host-2.json",
+          "evidenceJsonSha256": "7d8c70d8464b837315959e5d66246fffcd4b0953ea56892b384aa0ef175a19a4",
+          "actualTextUtf8Sha256": "93000dbf89216525ee25e98c87cbd628c53da1955eb4758653640b78b60b4a5e",
+          "actualTextCharacters": 99,
+          "producerPath": "tests/certificates.ts",
+          "sourcePhase": "Initial new server-local actual generation with unchanged product source from base; no later output is accepted by this record.",
+          "hashRole": "Identity only; never a semantic oracle or future acceptance."
+        }
+      },
+      {
+        "id": "invalid-host-3",
+        "scenario": "A supplied loopback, bind-all or link-local host is refused for certificate creation.",
+        "businessValue": "An operator can create or renew the intended local certificate without losing existing material through a refused request, and can understand actual CLI recovery guidance.",
+        "context": {
+          "host": "fe80::1",
+          "days": 3650,
+          "certificateFilesUnchanged": true,
+          "scope": "Actual local certificate/key files and native X509 validation; cert CLI module runs in-process with captured console/process.exit boundary. No root CLI process, browser trust, remote TLS client or live LAN reachability is established."
+        },
+        "reviewQuestions": [
+          "Does the complete actual output accurately describe this supplied request, its observed file effects and a usable correction without claiming an operation that did not occur?"
+        ],
+        "actualText": "--host must not be localhost, loopback, 127.0.0.0/8, 169.254.0.0/16, ::1, fe80::/10, 0.0.0.0, or ::",
+        "verdict": "passed",
+        "rationale": "The suppliedfe80::1 is within the statedIPv6 link-local fe80::/10 range. The diagnostic accurately refuses that host for this API and preserves the observed certificate files; no remote-network or TLS claim is made.",
+        "reviewScope": "Actual in-process cert CLI or public certificate API with local files/native X509 checks; this output includes all captured stdout/help and stderr, not only its first error. Relevant existing strict-port HTTPS behavior was checked; no browser trust or remote LAN guarantee.",
+        "provenance": {
+          "absoluteEvidencePath": "/tmp/dominds-server-certificates-HLsHts/invalid-host-3.json",
+          "evidenceJsonSha256": "6000e4cd712626238bb0377e67772415ae27f80006c4e6df8acae93bc8c788ed",
+          "actualTextUtf8Sha256": "93000dbf89216525ee25e98c87cbd628c53da1955eb4758653640b78b60b4a5e",
+          "actualTextCharacters": 99,
+          "producerPath": "tests/certificates.ts",
+          "sourcePhase": "Initial new server-local actual generation with unchanged product source from base; no later output is accepted by this record.",
+          "hashRole": "Identity only; never a semantic oracle or future acceptance."
+        }
+      }
+    ],
+    "scope": "Complete originalHLsHts certificate materials retained with their real initial verdicts. The original auth/ws4 are not duplicated here; their identical actual records remain in finalReview."
+  },
+  "initialReviewSummary": {
+    "total": 16,
+    "passed": 10,
+    "failed": 6,
+    "pending": 0,
+    "materialComposition": "Initial cert12 plus the exact original auth1/ws3 still preserved in finalReview. This summary does not imply32 distinct outputs when combined with current16.",
+    "unchangedOriginalIds": [
+      "invalid-token-input",
+      "nonstring-language",
+      "unknown-packet",
+      "unsupported-language"
+    ]
+  },
+  "counts": {
+    "initialOverall": {
+      "total": 16,
+      "passed": 10,
+      "failed": 6
+    },
+    "initialCertificateHistorical": {
+      "total": 12,
+      "passed": 6,
+      "failed": 6
+    },
+    "current": {
+      "total": 16,
+      "passed": 16,
+      "failed": 0,
+      "pending": 0
+    },
+    "currentComposition": {
+      "sameOriginalAuthAndWebsocketActualRecords": 4,
+      "freshCertificateActualRecords": 12
+    },
+    "distinctReviewedMaterials": 28
+  },
+  "sourceFreeze": {
+    "status": "frozen-for-final-review",
+    "scope": "All six candidate sources (one unchanged), existing cert CLI help correction and final12 staged entry/docs/ledger/product/test paths explicitly frozen before final identity capture. Report excluded from self-hash/patch. Only this report written by reviewer.",
+    "acceptanceScope": "Only the specified28 historical/current actual materials were read; current acceptance is16 mixed-source actual outputs. Future newly generated output remains pending independent review."
+  },
+  "productReview": {
+    "status": "passed",
+    "path": "main/cli/cert.ts",
+    "scope": "Only the existing help text/--origin description changes. It now states automatic/default or +/- selection, separate HTTPS port, strict bare-port disabling, and certificate-based rather than runtime-listener origin inference. No certificate, auth, permission, schema, port candidate or startup policy is changed.",
+    "semanticFinding": "Six initial complete help outputs failed against the existing actual strict-port behavior; all12 new certificate cases were separately read and passed after correction. This is a real guidance defect, distinct from the earlier localhost fixture mistake."
+  },
+  "entryAndDocumentationReview": {
+    "status": "passed",
+    "paths": [
+      "package.json",
+      "tests/package.json",
+      "tests/run.mjs",
+      "tests/README.md",
+      "tests/audit.json",
+      "docs/testing-strategy.md"
+    ],
+    "observations": [
+      "Root/tests scripts register six server-local behavior cases and three explicit semantic producers; all six direct aliases run through managed isolated CLI. Unchanged setup-env-input is a reviewed data candidate rather than omitted from the audit.",
+      "run.mjs integrates the suite in inventory/command choices and preserves existing case result/failure handling. Successful semantic generation remains raw pending, with independent meanings supplied only by this report.",
+      "Six ledger entries retain the concrete auth/certificate/env/port/ws value and correct component versus actual-network scopes. A reviewed entry does not accept future output.",
+      "README/strategy accurately distinguish single-line origin machine data, in-process cert CLI, native cert/TLS effects, supplied Windows values and real local ws from root CLI routing/browser/remote access/live-dialog behavior. Strategy retains the first rewrite localhost error and the six actual help rejections/resolution.",
+      "Fixed default5666 remains a concrete contract; only EADDRINUSE is treated as occupancy. Fixture/environment preparation and LAN prerequisites do not turn unexecuted or failed scenarios into passes.",
+      "No test framework, dependency, semantic detector, widened product type/source exclusion or unrelated runtime rewrite is introduced. Applicable AGENTS instructions are followed; AGENTS.md is unchanged in this12-file patch."
+    ],
+    "parentInventorySnapshot": {
+      "typescriptFiles": 290,
+      "supportModules": 37,
+      "candidates": 253,
+      "reviewed": 208,
+      "remaining": 45,
+      "outsideSuites": 44,
+      "withoutDirectScript": 37,
+      "missingDirectTargets": 0,
+      "staleAuditEntries": 0,
+      "scope": "Parent-provided inventory/ledger facts; not acceptance of other45 candidates."
+    }
+  },
+  "failureAndCorrectionHistory": {
+    "baseline": {
+      "summary": {
+        "absolutePath": "/tmp/dominds-setup-network-baseline/summary.json",
+        "sha256": "2f53e507bb21570d56c516f5675b6bfb3d466bace94c6e78436c2ae6ab82ab9f",
+        "fullSummary": {
+          "total": 6,
+          "passed": 6,
+          "failed": 0,
+          "timedOut": 0,
+          "results": [
+            {
+              "id": "auth.ts",
+              "status": "passed",
+              "durationMs": 392,
+              "code": 0,
+              "signal": null,
+              "logPath": "/tmp/dominds-setup-network-baseline/001-auth.ts.log"
+            },
+            {
+              "id": "certificates.ts",
+              "status": "passed",
+              "durationMs": 1045,
+              "code": 0,
+              "signal": null,
+              "logPath": "/tmp/dominds-setup-network-baseline/002-certificates.ts.log"
+            },
+            {
+              "id": "setup-env-input.ts",
+              "status": "passed",
+              "durationMs": 395,
+              "code": 0,
+              "signal": null,
+              "logPath": "/tmp/dominds-setup-network-baseline/003-setup-env-input.ts.log"
+            },
+            {
+              "id": "setup-shell-env.ts",
+              "status": "passed",
+              "durationMs": 1715,
+              "code": 0,
+              "signal": null,
+              "logPath": "/tmp/dominds-setup-network-baseline/004-setup-shell-env.ts.log"
+            },
+            {
+              "id": "webui-port-selection.ts",
+              "status": "passed",
+              "durationMs": 2319,
+              "code": 0,
+              "signal": null,
+              "logPath": "/tmp/dominds-setup-network-baseline/005-webui-port-selection.ts.log"
+            },
+            {
+              "id": "ws-language.ts",
+              "status": "passed",
+              "durationMs": 1939,
+              "code": 0,
+              "signal": null,
+              "logPath": "/tmp/dominds-setup-network-baseline/006-ws-language.ts.log"
+            }
+          ]
+        }
+      },
+      "meaning": "Original6/6 successful execution history, not original semantic/design acceptance. Its tests suppressed CLI help and matched local error sentences, so it did not establish the later full-help truthfulness."
+    },
+    "firstRewrite": {
+      "summary": {
+        "absolutePath": "/tmp/dominds-setup-network-first/summary.json",
+        "sha256": "7c1907bf6e27fc15557484fbf574121584cec28fa06ebb0656204f156e1d3c4d",
+        "fullSummary": {
+          "total": 6,
+          "passed": 5,
+          "failed": 1,
+          "timedOut": 0,
+          "results": [
+            {
+              "id": "auth.ts",
+              "status": "passed",
+              "durationMs": 392,
+              "code": 0,
+              "signal": null,
+              "logPath": "/tmp/dominds-setup-network-first/001-auth.ts.log"
+            },
+            {
+              "id": "certificates.ts",
+              "status": "failed",
+              "durationMs": 2296,
+              "code": 1,
+              "signal": null,
+              "logPath": "/tmp/dominds-setup-network-first/002-certificates.ts.log",
+              "tempDir": "/tmp/dominds-setup-network-first/2.tmp"
+            },
+            {
+              "id": "setup-env-input.ts",
+              "status": "passed",
+              "durationMs": 396,
+              "code": 0,
+              "signal": null,
+              "logPath": "/tmp/dominds-setup-network-first/003-setup-env-input.ts.log"
+            },
+            {
+              "id": "setup-shell-env.ts",
+              "status": "passed",
+              "durationMs": 1781,
+              "code": 0,
+              "signal": null,
+              "logPath": "/tmp/dominds-setup-network-first/004-setup-shell-env.ts.log"
+            },
+            {
+              "id": "webui-port-selection.ts",
+              "status": "passed",
+              "durationMs": 2539,
+              "code": 0,
+              "signal": null,
+              "logPath": "/tmp/dominds-setup-network-first/005-webui-port-selection.ts.log"
+            },
+            {
+              "id": "ws-language.ts",
+              "status": "passed",
+              "durationMs": 2027,
+              "code": 0,
+              "signal": null,
+              "logPath": "/tmp/dominds-setup-network-first/006-ws-language.ts.log"
+            }
+          ]
+        }
+      },
+      "failureLog": {
+        "absolutePath": "/tmp/dominds-setup-network-first/002-certificates.ts.log",
+        "sha256": "7f07662ab0f3d540bfc464813504818344322df852784c3bc3f6a53bc9c38090",
+        "fullText": "[2026/10/31-17:15:31] [network-hosts] INFO: Resolved LAN HTTPS certificate hosts Extra: {\n  acceptedHosts: [\n    '172.16.11.50'\n  ],\n  bindHost: '0.0.0.0',\n  families: [\n    'ipv4'\n  ]\n}\n[2026/10/31-17:15:31] [network-hosts] INFO: Resolved LAN HTTPS certificate hosts Extra: {\n  acceptedHosts: [\n    '172.16.11.50',\n    'cymp.lan'\n  ],\n  bindHost: '0.0.0.0',\n  families: [\n    'ipv4'\n  ]\n}\nOwned certificate fixture: /tmp/dominds-setup-network-first/2.tmp/dominds-certs-s4UdY6\n[2026/10/31-17:15:31] [network-hosts] INFO: Resolved LAN HTTPS certificate hosts Extra: {\n  acceptedHosts: [\n    '192.168.55.10'\n  ],\n  bindHost: '192.168.55.10',\n  normalizedHost: '192.168.55.10'\n}\nOwned certificate fixture: /tmp/dominds-setup-network-first/2.tmp/dominds-certs-iykCaQ\n[2026/10/31-17:15:31] [network-hosts] INFO: Resolved LAN HTTPS certificate hosts Extra: {\n  acceptedHosts: [\n    '192.168.55.13'\n  ],\n  bindHost: '192.168.55.13',\n  normalizedHost: '192.168.55.13'\n}\n[2026/10/31-17:15:31] [network-hosts] INFO: Resolved LAN HTTPS certificate hosts Extra: {\n  acceptedHosts: [\n    'dominds-test.lan'\n  ],\n  bindHost: 'dominds-test.lan',\n  normalizedHost: 'dominds-test.lan'\n}\n[2026/10/31-17:15:31] [network-hosts] INFO: Resolved LAN HTTPS certificate hosts Extra: {\n  acceptedHosts: [\n    'fd00::55'\n  ],\n  bindHost: 'fd00::55',\n  normalizedHost: 'fd00::55'\n}\nOwned certificate fixture: /tmp/dominds-setup-network-first/2.tmp/dominds-certs-O8LC9i\n[2026/10/31-17:15:31] [network-hosts] INFO: Resolved LAN HTTPS certificate hosts Extra: {\n  acceptedHosts: [\n    '192.168.55.12'\n  ],\n  bindHost: '192.168.55.12',\n  normalizedHost: '192.168.55.12'\n}\nOwned certificate fixture: /tmp/dominds-setup-network-first/2.tmp/dominds-certs-mWlZdc\n[2026/10/31-17:15:32] [network-hosts] INFO: Resolved LAN HTTPS certificate hosts Extra: {\n  acceptedHosts: [],\n  bindHost: '127.0.0.1',\n  normalizedHost: '127.0.0.1'\n}\nOwned certificate fixture: /tmp/dominds-setup-network-first/2.tmp/dominds-certs-dEauPi\n[2026/10/31-17:15:32] [network-hosts] INFO: Resolved LAN HTTPS certificate hosts Extra: {\n  acceptedHosts: [\n    '192.168.55.11'\n  ],\n  bindHost: '192.168.55.11',\n  normalizedHost: '192.168.55.11'\n}\nOwned certificate fixture: /tmp/dominds-setup-network-first/2.tmp/dominds-certs-efGpEN\n[2026/10/31-17:15:32] [network-hosts] INFO: Resolved LAN HTTPS certificate hosts Extra: {\n  acceptedHosts: [\n    '172.16.11.50',\n    '172.20.1.183'\n  ],\n  bindHost: '::',\n  families: [\n    'ipv6',\n    'ipv4'\n  ]\n}\nAssertionError [ERR_ASSERTION]: Expected values to be strictly equal:\n+ actual - expected\n\n+ '172.16.11.50'\n- 'localhost'\n\n    at <anonymous> (/ws/AiWorks/dominds/tests/certificates.ts:314:12)\n    at async withTempCertsDir (/ws/AiWorks/dominds/tests/certificates.ts:64:18)\n    at async testCertStatusDefaultsToDetectedHosts (/ws/AiWorks/dominds/tests/certificates.ts:307:3)\n    at async <anonymous> (/ws/AiWorks/dominds/tests/certificates.ts:430:5)\n    at async withTempRtws (/ws/AiWorks/dominds/tests/kernel-driver/helpers.ts:60:3)\n    at async main (/ws/AiWorks/dominds/tests/certificates.ts:421:3)\n[tests/cli] Keeping isolated rtws at /tmp/dominds-setup-network-first/2.tmp/dominds-tests-rtws-fq9Z7O\n",
+        "meaning": "Real5pass1fail caused by primary fixture assuming localhost while actual discovery provided a LAN host. No product defect or correction is claimed for this failure."
+      },
+      "preservedSource": {
+        "historicalAbsolutePath": "/tmp/dominds-setup-network-cert-first.ts",
+        "sha256": "e33d9338238c48b558ea3822f99cf8e8732c7a6238a2b309180d8dcb9ab544fe",
+        "fullSource": "import assert from 'node:assert/strict';\nimport { X509Certificate, createPrivateKey } from 'node:crypto';\nimport * as fs from 'node:fs/promises';\nimport { createRequire } from 'node:module';\nimport * as os from 'node:os';\nimport * as path from 'node:path';\n\nimport { main as certCliMain } from '../main/cli/cert';\nimport {\n  createSelfSignedCertificate,\n  findAutoHttpsCertificateForHost,\n} from '../main/server/certificates';\nimport { isLanHttpsHost, resolveLanHttpsHostsForBindHost } from '../main/server/network-hosts';\n\nimport { semanticEvidenceCollector } from './helpers/semantic-evidence';\nimport { withTempRtws } from './kernel-driver/helpers';\n\nconst evidence = semanticEvidenceCollector('dominds-server-certificates-');\nconst record = (\n  id: string,\n  scenario: string,\n  actualText: string,\n  context: Record<string, string | number | boolean>,\n) =>\n  evidence.record({\n    id,\n    scenario,\n    businessValue:\n      'An operator can create or renew the intended local certificate without losing existing material through a refused request, and can understand actual CLI recovery guidance.',\n    context: {\n      ...context,\n      scope:\n        'Actual local certificate/key files and native X509 validation; cert CLI module runs in-process with captured console/process.exit boundary. No root CLI process, browser trust, remote TLS client or live LAN reachability is established.',\n    },\n    reviewQuestions: [\n      'Does the complete actual output accurately describe this supplied request, its observed file effects and a usable correction without claiming an operation that did not occur?',\n    ],\n    actualText,\n  });\nasync function fileBytes(directory: string) {\n  return Object.fromEntries(\n    await Promise.all(\n      (await fs.readdir(directory))\n        .sort()\n        .map(async (name) => [\n          name,\n          (await fs.readFile(path.join(directory, name))).toString('base64'),\n        ]),\n    ),\n  );\n}\nasync function validatePair(certPath: string, keyPath: string) {\n  const cert = new X509Certificate(await fs.readFile(certPath));\n  assert.equal(cert.checkPrivateKey(createPrivateKey(await fs.readFile(keyPath))), true);\n  return cert;\n}\n\nconst requireFn = createRequire(__filename);\nconst mutableOs = requireFn('node:os') as typeof os;\n\nasync function withTempCertsDir<T>(fn: (certsDirAbs: string) => Promise<T>): Promise<T> {\n  const certsDirAbs = await fs.mkdtemp(path.join(os.tmpdir(), 'dominds-certs-'));\n  console.log('Owned certificate fixture: ' + certsDirAbs);\n  const result = await fn(certsDirAbs);\n  await fs.rm(certsDirAbs, { recursive: true, force: true }); // Failed evidence remains.\n  return result;\n}\n\nasync function testCreateAndFindMatchingCertificate(): Promise<void> {\n  await withTempCertsDir(async (certsDirAbs) => {\n    const created = await createSelfSignedCertificate({\n      host: '192.168.55.10',\n      days: 3650,\n      certsDirAbs,\n    });\n    assert.equal(created.host, '192.168.55.10');\n    const native = await validatePair(created.certPath, created.keyPath);\n    assert.ok(native.checkIP('192.168.55.10'));\n    assert.equal(native.checkIP('192.168.55.99'), undefined);\n\n    const lookup = await findAutoHttpsCertificateForHost({\n      host: '192.168.55.10',\n      certsDirAbs,\n    });\n    assert.equal(lookup.kind, 'found');\n    if (lookup.kind !== 'found') return;\n    assert.equal(lookup.certificate.certPath, created.certPath);\n    assert.equal(lookup.certificate.keyPath, created.keyPath);\n    assert.equal(lookup.certificate.matchedHost, '192.168.55.10');\n    assert.equal(lookup.diagnostics.length, 0);\n  });\n}\n\nasync function testCreateCertificateWithDnsAndIpv6AltHosts(): Promise<void> {\n  await withTempCertsDir(async (certsDirAbs) => {\n    const created = await createSelfSignedCertificate({\n      host: '192.168.55.13',\n      altHosts: ['dominds-test.lan', 'fd00::55'],\n      days: 3650,\n      certsDirAbs,\n    });\n    assert.deepEqual(created.hosts, ['192.168.55.13', 'dominds-test.lan', 'fd00::55']);\n\n    const native = await validatePair(created.certPath, created.keyPath);\n    assert.ok(native.checkIP('192.168.55.13'));\n    assert.ok(native.checkHost('dominds-test.lan'));\n    assert.ok(native.checkIP('fd00::55'));\n    for (const host of created.hosts) {\n      const lookup = await findAutoHttpsCertificateForHost({ host, certsDirAbs });\n      assert.equal(lookup.kind, 'found');\n      if (lookup.kind !== 'found') continue;\n      assert.equal(lookup.certificate.certPath, created.certPath);\n      assert.equal(lookup.certificate.matchedHost, host);\n      assert.equal(lookup.diagnostics.length, 0);\n    }\n  });\n}\n\nasync function testCreateDoesNotRequireSystemOpenSsl(): Promise<void> {\n  await withTempCertsDir(async (certsDirAbs) => {\n    const originalPath = process.env.PATH;\n    process.env.PATH = '';\n    try {\n      const created = await createSelfSignedCertificate({\n        host: '192.168.55.12',\n        days: 3650,\n        certsDirAbs,\n      });\n      const lookup = await findAutoHttpsCertificateForHost({\n        host: '192.168.55.12',\n        certsDirAbs,\n      });\n      assert.equal(lookup.kind, 'found');\n      if (lookup.kind !== 'found') return;\n      assert.equal(lookup.certificate.certPath, created.certPath);\n    } finally {\n      if (originalPath === undefined) {\n        delete process.env.PATH;\n      } else {\n        process.env.PATH = originalPath;\n      }\n    }\n  });\n}\n\nasync function testLoopbackDoesNotEnableHttps(): Promise<void> {\n  await withTempCertsDir(async (certsDirAbs) => {\n    for (const [index, host] of ['127.0.0.1', '0.0.0.0', '169.254.1.2', 'fe80::1'].entries()) {\n      const before = await fileBytes(certsDirAbs);\n      let detail = '';\n      await assert.rejects(\n        () => createSelfSignedCertificate({ host, days: 3650, certsDirAbs }),\n        (error: unknown) => {\n          assert.ok(error instanceof Error);\n          detail = error.message;\n          return true;\n        },\n      );\n      assert.deepEqual(await fileBytes(certsDirAbs), before);\n      record(\n        'invalid-host-' + index,\n        'A supplied loopback, bind-all or link-local host is refused for certificate creation.',\n        detail,\n        { host, days: 3650, certificateFilesUnchanged: true },\n      );\n    }\n\n    const lookup = await findAutoHttpsCertificateForHost({\n      host: '127.0.0.1',\n      certsDirAbs,\n    });\n    assert.equal(lookup.kind, 'not_found');\n    assert.equal(lookup.diagnostics.length, 0);\n  });\n}\n\nasync function testForceRequiredForExistingFiles(): Promise<void> {\n  await withTempCertsDir(async (certsDirAbs) => {\n    const first = await createSelfSignedCertificate({\n      host: '192.168.55.11',\n      days: 3650,\n      certsDirAbs,\n    });\n    const old = await validatePair(first.certPath, first.keyPath);\n    const before = await fileBytes(certsDirAbs);\n    let detail = '';\n    await assert.rejects(\n      () => createSelfSignedCertificate({ host: '192.168.55.11', days: 30, certsDirAbs }),\n      (error: unknown) => {\n        assert.ok(error instanceof Error);\n        detail = error.message;\n        return true;\n      },\n    );\n    assert.deepEqual(await fileBytes(certsDirAbs), before);\n    record(\n      'existing-certificate-refused',\n      'An otherwise valid request tries to replace a real certificate/key/metadata bundle without force.',\n      detail,\n      { host: '192.168.55.11', requestedDays: 30, existingDays: 3650, filesUnchanged: true },\n    );\n    const renewed = await createSelfSignedCertificate({\n      host: '192.168.55.11',\n      days: 30,\n      certsDirAbs,\n      force: true,\n    });\n    const current = await validatePair(renewed.certPath, renewed.keyPath);\n    assert.ok(current.checkIP('192.168.55.11'));\n    assert.notDeepEqual(current.raw, old.raw);\n    assert.ok(Date.parse(current.validTo) < Date.parse(old.validTo));\n    assert.deepEqual((await fs.readdir(certsDirAbs)).sort(), Object.keys(before));\n    const metadata: unknown = JSON.parse(await fs.readFile(renewed.metadataPath, 'utf8'));\n    assert.ok(typeof metadata === 'object' && metadata !== null && 'days' in metadata);\n    assert.equal(metadata.days, 30);\n    const lookup = await findAutoHttpsCertificateForHost({ host: '192.168.55.11', certsDirAbs });\n    assert.equal(lookup.kind, 'found');\n    if (lookup.kind === 'found') assert.equal(lookup.certificate.certPath, renewed.certPath);\n  });\n}\n\nasync function captureConsoleLog(fn: () => Promise<void>): Promise<readonly string[]> {\n  const originalLog = console.log;\n  const originalInfo = console.info;\n  const originalDebug = console.debug;\n  const lines: string[] = [];\n  console.log = (...args: readonly unknown[]): void => {\n    lines.push(args.map((arg) => String(arg)).join(' '));\n  };\n  console.info = (...args: readonly unknown[]): void => {\n    throw new Error(\n      `Expected cert status --origin not to write info logs to stdout: ${String(args[0])}`,\n    );\n  };\n  console.debug = (...args: readonly unknown[]): void => {\n    throw new Error(\n      `Expected cert status --origin not to write debug logs to stdout: ${String(args[0])}`,\n    );\n  };\n  try {\n    await fn();\n    return lines;\n  } finally {\n    console.log = originalLog;\n    console.info = originalInfo;\n    console.debug = originalDebug;\n  }\n}\n\nclass CapturedProcessExit extends Error {\n  readonly code: string | number | null | undefined;\n\n  constructor(code: string | number | null | undefined) {\n    super(`process.exit(${String(code)})`);\n    this.code = code;\n  }\n}\n\nasync function captureCliExit(fn: () => Promise<void>): Promise<{\n  code: string | number | null | undefined;\n  stderr: readonly string[];\n  stdout: readonly string[];\n}> {\n  const originalExit = process.exit;\n  const originalError = console.error;\n  const originalLog = console.log;\n  const stderr: string[] = [];\n  const stdout: string[] = [];\n  console.error = (...args: readonly unknown[]): void => {\n    stderr.push(args.map((arg) => String(arg)).join(' '));\n  };\n  console.log = (...args: readonly unknown[]): void => {\n    stdout.push(args.map((arg) => String(arg)).join(' '));\n  };\n  process.exit = ((code?: string | number | null | undefined): never => {\n    throw new CapturedProcessExit(code);\n  }) as typeof process.exit;\n  try {\n    await fn();\n  } catch (error: unknown) {\n    if (error instanceof CapturedProcessExit) {\n      return { code: error.code, stderr, stdout };\n    }\n    throw error;\n  } finally {\n    process.exit = originalExit;\n    console.error = originalError;\n    console.log = originalLog;\n  }\n  throw new Error('Expected CLI to call process.exit');\n}\n\nasync function withPatchedDetectedHostname<T>(hostname: string, fn: () => Promise<T>): Promise<T> {\n  const originalHostname = mutableOs.hostname;\n  const originalNetworkInterfaces = mutableOs.networkInterfaces;\n  mutableOs.hostname = (): string => hostname;\n  mutableOs.networkInterfaces = (): ReturnType<typeof os.networkInterfaces> => ({});\n  try {\n    return await fn();\n  } finally {\n    mutableOs.hostname = originalHostname;\n    mutableOs.networkInterfaces = originalNetworkInterfaces;\n  }\n}\n\nasync function testCertStatusDefaultsToDetectedHosts(): Promise<void> {\n  await withTempCertsDir(async (certsDirAbs) => {\n    const lines = await captureConsoleLog(async () => {\n      await certCliMain(['status', '--port', '5666', '--origin'], { certsDirAbs });\n    });\n    assert.equal(lines.length, 1);\n    const origin = new URL(lines[0]!);\n    assert.equal(origin.protocol, 'http:');\n    assert.equal(origin.hostname, 'localhost');\n    assert.equal(origin.port, '5666');\n    assert.equal(origin.pathname, '/');\n    assert.equal(origin.search, '');\n    assert.equal(origin.hash, '');\n  });\n}\n\nasync function testCertCliCreateDoesNotRequireSystemOpenSsl(): Promise<void> {\n  await withTempCertsDir(async (certsDirAbs) => {\n    const originalPath = process.env.PATH;\n    process.env.PATH = '';\n    try {\n      const lines = await captureConsoleLog(async () => {\n        await certCliMain(['create', '--host', '192.168.55.15', '--days', '30'], {\n          certsDirAbs,\n        });\n      });\n      record(\n        'cli-created-certificate',\n        'The in-process cert CLI creates an actual 30-day certificate with no system executable PATH.',\n        lines.join('\\n'),\n        {\n          args: JSON.stringify(['create', '--host', '192.168.55.15', '--days', '30']),\n          host: '192.168.55.15',\n          scopeDetail:\n            'Success is verified by actual native certificate/key files, not this receipt sentence.',\n        },\n      );\n\n      const lookup = await findAutoHttpsCertificateForHost({\n        host: '192.168.55.15',\n        certsDirAbs,\n      });\n      assert.equal(lookup.kind, 'found');\n      if (lookup.kind === 'found') {\n        const native = await validatePair(lookup.certificate.certPath, lookup.certificate.keyPath);\n        assert.ok(native.checkIP('192.168.55.15'));\n      }\n    } finally {\n      if (originalPath === undefined) {\n        delete process.env.PATH;\n      } else {\n        process.env.PATH = originalPath;\n      }\n    }\n  });\n}\n\nasync function testCertCliRejectsInvalidSubcommandOptions(): Promise<void> {\n  await withTempCertsDir(async (certsDirAbs) => {\n    const cases = [\n      ['self-cert'],\n      ['create', '--port', '5666'],\n      ['create', '--origin'],\n      ['status', '--days', '30'],\n      ['status', '--force'],\n      ['status', '--host', '192.168.55.10', '--host', '192.168.55.11'],\n    ];\n    for (const [index, args] of cases.entries()) {\n      const before = await fileBytes(certsDirAbs);\n      const exit = await captureCliExit(async () => {\n        await certCliMain(args, { certsDirAbs });\n      });\n      assert.equal(exit.code, 1);\n      assert.deepEqual(await fileBytes(certsDirAbs), before);\n      record(\n        'cli-invalid-options-' + index,\n        'The in-process cert CLI refuses this supplied subcommand/option combination, preserving certificate files.',\n        JSON.stringify({ stderr: exit.stderr, stdout: exit.stdout }, null, 2),\n        { args: JSON.stringify(args), exitCode: 1, filesUnchanged: true },\n      );\n    }\n  });\n}\n\nfunction testLanHostFiltering(): void {\n  assert.equal(isLanHttpsHost('localhost'), false);\n  assert.equal(isLanHttpsHost('loopback'), false);\n  assert.equal(isLanHttpsHost('127.0.0.1'), false);\n  assert.equal(isLanHttpsHost('127.9.8.7'), false);\n  assert.equal(isLanHttpsHost('::1'), false);\n  assert.equal(isLanHttpsHost('::ffff:127.0.0.1'), false);\n  assert.equal(isLanHttpsHost('::ffff:0.0.0.0'), false);\n  assert.equal(isLanHttpsHost('0.0.0.0'), false);\n  assert.equal(isLanHttpsHost('::'), false);\n  assert.equal(isLanHttpsHost('169.254.1.2'), false);\n  assert.equal(isLanHttpsHost('fe80::1'), false);\n  assert.equal(isLanHttpsHost('::ffff:192.168.55.10'), true);\n  assert.equal(isLanHttpsHost('192.168.55.10'), true);\n}\n\nasync function testDetectedHostsExcludeSimpleHostname(): Promise<void> {\n  await withPatchedDetectedHostname('cymp', async () => {\n    const hosts = await resolveLanHttpsHostsForBindHost('0.0.0.0');\n    assert.equal(hosts.includes('cymp'), false);\n  });\n}\n\nasync function testDetectedHostsIncludeQualifiedHostname(): Promise<void> {\n  await withPatchedDetectedHostname('cymp.lan', async () => {\n    const hosts = await resolveLanHttpsHostsForBindHost('0.0.0.0');\n    assert.equal(hosts.includes('cymp.lan'), true);\n  });\n}\n\nasync function main(): Promise<void> {\n  await withTempRtws(async () => {\n    testLanHostFiltering();\n    await testDetectedHostsExcludeSimpleHostname();\n    await testDetectedHostsIncludeQualifiedHostname();\n    await testCreateAndFindMatchingCertificate();\n    await testCreateCertificateWithDnsAndIpv6AltHosts();\n    await testCreateDoesNotRequireSystemOpenSsl();\n    await testLoopbackDoesNotEnableHttps();\n    await testForceRequiredForExistingFiles();\n    await testCertStatusDefaultsToDetectedHosts();\n    await testCertCliCreateDoesNotRequireSystemOpenSsl();\n    await testCertCliRejectsInvalidSubcommandOptions();\n  });\n  await evidence.write();\n  console.log('certificates tests: ok');\n}\n\nvoid main()\n  .then(() => {\n    process.exit(0);\n  })\n  .catch((error: unknown) => {\n    console.error(error instanceof Error ? (error.stack ?? error.message) : String(error));\n    process.exit(1);\n  });\n"
+      },
+      "correctionDiff": {
+        "sha256": "b219d8da4fb95040494e64f8ae3c4111e449dd4123dde6821b124fc594f61b13",
+        "fullText": "diff --git a/tmp/dominds-setup-network-cert-first.ts b/tests/certificates.ts\nindex c3d89c59..e29b156d 100644\n--- a/tmp/dominds-setup-network-cert-first.ts\n+++ b/tests/certificates.ts\n@@ -305,13 +305,20 @@ async function withPatchedDetectedHostname<T>(hostname: string, fn: () => Promis\n \n async function testCertStatusDefaultsToDetectedHosts(): Promise<void> {\n   await withTempCertsDir(async (certsDirAbs) => {\n+    const detectedHosts = await resolveLanHttpsHostsForBindHost('::');\n+    const detectedUrlHosts = detectedHosts.map(\n+      (host) => new URL('http://' + (host.includes(':') ? '[' + host + ']' : host)).hostname,\n+    );\n     const lines = await captureConsoleLog(async () => {\n       await certCliMain(['status', '--port', '5666', '--origin'], { certsDirAbs });\n     });\n     assert.equal(lines.length, 1);\n     const origin = new URL(lines[0]!);\n     assert.equal(origin.protocol, 'http:');\n-    assert.equal(origin.hostname, 'localhost');\n+    assert.ok(\n+      (detectedUrlHosts.length ? detectedUrlHosts : ['localhost']).includes(origin.hostname),\n+      'The default machine origin uses an actually detected host, with localhost only as the no-host fallback',\n+    );\n     assert.equal(origin.port, '5666');\n     assert.equal(origin.pathname, '/');\n     assert.equal(origin.search, '');\n",
+        "meaning": "Native URL checks now use the actual discovery address set or genuine no-host localhost fallback, while keeping single line/protocol/port/path/query/fragment checks. This fixes an unsupported fixture assumption, not product behavior."
+      }
+    },
+    "actualSemanticFailure": {
+      "initialOverall": {
+        "total": 16,
+        "passed": 10,
+        "failed": 6
+      },
+      "initialCertificate": {
+        "total": 12,
+        "passed": 6,
+        "failed": 6
+      },
+      "ids": [
+        "cli-invalid-options-0",
+        "cli-invalid-options-1",
+        "cli-invalid-options-2",
+        "cli-invalid-options-3",
+        "cli-invalid-options-4",
+        "cli-invalid-options-5"
+      ],
+      "finding": "Full attached help falsely made matching certificate material sound sufficient for automatic HTTPS, despite existing strict-mode disabling. The first error line remained correct; the full outputs still failed.",
+      "resolution": "Only existing help text clarified auto/strict/separate-TLS and origin-inference limits. All12 new certificate outputs were fully independently read; old auth/ws4 were unchanged actual materials, not regenerated."
+    },
+    "beforeProductSource": {
+      "path": "main/cli/cert.ts",
+      "baseRevision": "efa7758e26e9f9e9a32d908ade1bf162a15b2c9c",
+      "sha256": "aec04cf23678070c8526f2bf5d5e495b4ce387cd1736128fcc12c824825c749e",
+      "historicalCopyPath": "/tmp/dominds-setup-network-cert-cli-before.ts",
+      "copyByteIdenticalToBase": true,
+      "durableReconstruction": "git show efa7758e26e9f9e9a32d908ade1bf162a15b2c9c:main/cli/cert.ts"
+    },
+    "generationScope": "Initial16 plus fresh12 certificate outputs are28 distinct actual records. Four original auth/ws records are stored once in finalReview and referenced by the initial summary; no duplicate count or unexecuted semantic case is fabricated."
+  },
+  "limitations": [
+    "Original6/final6 and the listed support/product/entry/document boundaries are reviewed, not all remaining45 candidates.",
+    "Only auth1/cert12/ws3 original materials plus12 fresh certificate materials were generated/read in this batch. No other semantic lane or future output is accepted.",
+    "Certificate CLI is a module invoked in-process with captured console/exit, distinct from root CLI subprocess routing.",
+    "Auth helpers use native unconnected request fixtures, not a real HTTP authentication exchange. WS uses actual local protocol with auth disabled, not browser UI/live-dialog preferences/human or provider interaction.",
+    "Native local TLS trusts only the owned certificate and verifies advertised host; it does not establish browser/system trust, external LAN reachability, OS trust-store installation or arbitrary TLS environments.",
+    "Windows-shaped strings establish supplied data/encoding behavior only, not native Windows shell operation. env_local and explicit reload do not promise global OS persistence, RC edits or automatic reload.",
+    "Whole file byte snapshots prove preserved/changed data, not zero filesystem syscalls, crash atomicity or durable power-loss recovery. Force contract is effective renewed certificate/validity/keypair, not mandatory private-key regeneration.",
+    "Local port probes can race with the environment; only expected EADDRINUSE means occupied, prerequisites fail visibly and no product retry-until-green/timeout widening is claimed.",
+    "Parent verification remains for primary; inherited live-provider type error and unexecuted live/browser scenarios are not converted to passes."
+  ]
+}

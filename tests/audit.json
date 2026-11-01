@@ -1212,6 +1212,42 @@
       "lane": "provider-local",
       "value": "三provider的auto/required/none机器policy、无tool的可选none与必需拒绝、不支持字段省略；说明另评",
       "evidence": "Original7(1045lines) and complete final7/native SDK helper assertion review; tests/semantic/reviews/2026-10-31-provider-local.json. Supplied payload/whitespace preservation, identifiers, enum policy, counts, object identity and persisted bytes are machine/data contracts. Four explicit producers emit29 actual records for independent subjective review; no diagnostic, fallback, instruction sentence or display-label literal judges meaning. Local interception/component/configuration scope only; no model compliance, live vendor, elapsed reasoning-time, browser or billing claim. Fresh output always starts pending. Baseline6/7 with stale namespace; initial rewrite projection DTO expectation was a fixture mistake, not product red."
+    },
+    "auth.ts": {
+      "status": "reviewed",
+      "lane": "server-local",
+      "value": "原生请求组件的auth配置与给定header/subprotocol/URL机器值、生成key实际可用、disabled/missing/invalid及header优先；错误指导另评",
+      "evidence": "Complete original6(1147lines) and final6 assertion/business-scope review; tests/semantic/reviews/2026-10-31-server-local.json. Native protocol/data/URL encoding, supplied strings, counts, complete file bytes and observable effects are machine contracts. Three explicit producers emit16 actual guidance/refusal/CLI-help cases for independent subjective review; no error/receipt sentence or regex decides meaning. Initial5/6 was an unsupported localhost fixture assumption, not product red. Native local TLS is distinct from browser trust/remote LAN; request helper from HTTP authentication wire; language packets from live-dialog/browser preference changes. Unchanged setup-env-input remains a valuable data-only candidate. Fresh output starts pending."
+    },
+    "certificates.ts": {
+      "status": "reviewed",
+      "lane": "server-local",
+      "value": "原生SAN/keypair、无PATH生成、拒绝后完整cert/key/meta字节保全、force实际有效材料与到期改变、机器origin和CLI非法选项；实际帮助另评",
+      "evidence": "Complete original6(1147lines) and final6 assertion/business-scope review; tests/semantic/reviews/2026-10-31-server-local.json. Native protocol/data/URL encoding, supplied strings, counts, complete file bytes and observable effects are machine contracts. Three explicit producers emit16 actual guidance/refusal/CLI-help cases for independent subjective review; no error/receipt sentence or regex decides meaning. Initial5/6 was an unsupported localhost fixture assumption, not product red. Native local TLS is distinct from browser trust/remote LAN; request helper from HTTP authentication wire; language packets from live-dialog/browser preference changes. Unchanged setup-env-input remains a valuable data-only candidate. Fresh output starts pending."
+    },
+    "setup-env-input.ts": {
+      "status": "reviewed",
+      "lane": "server-local",
+      "value": "九组给定Windows/UNC/path/key/引号/反斜杠/真实LF/未闭合引用的paste归一化数据保真，仅纯组件",
+      "evidence": "Complete original6(1147lines) and final6 assertion/business-scope review; tests/semantic/reviews/2026-10-31-server-local.json. Native protocol/data/URL encoding, supplied strings, counts, complete file bytes and observable effects are machine contracts. Three explicit producers emit16 actual guidance/refusal/CLI-help cases for independent subjective review; no error/receipt sentence or regex decides meaning. Initial5/6 was an unsupported localhost fixture assumption, not product red. Native local TLS is distinct from browser trust/remote LAN; request helper from HTTP authentication wire; language packets from live-dialog/browser preference changes. Unchanged setup-env-input remains a valuable data-only candidate. Fresh output starts pending."
+    },
+    "setup-shell-env.ts": {
+      "status": "reviewed",
+      "lane": "server-local",
+      "value": "固定启动rtws中专用自定义provider环境值立即更新、真实dotenv Windows字节编码及删除后的load精确恢复，不碰用户shell rc",
+      "evidence": "Complete original6(1147lines) and final6 assertion/business-scope review; tests/semantic/reviews/2026-10-31-server-local.json. Native protocol/data/URL encoding, supplied strings, counts, complete file bytes and observable effects are machine contracts. Three explicit producers emit16 actual guidance/refusal/CLI-help cases for independent subjective review; no error/receipt sentence or regex decides meaning. Initial5/6 was an unsupported localhost fixture assumption, not product red. Native local TLS is distinct from browser trust/remote LAN; request helper from HTTP authentication wire; language packets from live-dialog/browser preference changes. Unchanged setup-env-input remains a valuable data-only candidate. Fresh output starts pending."
+    },
+    "webui-port-selection.ts": {
+      "status": "reviewed",
+      "lane": "server-local",
+      "value": "真实strict/up/down/default5666端口效果、实际native address、相邻/跳占TLS受ownedCA且校验advertisedhost；仅EADDRINUSE算占用",
+      "evidence": "Complete original6(1147lines) and final6 assertion/business-scope review; tests/semantic/reviews/2026-10-31-server-local.json. Native protocol/data/URL encoding, supplied strings, counts, complete file bytes and observable effects are machine contracts. Three explicit producers emit16 actual guidance/refusal/CLI-help cases for independent subjective review; no error/receipt sentence or regex decides meaning. Initial5/6 was an unsupported localhost fixture assumption, not product red. Native local TLS is distinct from browser trust/remote LAN; request helper from HTTP authentication wire; language packets from live-dialog/browser preference changes. Unchanged setup-env-input remains a valuable data-only candidate. Fresh output starts pending."
+    },
+    "ws-language.ts": {
+      "status": "reviewed",
+      "lane": "server-local",
+      "value": "本地真实HTTP升级/ws welcome语言/计数epoch、双向语言ack、无效请求后仍可用及事件驱动关闭；原诊断全文另评",
+      "evidence": "Complete original6(1147lines) and final6 assertion/business-scope review; tests/semantic/reviews/2026-10-31-server-local.json. Native protocol/data/URL encoding, supplied strings, counts, complete file bytes and observable effects are machine contracts. Three explicit producers emit16 actual guidance/refusal/CLI-help cases for independent subjective review; no error/receipt sentence or regex decides meaning. Initial5/6 was an unsupported localhost fixture assumption, not product red. Native local TLS is distinct from browser trust/remote LAN; request helper from HTTP authentication wire; language packets from live-dialog/browser preference changes. Unchanged setup-env-input remains a valuable data-only candidate. Fresh output starts pending."
     }
   },
   "retired": {

@@ -7,13 +7,13 @@
   "scripts": {
     "format": "prettier --write \"**/*.{js,mjs,jsx,ts,tsx,md,json}\"",
     "rtws": "tsx cli.ts",
-    "auth": "tsx auth.ts",
+    "auth": "pnpm run rtws -- --isolated-rtws auth.ts",
     "codex-auth-refresh": "tsx codex-auth-refresh.ts",
     "codex-auth-alignment": "tsx codex-auth-alignment.ts",
-    "certificates": "tsx certificates.ts",
-    "webui-port-selection": "tsx webui-port-selection.ts",
-    "setup-env-input": "tsx setup-env-input.ts",
-    "setup-shell-env": "tsx setup-shell-env.ts",
+    "certificates": "pnpm run rtws -- --isolated-rtws certificates.ts",
+    "webui-port-selection": "pnpm run rtws -- --isolated-rtws webui-port-selection.ts",
+    "setup-env-input": "pnpm run rtws -- --isolated-rtws setup-env-input.ts",
+    "setup-shell-env": "pnpm run rtws -- --isolated-rtws setup-shell-env.ts",
     "websocket-user-msg-generation-boundary": "tsx websocket-user-msg-generation-boundary.ts",
     "provider-tool-result-image-size-fallback": "pnpm run rtws -- --isolated-rtws provider/tool-result-image-size-fallback.ts",
     "provider-user-image-model-support": "pnpm run rtws -- --isolated-rtws provider/user-image-model-support.ts",
@@ -267,7 +267,10 @@
     "test:semantic:provider-local": "node run.mjs --suite provider-local --semantic",
     "anthropic-whitespace": "pnpm run rtws -- --isolated-rtws provider/anthropic-whitespace.ts",
     "codex-instructions": "pnpm run rtws -- --isolated-rtws provider/codex-instructions.ts",
-    "codex-service-tier": "pnpm run rtws -- --isolated-rtws provider/codex-service-tier.ts"
+    "codex-service-tier": "pnpm run rtws -- --isolated-rtws provider/codex-service-tier.ts",
+    "test:server-local": "node run.mjs --suite server-local",
+    "test:semantic:server-local": "node run.mjs --suite server-local --semantic",
+    "ws-language": "pnpm run rtws -- --isolated-rtws ws-language.ts"
   },
   "devDependencies": {
     "tsx": "^4.22.4",

@@ -565,3 +565,17 @@ prefix-sibling实际建独占自有包及正文，formatter不得注入它、合
 最终断言复查发现fetch中的夹具assert也可能被failed()当成产品Error吞掉；新增原生AssertionError类型保护。对同一受控错误model断言实测：无guard竟exit0，有guard正确exit1，均为测试设计探针而非产品red；临时源码/日志与完整探针结果耐久记录。只重采stream的五份实际诊断并重新独立全文评审，其余24份保留同一轮已评实际材料，不按hash接受新输出。旧五份实际语义曾通过，但其夹具设计缺口与修正仍保留。
 
 新增test:provider-local七项及test:semantic:provider-local四个明确producer，产生29份实际指导/诊断/catalog/标签上下文供独立全文主观评审，完整材料与最终范围见[本批记录](../tests/semantic/reviews/2026-10-31-provider-local.json)。本批无产品源码变更。当前290个TypeScript文件、37个support、253个候选，审查202项、余51项；套件外49项、缺单独script38项、失效入口/陈旧账本均零。完整test:types仅余Volc live-smoke原never一条，未以any、排除或弱化类型掩盖；本批不运行付费live探针，也不把它们计通过。
+
+### 本地服务、证书、环境输入与 WebSocket 批次
+
+原六项1147行完整审阅，旧基线6/6。auth保dev关闭、prod未设生成/空值关闭/给定key、HTTP与WebSocket token及origin/URL编码，用原生IncomingMessage/未连接Socket替代形状cast；生成key真正喂给两个check，补disabled/missing/非法header及有效fallback不覆盖错误Authorization。仅组件，不冒称真实认证交换。九组paste归一化全部保留给定path/key/引号/反斜杠/LF等数据精确比较；其源无改仍纳入审计。setup-shell-env改固定启动managed rtws和专用自定义provider允许的环境变量，取消CODEX_HOME复用、chdir与失败删盘，仍以真实.env.local字节和loadRtwsDotenv回读证明Windows路径保真，finally只恢复专用process env，不碰用户rc。
+
+证书保IPv4/DNS/IPv6 SAN、多host查找、PATH空无需系统OpenSSL、主机过滤和六类CLI非法option。补原生X509验证SAN/非匹配IP及私钥配对，不只依产品lookup自洽；no-force拒绝核cert/key/meta整个目录字节不变，force从3650变30天后核真实certificate raw及expiry改变、keypair可用、meta.days和lookup，不把换私钥算法当合同。失败证书目录保留，成功才清。删除所有创建成功句、错误解释regex等裁义，CLI帮助stdout也完整保留供评审。status --origin的单行纯URL是机器接口，核nativeURL协议/端口/path/search/hash以及实际discovery地址集合或无地址localhost fallback。首次重写误设hostname必为localhost，实测5/6时有真实LAN地址；原错夹具与日志保留，纠正预期后再验，不虚构产品red。证书CLI只在进程内捕获console/process.exit边界，无rootCLI子进程声明。
+
+端口保strict EADDRINUSE、up/down和default5666、strict禁自动HTTPS、邻接与跳占HTTPS。探测和固定默认占用只识别原生EADDRINUSE，其他错误立即暴露；不改外部占用服务、不用重跑产品或sleep遮失败。移除chdir，子场景顺序共用该文件的一个CLI rtws，原生Apps/MCP stop保留。证书host由给定地址结构选择，不匹配错误句。metadata之外核真实bound address，并对两个HTTPS场景真实tls.connect：只信任该owned证书，以advertised host做原生身份校验，查peer raw；未关闭证书验证，也不声称浏览器信任或远端LAN可达。平台缺host只作为明确前置失败，不计通过。
+
+WebSocket保真实HTTP0端口/ws升级、welcome zh与en/zh支持、counts同epoch/初零、en ack及未知packet拒绝，补非法language/非string请求后的同连接有效ack和zh切换。队列在close/error结束pending，不再等到超时才识别断连；cleanup等待真实close并关闭所有自有server/client。诊断正文完整另评，没有类型/关键词替代语义，也未进入真实dialog偏好或浏览器UI。
+
+初轮16份实际文本全文主观评审为10通过6拒绝：六份非法CLI选项虽准确拒绝，但附带的完整help无条件声称匹配证书即可自动启HTTPS，遗漏strict固定端口会禁用它的现有边界。以本批真实strict正控及现有server策略为事实，仅澄清help的auto/default/带符号端口与strict例外、独立HTTPS端口，并说明status --origin只用证书和给定输出端口推导，不探测运行中服务或其HTTPS端口。没有更改端口/权限/证书策略。重采整个证书producer12份须新评，auth1和ws3沿用同一已读实际材料，非接受新输出；原拒绝材料与来源保留。
+
+新增test:server-local六项及test:semantic:server-local三个明确producer，16份实际文本完整主观审查见[本批记录](../tests/semantic/reviews/2026-10-31-server-local.json)。本批产品改动仅上述已有CLI帮助文案，无依赖/框架改动；当前290TS、37support、253候选，审查208、余45项、套件外44项、缺单独script37项、失效入口和陈旧账本均零。完整test:types仍明确保留另一live-provider的一条继承错误，不以本批验收冒称全部通过。

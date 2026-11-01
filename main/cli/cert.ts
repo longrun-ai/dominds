@@ -22,11 +22,16 @@ Options:
   --days <days>      Certificate validity in days (default: ${DEFAULT_SELF_SIGNED_CERT_DAYS})
   --force            Overwrite existing generated files
   --port <port>      Port for status --origin output
-  --origin           Print only the effective origin, using https when a matching cert exists
+  --origin           Print a certificate-based origin, not running-server status
   --help             Show this help message
 
-Certificates live in ~/.dominds/certs/. A WebUI server automatically enables HTTPS when it finds
-a certificate/key pair that matches the bind host or, for 0.0.0.0/::, a detected non-loopback LAN host.
+Certificates live in ~/.dominds/certs/. Automatic WebUI port selection (the default, or
+--port 5666+ / --port 5666-) can start built-in HTTPS when a certificate/key pair matches
+the bind host or a detected non-loopback LAN host for 0.0.0.0/::. HTTPS uses a separate port.
+A bare --port 5666 is strict: built-in HTTPS stays disabled even if a matching certificate exists.
+cert status --origin combines certificate lookup with the given output port; it does not inspect
+a running server or discover its actual HTTPS port.
+
 `);
 }
 

@@ -1,13 +1,19 @@
 import assert from 'node:assert/strict';
+import { X509Certificate } from 'node:crypto';
+import { once } from 'node:events';
 import * as fs from 'node:fs/promises';
 import net from 'node:net';
-import os from 'node:os';
 import path from 'node:path';
+import tls from 'node:tls';
+import { withTempRtws as withManagedRtws } from './kernel-driver/helpers';
 
 import { shutdownAppsRuntime } from '../main/apps/runtime';
 import { stopMcpSupervisor } from '../main/mcp/supervisor';
 import { startServer, type StartedServer } from '../main/server';
-import { createSelfSignedCertificate } from '../main/server/certificates';
+import {
+  createSelfSignedCertificate,
+  findAutoHttpsCertificateForHost,
+} from '../main/server/certificates';
 import { resolveLanHttpsHostsForBindHost } from '../main/server/network-hosts';
 import { parseWebuiPortSpec } from '../main/server/port-selection';
 import '../main/tools/builtins';
@@ -92,8 +98,9 @@ async function canBindPort(port: number, host: string = '127.0.0.1'): Promise<bo
     const server = await bindTcpPort(port, host);
     await closeTcpServer(server);
     return true;
-  } catch {
-    return false;
+  } catch (error: unknown) {
+    if (error instanceof Error && 'code' in error && error.code === 'EADDRINUSE') return false;
+    throw error;
   }
 }
 
@@ -176,42 +183,64 @@ async function findFreePortWithOccupiedNextPort(): Promise<{
 }
 
 async function withTempCertsDir<T>(fn: (certsDirAbs: string) => Promise<T>): Promise<T> {
-  const certsDirAbs = await fs.mkdtemp(path.join(os.tmpdir(), 'dominds-webui-certs-'));
-  try {
-    return await fn(certsDirAbs);
-  } finally {
-    await fs.rm(certsDirAbs, { recursive: true, force: true });
-  }
+  const certsDirAbs = await fs.mkdtemp(path.join(process.cwd(), 'webui-cert-data-'));
+  console.log('Owned startup certificate fixture: ' + certsDirAbs);
+  const result = await fn(certsDirAbs);
+  await fs.rm(certsDirAbs, { recursive: true, force: true });
+  return result;
 }
 
 async function createBindAllHttpsCert(certsDirAbs: string): Promise<string> {
   const hosts = await resolveLanHttpsHostsForBindHost('0.0.0.0');
   for (const host of hosts) {
-    try {
-      await createSelfSignedCertificate({ host, certsDirAbs });
-      return host;
-    } catch (error: unknown) {
-      if (error instanceof Error && error.message.includes('--host must be a DNS name')) {
-        continue;
-      }
-      throw error;
-    }
+    // Supplied host structure determines eligibility; never classify a rejection by prose.
+    if (net.isIP(host) === 0 && !host.includes('.')) continue;
+    await createSelfSignedCertificate({ host, certsDirAbs });
+    return host;
   }
   throw new Error('Expected at least one certificate-valid non-loopback LAN host for HTTPS test');
 }
 
-async function withTempRtws<T>(fn: () => Promise<T>): Promise<T> {
-  const previousCwd = process.cwd();
-  const tmpRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'dominds-webui-port-selection-'));
+async function withTempRtws(fn: () => Promise<void>): Promise<void> {
+  await withManagedRtws(async (root) => {
+    await writeMinimalRtws(root);
+    try {
+      await fn();
+    } finally {
+      await shutdownAppsRuntime();
+      stopMcpSupervisor();
+    }
+  });
+}
+function assertBoundHttpPort(started: StartedServer, expected: number) {
+  assert.equal(started.port, expected);
+  const address = started.httpServer.getHttpServer().address();
+  assert.ok(address && typeof address === 'object');
+  assert.equal(address.port, expected);
+}
+async function assertTlsListener(started: StartedServer, certsDirAbs: string) {
+  assert.ok(started.httpsServer && started.httpsPort && started.httpsUrlHost);
+  const address = started.httpsServer.getHttpServer().address();
+  assert.ok(address && typeof address === 'object');
+  assert.equal(address.port, started.httpsPort);
+  const lookup = await findAutoHttpsCertificateForHost({ host: started.httpsUrlHost, certsDirAbs });
+  assert.equal(lookup.kind, 'found');
+  if (lookup.kind !== 'found') throw new Error('Expected actual startup certificate');
+  const ca = await fs.readFile(lookup.certificate.certPath);
+  const peerHost = started.httpsUrlHost;
+  // Trust only this owned certificate and verify its advertised host while connecting locally.
+  const socket = tls.connect({
+    host: '127.0.0.1',
+    port: started.httpsPort,
+    ca,
+    checkServerIdentity: (_host, peer) => tls.checkServerIdentity(peerHost, peer),
+  });
   try {
-    await writeMinimalRtws(tmpRoot);
-    process.chdir(tmpRoot);
-    return await fn();
+    await once(socket, 'secureConnect');
+    assert.equal(socket.authorized, true);
+    assert.deepEqual(socket.getPeerCertificate().raw, new X509Certificate(ca).raw);
   } finally {
-    process.chdir(previousCwd);
-    await shutdownAppsRuntime();
-    stopMcpSupervisor();
-    await fs.rm(tmpRoot, { recursive: true, force: true });
+    socket.destroy();
   }
 }
 
@@ -283,7 +312,7 @@ async function testAutoPortUp(): Promise<void> {
         portAutoDirection: 'up',
       });
       try {
-        assert.equal(started.port, expectedPort);
+        assertBoundHttpPort(started, expectedPort);
       } finally {
         await started.httpServer.stop();
       }
@@ -306,7 +335,7 @@ async function testAutoPortDown(): Promise<void> {
         portAutoDirection: 'down',
       });
       try {
-        assert.equal(started.port, expectedPort);
+        assertBoundHttpPort(started, expectedPort);
       } finally {
         await started.httpServer.stop();
       }
@@ -320,8 +349,8 @@ async function testDefaultPortIsAutoDown(): Promise<void> {
   let blocker: net.Server | null = null;
   try {
     blocker = await bindTcpPort(5666);
-  } catch {
-    blocker = null;
+  } catch (error: unknown) {
+    if (!(error instanceof Error && 'code' in error && error.code === 'EADDRINUSE')) throw error;
   }
 
   try {
@@ -336,6 +365,7 @@ async function testDefaultPortIsAutoDown(): Promise<void> {
           started.port < 5666,
           `expected default startup to fall below 5666, got ${started.port}`,
         );
+        assertBoundHttpPort(started, started.port);
       } finally {
         await started.httpServer.stop();
       }
@@ -361,7 +391,7 @@ async function testStrictPortDisablesBuiltInHttps(): Promise<void> {
         strictPort: true,
       });
       try {
-        assert.equal(started.port, port);
+        assertBoundHttpPort(started, port);
         assert.equal(started.httpsServer, undefined);
         assert.equal(started.httpsPort, undefined);
       } finally {
@@ -388,9 +418,10 @@ async function testAutoPortStartsAdjacentHttps(): Promise<void> {
           portAutoDirection: 'up',
         });
         try {
-          assert.equal(started.port, expectedHttpPort);
+          assertBoundHttpPort(started, expectedHttpPort);
           assert.equal(started.httpsPort, expectedHttpsPort);
           assert.equal(started.httpsUrlHost, certHost);
+          await assertTlsListener(started, certsDirAbs);
         } finally {
           await started.httpServer.stop();
         }
@@ -417,8 +448,9 @@ async function testHttpsPortSkipsOccupiedAdjacentPort(): Promise<void> {
           portAutoDirection: 'up',
         });
         try {
-          assert.equal(started.port, expectedHttpPort);
+          assertBoundHttpPort(started, expectedHttpPort);
           assert.equal(started.httpsPort, expectedHttpsPort);
+          await assertTlsListener(started, certsDirAbs);
         } finally {
           await started.httpServer.stop();
         }

@@ -1,51 +1,56 @@
 import assert from 'node:assert/strict';
 import fs from 'node:fs/promises';
-import os from 'node:os';
 import path from 'node:path';
 import { loadRtwsDotenv } from '../main/bootstrap/dotenv';
 import { handleWriteShellEnv } from '../main/server/setup-routes';
+import { withTempRtws } from './kernel-driver/helpers';
 
 async function main(): Promise<void> {
-  const oldCwd = process.cwd();
-  const oldCodexHome = process.env.CODEX_HOME;
-  const tmpRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'dominds-setup-shell-env-'));
-
+  const envVar = 'DOMINDS_TEST_SETUP_PATH';
+  const previousValue = process.env[envVar];
   try {
-    process.chdir(tmpRoot);
+    await withTempRtws(async (tmpRoot) => {
+      await fs.mkdir(path.join(tmpRoot, '.minds'), { recursive: true });
+      // Supplied local provider makes this dedicated test variable an allowed setup target.
+      await fs.writeFile(
+        path.join(tmpRoot, '.minds', 'llm.yaml'),
+        'providers:\n  setup-data:\n    name: Supplied setup provider\n    apiType: openai\n    baseUrl: https://example.invalid\n    apiKeyEnvVar: ' +
+          envVar +
+          '\n    models:\n      supplied-model: {}\n',
+      );
+      const expectedPath = String.raw`C:\Users\Administrator\.codex-JulianBrooks922012`;
+      const writeResult = await handleWriteShellEnv(
+        JSON.stringify({
+          envVar,
+          value: expectedPath,
+          target: 'env_local',
+        }),
+      );
 
-    const expectedCodexHome = String.raw`C:\Users\Administrator\.codex-JulianBrooks922012`;
-    const writeResult = await handleWriteShellEnv(
-      JSON.stringify({
-        envVar: 'CODEX_HOME',
-        value: expectedCodexHome,
-        target: 'env_local',
-      }),
-    );
+      assert.equal(writeResult.kind, 'ok');
+      assert.equal(process.env[envVar], expectedPath);
 
-    assert.equal(writeResult.kind, 'ok');
-    assert.equal(process.env.CODEX_HOME, expectedCodexHome);
+      const writtenRaw = await fs.readFile(path.join(tmpRoot, '.env.local'), 'utf-8');
+      assert.equal(
+        writtenRaw,
+        String.raw`DOMINDS_TEST_SETUP_PATH="C:\\Users\\Administrator\\.codex-JulianBrooks922012"` +
+          '\n',
+      );
 
-    const writtenRaw = await fs.readFile(path.join(tmpRoot, '.env.local'), 'utf-8');
-    assert.equal(
-      writtenRaw,
-      String.raw`CODEX_HOME="C:\\Users\\Administrator\\.codex-JulianBrooks922012"` + '\n',
-    );
+      delete process.env[envVar];
+      const loadResult = loadRtwsDotenv({ cwd: tmpRoot });
+      assert.deepEqual(loadResult.errors, []);
+      assert.equal(process.env[envVar], expectedPath);
 
-    delete process.env.CODEX_HOME;
-    const loadResult = loadRtwsDotenv({ cwd: tmpRoot });
-    assert.deepEqual(loadResult.errors, []);
-    assert.equal(process.env.CODEX_HOME, expectedCodexHome);
-
-    console.log('setup-shell-env tests: ok');
+      console.log('setup-shell-env tests: ok');
+    });
   } finally {
-    process.chdir(oldCwd);
-    if (oldCodexHome === undefined) {
-      delete process.env.CODEX_HOME;
-    } else {
-      process.env.CODEX_HOME = oldCodexHome;
-    }
-    await fs.rm(tmpRoot, { recursive: true, force: true });
+    if (previousValue === undefined) delete process.env[envVar];
+    else process.env[envVar] = previousValue;
   }
 }
 
-void main();
+main().catch((error: unknown) => {
+  console.error(error);
+  process.exitCode = 1;
+});

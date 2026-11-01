@@ -182,6 +182,14 @@ const shell = [
   'ripgrep-streaming.ts',
   'ripgrep-windows-compat.ts',
 ];
+const serverLocal = [
+  'auth.ts',
+  'certificates.ts',
+  'setup-env-input.ts',
+  'setup-shell-env.ts',
+  'webui-port-selection.ts',
+  'ws-language.ts',
+];
 const providerLocal = [
   'provider/anthropic-multi-tool-use-stream.ts',
   'provider/anthropic-stream-errors.ts',
@@ -193,6 +201,7 @@ const providerLocal = [
 ];
 const taskdoc = ['task-package.ts', 'taskdoc-search.ts', 'taskdoc-recall-budget.ts'];
 const semanticSuites = {
+  'server-local': ['auth.ts', 'certificates.ts', 'ws-language.ts'],
   'provider-local': [
     'provider/anthropic-stream-errors.ts',
     'provider/codex-instructions.ts',
@@ -369,6 +378,7 @@ export async function inventory() {
     shell,
     taskdoc,
     'provider-local': providerLocal,
+    'server-local': serverLocal,
   };
   const included = new Set(Object.values(suites).flat());
   const audit = JSON.parse(await fs.readFile(path.join(testsRoot, 'audit.json'), 'utf8'));
@@ -496,10 +506,11 @@ async function main() {
       'shell',
       'taskdoc',
       'provider-local',
+      'server-local',
     ].includes(args[1])
   ) {
     throw new Error(
-      'Usage: node tests/run.mjs --list | --suite smoke | --suite kernel | --suite context [--semantic] | --suite configuration [--semantic] | --suite manual [--semantic] | --suite filesystem [--semantic] | --suite persistence [--semantic] | --suite recovery [--semantic] | --suite bootstrap [--semantic] | --suite packaging [--semantic] | --suite retry [--semantic] | --suite projection [--semantic] | --suite compatible [--semantic] | --suite reminders [--semantic] | --suite daemon [--semantic] | --suite presentation [--semantic] | --suite components [--semantic] | --suite shell [--semantic] | --suite taskdoc [--semantic] | --suite provider-local [--semantic]',
+      'Usage: node tests/run.mjs --list | --suite smoke | --suite kernel | --suite context [--semantic] | --suite configuration [--semantic] | --suite manual [--semantic] | --suite filesystem [--semantic] | --suite persistence [--semantic] | --suite recovery [--semantic] | --suite bootstrap [--semantic] | --suite packaging [--semantic] | --suite retry [--semantic] | --suite projection [--semantic] | --suite compatible [--semantic] | --suite reminders [--semantic] | --suite daemon [--semantic] | --suite presentation [--semantic] | --suite components [--semantic] | --suite shell [--semantic] | --suite taskdoc [--semantic] | --suite provider-local [--semantic] | --suite server-local [--semantic]',
     );
   }
   const suite = args[1];

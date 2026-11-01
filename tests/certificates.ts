@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { X509Certificate, createPrivateKey } from 'node:crypto';
 import * as fs from 'node:fs/promises';
 import { createRequire } from 'node:module';
 import * as os from 'node:os';
@@ -11,16 +12,58 @@ import {
 } from '../main/server/certificates';
 import { isLanHttpsHost, resolveLanHttpsHostsForBindHost } from '../main/server/network-hosts';
 
+import { semanticEvidenceCollector } from './helpers/semantic-evidence';
+import { withTempRtws } from './kernel-driver/helpers';
+
+const evidence = semanticEvidenceCollector('dominds-server-certificates-');
+const record = (
+  id: string,
+  scenario: string,
+  actualText: string,
+  context: Record<string, string | number | boolean>,
+) =>
+  evidence.record({
+    id,
+    scenario,
+    businessValue:
+      'An operator can create or renew the intended local certificate without losing existing material through a refused request, and can understand actual CLI recovery guidance.',
+    context: {
+      ...context,
+      scope:
+        'Actual local certificate/key files and native X509 validation; cert CLI module runs in-process with captured console/process.exit boundary. No root CLI process, browser trust, remote TLS client or live LAN reachability is established.',
+    },
+    reviewQuestions: [
+      'Does the complete actual output accurately describe this supplied request, its observed file effects and a usable correction without claiming an operation that did not occur?',
+    ],
+    actualText,
+  });
+async function fileBytes(directory: string) {
+  return Object.fromEntries(
+    await Promise.all(
+      (await fs.readdir(directory))
+        .sort()
+        .map(async (name) => [
+          name,
+          (await fs.readFile(path.join(directory, name))).toString('base64'),
+        ]),
+    ),
+  );
+}
+async function validatePair(certPath: string, keyPath: string) {
+  const cert = new X509Certificate(await fs.readFile(certPath));
+  assert.equal(cert.checkPrivateKey(createPrivateKey(await fs.readFile(keyPath))), true);
+  return cert;
+}
+
 const requireFn = createRequire(__filename);
 const mutableOs = requireFn('node:os') as typeof os;
 
 async function withTempCertsDir<T>(fn: (certsDirAbs: string) => Promise<T>): Promise<T> {
   const certsDirAbs = await fs.mkdtemp(path.join(os.tmpdir(), 'dominds-certs-'));
-  try {
-    return await fn(certsDirAbs);
-  } finally {
-    await fs.rm(certsDirAbs, { recursive: true, force: true });
-  }
+  console.log('Owned certificate fixture: ' + certsDirAbs);
+  const result = await fn(certsDirAbs);
+  await fs.rm(certsDirAbs, { recursive: true, force: true }); // Failed evidence remains.
+  return result;
 }
 
 async function testCreateAndFindMatchingCertificate(): Promise<void> {
@@ -31,6 +74,9 @@ async function testCreateAndFindMatchingCertificate(): Promise<void> {
       certsDirAbs,
     });
     assert.equal(created.host, '192.168.55.10');
+    const native = await validatePair(created.certPath, created.keyPath);
+    assert.ok(native.checkIP('192.168.55.10'));
+    assert.equal(native.checkIP('192.168.55.99'), undefined);
 
     const lookup = await findAutoHttpsCertificateForHost({
       host: '192.168.55.10',
@@ -55,6 +101,10 @@ async function testCreateCertificateWithDnsAndIpv6AltHosts(): Promise<void> {
     });
     assert.deepEqual(created.hosts, ['192.168.55.13', 'dominds-test.lan', 'fd00::55']);
 
+    const native = await validatePair(created.certPath, created.keyPath);
+    assert.ok(native.checkIP('192.168.55.13'));
+    assert.ok(native.checkHost('dominds-test.lan'));
+    assert.ok(native.checkIP('fd00::55'));
     for (const host of created.hosts) {
       const lookup = await findAutoHttpsCertificateForHost({ host, certsDirAbs });
       assert.equal(lookup.kind, 'found');
@@ -95,42 +145,25 @@ async function testCreateDoesNotRequireSystemOpenSsl(): Promise<void> {
 
 async function testLoopbackDoesNotEnableHttps(): Promise<void> {
   await withTempCertsDir(async (certsDirAbs) => {
-    await assert.rejects(
-      () =>
-        createSelfSignedCertificate({
-          host: '127.0.0.1',
-          days: 3650,
-          certsDirAbs,
-        }),
-      /must not be localhost, loopback, 127\.0\.0\.0\/8, 169\.254\.0\.0\/16, ::1, fe80::\/10, 0\.0\.0\.0, or ::/,
-    );
-    await assert.rejects(
-      () =>
-        createSelfSignedCertificate({
-          host: '0.0.0.0',
-          days: 3650,
-          certsDirAbs,
-        }),
-      /must not be localhost, loopback, 127\.0\.0\.0\/8, 169\.254\.0\.0\/16, ::1, fe80::\/10, 0\.0\.0\.0, or ::/,
-    );
-    await assert.rejects(
-      () =>
-        createSelfSignedCertificate({
-          host: '169.254.1.2',
-          days: 3650,
-          certsDirAbs,
-        }),
-      /169\.254\.0\.0\/16/,
-    );
-    await assert.rejects(
-      () =>
-        createSelfSignedCertificate({
-          host: 'fe80::1',
-          days: 3650,
-          certsDirAbs,
-        }),
-      /fe80::\/10/,
-    );
+    for (const [index, host] of ['127.0.0.1', '0.0.0.0', '169.254.1.2', 'fe80::1'].entries()) {
+      const before = await fileBytes(certsDirAbs);
+      let detail = '';
+      await assert.rejects(
+        () => createSelfSignedCertificate({ host, days: 3650, certsDirAbs }),
+        (error: unknown) => {
+          assert.ok(error instanceof Error);
+          detail = error.message;
+          return true;
+        },
+      );
+      assert.deepEqual(await fileBytes(certsDirAbs), before);
+      record(
+        'invalid-host-' + index,
+        'A supplied loopback, bind-all or link-local host is refused for certificate creation.',
+        detail,
+        { host, days: 3650, certificateFilesUnchanged: true },
+      );
+    }
 
     const lookup = await findAutoHttpsCertificateForHost({
       host: '127.0.0.1',
@@ -143,28 +176,46 @@ async function testLoopbackDoesNotEnableHttps(): Promise<void> {
 
 async function testForceRequiredForExistingFiles(): Promise<void> {
   await withTempCertsDir(async (certsDirAbs) => {
-    await createSelfSignedCertificate({
+    const first = await createSelfSignedCertificate({
       host: '192.168.55.11',
       days: 3650,
       certsDirAbs,
     });
-
+    const old = await validatePair(first.certPath, first.keyPath);
+    const before = await fileBytes(certsDirAbs);
+    let detail = '';
     await assert.rejects(
-      () =>
-        createSelfSignedCertificate({
-          host: '192.168.55.11',
-          days: 3650,
-          certsDirAbs,
-        }),
-      /Refusing to overwrite existing certificate file/,
+      () => createSelfSignedCertificate({ host: '192.168.55.11', days: 30, certsDirAbs }),
+      (error: unknown) => {
+        assert.ok(error instanceof Error);
+        detail = error.message;
+        return true;
+      },
     );
-
-    await createSelfSignedCertificate({
+    assert.deepEqual(await fileBytes(certsDirAbs), before);
+    record(
+      'existing-certificate-refused',
+      'An otherwise valid request tries to replace a real certificate/key/metadata bundle without force.',
+      detail,
+      { host: '192.168.55.11', requestedDays: 30, existingDays: 3650, filesUnchanged: true },
+    );
+    const renewed = await createSelfSignedCertificate({
       host: '192.168.55.11',
-      days: 3650,
+      days: 30,
       certsDirAbs,
       force: true,
     });
+    const current = await validatePair(renewed.certPath, renewed.keyPath);
+    assert.ok(current.checkIP('192.168.55.11'));
+    assert.notDeepEqual(current.raw, old.raw);
+    assert.ok(Date.parse(current.validTo) < Date.parse(old.validTo));
+    assert.deepEqual((await fs.readdir(certsDirAbs)).sort(), Object.keys(before));
+    const metadata: unknown = JSON.parse(await fs.readFile(renewed.metadataPath, 'utf8'));
+    assert.ok(typeof metadata === 'object' && metadata !== null && 'days' in metadata);
+    assert.equal(metadata.days, 30);
+    const lookup = await findAutoHttpsCertificateForHost({ host: '192.168.55.11', certsDirAbs });
+    assert.equal(lookup.kind, 'found');
+    if (lookup.kind === 'found') assert.equal(lookup.certificate.certPath, renewed.certPath);
   });
 }
 
@@ -208,16 +259,18 @@ class CapturedProcessExit extends Error {
 async function captureCliExit(fn: () => Promise<void>): Promise<{
   code: string | number | null | undefined;
   stderr: readonly string[];
+  stdout: readonly string[];
 }> {
   const originalExit = process.exit;
   const originalError = console.error;
   const originalLog = console.log;
   const stderr: string[] = [];
+  const stdout: string[] = [];
   console.error = (...args: readonly unknown[]): void => {
     stderr.push(args.map((arg) => String(arg)).join(' '));
   };
-  console.log = (): void => {
-    // Suppress help text during expected parse failures.
+  console.log = (...args: readonly unknown[]): void => {
+    stdout.push(args.map((arg) => String(arg)).join(' '));
   };
   process.exit = ((code?: string | number | null | undefined): never => {
     throw new CapturedProcessExit(code);
@@ -226,7 +279,7 @@ async function captureCliExit(fn: () => Promise<void>): Promise<{
     await fn();
   } catch (error: unknown) {
     if (error instanceof CapturedProcessExit) {
-      return { code: error.code, stderr };
+      return { code: error.code, stderr, stdout };
     }
     throw error;
   } finally {
@@ -252,11 +305,24 @@ async function withPatchedDetectedHostname<T>(hostname: string, fn: () => Promis
 
 async function testCertStatusDefaultsToDetectedHosts(): Promise<void> {
   await withTempCertsDir(async (certsDirAbs) => {
+    const detectedHosts = await resolveLanHttpsHostsForBindHost('::');
+    const detectedUrlHosts = detectedHosts.map(
+      (host) => new URL('http://' + (host.includes(':') ? '[' + host + ']' : host)).hostname,
+    );
     const lines = await captureConsoleLog(async () => {
       await certCliMain(['status', '--port', '5666', '--origin'], { certsDirAbs });
     });
     assert.equal(lines.length, 1);
-    assert.match(lines[0], /^http:\/\/.+:5666$/);
+    const origin = new URL(lines[0]!);
+    assert.equal(origin.protocol, 'http:');
+    assert.ok(
+      (detectedUrlHosts.length ? detectedUrlHosts : ['localhost']).includes(origin.hostname),
+      'The default machine origin uses an actually detected host, with localhost only as the no-host fallback',
+    );
+    assert.equal(origin.port, '5666');
+    assert.equal(origin.pathname, '/');
+    assert.equal(origin.search, '');
+    assert.equal(origin.hash, '');
   });
 }
 
@@ -270,13 +336,27 @@ async function testCertCliCreateDoesNotRequireSystemOpenSsl(): Promise<void> {
           certsDirAbs,
         });
       });
-      assert.equal(lines[0], 'Created self-signed certificate for 192.168.55.15');
+      record(
+        'cli-created-certificate',
+        'The in-process cert CLI creates an actual 30-day certificate with no system executable PATH.',
+        lines.join('\n'),
+        {
+          args: JSON.stringify(['create', '--host', '192.168.55.15', '--days', '30']),
+          host: '192.168.55.15',
+          scopeDetail:
+            'Success is verified by actual native certificate/key files, not this receipt sentence.',
+        },
+      );
 
       const lookup = await findAutoHttpsCertificateForHost({
         host: '192.168.55.15',
         certsDirAbs,
       });
       assert.equal(lookup.kind, 'found');
+      if (lookup.kind === 'found') {
+        const native = await validatePair(lookup.certificate.certPath, lookup.certificate.keyPath);
+        assert.ok(native.checkIP('192.168.55.15'));
+      }
     } finally {
       if (originalPath === undefined) {
         delete process.env.PATH;
@@ -289,24 +369,27 @@ async function testCertCliCreateDoesNotRequireSystemOpenSsl(): Promise<void> {
 
 async function testCertCliRejectsInvalidSubcommandOptions(): Promise<void> {
   await withTempCertsDir(async (certsDirAbs) => {
-    const cases: ReadonlyArray<Readonly<{ args: readonly string[]; message: RegExp }>> = [
-      { args: ['self-cert'], message: /Unknown cert subcommand 'self-cert'/ },
-      { args: ['create', '--port', '5666'], message: /--port is only valid for cert status/ },
-      { args: ['create', '--origin'], message: /--origin is only valid for cert status/ },
-      { args: ['status', '--days', '30'], message: /--days is only valid for cert create/ },
-      { args: ['status', '--force'], message: /--force is only valid for cert create/ },
-      {
-        args: ['status', '--host', '192.168.55.10', '--host', '192.168.55.11'],
-        message: /--host can only be repeated for cert create/,
-      },
+    const cases = [
+      ['self-cert'],
+      ['create', '--port', '5666'],
+      ['create', '--origin'],
+      ['status', '--days', '30'],
+      ['status', '--force'],
+      ['status', '--host', '192.168.55.10', '--host', '192.168.55.11'],
     ];
-    for (const item of cases) {
+    for (const [index, args] of cases.entries()) {
+      const before = await fileBytes(certsDirAbs);
       const exit = await captureCliExit(async () => {
-        await certCliMain(item.args, { certsDirAbs });
+        await certCliMain(args, { certsDirAbs });
       });
       assert.equal(exit.code, 1);
-      assert.ok(exit.stderr.length > 0);
-      assert.match(exit.stderr[0], item.message);
+      assert.deepEqual(await fileBytes(certsDirAbs), before);
+      record(
+        'cli-invalid-options-' + index,
+        'The in-process cert CLI refuses this supplied subcommand/option combination, preserving certificate files.',
+        JSON.stringify({ stderr: exit.stderr, stdout: exit.stdout }, null, 2),
+        { args: JSON.stringify(args), exitCode: 1, filesUnchanged: true },
+      );
     }
   });
 }
@@ -342,17 +425,20 @@ async function testDetectedHostsIncludeQualifiedHostname(): Promise<void> {
 }
 
 async function main(): Promise<void> {
-  testLanHostFiltering();
-  await testDetectedHostsExcludeSimpleHostname();
-  await testDetectedHostsIncludeQualifiedHostname();
-  await testCreateAndFindMatchingCertificate();
-  await testCreateCertificateWithDnsAndIpv6AltHosts();
-  await testCreateDoesNotRequireSystemOpenSsl();
-  await testLoopbackDoesNotEnableHttps();
-  await testForceRequiredForExistingFiles();
-  await testCertStatusDefaultsToDetectedHosts();
-  await testCertCliCreateDoesNotRequireSystemOpenSsl();
-  await testCertCliRejectsInvalidSubcommandOptions();
+  await withTempRtws(async () => {
+    testLanHostFiltering();
+    await testDetectedHostsExcludeSimpleHostname();
+    await testDetectedHostsIncludeQualifiedHostname();
+    await testCreateAndFindMatchingCertificate();
+    await testCreateCertificateWithDnsAndIpv6AltHosts();
+    await testCreateDoesNotRequireSystemOpenSsl();
+    await testLoopbackDoesNotEnableHttps();
+    await testForceRequiredForExistingFiles();
+    await testCertStatusDefaultsToDetectedHosts();
+    await testCertCliCreateDoesNotRequireSystemOpenSsl();
+    await testCertCliRejectsInvalidSubcommandOptions();
+  });
+  await evidence.write();
   console.log('certificates tests: ok');
 }
 
