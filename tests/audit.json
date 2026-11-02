@@ -1793,9 +1793,9 @@
     "provider/openai-reasoning-mode.ts": {
       "status": "reviewed",
       "lane": "provider-local",
-      "value": "Explicit standard/pro mode is independent of effort, survives native request construction and real rtws setup/parser/YAML readback, remains visible in structured generation metadata, and leaves old mode omission intact.",
-      "evidence": "tests/semantic/reviews/2026-11-01-openai-pro.json; independent complete current test/assertion review explicitly authorized this identity after the final presence checks. Native wrapper with controlled external boundary; exact payload/opaque data/IDs, enum values, metadata kind/value, real YAML/DTO and Problem lifecycle.12 actual guidance/formatter/diagnostic materials receive separate subjective verdicts; source identity is not a fresh semantic oracle. Real gateway/browser evidence has separate explicit scope in tests/audits/2026-11-01-openai-pro.json.",
-      "reviewedSourceSha256": "95b17b15d80ed04a89881cbc35ba51c958849b47862d1dea8e6e65c7fe119db6"
+      "value": "Explicit standard/pro mode and native request fields; direct local short-name routing to a verified wire ID while real rtws/setup/member selection and configured/reported identities are preserved; malformed wire IDs refuse before any request; legacy omission remains intact.",
+      "evidence": "tests/audits/2026-11-02-openai-local-alias.json; independent complete current487-line candidate/core diff source review explicitly authorized this identity before gated execution. tests/semantic/reviews/2026-11-02-openai-local-alias.json retains fresh18 controlled text verdicts and final guidance/protocol review, separate from source identity. Existing12 Pro cases plus2 streamed short-name identity cases and4 native invalid-wire-ID diagnostics; exact values protect payload/opaque/config/identity contracts, not meaning. Local streamed routing is not an upstream-alias or dynamic batch-alias claim; live gateway and historical browser scopes remain separate.",
+      "reviewedSourceSha256": "973518cb453b12b14e95702be79d94060d5f590b164e12b57ac76f41e90fecb6"
     }
   },
   "retired": {

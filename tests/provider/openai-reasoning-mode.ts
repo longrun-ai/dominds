@@ -8,6 +8,7 @@ import { getProblemsSnapshot } from '../../main/problems';
 import { buildSetupStatusResponse, handleWriteTeamYaml } from '../../main/server/setup-routes';
 import { Team } from '../../main/team';
 import { formatGenerationModelPresentation } from '../../webapp/src/components/generation-model-presentation';
+import { liveCapture } from '../helpers/live-provider';
 import { semanticEvidenceCollector } from '../helpers/semantic-evidence';
 import { withTempRtws } from '../kernel-driver/helpers';
 
@@ -20,12 +21,18 @@ async function main(): Promise<void> {
   const suppliedOutput = 'opaque-response-data:4dc9';
   const builtin = (await LlmConfig.load()).getProvider('openai');
   assert.ok(builtin);
+  assert.equal(builtin.models['gpt-5.6'].model_id, 'gpt-5.6-sol');
   const provider: ProviderConfig = {
     ...builtin,
     name: 'Controlled Responses peer',
     baseUrl: 'https://mode-peer.invalid/v1',
     apiKeyEnvVar: envVar,
-    models: { 'gpt-6.1-sol': {}, 'gpt-5.4': {} },
+    models: {
+      'gpt-6.1-sol': {},
+      'gpt-5.4': {},
+      'gpt-5.6': { model_id: 'gpt-5.6-sol', context_length: 1050000 },
+      'gpt-5.6-sol': { context_length: 1050000 },
+    },
   };
   const context: ChatMessage[] = [
     {
@@ -168,6 +175,164 @@ async function main(): Promise<void> {
       );
     }
     assert.equal(requests.length, cases.length);
+
+    await withTempRtws(async () => {
+      await fs.writeFile(
+        '.minds/llm.yaml',
+        YAML.stringify({ providers: { controlled: provider } }),
+      );
+      await fs.writeFile(
+        '.minds/team.yaml',
+        YAML.stringify({
+          member_defaults: { provider: 'controlled', model: 'gpt-5.6' },
+          members: { executor: { name: 'Executor' } },
+        }),
+      );
+      const loaded = (await LlmConfig.load()).getProvider('controlled');
+      assert.ok(loaded);
+      const aliasAgent = (await Team.load()).getMember('executor');
+      assert.ok(aliasAgent);
+      assert.equal(aliasAgent.model, 'gpt-5.6');
+      assert.equal(loaded.models[aliasAgent.model].context_length, 1050000);
+      const status = await buildSetupStatusResponse();
+      assert.equal(status.teamYaml.memberDefaults?.model, 'gpt-5.6');
+      assert.ok(
+        status.providers
+          .find((value) => value.providerKey === 'controlled')
+          ?.models.some((model) => model.key === 'gpt-5.6'),
+      );
+      for (const mode of ['standard', 'pro'] as const) {
+        aliasAgent.model_params = { openai: { reasoning_mode: mode, reasoning_effort: 'high' } };
+        globalThis.fetch = async (input, init) => {
+          const request = new Request(input, init);
+          assert.equal(request.url, 'https://mode-peer.invalid/v1/responses');
+          const payload = JSON.parse(await request.text());
+          requests.push(payload);
+          const events = [
+            { type: 'response.output_text.delta', delta: suppliedOutput },
+            {
+              type: 'response.completed',
+              response: {
+                id: 'alias-response-data:1',
+                status: 'completed',
+                model: 'gpt-5.6-sol',
+                usage: { input_tokens: 3, output_tokens: 2, total_tokens: 5 },
+              },
+            },
+          ];
+          return new Response(
+            events.map((event) => 'data: ' + JSON.stringify(event) + '\n\n').join(''),
+            {
+              headers: { 'content-type': 'text/event-stream' },
+            },
+          );
+        };
+        const capture = liveCapture(1);
+        const result = await new OpenAiGen().genToReceiver(
+          loaded,
+          aliasAgent,
+          '',
+          [],
+          {
+            dialogSelfId: 'alias-test',
+            dialogRootId: 'alias-test',
+            providerKey: 'controlled',
+            modelKey: aliasAgent.model,
+            toolUseRequirement: 'none',
+          },
+          context,
+          capture.receiver,
+          1,
+          AbortSignal.timeout(5000),
+        );
+        capture.assertComplete();
+        assert.equal(requests.at(-1)?.model, 'gpt-5.6-sol');
+        assert.deepEqual(requests.at(-1)?.reasoning, { mode, effort: 'high' });
+        assert.equal(requests.at(-1)?.stream, true);
+        assert.equal(capture.capture.sayingChunks.join(''), suppliedOutput);
+        assert.equal(result.llmGenModel, 'gpt-5.6-sol');
+        assert.equal(aliasAgent.model, 'gpt-5.6');
+        assert.equal(
+          YAML.parse(await fs.readFile('.minds/team.yaml', 'utf8')).member_defaults.model,
+          'gpt-5.6',
+        );
+        const metadata = buildLlmGenerationMetadata({
+          providerId: 'controlled',
+          configuredModelId: aliasAgent.model,
+          reportedModelId: result.llmGenModel,
+          providerConfig: loaded,
+          modelParams: aliasAgent.model_params,
+        });
+        assert.equal(metadata.modelId, 'gpt-5.6-sol');
+        const configuredIdentity = metadata.fields.find(
+          (field) => field.key === 'configured-model-id',
+        );
+        assert.ok(configuredIdentity?.kind === 'set');
+        assert.equal(configuredIdentity.value, 'gpt-5.6');
+        record(
+          'local-alias-' + mode,
+          'The operator keeps a short configured model name while the native OpenAI request uses its explicit canonical wire ID; persisted selection and reported identity stay distinct.',
+          JSON.stringify(
+            { metadata, presentation: formatGenerationModelPresentation(metadata) },
+            null,
+            2,
+          ),
+          {
+            configuredModel: 'gpt-5.6',
+            suppliedWireModel: 'gpt-5.6-sol',
+            reportedModel: result.llmGenModel,
+            mode,
+            effort: 'high',
+          },
+        );
+      }
+      assert.equal(requests.length, cases.length + 2);
+      for (const invalid of ['', ' gpt-5.6-sol', 42, null]) {
+        await fs.writeFile(
+          '.minds/llm.yaml',
+          YAML.stringify({
+            providers: {
+              controlled: {
+                ...provider,
+                models: { ...provider.models, 'gpt-5.6': { model_id: invalid } },
+              },
+            },
+          }),
+        );
+        const invalidProvider = (await LlmConfig.load()).getProvider('controlled');
+        assert.ok(invalidProvider);
+        await assert.rejects(
+          new OpenAiGen().genToReceiver(
+            invalidProvider,
+            aliasAgent,
+            '',
+            [],
+            {
+              dialogSelfId: 'alias-test',
+              dialogRootId: 'alias-test',
+              providerKey: 'controlled',
+              modelKey: aliasAgent.model,
+              toolUseRequirement: 'none',
+            },
+            context,
+            liveCapture(1).receiver,
+            1,
+            AbortSignal.timeout(5000),
+          ),
+          (error: unknown) => {
+            assert.ok(error instanceof Error);
+            record(
+              'invalid-wire-model-' + JSON.stringify(invalid),
+              'An otherwise valid configured short name has an invalid explicit OpenAI wire model ID; generation refuses it before sending any request.',
+              error.message,
+              { configuredModel: 'gpt-5.6', suppliedModelId: JSON.stringify(invalid) },
+            );
+            return true;
+          },
+        );
+        assert.equal(requests.length, cases.length + 2);
+      }
+    });
     globalThis.fetch = originalFetch;
 
     await withTempRtws(async () => {

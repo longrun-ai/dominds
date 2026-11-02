@@ -58,7 +58,7 @@ GPT-6 的 Pro 是 Responses 执行模式，使用真实模型 ID 加 `reasoning.
 | GPT-6   | `gpt-6-astra`、`gpt-6-sol`、`gpt-6-luna`                              |
 | GPT-5.6 | `gpt-5.6-sol`、`gpt-5.6-terra`、`gpt-5.6-luna`；`gpt-5.6` 是 Sol 别名 |
 
-依据[官方模式支持范围](https://developers.openai.com/api/docs/guides/reasoning#reasoning-mode)与[型号/别名说明](https://developers.openai.com/api/docs/guides/latest-model)。网关使用相应的 `openai/` 前缀 ID。2026-11-02 实测中，表内8个规范型号的 standard/pro × high 全部通过流式工具往返；官方别名 `openai/gpt-5.6` 的两个模式均被当前网关 Virtual Key 以403拒绝，应在此网关使用已验证的 `openai/gpt-5.6-sol`。别名是官方支持与当前网关实际可用性的差异，不能据此删除官方 provider 中的合法别名。详见下述本轮矩阵。
+依据[官方模式支持范围](https://developers.openai.com/api/docs/guides/reasoning#reasoning-mode)与[型号/别名说明](https://developers.openai.com/api/docs/guides/latest-model)。网关使用相应的 `openai/` 前缀 ID。2026-11-02 首轮实测中，表内8个规范型号的 standard/pro × high 全部通过流式工具往返；把官方短名 `openai/gpt-5.6` 原样发给当前网关时，两个模式都被 Virtual Key 以403拒绝。当前配置改用下述 Dominds 本地短名映射，实际发送已验证的 `openai/gpt-5.6-sol`；原始直接短名失败仍保留，不能视为网关已经支持上游别名。
 
 该范围适用于 OpenAI Responses，不外推到 Codex 或 Chat Completions。旧 `gpt-5.5-pro` 等仍是独立模型 ID，沿用各自行为和计费；不要向其它旧模型通用添加此开关。Astra 支持 Pro，effort 支持 low / medium / high / xhigh / max，Pro 下 effort 仍有效；当前 high 的两个模式均已实测。
 
@@ -91,9 +91,17 @@ members:
 
 初始化时，在 `/setup` 先选 provider 与模型，再独立选择 `reasoning_mode` 和 effort，检查生成的 `member_defaults` 预览后保存。重新加载 setup 会读回已保存的参数；手动更改的选择不会被随后状态刷新重置。模式控件没有预选默认值，省略 mode 保持既有请求不发送该字段；官方默认采用 standard。仅对支持该参数的 GPT-5.6/GPT-6 选择 standard/pro，切换到不支持的旧模型时保持未设置。已有旧 rtws 不会被自动切换为 Pro。配置显示的是选择，不是上游执行结果的证明。
 
-无需添加 `gpt-6-pro` 或 `gpt-6.1-sol-pro` 模型条目。当前配置中的模型键直接用于请求，`name` 仅为显示名称，不会把本地虚构 ID 映射为另一个上游模型。
+无需添加 `gpt-6-pro` 或 `gpt-6.1-sol-pro` 模型条目；Pro 使用独立的 mode 参数。模型配置中的 `name` 仅用于显示，短名到实际请求 ID 的显式映射见下一节。
 
-### 本轮流式 high 矩阵
+### 短名与实际请求 ID
+
+原生 OpenAI Responses 支持 `providers.<provider>.models.<配置键>.model_id`：未配置时原样发送配置键；配置后直接发送该值，不解析别名链，也不在失败后自动换模型。内置 `openai` 的 `gpt-5.6` 设置 `model_id: gpt-5.6-sol`，跟随[官方短名映射](https://developers.openai.com/api/docs/models/gpt-5.6-sol)。完整网关样例同样提供配置键 `openai/gpt-5.6`，其 `model_id` 为 `openai/gpt-5.6-sol`；无需改网关目录或权限。
+
+成员在 `.minds/team.yaml` 中可以继续选择短名。setup 保存和重载仍保留该配置键，上下文预算使用该键的模型元数据；执行记录展示实际返回的型号，并保留配置短名供核对。配置映射时应同步目标型号的容量、预算等元数据；更新官方映射后，先验证对应 provider 的目标 ID，再验收短名路径。若需要额外路由机制或没有实测目标，则仅公开实测可用 ID。本次不扩展到其它 provider wrapper，也不把本地映射成功当成上游直接别名可用的证明。
+
+本地映射改动后重新执行全部8个规范型号和配置短名的 standard/pro × high，共18格、36个流式请求，均完成工具调用及流式结果往返。短名两格的请求明确发送规范 Sol ID，返回型号、mode 和 high 均匹配；没有修改网关配置。真实 rtws 保存/重载、配置短名保全及“配置短名/返回型号”展示格式另有受控回归，未重新进行浏览器交互验收。见[本地短名验收记录](../tests/audits/2026-11-02-openai-local-alias.json)。
+
+### 首轮直接请求的流式 high 矩阵
 
 2026-11-02 经实际隔离 rtws、`Team.load()` 和原生 `OpenAiGen.genToReceiver()`，尝试上述8个规范 ID 及别名的 standard/pro 两格，共18格。每个成功格均进行流式函数调用及流式工具结果续轮：给定 nonce 原样传入，独立生成的 receipt 只经工具结果提供，续轮 JSON 完整返回；没有执行真实工具。
 

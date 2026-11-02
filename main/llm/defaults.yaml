@@ -1183,6 +1183,8 @@ providers:
         context_window: '1.05M'
       gpt-5.6:
         name: GPT-5.6 Sol (alias)
+        # Official short-name mapping, resolved locally to the verified canonical wire ID.
+        model_id: gpt-5.6-sol
         optimal_max_tokens: 600000
         critical_max_tokens: 922000
         caution_remediation_cadence_generations: 10

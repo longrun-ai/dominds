@@ -854,6 +854,17 @@ function buildOpenAiTextConfig(
     : undefined;
 }
 
+function resolveOpenAiModelId(providerConfig: ProviderConfig, configuredModel: string): string {
+  const modelId = providerConfig.models[configuredModel]?.model_id;
+  if (modelId === undefined) return configuredModel;
+  if (typeof modelId !== 'string' || modelId.trim().length === 0 || modelId !== modelId.trim()) {
+    throw new Error(
+      `Invalid OpenAI model_id for '${configuredModel}': expected a non-empty model ID without surrounding whitespace in .minds/llm.yaml.`,
+    );
+  }
+  return modelId;
+}
+
 function buildOpenAiReasoning(
   openAiParams: NonNullable<Team.ModelParams['openai']>,
 ): ResponseCreateParamsStreaming['reasoning'] | undefined {
@@ -1628,7 +1639,7 @@ export class OpenAiGen implements LlmGenerator {
     const vendorHeartbeatEventTypes = resolveOpenAiVendorHeartbeatEventTypes(providerConfig);
 
     const payload: ResponseCreateParamsStreaming = {
-      model: agent.model,
+      model: resolveOpenAiModelId(providerConfig, agent.model),
       input: requestInput,
       instructions: systemPrompt.trim().length > 0 ? systemPrompt : undefined,
       parallel_tool_calls: parallelToolCalls,
@@ -2575,7 +2586,7 @@ export class OpenAiGen implements LlmGenerator {
     const requestTools = resolveOpenAiRequestTools(tools, requestContext);
 
     const payload: ResponseCreateParamsNonStreaming = {
-      model: agent.model,
+      model: resolveOpenAiModelId(providerConfig, agent.model),
       input: requestInput,
       instructions: systemPrompt.trim().length > 0 ? systemPrompt : undefined,
       parallel_tool_calls: parallelToolCalls,

@@ -26,6 +26,9 @@ export type {
 
 export interface ModelInfo {
   name?: string; // Optional, defaults to model key if not specified
+  // OpenAI Responses only: explicit wire model ID; omission sends the configured model key.
+  // This is a direct routing value, not another local key to resolve or a fallback model.
+  model_id?: string;
   // Provider-reported default thinking mode. Runtime overrides live in team.yaml model_params.
   default_thinking?: boolean;
   // Whether the provider advertises a request-level thinking on/off switch for this model.
