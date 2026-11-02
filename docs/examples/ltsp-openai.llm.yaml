@@ -11,7 +11,7 @@ providers:
     model_param_options:
       openai:
         # All five GPT-6/6.1 models below officially support Responses Pro mode.
-        # Gateway Pro testing covers only openai/gpt-6.1-sol at low effort so far.
+        # All five passed gateway standard/pro at high, with streamed tool/result round trips (2026-11-02).
         # https://developers.openai.com/api/docs/guides/reasoning#reasoning-mode
         reasoning_mode:
           prominent: true

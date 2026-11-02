@@ -50,7 +50,7 @@ members:
 
 GPT-6 的 Pro 是 Responses 执行模式，使用真实模型 ID 加 `reasoning.mode: pro`，与 `reasoning.effort` 独立；`max` effort 不会自动开启 Pro。Pro 会执行更多模型工作，并增加 token 使用和延迟，按所选模型的 token 费率计费。见[官方 reasoning mode](https://developers.openai.com/api/docs/guides/reasoning#reasoning-mode)。
 
-截至2026-11-01，官方说明支持该模式的**当前 Dominds 内置通用 OpenAI 模型**如下：
+截至2026-11-02，官方说明支持该模式的**当前 Dominds 内置通用 OpenAI 模型**如下：
 
 | 系列    | 模型 ID                                                               |
 | ------- | --------------------------------------------------------------------- |
@@ -58,7 +58,9 @@ GPT-6 的 Pro 是 Responses 执行模式，使用真实模型 ID 加 `reasoning.
 | GPT-6   | `gpt-6-astra`、`gpt-6-sol`、`gpt-6-luna`                              |
 | GPT-5.6 | `gpt-5.6-sol`、`gpt-5.6-terra`、`gpt-5.6-luna`；`gpt-5.6` 是 Sol 别名 |
 
-依据[官方模式支持范围](https://developers.openai.com/api/docs/guides/reasoning#reasoning-mode)与[型号/别名说明](https://developers.openai.com/api/docs/guides/latest-model)。网关使用相应的 `openai/` 前缀 ID；本地 Pro 实测目前仅覆盖 `openai/gpt-6.1-sol` 的 low effort，其余型号未逐一进行 Pro 实测。该范围适用于 OpenAI Responses，不外推到 Codex 或 Chat Completions。旧 `gpt-5.5-pro` 等仍是独立模型 ID，沿用各自行为和计费；不要向其它旧模型通用添加此开关。
+依据[官方模式支持范围](https://developers.openai.com/api/docs/guides/reasoning#reasoning-mode)与[型号/别名说明](https://developers.openai.com/api/docs/guides/latest-model)。网关使用相应的 `openai/` 前缀 ID。2026-11-02 实测中，表内8个规范型号的 standard/pro × high 全部通过流式工具往返；官方别名 `openai/gpt-5.6` 的两个模式均被当前网关 Virtual Key 以403拒绝，应在此网关使用已验证的 `openai/gpt-5.6-sol`。别名是官方支持与当前网关实际可用性的差异，不能据此删除官方 provider 中的合法别名。详见下述本轮矩阵。
+
+该范围适用于 OpenAI Responses，不外推到 Codex 或 Chat Completions。旧 `gpt-5.5-pro` 等仍是独立模型 ID，沿用各自行为和计费；不要向其它旧模型通用添加此开关。Astra 支持 Pro，effort 支持 low / medium / high / xhigh / max，Pro 下 effort 仍有效；当前 high 的两个模式均已实测。
 
 Dominds 使用 `.minds/team.yaml` 的 `model_params.openai.reasoning_mode: standard | pro`，模型目录继续使用原始 wire ID。例如让普通执行成员使用标准模式、审查成员显式使用 Pro：
 
@@ -91,7 +93,17 @@ members:
 
 无需添加 `gpt-6-pro` 或 `gpt-6.1-sol-pro` 模型条目。当前配置中的模型键直接用于请求，`name` 仅为显示名称，不会把本地虚构 ID 映射为另一个上游模型。
 
-Pro 专项已通过一次原生 SDK 调用，以及由实际 rtws 配置和 `Team.load()` 取得成员的 Dominds 流式调用、流式函数调用及工具结果 batch 续轮，共4次 Sol 请求。原始非流式响应和流式 completed 事件均明确回显 `reasoning.mode: pro`；HTTP200、费用升高或 reasoning token 数均不作为 Pro 生效的替代证据。网关日志独立核对 ID、模型及 usage，但其日志没有独立 mode 列。完整证据见[Pro 专项验收](../tests/audits/2026-11-01-openai-pro.json)。本次使用 low effort 验证传输与给定 JSON 数据往返，没有测量 Pro 的任务质量收益，也没有逐个验收所有模型/effort 组合。
+### 本轮流式 high 矩阵
+
+2026-11-02 经实际隔离 rtws、`Team.load()` 和原生 `OpenAiGen.genToReceiver()`，尝试上述8个规范 ID 及别名的 standard/pro 两格，共18格。每个成功格均进行流式函数调用及流式工具结果续轮：给定 nonce 原样传入，独立生成的 receipt 只经工具结果提供，续轮 JSON 完整返回；没有执行真实工具。
+
+- 8个规范 ID 的16格通过，共32个实际请求。每个原始 `response.completed` 都回显预期型号、对应 mode、high effort 和 completed 状态，且无额外 SDK 请求。
+- `openai/gpt-5.6` 的2格各发出1个请求并收到403，工具结果续轮未执行；失败原样保留。整个18格矩阵返回失败，不能称为全绿。
+- 该次共34个请求，完整请求/响应、失败及源码见[本轮矩阵验收记录](../tests/audits/2026-11-02-openai-high-matrix.json)。它验证协议可用性，不证明 Pro 质量收益、所有 effort、长上下文、吞吐或缓存收益。
+
+今后按[模型可用性矩阵约定](./testing-strategy.md#模型与-pro-的真实可用性矩阵)覆盖声明支持的全部型号及模式，统一 high、流式。非流式和其它 effort 可以跳过；不再用单一型号的 Pro 成功代替其余型号。HTTP200、费用及 reasoning token 数均不作为模式生效的替代证据；网关日志若没有 mode 列，应保留原始上游 completed 回显。
+
+前一轮2026-11-01的 [Pro 专项](../tests/audits/2026-11-01-openai-pro.json)保留4次 Sol/low 请求、部分非流式路径和真实 Chromium setup 配置体验的独立范围，不能作为本轮 high 矩阵的替代。
 
 ## 前一轮基础联测范围
 

@@ -1,0 +1,2117 @@
+{
+  "schemaVersion": 1,
+  "reviewKind": "independent subjective guidance and one-off live-probe assertion review",
+  "baseRevision": "81f0613f6a39d99943fcddc33fb7a15c89c9508e",
+  "reviewedAt": "2026-11-02T09:59:19.353738+00:00",
+  "status": {
+    "guidanceReview": "passed:4 current complete materials",
+    "probeDesignReview": "passed within declared protocol/data scope",
+    "recordFidelityReview": "matched all34 actual requests and peer records",
+    "matrixExecution": "FAILED:16/18 cells passed;2 alias403 failures;exit1",
+    "modelAnswerMeaning": "not-assessed"
+  },
+  "userInstruction": "非流式响应可以跳过不测，reason_effort 可以只测 high，模型和pro模式需要覆盖全，今后也是这样。",
+  "reviewMethod": "Each of the four complete current text bodies and both full executed sources was read. Natural-language guidance was judged subjectively in its operator scenario. All34 stored request/raw-response records and all peer rows were programmatically enumerated, parsed and cross-checked as protocols and supplied opaque data, with actual refusal bodies read. Generated answer/reasoning quality was not judged. Keywords, regex, snapshots and output hashes were not meaning oracles; source equality is identity only.",
+  "input": {
+    "absolutePath": "/tmp/dominds-ltsp-matrix/review-input.json",
+    "sha256": "6b45315400f33aa28007cdecb5a9910646b8946040110714d0b5f6ce76d6144e",
+    "bytes": 42112,
+    "originalScope": "Four full current guidance/config materials; complete one-off probe assertion/source review and all34 actual transport records. No prose answer-quality review requested. Existing executable tests/shared support unchanged; no tests/audit.json identity update is appropriate."
+  },
+  "guidanceReview": [
+    {
+      "id": "AGENTS.md",
+      "sourcePath": "AGENTS.md",
+      "sha256": "4d5b8487a7175f6f60593c943bee92998fd17a80bbf20d233d18037b12d28d46",
+      "bytes": 9829,
+      "text": "# Working on Dominds\n\n## Engineering principles\n\n- Start from first principles: identify the person or agent being served, the business outcome, and the failure being prevented before choosing a technical solution.\n- Preserve the value of existing behavior through change. Trace the original need, the useful behavior it produced, and the evidence that the replacement preserves or improves that value. Existing names, classes, package boundaries, and tests are evidence to examine, not requirements to preserve automatically.\n- Keep that reasoning proportional to the change: a small fix needs a short explanation and a focused regression; a boundary change needs concrete stories, migration consequences, and acceptance evidence. Do not create a new process framework for routine work.\n- Introduce abstractions only when concrete uses need them. A business concern is not automatically a component, toolset, runtime type, or DSL primitive. Prefer a direct implementation until a reusable boundary earns its cost.\n- Optimize measured constraints that affect a business outcome. Speculative performance work, generic frameworks, extra indirection, and architectural symmetry do not justify themselves.\n- Review changes by asking what becomes better for a user or an executing agent, what existing value could be lost, and which observable result establishes success.\n\n## Architecture direction\n\n- The target is **Software Defined Harness**: retain the **MicroKernel**, define the runtime environment in a DSL, and let extension components add capabilities usable by that DSL.\n- An orchestration agent should be able to design and evolve how execution agents work and interact by changing harness scripts. The DSL defines runtime behavior, not just a static tool list or workflow graph.\n- The previous **Dominds App / App composition root** design is superseded. Do not extend it as the destination architecture. Existing `DomindsApp`, `main/apps/**`, App Host IPC, and install commands remain current implementation contracts until an explicit migration replaces them.\n- Preserve working collaboration, durable execution, human interaction, capability boundaries, and rtws isolation during migration. Do not rename or delete those mechanisms merely to align terminology.\n- Design decisions, illustrative DSL examples, implemented contracts, and unresolved questions must be distinguished clearly. See [Software Defined Harness](docs/software-defined-harness.zh.md) and the [roadmap](docs/roadmap.zh.md).\n\n## Repository and development\n\n- `main/`: CLI, integrated backend, dialog driving, persistence, tools, and component hosting.\n- `packages/kernel/`: public MicroKernel/shared contracts; `packages/shell/`: shell contracts; `webapp/`: WebUI; `codex-auth/`: authentication/provider support; `tests/`: regression scripts and runners.\n- Use the root `packageManager` pin through Corepack. Do not add repository dependencies, change the package manager, or introduce a new test framework merely to perform a local check.\n- Standard checks: `pnpm run build`, `pnpm run lint:types`, `pnpm run format:check`, and the relevant behavior tests. Do not run overlapping top-level builds against the same output directories.\n\n## Tests and acceptance\n\n- Protect observable business behavior: collaboration delivery, interruption/restart, human replies, capability boundaries, and preserved state. A regression reproduces a concrete failure and checks the useful outcome after the fix. Layout/schema checks protect only their explicit contracts; they do not establish runtime behavior. Do not freeze the retired App architecture without a remaining compatibility need.\n- Literal matching to enforce a semantic requirement is a test-design counterexample. Never use keywords, regexes, fixed sentences, snapshots, or source snippets to judge the meaning of prompts, manuals, guidance, explanations, or other natural-language output. Delete low-value checks of this kind.\n- For valuable semantic requirements, emit the complete actual text, scenario, necessary context and review questions for an independent test-execution agent to judge subjectively. Preserve its explicit verdict, rationale, scope and evidence/source provenance durably with the change. Temporary output alone is insufficient. Unreviewed, pending, rejected or unexecuted semantic cases cannot be reported as passing acceptance. A fresh generation always starts pending; old verdicts and output hashes never accept new meaning.\n- Exact comparisons are appropriate for actual machine contracts and data: protocol fields, identifiers, supplied opaque payloads, persisted state, counts and observable effects. Explain the concrete contract a text equality protects. Do not relabel natural-language meaning as a machine contract.\n- These are blocking rules for existing and future tests. Review what every added or changed assertion proves, and inspect the complete test diff again before committing. Reject semantic literal oracles; do not replace this review with a keyword-based detector. Keep reviewed source identities, business value, explicit execution lanes and durable review references current in `tests/audit.json`, including shared test support. The root suite source-review gate rejects missing, pending and stale review records; its hashes identify reviewed source, never assertion quality or semantic acceptance. Update an identity only after the actual review, never automatically because execution is green. Direct debugging and semantic generation are not acceptance shortcuts.\n- Mock external provider behavior at the boundary; keep runtime, scheduling and persistence real when they are under test. Expected rejection must come from the operation under test, not missing dependencies, malformed fixtures or swallowed fixture assertions. Pair boundary refusals with otherwise valid inputs and meaningful successful controls.\n- Put shared test helpers in `tests/helpers/`, outside discovered executable entry points. Helper-only modules and semantic producers are not automatic passing behavior tests. Do not add dependencies, a framework or generic test machinery merely for a local check.\n- Run script-rtws cases through `tests/cli.ts`; default to isolated rtws. Never run shared rtws cases concurrently. Preserve failing evidence. Synchronize on relevant events/state instead of sleeps; do not hide failures by raising timeouts or retrying until green. Async scenarios need an observable completion boundary: an unresolved Promise must not exit zero and become a pass.\n- Suites report every attempted case and return nonzero for failure or timeout. Declare prerequisites and report skipped/unexecuted scenarios explicitly; never count them as passes. Keep local controlled behavior, packaging, external components, live providers, real browser interaction and native platform execution as separate scopes. A smoke pass is not full coverage, and source review is not execution.\n- OpenAI Responses live model availability acceptance must cover every model ID in the declared support scope, including configured aliases, and both standard/pro for models that support those modes. Use streaming and `high` reasoning effort as the required matrix; non-streaming and other efforts are optional. Verify actual returned model/mode/effort and the streamed tool-call/result round trip. Catalog entries, metadata, ordinary-mode success and one representative Pro model do not accept unexecuted cells. Retain failed and unexecuted cells explicitly; apply this scope to future model/provider changes too.\n- Use `pnpm test` for the small smoke suite, `pnpm run test:local` for deduplicated registered local behavior, `pnpm run test:runner` for runner controls, `pnpm run test:types` for the entire test directory and `pnpm run test:inventory` for source-review/discovery gaps. Do not weaken types or exclude failing cases. Consult the [test entry points and scope](tests/README.md) and [test strategy](docs/testing-strategy.md) for focused lanes, prerequisites and semantic evidence commands. Fix understood nearby defects with scope and regression evidence; keep unrelated rewrites separate.\n\n## Markdown Link Pre-commit Lint\n\n- Before committing any change that can affect Markdown navigation, lint the complete set of documentation Markdown tracked by this repository, not only the changed files. Use the repository's own `git ls-files -- '*.md'` results as the candidate source set; never scan a parent workspace, sibling repository, dependency tree, or generated output as source documentation.\n- Dominds documentation must remain self-contained. After decoding and normalizing a local target relative to its canonical source document, every local document link must remain within this repository root. A path that happens to resolve through an enclosing integration workspace is still a failure.\n- Use a Markdown-aware checker with local fragment support, such as Lychee with `--offline --include-fragments`. Check local file targets and Markdown heading fragments, but do not request or fail on the reachability of `http`, `https`, or other network links.\n- Markdown-formatted runtime prompts, personas, templates, and test fixtures are not documentation merely because their filenames end in `.md`. Keep any source exclusions narrow and role-based, and never use them to conceal a broken documentation link. Canonicalize tracked Markdown symlinks and lint each underlying document once so an alias path does not invent false relative-link failures.\n- Ignore link-like examples inside code spans and fenced code blocks. Do not add broad path, fragment, or status exclusions to hide a real missing target. This rule currently remains a pre-commit agent check only; do not add CI workflows, Git hooks, or repository dependencies for it without separate authorization.\n",
+      "scenario": "后续执行智能体选择OpenAI真实可用性验收范围，完整覆盖声明型号与standard/pro，high流式即可，不增加非流式或effort全矩阵；不能把失败/未执行报通过。",
+      "reviewQuestions": [
+        "完整文本是否准确落实用户仅high、流式、全型号与两模式的验收约定，并且可执行？",
+        "当前实际通过、失败和未执行续轮的范围是否清晰，没有虚构全绿或外推质量？",
+        "措辞是否保留原有工程、语义测试和rtws配置价值，避免额外框架/依赖或不必要全矩阵？"
+      ],
+      "verdict": "passed",
+      "rationale": [
+        "新增约定直接落实用户要求：声明范围内的每个模型 ID（包括别名）分别覆盖其支持的 standard/pro，统一 high 和流式，不要求非流式或所有 effort。它约束的是实际可用性验收，不把 130 项不同用途目录自动扩成测试任务。",
+        "要求原始返回型号、mode/effort、流式工具调用和结果续轮，能防止一个代表 Pro 型号成功代替其余未执行格。失败与未执行须保留，正好适用于本次两个真实 403 及未执行续轮，没有要求把失败伪装成通过。",
+        "完整上下文保留第一性原则、原值沿袭、具体可观测效果、SDH 方向、隔离和永久禁止语义字面 oracle 的约束；没有引入新框架、依赖、CI 或自动含义检测器。源码身份与语义判词仍明确分开。"
+      ],
+      "reviewScope": "只接受这份当前完整工程指导的可理解、可执行和范围准确性；不据此把当前失败矩阵或未来未执行场景报为通过。",
+      "context": {
+        "userInstruction": "非流式响应可以跳过不测，reason_effort 可以只测 high，模型和pro模式需要覆盖全，今后也是这样。",
+        "matrixExecutionStatus": "FAILED:18 attempted,16 passed,2 failed403;2 followups UNEXECUTED;exit1",
+        "evidenceLane": "One-off actual native OpenAiGen requests via isolated rtws; current wording reviewed freshly without inheriting old verdicts"
+      },
+      "provenance": {
+        "reviewInputPath": "/tmp/dominds-ltsp-matrix/review-input.json",
+        "reviewInputSha256": "6b45315400f33aa28007cdecb5a9910646b8946040110714d0b5f6ce76d6144e",
+        "sourceAbsolutePath": "/ws/AiWorks/dominds/AGENTS.md",
+        "currentGitBlob": "0c076ecb50260bc21a2b39814c35d41c06fbfbc5",
+        "baseGitBlob": "c5a3fa36ebdd4c72c28139070c2cf862e772c41f",
+        "baseSha256": "4ac1ac7161a8a137c54c8ca95fa2697837ef919514efea679f1e05054abff110",
+        "textPurpose": "The complete actual semantic text is stored in this record’s text field. SHA and blob IDs identify sources only."
+      }
+    },
+    {
+      "id": "docs/testing-strategy.md",
+      "sourcePath": "docs/testing-strategy.md",
+      "sha256": "9b93d23d2e11c52bd0600304fccd98317a440f752a052646f209876330e5258f",
+      "bytes": 12951,
+      "text": "# 测试策略与整改状态\n\n## 从交付价值出发\n\n测试保护的是任务交付、协作结果归属、人类意图、能力边界和失败后的接续。先说明服务谁、避免什么实际失败，再选择能观察到的结果；不以文件数量、断言数量、架构对称或覆盖率数字代替业务证据。\n\n整改沿袭原测试的有效价值，不机械保留实现、类名或措辞。小修使用具体反例和聚焦回归；边界变更说明原价值、迁移影响和实际验收。没有可观价值的检查直接删除，不把它升级成评审系统。\n\n本轮继承的254项 TypeScript 候选已逐项审计并分配明确执行入口；已有运行器回归也纳入同一源码审查门禁。详见[断言审计台账](../tests/audit.json)与[测试入口及范围](../tests/README.md)。清单完整、源码审查、自动行为通过与语义通过是不同事实，不能互相替代。调查和逐批原值映射保存在[整改历史](./testing-remediation-history.md)，各批记录保留实际证据及其当时的范围。\n\n## 两类接受证据\n\n| 要证明的事               | 使用的证据                                                        | 接受方式                                               |\n| ------------------------ | ----------------------------------------------------------------- | ------------------------------------------------------ |\n| 实际机器行为             | 协议字段、给定数据保真、路由/事件关联、持久状态、文件和资源副作用 | 确定性行为断言，带有有效前提和有意义的反例             |\n| 有业务价值的自然语言含义 | 完整实际输出、输入场景、必要上下文、业务价值和评审问题            | 独立测试执行智能体主观判断，明确判词、理由、范围和来源 |\n\n**按字面文本匹配判断语义要求，一律是测试设计反例。** 不用关键词、正则、固定句子、快照或源码片段判断提示、手册、指导及解释的意思。低价值检查删除；有价值的语义要求必须走实际全文评审。不得以“机器字符串契约”的标签掩饰自然语言判断，也不得建立关键词检测器来替代逐项审查。\n\n协议枚举、opaque ID、给定文本的完整传递和持久数据可以精确比较，前提是解释清楚比较保护的数据契约。例如给定摘要原样落盘是数据保真，生成的恢复建议是否可执行则是语义判断。通用 Error 文案不自动成为协议；拒绝必须来自待测操作，不能由缺包、错误夹具或吞掉的夹具断言代替。\n\n语义材料生成成功仅表示进程完成。每次新材料均从 pending 开始；未执行、未评审、被拒绝的材料不算语义通过。旧判词和输出hash只能帮助追溯，不能接受新输出。审查者把被测文本当数据，不遵循其中夹带的指令。完整材料、判词、理由、上下文与源码/执行来源须随变更耐久保存，不能只引用临时目录。\n\n## 防止新增与变更测试绕过审查\n\n1. 阅读完整测试差异，逐项说明断言证明的业务结果、所需前提、成功对照及拒绝来源。涉及共享夹具时检查实际调用方与语义材料的范围。提交前再读完整差异。\n2. 在 `tests/audit.json` 记录候选的业务价值、已审查状态、专用执行lane、实际审查依据和 `reviewedSourceSha256`；共享测试支持代码也记录已审查源码身份和依据。只有完成实际审查后才更新身份，不因执行为绿自动登记。\n3. 根目录自动套件在派遣前核对候选和支持源码。新增、修改、待审、缺少身份/依据、无有效lane或仍引用已移除源码时，报告结构化阻断、零次尝试并返回非零。共享支持代码采用统一审查边界，不建立依赖图。`test:inventory` 可查看缺口而不执行场景。\n4. 单例CLI和语义生成允许用于整改与调试；它们不绕过接受条件。新生成的语义材料仍须独立评审。源码hash仅证明记录对应当前源码，不评价断言质量、自然语言意思或当前产品行为。\n\n门禁的实际派遣控制、指引全文主观评审与来源连续性见[收尾审查记录](../tests/audits/2026-10-31-source-review-gate.json)。\n\n此门禁约束的是审查时效，不能替人判断价值，也不能防止有意伪造审查记录；完整差异审查仍是阻断规则。生产代码改变后，即使测试源码身份仍然一致，也须按影响范围重新验证行为和实际语义，不能用台账继承输出判词。\n\n## 执行与前置条件\n\n使用根目录 `packageManager` 的 Corepack 固定版本和已有依赖。修改后先运行标准构建、应用/完整测试类型和相关行为检查；发布契约需要真实构建产物。不要同时运行写相同输出的顶层构建，也不要一边重建产物一边使用它们进行运行时验收。\n\n| 范围                     | 入口                                               | 前提与限制                                                                                                            |\n| ------------------------ | -------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------- |\n| 小型本地 smoke           | `pnpm test`                                        | 快速局部反馈，不代表全部行为或语义覆盖                                                                                |\n| 去重的全部已登记本地行为 | `pnpm run test:local`                              | 先完成构建；含真实包产物消费和运行器控制。排除 live provider 与外部 Web Dev 场景                                      |\n| 聚焦业务风险             | 各专用lane，见[测试README](../tests/README.md)     | 保留每例实际边界：真实运行时/磁盘/调度与受控外部协议须区分                                                            |\n| 运行器与全测试类型       | `pnpm run test:runner`、`pnpm run test:types`      | 不弱化类型或排除失败源码；运行器须证明失败继续、超时、现场和审查阻断                                                  |\n| 语义证据                 | 各 `test:semantic:*` 入口                          | 仅生成当前实际材料，每次 pending，不能自动通过                                                                        |\n| 真实供应商               | `pnpm run test:provider-live` 的显式单例 live 参数 | 默认只检查前置；实际请求必须明确选择case/provider/model，不能默认调用全部供应商                                       |\n| 外部 Web Dev 组件        | `pnpm run test:apps:external` 及语义入口           | 显式绝对 `DOMINDS_TEST_WEB_DEV_PACKAGE_ROOT` 指向已有已构建包；不隐式找相邻仓库或安装下载。受控适配器仍不是真实浏览器 |\n\n脚本rtws测试统一经 `tests/cli.ts`，默认每例隔离；共享rtws只用于明确调试且不得并发。供应商替身放在外部边界，正在接受的运行时、调度和持久化保持真实。按相关事件、锁或落盘状态同步，不用睡眠制造交错，不靠增加超时或反复运行得到绿灯。\n\n每个已尝试场景都有日志和结果；失败/超时不得阻断后续场景，suite仍须返回失败状态。保留失败现场。裸 Promise 等待不能无声退出0：需要实际完成边界，或由能发现未完成用例的运行器管理。前置条件缺失明确列为 skipped/UNEXECUTED 并返回非零，不计通过。语义生成进程完成数与语义判词分开报告。\n\n### 模型与 Pro 的真实可用性矩阵\n\n操作者需要知道所选型号和执行模式能否完成智能体往返，不能从一个代表型号的成功推断整份支持清单。今后 OpenAI Responses 模型/provider 变更及联合验收统一采用以下范围：\n\n- 逐个覆盖本次声明支持的模型 ID；配置中公开的别名也是单独的路由入口，需要单独验证。清楚列出范围，不能把目录中的音频、图片、embedding 等不同用途模型自动并入智能体模型清单。\n- 支持 Responses 模式的型号分别测试 `standard` 和 `pro`；`reasoning_effort` 统一测 `high`。流式响应是必测路径，工具调用与工具结果续轮都使用流式；非流式和其它 effort 不作为必测维度。模式和 effort 独立，Pro 下保留 high。\n- 经实际 rtws 配置和原生 generator 发请求，核对原始 `response.completed` 中的型号、`reasoning.mode`、`reasoning.effort` 和完成状态，以及工具 nonce/receipt 给定数据往返。别名的预期归一化须有明确依据，不能用虚构本地模型 ID 替代真实路由。\n- 每格记录实际请求、原始响应、attempt/完成状态和请求 ID；失败后继续其它格，任何失败、超时或未执行格都不能报告完整通过。目录缺少某个别名、聚合参数缺项或其它型号的成功均不能代替实际调用。\n- 网关日志可独立核对模型、usage、retry/fallback；若日志没有模式字段，使用原始上游响应确认模式，不能从 HTTP200、费用或 reasoning token 数推断 Pro。给定 opaque 数据可精确比较；不以措辞验收模型含义或宣称质量收益。\n\n此矩阵建立明确支持范围内的协议可用性，不代替模型质量、上下文容量、缓存收益、吞吐限额、浏览器或真实工具执行的专项证据。历史非流式/其它 effort 记录保留其原有范围；新的验收按上述必测矩阵执行。\n\n## 按风险阅读证据\n\n| 业务风险           | 已有接受范围举例                                                        | 不应据此声称                                                    |\n| ------------------ | ----------------------------------------------------------------------- | --------------------------------------------------------------- |\n| 协作交付与责任     | 真正完成并由请求者消费的结果、唯一调用归属、重复/迟到回复和注册支线交错 | 注册计数等于后台健康；直接dead marker等于完整人类取消链         |\n| 停止与恢复         | 真实进程在已观察持久边界被杀死后新进程恢复；真实锁、队列和人类等待保全  | 种子快照等于崩溃；磁盘快照等于power-loss/fsync保证              |\n| 能力与文件权限     | 实际工具可用性、配置移除/恢复、真实合法与越界路径对照、失败保全         | 注册等于授权；直接handler调用等于driver授权执行                 |\n| 人类操作与展示     | 实际WebSocket/HTTP与所声明组件的状态、IME和选择逻辑                     | 辅助函数、HTML资源字节或受控页面等于真实浏览器交互              |\n| 外部协议与分发     | 本地协议peer、原生包消费、请求投影和实际数据/资源效果                   | localhost或受控截图等于供应商、真实窗口、像素质量及实际发布验收 |\n| 指导可理解且可执行 | 对当次实际全文的独立主观判词，附场景、责任和权限边界                    | 旧判词、输出hash、关键词或JSON包裹自动接受新含义                |\n\n具体原始价值、发现的假绿和已修产品问题由批次记录追溯。例如[注册支线去重](../tests/audits/2026-10-31-typeb-dedupe.json)、[实际Host/HTTP及停止清理](../tests/semantic/reviews/2026-10-31-app-runtime.json)、[外部组件测试设计与未执行边界](../tests/audits/2026-10-31-external-web-dev.json)。它们的判词只覆盖记录中实际给出的材料，不扩成后续输出或整个产品的通过结论。\n\n## 尚未执行与未来设计\n\n11个真实供应商探针和4个外部Web Dev场景有显式前置与入口；本轮没有把缺失前置转换成通过。真实浏览器纵向交互、供应商模型质量、原生Windows执行及记录明确排除的竞态/崩溃边界仍需对应环境和实际证据。完整本地回归也不能消除这些限制。\n\n架构目标保持[Software Defined Harness](./software-defined-harness.zh.md)：MicroKernel 保留，DSL 定义运行环境，扩展组件提供脚本可用能力，编排智能体演进执行智能体的行为和交互。当前App相关测试仅保护尚未替换的兼容价值；不把名称、目录或composition root冻结为目的架构。\n\nHarness迁移以真实故事验收：执行与复核、并行/等待人类/重启接续、扩展能力与脚本演进。证明交付、授权、状态、动作版本归属，以及候选脚本校验/激活失败时的保全，再移除旧兼容路径。DSL示例和设计设想不是已实现契约，不为未来抽象预制庞大测试矩阵。\n",
+      "scenario": "测试执行者把用户今后也如此的要求转为具体入口、原生配置/请求和证据范围，区分机器协议、原始模式回显、网关日志及主观语义验收。",
+      "reviewQuestions": [
+        "完整文本是否准确落实用户仅high、流式、全型号与两模式的验收约定，并且可执行？",
+        "当前实际通过、失败和未执行续轮的范围是否清晰，没有虚构全绿或外推质量？",
+        "措辞是否保留原有工程、语义测试和rtws配置价值，避免额外框架/依赖或不必要全矩阵？"
+      ],
+      "verdict": "passed",
+      "rationale": [
+        "矩阵章节明确服务操作者选择真实可用模型与模式，将别名视为独立路由入口，并限制在声明支持的智能体模型范围。high/流式是用户选择的必测维度，非流式和其它 effort 保留为可选，而不是强加完整笛卡尔积。",
+        "经实际 rtws 与原生 generator 验证，使用 completed 回显和给定 nonce/receipt；说明别名归一化需要依据、每格保留请求与失败、网关没有 mode 列时不得由费用或 HTTP 状态猜模式。这些步骤与本次真实探针及机器记录相符。",
+        "完整策略继续区分源码审查、执行、语义材料生成、主观接受和未执行环境；历史记录保留原 scope，不能拿旧判词或 hash 接受新输出。矩阵通过也不等于质量、上下文、缓存、吞吐、浏览器或真实工具执行的专项通过。"
+      ],
+      "reviewScope": "只接受当前完整测试策略及新增真实模型矩阵约定；不自动接受历史语义输出、未来模型或所有已有执行入口。",
+      "context": {
+        "userInstruction": "非流式响应可以跳过不测，reason_effort 可以只测 high，模型和pro模式需要覆盖全，今后也是这样。",
+        "matrixExecutionStatus": "FAILED:18 attempted,16 passed,2 failed403;2 followups UNEXECUTED;exit1",
+        "evidenceLane": "One-off actual native OpenAiGen requests via isolated rtws; current wording reviewed freshly without inheriting old verdicts"
+      },
+      "provenance": {
+        "reviewInputPath": "/tmp/dominds-ltsp-matrix/review-input.json",
+        "reviewInputSha256": "6b45315400f33aa28007cdecb5a9910646b8946040110714d0b5f6ce76d6144e",
+        "sourceAbsolutePath": "/ws/AiWorks/dominds/docs/testing-strategy.md",
+        "currentGitBlob": "3d32be244b6de3609e136d2c0eb1003affc3ec11",
+        "baseGitBlob": "520f873296594d07e1581276ad4e50b5a8a84338",
+        "baseSha256": "6e6f2d7f6cc03e0c26078fab20fea422fd985e1e07d44dfd6c4650fbbc77fc68",
+        "textPurpose": "The complete actual semantic text is stored in this record’s text field. SHA and blob IDs identify sources only."
+      }
+    },
+    {
+      "id": "docs/openai-ltsp-gateway.zh.md",
+      "sourcePath": "docs/openai-ltsp-gateway.zh.md",
+      "sha256": "8f6402b39c75f9157389b7df615325dfb8f3f0cd65bfcae845b4570d8fca119a",
+      "bytes": 11742,
+      "text": "# LTSP OpenAI 网关联测与模型配置\n\n2026-10-31，Dominds 与 LTSP 网关规划聊天联合验证 ltspc16。接入地址为 `http://172.16.100.254:8080/openai`，`apiType` 使用 `openai`，由 Dominds 的 Responses adapter 构造请求。无需再补 `/v1`；`openai-compatible` 的 Chat Completions 不是本次接入方式。\n\n## 模型目录与静态规格\n\n网关 `/openai/models` 当次返回130项，包含聊天、图像、音频、embedding等不同用途，不能把整个目录当成 Dominds 执行智能体可用的聊天模型清单。目录表示当时可见的ID，不能证明账号实际余额、RPM/TPM、每种模态或所有调用均可用。\n\n本次为内置 OpenAI provider 补齐以下五个文本/工具工作流模型，保留旧模型兼容；没有修改独立 Codex provider。官方 API 使用无前缀ID，网关实例使用表中带 `openai/` 的wire ID。\n\n| 官方模型ID      | 网关wire ID            | 总上下文  | 最大输出 | 推理effort                               |\n| --------------- | ---------------------- | --------- | -------- | ---------------------------------------- |\n| `gpt-6.1-sol`   | `openai/gpt-6.1-sol`   | 1,050,000 | 128,000  | low / medium / high / xhigh / max        |\n| `gpt-6.1-terra` | `openai/gpt-6.1-terra` | 1,050,000 | 128,000  | none / low / medium / high / xhigh / max |\n| `gpt-6-astra`   | `openai/gpt-6-astra`   | 1,050,000 | 128,000  | low / medium / high / xhigh / max        |\n| `gpt-6-luna`    | `openai/gpt-6-luna`    | 1,050,000 | 128,000  | none / low / medium / high / xhigh / max |\n| `gpt-6-sol`     | `openai/gpt-6-sol`     | 1,050,000 | 128,000  | none / low / medium / high / xhigh / max |\n\n规格依据各官方页：[6.1 Sol](https://developers.openai.com/api/docs/models/gpt-6.1-sol)、[6.1 Terra](https://developers.openai.com/api/docs/models/gpt-6.1-terra)、[Astra](https://developers.openai.com/api/docs/models/gpt-6-astra)、[Luna](https://developers.openai.com/api/docs/models/gpt-6-luna)、[6 Sol](https://developers.openai.com/api/docs/models/gpt-6-sol)。五者均声明支持图片输入；本次没有进行真实图像理解或视觉质量验收。\n\n输入、输出及reasoning共享总上下文，不能把1.05M输入再加128K输出。本次不单列未经官方独立说明的 `input_length`。`optimal_max_tokens: 600000`、`critical_max_tokens: 922000` 与10代保全提醒节奏沿用已有1.05M模型的 Dominds harness 策略；922K为总窗口减去128K输出余量，是应用预算，不是新测出的供应商max-input。没有做百万token压力测试，也没有实际生成128K输出。\n\nBifrost聚合元数据曾对Terra分别给出922K/1.05M输入，并带有与本次Responses+low工具往返不一致的泛化能力标记。静态规格以官方API资料为准，具体可用性由所述实测建立；不把聚合字段直接拷贝成全局能力或外推到其它API。\n\n## 在rtws接入\n\n将[完整无密钥样例](./examples/ltsp-openai.llm.yaml)的 `providers.ltsp-openai` 合入已有 `.minds/llm.yaml`，保留其它provider。`LlmConfig`按provider键替换配置，不会自动把新provider的模型表与内置OpenAI表深度合并。\n\n为 Dominds 进程注入 `LTSP_OPENAI_API_KEY`，值应为部署方批准的网关 Virtual Key；不要使用dummy值，也不要将实际Key写入Git。样例只引用变量名，不包含凭据，不改变内置OpenAI的官方baseURL。\n\n团队成员显式选择网关provider和wire ID，例如：\n\n```yaml\nmembers:\n  executor:\n    name: Executor\n    provider: ltsp-openai\n    model: openai/gpt-6.1-terra\n    model_params:\n      openai:\n        reasoning_effort: low\n        verbosity: low\n```\n\n这是低量连通测试参数，不是质量或成本最优档位的结论。使用者应按实际任务评估effort；Astra与6.1 Sol不接受none，旧模型的minimal选项不适用于本表。启用reasoning时省略 `temperature`、`top_p` 等不兼容采样参数；工具调用使用Responses。详见[官方GPT-6接入指导](https://developers.openai.com/api/docs/guides/latest-model)。provider参数提示中的选项是按模型适用的并集，不是对每个模型的统一支持承诺。\n\n本轮只验证带provider前缀的推理请求。裸ID的模型元数据读取成功不等于裸ID推理路由已验证；不要只凭 `/openai` URL 假定网关会自动选择provider。\n\n## Pro 模式与 rtws 选择\n\nGPT-6 的 Pro 是 Responses 执行模式，使用真实模型 ID 加 `reasoning.mode: pro`，与 `reasoning.effort` 独立；`max` effort 不会自动开启 Pro。Pro 会执行更多模型工作，并增加 token 使用和延迟，按所选模型的 token 费率计费。见[官方 reasoning mode](https://developers.openai.com/api/docs/guides/reasoning#reasoning-mode)。\n\n截至2026-11-02，官方说明支持该模式的**当前 Dominds 内置通用 OpenAI 模型**如下：\n\n| 系列    | 模型 ID                                                               |\n| ------- | --------------------------------------------------------------------- |\n| GPT-6.1 | `gpt-6.1-sol`、`gpt-6.1-terra`                                        |\n| GPT-6   | `gpt-6-astra`、`gpt-6-sol`、`gpt-6-luna`                              |\n| GPT-5.6 | `gpt-5.6-sol`、`gpt-5.6-terra`、`gpt-5.6-luna`；`gpt-5.6` 是 Sol 别名 |\n\n依据[官方模式支持范围](https://developers.openai.com/api/docs/guides/reasoning#reasoning-mode)与[型号/别名说明](https://developers.openai.com/api/docs/guides/latest-model)。网关使用相应的 `openai/` 前缀 ID。2026-11-02 实测中，表内8个规范型号的 standard/pro × high 全部通过流式工具往返；官方别名 `openai/gpt-5.6` 的两个模式均被当前网关 Virtual Key 以403拒绝，应在此网关使用已验证的 `openai/gpt-5.6-sol`。别名是官方支持与当前网关实际可用性的差异，不能据此删除官方 provider 中的合法别名。详见下述本轮矩阵。\n\n该范围适用于 OpenAI Responses，不外推到 Codex 或 Chat Completions。旧 `gpt-5.5-pro` 等仍是独立模型 ID，沿用各自行为和计费；不要向其它旧模型通用添加此开关。Astra 支持 Pro，effort 支持 low / medium / high / xhigh / max，Pro 下 effort 仍有效；当前 high 的两个模式均已实测。\n\nDominds 使用 `.minds/team.yaml` 的 `model_params.openai.reasoning_mode: standard | pro`，模型目录继续使用原始 wire ID。例如让普通执行成员使用标准模式、审查成员显式使用 Pro：\n\n```yaml\nmember_defaults:\n  provider: ltsp-openai\n  model: openai/gpt-6.1-sol\n  model_params:\n    openai:\n      reasoning_mode: standard\n      reasoning_effort: medium\n      verbosity: medium\nmembers:\n  executor:\n    name: Executor\n  reviewer:\n    name: Reviewer\n    model_params:\n      openai:\n        reasoning_mode: pro\n        reasoning_effort: high\n        verbosity: medium\n```\n\n`model_params` 是团队成员的运行配置；`.minds/llm.yaml` 的 `model_param_options` 提供配置提示。上面的[完整网关样例](./examples/ltsp-openai.llm.yaml)包含模式、effort 和 verbosity 的选项，因此这个自定义 provider 也能在 `/setup` 显示对应控件，并在 generation 模型标识/tooltip 中显示已配置的模式。成员自己的 `model_params` 替换整个继承参数块，示例为 reviewer 明确写出其所需参数。\n\n已有团队应在原 `.minds/team.yaml` 的 `member_defaults` 或具体 `members.<id>.model_params.openai` 下定点修改模式，保留现有成员、权限及其它配置。`/setup` 是初始化入口，保存的是仅含 `member_defaults` 的最小团队文件；确认覆盖会替换整份 `team.yaml`，不能把它当成已有团队的成员编辑器。\n\n初始化时，在 `/setup` 先选 provider 与模型，再独立选择 `reasoning_mode` 和 effort，检查生成的 `member_defaults` 预览后保存。重新加载 setup 会读回已保存的参数；手动更改的选择不会被随后状态刷新重置。模式控件没有预选默认值，省略 mode 保持既有请求不发送该字段；官方默认采用 standard。仅对支持该参数的 GPT-5.6/GPT-6 选择 standard/pro，切换到不支持的旧模型时保持未设置。已有旧 rtws 不会被自动切换为 Pro。配置显示的是选择，不是上游执行结果的证明。\n\n无需添加 `gpt-6-pro` 或 `gpt-6.1-sol-pro` 模型条目。当前配置中的模型键直接用于请求，`name` 仅为显示名称，不会把本地虚构 ID 映射为另一个上游模型。\n\n### 本轮流式 high 矩阵\n\n2026-11-02 经实际隔离 rtws、`Team.load()` 和原生 `OpenAiGen.genToReceiver()`，尝试上述8个规范 ID 及别名的 standard/pro 两格，共18格。每个成功格均进行流式函数调用及流式工具结果续轮：给定 nonce 原样传入，独立生成的 receipt 只经工具结果提供，续轮 JSON 完整返回；没有执行真实工具。\n\n- 8个规范 ID 的16格通过，共32个实际请求。每个原始 `response.completed` 都回显预期型号、对应 mode、high effort 和 completed 状态，且无额外 SDK 请求。\n- `openai/gpt-5.6` 的2格各发出1个请求并收到403，工具结果续轮未执行；失败原样保留。整个18格矩阵返回失败，不能称为全绿。\n- 该次共34个请求，完整请求/响应、失败及源码见[本轮矩阵验收记录](../tests/audits/2026-11-02-openai-high-matrix.json)。它验证协议可用性，不证明 Pro 质量收益、所有 effort、长上下文、吞吐或缓存收益。\n\n今后按[模型可用性矩阵约定](./testing-strategy.md#模型与-pro-的真实可用性矩阵)覆盖声明支持的全部型号及模式，统一 high、流式。非流式和其它 effort 可以跳过；不再用单一型号的 Pro 成功代替其余型号。HTTP200、费用及 reasoning token 数均不作为模式生效的替代证据；网关日志若没有 mode 列，应保留原始上游 completed 回显。\n\n前一轮2026-11-01的 [Pro 专项](../tests/audits/2026-11-01-openai-pro.json)保留4次 Sol/low 请求、部分非流式路径和真实 Chromium setup 配置体验的独立范围，不能作为本轮 high 矩阵的替代。\n\n## 前一轮基础联测范围\n\n五个模型均通过 Dominds 原生 `OpenAiGen` 的短请求：Terra流式，另外四个batch；返回的真实model标识一致，usage可用。Terra还通过一次流式函数调用与工具结果batch续轮：给定nonce完整传入，独立随机receipt仅经工具结果提供，续轮结构化JSON完整返回；没有执行真实工具。检查的是机器数据与协议，不以回答措辞判断语义质量。\n\n客户端未发送缓存TTL时，响应回显 `prompt_cache_options.ttl: 12h`，证实该网关采用了部署方默认值。另一次直接原生SDK请求显式传入 `prompt_cache_options.ttl: 30m` 并得到30m回显，没有被网关默认覆盖。后者只建立SDK/网关字段保全，不表示当前 Dominds 团队参数已开放TTL或输出token override。\n\nOpenAI官方默认是30m，12h是此网关策略；两种设置的cache-write费率不同。小于1,024可见输入token的请求不会因此证明缓存命中；本次没有发送长prompt测试cache-write、命中率或节费。见[官方prompt caching文档](https://developers.openai.com/api/docs/guides/prompt-caching)。\n\nLTSP侧按网关request ID独立读回日志，确认实际provider/model、usage、成功状态、无retry/fallback及正文隐藏。完整目录快照、请求/响应、初次夹具错误与执行范围保存在[联合验收记录](../tests/audits/2026-10-31-ltsp-openai.json)。记录中的短请求不证明长上下文、长期缓存保留、模型回答质量、所有130模型或吞吐限额。\n",
+      "scenario": "操作者配置当前172.16网关并选择Astra等Pro型号，理解8规范型号16格成功与别名2格403，选择规范Sol避免真实阻断，不把官方支持等同网关可用。",
+      "reviewQuestions": [
+        "完整文本是否准确落实用户仅high、流式、全型号与两模式的验收约定，并且可执行？",
+        "当前实际通过、失败和未执行续轮的范围是否清晰，没有虚构全绿或外推质量？",
+        "措辞是否保留原有工程、语义测试和rtws配置价值，避免额外框架/依赖或不必要全矩阵？"
+      ],
+      "verdict": "passed",
+      "rationale": [
+        "当前完整接入指导正确报告八个 canonical 型号的 standard/pro×high 共 16 格通过，以及官方 gpt-5.6 别名两格被本网关 Virtual Key 403 拒绝；明确 18 格整体失败，别名续轮未执行。已逐记录核对实际证据，数字和实际路径一致。",
+        "建议在当前网关使用已验证的 canonical Sol，保留官方 provider 合法别名，不把网关拒绝误写为 OpenAI 官方不支持。待应用 alias 配置候选及 R-228 没有被写成已修复；官方支持、网关可用性、已测维度与历史低 effort 证据分开。",
+        "完整文字仍保全前缀 wire ID、环境凭据、provider 替换、成员参数继承、既有团队定点编辑和 /setup 最小文件覆盖边界。模式与 effort 独立，Astra 的 high 两模式有实际回显；没有以费用、reasoning token 或 HTTP200 替代 mode 证据，也没有扩大成质量或容量承诺。"
+      ],
+      "reviewScope": "接受当前完整接入指导与实际 16 成功/2 失败记录的一致性及恢复建议范围；不接受别名可用性，不采用尚未应用的网关候选。",
+      "context": {
+        "userInstruction": "非流式响应可以跳过不测，reason_effort 可以只测 high，模型和pro模式需要覆盖全，今后也是这样。",
+        "matrixExecutionStatus": "FAILED:18 attempted,16 passed,2 failed403;2 followups UNEXECUTED;exit1",
+        "evidenceLane": "One-off actual native OpenAiGen requests via isolated rtws; current wording reviewed freshly without inheriting old verdicts"
+      },
+      "provenance": {
+        "reviewInputPath": "/tmp/dominds-ltsp-matrix/review-input.json",
+        "reviewInputSha256": "6b45315400f33aa28007cdecb5a9910646b8946040110714d0b5f6ce76d6144e",
+        "sourceAbsolutePath": "/ws/AiWorks/dominds/docs/openai-ltsp-gateway.zh.md",
+        "currentGitBlob": "70b8a29977adcba6f12832f320ba95168db6a7dd",
+        "baseGitBlob": "13d2e932f8da88ed6b4e06d9d3349ba63e178f56",
+        "baseSha256": "9233911bd658640107390f2b469442b78a81c4e1b85b3b1b242fe04c0bc747d2",
+        "textPurpose": "The complete actual semantic text is stored in this record’s text field. SHA and blob IDs identify sources only."
+      }
+    },
+    {
+      "id": "docs/examples/ltsp-openai.llm.yaml",
+      "sourcePath": "docs/examples/ltsp-openai.llm.yaml",
+      "sha256": "4fcac6e9ef8004384bc72c6c65df7c4e24e7c7803a011b255e7889692b92c77f",
+      "bytes": 3179,
+      "text": "# Merge providers.ltsp-openai into the rtws .minds/llm.yaml; keep existing providers.\n# Set LTSP_OPENAI_API_KEY in the process environment to an approved gateway Virtual Key.\n# No key value belongs in this file.\nproviders:\n  ltsp-openai:\n    name: LTSP OpenAI\n    apiType: openai\n    baseUrl: http://172.16.100.254:8080/openai\n    apiKeyEnvVar: LTSP_OPENAI_API_KEY\n    # Keep setup choices and generation metadata visible for this custom provider.\n    model_param_options:\n      openai:\n        # All five GPT-6/6.1 models below officially support Responses Pro mode.\n        # All five passed gateway standard/pro at high, with streamed tool/result round trips (2026-11-02).\n        # https://developers.openai.com/api/docs/guides/reasoning#reasoning-mode\n        reasoning_mode:\n          prominent: true\n          type: enum\n          values: [standard, pro]\n          value_labels:\n            standard: Standard\n            pro: Pro\n          description: Responses execution mode for these GPT-6 models. Unset uses API standard mode; Pro uses more model work, tokens and latency. Independent of reasoning_effort.\n        reasoning_effort:\n          prominent: true\n          type: enum\n          values: [none, low, medium, high, xhigh, max]\n          description: Model-dependent reasoning effort. Astra and GPT-6.1 Sol require low or higher; Terra, Luna and GPT-6 Sol also accept none. Choose independently of standard/pro mode.\n        verbosity:\n          prominent: true\n          type: enum\n          values: [low, medium, high]\n          description: Response detail level when supported. This does not select reasoning mode or effort.\n    models:\n      openai/gpt-6.1-sol:\n        name: GPT-6.1 Sol\n        supports_image_input: true\n        context_length: 1050000\n        output_length: 128000\n        optimal_max_tokens: 600000\n        critical_max_tokens: 922000\n        caution_remediation_cadence_generations: 10\n        context_window: '1.05M'\n      openai/gpt-6.1-terra:\n        name: GPT-6.1 Terra\n        supports_image_input: true\n        context_length: 1050000\n        output_length: 128000\n        optimal_max_tokens: 600000\n        critical_max_tokens: 922000\n        caution_remediation_cadence_generations: 10\n        context_window: '1.05M'\n      openai/gpt-6-astra:\n        name: GPT-6 Astra\n        supports_image_input: true\n        context_length: 1050000\n        output_length: 128000\n        optimal_max_tokens: 600000\n        critical_max_tokens: 922000\n        caution_remediation_cadence_generations: 10\n        context_window: '1.05M'\n      openai/gpt-6-luna:\n        name: GPT-6 Luna\n        supports_image_input: true\n        context_length: 1050000\n        output_length: 128000\n        optimal_max_tokens: 600000\n        critical_max_tokens: 922000\n        caution_remediation_cadence_generations: 10\n        context_window: '1.05M'\n      openai/gpt-6-sol:\n        name: GPT-6 Sol\n        supports_image_input: true\n        context_length: 1050000\n        output_length: 128000\n        optimal_max_tokens: 600000\n        critical_max_tokens: 922000\n        caution_remediation_cadence_generations: 10\n        context_window: '1.05M'\n",
+      "scenario": "操作者读取完整网关例子及注释，知晓其中五个型号已实测standard/pro high流式工具往返，保留真实路由、独立effort及密钥环境变量约定。",
+      "reviewQuestions": [
+        "完整文本是否准确落实用户仅high、流式、全型号与两模式的验收约定，并且可执行？",
+        "当前实际通过、失败和未执行续轮的范围是否清晰，没有虚构全绿或外推质量？",
+        "措辞是否保留原有工程、语义测试和rtws配置价值，避免额外框架/依赖或不必要全矩阵？"
+      ],
+      "verdict": "passed",
+      "rationale": [
+        "注释中的五个型号恰好对应完整样例列出的五个 GPT-6/6.1 wire ID；每一个都确有 standard/pro、high、流式调用与结果续轮的两格实证。因此替换原仅 Sol/low 的历史范围准确，没有声称别名或全部目录通过。",
+        "完整样例保留环境变量 Key 引用、真实 provider/URL/模型 ID、mode 与 effort 独立选择、模型差异和应用预算。独立 YAML.parse 深等确认本次仅注释变化，配置值没有改变；这只证明数据保全，文字是否正确由本次全文主观判断。"
+      ],
+      "reviewScope": "接受完整无密钥样例的说明及当前五型号已测范围；不接受图片、上下文压力、任意 effort、质量或账号未来可用性。",
+      "context": {
+        "userInstruction": "非流式响应可以跳过不测，reason_effort 可以只测 high，模型和pro模式需要覆盖全，今后也是这样。",
+        "matrixExecutionStatus": "FAILED:18 attempted,16 passed,2 failed403;2 followups UNEXECUTED;exit1",
+        "evidenceLane": "One-off actual native OpenAiGen requests via isolated rtws; current wording reviewed freshly without inheriting old verdicts"
+      },
+      "provenance": {
+        "reviewInputPath": "/tmp/dominds-ltsp-matrix/review-input.json",
+        "reviewInputSha256": "6b45315400f33aa28007cdecb5a9910646b8946040110714d0b5f6ce76d6144e",
+        "sourceAbsolutePath": "/ws/AiWorks/dominds/docs/examples/ltsp-openai.llm.yaml",
+        "currentGitBlob": "95bc7334fb2b9e374232ce946a0571bb590292c8",
+        "baseGitBlob": "a60adf97a974cf61f3abeafc536242ad840c684a",
+        "baseSha256": "9627f090eba907e350cd8e4900726a46293afe94837953e4be176d139398d87a",
+        "textPurpose": "The complete actual semantic text is stored in this record’s text field. SHA and blob IDs identify sources only."
+      }
+    }
+  ],
+  "executedProbeReview": {
+    "verdict": "passed design; actual full matrix remains failed",
+    "scope": "Complete actually executed one-off probe.ts and run.py, plus the necessary reused liveCapture lifecycle boundary; no execution or live requests by the reviewer.",
+    "executedSources": [
+      {
+        "sourcePath": "/tmp/dominds-ltsp-matrix/probe.ts",
+        "sha256": "09c5470c7d443eca0309e4bad7f08c9bb0ca17d463fed890fb6c3739088bbb4e",
+        "bytes": 13948,
+        "content": "import assert from \"node:assert/strict\";\nimport fs from \"node:fs/promises\";\nimport { randomUUID } from \"node:crypto\";\nimport YAML from \"/ws/AiWorks/dominds/node_modules/yaml\";\nimport {\n  LlmConfig,\n  type ChatMessage,\n} from \"/ws/AiWorks/dominds/main/llm/client\";\nimport { OpenAiGen } from \"/ws/AiWorks/dominds/main/llm/gen/openai\";\nimport { Team } from \"/ws/AiWorks/dominds/main/team\";\nimport type { FuncTool } from \"/ws/AiWorks/dominds/main/tool\";\nimport { liveCapture } from \"/ws/AiWorks/dominds/tests/helpers/live-provider\";\n\nconst directory = \"/tmp/dominds-ltsp-matrix\";\nconst models = [\n  \"gpt-6-astra\",\n  \"gpt-6.1-sol\",\n  \"gpt-6.1-terra\",\n  \"gpt-6-sol\",\n  \"gpt-6-luna\",\n  \"gpt-5.6-sol\",\n  \"gpt-5.6-terra\",\n  \"gpt-5.6-luna\",\n  \"gpt-5.6\",\n];\nconst modes = [\"standard\", \"pro\"] as const;\nconst startedAt = new Date().toISOString();\nconst observations: Array<Record<string, unknown>> = [];\nconst wire: Array<Record<string, unknown>> = [];\nconst audits: Array<Promise<void>> = [];\nlet complete = false;\nlet secret = \"\";\nconst nativeFetch = globalThis.fetch;\nconst redact = (text: string) =>\n  secret ? text.split(secret).join(\"[REDACTED]\") : text;\nconst persist = async () =>\n  fs.writeFile(\n    directory + \"/observations.json\",\n    redact(\n      JSON.stringify(\n        {\n          startedAt,\n          updatedAt: new Date().toISOString(),\n          baseRevision: \"81f0613f\",\n          scope:\n            \"Native OpenAiGen loaded from isolated rtws, all listed general-purpose Pro-capable IDs including alias, standard/pro, high, streaming only; capture-only tools and supplied opaque data, no prose-quality acceptance, real tool execution, browser or context-capacity claim.\",\n          semanticAcceptance: \"not-assessed\",\n          credentialStored: false,\n          requestDeadlineMs: 90000,\n          retryPolicy:\n            \"No test retry. Actual SDK/gateway attempts are retained and any extra request fails the cell.\",\n          matrix: {\n            models,\n            modes,\n            effort: \"high\",\n            stream: true,\n            expectedCells: models.length * modes.length,\n            expectedRequests: models.length * modes.length * 2,\n          },\n          observations,\n          wire,\n        },\n        null,\n        2,\n      ),\n    ) + \"\\n\",\n  );\nprocess.once(\"beforeExit\", () => {\n  if (!complete) {\n    console.error(\"Matrix completion boundary was not reached\");\n    process.exitCode = 1;\n  }\n});\n\nasync function main() {\n  assert.equal(process.env.DOMINDS_TEST_RTWS_MANAGED, \"1\");\n  assert.equal(process.env.DOMINDS_TEST_RTWS_MODE, \"isolated\");\n  let inputText = \"\";\n  for await (const chunk of process.stdin) inputText += chunk.toString();\n  const input = JSON.parse(inputText);\n  assert.equal(typeof input.key, \"string\");\n  assert.ok(input.key.length > 10);\n  secret = input.key;\n  process.env.LTSP_OPENAI_API_KEY = secret;\n  const example = YAML.parse(\n    await fs.readFile(\n      \"/ws/AiWorks/dominds/docs/examples/ltsp-openai.llm.yaml\",\n      \"utf8\",\n    ),\n  );\n  const defaults = YAML.parse(\n    await fs.readFile(\"/ws/AiWorks/dominds/main/llm/defaults.yaml\", \"utf8\"),\n  );\n  const prior = YAML.parse(await fs.readFile(\".minds/llm.yaml\", \"utf8\"));\n  for (const model of models) {\n    assert.ok(defaults.providers.openai.models[model]);\n    // Use actual built-in model metadata, changing only the gateway's required wire prefix.\n    example.providers[\"ltsp-openai\"].models[\"openai/\" + model] =\n      defaults.providers.openai.models[model];\n  }\n  await fs.writeFile(\n    \".minds/llm.yaml\",\n    YAML.stringify({ providers: { ...prior.providers, ...example.providers } }),\n  );\n  const provider = (await LlmConfig.load()).getProvider(\"ltsp-openai\");\n  assert.ok(provider);\n  assert.equal(provider.apiType, \"openai\");\n  assert.equal(provider.baseUrl, \"http://172.16.100.254:8080/openai\");\n  globalThis.fetch = async (input, init) => {\n    const request = new Request(input, init);\n    const url = new URL(request.url);\n    assert.equal(url.origin, \"http://172.16.100.254:8080\");\n    assert.equal(url.pathname, \"/openai/responses\");\n    assert.equal(request.method, \"POST\");\n    const body = JSON.parse(await request.clone().text());\n    const entry: Record<string, unknown> = {\n      method: request.method,\n      path: url.pathname,\n      body,\n      startedAt: new Date().toISOString(),\n    };\n    wire.push(entry);\n    const response = await nativeFetch(input, init);\n    entry.status = response.status;\n    entry.headers = Object.fromEntries(\n      [\n        \"content-type\",\n        \"x-request-id\",\n        \"x-bifrost-request-id\",\n        \"x-bf-request-id\",\n      ].map((key) => [key, response.headers.get(key)]),\n    );\n    const audit = response\n      .clone()\n      .text()\n      .then((raw) => {\n        entry.rawResponse = redact(raw);\n        const packets: Array<Record<string, unknown>> = [];\n        if (\n          (response.headers.get(\"content-type\") || \"\").includes(\n            \"text/event-stream\",\n          )\n        ) {\n          for (const line of raw.split(\"\\n\")) {\n            if (!line.startsWith(\"data:\")) continue;\n            const data = line.slice(5).trim();\n            if (data && data !== \"[DONE]\") packets.push(JSON.parse(data));\n          }\n        } else if (raw) packets.push(JSON.parse(raw));\n        entry.packets = packets;\n      })\n      .catch((error) => {\n        entry.auditError = redact(String(error));\n      });\n    audits.push(audit);\n    return response;\n  };\n\n  const generator = new OpenAiGen();\n  for (const canonical of models)\n    for (const mode of modes) {\n      const firstWire = wire.length;\n      const firstAudit = audits.length;\n      const observation: Record<string, unknown> = {\n        model: canonical,\n        mode,\n        effort: \"high\",\n        stream: true,\n        startedAt: new Date().toISOString(),\n        status: \"running\",\n      };\n      observations.push(observation);\n      try {\n        const model = \"openai/\" + canonical;\n        const selectedParams = {\n          openai: {\n            reasoning_mode: mode,\n            reasoning_effort: \"high\",\n            verbosity: \"low\",\n            parallel_tool_calls: false,\n          },\n        };\n        await fs.writeFile(\n          \".minds/team.yaml\",\n          YAML.stringify({\n            member_defaults: {\n              provider: \"ltsp-openai\",\n              model,\n              model_params: selectedParams,\n            },\n            members: { probe: { name: \"Gateway matrix probe\" } },\n          }),\n        );\n        const agent = (await Team.load()).getMember(\"probe\");\n        assert.ok(agent);\n        assert.equal(agent.model, model);\n        assert.deepEqual(agent.model_params, selectedParams);\n        const request = {\n          dialogSelfId: \"ltsp-matrix-\" + canonical + \"-\" + mode,\n          dialogRootId: \"ltsp-matrix\",\n          providerKey: \"ltsp-openai\",\n          modelKey: model,\n          toolUseRequirement: \"none\" as const,\n        };\n        const given = { nonce: randomUUID() };\n        const context: ChatMessage[] = [\n          {\n            type: \"prompting_msg\",\n            role: \"user\",\n            genseq: 1,\n            msgId: randomUUID(),\n            grammar: \"markdown\",\n            content:\n              \"Call capture_nonce exactly once with this supplied JSON: \" +\n              JSON.stringify(given) +\n              \". After the tool returns, return a JSON object containing its supplied receipt. This is an opaque data transport check.\",\n          },\n        ];\n        const tools: FuncTool[] = [\n          {\n            type: \"func\",\n            name: \"capture_nonce\",\n            description:\n              \"Capture the supplied opaque nonce. This test does not execute a real tool.\",\n            parameters: {\n              type: \"object\",\n              properties: { nonce: { type: \"string\" } },\n              required: [\"nonce\"],\n              additionalProperties: false,\n            },\n            call: async () => {\n              throw new Error(\"A transport probe must not execute tools\");\n            },\n          },\n        ];\n        observation.context = context;\n        observation.given = given;\n        const capture = liveCapture(1);\n        observation.firstCapture = capture.capture;\n        observation.first = await generator.genToReceiver(\n          provider,\n          agent,\n          \"\",\n          tools,\n          { ...request, toolUseRequirement: \"required\" },\n          context,\n          capture.receiver,\n          1,\n          AbortSignal.timeout(90000),\n        );\n        capture.assertComplete();\n        assert.equal(capture.capture.calls.length, 1);\n        const call = capture.capture.calls[0];\n        assert.equal(call.name, \"capture_nonce\");\n        // Supplied opaque JSON fidelity and protocol identifiers; no generated meaning oracle.\n        assert.deepEqual(JSON.parse(call.args), given);\n        const receipt = randomUUID();\n        observation.receipt = receipt;\n        const resultMessage: ChatMessage = {\n          type: \"func_result_msg\",\n          role: \"tool\",\n          genseq: 1,\n          id: call.id,\n          name: call.name,\n          content: JSON.stringify({ receipt }),\n        };\n        const nextContext = [\n          ...context,\n          ...capture.capture.messages,\n          resultMessage,\n        ];\n        observation.nextContext = nextContext;\n        agent.model_params = {\n          openai: {\n            ...agent.model_params?.openai,\n            text_format: \"json_schema\",\n            text_format_json_schema_name: \"gateway_receipt\",\n            text_format_json_schema: JSON.stringify({\n              type: \"object\",\n              properties: { receipt: { type: \"string\" } },\n              required: [\"receipt\"],\n              additionalProperties: false,\n            }),\n            text_format_json_schema_strict: true,\n          },\n        };\n        const resultCapture = liveCapture(2);\n        observation.secondCapture = resultCapture.capture;\n        observation.second = await generator.genToReceiver(\n          provider,\n          agent,\n          \"\",\n          tools,\n          request,\n          nextContext,\n          resultCapture.receiver,\n          2,\n          AbortSignal.timeout(90000),\n        );\n        resultCapture.assertComplete();\n        assert.equal(resultCapture.capture.calls.length, 0);\n        assert.deepEqual(\n          JSON.parse(resultCapture.capture.sayingChunks.join(\"\")),\n          { receipt },\n        );\n        observation.toolExecuted = false;\n        await Promise.all(audits.slice(firstAudit));\n        const requests = wire.slice(firstWire);\n        assert.equal(requests.length, 2);\n        observation.requestIds = [];\n        for (const row of requests) {\n          assert.equal(row.status, 200);\n          assert.equal(row.auditError, undefined);\n          const body = row.body as Record<string, unknown>;\n          assert.equal(body.model, model);\n          assert.equal(body.stream, true);\n          assert.equal(body.temperature, undefined);\n          assert.equal(body.top_p, undefined);\n          assert.deepEqual(body.reasoning, { mode, effort: \"high\" });\n          const packets = row.packets as Array<Record<string, unknown>>;\n          assert.equal(\n            packets.filter((p) => p.type === \"response.completed\").length,\n            1,\n          );\n          assert.equal(\n            packets.filter(\n              (p) => p.type === \"response.failed\" || p.type === \"error\",\n            ).length,\n            0,\n          );\n          const response = packets.find((p) => p.type === \"response.completed\")\n            ?.response as Record<string, unknown>;\n          assert.equal(response.status, \"completed\");\n          assert.equal(\n            (response.reasoning as Record<string, unknown>).mode,\n            mode,\n          );\n          assert.equal(\n            (response.reasoning as Record<string, unknown>).effort,\n            \"high\",\n          );\n          // The documented gpt-5.6 alias may be returned as requested or as its canonical Sol target.\n          assert.ok(\n            (canonical === \"gpt-5.6\"\n              ? [\"gpt-5.6\", \"gpt-5.6-sol\"]\n              : [canonical]\n            ).includes(response.model as string),\n          );\n          row.actualResponse = response;\n        }\n        observation.status = \"passed\";\n      } catch (error) {\n        observation.status = \"failed\";\n        observation.error = redact(\n          error instanceof Error ? error.stack || error.message : String(error),\n        );\n        process.exitCode = 1;\n      }\n      await Promise.all(audits.slice(firstAudit));\n      observation.requests = wire\n        .slice(firstWire)\n        .map((row) => ({\n          headers: row.headers,\n          status: row.status,\n          actualResponse: row.actualResponse,\n        }));\n      observation.finishedAt = new Date().toISOString();\n      await persist();\n      console.log(\n        JSON.stringify({\n          model: canonical,\n          mode,\n          effort: \"high\",\n          status: observation.status,\n          requests: wire.length - firstWire,\n        }),\n      );\n    }\n  assert.equal(observations.length, 18);\n  assert.ok(observations.every((row) => row.status !== \"running\"));\n}\nvoid main()\n  .catch((error) => {\n    observations.push({\n      status: \"failed\",\n      phase: \"matrix\",\n      error: redact(\n        error instanceof Error ? error.stack || error.message : String(error),\n      ),\n    });\n    process.exitCode = 1;\n  })\n  .finally(async () => {\n    await Promise.all(audits);\n    await persist();\n    globalThis.fetch = nativeFetch;\n    delete process.env.LTSP_OPENAI_API_KEY;\n    complete = true;\n    console.log(\n      JSON.stringify({\n        status: process.exitCode ? \"failed\" : \"passed\",\n        passed: observations.filter((row) => row.status === \"passed\").length,\n        failed: observations.filter((row) => row.status === \"failed\").length,\n        requests: wire.length,\n      }),\n    );\n  });\n"
+      },
+      {
+        "sourcePath": "/tmp/dominds-ltsp-matrix/run.py",
+        "sha256": "c8f7a8136f9c824cc0e6941e6437909b603ab8a8c5be9f0f5c0ee4f8ee311500",
+        "bytes": 1304,
+        "content": "import http.client, json, pathlib, subprocess, sys\nroot = pathlib.Path('/tmp/dominds-ltsp-matrix')\nc = http.client.HTTPConnection('172.16.100.254', 8080, timeout=15)\nc.request('GET', '/api/governance/virtual-keys')\nr = c.getresponse()\ndata = r.read()\nstatus = r.status\nc.close()\nassert status == 200\ndef objects(value):\n    if isinstance(value, dict):\n        yield value\n        for item in value.values(): yield from objects(item)\n    elif isinstance(value, list):\n        for item in value: yield from objects(item)\nkeys = [x['value'] for x in objects(json.loads(data)) if x.get('name') == 'ltsp-lan-clients' and isinstance(x.get('value'), str)]\nassert len(keys) == 1\nkey = keys[0]\nwith (root / 'run.log').open('w') as log:\n    child = subprocess.Popen(['/tmp/dominds-pnpm', 'exec', 'tsx', '--tsconfig', '/ws/AiWorks/dominds/tests/tsconfig.json', '/ws/AiWorks/dominds/tests/cli.ts', '--', str(root / 'probe.ts')], stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, cwd='/ws/AiWorks/dominds')\n    child.stdin.write(json.dumps({'key': key}))\n    child.stdin.close()\n    for line in child.stdout:\n        safe = line.replace(key, '[REDACTED]')\n        log.write(safe)\n        log.flush()\n        print(safe, end='', flush=True)\n    result = child.wait()\nsys.exit(result)\n"
+      }
+    ],
+    "assertionReview": [
+      {
+        "source": "probe.ts",
+        "lines": "68-83",
+        "assertions": "managed/isolated flags; key type/length; beforeExit completion guard",
+        "value": "Ensures the real configured probe runs in the CLI-owned isolated workspace, receives a nonempty credential value and cannot silently pass with an unresolved top-level lifecycle. Credential shape checks are preconditions, not proof of authentication; actual HTTP outcomes supply that evidence."
+      },
+      {
+        "source": "probe.ts",
+        "lines": "85-108",
+        "assertions": "configured built-in model exists; actual provider exists/apiType/baseUrl",
+        "value": "The explicit nine IDs use actual built-in metadata and the gateway’s wire prefix. The complete example merges into the isolated llm configuration, then native LlmConfig resolves it. IDs and API endpoint are machine routing data; the catalog alone is never counted as availability."
+      },
+      {
+        "source": "probe.ts",
+        "lines": "109-159",
+        "assertions": "POST origin/path; full request body and response status/selected headers/raw body capture; audit-error retention",
+        "value": "Observes the actual outbound native fetch boundary and all attempts. SSE data parsing is protocol syntax, not interpretation of generated prose. A clone audit failure remains data and rejects an otherwise successful cell; failed requests remain visible. The recorder returns the real response to the SDK."
+      },
+      {
+        "source": "probe.ts",
+        "lines": "164-197",
+        "assertions": "explicit9 models×2 modes; native Team.load member/model/model_params equality",
+        "value": "Selects each model/mode through actual isolated team configuration, preserving high and the exact desired parameters. Equality compares supplied structured configuration, not member name or model display-label meaning."
+      },
+      {
+        "source": "probe.ts",
+        "lines": "198-249",
+        "assertions": "given random nonce; declared function schema; required tool use; per-request AbortSignal90000",
+        "value": "The first real native generator request must use a declared protocol tool with supplied data. Tool.call throws if invoked, so no actual tool execution or side effect is accepted. A deadline bounds a request and does not manufacture progress or retry."
+      },
+      {
+        "source": "probe.ts",
+        "lines": "251-256",
+        "assertions": "liveCapture.assertComplete; exactly1 function call; name capture_nonce; parsed args exactly given nonce",
+        "value": "Tool count, schema tool ID and opaque argument data are actual API contracts. This checks supplied bytes/data fidelity, not whether a natural-language answer is good or contains a selected semantic word."
+      },
+      {
+        "source": "live-provider.ts",
+        "lines": "149-257",
+        "assertions": "balanced saying/thinking start/chunk/finish lifetimes and no streamError",
+        "value": "The reused native receiver observes provider callbacks, preserves messages/reasoning/provider data and rejects local stream errors. This supports stream lifecycle completeness, not real-time latency, reasoning quality, driver scheduling or durable execution."
+      },
+      {
+        "source": "probe.ts",
+        "lines": "257-298",
+        "assertions": "fresh independent receipt only in function result; original call ID/name; strict JSON schema continuation; native second streaming generation",
+        "value": "The receipt is introduced after the first request, and nextContext carries the actual generated call plus its same-ID result. The second request tests native call/result replay and opaque data transfer; the schema names/fields are supplied machine data, not natural-language meaning."
+      },
+      {
+        "source": "probe.ts",
+        "lines": "300-305",
+        "assertions": "second capture complete;0 new calls; parsed saying JSON exactly receipt object",
+        "value": "Proves no further tool call and complete returned supplied receipt data. JSON parsing and deep equality allow incidental formatting/chunk differences. They do not assess the generated statement’s meaning, quality or broader reasoning correctness."
+      },
+      {
+        "source": "probe.ts",
+        "lines": "307-319",
+        "assertions": "exactly2 recorded HTTP requests;200;no auditError; correct model/stream; absent temperature/top_p; exact mode/high",
+        "value": "Counts all real fetch attempts, so extra SDK retries fail the cell. Confirms requested API route, streaming and compatible sampling omission; mode/effort are protocol fields. Only positive cells use these requirements; refused cells stay failed."
+      },
+      {
+        "source": "probe.ts",
+        "lines": "320-350",
+        "assertions": "exactly1 completed;0 response.failed/error; completed status/mode/high/returned model; documented alias canonical allowance",
+        "value": "Acceptance uses original upstream structured response fields rather than HTTP200, fees or reasoning-token counts. The special alias allowance is limited to the official Sol target, not arbitrary fallback. No alias response actually completed in this run, so this branch grants no alias acceptance."
+      },
+      {
+        "source": "probe.ts",
+        "lines": "352-380",
+        "assertions": "catch each failure, set exitCode1, persist every cell and continue; exactly18 finished observations",
+        "value": "A failed cell cannot become an expected green rejection, and later cells remain attempted. Failed alias followups are absent and explicitly reported by the durable record. The script does not retry the matrix until green."
+      },
+      {
+        "source": "probe.ts",
+        "lines": "381-409",
+        "assertions": "top-level failure exit1; await audit clones; persist; restore fetch/delete child secret; explicit complete boundary",
+        "value": "Preserves terminal evidence and failure process status. The child owns the injected environment, so deleting it does not mutate the parent. Finalization is not used to erase failed cells."
+      },
+      {
+        "source": "run.py",
+        "lines": "3-18",
+        "assertions": "governance response status200; exactly1 named approved Virtual Key value",
+        "value": "This one-off controller selects the already approved credential in memory. Status/key-count checks protect setup data rather than model availability. It stores no Authorization header or key; the reviewer did not execute this code or access the endpoint."
+      },
+      {
+        "source": "run.py",
+        "lines": "19-29",
+        "assertions": "Corepack wrapper/native tsx/CLI isolated launch; stdin key; redacted combined log; child.wait result forwarded",
+        "value": "Uses the actual isolated rtws entry and carries the failed child status back to the shell. No natural success/error sentence is parsed into a verdict. No retries, additional dependency, test framework or executable repository test was added."
+      }
+    ],
+    "importantDistinctions": [
+      "Nonce/receipt are independent supplied opaque data; protocol enum names, call IDs, JSON fields, counts and exact config data can be compared. The natural request sentence is not graded for semantic quality.",
+      "requestIds are populated in the durable record by capture/header association; the temporary probe initializes but does not populate its requestIds array. This review independently checked all34 ID associations and uniqueness; it does not falsely attribute that extra check to an in-probe assertion.",
+      "toolExecuted=false is a probe scope observation, not a general execution counter. Native generation receives a tool whose call throws; no real tool action, driver authorization, durable dialog scheduling or browser behavior is established.",
+      "The record check below adds actual nonce/call/delta/receipt/usage/peer correlation from stored evidence. These checks are separate from the exact assertions implemented in the original executed probe."
+    ]
+  },
+  "machineRecordReview": {
+    "verdict": "passed record reconciliation, not an18/18 matrix acceptance",
+    "durableArtifact": {
+      "path": "tests/audits/2026-11-02-openai-high-matrix.json",
+      "absolutePath": "/ws/AiWorks/dominds/tests/audits/2026-11-02-openai-high-matrix.json",
+      "identityMethod": "SHA256 of independently bound immutable data domains, using UTF-8 json.dumps(ensure_ascii=False,sort_keys=True,separators=(comma,colon)); whole audit metadata is intentionally not hashed to avoid circular review references.",
+      "domains": [
+        {
+          "pointer": "/matrix",
+          "sha256": "21f15302317e709c3825362c92a8b93df941e31dbb02a35ffdf2eff04964de5a",
+          "canonicalBytes": 234
+        },
+        {
+          "pointer": "/totals",
+          "sha256": "8b74cafb9499fade7b72ac8f16ee3fa80edd8376e2db47685c126f10660c6e83",
+          "canonicalBytes": 323
+        },
+        {
+          "pointer": "/cells",
+          "sha256": "45188d6ddb0693651d09293a8116fe9927ddd31ab0f47f4dbe28d98ba4dde414",
+          "canonicalBytes": 49312
+        },
+        {
+          "pointer": "/wireRequests",
+          "sha256": "1ed2000f9af5225f5d1636b4198910de41677bd92f358c42e5dfad4bab8ed8ed",
+          "canonicalBytes": 626938
+        },
+        {
+          "pointer": "/executedProbeSources",
+          "sha256": "35c95a07f5ece4b70d6a14c4465f510dfb292676546aec3287bf0b5593a17ec8",
+          "canonicalBytes": 16234
+        },
+        {
+          "pointer": "/reviewedProductionAndSupportSourceIdentities",
+          "sha256": "c553d0a2294b4d86e8b22ae70d0dbed774e359691a03724d319a3a7a47c168aa",
+          "canonicalBytes": 1422
+        },
+        {
+          "pointer": "/gatewayReconciliation/content",
+          "sha256": "b89604a2aaf57296e0576bf036d5d9d22d1dba8ea42af2aa7e3e8797f159500c",
+          "canonicalBytes": 34778
+        },
+        {
+          "pointer": "/gatewayReconciliation/durablePeerDiagnosisSources",
+          "sha256": "9ac62778c8817751f5e1699e9ec938886134be5b5ed367cdd2ac636c88cc4b1b",
+          "canonicalBytes": 13989
+        }
+      ]
+    },
+    "observedTotals": {
+      "expectedCells": 18,
+      "attemptedCells": 18,
+      "passedCells": 16,
+      "failedCells": 2,
+      "timedOutCells": 0,
+      "skippedCells": 0,
+      "unexecutedCells": 0,
+      "expectedRequestsForAllRoundtrips": 36,
+      "actualRequests": 34,
+      "http200": 32,
+      "http403": 2,
+      "unexecutedFollowupRequestsAfter403": 2,
+      "usage": {
+        "input_tokens": 34353,
+        "output_tokens": 3061,
+        "total_tokens": 37414
+      }
+    },
+    "actualExitCode": 1,
+    "cellReview": [
+      {
+        "cellIndex": 0,
+        "jsonPointer": "/cells/0",
+        "model": "gpt-6-astra",
+        "mode": "standard",
+        "effort": "high",
+        "stream": true,
+        "actualCellStatus": "passed",
+        "requestCount": 2,
+        "gatewayIds": [
+          "ccfc6b9b-e5e9-4a43-af28-40f81d4e2db5",
+          "54f7cf56-6020-4a42-8719-aaca5aea52dc"
+        ],
+        "toolResultFollowup": "completed",
+        "reviewConclusion": "actual successful opaque-data/protocol roundtrip supported",
+        "failure": null
+      },
+      {
+        "cellIndex": 1,
+        "jsonPointer": "/cells/1",
+        "model": "gpt-6-astra",
+        "mode": "pro",
+        "effort": "high",
+        "stream": true,
+        "actualCellStatus": "passed",
+        "requestCount": 2,
+        "gatewayIds": [
+          "eb5120f7-5b82-4685-a776-e27a4a4b46cc",
+          "21bb8aa0-9c0f-4e42-bc82-3d075b3b2bd5"
+        ],
+        "toolResultFollowup": "completed",
+        "reviewConclusion": "actual successful opaque-data/protocol roundtrip supported",
+        "failure": null
+      },
+      {
+        "cellIndex": 2,
+        "jsonPointer": "/cells/2",
+        "model": "gpt-6.1-sol",
+        "mode": "standard",
+        "effort": "high",
+        "stream": true,
+        "actualCellStatus": "passed",
+        "requestCount": 2,
+        "gatewayIds": [
+          "1c569e45-5339-4374-a835-a34b3fe96c16",
+          "c3936da5-4f84-4f8f-8444-d9eee5cd0c9c"
+        ],
+        "toolResultFollowup": "completed",
+        "reviewConclusion": "actual successful opaque-data/protocol roundtrip supported",
+        "failure": null
+      },
+      {
+        "cellIndex": 3,
+        "jsonPointer": "/cells/3",
+        "model": "gpt-6.1-sol",
+        "mode": "pro",
+        "effort": "high",
+        "stream": true,
+        "actualCellStatus": "passed",
+        "requestCount": 2,
+        "gatewayIds": [
+          "54216a12-4ee7-4592-a271-a2145d00f344",
+          "95e467e2-1c82-4103-a007-a6014ff5d7a9"
+        ],
+        "toolResultFollowup": "completed",
+        "reviewConclusion": "actual successful opaque-data/protocol roundtrip supported",
+        "failure": null
+      },
+      {
+        "cellIndex": 4,
+        "jsonPointer": "/cells/4",
+        "model": "gpt-6.1-terra",
+        "mode": "standard",
+        "effort": "high",
+        "stream": true,
+        "actualCellStatus": "passed",
+        "requestCount": 2,
+        "gatewayIds": [
+          "c84f2791-1382-45b4-81f1-bb0ea086b6e9",
+          "5ff86d15-2efe-4729-afc1-32ca8a451275"
+        ],
+        "toolResultFollowup": "completed",
+        "reviewConclusion": "actual successful opaque-data/protocol roundtrip supported",
+        "failure": null
+      },
+      {
+        "cellIndex": 5,
+        "jsonPointer": "/cells/5",
+        "model": "gpt-6.1-terra",
+        "mode": "pro",
+        "effort": "high",
+        "stream": true,
+        "actualCellStatus": "passed",
+        "requestCount": 2,
+        "gatewayIds": [
+          "c9e39282-2102-4840-9004-233e1d4b8417",
+          "d0273abe-e923-4059-86f7-2ba8cf5ec5f0"
+        ],
+        "toolResultFollowup": "completed",
+        "reviewConclusion": "actual successful opaque-data/protocol roundtrip supported",
+        "failure": null
+      },
+      {
+        "cellIndex": 6,
+        "jsonPointer": "/cells/6",
+        "model": "gpt-6-sol",
+        "mode": "standard",
+        "effort": "high",
+        "stream": true,
+        "actualCellStatus": "passed",
+        "requestCount": 2,
+        "gatewayIds": [
+          "0e5d97b9-4d19-4527-8ca8-f1e499ea971e",
+          "74052d93-e995-4935-b283-f665cb90756a"
+        ],
+        "toolResultFollowup": "completed",
+        "reviewConclusion": "actual successful opaque-data/protocol roundtrip supported",
+        "failure": null
+      },
+      {
+        "cellIndex": 7,
+        "jsonPointer": "/cells/7",
+        "model": "gpt-6-sol",
+        "mode": "pro",
+        "effort": "high",
+        "stream": true,
+        "actualCellStatus": "passed",
+        "requestCount": 2,
+        "gatewayIds": [
+          "c40fd82f-d540-4fa6-a2d1-bcd12f78b4d4",
+          "0147555f-d87d-49a6-8135-6cfffd550bc8"
+        ],
+        "toolResultFollowup": "completed",
+        "reviewConclusion": "actual successful opaque-data/protocol roundtrip supported",
+        "failure": null
+      },
+      {
+        "cellIndex": 8,
+        "jsonPointer": "/cells/8",
+        "model": "gpt-6-luna",
+        "mode": "standard",
+        "effort": "high",
+        "stream": true,
+        "actualCellStatus": "passed",
+        "requestCount": 2,
+        "gatewayIds": [
+          "bb7f9d32-0e82-4d6a-b62c-adbb75f6d64a",
+          "6187f9ee-667c-4703-8cd1-66dd884ba0b2"
+        ],
+        "toolResultFollowup": "completed",
+        "reviewConclusion": "actual successful opaque-data/protocol roundtrip supported",
+        "failure": null
+      },
+      {
+        "cellIndex": 9,
+        "jsonPointer": "/cells/9",
+        "model": "gpt-6-luna",
+        "mode": "pro",
+        "effort": "high",
+        "stream": true,
+        "actualCellStatus": "passed",
+        "requestCount": 2,
+        "gatewayIds": [
+          "774a7937-05c1-4e77-bf9a-a48378b35d31",
+          "f43f923b-b486-45ff-8043-cb6bff98cdce"
+        ],
+        "toolResultFollowup": "completed",
+        "reviewConclusion": "actual successful opaque-data/protocol roundtrip supported",
+        "failure": null
+      },
+      {
+        "cellIndex": 10,
+        "jsonPointer": "/cells/10",
+        "model": "gpt-5.6-sol",
+        "mode": "standard",
+        "effort": "high",
+        "stream": true,
+        "actualCellStatus": "passed",
+        "requestCount": 2,
+        "gatewayIds": [
+          "d1900209-0474-4a4c-a59f-c9167137b501",
+          "b1b29277-c887-4118-90d5-f54a8dc51c4f"
+        ],
+        "toolResultFollowup": "completed",
+        "reviewConclusion": "actual successful opaque-data/protocol roundtrip supported",
+        "failure": null
+      },
+      {
+        "cellIndex": 11,
+        "jsonPointer": "/cells/11",
+        "model": "gpt-5.6-sol",
+        "mode": "pro",
+        "effort": "high",
+        "stream": true,
+        "actualCellStatus": "passed",
+        "requestCount": 2,
+        "gatewayIds": [
+          "31396b5f-b096-4e5e-85f3-d56d1addbc2d",
+          "e6adebe4-35ac-459f-9326-111e1f3676e3"
+        ],
+        "toolResultFollowup": "completed",
+        "reviewConclusion": "actual successful opaque-data/protocol roundtrip supported",
+        "failure": null
+      },
+      {
+        "cellIndex": 12,
+        "jsonPointer": "/cells/12",
+        "model": "gpt-5.6-terra",
+        "mode": "standard",
+        "effort": "high",
+        "stream": true,
+        "actualCellStatus": "passed",
+        "requestCount": 2,
+        "gatewayIds": [
+          "e294fddc-1d7a-4db5-a363-fd1fe6ea9f9c",
+          "7ce76159-80f0-4cb2-94c8-ee6e5f10f548"
+        ],
+        "toolResultFollowup": "completed",
+        "reviewConclusion": "actual successful opaque-data/protocol roundtrip supported",
+        "failure": null
+      },
+      {
+        "cellIndex": 13,
+        "jsonPointer": "/cells/13",
+        "model": "gpt-5.6-terra",
+        "mode": "pro",
+        "effort": "high",
+        "stream": true,
+        "actualCellStatus": "passed",
+        "requestCount": 2,
+        "gatewayIds": [
+          "13a7b648-f896-4397-8e4c-7acdde9e1b7b",
+          "38a99f48-5d4b-41d7-985a-1efd03330c54"
+        ],
+        "toolResultFollowup": "completed",
+        "reviewConclusion": "actual successful opaque-data/protocol roundtrip supported",
+        "failure": null
+      },
+      {
+        "cellIndex": 14,
+        "jsonPointer": "/cells/14",
+        "model": "gpt-5.6-luna",
+        "mode": "standard",
+        "effort": "high",
+        "stream": true,
+        "actualCellStatus": "passed",
+        "requestCount": 2,
+        "gatewayIds": [
+          "f3f68d1a-59cf-414f-9a0b-d81fa743192f",
+          "d869c6a9-f7a2-4886-8cc7-f22c9b8178ef"
+        ],
+        "toolResultFollowup": "completed",
+        "reviewConclusion": "actual successful opaque-data/protocol roundtrip supported",
+        "failure": null
+      },
+      {
+        "cellIndex": 15,
+        "jsonPointer": "/cells/15",
+        "model": "gpt-5.6-luna",
+        "mode": "pro",
+        "effort": "high",
+        "stream": true,
+        "actualCellStatus": "passed",
+        "requestCount": 2,
+        "gatewayIds": [
+          "4dfb38c9-2ed4-4500-ab27-5236641937f0",
+          "ff4da349-5dff-4583-92aa-c43de82a97e0"
+        ],
+        "toolResultFollowup": "completed",
+        "reviewConclusion": "actual successful opaque-data/protocol roundtrip supported",
+        "failure": null
+      },
+      {
+        "cellIndex": 16,
+        "jsonPointer": "/cells/16",
+        "model": "gpt-5.6",
+        "mode": "standard",
+        "effort": "high",
+        "stream": true,
+        "actualCellStatus": "failed",
+        "requestCount": 1,
+        "gatewayIds": ["bc771d95-ea20-40e3-bb58-e4f3953027cb"],
+        "toolResultFollowup": "UNEXECUTED after403",
+        "reviewConclusion": "actual failure preserved; alias availability NOT accepted",
+        "failure": "Error: 403 Model 'gpt-5.6' is not allowed for virtual key 'ltsp-lan-clients'\n    at APIError.generate (/ws/AiWorks/dominds/node_modules/.pnpm/openai@6.42.0_ws@8.21.0_zod@4.4.3/node_modules/openai/src/core/error.ts:81:14)\n    at OpenAI.makeStatusError (/ws/AiWorks/dominds/node_modules/.pnpm/openai@6.42.0_ws@8.21.0_zod@4.4.3/node_modules/openai/src/client.ts:591:28)\n    at OpenAI.makeRequest (/ws/AiWorks/dominds/node_modules/.pnpm/openai@6.42.0_ws@8.21.0_zod@4.4.3/node_modules/openai/src/client.ts:875:24)\n    at process.processTicksAndRejections (node:internal/process/task_queues:104:5)\n    at async OpenAiGen.genToReceiver (/ws/AiWorks/dominds/main/llm/gen/openai.ts:1766:58)\n    at async main (/tmp/dominds-ltsp-matrix/probe.ts:240:29)"
+      },
+      {
+        "cellIndex": 17,
+        "jsonPointer": "/cells/17",
+        "model": "gpt-5.6",
+        "mode": "pro",
+        "effort": "high",
+        "stream": true,
+        "actualCellStatus": "failed",
+        "requestCount": 1,
+        "gatewayIds": ["09729783-5569-424e-9b4b-dc5be677b8fc"],
+        "toolResultFollowup": "UNEXECUTED after403",
+        "reviewConclusion": "actual failure preserved; alias availability NOT accepted",
+        "failure": "Error: 403 Model 'gpt-5.6' is not allowed for virtual key 'ltsp-lan-clients'\n    at APIError.generate (/ws/AiWorks/dominds/node_modules/.pnpm/openai@6.42.0_ws@8.21.0_zod@4.4.3/node_modules/openai/src/core/error.ts:81:14)\n    at OpenAI.makeStatusError (/ws/AiWorks/dominds/node_modules/.pnpm/openai@6.42.0_ws@8.21.0_zod@4.4.3/node_modules/openai/src/client.ts:591:28)\n    at OpenAI.makeRequest (/ws/AiWorks/dominds/node_modules/.pnpm/openai@6.42.0_ws@8.21.0_zod@4.4.3/node_modules/openai/src/client.ts:875:24)\n    at process.processTicksAndRejections (node:internal/process/task_queues:104:5)\n    at async OpenAiGen.genToReceiver (/ws/AiWorks/dominds/main/llm/gen/openai.ts:1766:58)\n    at async main (/tmp/dominds-ltsp-matrix/probe.ts:240:29)"
+      }
+    ],
+    "wireReview": [
+      {
+        "wireIndex": 0,
+        "jsonPointer": "/wireRequests/0",
+        "cellIndex": 0,
+        "phase": 1,
+        "gatewayId": "ccfc6b9b-e5e9-4a43-af28-40f81d4e2db5",
+        "wireModel": "openai/gpt-6-astra",
+        "mode": "standard",
+        "effort": "high",
+        "stream": true,
+        "httpStatus": 200,
+        "requestBodySha256": "394e0b6a47fedd9251aecc4c2851f0b469b0b91a5f019402e873d0d8c9ef70e8",
+        "rawResponseSha256": "330c4efaa86aebd40670811bd5527b6a00684e4dbab91559a16f822cad6b7f8e",
+        "rawResponseBytes": 21898,
+        "peerPointer": "/gatewayReconciliation/content/requests/0",
+        "recordCheck": "matched; this does not change the matrix cell outcome",
+        "responseType": "SSE",
+        "packetTypeCounts": {
+          "response.created": 1,
+          "response.in_progress": 1,
+          "response.output_item.added": 1,
+          "response.function_call_arguments.delta": 25,
+          "response.function_call_arguments.done": 1,
+          "response.output_item.done": 1,
+          "response.completed": 1
+        },
+        "responseId": "resp_0960ca0b4a723423016ae85bd0b4f087d1af2ddb4d26a5859a",
+        "returnedModel": "gpt-6-astra",
+        "returnedMode": "standard",
+        "returnedEffort": "high",
+        "completedStatus": "completed",
+        "usage": {
+          "input_tokens": 187,
+          "output_tokens": 38,
+          "total_tokens": 225
+        },
+        "suppliedDataFidelity": "matched nonce/call identity"
+      },
+      {
+        "wireIndex": 1,
+        "jsonPointer": "/wireRequests/1",
+        "cellIndex": 0,
+        "phase": 2,
+        "gatewayId": "54f7cf56-6020-4a42-8719-aaca5aea52dc",
+        "wireModel": "openai/gpt-6-astra",
+        "mode": "standard",
+        "effort": "high",
+        "stream": true,
+        "httpStatus": 200,
+        "requestBodySha256": "5a1c6d314cc591615f38a0254711a3ad71db7661912fe1f313b8a5c291d024a2",
+        "rawResponseSha256": "342ead8abbdbc0d9eb4b9fb54f4b3d353ca8246347d2e298089e9d8966ce5432",
+        "rawResponseBytes": 22527,
+        "peerPointer": "/gatewayReconciliation/content/requests/1",
+        "recordCheck": "matched; this does not change the matrix cell outcome",
+        "responseType": "SSE",
+        "packetTypeCounts": {
+          "response.created": 1,
+          "response.in_progress": 1,
+          "response.output_item.added": 1,
+          "response.content_part.added": 1,
+          "response.output_text.delta": 24,
+          "response.output_text.done": 1,
+          "response.content_part.done": 1,
+          "response.output_item.done": 1,
+          "response.completed": 1
+        },
+        "responseId": "resp_0c01a27ac0cfa59d016ae85bd30b1087d1be56ef1d9f50a271",
+        "returnedModel": "gpt-6-astra",
+        "returnedMode": "standard",
+        "returnedEffort": "high",
+        "completedStatus": "completed",
+        "usage": {
+          "input_tokens": 160,
+          "output_tokens": 33,
+          "total_tokens": 193
+        },
+        "suppliedDataFidelity": "matched same-call tool receipt and final receipt JSON"
+      },
+      {
+        "wireIndex": 2,
+        "jsonPointer": "/wireRequests/2",
+        "cellIndex": 1,
+        "phase": 1,
+        "gatewayId": "eb5120f7-5b82-4685-a776-e27a4a4b46cc",
+        "wireModel": "openai/gpt-6-astra",
+        "mode": "pro",
+        "effort": "high",
+        "stream": true,
+        "httpStatus": 200,
+        "requestBodySha256": "31b3bed02113b3a9710f1669f20e62188bbec96829da3d870e3222ddc92424d0",
+        "rawResponseSha256": "5b97763708545e55d3cc333d664046c2f900e76bd83eb57718ffa165760df6ad",
+        "rawResponseBytes": 7833,
+        "peerPointer": "/gatewayReconciliation/content/requests/2",
+        "recordCheck": "matched; this does not change the matrix cell outcome",
+        "responseType": "SSE",
+        "packetTypeCounts": {
+          "response.created": 1,
+          "response.in_progress": 1,
+          "response.output_item.added": 1,
+          "response.function_call_arguments.delta": 1,
+          "response.function_call_arguments.done": 1,
+          "response.output_item.done": 1,
+          "response.completed": 1
+        },
+        "responseId": "resp_03dbf8021380ad3d016ae85bd549a887d1a93800152242799f",
+        "returnedModel": "gpt-6-astra",
+        "returnedMode": "pro",
+        "returnedEffort": "high",
+        "completedStatus": "completed",
+        "usage": {
+          "input_tokens": 1909,
+          "output_tokens": 135,
+          "total_tokens": 2044
+        },
+        "suppliedDataFidelity": "matched nonce/call identity"
+      },
+      {
+        "wireIndex": 3,
+        "jsonPointer": "/wireRequests/3",
+        "cellIndex": 1,
+        "phase": 2,
+        "gatewayId": "21bb8aa0-9c0f-4e42-bc82-3d075b3b2bd5",
+        "wireModel": "openai/gpt-6-astra",
+        "mode": "pro",
+        "effort": "high",
+        "stream": true,
+        "httpStatus": 200,
+        "requestBodySha256": "171ee2237da72994947cfc6689aa8e52d85f8b7fb232865e579d0c6b56bed9dc",
+        "rawResponseSha256": "0f8f858fda108b44bcdc9611d17b25754ca9af3f8f3f65b22fcec422df0a79c3",
+        "rawResponseBytes": 8860,
+        "peerPointer": "/gatewayReconciliation/content/requests/3",
+        "recordCheck": "matched; this does not change the matrix cell outcome",
+        "responseType": "SSE",
+        "packetTypeCounts": {
+          "response.created": 1,
+          "response.in_progress": 1,
+          "response.output_item.added": 1,
+          "response.content_part.added": 1,
+          "response.output_text.delta": 1,
+          "response.output_text.done": 1,
+          "response.content_part.done": 1,
+          "response.output_item.done": 1,
+          "response.completed": 1
+        },
+        "responseId": "resp_09c7b8003a57618a016ae85bd9c0b087d1aa3e5fc5340dcc7d",
+        "returnedModel": "gpt-6-astra",
+        "returnedMode": "pro",
+        "returnedEffort": "high",
+        "completedStatus": "completed",
+        "usage": {
+          "input_tokens": 1869,
+          "output_tokens": 130,
+          "total_tokens": 1999
+        },
+        "suppliedDataFidelity": "matched same-call tool receipt and final receipt JSON"
+      },
+      {
+        "wireIndex": 4,
+        "jsonPointer": "/wireRequests/4",
+        "cellIndex": 2,
+        "phase": 1,
+        "gatewayId": "1c569e45-5339-4374-a835-a34b3fe96c16",
+        "wireModel": "openai/gpt-6.1-sol",
+        "mode": "standard",
+        "effort": "high",
+        "stream": true,
+        "httpStatus": 200,
+        "requestBodySha256": "d3023f66805ef99afc1d25edadd5b83a0ad206f22f475e3fcfcf5d74c2271d4a",
+        "rawResponseSha256": "ed6f90a43eb623a52dd77e5cbf543725654c280602c8bf33bf802a490bbc0e84",
+        "rawResponseBytes": 24246,
+        "peerPointer": "/gatewayReconciliation/content/requests/4",
+        "recordCheck": "matched; this does not change the matrix cell outcome",
+        "responseType": "SSE",
+        "packetTypeCounts": {
+          "response.created": 1,
+          "response.in_progress": 1,
+          "response.output_item.added": 1,
+          "response.function_call_arguments.delta": 29,
+          "response.function_call_arguments.done": 1,
+          "response.output_item.done": 1,
+          "response.completed": 1
+        },
+        "responseId": "resp_00e71f4691c9ad70016ae85bdffb3087d18db84d17fcd159e7",
+        "returnedModel": "gpt-6.1-sol",
+        "returnedMode": "standard",
+        "returnedEffort": "high",
+        "completedStatus": "completed",
+        "usage": {
+          "input_tokens": 191,
+          "output_tokens": 42,
+          "total_tokens": 233
+        },
+        "suppliedDataFidelity": "matched nonce/call identity"
+      },
+      {
+        "wireIndex": 5,
+        "jsonPointer": "/wireRequests/5",
+        "cellIndex": 2,
+        "phase": 2,
+        "gatewayId": "c3936da5-4f84-4f8f-8444-d9eee5cd0c9c",
+        "wireModel": "openai/gpt-6.1-sol",
+        "mode": "standard",
+        "effort": "high",
+        "stream": true,
+        "httpStatus": 200,
+        "requestBodySha256": "e92d4c1259812bac32e98c988fbeb5de365fd91493d908986b7c744f175ddc3c",
+        "rawResponseSha256": "b3bb99ea86b8dcfd05cefcf8951b4d3f720376ec58e62288a9d6b4e8c40f63c0",
+        "rawResponseBytes": 23716,
+        "peerPointer": "/gatewayReconciliation/content/requests/5",
+        "recordCheck": "matched; this does not change the matrix cell outcome",
+        "responseType": "SSE",
+        "packetTypeCounts": {
+          "response.created": 1,
+          "response.in_progress": 1,
+          "response.output_item.added": 1,
+          "response.content_part.added": 1,
+          "response.output_text.delta": 26,
+          "response.output_text.done": 1,
+          "response.content_part.done": 1,
+          "response.output_item.done": 1,
+          "response.completed": 1
+        },
+        "responseId": "resp_06a3a017dbc6d5ee016ae85be2698887d1869cfcadb954881b",
+        "returnedModel": "gpt-6.1-sol",
+        "returnedMode": "standard",
+        "returnedEffort": "high",
+        "completedStatus": "completed",
+        "usage": {
+          "input_tokens": 170,
+          "output_tokens": 35,
+          "total_tokens": 205
+        },
+        "suppliedDataFidelity": "matched same-call tool receipt and final receipt JSON"
+      },
+      {
+        "wireIndex": 6,
+        "jsonPointer": "/wireRequests/6",
+        "cellIndex": 3,
+        "phase": 1,
+        "gatewayId": "54216a12-4ee7-4592-a271-a2145d00f344",
+        "wireModel": "openai/gpt-6.1-sol",
+        "mode": "pro",
+        "effort": "high",
+        "stream": true,
+        "httpStatus": 200,
+        "requestBodySha256": "416bd6dae9ef3f8d97a44fb4eb723839445f20f5f31aa658e47edeb68db6ab30",
+        "rawResponseSha256": "999f99b1c132a58de6cc236db47da699ac039249ad327567e5e9e2c4686883ba",
+        "rawResponseBytes": 7834,
+        "peerPointer": "/gatewayReconciliation/content/requests/6",
+        "recordCheck": "matched; this does not change the matrix cell outcome",
+        "responseType": "SSE",
+        "packetTypeCounts": {
+          "response.created": 1,
+          "response.in_progress": 1,
+          "response.output_item.added": 1,
+          "response.function_call_arguments.delta": 1,
+          "response.function_call_arguments.done": 1,
+          "response.output_item.done": 1,
+          "response.completed": 1
+        },
+        "responseId": "resp_09594a0f97b8431c016ae85be4254487d1b701c784dbfe5a20",
+        "returnedModel": "gpt-6.1-sol",
+        "returnedMode": "pro",
+        "returnedEffort": "high",
+        "completedStatus": "completed",
+        "usage": {
+          "input_tokens": 1909,
+          "output_tokens": 135,
+          "total_tokens": 2044
+        },
+        "suppliedDataFidelity": "matched nonce/call identity"
+      },
+      {
+        "wireIndex": 7,
+        "jsonPointer": "/wireRequests/7",
+        "cellIndex": 3,
+        "phase": 2,
+        "gatewayId": "95e467e2-1c82-4103-a007-a6014ff5d7a9",
+        "wireModel": "openai/gpt-6.1-sol",
+        "mode": "pro",
+        "effort": "high",
+        "stream": true,
+        "httpStatus": 200,
+        "requestBodySha256": "1b888ba747077efa0dd9d5d4fa046c6e34642aedee24a49d6baee10ba2d217a1",
+        "rawResponseSha256": "ffbe1ce1c5efe9d45a87dfdecd5a5ad8abe8fd89a14ebc87bf37289bb8586b6b",
+        "rawResponseBytes": 8860,
+        "peerPointer": "/gatewayReconciliation/content/requests/7",
+        "recordCheck": "matched; this does not change the matrix cell outcome",
+        "responseType": "SSE",
+        "packetTypeCounts": {
+          "response.created": 1,
+          "response.in_progress": 1,
+          "response.output_item.added": 1,
+          "response.content_part.added": 1,
+          "response.output_text.delta": 1,
+          "response.output_text.done": 1,
+          "response.content_part.done": 1,
+          "response.output_item.done": 1,
+          "response.completed": 1
+        },
+        "responseId": "resp_0494068d21adfc01016ae85be911b087d185c6ab0d4295fcde",
+        "returnedModel": "gpt-6.1-sol",
+        "returnedMode": "pro",
+        "returnedEffort": "high",
+        "completedStatus": "completed",
+        "usage": {
+          "input_tokens": 1869,
+          "output_tokens": 123,
+          "total_tokens": 1992
+        },
+        "suppliedDataFidelity": "matched same-call tool receipt and final receipt JSON"
+      },
+      {
+        "wireIndex": 8,
+        "jsonPointer": "/wireRequests/8",
+        "cellIndex": 4,
+        "phase": 1,
+        "gatewayId": "c84f2791-1382-45b4-81f1-bb0ea086b6e9",
+        "wireModel": "openai/gpt-6.1-terra",
+        "mode": "standard",
+        "effort": "high",
+        "stream": true,
+        "httpStatus": 200,
+        "requestBodySha256": "3ed19778a2205c0153ef314f346a98ae3b7657773b4d45dd967f0cfd23f32b83",
+        "rawResponseSha256": "788e4132e8263bf5daaa76d08ab6f4f5b1d82e1b4f9398777152cb857b8500a9",
+        "rawResponseBytes": 25132,
+        "peerPointer": "/gatewayReconciliation/content/requests/8",
+        "recordCheck": "matched; this does not change the matrix cell outcome",
+        "responseType": "SSE",
+        "packetTypeCounts": {
+          "response.created": 1,
+          "response.in_progress": 1,
+          "response.output_item.added": 1,
+          "response.function_call_arguments.delta": 30,
+          "response.function_call_arguments.done": 1,
+          "response.output_item.done": 1,
+          "response.completed": 1
+        },
+        "responseId": "resp_00222bca2ebbbcf8016ae85bed59f887d189dc33fae40e839a",
+        "returnedModel": "gpt-6.1-terra",
+        "returnedMode": "standard",
+        "returnedEffort": "high",
+        "completedStatus": "completed",
+        "usage": {
+          "input_tokens": 192,
+          "output_tokens": 43,
+          "total_tokens": 235
+        },
+        "suppliedDataFidelity": "matched nonce/call identity"
+      },
+      {
+        "wireIndex": 9,
+        "jsonPointer": "/wireRequests/9",
+        "cellIndex": 4,
+        "phase": 2,
+        "gatewayId": "5ff86d15-2efe-4729-afc1-32ca8a451275",
+        "wireModel": "openai/gpt-6.1-terra",
+        "mode": "standard",
+        "effort": "high",
+        "stream": true,
+        "httpStatus": 200,
+        "requestBodySha256": "0ca8614c86d703905588e1eec474c5330158ca565d792e33cc69fc5c133e8f0a",
+        "rawResponseSha256": "5c813b7ff8b5bfe28e4a8a4fd8949b038862b39d9e82f0e0e1611acf07f7521a",
+        "rawResponseBytes": 23998,
+        "peerPointer": "/gatewayReconciliation/content/requests/9",
+        "recordCheck": "matched; this does not change the matrix cell outcome",
+        "responseType": "SSE",
+        "packetTypeCounts": {
+          "response.created": 1,
+          "response.in_progress": 1,
+          "response.output_item.added": 1,
+          "response.content_part.added": 1,
+          "response.output_text.delta": 26,
+          "response.output_text.done": 1,
+          "response.content_part.done": 1,
+          "response.output_item.done": 1,
+          "response.completed": 1
+        },
+        "responseId": "resp_02ee0c74851a9af4016ae85bef0b9c87d1a7b2b66480a81375",
+        "returnedModel": "gpt-6.1-terra",
+        "returnedMode": "standard",
+        "returnedEffort": "high",
+        "completedStatus": "completed",
+        "usage": {
+          "input_tokens": 172,
+          "output_tokens": 35,
+          "total_tokens": 207
+        },
+        "suppliedDataFidelity": "matched same-call tool receipt and final receipt JSON"
+      },
+      {
+        "wireIndex": 10,
+        "jsonPointer": "/wireRequests/10",
+        "cellIndex": 5,
+        "phase": 1,
+        "gatewayId": "c9e39282-2102-4840-9004-233e1d4b8417",
+        "wireModel": "openai/gpt-6.1-terra",
+        "mode": "pro",
+        "effort": "high",
+        "stream": true,
+        "httpStatus": 200,
+        "requestBodySha256": "760d0d22b29e5c51c962587fa55cce0185b96a2ea4f14e3e97ed5f5361e07a05",
+        "rawResponseSha256": "396d0ed9238e762f6e110dece5cfcff2c8ae5f9111e80523254dbbd9b637f25d",
+        "rawResponseBytes": 7894,
+        "peerPointer": "/gatewayReconciliation/content/requests/10",
+        "recordCheck": "matched; this does not change the matrix cell outcome",
+        "responseType": "SSE",
+        "packetTypeCounts": {
+          "response.created": 1,
+          "response.in_progress": 1,
+          "response.output_item.added": 1,
+          "response.function_call_arguments.delta": 1,
+          "response.function_call_arguments.done": 1,
+          "response.output_item.done": 1,
+          "response.completed": 1
+        },
+        "responseId": "resp_074678c3e3cc1cd6016ae85bf10b5c87d18470fbf3e7c3c947",
+        "returnedModel": "gpt-6.1-terra",
+        "returnedMode": "pro",
+        "returnedEffort": "high",
+        "completedStatus": "completed",
+        "usage": {
+          "input_tokens": 1852,
+          "output_tokens": 114,
+          "total_tokens": 1966
+        },
+        "suppliedDataFidelity": "matched nonce/call identity"
+      },
+      {
+        "wireIndex": 11,
+        "jsonPointer": "/wireRequests/11",
+        "cellIndex": 5,
+        "phase": 2,
+        "gatewayId": "d0273abe-e923-4059-86f7-2ba8cf5ec5f0",
+        "wireModel": "openai/gpt-6.1-terra",
+        "mode": "pro",
+        "effort": "high",
+        "stream": true,
+        "httpStatus": 200,
+        "requestBodySha256": "e4865792e9a53e7aa302899616c23ff57f6d906ee3e17c58e350bcf6f19a8267",
+        "rawResponseSha256": "cf52c62c8aefd8a78adc85d9e53c15940166960d0997a019bce4323ce7ac387a",
+        "rawResponseBytes": 8938,
+        "peerPointer": "/gatewayReconciliation/content/requests/11",
+        "recordCheck": "matched; this does not change the matrix cell outcome",
+        "responseType": "SSE",
+        "packetTypeCounts": {
+          "response.created": 1,
+          "response.in_progress": 1,
+          "response.output_item.added": 1,
+          "response.content_part.added": 1,
+          "response.output_text.delta": 1,
+          "response.output_text.done": 1,
+          "response.content_part.done": 1,
+          "response.output_item.done": 1,
+          "response.completed": 1
+        },
+        "responseId": "resp_0476f113f03a94b0016ae85bf4083c87d1bb4302bb24a42b24",
+        "returnedModel": "gpt-6.1-terra",
+        "returnedMode": "pro",
+        "returnedEffort": "high",
+        "completedStatus": "completed",
+        "usage": {
+          "input_tokens": 1812,
+          "output_tokens": 147,
+          "total_tokens": 1959
+        },
+        "suppliedDataFidelity": "matched same-call tool receipt and final receipt JSON"
+      },
+      {
+        "wireIndex": 12,
+        "jsonPointer": "/wireRequests/12",
+        "cellIndex": 6,
+        "phase": 1,
+        "gatewayId": "0e5d97b9-4d19-4527-8ca8-f1e499ea971e",
+        "wireModel": "openai/gpt-6-sol",
+        "mode": "standard",
+        "effort": "high",
+        "stream": true,
+        "httpStatus": 200,
+        "requestBodySha256": "f84fbe4f57779a529d9cda1288dc43cb424a04a13ffc1d34875b743cece9eb2e",
+        "rawResponseSha256": "10aa8b5f197c9a094785311ce664b5ee28b1f20ec84761f79add360eaa459a93",
+        "rawResponseBytes": 22220,
+        "peerPointer": "/gatewayReconciliation/content/requests/12",
+        "recordCheck": "matched; this does not change the matrix cell outcome",
+        "responseType": "SSE",
+        "packetTypeCounts": {
+          "response.created": 1,
+          "response.in_progress": 1,
+          "response.output_item.added": 1,
+          "response.function_call_arguments.delta": 26,
+          "response.function_call_arguments.done": 1,
+          "response.output_item.done": 1,
+          "response.completed": 1
+        },
+        "responseId": "resp_03da15ad3c77c525016ae85bf7b68c87d1b482aef32f275f55",
+        "returnedModel": "gpt-6-sol",
+        "returnedMode": "standard",
+        "returnedEffort": "high",
+        "completedStatus": "completed",
+        "usage": {
+          "input_tokens": 188,
+          "output_tokens": 39,
+          "total_tokens": 227
+        },
+        "suppliedDataFidelity": "matched nonce/call identity"
+      },
+      {
+        "wireIndex": 13,
+        "jsonPointer": "/wireRequests/13",
+        "cellIndex": 6,
+        "phase": 2,
+        "gatewayId": "74052d93-e995-4935-b283-f665cb90756a",
+        "wireModel": "openai/gpt-6-sol",
+        "mode": "standard",
+        "effort": "high",
+        "stream": true,
+        "httpStatus": 200,
+        "requestBodySha256": "efee53b2c276c4a296dc86e9c0ef6c020878ed823910ed27bd4014ee79f72d2c",
+        "rawResponseSha256": "218a63ec0a5b9ea32b370479df4b5981aa50f87e3075b3a671ed170c801581d2",
+        "rawResponseBytes": 23441,
+        "peerPointer": "/gatewayReconciliation/content/requests/13",
+        "recordCheck": "matched; this does not change the matrix cell outcome",
+        "responseType": "SSE",
+        "packetTypeCounts": {
+          "response.created": 1,
+          "response.in_progress": 1,
+          "response.output_item.added": 1,
+          "response.content_part.added": 1,
+          "response.output_text.delta": 26,
+          "response.output_text.done": 1,
+          "response.content_part.done": 1,
+          "response.output_item.done": 1,
+          "response.completed": 1
+        },
+        "responseId": "resp_07dde6fb143e59fa016ae85bf9024c87d18716c48029d02766",
+        "returnedModel": "gpt-6-sol",
+        "returnedMode": "standard",
+        "returnedEffort": "high",
+        "completedStatus": "completed",
+        "usage": {
+          "input_tokens": 164,
+          "output_tokens": 35,
+          "total_tokens": 199
+        },
+        "suppliedDataFidelity": "matched same-call tool receipt and final receipt JSON"
+      },
+      {
+        "wireIndex": 14,
+        "jsonPointer": "/wireRequests/14",
+        "cellIndex": 7,
+        "phase": 1,
+        "gatewayId": "c40fd82f-d540-4fa6-a2d1-bcd12f78b4d4",
+        "wireModel": "openai/gpt-6-sol",
+        "mode": "pro",
+        "effort": "high",
+        "stream": true,
+        "httpStatus": 200,
+        "requestBodySha256": "9d3e53a4f9936a25b4f9da35d3beebbb121b4d8e65e121ed420a51ac7c1ce1ff",
+        "rawResponseSha256": "4e86396cffe4bcfdcd4dde0682d115444fd0570edc77ab14271bf8782b2df2ee",
+        "rawResponseBytes": 7772,
+        "peerPointer": "/gatewayReconciliation/content/requests/14",
+        "recordCheck": "matched; this does not change the matrix cell outcome",
+        "responseType": "SSE",
+        "packetTypeCounts": {
+          "response.created": 1,
+          "response.in_progress": 1,
+          "response.output_item.added": 1,
+          "response.function_call_arguments.delta": 1,
+          "response.function_call_arguments.done": 1,
+          "response.output_item.done": 1,
+          "response.completed": 1
+        },
+        "responseId": "resp_0620a06e8628dc89016ae85bfa7b4c87d1a86cd56ef3b57094",
+        "returnedModel": "gpt-6-sol",
+        "returnedMode": "pro",
+        "returnedEffort": "high",
+        "completedStatus": "completed",
+        "usage": {
+          "input_tokens": 1857,
+          "output_tokens": 123,
+          "total_tokens": 1980
+        },
+        "suppliedDataFidelity": "matched nonce/call identity"
+      },
+      {
+        "wireIndex": 15,
+        "jsonPointer": "/wireRequests/15",
+        "cellIndex": 7,
+        "phase": 2,
+        "gatewayId": "0147555f-d87d-49a6-8135-6cfffd550bc8",
+        "wireModel": "openai/gpt-6-sol",
+        "mode": "pro",
+        "effort": "high",
+        "stream": true,
+        "httpStatus": 200,
+        "requestBodySha256": "aac53860ae7dea75549c18f5974e42621bb8ac74c6cea262daf1b83f93fa0e6e",
+        "rawResponseSha256": "bcdb63dab1866c79cff213c455005d4f3b4c5280b60379fc1b350f6eb9bed74d",
+        "rawResponseBytes": 8782,
+        "peerPointer": "/gatewayReconciliation/content/requests/15",
+        "recordCheck": "matched; this does not change the matrix cell outcome",
+        "responseType": "SSE",
+        "packetTypeCounts": {
+          "response.created": 1,
+          "response.in_progress": 1,
+          "response.output_item.added": 1,
+          "response.content_part.added": 1,
+          "response.output_text.delta": 1,
+          "response.output_text.done": 1,
+          "response.content_part.done": 1,
+          "response.output_item.done": 1,
+          "response.completed": 1
+        },
+        "responseId": "resp_00266f25b93e29da016ae85bfd422087d1846352e56c79f053",
+        "returnedModel": "gpt-6-sol",
+        "returnedMode": "pro",
+        "returnedEffort": "high",
+        "completedStatus": "completed",
+        "usage": {
+          "input_tokens": 1797,
+          "output_tokens": 100,
+          "total_tokens": 1897
+        },
+        "suppliedDataFidelity": "matched same-call tool receipt and final receipt JSON"
+      },
+      {
+        "wireIndex": 16,
+        "jsonPointer": "/wireRequests/16",
+        "cellIndex": 8,
+        "phase": 1,
+        "gatewayId": "bb7f9d32-0e82-4d6a-b62c-adbb75f6d64a",
+        "wireModel": "openai/gpt-6-luna",
+        "mode": "standard",
+        "effort": "high",
+        "stream": true,
+        "httpStatus": 200,
+        "requestBodySha256": "f1d82bbab6badee344f25b6539fb97d64d28c81a9a631741029e593a0f0fd827",
+        "rawResponseSha256": "65fd2000cdd10c011b7adddb8fbf57d826eaf7674f82fb6faad85af911d8877c",
+        "rawResponseBytes": 24103,
+        "peerPointer": "/gatewayReconciliation/content/requests/16",
+        "recordCheck": "matched; this does not change the matrix cell outcome",
+        "responseType": "SSE",
+        "packetTypeCounts": {
+          "response.created": 1,
+          "response.in_progress": 1,
+          "response.output_item.added": 1,
+          "response.function_call_arguments.delta": 29,
+          "response.function_call_arguments.done": 1,
+          "response.output_item.done": 1,
+          "response.completed": 1
+        },
+        "responseId": "resp_0d2e6ea7007da060016ae85bffe51087d1a6036a241c1647be",
+        "returnedModel": "gpt-6-luna",
+        "returnedMode": "standard",
+        "returnedEffort": "high",
+        "completedStatus": "completed",
+        "usage": {
+          "input_tokens": 191,
+          "output_tokens": 42,
+          "total_tokens": 233
+        },
+        "suppliedDataFidelity": "matched nonce/call identity"
+      },
+      {
+        "wireIndex": 17,
+        "jsonPointer": "/wireRequests/17",
+        "cellIndex": 8,
+        "phase": 2,
+        "gatewayId": "6187f9ee-667c-4703-8cd1-66dd884ba0b2",
+        "wireModel": "openai/gpt-6-luna",
+        "mode": "standard",
+        "effort": "high",
+        "stream": true,
+        "httpStatus": 200,
+        "requestBodySha256": "da9f27c21f775f1fd5455728ba510eab9d2a2a6dc617232314e9fdaa0c6a6ecf",
+        "rawResponseSha256": "1b85562fdbfd1fa8c2d0eaaf5b850eacb2c788d717eeba5245112ac0c8bbdbd1",
+        "rawResponseBytes": 24765,
+        "peerPointer": "/gatewayReconciliation/content/requests/17",
+        "recordCheck": "matched; this does not change the matrix cell outcome",
+        "responseType": "SSE",
+        "packetTypeCounts": {
+          "response.created": 1,
+          "response.in_progress": 1,
+          "response.output_item.added": 1,
+          "response.content_part.added": 1,
+          "response.output_text.delta": 28,
+          "response.output_text.done": 1,
+          "response.content_part.done": 1,
+          "response.output_item.done": 1,
+          "response.completed": 1
+        },
+        "responseId": "resp_08bde7735ca61073016ae85c016e2487d1ad93dcd846939dc6",
+        "returnedModel": "gpt-6-luna",
+        "returnedMode": "standard",
+        "returnedEffort": "high",
+        "completedStatus": "completed",
+        "usage": {
+          "input_tokens": 172,
+          "output_tokens": 37,
+          "total_tokens": 209
+        },
+        "suppliedDataFidelity": "matched same-call tool receipt and final receipt JSON"
+      },
+      {
+        "wireIndex": 18,
+        "jsonPointer": "/wireRequests/18",
+        "cellIndex": 9,
+        "phase": 1,
+        "gatewayId": "774a7937-05c1-4e77-bf9a-a48378b35d31",
+        "wireModel": "openai/gpt-6-luna",
+        "mode": "pro",
+        "effort": "high",
+        "stream": true,
+        "httpStatus": 200,
+        "requestBodySha256": "9f9079287fbb27a86a190b59063fb612429eaa2b7144d8cd251e1d7f37e6aa0f",
+        "rawResponseSha256": "374e17eeab7391a09ae9d585093c791aa12ae5591d87d721513d1341d147e797",
+        "rawResponseBytes": 7802,
+        "peerPointer": "/gatewayReconciliation/content/requests/18",
+        "recordCheck": "matched; this does not change the matrix cell outcome",
+        "responseType": "SSE",
+        "packetTypeCounts": {
+          "response.created": 1,
+          "response.in_progress": 1,
+          "response.output_item.added": 1,
+          "response.function_call_arguments.delta": 1,
+          "response.function_call_arguments.done": 1,
+          "response.output_item.done": 1,
+          "response.completed": 1
+        },
+        "responseId": "resp_07c2975966c874c0016ae85c03076487d186c64f4c7ef47cad",
+        "returnedModel": "gpt-6-luna",
+        "returnedMode": "pro",
+        "returnedEffort": "high",
+        "completedStatus": "completed",
+        "usage": {
+          "input_tokens": 1857,
+          "output_tokens": 164,
+          "total_tokens": 2021
+        },
+        "suppliedDataFidelity": "matched nonce/call identity"
+      },
+      {
+        "wireIndex": 19,
+        "jsonPointer": "/wireRequests/19",
+        "cellIndex": 9,
+        "phase": 2,
+        "gatewayId": "f43f923b-b486-45ff-8043-cb6bff98cdce",
+        "wireModel": "openai/gpt-6-luna",
+        "mode": "pro",
+        "effort": "high",
+        "stream": true,
+        "httpStatus": 200,
+        "requestBodySha256": "5d2826059a5b64c63346b180d0db4302fc6dc3febe43c2f2155a87220802a2c3",
+        "rawResponseSha256": "70eaf37a8b02ba39377b64e404c53af91921813813eb8d3cd01be2452beca7c4",
+        "rawResponseBytes": 8821,
+        "peerPointer": "/gatewayReconciliation/content/requests/19",
+        "recordCheck": "matched; this does not change the matrix cell outcome",
+        "responseType": "SSE",
+        "packetTypeCounts": {
+          "response.created": 1,
+          "response.in_progress": 1,
+          "response.output_item.added": 1,
+          "response.content_part.added": 1,
+          "response.output_text.delta": 1,
+          "response.output_text.done": 1,
+          "response.content_part.done": 1,
+          "response.output_item.done": 1,
+          "response.completed": 1
+        },
+        "responseId": "resp_064d72e522290cac016ae85c06728c87d1be2650c9d52f7988",
+        "returnedModel": "gpt-6-luna",
+        "returnedMode": "pro",
+        "returnedEffort": "high",
+        "completedStatus": "completed",
+        "usage": {
+          "input_tokens": 1821,
+          "output_tokens": 179,
+          "total_tokens": 2000
+        },
+        "suppliedDataFidelity": "matched same-call tool receipt and final receipt JSON"
+      },
+      {
+        "wireIndex": 20,
+        "jsonPointer": "/wireRequests/20",
+        "cellIndex": 10,
+        "phase": 1,
+        "gatewayId": "d1900209-0474-4a4c-a59f-c9167137b501",
+        "wireModel": "openai/gpt-5.6-sol",
+        "mode": "standard",
+        "effort": "high",
+        "stream": true,
+        "httpStatus": 200,
+        "requestBodySha256": "2ff8c9c0187af1bdd745f873d6ec11d9e00ca1c2ada2d11a43bace42ac02da11",
+        "rawResponseSha256": "d1914c5b70c81ff5c42d25306b3b7b918afe0ce6b4afc5c34c41164d3012dd57",
+        "rawResponseBytes": 23067,
+        "peerPointer": "/gatewayReconciliation/content/requests/20",
+        "recordCheck": "matched; this does not change the matrix cell outcome",
+        "responseType": "SSE",
+        "packetTypeCounts": {
+          "response.created": 1,
+          "response.in_progress": 1,
+          "response.output_item.added": 1,
+          "response.function_call_arguments.delta": 27,
+          "response.function_call_arguments.done": 1,
+          "response.output_item.done": 1,
+          "response.completed": 1
+        },
+        "responseId": "resp_0dd59a9f456003c7016ae85c0a229c87d1a2269a3a892b9321",
+        "returnedModel": "gpt-5.6-sol",
+        "returnedMode": "standard",
+        "returnedEffort": "high",
+        "completedStatus": "completed",
+        "usage": {
+          "input_tokens": 189,
+          "output_tokens": 40,
+          "total_tokens": 229
+        },
+        "suppliedDataFidelity": "matched nonce/call identity"
+      },
+      {
+        "wireIndex": 21,
+        "jsonPointer": "/wireRequests/21",
+        "cellIndex": 10,
+        "phase": 2,
+        "gatewayId": "b1b29277-c887-4118-90d5-f54a8dc51c4f",
+        "wireModel": "openai/gpt-5.6-sol",
+        "mode": "standard",
+        "effort": "high",
+        "stream": true,
+        "httpStatus": 200,
+        "requestBodySha256": "7fda14cc8c00d9aeaa8a7cdd2d940e4f2e554a2eb4ba93117e8020a302ed1665",
+        "rawResponseSha256": "e3e369c6bba2cf2f4603b2080a502f906900a6e840514fa58b71c6896f265a72",
+        "rawResponseBytes": 27294,
+        "peerPointer": "/gatewayReconciliation/content/requests/21",
+        "recordCheck": "matched; this does not change the matrix cell outcome",
+        "responseType": "SSE",
+        "packetTypeCounts": {
+          "response.created": 1,
+          "response.in_progress": 1,
+          "response.output_item.added": 1,
+          "response.content_part.added": 1,
+          "response.output_text.delta": 32,
+          "response.output_text.done": 1,
+          "response.content_part.done": 1,
+          "response.output_item.done": 1,
+          "response.completed": 1
+        },
+        "responseId": "resp_08d6a79d8943b454016ae85c0b6abc87d199b2c8bece432167",
+        "returnedModel": "gpt-5.6-sol",
+        "returnedMode": "standard",
+        "returnedEffort": "high",
+        "completedStatus": "completed",
+        "usage": {
+          "input_tokens": 172,
+          "output_tokens": 41,
+          "total_tokens": 213
+        },
+        "suppliedDataFidelity": "matched same-call tool receipt and final receipt JSON"
+      },
+      {
+        "wireIndex": 22,
+        "jsonPointer": "/wireRequests/22",
+        "cellIndex": 11,
+        "phase": 1,
+        "gatewayId": "31396b5f-b096-4e5e-85f3-d56d1addbc2d",
+        "wireModel": "openai/gpt-5.6-sol",
+        "mode": "pro",
+        "effort": "high",
+        "stream": true,
+        "httpStatus": 200,
+        "requestBodySha256": "f11c7ff3261009fd01136a5d39d22169cf1cb82fa9b6fc37983a45a95ab20cf5",
+        "rawResponseSha256": "3e1d6c537cfcf2684b6338f5eab5ed7bf0ef0e639981a36f3d8e466bd62a56cf",
+        "rawResponseBytes": 7833,
+        "peerPointer": "/gatewayReconciliation/content/requests/22",
+        "recordCheck": "matched; this does not change the matrix cell outcome",
+        "responseType": "SSE",
+        "packetTypeCounts": {
+          "response.created": 1,
+          "response.in_progress": 1,
+          "response.output_item.added": 1,
+          "response.function_call_arguments.delta": 1,
+          "response.function_call_arguments.done": 1,
+          "response.output_item.done": 1,
+          "response.completed": 1
+        },
+        "responseId": "resp_0bcc73c08ac2d468016ae85c0cbe1c87d1ad74e4df0a38d6c7",
+        "returnedModel": "gpt-5.6-sol",
+        "returnedMode": "pro",
+        "returnedEffort": "high",
+        "completedStatus": "completed",
+        "usage": {
+          "input_tokens": 2186,
+          "output_tokens": 135,
+          "total_tokens": 2321
+        },
+        "suppliedDataFidelity": "matched nonce/call identity"
+      },
+      {
+        "wireIndex": 23,
+        "jsonPointer": "/wireRequests/23",
+        "cellIndex": 11,
+        "phase": 2,
+        "gatewayId": "e6adebe4-35ac-459f-9326-111e1f3676e3",
+        "wireModel": "openai/gpt-5.6-sol",
+        "mode": "pro",
+        "effort": "high",
+        "stream": true,
+        "httpStatus": 200,
+        "requestBodySha256": "f583804de35c44e7ddc34d27d27e078dc32ecdc19f3d48b72c7531b375e92f52",
+        "rawResponseSha256": "96c312f3575066731e95205aff14ccf004cf048f82acd3c0ada4e7dff8291dc0",
+        "rawResponseBytes": 8859,
+        "peerPointer": "/gatewayReconciliation/content/requests/23",
+        "recordCheck": "matched; this does not change the matrix cell outcome",
+        "responseType": "SSE",
+        "packetTypeCounts": {
+          "response.created": 1,
+          "response.in_progress": 1,
+          "response.output_item.added": 1,
+          "response.content_part.added": 1,
+          "response.output_text.delta": 1,
+          "response.output_text.done": 1,
+          "response.content_part.done": 1,
+          "response.output_item.done": 1,
+          "response.completed": 1
+        },
+        "responseId": "resp_00faab210b650641016ae85c1043bc87d1a799026d2ee80b69",
+        "returnedModel": "gpt-5.6-sol",
+        "returnedMode": "pro",
+        "returnedEffort": "high",
+        "completedStatus": "completed",
+        "usage": {
+          "input_tokens": 2138,
+          "output_tokens": 132,
+          "total_tokens": 2270
+        },
+        "suppliedDataFidelity": "matched same-call tool receipt and final receipt JSON"
+      },
+      {
+        "wireIndex": 24,
+        "jsonPointer": "/wireRequests/24",
+        "cellIndex": 12,
+        "phase": 1,
+        "gatewayId": "e294fddc-1d7a-4db5-a363-fd1fe6ea9f9c",
+        "wireModel": "openai/gpt-5.6-terra",
+        "mode": "standard",
+        "effort": "high",
+        "stream": true,
+        "httpStatus": 200,
+        "requestBodySha256": "cfbd93bb1e2e264752653d4017ea50dd3c42bb17e3ca8888d3807824d4c339d1",
+        "rawResponseSha256": "27df594d5f7377522f5f1839871ee04c998a372908086bc99b8569985bd8997a",
+        "rawResponseBytes": 28130,
+        "peerPointer": "/gatewayReconciliation/content/requests/24",
+        "recordCheck": "matched; this does not change the matrix cell outcome",
+        "responseType": "SSE",
+        "packetTypeCounts": {
+          "response.created": 1,
+          "response.in_progress": 1,
+          "response.output_item.added": 2,
+          "response.output_item.done": 2,
+          "response.function_call_arguments.delta": 25,
+          "response.function_call_arguments.done": 1,
+          "response.completed": 1
+        },
+        "responseId": "resp_042a4a30e130bc42016ae85c13734887d181d9a40afec9ada8",
+        "returnedModel": "gpt-5.6-terra",
+        "returnedMode": "standard",
+        "returnedEffort": "high",
+        "completedStatus": "completed",
+        "usage": {
+          "input_tokens": 187,
+          "output_tokens": 60,
+          "total_tokens": 247
+        },
+        "suppliedDataFidelity": "matched nonce/call identity"
+      },
+      {
+        "wireIndex": 25,
+        "jsonPointer": "/wireRequests/25",
+        "cellIndex": 12,
+        "phase": 2,
+        "gatewayId": "7ce76159-80f0-4cb2-94c8-ee6e5f10f548",
+        "wireModel": "openai/gpt-5.6-terra",
+        "mode": "standard",
+        "effort": "high",
+        "stream": true,
+        "httpStatus": 200,
+        "requestBodySha256": "75ba46491cc7e5416d4292b2223250f303b750742b20f67a4bf9420fc8cf46a3",
+        "rawResponseSha256": "4148729556a83cdf24833be33c5efe5c1490cc5552d702529c934886c4ebaffa",
+        "rawResponseBytes": 24000,
+        "peerPointer": "/gatewayReconciliation/content/requests/25",
+        "recordCheck": "matched; this does not change the matrix cell outcome",
+        "responseType": "SSE",
+        "packetTypeCounts": {
+          "response.created": 1,
+          "response.in_progress": 1,
+          "response.output_item.added": 1,
+          "response.content_part.added": 1,
+          "response.output_text.delta": 26,
+          "response.output_text.done": 1,
+          "response.content_part.done": 1,
+          "response.output_item.done": 1,
+          "response.completed": 1
+        },
+        "responseId": "resp_0a8b34c87ca5b965016ae85c14e81887d1995f43d0a5fbff9f",
+        "returnedModel": "gpt-5.6-terra",
+        "returnedMode": "standard",
+        "returnedEffort": "high",
+        "completedStatus": "completed",
+        "usage": {
+          "input_tokens": 184,
+          "output_tokens": 35,
+          "total_tokens": 219
+        },
+        "suppliedDataFidelity": "matched same-call tool receipt and final receipt JSON"
+      },
+      {
+        "wireIndex": 26,
+        "jsonPointer": "/wireRequests/26",
+        "cellIndex": 13,
+        "phase": 1,
+        "gatewayId": "13a7b648-f896-4397-8e4c-7acdde9e1b7b",
+        "wireModel": "openai/gpt-5.6-terra",
+        "mode": "pro",
+        "effort": "high",
+        "stream": true,
+        "httpStatus": 200,
+        "requestBodySha256": "6f7b91e4addece63b6382ae5c3f2f15145878762506e8814b7f6448e94e6361d",
+        "rawResponseSha256": "575dce911130f92ce6ac6e8c9102ea6521bdea0e430a0752182997e162888bc3",
+        "rawResponseBytes": 7895,
+        "peerPointer": "/gatewayReconciliation/content/requests/26",
+        "recordCheck": "matched; this does not change the matrix cell outcome",
+        "responseType": "SSE",
+        "packetTypeCounts": {
+          "response.created": 1,
+          "response.in_progress": 1,
+          "response.output_item.added": 1,
+          "response.function_call_arguments.delta": 1,
+          "response.function_call_arguments.done": 1,
+          "response.output_item.done": 1,
+          "response.completed": 1
+        },
+        "responseId": "resp_0596710733c0c101016ae85c1619ac87d186e314489b660f47",
+        "returnedModel": "gpt-5.6-terra",
+        "returnedMode": "pro",
+        "returnedEffort": "high",
+        "completedStatus": "completed",
+        "usage": {
+          "input_tokens": 2183,
+          "output_tokens": 214,
+          "total_tokens": 2397
+        },
+        "suppliedDataFidelity": "matched nonce/call identity"
+      },
+      {
+        "wireIndex": 27,
+        "jsonPointer": "/wireRequests/27",
+        "cellIndex": 13,
+        "phase": 2,
+        "gatewayId": "38a99f48-5d4b-41d7-985a-1efd03330c54",
+        "wireModel": "openai/gpt-5.6-terra",
+        "mode": "pro",
+        "effort": "high",
+        "stream": true,
+        "httpStatus": 200,
+        "requestBodySha256": "98705105a43afab15a644fe592521e138516509f4240f32ca3e1dec141a0db01",
+        "rawResponseSha256": "cc2a2a851cbec94a607551f4059483dab2a6c09b2b0830121c2737181014509b",
+        "rawResponseBytes": 8937,
+        "peerPointer": "/gatewayReconciliation/content/requests/27",
+        "recordCheck": "matched; this does not change the matrix cell outcome",
+        "responseType": "SSE",
+        "packetTypeCounts": {
+          "response.created": 1,
+          "response.in_progress": 1,
+          "response.output_item.added": 1,
+          "response.content_part.added": 1,
+          "response.output_text.delta": 1,
+          "response.output_text.done": 1,
+          "response.content_part.done": 1,
+          "response.output_item.done": 1,
+          "response.completed": 1
+        },
+        "responseId": "resp_01f42ce5d7e2e8da016ae85c199e2087d18e234dbf4e19f48d",
+        "returnedModel": "gpt-5.6-terra",
+        "returnedMode": "pro",
+        "returnedEffort": "high",
+        "completedStatus": "completed",
+        "usage": {
+          "input_tokens": 2118,
+          "output_tokens": 156,
+          "total_tokens": 2274
+        },
+        "suppliedDataFidelity": "matched same-call tool receipt and final receipt JSON"
+      },
+      {
+        "wireIndex": 28,
+        "jsonPointer": "/wireRequests/28",
+        "cellIndex": 14,
+        "phase": 1,
+        "gatewayId": "f3f68d1a-59cf-414f-9a0b-d81fa743192f",
+        "wireModel": "openai/gpt-5.6-luna",
+        "mode": "standard",
+        "effort": "high",
+        "stream": true,
+        "httpStatus": 200,
+        "requestBodySha256": "e6ae74736ff531af9607dc74d4a57656b12ccde512a77c4ee228f383955f8742",
+        "rawResponseSha256": "78ceac0aeddf0c058c0107bc7c80f7010afde29d93a8748ab587b118c73aee42",
+        "rawResponseBytes": 22617,
+        "peerPointer": "/gatewayReconciliation/content/requests/28",
+        "recordCheck": "matched; this does not change the matrix cell outcome",
+        "responseType": "SSE",
+        "packetTypeCounts": {
+          "response.created": 1,
+          "response.in_progress": 1,
+          "response.output_item.added": 1,
+          "response.function_call_arguments.delta": 26,
+          "response.function_call_arguments.done": 1,
+          "response.output_item.done": 1,
+          "response.completed": 1
+        },
+        "responseId": "resp_070afec68e3adc59016ae85c1c4d9487d1aacbf6d7fc2bd748",
+        "returnedModel": "gpt-5.6-luna",
+        "returnedMode": "standard",
+        "returnedEffort": "high",
+        "completedStatus": "completed",
+        "usage": {
+          "input_tokens": 188,
+          "output_tokens": 39,
+          "total_tokens": 227
+        },
+        "suppliedDataFidelity": "matched nonce/call identity"
+      },
+      {
+        "wireIndex": 29,
+        "jsonPointer": "/wireRequests/29",
+        "cellIndex": 14,
+        "phase": 2,
+        "gatewayId": "d869c6a9-f7a2-4886-8cc7-f22c9b8178ef",
+        "wireModel": "openai/gpt-5.6-luna",
+        "mode": "standard",
+        "effort": "high",
+        "stream": true,
+        "httpStatus": 200,
+        "requestBodySha256": "69ff892f57f7ea0f9ccabd06451407dc01f371a263269bb6118865362f0a553a",
+        "rawResponseSha256": "ff16fb3a738ec473fb0dd36a582132d0a4e1ad82e0c90d207c3a8f21a0ec6046",
+        "rawResponseBytes": 25664,
+        "peerPointer": "/gatewayReconciliation/content/requests/29",
+        "recordCheck": "matched; this does not change the matrix cell outcome",
+        "responseType": "SSE",
+        "packetTypeCounts": {
+          "response.created": 1,
+          "response.in_progress": 1,
+          "response.output_item.added": 1,
+          "response.content_part.added": 1,
+          "response.output_text.delta": 29,
+          "response.output_text.done": 1,
+          "response.content_part.done": 1,
+          "response.output_item.done": 1,
+          "response.completed": 1
+        },
+        "responseId": "resp_06d177003b3f93a4016ae85c1da60087d1a4aa0e45d9da48c3",
+        "returnedModel": "gpt-5.6-luna",
+        "returnedMode": "standard",
+        "returnedEffort": "high",
+        "completedStatus": "completed",
+        "usage": {
+          "input_tokens": 167,
+          "output_tokens": 38,
+          "total_tokens": 205
+        },
+        "suppliedDataFidelity": "matched same-call tool receipt and final receipt JSON"
+      },
+      {
+        "wireIndex": 30,
+        "jsonPointer": "/wireRequests/30",
+        "cellIndex": 15,
+        "phase": 1,
+        "gatewayId": "4dfb38c9-2ed4-4500-ab27-5236641937f0",
+        "wireModel": "openai/gpt-5.6-luna",
+        "mode": "pro",
+        "effort": "high",
+        "stream": true,
+        "httpStatus": 200,
+        "requestBodySha256": "4b626d1478e834d25e134ecd719f42263369f995b399ecbafcfc04e993eda82e",
+        "rawResponseSha256": "0058a428174d624dc10d68049f0b61b5432a25757e052e846fd08c1b9eb0dbe4",
+        "rawResponseBytes": 7864,
+        "peerPointer": "/gatewayReconciliation/content/requests/30",
+        "recordCheck": "matched; this does not change the matrix cell outcome",
+        "responseType": "SSE",
+        "packetTypeCounts": {
+          "response.created": 1,
+          "response.in_progress": 1,
+          "response.output_item.added": 1,
+          "response.function_call_arguments.delta": 1,
+          "response.function_call_arguments.done": 1,
+          "response.output_item.done": 1,
+          "response.completed": 1
+        },
+        "responseId": "resp_05770428a84f0ecd016ae85c1efd7887d185fc4a5d1bf84d5e",
+        "returnedModel": "gpt-5.6-luna",
+        "returnedMode": "pro",
+        "returnedEffort": "high",
+        "completedStatus": "completed",
+        "usage": {
+          "input_tokens": 2193,
+          "output_tokens": 278,
+          "total_tokens": 2471
+        },
+        "suppliedDataFidelity": "matched nonce/call identity"
+      },
+      {
+        "wireIndex": 31,
+        "jsonPointer": "/wireRequests/31",
+        "cellIndex": 15,
+        "phase": 2,
+        "gatewayId": "ff4da349-5dff-4583-92aa-c43de82a97e0",
+        "wireModel": "openai/gpt-5.6-luna",
+        "mode": "pro",
+        "effort": "high",
+        "stream": true,
+        "httpStatus": 200,
+        "requestBodySha256": "a51e2da6df45febec365fc0e4a207b91e10676b1d9ea87ba34a224f9df3c4ab5",
+        "rawResponseSha256": "8f2dbb235eac494ebec496cfc43ebc655478341895afcbd0c036a53e2c07e5ee",
+        "rawResponseBytes": 8897,
+        "peerPointer": "/gatewayReconciliation/content/requests/31",
+        "recordCheck": "matched; this does not change the matrix cell outcome",
+        "responseType": "SSE",
+        "packetTypeCounts": {
+          "response.created": 1,
+          "response.in_progress": 1,
+          "response.output_item.added": 1,
+          "response.content_part.added": 1,
+          "response.output_text.delta": 1,
+          "response.output_text.done": 1,
+          "response.content_part.done": 1,
+          "response.output_item.done": 1,
+          "response.completed": 1
+        },
+        "responseId": "resp_09d6b6291710a9b0016ae85c245d4c87d1b236844899b64bfb",
+        "returnedModel": "gpt-5.6-luna",
+        "returnedMode": "pro",
+        "returnedEffort": "high",
+        "completedStatus": "completed",
+        "usage": {
+          "input_tokens": 2109,
+          "output_tokens": 164,
+          "total_tokens": 2273
+        },
+        "suppliedDataFidelity": "matched same-call tool receipt and final receipt JSON"
+      },
+      {
+        "wireIndex": 32,
+        "jsonPointer": "/wireRequests/32",
+        "cellIndex": 16,
+        "phase": 1,
+        "gatewayId": "bc771d95-ea20-40e3-bb58-e4f3953027cb",
+        "wireModel": "openai/gpt-5.6",
+        "mode": "standard",
+        "effort": "high",
+        "stream": true,
+        "httpStatus": 403,
+        "requestBodySha256": "f9aecd19fcb0dffc3b5617102445fcd807642781ada3fd100a86d96608478e70",
+        "rawResponseSha256": "7ea2628895de1f7e373da0e5e7945e20ea12ec11841720387b66a1b8f799578e",
+        "rawResponseBytes": 349,
+        "peerPointer": "/gatewayReconciliation/content/requests/32",
+        "recordCheck": "matched; this does not change the matrix cell outcome",
+        "responseType": "JSON refusal",
+        "responseMachineCode": "model_blocked",
+        "roundtripAccepted": false,
+        "toolResultFollowup": "UNEXECUTED"
+      },
+      {
+        "wireIndex": 33,
+        "jsonPointer": "/wireRequests/33",
+        "cellIndex": 17,
+        "phase": 1,
+        "gatewayId": "09729783-5569-424e-9b4b-dc5be677b8fc",
+        "wireModel": "openai/gpt-5.6",
+        "mode": "pro",
+        "effort": "high",
+        "stream": true,
+        "httpStatus": 403,
+        "requestBodySha256": "841d44fc69cb9d0a2071202f524753e9c5d6cca49fc4d58df6f1b40850f7062c",
+        "rawResponseSha256": "7ea2628895de1f7e373da0e5e7945e20ea12ec11841720387b66a1b8f799578e",
+        "rawResponseBytes": 349,
+        "peerPointer": "/gatewayReconciliation/content/requests/33",
+        "recordCheck": "matched; this does not change the matrix cell outcome",
+        "responseType": "JSON refusal",
+        "responseMachineCode": "model_blocked",
+        "roundtripAccepted": false,
+        "toolResultFollowup": "UNEXECUTED"
+      }
+    ],
+    "packetTypeCounts": {
+      "response.created": 32,
+      "response.in_progress": 32,
+      "response.output_item.added": 33,
+      "response.function_call_arguments.delta": 225,
+      "response.function_call_arguments.done": 16,
+      "response.output_item.done": 33,
+      "response.completed": 32,
+      "response.content_part.added": 16,
+      "response.output_text.delta": 225,
+      "response.output_text.done": 16,
+      "response.content_part.done": 16
+    },
+    "checkedUsageTotals": {
+      "input_tokens": 34353,
+      "output_tokens": 3061,
+      "total_tokens": 37414
+    },
+    "checksPerformed": [
+      "Exact9 requested model IDs×2 mode pairs, no duplicate/missing cell; high and stream true for all attempts.",
+      "Every complete raw SSE data packet parsed; each successful response has exactly1 completed and no failure/error packet; actual completed model/mode/high/status checked.",
+      "All16 actual function calls have a nonempty same-call identity and exact supplied nonce; arguments delta bytes reconstruct the final arguments.",
+      "Each second request carries the first actual call and only then supplies the independent receipt through its matching result. Final output-text deltas and native capture reconstruct the exact receipt object.",
+      "All32 complete responses agree with native capture reported model/usage; no local streamError or unexpected side output appears.",
+      "All34 gateway IDs unique and exactly match the peer set; wire model/mode/high/stream/status associate to the corresponding record. All retry/fallback values0 and hidden-body flags true.",
+      "All32 completed usage fields exactly match both peer top-level and logged gateway usage; summed34353 input+3061 output=37414.",
+      "Two original JSON403 model_blocked/policy_model_blocked refusals and missing second requests remain failed, without fabricated completed/mode/usage evidence.",
+      "Complete executed source bodies match their embedded snapshots and source hashes. Four complete guidance bodies match frozen review input/current source."
+    ],
+    "modeEvidenceLimit": "Peer requested_mode and effective_reasoning are linked client fields, not an independent gateway mode column. Actual original upstream completed packets supply mode/high evidence; fee, HTTP200 and token counts do not prove Pro.",
+    "estimatedCostLimit": "Peer USD estimate is not balance, billing confirmation or mode evidence."
+  },
+  "peerDiagnosisReview": {
+    "scope": "Read the complete newly embedded ACCEPTANCE.md, unapplied candidate JSON and discovery.json; they remain in the durable main audit. No sibling source change, configuration application, endpoint request or retest by the reviewer.",
+    "sources": [
+      {
+        "sourcePath": "/ws/daowei2026/ltsp-diskless/artifacts/dominds-high-matrix-20261102/ACCEPTANCE.md",
+        "sha256": "58b5ba1391da63076a9e99f26f2d0e6d31a387ae7bf2f2e3f7e13c02beb06b29",
+        "bytes": 7766,
+        "durablePointer": "/gatewayReconciliation/durablePeerDiagnosisSources/0"
+      },
+      {
+        "sourcePath": "/ws/daowei2026/ltsp-diskless/artifacts/dominds-high-matrix-20261102/alias-config.proposed.json",
+        "sha256": "fe42f31b14917c1661302a9a8438f27a59e133dbee12d8ed988b5ded9bd4e5ce",
+        "bytes": 109,
+        "durablePointer": "/gatewayReconciliation/durablePeerDiagnosisSources/1"
+      },
+      {
+        "sourcePath": "/ws/daowei2026/ltsp-diskless/artifacts/dominds-high-matrix-20261102/discovery.json",
+        "sha256": "46db0f8fee65bf244bbdb2bb22d6f3f21d3b2b4846862fbbed4348e6ce296cf6",
+        "bytes": 4772,
+        "durablePointer": "/gatewayReconciliation/durablePeerDiagnosisSources/2"
+      }
+    ],
+    "conclusion": "Discovery absence does not itself decide inference. Actual two403 records establish failed alias routing under this current Virtual Key. Peer source-level diagnosis attributes wildcard membership to catalog lookup; R-228 remains OPEN and locally uncommitted in the peer ledger. The proposed aliases-only configuration is unapplied and does not close either cell. Canonical Sol is a separately verified workaround, not alias acceptance.",
+    "independentProofLimit": "The reviewer checked the embedded diagnosis/source-text identities and actual403 protocol; the external source code root-cause locations were not independently audited in this task."
+  },
+  "sourceReview": {
+    "changedRepositorySourceScope": "Only4 guidance/config source paths. No production runtime, executable repository test, shared support, runner or tests/audit.json identity change was requested or made by this reviewer.",
+    "completeReviewedDiff": {
+      "actualText": "diff --git a/AGENTS.md b/AGENTS.md\nindex c5a3fa36..0c076ecb 100644\n--- a/AGENTS.md\n+++ b/AGENTS.md\n@@ -35,6 +35,7 @@\n - Put shared test helpers in `tests/helpers/`, outside discovered executable entry points. Helper-only modules and semantic producers are not automatic passing behavior tests. Do not add dependencies, a framework or generic test machinery merely for a local check.\n - Run script-rtws cases through `tests/cli.ts`; default to isolated rtws. Never run shared rtws cases concurrently. Preserve failing evidence. Synchronize on relevant events/state instead of sleeps; do not hide failures by raising timeouts or retrying until green. Async scenarios need an observable completion boundary: an unresolved Promise must not exit zero and become a pass.\n - Suites report every attempted case and return nonzero for failure or timeout. Declare prerequisites and report skipped/unexecuted scenarios explicitly; never count them as passes. Keep local controlled behavior, packaging, external components, live providers, real browser interaction and native platform execution as separate scopes. A smoke pass is not full coverage, and source review is not execution.\n+- OpenAI Responses live model availability acceptance must cover every model ID in the declared support scope, including configured aliases, and both standard/pro for models that support those modes. Use streaming and `high` reasoning effort as the required matrix; non-streaming and other efforts are optional. Verify actual returned model/mode/effort and the streamed tool-call/result round trip. Catalog entries, metadata, ordinary-mode success and one representative Pro model do not accept unexecuted cells. Retain failed and unexecuted cells explicitly; apply this scope to future model/provider changes too.\n - Use `pnpm test` for the small smoke suite, `pnpm run test:local` for deduplicated registered local behavior, `pnpm run test:runner` for runner controls, `pnpm run test:types` for the entire test directory and `pnpm run test:inventory` for source-review/discovery gaps. Do not weaken types or exclude failing cases. Consult the [test entry points and scope](tests/README.md) and [test strategy](docs/testing-strategy.md) for focused lanes, prerequisites and semantic evidence commands. Fix understood nearby defects with scope and regression evidence; keep unrelated rewrites separate.\n \n ## Markdown Link Pre-commit Lint\ndiff --git a/docs/examples/ltsp-openai.llm.yaml b/docs/examples/ltsp-openai.llm.yaml\nindex a60adf97..95bc7334 100644\n--- a/docs/examples/ltsp-openai.llm.yaml\n+++ b/docs/examples/ltsp-openai.llm.yaml\n@@ -11,7 +11,7 @@ providers:\n     model_param_options:\n       openai:\n         # All five GPT-6/6.1 models below officially support Responses Pro mode.\n-        # Gateway Pro testing covers only openai/gpt-6.1-sol at low effort so far.\n+        # All five passed gateway standard/pro at high, with streamed tool/result round trips (2026-11-02).\n         # https://developers.openai.com/api/docs/guides/reasoning#reasoning-mode\n         reasoning_mode:\n           prominent: true\ndiff --git a/docs/openai-ltsp-gateway.zh.md b/docs/openai-ltsp-gateway.zh.md\nindex 13d2e932..70b8a299 100644\n--- a/docs/openai-ltsp-gateway.zh.md\n+++ b/docs/openai-ltsp-gateway.zh.md\n@@ -50,7 +50,7 @@ members:\n \n GPT-6 的 Pro 是 Responses 执行模式，使用真实模型 ID 加 `reasoning.mode: pro`，与 `reasoning.effort` 独立；`max` effort 不会自动开启 Pro。Pro 会执行更多模型工作，并增加 token 使用和延迟，按所选模型的 token 费率计费。见[官方 reasoning mode](https://developers.openai.com/api/docs/guides/reasoning#reasoning-mode)。\n \n-截至2026-11-01，官方说明支持该模式的**当前 Dominds 内置通用 OpenAI 模型**如下：\n+截至2026-11-02，官方说明支持该模式的**当前 Dominds 内置通用 OpenAI 模型**如下：\n \n | 系列    | 模型 ID                                                               |\n | ------- | --------------------------------------------------------------------- |\n@@ -58,7 +58,9 @@ GPT-6 的 Pro 是 Responses 执行模式，使用真实模型 ID 加 `reasoning.\n | GPT-6   | `gpt-6-astra`、`gpt-6-sol`、`gpt-6-luna`                              |\n | GPT-5.6 | `gpt-5.6-sol`、`gpt-5.6-terra`、`gpt-5.6-luna`；`gpt-5.6` 是 Sol 别名 |\n \n-依据[官方模式支持范围](https://developers.openai.com/api/docs/guides/reasoning#reasoning-mode)与[型号/别名说明](https://developers.openai.com/api/docs/guides/latest-model)。网关使用相应的 `openai/` 前缀 ID；本地 Pro 实测目前仅覆盖 `openai/gpt-6.1-sol` 的 low effort，其余型号未逐一进行 Pro 实测。该范围适用于 OpenAI Responses，不外推到 Codex 或 Chat Completions。旧 `gpt-5.5-pro` 等仍是独立模型 ID，沿用各自行为和计费；不要向其它旧模型通用添加此开关。\n+依据[官方模式支持范围](https://developers.openai.com/api/docs/guides/reasoning#reasoning-mode)与[型号/别名说明](https://developers.openai.com/api/docs/guides/latest-model)。网关使用相应的 `openai/` 前缀 ID。2026-11-02 实测中，表内8个规范型号的 standard/pro × high 全部通过流式工具往返；官方别名 `openai/gpt-5.6` 的两个模式均被当前网关 Virtual Key 以403拒绝，应在此网关使用已验证的 `openai/gpt-5.6-sol`。别名是官方支持与当前网关实际可用性的差异，不能据此删除官方 provider 中的合法别名。详见下述本轮矩阵。\n+\n+该范围适用于 OpenAI Responses，不外推到 Codex 或 Chat Completions。旧 `gpt-5.5-pro` 等仍是独立模型 ID，沿用各自行为和计费；不要向其它旧模型通用添加此开关。Astra 支持 Pro，effort 支持 low / medium / high / xhigh / max，Pro 下 effort 仍有效；当前 high 的两个模式均已实测。\n \n Dominds 使用 `.minds/team.yaml` 的 `model_params.openai.reasoning_mode: standard | pro`，模型目录继续使用原始 wire ID。例如让普通执行成员使用标准模式、审查成员显式使用 Pro：\n \n@@ -91,7 +93,17 @@ members:\n \n 无需添加 `gpt-6-pro` 或 `gpt-6.1-sol-pro` 模型条目。当前配置中的模型键直接用于请求，`name` 仅为显示名称，不会把本地虚构 ID 映射为另一个上游模型。\n \n-Pro 专项已通过一次原生 SDK 调用，以及由实际 rtws 配置和 `Team.load()` 取得成员的 Dominds 流式调用、流式函数调用及工具结果 batch 续轮，共4次 Sol 请求。原始非流式响应和流式 completed 事件均明确回显 `reasoning.mode: pro`；HTTP200、费用升高或 reasoning token 数均不作为 Pro 生效的替代证据。网关日志独立核对 ID、模型及 usage，但其日志没有独立 mode 列。完整证据见[Pro 专项验收](../tests/audits/2026-11-01-openai-pro.json)。本次使用 low effort 验证传输与给定 JSON 数据往返，没有测量 Pro 的任务质量收益，也没有逐个验收所有模型/effort 组合。\n+### 本轮流式 high 矩阵\n+\n+2026-11-02 经实际隔离 rtws、`Team.load()` 和原生 `OpenAiGen.genToReceiver()`，尝试上述8个规范 ID 及别名的 standard/pro 两格，共18格。每个成功格均进行流式函数调用及流式工具结果续轮：给定 nonce 原样传入，独立生成的 receipt 只经工具结果提供，续轮 JSON 完整返回；没有执行真实工具。\n+\n+- 8个规范 ID 的16格通过，共32个实际请求。每个原始 `response.completed` 都回显预期型号、对应 mode、high effort 和 completed 状态，且无额外 SDK 请求。\n+- `openai/gpt-5.6` 的2格各发出1个请求并收到403，工具结果续轮未执行；失败原样保留。整个18格矩阵返回失败，不能称为全绿。\n+- 该次共34个请求，完整请求/响应、失败及源码见[本轮矩阵验收记录](../tests/audits/2026-11-02-openai-high-matrix.json)。它验证协议可用性，不证明 Pro 质量收益、所有 effort、长上下文、吞吐或缓存收益。\n+\n+今后按[模型可用性矩阵约定](./testing-strategy.md#模型与-pro-的真实可用性矩阵)覆盖声明支持的全部型号及模式，统一 high、流式。非流式和其它 effort 可以跳过；不再用单一型号的 Pro 成功代替其余型号。HTTP200、费用及 reasoning token 数均不作为模式生效的替代证据；网关日志若没有 mode 列，应保留原始上游 completed 回显。\n+\n+前一轮2026-11-01的 [Pro 专项](../tests/audits/2026-11-01-openai-pro.json)保留4次 Sol/low 请求、部分非流式路径和真实 Chromium setup 配置体验的独立范围，不能作为本轮 high 矩阵的替代。\n \n ## 前一轮基础联测范围\n \ndiff --git a/docs/testing-strategy.md b/docs/testing-strategy.md\nindex 520f8732..3d32be24 100644\n--- a/docs/testing-strategy.md\n+++ b/docs/testing-strategy.md\n@@ -50,6 +50,18 @@\n \n 每个已尝试场景都有日志和结果；失败/超时不得阻断后续场景，suite仍须返回失败状态。保留失败现场。裸 Promise 等待不能无声退出0：需要实际完成边界，或由能发现未完成用例的运行器管理。前置条件缺失明确列为 skipped/UNEXECUTED 并返回非零，不计通过。语义生成进程完成数与语义判词分开报告。\n \n+### 模型与 Pro 的真实可用性矩阵\n+\n+操作者需要知道所选型号和执行模式能否完成智能体往返，不能从一个代表型号的成功推断整份支持清单。今后 OpenAI Responses 模型/provider 变更及联合验收统一采用以下范围：\n+\n+- 逐个覆盖本次声明支持的模型 ID；配置中公开的别名也是单独的路由入口，需要单独验证。清楚列出范围，不能把目录中的音频、图片、embedding 等不同用途模型自动并入智能体模型清单。\n+- 支持 Responses 模式的型号分别测试 `standard` 和 `pro`；`reasoning_effort` 统一测 `high`。流式响应是必测路径，工具调用与工具结果续轮都使用流式；非流式和其它 effort 不作为必测维度。模式和 effort 独立，Pro 下保留 high。\n+- 经实际 rtws 配置和原生 generator 发请求，核对原始 `response.completed` 中的型号、`reasoning.mode`、`reasoning.effort` 和完成状态，以及工具 nonce/receipt 给定数据往返。别名的预期归一化须有明确依据，不能用虚构本地模型 ID 替代真实路由。\n+- 每格记录实际请求、原始响应、attempt/完成状态和请求 ID；失败后继续其它格，任何失败、超时或未执行格都不能报告完整通过。目录缺少某个别名、聚合参数缺项或其它型号的成功均不能代替实际调用。\n+- 网关日志可独立核对模型、usage、retry/fallback；若日志没有模式字段，使用原始上游响应确认模式，不能从 HTTP200、费用或 reasoning token 数推断 Pro。给定 opaque 数据可精确比较；不以措辞验收模型含义或宣称质量收益。\n+\n+此矩阵建立明确支持范围内的协议可用性，不代替模型质量、上下文容量、缓存收益、吞吐限额、浏览器或真实工具执行的专项证据。历史非流式/其它 effort 记录保留其原有范围；新的验收按上述必测矩阵执行。\n+\n ## 按风险阅读证据\n \n | 业务风险           | 已有接受范围举例                                                        | 不应据此声称                                                    |\n",
+      "sha256": "0d27fd59cb860aa005e84095ea54e3b326e6dd1cd66f3b56dc06afa4011254b8",
+      "bytes": 11486
+    },
+    "executionEpochSupportIdentities": [
+      {
+        "path": "main/llm/gen/openai.ts",
+        "revision": "81f0613f6a39d99943fcddc33fb7a15c89c9508e",
+        "sha256": "95882d72b6fd8073044e2476e0f43e9feb07d24c474dbbe40a84cad88733f9ea",
+        "bytes": 94792
+      },
+      {
+        "path": "main/llm/client.ts",
+        "revision": "81f0613f6a39d99943fcddc33fb7a15c89c9508e",
+        "sha256": "d4522932503df8c8074d91c74f1ae7ae7568a6a607c7e7270cd538c6a5febd2d",
+        "bytes": 7458
+      },
+      {
+        "path": "main/team.ts",
+        "revision": "81f0613f6a39d99943fcddc33fb7a15c89c9508e",
+        "sha256": "09669c9d77b5bbb8b22e62ee1b19c333f4cc93e9e831168b9ee3ba06bf91db42",
+        "bytes": 135114
+      },
+      {
+        "path": "main/llm/defaults.yaml",
+        "revision": "81f0613f6a39d99943fcddc33fb7a15c89c9508e",
+        "sha256": "d1af0bc99c8c75d90fdf75b2bf7ae32424e2f0d31dde137adcb0a7a25cc9d4af",
+        "bytes": 49170
+      },
+      {
+        "path": "docs/examples/ltsp-openai.llm.yaml",
+        "revision": "81f0613f6a39d99943fcddc33fb7a15c89c9508e",
+        "sha256": "9627f090eba907e350cd8e4900726a46293afe94837953e4be176d139398d87a",
+        "bytes": 3154
+      },
+      {
+        "path": "tests/helpers/live-provider.ts",
+        "revision": "81f0613f6a39d99943fcddc33fb7a15c89c9508e",
+        "sha256": "4248186b41966e4552a9993be9010e667aaee8043762666307ffecce147923dd",
+        "bytes": 21869
+      },
+      {
+        "path": "tests/cli.ts",
+        "revision": "81f0613f6a39d99943fcddc33fb7a15c89c9508e",
+        "sha256": "b9f9bc1f034a2a70c4b7bfbc2300ae854706f09a9788b7f4ca17b3a263f41598",
+        "bytes": 5618
+      },
+      {
+        "path": "tests/rtws-script-runner.ts",
+        "revision": "81f0613f6a39d99943fcddc33fb7a15c89c9508e",
+        "sha256": "410949f941c1f0166b4e42dace6fa9d87138740c8d6a85aac9b5d99852730359",
+        "bytes": 920
+      }
+    ],
+    "epochNote": "The actual probe loaded the base example/built-in model data. The current example adds a comment reporting this completed run; parsed full YAML data independently equals base. Current documentation is not misrepresented as having existed before the requests.",
+    "dataPreservation": "Independent read-only repository YAML.parse + strict deep equality confirmed the complete current gateway example has the same parsed data as base. All8 execution-epoch source identities were independently verified against Git base bytes.",
+    "ledgerBoundary": "No executable candidate/support changed, therefore no tests/audit.json identity update is needed for these guidance edits or the retained one-off probe."
+  },
+  "officialContext": [
+    {
+      "url": "https://developers.openai.com/api/docs/guides/reasoning#reasoning-mode",
+      "reviewerReadDate": "2026-11-02",
+      "summary": "Official GPT-5.6/GPT-6 Responses standard/pro support is independent of effort; standard is the default and existing Pro model IDs retain their behavior. This official family contract does not override the actual gateway alias refusal."
+    },
+    {
+      "url": "https://developers.openai.com/api/docs/guides/latest-model",
+      "reviewerReadDate": "2026-11-02",
+      "summary": "The GPT-6 guide includes Pro and notes model-specific effort restrictions. The required high/streaming/all-in-scope-model matrix comes from the user instruction, not a claim that OpenAI mandates this test policy."
+    }
+  ],
+  "limitations": [
+    "Reviewer made no live/model/credential-service request, no paid call, no new subagent and no product/test/source/ledger edit.",
+    "Passing guidance and probe design is separate from execution. Overall18-cell availability matrix remains FAILED, including2 unexecuted result followups.",
+    "Protocol/opaque-data acceptance covers eight canonical models at high in two modes on the observed gateway and time only. No answer quality, Pro benefit, latency/real-time guarantee, long-context/output limit, image, cache savings/duration, rate/balance, actual tool execution or browser acceptance.",
+    "Non-streaming and other efforts are optional under the new rule and were not executed here. Historical low/batch/browser evidence keeps its old scope; it does not fill this matrix.",
+    "No alias configuration candidate was adopted and no fix/retry was performed. Future acceptance requires its own actual evidence, preserving these failures."
+  ],
+  "parentVerification": {
+    "status": "completed primary review within recorded scope; live matrix remains failed",
+    "handoffReportSha256": "894a84b931a557498a8fc4f1b51f17487070217fb9d887098a45c98db1438af1",
+    "handoffIdentityScope": "Independent report before this primary-only verification append; not the final report hash and not semantic acceptance by hash.",
+    "verified": "Read every current guidance rationale and full changed documentation diff, all15 assertion-design groups, live failure scopes, original main record and gateway reconciliation. Exact4 full text identities and all8 immutable evidence domains match independent review. All actual34 requests and two403 failures remain unchanged.",
+    "standardChecks": {
+      "build": {
+        "exitCode": 0,
+        "log": "$ node ./scripts/run-pnpm.mjs run build:backend && node ./scripts/run-pnpm.mjs run build:frontend\n$ node ./scripts/build-backend.mjs\n$ tsx toolsets/manual-size-guard.ts\nOK: manual size guard passed (162 request(s), limit=25000).\n- control/en/default: 19193 chars\n- control/en/tools: 16562 chars\n- team_mgmt/en/team: 13949 chars\n- control/en/principles: 13272 chars\n- team_mgmt/en/skills: 12356 chars\nScope: 3 of 6 workspace projects\npackages/kernel build$ tsc -p tsconfig.json\ncodex-auth build$ tsc -p tsconfig.json\npackages/kernel build: Done\ncodex-auth build: Done\npackages/shell build$ tsc -p tsconfig.json\npackages/shell build: Done\n$ node ./scripts/run-pnpm.mjs -C webapp run build\n$ node ./scripts/build.mjs\n"
+      },
+      "applicationTypes": {
+        "exitCode": 0,
+        "log": "$ node ./scripts/run-pnpm.mjs -r --filter \"./packages/*\" --filter ./webapp run lint:types && tsc -p main/tsconfig.dev.json --noEmit\nScope: 3 of 6 workspace projects\npackages/kernel lint:types$ tsc -p tsconfig.json --noEmit\npackages/kernel lint:types: Done\npackages/shell lint:types$ tsc -p tsconfig.json --noEmit\npackages/shell lint:types: Done\nwebapp lint:types$ tsc -p src/tsconfig.json --noEmit && node ./scripts/check-dom-events.mjs\nwebapp lint:types: Done\n"
+      },
+      "strictProbeTypes": {
+        "exitCode": 0,
+        "log": "",
+        "scope": "Exact executed temporary TypeScript probe and imported real modules, extending the repository strict tests config, no weakened checks."
+      },
+      "format": {
+        "exitCode": 0,
+        "log": "$ prettier --check \"{main,webapp/src,docs,tests}/**/*.{js,mjs,jsx,ts,tsx}\" && prettier --check \"{main,webapp/src,docs,tests}/**/*.{css,md,json,html}\"\nChecking formatting...\nAll matched files use Prettier code style!\nChecking formatting...\nAll matched files use Prettier code style!\n"
+      },
+      "gatewayYamlFormat": {
+        "exitCode": 0,
+        "log": "Checking formatting...\nAll matched files use Prettier code style!\n"
+      },
+      "parsedGatewayYamlValues": {
+        "exitCode": 0,
+        "log": "Complete parsed gateway YAML unchanged; comment-only configuration edit.\n"
+      },
+      "offlineDocumentationNavigation": {
+        "exitCode": 0,
+        "log": "{\n  \"trackedMarkdown\": 203,\n  \"newMarkdown\": 0,\n  \"canonicalDocuments\": 71,\n  \"excludedRuntimeSources\": 131,\n  \"localTargetsAndFragments\": 430,\n  \"networkLinksIgnored\": 19,\n  \"failures\": []\n}\n"
+      },
+      "noBehaviorSourceChanged": "Only AGENTS/strategy/guide and gateway YAML comments change; no product code, executable test or shared test-support changes. Full test-directory type/local behavior suites not rerun for documentation-only edits. Real34 requests establish the stated live scope, including two failures.",
+      "rootMachineRecordReview": {
+        "status": "passed record fidelity; initial matrix remains failed",
+        "scope": "Read full assertion design and current full documentation diff; exact9 IDs×2 modes attempted;32 real completed SSE model/mode/high and supplied nonce/receipt pass; two real403 refusals and two unexecuted followups preserved; exact34 peer request IDs/status/usage/retry0/fallback0. Source hashes identify source only; no natural-language literal oracle or response-quality acceptance."
+      }
+    },
+    "separation": "The independent guidance and probe-design verdicts pass. Runtime matrix is still exit1,16/18 passed,2 failed alias cells and2 unexecuted followups. No model answer-quality acceptance or alias production adoption."
+  }
+}
