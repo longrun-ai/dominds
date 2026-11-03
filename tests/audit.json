@@ -1786,9 +1786,9 @@
     "runner.test.mjs": {
       "status": "reviewed",
       "lane": "runner",
-      "value": "Actual child dispatch requires current reviewed source: legal ten-script completion, seven missing/stale/source/lane/helper refusals before any effect, read-only inventory, and preserved failure/timeout/prerequisite controls. Counts describe runner behavior, not product or semantic coverage.",
-      "evidence": "tests/audits/2026-10-31-source-review-gate.json; complete original/final source and assertion review, actual controlled dispatch data, retained first fixture failure and corrected absolute CLI binding. No semantic literal oracle.",
-      "reviewedSourceSha256": "edc9d6bd35b6b9039c6d4e910471d5e236d262a96ff14eb80218ec47782eae92"
+      "value": "Actual child dispatch requires current reviewed source: legal ten-script completion, seven missing/stale/source/lane/helper refusals before any effect, read-only inventory, and preserved failure/timeout/prerequisite controls. Generation observation checkpoints preserve actual output and survive the local deadline without automatically judging model progress. Counts describe runner behavior, not product or semantic coverage.",
+      "evidence": "tests/audits/2026-10-31-source-review-gate.json; complete original/final source and assertion review, actual controlled dispatch data, retained first fixture failure and corrected absolute CLI binding. No semantic literal oracle. Current complete diff/assertion and caller review: tests/audits/2026-11-03-generation-checkpoints.json; identity updated after actual source review, not by test execution.",
+      "reviewedSourceSha256": "b89ec4aab1f2a4c1452e4fffab8f145b479fc37159cc4081b4b544a5d25501ff"
     },
     "provider/openai-reasoning-mode.ts": {
       "status": "reviewed",
@@ -2057,8 +2057,8 @@
     },
     "helpers/live-provider.ts": {
       "status": "reviewed",
-      "reviewedSourceSha256": "4248186b41966e4552a9993be9010e667aaee8043762666307ffecce147923dd",
-      "evidence": "tests/audits/2026-10-31-source-review-gate.json; source identity continuity with the completed baseline audits and current shared-runner full-diff review; no fresh semantic verdict."
+      "reviewedSourceSha256": "ce2bad2827b31f06fabd787df0db676e9ba7d063a4d80f581aae921c7a0f4c8b",
+      "evidence": "tests/audits/2026-10-31-source-review-gate.json; source identity continuity with the completed baseline audits and current shared-runner full-diff review; no fresh semantic verdict. Current complete diff/assertion and caller review: tests/audits/2026-11-03-generation-checkpoints.json; identity updated after actual source review, not by test execution."
     },
     "helpers/llm-retry-fixtures.ts": {
       "status": "reviewed",
@@ -2187,8 +2187,8 @@
     },
     "run.mjs": {
       "status": "reviewed",
-      "reviewedSourceSha256": "13f69d25a015788caaff1aac78c2e49e0c0a67ceb00bc329d1bacf3c07618c3f",
-      "evidence": "tests/audits/2026-10-31-source-review-gate.json; source identity continuity with the completed baseline audits and current shared-runner full-diff review; no fresh semantic verdict. Pro registration update: tests/semantic/reviews/2026-11-01-openai-pro.json; independently reviewed only the added local/semantic case registration and direct package target/caller impact, with existing gate/dispatch behavior preserved. Current source identity explicitly reviewed, not granted by execution."
+      "reviewedSourceSha256": "25bdf2c3710f4e5a418aa6bd71e7941c91c238b09e1de999d7eaa02ce203a6b7",
+      "evidence": "tests/audits/2026-10-31-source-review-gate.json; source identity continuity with the completed baseline audits and current shared-runner full-diff review; no fresh semantic verdict. Pro registration update: tests/semantic/reviews/2026-11-01-openai-pro.json; independently reviewed only the added local/semantic case registration and direct package target/caller impact, with existing gate/dispatch behavior preserved. Current source identity explicitly reviewed, not granted by execution. Current complete diff/assertion and caller review: tests/audits/2026-11-03-generation-checkpoints.json; identity updated after actual source review, not by test execution."
     },
     "semantic/context-guidance.ts": {
       "status": "reviewed",

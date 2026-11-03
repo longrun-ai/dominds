@@ -160,22 +160,29 @@ export function liveCapture(genseq: number) {
   let saying = false;
   let thinkingText = '';
   let sayingText = '';
+  const observe = (event: string, value: unknown) => {
+    if (process.argv.includes('--live'))
+      console.log(JSON.stringify({ artifact: 'live-provider-output', genseq, event, value }));
+  };
   const receiver: LlmStreamReceiver = {
     thinkingStart: async () => {
       assert.equal(thinking, false);
       thinking = true;
       thinkingText = '';
       capture.events.push('thinkingStart');
+      observe('thinkingStart', null);
     },
     thinkingChunk: async (chunk) => {
       assert.equal(thinking, true);
       thinkingText += chunk;
       capture.thinkingChunks.push(chunk);
+      observe('thinkingChunk', chunk);
     },
     thinkingFinish: async (reasoning, providerData) => {
       assert.equal(thinking, true);
       thinking = false;
       capture.events.push('thinkingFinish');
+      observe('thinkingFinish', null);
       if (thinkingText.length || reasoning !== undefined || providerData !== undefined)
         capture.messages.push({
           type: 'thinking_msg',
@@ -191,16 +198,19 @@ export function liveCapture(genseq: number) {
       saying = true;
       sayingText = '';
       capture.events.push('sayingStart');
+      observe('sayingStart', null);
     },
     sayingChunk: async (chunk) => {
       assert.equal(saying, true);
       sayingText += chunk;
       capture.sayingChunks.push(chunk);
+      observe('sayingChunk', chunk);
     },
     sayingFinish: async () => {
       assert.equal(saying, true);
       saying = false;
       capture.events.push('sayingFinish');
+      observe('sayingFinish', null);
       if (sayingText.length)
         capture.messages.push({
           type: 'saying_msg',
@@ -212,6 +222,7 @@ export function liveCapture(genseq: number) {
     funcCall: async (id, name, args, ids) => {
       capture.events.push('funcCall');
       capture.calls.push({ id, name, args });
+      observe('funcCall', { id, name, args });
       capture.messages.push({
         type: 'func_call_msg',
         role: 'assistant',
@@ -226,18 +237,23 @@ export function liveCapture(genseq: number) {
     streamError: async (detail) => {
       capture.events.push('streamError');
       capture.errors.push(detail);
+      observe('streamError', detail);
     },
     answering: async (content) => {
       capture.sideOutputs.push({ kind: 'answering', value: content });
+      observe('answering', content);
     },
     invalidFuncCall: async (call) => {
       capture.sideOutputs.push({ kind: 'invalid_func_call', value: call });
+      observe('invalid_func_call', call);
     },
     nativeToolCall: async (call) => {
       capture.sideOutputs.push({ kind: 'native_tool_call', value: call });
+      observe('native_tool_call', call);
     },
     webSearchCall: async (call) => {
       capture.sideOutputs.push({ kind: 'web_search_call', value: call });
+      observe('web_search_call', call);
     },
     toolResultImageIngest: async (value) => {
       capture.sideOutputs.push({ kind: 'tool_result_image_ingest', value });

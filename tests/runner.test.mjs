@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { execFile } from 'node:child_process';
 import { createHash } from 'node:crypto';
+import { readFileSync, renameSync, writeFileSync } from 'node:fs';
 import fs from 'node:fs/promises';
 import { createRequire } from 'node:module';
 import os from 'node:os';
@@ -9,6 +10,76 @@ import test from 'node:test';
 import { pathToFileURL } from 'node:url';
 
 import { inventory, runCases } from './run.mjs';
+
+test('generation checkpoints expose actual output without applying the local case deadline', async () => {
+  const logDir = await fs.mkdtemp(path.join(os.tmpdir(), 'dominds-runner-generation-'));
+  const observed = [];
+  let completed = false;
+  try {
+    const summary = await runCases(
+      [
+        {
+          id: 'observed-generation',
+          llmGeneration: true,
+          args: [
+            '-e',
+            // A controlled local peer waits for the observer's acknowledgment, not elapsed time.
+            `const fs = require('node:fs'), path = require('node:path');
+             const root = process.env.TMPDIR;
+             const guard = setTimeout(() => process.exit(9), 5000);
+             const watcher = fs.watch(root, (_, file) => {
+               if (file !== 'observer-ack.json') return;
+               if (JSON.parse(fs.readFileSync(path.join(root, file))).continue !== true) return;
+               watcher.close(); clearTimeout(guard);
+               console.log('provided-final-data:2c91');
+             });
+             console.log('provided-partial-data:17d3');`,
+          ],
+        },
+      ],
+      {
+        logDir,
+        timeoutMs: 1,
+        checkpointMs: 10,
+        report: (line) => {
+          let point;
+          try {
+            point = JSON.parse(line);
+          } catch {
+            return;
+          }
+          const actual = readFileSync(point.logPath, 'utf8');
+          if (actual !== 'provided-partial-data:17d3\n' || observed.length) return;
+          // This supplied opaque prefix tests observation/data transport, not model meaning.
+          observed.push({ point, actual });
+          const acknowledgment = path.join(point.tempDir, 'observer-ack.json');
+          writeFileSync(acknowledgment + '.tmp', '{"continue":true}\n');
+          renameSync(acknowledgment + '.tmp', acknowledgment);
+        },
+      },
+    );
+    assert.equal(summary.passed, 1);
+    assert.equal(summary.timedOut, 0);
+    assert.equal(observed.length, 1);
+    assert.ok(observed[0].point.pid > 0);
+    assert.equal(summary.results[0].generationDeadline, null);
+    assert.equal(summary.results[0].checkpointPath, observed[0].point.checkpointPath);
+    const points = (await fs.readFile(summary.results[0].checkpointPath, 'utf8'))
+      .trim()
+      .split('\n')
+      .map((line) => JSON.parse(line));
+    assert.ok(points.some((point) => point.elapsedMs > 1));
+    assert.ok(points.some((point) => point.pid === observed[0].point.pid));
+    assert.equal(
+      await fs.readFile(summary.results[0].logPath, 'utf8'),
+      'provided-partial-data:17d3\nprovided-final-data:2c91\n',
+    );
+    completed = true;
+  } finally {
+    if (completed) await fs.rm(logDir, { recursive: true, force: true });
+    else console.error('Generation checkpoint fixture retained: ' + logDir);
+  }
+});
 
 test('a failure and a timeout retain evidence and do not prevent later cases from running', async () => {
   const logDir = await fs.mkdtemp(path.join(os.tmpdir(), 'dominds-runner-regression-'));

@@ -1,5 +1,6 @@
 import { spawn } from 'node:child_process';
 import { createHash } from 'node:crypto';
+import { appendFileSync } from 'node:fs';
 import fs from 'node:fs/promises';
 import { createRequire } from 'node:module';
 import os from 'node:os';
@@ -554,13 +555,21 @@ function killTree(child) {
 
 export async function runCases(
   cases,
-  { logDir, timeoutMs = 60_000, report = console.log, keepSuccessfulState = false },
+  {
+    logDir,
+    timeoutMs = 60_000,
+    checkpointMs = 30_000,
+    report = console.log,
+    keepSuccessfulState = false,
+  },
 ) {
   await fs.mkdir(logDir, { recursive: true });
   const results = [];
   for (const [index, entry] of cases.entries()) {
     const name = `${String(index + 1).padStart(3, '0')}-${entry.id.replace(/[^\w.-]/g, '_')}`;
     const logPath = path.join(logDir, `${name}.log`);
+    const checkpointPath = path.join(logDir, `${name}.checkpoints.jsonl`);
+    if (entry.llmGeneration) await fs.writeFile(checkpointPath, '');
     // tsx opens a Unix-domain socket under TMPDIR, whose path length is limited.
     const tempDir = path.join(logDir, `${index + 1}.tmp`);
     await fs.mkdir(tempDir);
@@ -580,10 +589,26 @@ export async function runCases(
           DOMINDS_TEST_RTWS_KEEP_TMP: '1',
         },
       });
-      const timer = setTimeout(() => {
-        timedOut = true;
-        killTree(child);
-      }, timeoutMs);
+      const timer = entry.llmGeneration
+        ? setInterval(() => {
+            // Observation only. The supervising agent reads actual output and decides what to do.
+            const checkpoint = {
+              artifact: 'llm-generation-checkpoint',
+              id: entry.id,
+              elapsedMs: Date.now() - started,
+              pid: child.pid,
+              processGroup: process.platform !== 'win32',
+              logPath,
+              tempDir,
+              checkpointPath,
+            };
+            appendFileSync(checkpointPath, JSON.stringify(checkpoint) + '\n');
+            report(JSON.stringify(checkpoint));
+          }, checkpointMs)
+        : setTimeout(() => {
+            timedOut = true;
+            killTree(child);
+          }, timeoutMs);
       child.once('error', (error) => {
         clearTimeout(timer);
         resolve({ error: error.message });
@@ -680,6 +705,7 @@ export async function runCases(
       durationMs: Date.now() - started,
       ...outcome,
       logPath,
+      ...(entry.llmGeneration ? { checkpointPath, checkpointMs, generationDeadline: null } : {}),
       ...(prerequisite ? { prerequisite } : {}),
       ...(executionEvidence ? { executionEvidence } : {}),
       ...(evidenceFailure ? { evidenceFailure } : {}),
@@ -793,6 +819,7 @@ async function main() {
   const cases = files.map((file) => ({
     id: file,
     ...(suite === 'provider-live' ? { skipExitCode: 77, requireLiveEvidence: true } : {}),
+    ...(suite === 'provider-live' && liveArgs.includes('--live') ? { llmGeneration: true } : {}),
     ...(suite === 'apps-external' ? { skipExitCode: 77, prerequisiteBoundary: 'component' } : {}),
     args:
       file === 'runner.test.mjs'
